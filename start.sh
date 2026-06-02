@@ -13,11 +13,7 @@ if [ ! -d "node_modules" ]; then
     npm install
 fi
 
-# Ensure database file exists
-if [ ! -f database/database.sqlite ]; then
-    echo "Creating SQLite database..."
-    touch database/database.sqlite
-fi
+
 
 # Run migrations
 php artisan migrate --force
