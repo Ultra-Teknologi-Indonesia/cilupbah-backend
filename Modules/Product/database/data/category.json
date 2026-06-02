@@ -1,0 +1,789 @@
+[
+  {
+    "name": "Kecantikan & Perawatan Diri",
+    "children": [
+      {
+        "name": "Perawatan Wajah",
+        "children": [
+          { "name": "Serum" },
+          { "name": "Moisturizer" },
+          { "name": "Sunscreen" },
+          { "name": "Toner" },
+          { "name": "Masker Wajah" },
+          { "name": "Pembersih Wajah" }
+        ]
+      },
+      {
+        "name": "Perawatan Tubuh",
+        "children": [
+          { "name": "Sabun Mandi" },
+          { "name": "Lotion" },
+          { "name": "Scrub" },
+          { "name": "Deodoran" }
+        ]
+      },
+      {
+        "name": "Kosmetik",
+        "children": [
+          { "name": "Lipstik" },
+          { "name": "Foundation" },
+          { "name": "Bedak" },
+          { "name": "Eyeshadow" },
+          { "name": "Maskara" }
+        ]
+      },
+      {
+        "name": "Perawatan Rambut",
+        "children": [
+          { "name": "Shampoo" },
+          { "name": "Conditioner" },
+          { "name": "Hair Mask" },
+          { "name": "Hair Oil" },
+          { "name": "Pewarna Rambut" }
+        ]
+      },
+      {
+        "name": "Alat Kecantikan Elektrik",
+        "children": [
+          { "name": "Hair Dryer" },
+          { "name": "Curling Iron" },
+          { "name": "Straightener" },
+          { "name": "Facial Steamer" }
+        ]
+      },
+      { "name": "Suplemen & Vitamin" },
+      { "name": "Parfum & Wewangian" },
+      { "name": "Kesehatan Mulut & Gigi" }
+    ]
+  },
+  {
+    "name": "Alat Kesehatan & Medis",
+    "children": [
+      {
+        "name": "Alat Ukur Kesehatan",
+        "children": [
+          { "name": "Tensimeter" },
+          { "name": "Termometer" },
+          { "name": "Oximeter" },
+          { "name": "Timbangan Badan" }
+        ]
+      },
+      { "name": "Peralatan Medis" },
+      { "name": "Perlengkapan Medis Lainnya" },
+      { "name": "Perawatan Mulut & Gigi" }
+    ]
+  },
+  {
+    "name": "Fashion Wanita",
+    "children": [
+      { "name": "Dress" },
+      { "name": "Rok" },
+      { "name": "Blus & Kemeja Wanita" },
+      { "name": "Pakaian Dalam Wanita" },
+      { "name": "Outer & Blazer" }
+    ]
+  },
+  {
+    "name": "Fashion Pria",
+    "children": [
+      { "name": "Kemeja Pria" },
+      { "name": "T-shirt" },
+      { "name": "Celana Pria" },
+      { "name": "Jaket & Outerwear Pria" }
+    ]
+  },
+  {
+    "name": "Fashion Muslim",
+    "children": [
+      { "name": "Hijab" },
+      { "name": "Gamis" },
+      { "name": "Baju Koko" },
+      { "name": "Mukena" }
+    ]
+  },
+  {
+    "name": "Sepatu & Sandal",
+    "children": [
+      { "name": "Sepatu Pria" },
+      { "name": "Sepatu Wanita" },
+      { "name": "Sepatu Anak" },
+      { "name": "Sandals" },
+      { "name": "Sneakers" }
+    ]
+  },
+  {
+    "name": "Pakaian Anak & Bayi",
+    "children": [
+      { "name": "Pakaian Bayi" },
+      { "name": "Pakaian Anak Laki-laki" },
+      { "name": "Pakaian Anak Perempuan" }
+    ]
+  },
+  {
+    "name": "Ibu & Bayi",
+    "children": [
+      {
+        "name": "Perlengkapan Bayi",
+        "children": [
+          { "name": "Popok" },
+          { "name": "Botol Susu" },
+          { "name": "Empeng" },
+          { "name": "Baby Monitor" }
+        ]
+      },
+      { "name": "Makanan Bayi & Susu Formula" },
+      { "name": "Stroller & Kursi Bayi" },
+      {
+        "name": "Perlengkapan Menyusui",
+        "children": [
+          { "name": "Breast Pump" },
+          { "name": "Nursing Bra" }
+        ]
+      },
+      { "name": "Kebutuhan Ibu Hamil" }
+    ]
+  },
+  {
+    "name": "Elektronik",
+    "children": [
+      {
+        "name": "Audio",
+        "children": [
+          { "name": "Audio Mixer" },
+          { "name": "Earphone & Headphone" },
+          { "name": "Mikrofon" },
+          { "name": "Speaker" },
+          { "name": "True Wireless" }
+        ]
+      },
+      { "name": "Cooling, Heating & Air Quality" },
+      { "name": "Elektronik Lainnya" },
+      { "name": "Televisi & Aksesoris" },
+      { "name": "Wearable Gadget" }
+    ]
+  },
+  {
+    "name": "Handphone & Tablet",
+    "children": [
+      { "name": "Aksesoris Handphone & Tablet" },
+      { "name": "Handphone" },
+      { "name": "Tablet" }
+    ]
+  },
+  {
+    "name": "Komputer & Gaming",
+    "children": [
+      {
+        "name": "Aksesoris Komputer",
+        "children": [
+          { "name": "Aksesoris Diatas Meja" },
+          { "name": "Aksesoris Mac" },
+          { "name": "Baterai" },
+          { "name": "Casing Komputer" },
+          { "name": "Keyboard & Mouse" },
+          { "name": "Mouse" },
+          { "name": "UPS & Stabilizer" },
+          { "name": "USB Flash Disk" },
+          { "name": "Aksesoris Komputer Lainnya" }
+        ]
+      },
+      {
+        "name": "Desktop Computers",
+        "children": [
+          { "name": "All-in-One PCs" },
+          { "name": "Desktop PC" },
+          { "name": "Mac" },
+          { "name": "Mini PC" }
+        ]
+      },
+      {
+        "name": "Laptops",
+        "children": [
+          { "name": "Business Laptops" },
+          { "name": "Gaming Laptops" },
+          { "name": "Ultrabooks" }
+        ]
+      },
+      {
+        "name": "Monitor"
+      },
+      {
+        "name": "Komponen PC",
+        "children": [
+          { "name": "RAM" },
+          { "name": "Processor" },
+          { "name": "GPU" },
+          { "name": "Motherboard" },
+          { "name": "Power Supply" }
+        ]
+      },
+      {
+        "name": "Networking",
+        "children": [
+          { "name": "Router" },
+          { "name": "Switch" },
+          { "name": "Access Point" },
+          { "name": "Kabel LAN" },
+          { "name": "Modem" }
+        ]
+      },
+      {
+        "name": "Printer & Refill",
+        "children": [
+          { "name": "Ink Tank Printers" },
+          { "name": "Inkjet Printers" },
+          { "name": "Laser Printers" },
+          { "name": "Mobile Printers" },
+          { "name": "Cartridge Printers" },
+          { "name": "Printer Refill" },
+          { "name": "Sparepart Printer" }
+        ]
+      },
+      {
+        "name": "Scanner",
+        "children": [
+          { "name": "Desktop Scanner" },
+          { "name": "Portable Scanner" }
+        ]
+      },
+      {
+        "name": "Media Penyimpanan",
+        "children": [
+          { "name": "Harddisk" },
+          { "name": "SSD" },
+          { "name": "Memory Card" },
+          { "name": "USB Flash Disk" },
+          { "name": "Network Storage NAS" },
+          { "name": "CD & DVD ROM" }
+        ]
+      },
+      {
+        "name": "Multimedia",
+        "children": [
+          { "name": "Multimedia Proyektor" },
+          { "name": "Layar Proyektor Multimedia" },
+          { "name": "Aksesoris Proyektor" }
+        ]
+      },
+      {
+        "name": "Peralatan Gaming",
+        "children": [
+          { "name": "Gaming Audio" },
+          { "name": "Gaming Chair & Table" },
+          { "name": "Gaming Keyboard" },
+          { "name": "Gaming Mouse" },
+          { "name": "Gaming Mouse Pad" },
+          { "name": "Gaming PCs" },
+          { "name": "Gamingpad & Joystick" },
+          { "name": "Konsol Portabel & Retro Gaming" },
+          { "name": "Nintendo" },
+          { "name": "PlayStation" },
+          { "name": "Steering Wheel" },
+          { "name": "Virtual Reality" },
+          { "name": "XBOX" },
+          { "name": "Aksesoris Game Lainnya" }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Kamera & Drone",
+    "children": [
+      {
+        "name": "Aksesoris Kamera",
+        "children": [
+          { "name": "Aksesoris Action Cam" },
+          { "name": "Dry Box Kamera" },
+          { "name": "Hard Case & Proteksi Kamera" },
+          { "name": "Pouch Kamera" },
+          { "name": "Strap Kamera" },
+          { "name": "Tas Kamera" },
+          { "name": "Tripod, Monopod & Mount" },
+          { "name": "Aksesoris Kamera Lainnya" }
+        ]
+      },
+      {
+        "name": "Baterai Kamera",
+        "children": [
+          { "name": "Baterai & Charger Kamera" },
+          { "name": "Baterai Grip Kamera" }
+        ]
+      },
+      {
+        "name": "Binocular",
+        "children": [{ "name": "Binocular" }]
+      },
+      {
+        "name": "Drone",
+        "children": [{ "name": "Drone" }]
+      },
+      {
+        "name": "Flash Kamera",
+        "children": [
+          { "name": "Aksesoris Flash" },
+          { "name": "Flash & Lighting Kamera" }
+        ]
+      },
+      {
+        "name": "Kamera Digital",
+        "children": [
+          { "name": "Kamera DSLR" },
+          { "name": "Kamera Mirrorless" },
+          { "name": "Kamera Pocket" }
+        ]
+      },
+      {
+        "name": "Kamera Video",
+        "children": [
+          { "name": "Action Cam" },
+          { "name": "Kamera Video Compact" },
+          { "name": "Kamera Video Profesional" }
+        ]
+      },
+      {
+        "name": "Lensa Kamera",
+        "children": [
+          { "name": "Aksesoris Lensa" },
+          { "name": "Filter Lensa" },
+          { "name": "Lensa" }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Home & Living",
+    "children": [
+      {
+        "name": "Furniture Ruang Keluarga",
+        "children": [
+          { "name": "Buffet" },
+          { "name": "Coffee & Side Tables" },
+          { "name": "Console Tables" },
+          { "name": "Ottomans, Benches & Stools" },
+          { "name": "Sofa Beds" },
+          { "name": "Sofas & Sectionals" },
+          { "name": "TV Units" }
+        ]
+      },
+      {
+        "name": "Furniture Ruang Makan & Dapur",
+        "children": [
+          { "name": "Bar Cabinets" },
+          { "name": "Bar Stools" },
+          { "name": "Cup Board" },
+          { "name": "Dining Chairs" },
+          { "name": "Dining Sets" },
+          { "name": "Dining Tables" },
+          { "name": "Kitchen Cabinets & Sideboards" },
+          { "name": "Laci Dapur" }
+        ]
+      },
+      {
+        "name": "Meja & Kursi",
+        "children": [
+          { "name": "Bookshelves & Display Units" },
+          { "name": "Chairs & Recliners" },
+          { "name": "Papan Rak/Shelving" },
+          { "name": "Wall Shelves" },
+          { "name": "Work Benches" }
+        ]
+      },
+      {
+        "name": "Home Appliances",
+        "children": [
+          { "name": "Dispenser" },
+          { "name": "Mesin Jahit" },
+          { "name": "Panci Elektrik" },
+          { "name": "Pemanas" },
+          { "name": "Pemanas Air" },
+          { "name": "Penghisap Debu" },
+          { "name": "Penyaring Air & Aksesoris" },
+          { "name": "Pompa Air" }
+        ]
+      },
+      {
+        "name": "Perlengkapan Elektronik Dapur",
+        "children": [
+          { "name": "Air Fryer" },
+          { "name": "Blender" },
+          { "name": "Dishwasher" },
+          { "name": "Food Processor & Food Chopper" },
+          { "name": "Food Steamer" },
+          { "name": "Ketel Listrik" },
+          { "name": "Microwave & Oven" },
+          { "name": "Mixer" },
+          { "name": "Pemotong Elektrik" },
+          { "name": "Penggiling Daging" },
+          { "name": "Penggorengan Elektrik" },
+          { "name": "Pengupas Elektrik" },
+          { "name": "Rice Cooker" },
+          { "name": "Thermo Pot" },
+          { "name": "Toaster" }
+        ]
+      },
+      {
+        "name": "Perlengkapan Dapur",
+        "children": [
+          { "name": "Coaster & Placemat" },
+          { "name": "Kitchen Linen" },
+          { "name": "Pisau Dapur" },
+          { "name": "Pisau Elektrik" },
+          { "name": "Tempat Penyimpanan Dapur" },
+          { "name": "Tempat Sampah" },
+          { "name": "Timbangan Dapur" },
+          { "name": "Perlengkapan Dapur Lainnya" }
+        ]
+      },
+      {
+        "name": "Perlengkapan Kamar Mandi",
+        "children": [
+          { "name": "Aksesoris Kamar Mandi" },
+          { "name": "Bath Tub" },
+          { "name": "Bidet" },
+          { "name": "Floor Drain" },
+          { "name": "Handuk" },
+          { "name": "Karpet & Keset Mandi" },
+          { "name": "Kloset" },
+          { "name": "Kotak Penyimpanan Kamar Mandi" },
+          { "name": "Kran" },
+          { "name": "Plumbing & Fixtures" },
+          { "name": "Perlengkapan Saluran Air" },
+          { "name": "Shower Head" },
+          { "name": "Tirai Kamar Mandi" },
+          { "name": "Wastafel" }
+        ]
+      },
+      {
+        "name": "Perlengkapan Kamar Tidur",
+        "children": [
+          { "name": "Tempat Tidur" },
+          { "name": "Tempat Penyimpanan Modular" },
+          { "name": "Tempat Penyimpanan Tas" },
+          { "name": "Tirai & Gorden" }
+        ]
+      },
+      {
+        "name": "Perlengkapan Ruang Makan",
+        "children": [
+          { "name": "Peralatan Makan" },
+          { "name": "Peralatan Minum" },
+          { "name": "Perangkat Saji" },
+          { "name": "Perlengkapan Minum Kopi & Teh" },
+          { "name": "Rotating Tray" },
+          { "name": "Taplak Meja" },
+          { "name": "Tempat Buah" },
+          { "name": "Utensil & Cutlery" }
+        ]
+      },
+      {
+        "name": "Perkakas Rumah Tangga",
+        "children": [
+          { "name": "Alat Kebersihan" },
+          { "name": "Alat Pembersih" },
+          { "name": "Kotak Alat" },
+          { "name": "Perkakas Dapur dan Peralatannya" },
+          { "name": "Perkakas Industri" },
+          { "name": "Perkakas Keselamatan" },
+          { "name": "Perkakas Listrik" },
+          { "name": "Perkakas Mesin" },
+          { "name": "Perkakas Tangan" },
+          { "name": "Perkakas Ukur" },
+          { "name": "Tangga & Jemuran" }
+        ]
+      },
+      {
+        "name": "Perlengkapan Perawatan Rumah",
+        "children": [
+          { "name": "Karpet" },
+          { "name": "Keset" },
+          { "name": "Shoe Racks" }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Peralatan Kantor",
+    "children": [
+      {
+        "name": "Furniture Kantor",
+        "children": [
+          { "name": "Filling Cabinet" },
+          { "name": "Kursi Kantor" },
+          { "name": "Loker Besi" },
+          { "name": "Meja Kantor" },
+          { "name": "Pembatas Ruangan" }
+        ]
+      },
+      {
+        "name": "Perlengkapan Kantor",
+        "children": [
+          { "name": "Papan Flipchart" },
+          { "name": "Papan Whiteboard" },
+          { "name": "Peralatan Kantor Lainnya" }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Makanan & Minuman",
+    "children": [
+      {
+        "name": "Makanan Ringan & Snack",
+        "children": [
+          { "name": "Keripik" },
+          { "name": "Coklat" },
+          { "name": "Permen" },
+          { "name": "Biskuit" },
+          { "name": "Kacang" }
+        ]
+      },
+      { "name": "Bumbu & Rempah" },
+      {
+        "name": "Bahan Pokok",
+        "children": [
+          { "name": "Beras" },
+          { "name": "Minyak Goreng" },
+          { "name": "Gula" },
+          { "name": "Tepung" }
+        ]
+      },
+      {
+        "name": "Minuman",
+        "children": [
+          { "name": "Kopi" },
+          { "name": "Teh" },
+          { "name": "Sirup" },
+          { "name": "Minuman Bersoda" },
+          { "name": "Minuman Bubuk" }
+        ]
+      },
+      { "name": "Makanan Beku & Siap Saji" },
+      {
+        "name": "Makanan Instan",
+        "children": [
+          { "name": "Makanan Kalengan, Stoples, & Kemasan" }
+        ]
+      },
+      { "name": "Kue & Roti" },
+      { "name": "Produk Susu & Telur" },
+      {
+        "name": "Hampers",
+        "children": [{ "name": "Hampers & Perlengkapan" }]
+      }
+    ]
+  },
+  {
+    "name": "Olahraga & Aktivitas Luar Ruang",
+    "children": [
+      {
+        "name": "Badminton / Bulutangkis",
+        "children": [{ "name": "Raket Badminton" }]
+      },
+      {
+        "name": "Tenis",
+        "children": [{ "name": "Raket Tenis" }]
+      },
+      { "name": "Basket" },
+      { "name": "Futsal & Sepak Bola" },
+      { "name": "Renang" },
+      { "name": "Lari & Jogging" },
+      {
+        "name": "Fitness",
+        "children": [{ "name": "Fitness" }]
+      },
+      {
+        "name": "Sepeda & Skuter",
+        "children": [{ "name": "Sepeda & Skuter" }]
+      },
+      {
+        "name": "Aktivitas Luar Ruang",
+        "children": [
+          { "name": "Memancing" },
+          { "name": "Pemanggang & Alat Masak Luar Ruangan" },
+          { "name": "Pembangkit Listrik" },
+          { "name": "Perlengkapan Kolam Renang" },
+          { "name": "Aktivitas Luar Ruang Lainnya" }
+        ]
+      },
+      {
+        "name": "Peralatan Taman & Luar Ruang",
+        "children": [
+          { "name": "Dekorasi Taman" },
+          { "name": "Kursi Taman" },
+          { "name": "Pemotong Rumput" },
+          { "name": "Pots and Planters" },
+          { "name": "Swings / Hammocks" },
+          { "name": "Tanaman" },
+          { "name": "Perlengkapan Taman Lainnya" }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Otomotif",
+    "children": [
+      {
+        "name": "Aksesoris Mobil",
+        "children": [
+          { "name": "Antena Mobil" },
+          { "name": "Eksterior Mobil" },
+          { "name": "Interior Mobil" },
+          { "name": "Klip Hook Bumper" },
+          { "name": "Wiper" }
+        ]
+      },
+      {
+        "name": "Aksesoris Motor",
+        "children": [
+          { "name": "Eksterior Motor" },
+          { "name": "Interior Motor" }
+        ]
+      },
+      {
+        "name": "Keamanan Kendaraan",
+        "children": [
+          { "name": "Keamanan Mobil" },
+          { "name": "Keamanan Motor" }
+        ]
+      },
+      {
+        "name": "Motor Listrik",
+        "children": [{ "name": "Motor Listrik" }]
+      },
+      {
+        "name": "Peralatan Kendaraan",
+        "children": [
+          { "name": "Dongkrak" },
+          { "name": "Peralatan Darurat" },
+          { "name": "Perkakas Tangan Otomotif" },
+          { "name": "Peralatan Kendaraan Lainnya" }
+        ]
+      },
+      {
+        "name": "Suku Cadang",
+        "children": [
+          { "name": "Aki Mobil" },
+          { "name": "Aki Motor" }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Tas & Travel",
+    "children": [
+      {
+        "name": "Tas",
+        "children": [
+          { "name": "Backpack" },
+          { "name": "Ransel" }
+        ]
+      },
+      {
+        "name": "Tas Wanita",
+        "children": [{ "name": "Tas Wanita" }]
+      },
+      {
+        "name": "Tas & Case",
+        "children": [{ "name": "Gadget Organizer" }]
+      },
+      {
+        "name": "Dompet",
+        "children": [
+          { "name": "Dompet" },
+          { "name": "Dompet Kartu" }
+        ]
+      },
+      {
+        "name": "Koper & Perlengkapan Berpergian",
+        "children": [
+          { "name": "Koper & Tas Travel" },
+          { "name": "Aksesori & Perlengkapan Perjalanan" }
+        ]
+      },
+      {
+        "name": "Travelling",
+        "children": [{ "name": "Aksesoris Travelling" }]
+      }
+    ]
+  },
+  {
+    "name": "Buku & Alat Tulis",
+    "children": [
+      { "name": "Buku" },
+      { "name": "Alat Tulis" },
+      { "name": "Kertas & Buku Tulis" }
+    ]
+  },
+  {
+    "name": "Hewan Peliharaan",
+    "children": [
+      { "name": "Makanan Hewan" },
+      { "name": "Aksesoris Hewan" },
+      { "name": "Perawatan Hewan" }
+    ]
+  },
+  {
+    "name": "Hobi & Koleksi",
+    "children": [
+      {
+        "name": "Hobi & Koleksi",
+        "children": [
+          { "name": "CD Musik & Film" },
+          { "name": "Dokumentasi dan File" },
+          { "name": "Hadiah & Pembungkus" },
+          { "name": "Kerajinan Tangan" },
+          { "name": "Memorabilia" },
+          { "name": "Natal" },
+          { "name": "Souvenir & Party Supplies" }
+        ]
+      },
+      {
+        "name": "Alat Musik",
+        "children": [
+          { "name": "Alat Musik" },
+          { "name": "DJ Equipment" },
+          { "name": "Instrument Elektrik" },
+          { "name": "Recording" }
+        ]
+      },
+      {
+        "name": "Mainan Edukasi dan Seni",
+        "children": [
+          { "name": "Mainan" },
+          { "name": "Seni & Kerajinan" },
+          { "name": "Perlengkapan Gambar" },
+          { "name": "Koleksi" }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Alat Survey",
+    "children": [
+      { "name": "Survey Engineering" }
+    ]
+  },
+  {
+    "name": "Lainnya",
+    "children": [
+      {
+        "name": "Perlengkapan Umum",
+        "children": [
+          { "name": "Adhesive Tapes" },
+          { "name": "Gantungan" },
+          { "name": "Hangers" },
+          { "name": "Kain" },
+          { "name": "Tempat Gantungan Kunci" }
+        ]
+      },
+      {
+        "name": "Software & Instalasi",
+        "children": [
+          { "name": "Paket Instalasi" },
+          { "name": "Software" }
+        ]
+      },
+      { "name": "Voucher & Layanan Digital" }
+    ]
+  }
+]

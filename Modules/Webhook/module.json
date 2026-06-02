@@ -1,0 +1,11 @@
+{
+    "name": "Webhook",
+    "alias": "webhook",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Webhook\\Providers\\WebhookServiceProvider"
+    ],
+    "files": []
+}
