@@ -3,10 +3,10 @@
 $payload = [
     "brand_id" => 1,
     "category_id" => 1,
-    "name" => "Fujifilm X-T4 Kit 18-55mm Test Upload",
-    "sku" => "FUJI-XT4-COPY-" . rand(1000, 9999),
-    "description" => "Kamera mirrorless flagship APS-C dengan IBIS",
-    "search_keyword" => "kamera fujifilm, x-t4, mirrorless",
+    "name" => "Canon EOS R5 Mirrorless Camera",
+    "sku" => "CANON-R5-COPY-" . rand(1000, 9999),
+    "description" => "Kamera mirrorless full-frame revolusioner dengan video 8K",
+    "search_keyword" => "kamera canon, eos r5, mirrorless full-frame",
     "order_type" => "PREORDER",
     "indent_days" => 1,
     "weight" => 1.5,
@@ -40,7 +40,7 @@ $payload = [
     ],
     "variants" => [
         [
-            "sku" => "FUJI-XT4-BLACK-L-" . rand(1000, 9999),
+            "sku" => "CANON-R5-BLACK-L-" . rand(1000, 9999),
             "barcode" => "899" . rand(100000000, 999999999),
             "buy_price" => 5000000,
             "sell_price" => 6000000,
