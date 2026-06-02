@@ -13,4 +13,20 @@ services:
     environment:
       - APP_ENV=local
       - APP_DEBUG=true
-      - DB_CONNECTION=sqlite
+    depends_on:
+      - db
+  
+  db:
+    image: postgres:15-alpine
+    container_name: staging-superapp-db
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=superapp
+      - POSTGRES_USER=superapp_user
+      - POSTGRES_PASSWORD=secret
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
