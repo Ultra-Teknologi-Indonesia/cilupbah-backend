@@ -33,7 +33,7 @@ class ProductService
     {
         return DB::transaction(function () use ($productId, $data) {
             $productData = Arr::only($data, [
-                'name', 'description', 'weight', 'length', 'width', 'height', 'is_draft'
+                'name', 'description', 'weight', 'length', 'width', 'height', 'is_active'
             ]);
             
             if (!empty($productData)) {
@@ -46,7 +46,7 @@ class ProductService
                     if (empty($variant['sku'])) continue;
                     
                     $variantData = Arr::only($variant, [
-                        'sell_price', 'buy_price', 'weight', 'length', 'width', 'height', 'is_active'
+                        'sell_price', 'is_active'
                     ]);
                     $variantData['updated_at'] = now();
 
@@ -75,10 +75,8 @@ class ProductService
     {
         return DB::transaction(function () use ($data) {
             $productData = Arr::only($data, [
-                'category_id', 'brand_id', 'showcase_id', 'name', 'sku', 'description', 
-                'search_keyword', 'order_type', 'indent_days', 'weight', 'length', 
-                'width', 'height', 'condition', 'is_cod_allowed', 'danger_level', 
-                'is_draft', 'is_active'
+                'category_id', 'brand_id', 'name', 'description', 
+                'weight', 'length', 'width', 'height', 'is_active'
             ]);
             
             $productId = DB::table('products')->insertGetId(array_merge($productData, [
@@ -132,8 +130,7 @@ class ProductService
             if (!empty($data['variants'])) {
                 foreach ($data['variants'] as $variant) {
                     $variantData = Arr::only($variant, [
-                        'sku', 'barcode', 'buy_price', 'sell_price', 'weight',
-                        'length', 'width', 'height', 'is_serial_batch', 'is_active'
+                        'sku', 'sell_price', 'is_active'
                     ]);
                     
                     $variantId = DB::table('product_variants')->insertGetId(array_merge($variantData, [
