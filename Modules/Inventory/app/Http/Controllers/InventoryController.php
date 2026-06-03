@@ -6,6 +6,10 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Inventory\Services\InventoryService;
+use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Models\InventoryMovement;
+use Spatie\QueryBuilder\QueryBuilder;
+use Spatie\QueryBuilder\AllowedFilter;
 
 class InventoryController extends Controller
 {
@@ -15,35 +19,24 @@ class InventoryController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $stocks = $this->inventoryService->getAllStocks($request->only([
-            'item_id', 'location_id'
-        ]));
+        $limit = $request->query('limit', 10);
+        $stocks = $this->inventoryService->getAllPaginated($limit);
 
-        return response()->json([
-            'status' => 'success',
-            'data' => $stocks,
-        ]);
+        return $this->successPaginatedResponse($stocks, 'Daftar stok berhasil diambil');
     }
 
     public function show(int $itemId): JsonResponse
     {
         $stocks = $this->inventoryService->getStockByItem($itemId);
 
-        return response()->json([
-            'status' => 'success',
-            'data' => $stocks,
-        ]);
+        return $this->successResponse($stocks, 'Detail stok per item berhasil diambil');
     }
 
     public function movements(Request $request): JsonResponse
     {
-        $history = $this->inventoryService->getMovementHistory($request->only([
-            'item_id', 'location_id', 'source', 'date_from', 'date_to'
-        ]));
+        $limit = $request->query('limit', 10);
+        $movements = $this->inventoryService->getHistoryPaginated($limit);
 
-        return response()->json([
-            'status' => 'success',
-            'data' => $history,
-        ]);
+        return $this->successPaginatedResponse($movements, 'Riwayat pergerakan stok berhasil diambil');
     }
 }

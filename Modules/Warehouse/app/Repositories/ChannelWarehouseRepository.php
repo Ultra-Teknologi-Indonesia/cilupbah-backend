@@ -12,6 +12,21 @@ class ChannelWarehouseRepository
         return ChannelWarehouse::where('location_id', $locationId)->get();
     }
 
+    public function getAllPaginated(int $limit = 10)
+    {
+        return \Spatie\QueryBuilder\QueryBuilder::for(ChannelWarehouse::class)
+            ->with(['location:id,location_name,location_code'])
+            ->allowedFilters(
+                \Spatie\QueryBuilder\AllowedFilter::exact('location_id'),
+                \Spatie\QueryBuilder\AllowedFilter::exact('channel_id'),
+                \Spatie\QueryBuilder\AllowedFilter::exact('store_id'),
+                \Spatie\QueryBuilder\AllowedFilter::exact('channel_location_id')
+            )
+            ->allowedSorts('created_at')
+            ->defaultSort('-created_at')
+            ->paginate($limit);
+    }
+
     public function findByChannel(int $channelId, string $storeId): Collection
     {
         return ChannelWarehouse::where('channel_id', $channelId)

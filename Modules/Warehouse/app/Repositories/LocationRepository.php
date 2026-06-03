@@ -7,26 +7,23 @@ use Illuminate\Database\Eloquent\Collection;
 
 class LocationRepository
 {
-    public function all(array $filters = []): Collection
+    public function getAllPaginated(int $limit = 10)
     {
-        $query = Location::query();
-
-        if (isset($filters['is_active'])) {
-            $query->where('is_active', $filters['is_active']);
-        }
-
-        if (!empty($filters['location_type'])) {
-            $query->where('location_type', $filters['location_type']);
-        }
-
-        if (!empty($filters['search'])) {
-            $query->where(function ($q) use ($filters) {
-                $q->where('location_name', 'like', "%{$filters['search']}%")
-                  ->orWhere('location_code', 'like', "%{$filters['search']}%");
-            });
-        }
-
-        return $query->orderBy('location_name')->get();
+        return \Spatie\QueryBuilder\QueryBuilder::for(Location::class)
+            ->allowedFilters(
+                \Spatie\QueryBuilder\AllowedFilter::custom('q', new \App\Filters\FuzzyFilter(), 'location_name'),
+                \Spatie\QueryBuilder\AllowedFilter::exact('is_active'),
+                \Spatie\QueryBuilder\AllowedFilter::exact('is_warehouse'),
+                \Spatie\QueryBuilder\AllowedFilter::exact('is_fbl'),
+                \Spatie\QueryBuilder\AllowedFilter::exact('is_tcb'),
+                \Spatie\QueryBuilder\AllowedFilter::exact('is_fbs'),
+                'location_type',
+                'city',
+                'province'
+            )
+            ->allowedSorts('location_name', 'created_at', 'location_code')
+            ->defaultSort('location_name')
+            ->paginate($limit);
     }
 
     public function findById(int $id): ?Location
