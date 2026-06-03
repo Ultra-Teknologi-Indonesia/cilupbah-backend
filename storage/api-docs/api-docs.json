@@ -1,0 +1,580 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "Staging Superapp API",
+        "description": "L5 Swagger OpenApi description",
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "http://localhost:8000",
+            "description": "Demo API Server (Docker)"
+        }
+    ],
+    "paths": {
+        "/api/v1/{marketplace}/products": {
+            "get": {
+                "tags": [
+                    "Marketplace Products"
+                ],
+                "summary": "List products",
+                "description": "List produk (paginated) untuk marketplace tertentu.",
+                "operationId": "f94cd2082d6960fdd41c3913e8bbc1de",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "filter[is_active]",
+                        "in": "query",
+                        "description": "Filter aktif/tidak aktif (true/false/1/0)",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    },
+                    {
+                        "name": "filter[name]",
+                        "in": "query",
+                        "description": "Cari berdasarkan nama produk",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sort",
+                        "in": "query",
+                        "description": "Sort field (e.g. name, -created_at, sell_price)",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Get products success"
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "Marketplace Products"
+                ],
+                "summary": "Create product",
+                "description": "Buat produk baru secara lokal dan push ke marketplace. Body payload harus menyertakan shop_id dan struktur lengkap (variants, media, dll).",
+                "operationId": "ae9bb5e6935b8ecd5fd114f557ce1384",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object"
+                            },
+                            "example": {
+                                "shop_id": "7494685794425930858",
+                                "brand_id": 1,
+                                "category_id": 1,
+                                "name": "Sepatu Bola Nike Mercurial Superfly",
+                                "sku": "SHOE-FB-NIKE-001",
+                                "description": "Sepatu bola premium dengan teknologi flyknit yang ringan dan nyaman.",
+                                "search_keyword": "sepatu bola, nike mercurial",
+                                "order_type": "REGULER",
+                                "indent_days": 0,
+                                "weight": 0.8,
+                                "length": 30,
+                                "width": 15,
+                                "height": 12,
+                                "condition": "NEW",
+                                "is_cod_allowed": true,
+                                "danger_level": 0,
+                                "is_draft": false,
+                                "showcase_id": null,
+                                "is_active": true,
+                                "specifications": [
+                                    {
+                                        "attribute_id": 1,
+                                        "attribute_option_id": null,
+                                        "text_value": "Sintetis Premium"
+                                    }
+                                ],
+                                "media": [
+                                    {
+                                        "url": "https://example.com/sepatu-bola.jpg",
+                                        "media_type": "image",
+                                        "is_primary": true,
+                                        "sort_order": 1
+                                    }
+                                ],
+                                "variation_types": [
+                                    {
+                                        "attribute_id": 1,
+                                        "sort_order": 1
+                                    },
+                                    {
+                                        "attribute_id": 2,
+                                        "sort_order": 2
+                                    }
+                                ],
+                                "variants": [
+                                    {
+                                        "sku": "SHOE-FB-NIKE-001-RED-42",
+                                        "buy_price": 1200000,
+                                        "sell_price": 1500000,
+                                        "weight": 0.8,
+                                        "length": 30,
+                                        "width": 15,
+                                        "height": 12,
+                                        "is_serial_batch": false,
+                                        "is_active": true,
+                                        "options": [
+                                            {
+                                                "attribute_id": 1,
+                                                "value": "Red"
+                                            },
+                                            {
+                                                "attribute_id": 2,
+                                                "value": "42"
+                                            }
+                                        ],
+                                        "media": [
+                                            {
+                                                "url": "https://example.com/sepatu-bola-red.jpg",
+                                                "media_type": "image",
+                                                "is_primary": true,
+                                                "sort_order": 1
+                                            }
+                                        ],
+                                        "wholesale_prices": [
+                                            {
+                                                "min_qty": 5,
+                                                "price": 1400000,
+                                                "customer_type": "B2B"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Product created and pushed to marketplace"
+                    }
+                }
+            }
+        },
+        "/api/v1/{marketplace}/products/{id}": {
+            "get": {
+                "tags": [
+                    "Marketplace Products"
+                ],
+                "summary": "Get product detail",
+                "description": "Detail satu produk dari marketplace tertentu.",
+                "operationId": "5d2f384260bc103cf2840dc4b1ac1e51",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Get product detail success"
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "Marketplace Products"
+                ],
+                "summary": "Update product info",
+                "description": "Update info produk di marketplace tertentu.",
+                "operationId": "453c99130e5567efd46f4f5604ed8770",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Product updated successfully"
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Marketplace Products"
+                ],
+                "summary": "Delete product",
+                "description": "Hapus produk di marketplace tertentu.",
+                "operationId": "6126613edd523750c3757d7527808af9",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Product deleted successfully"
+                    }
+                }
+            }
+        },
+        "/api/v1/{marketplace}/products/{id}/activate": {
+            "put": {
+                "tags": [
+                    "Marketplace Products"
+                ],
+                "summary": "Activate product",
+                "description": "Aktifkan / publish produk.",
+                "operationId": "2b97945d378b460dccb8c72190fe3966",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Product activated successfully"
+                    }
+                }
+            }
+        },
+        "/api/v1/{marketplace}/products/{id}/deactivate": {
+            "put": {
+                "tags": [
+                    "Marketplace Products"
+                ],
+                "summary": "Deactivate product",
+                "description": "Nonaktifkan produk.",
+                "operationId": "ac0b8dc12ff3fecd05cd033fef736424",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Product deactivated successfully"
+                    }
+                }
+            }
+        },
+        "/api/v1/{marketplace}/products/{id}/stock": {
+            "put": {
+                "tags": [
+                    "Marketplace Products"
+                ],
+                "summary": "Update stock",
+                "description": "Update stok SKU di marketplace. Wajib menyertakan shop_id.",
+                "operationId": "954d0d00f223ddcb040275534e85e3cd",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "shop_id": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Product stock updated successfully"
+                    }
+                }
+            }
+        },
+        "/api/v1/{marketplace}/products/{id}/price": {
+            "put": {
+                "tags": [
+                    "Marketplace Products"
+                ],
+                "summary": "Update price",
+                "description": "Update harga SKU di marketplace. Wajib menyertakan shop_id.",
+                "operationId": "7e990e8640d966a97f3223d492c08224",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "shop_id": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Product price updated successfully"
+                    }
+                }
+            }
+        },
+        "/api/v1/{marketplace}/products/categories": {
+            "get": {
+                "tags": [
+                    "Marketplace Products"
+                ],
+                "summary": "List categories",
+                "description": "Daftar kategori marketplace.",
+                "operationId": "9527670d73c191c38744cc359c571673",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "parent_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Get categories success"
+                    }
+                }
+            }
+        },
+        "/api/v1/media/upload": {
+            "post": {
+                "tags": [
+                    "Media"
+                ],
+                "summary": "Upload media",
+                "description": "Endpoint khusus upload media yang kemudian diambil nama/id untuk dimasukan ke json.",
+                "operationId": "618c10a7946639300dadb75e6fe01a0e",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "properties": {
+                                    "file": {
+                                        "description": "File media (jpeg, png, jpg, gif, mp4, mov) max 20MB",
+                                        "type": "string",
+                                        "format": "binary"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Media uploaded successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Media uploaded successfully"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "media_id": {
+                                                    "type": "string",
+                                                    "example": "id-media_123.jpg"
+                                                },
+                                                "name": {
+                                                    "type": "string",
+                                                    "example": "media_123.jpg"
+                                                },
+                                                "url": {
+                                                    "type": "string",
+                                                    "example": "http://localhost/storage/media/media_123.jpg"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    }
+                }
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "Marketplace Products",
+            "description": "Marketplace Products"
+        },
+        {
+            "name": "Media",
+            "description": "Media"
+        }
+    ]
+}
