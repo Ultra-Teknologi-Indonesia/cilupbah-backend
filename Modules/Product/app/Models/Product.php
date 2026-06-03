@@ -12,24 +12,15 @@ class Product extends Model
      * @var array<int, string>
      */
     protected $fillable = [
-        'tiktok_product_id',
+        'channel_product_id',
         'category_id',
         'brand_id',
-        'showcase_id',
         'name',
-        'sku',
         'description',
-        'search_keyword',
-        'order_type',
-        'indent_days',
         'weight',
         'length',
         'width',
         'height',
-        'condition',
-        'is_cod_allowed',
-        'danger_level',
-        'is_draft',
         'is_active',
     ];
 
@@ -39,12 +30,15 @@ class Product extends Model
      * @var array<string, string>
      */
     protected $casts = [
-        'is_cod_allowed' => 'boolean',
-        'is_draft' => 'boolean',
         'is_active' => 'boolean',
         'weight' => 'decimal:2',
         'length' => 'decimal:2',
         'width' => 'decimal:2',
         'height' => 'decimal:2',
     ];
+
+    public function variants()
+    {
+        return $this->hasMany(ProductVariant::class);
+    }
 }
