@@ -17,10 +17,7 @@ class LocationBinController extends Controller
     {
         $bins = $this->binService->getByLocation($locationId);
 
-        return response()->json([
-            'status' => 'success',
-            'data' => $bins,
-        ]);
+        return $this->successResponse($bins, 'Daftar bin berhasil diambil');
     }
 
     public function defaultBin(int $locationId): JsonResponse
@@ -28,16 +25,10 @@ class LocationBinController extends Controller
         $bin = $this->binService->getDefaultBin($locationId);
 
         if (!$bin) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Default bin tidak ditemukan.',
-            ], 404);
+            return $this->errorResponse('Default bin tidak ditemukan.', 404);
         }
 
-        return response()->json([
-            'status' => 'success',
-            'data' => $bin,
-        ]);
+        return $this->successResponse($bin, 'Default bin berhasil diambil');
     }
 
     public function store(StoreLocationBinRequest $request): JsonResponse
@@ -45,16 +36,9 @@ class LocationBinController extends Controller
         try {
             $bin = $this->binService->create($request->validated());
 
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Bin berhasil dibuat.',
-                'data' => $bin,
-            ], 201);
+            return $this->successResponse($bin, 'Bin berhasil dibuat.', 201);
         } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => $e->getMessage(),
-            ], 500);
+            return $this->errorResponse($e->getMessage(), 500);
         }
     }
 
@@ -64,21 +48,12 @@ class LocationBinController extends Controller
             $deleted = $this->binService->delete($id);
 
             if (!$deleted) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Bin tidak ditemukan.',
-                ], 404);
+                return $this->errorResponse('Bin tidak ditemukan.', 404);
             }
 
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Bin berhasil dihapus.',
-            ]);
+            return $this->successResponse(null, 'Bin berhasil dihapus.');
         } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => $e->getMessage(),
-            ], 422);
+            return $this->errorResponse($e->getMessage(), 422);
         }
     }
 }

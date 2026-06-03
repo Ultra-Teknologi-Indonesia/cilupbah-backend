@@ -16,10 +16,6 @@ class InventoryService
         protected InventoryMovementRepository $movementRepository
     ) {}
 
-    public function getAllStocks(array $filters = []): Collection
-    {
-        return $this->inventoryRepository->getAllStocks($filters);
-    }
 
     public function getStockByItem(int $itemId): Collection
     {
@@ -292,8 +288,14 @@ class InventoryService
         });
     }
 
-    public function getMovementHistory(array $filters = []): Collection
+
+    public function getAllPaginated(int $limit = 10)
     {
-        return $this->movementRepository->getHistory($filters);
+        return $this->inventoryRepository->getAllPaginated($limit);
+    }
+
+    public function getHistoryPaginated(int $limit = 10)
+    {
+        return $this->movementRepository->getHistoryPaginated($limit);
     }
 }

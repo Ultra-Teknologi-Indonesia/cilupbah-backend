@@ -58,18 +58,17 @@ class InventoryRepository
         return (int) Inventory::where('item_id', $itemId)->sum('available');
     }
 
-    public function getAllStocks(array $filters = []): Collection
+    public function getAllPaginated(int $limit = 10)
     {
-        $query = Inventory::with(['product', 'location', 'bin']);
-
-        if (!empty($filters['item_id'])) {
-            $query->where('item_id', $filters['item_id']);
-        }
-
-        if (!empty($filters['location_id'])) {
-            $query->where('location_id', $filters['location_id']);
-        }
-
-        return $query->get();
+        return \Spatie\QueryBuilder\QueryBuilder::for(Inventory::class)
+            ->with(['product:id,name,sku', 'location:id,location_name', 'bin:id,bin_final_code'])
+            ->allowedFilters(
+                \Spatie\QueryBuilder\AllowedFilter::exact('item_id'),
+                \Spatie\QueryBuilder\AllowedFilter::exact('location_id'),
+                \Spatie\QueryBuilder\AllowedFilter::exact('bin_id')
+            )
+            ->allowedSorts('available', 'on_hand', 'created_at')
+            ->defaultSort('-created_at')
+            ->paginate($limit);
     }
 }
