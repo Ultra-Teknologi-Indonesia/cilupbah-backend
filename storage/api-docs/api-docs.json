@@ -12,17 +12,17 @@
         }
     ],
     "paths": {
-        "/api/v1/{marketplace}/products": {
+        "/api/v1/{channel}/products": {
             "get": {
                 "tags": [
-                    "Marketplace Products"
+                    "Channel Products"
                 ],
                 "summary": "List products",
-                "description": "List produk (paginated) untuk marketplace tertentu.",
-                "operationId": "f94cd2082d6960fdd41c3913e8bbc1de",
+                "description": "List produk (paginated) untuk channel tertentu.",
+                "operationId": "24337d44620bb5eb7c8089a7d0392c84",
                 "parameters": [
                     {
-                        "name": "marketplace",
+                        "name": "channel",
                         "in": "path",
                         "required": true,
                         "schema": {
@@ -81,14 +81,14 @@
             },
             "post": {
                 "tags": [
-                    "Marketplace Products"
+                    "Channel Products"
                 ],
                 "summary": "Create product",
-                "description": "Buat produk baru secara lokal dan push ke marketplace. Body payload harus menyertakan shop_id dan struktur lengkap (variants, media, dll).",
-                "operationId": "ae9bb5e6935b8ecd5fd114f557ce1384",
+                "description": "Buat produk baru secara lokal dan push ke channel. Body payload harus menyertakan shop_id dan struktur lengkap (variants, media, dll).",
+                "operationId": "4754069da8b3715ad21575349e047d5f",
                 "parameters": [
                     {
-                        "name": "marketplace",
+                        "name": "channel",
                         "in": "path",
                         "required": true,
                         "schema": {
@@ -192,22 +192,22 @@
                 },
                 "responses": {
                     "201": {
-                        "description": "Product created and pushed to marketplace"
+                        "description": "Product created and pushed to channel"
                     }
                 }
             }
         },
-        "/api/v1/{marketplace}/products/{id}": {
+        "/api/v1/{channel}/products/{id}": {
             "get": {
                 "tags": [
-                    "Marketplace Products"
+                    "Channel Products"
                 ],
                 "summary": "Get product detail",
-                "description": "Detail satu produk dari marketplace tertentu.",
-                "operationId": "5d2f384260bc103cf2840dc4b1ac1e51",
+                "description": "Detail satu produk dari channel tertentu.",
+                "operationId": "14b4cffcee0f5676e3f8615ab5792eae",
                 "parameters": [
                     {
-                        "name": "marketplace",
+                        "name": "channel",
                         "in": "path",
                         "required": true,
                         "schema": {
@@ -231,14 +231,14 @@
             },
             "put": {
                 "tags": [
-                    "Marketplace Products"
+                    "Channel Products"
                 ],
                 "summary": "Update product info",
-                "description": "Update info produk di marketplace tertentu.",
-                "operationId": "453c99130e5567efd46f4f5604ed8770",
+                "description": "Update info produk di channel tertentu.",
+                "operationId": "b3e9a44738a20ebd65dc25b4ec88f34c",
                 "parameters": [
                     {
-                        "name": "marketplace",
+                        "name": "channel",
                         "in": "path",
                         "required": true,
                         "schema": {
@@ -272,14 +272,14 @@
             },
             "delete": {
                 "tags": [
-                    "Marketplace Products"
+                    "Channel Products"
                 ],
                 "summary": "Delete product",
-                "description": "Hapus produk di marketplace tertentu.",
-                "operationId": "6126613edd523750c3757d7527808af9",
+                "description": "Hapus produk di channel tertentu.",
+                "operationId": "5834b302c27b80d44c7db49f25063282",
                 "parameters": [
                     {
-                        "name": "marketplace",
+                        "name": "channel",
                         "in": "path",
                         "required": true,
                         "schema": {
@@ -302,17 +302,17 @@
                 }
             }
         },
-        "/api/v1/{marketplace}/products/{id}/activate": {
+        "/api/v1/{channel}/products/{id}/activate": {
             "put": {
                 "tags": [
-                    "Marketplace Products"
+                    "Channel Products"
                 ],
                 "summary": "Activate product",
                 "description": "Aktifkan / publish produk.",
-                "operationId": "2b97945d378b460dccb8c72190fe3966",
+                "operationId": "53e7a1b4fb8d24bca565d96a071d21ed",
                 "parameters": [
                     {
-                        "name": "marketplace",
+                        "name": "channel",
                         "in": "path",
                         "required": true,
                         "schema": {
@@ -335,17 +335,17 @@
                 }
             }
         },
-        "/api/v1/{marketplace}/products/{id}/deactivate": {
+        "/api/v1/{channel}/products/{id}/deactivate": {
             "put": {
                 "tags": [
-                    "Marketplace Products"
+                    "Channel Products"
                 ],
                 "summary": "Deactivate product",
                 "description": "Nonaktifkan produk.",
-                "operationId": "ac0b8dc12ff3fecd05cd033fef736424",
+                "operationId": "db8dbc94f3f3b404d4511af40f7cacaf",
                 "parameters": [
                     {
-                        "name": "marketplace",
+                        "name": "channel",
                         "in": "path",
                         "required": true,
                         "schema": {
@@ -368,17 +368,17 @@
                 }
             }
         },
-        "/api/v1/{marketplace}/products/{id}/stock": {
+        "/api/v1/{channel}/products/{id}/stock": {
             "put": {
                 "tags": [
-                    "Marketplace Products"
+                    "Channel Products"
                 ],
                 "summary": "Update stock",
-                "description": "Update stok SKU di marketplace. Wajib menyertakan shop_id.",
-                "operationId": "954d0d00f223ddcb040275534e85e3cd",
+                "description": "Update stok SKU di channel. Wajib menyertakan shop_id.",
+                "operationId": "ac3490757fdc1febcf218f2f1b8a7995",
                 "parameters": [
                     {
-                        "name": "marketplace",
+                        "name": "channel",
                         "in": "path",
                         "required": true,
                         "schema": {
@@ -416,17 +416,17 @@
                 }
             }
         },
-        "/api/v1/{marketplace}/products/{id}/price": {
+        "/api/v1/{channel}/products/{id}/price": {
             "put": {
                 "tags": [
-                    "Marketplace Products"
+                    "Channel Products"
                 ],
                 "summary": "Update price",
-                "description": "Update harga SKU di marketplace. Wajib menyertakan shop_id.",
-                "operationId": "7e990e8640d966a97f3223d492c08224",
+                "description": "Update harga SKU di channel. Wajib menyertakan shop_id.",
+                "operationId": "2c92d37a0476dbc7524d9ae73b3348bb",
                 "parameters": [
                     {
-                        "name": "marketplace",
+                        "name": "channel",
                         "in": "path",
                         "required": true,
                         "schema": {
@@ -464,17 +464,17 @@
                 }
             }
         },
-        "/api/v1/{marketplace}/products/categories": {
+        "/api/v1/{channel}/products/categories": {
             "get": {
                 "tags": [
-                    "Marketplace Products"
+                    "Channel Products"
                 ],
                 "summary": "List categories",
-                "description": "Daftar kategori marketplace.",
-                "operationId": "9527670d73c191c38744cc359c571673",
+                "description": "Daftar kategori channel.",
+                "operationId": "dfb88853ccd26d8945dde4ab349a40b3",
                 "parameters": [
                     {
-                        "name": "marketplace",
+                        "name": "channel",
                         "in": "path",
                         "required": true,
                         "schema": {
@@ -569,8 +569,8 @@
     },
     "tags": [
         {
-            "name": "Marketplace Products",
-            "description": "Marketplace Products"
+            "name": "Channel Products",
+            "description": "Channel Products"
         },
         {
             "name": "Media",
