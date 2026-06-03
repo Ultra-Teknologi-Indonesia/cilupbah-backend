@@ -15,10 +15,15 @@ class OrderService
             $existing = DB::table('orders')->where('order_number', $orderData['order_number'])->first();
 
             if ($existing) {
+                $newStatus = $orderData['status'];
+                if ($existing->status === 'CANCELLED' && $newStatus !== 'CANCELLED') {
+                    $newStatus = 'CANCELLED'; // Protect local cancellation
+                }
+
                 DB::table('orders')
                     ->where('id', $existing->id)
                     ->update([
-                        'status' => $orderData['status'],
+                        'status' => $newStatus,
                         'total_amount' => $orderData['total_amount'],
                         'customer_name' => $orderData['customer_name'] ?? $existing->customer_name,
                         'updated_at' => now(),
