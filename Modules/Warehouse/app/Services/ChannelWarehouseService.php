@@ -19,6 +19,11 @@ class ChannelWarehouseService
         return $this->channelWarehouseRepository->findByLocation($locationId);
     }
 
+    public function getAllPaginated(int $limit = 10)
+    {
+        return $this->channelWarehouseRepository->getAllPaginated($limit);
+    }
+
     public function getByChannel(int $channelId, string $storeId): Collection
     {
         return $this->channelWarehouseRepository->findByChannel($channelId, $storeId);
@@ -26,32 +31,38 @@ class ChannelWarehouseService
 
     public function create(array $data): ChannelWarehouse
     {
-        $location = $this->locationRepository->findById($data['location_id']);
-        if (!$location) {
-            throw new \Exception('Lokasi gudang tidak ditemukan.');
-        }
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($data) {
+            $location = $this->locationRepository->findById($data['location_id']);
+            if (!$location) {
+                throw new \Exception('Lokasi gudang tidak ditemukan.');
+            }
 
-        $existing = $this->channelWarehouseRepository->findByChannelLocationId(
-            $data['channel_id'],
-            $data['store_id'],
-            $data['channel_location_id']
-        );
+            $existing = $this->channelWarehouseRepository->findByChannelLocationId(
+                $data['channel_id'],
+                $data['store_id'],
+                $data['channel_location_id']
+            );
 
-        if ($existing) {
-            throw new \Exception('Mapping channel warehouse sudah ada.');
-        }
+            if ($existing) {
+                throw new \Exception('Mapping channel warehouse sudah ada.');
+            }
 
-        return $this->channelWarehouseRepository->create($data);
+            return $this->channelWarehouseRepository->create($data);
+        });
     }
 
     public function update(int $id, array $data): bool
     {
-        return $this->channelWarehouseRepository->update($id, $data);
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($id, $data) {
+            return $this->channelWarehouseRepository->update($id, $data);
+        });
     }
 
     public function delete(int $id): bool
     {
-        return $this->channelWarehouseRepository->delete($id);
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($id) {
+            return $this->channelWarehouseRepository->delete($id);
+        });
     }
 
     public function resolveLocationId(int $channelId, string $storeId, string $channelLocationId): ?int
