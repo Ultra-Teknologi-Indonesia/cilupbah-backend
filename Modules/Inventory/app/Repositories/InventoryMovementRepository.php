@@ -28,30 +28,24 @@ class InventoryMovementRepository
         return InventoryMovement::create($data);
     }
 
-    public function getHistory(array $filters = []): Collection
+    public function getHistoryPaginated(int $limit = 10)
     {
-        $query = InventoryMovement::with(['product', 'location', 'bin']);
-
-        if (!empty($filters['item_id'])) {
-            $query->where('item_id', $filters['item_id']);
-        }
-
-        if (!empty($filters['location_id'])) {
-            $query->where('location_id', $filters['location_id']);
-        }
-
-        if (!empty($filters['source'])) {
-            $query->where('source', $filters['source']);
-        }
-
-        if (!empty($filters['date_from'])) {
-            $query->where('transaction_date', '>=', $filters['date_from']);
-        }
-
-        if (!empty($filters['date_to'])) {
-            $query->where('transaction_date', '<=', $filters['date_to']);
-        }
-
-        return $query->orderByDesc('transaction_date')->get();
+        return \Spatie\QueryBuilder\QueryBuilder::for(InventoryMovement::class)
+            ->with(['product:id,name,sku', 'location:id,location_name', 'bin:id,bin_final_code'])
+            ->allowedFilters(
+                \Spatie\QueryBuilder\AllowedFilter::exact('item_id'),
+                \Spatie\QueryBuilder\AllowedFilter::exact('location_id'),
+                \Spatie\QueryBuilder\AllowedFilter::exact('source'),
+                \Spatie\QueryBuilder\AllowedFilter::exact('transaction_number'),
+                \Spatie\QueryBuilder\AllowedFilter::callback('date_from', function ($query, $value) {
+                    $query->whereDate('transaction_date', '>=', $value);
+                }),
+                \Spatie\QueryBuilder\AllowedFilter::callback('date_to', function ($query, $value) {
+                    $query->whereDate('transaction_date', '<=', $value);
+                })
+            )
+            ->allowedSorts('transaction_date', 'created_at')
+            ->defaultSort('-transaction_date')
+            ->paginate($limit);
     }
 }

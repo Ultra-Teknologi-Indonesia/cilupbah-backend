@@ -7,6 +7,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Warehouse\Services\ChannelWarehouseService;
 use Modules\Warehouse\Http\Requests\StoreChannelWarehouseRequest;
+use Modules\Warehouse\Models\ChannelWarehouse;
+use Spatie\QueryBuilder\QueryBuilder;
+use Spatie\QueryBuilder\AllowedFilter;
 
 class ChannelWarehouseController extends Controller
 {
@@ -16,14 +19,10 @@ class ChannelWarehouseController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $mappings = $this->channelWarehouseService->getByLocation(
-            (int) $request->query('location_id')
-        );
+        $limit = $request->query('limit', 10);
+        $mappings = $this->channelWarehouseService->getAllPaginated($limit);
 
-        return response()->json([
-            'status' => 'success',
-            'data' => $mappings,
-        ]);
+        return $this->successPaginatedResponse($mappings, 'Daftar mapping warehouse berhasil diambil');
     }
 
     public function store(StoreChannelWarehouseRequest $request): JsonResponse
@@ -31,16 +30,9 @@ class ChannelWarehouseController extends Controller
         try {
             $mapping = $this->channelWarehouseService->create($request->validated());
 
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Channel warehouse mapping berhasil dibuat.',
-                'data' => $mapping,
-            ], 201);
+            return $this->successResponse($mapping, 'Channel warehouse mapping berhasil dibuat.', 201);
         } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => $e->getMessage(),
-            ], 422);
+            return $this->errorResponse($e->getMessage(), 422);
         }
     }
 
@@ -49,15 +41,9 @@ class ChannelWarehouseController extends Controller
         $deleted = $this->channelWarehouseService->delete($id);
 
         if (!$deleted) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Mapping tidak ditemukan.',
-            ], 404);
+            return $this->errorResponse('Mapping tidak ditemukan.', 404);
         }
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Mapping berhasil dihapus.',
-        ]);
+        return $this->successResponse(null, 'Mapping berhasil dihapus.');
     }
 }
