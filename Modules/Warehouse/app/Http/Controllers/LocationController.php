@@ -8,6 +8,10 @@ use Illuminate\Http\Request;
 use Modules\Warehouse\Services\LocationService;
 use Modules\Warehouse\Http\Requests\StoreLocationRequest;
 use Modules\Warehouse\Http\Requests\UpdateLocationRequest;
+use Modules\Warehouse\Models\Location;
+use Spatie\QueryBuilder\QueryBuilder;
+use Spatie\QueryBuilder\AllowedFilter;
+use App\Filters\FuzzyFilter;
 
 class LocationController extends Controller
 {
@@ -17,14 +21,10 @@ class LocationController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $locations = $this->locationService->getAll($request->only([
-            'is_active', 'location_type', 'search'
-        ]));
+        $limit = $request->query('limit', 10);
+        $locations = $this->locationService->getAllPaginated($limit);
 
-        return response()->json([
-            'status' => 'success',
-            'data' => $locations,
-        ]);
+        return $this->successPaginatedResponse($locations, 'Daftar lokasi berhasil diambil');
     }
 
     public function store(StoreLocationRequest $request): JsonResponse
@@ -32,16 +32,9 @@ class LocationController extends Controller
         try {
             $location = $this->locationService->create($request->validated());
 
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Lokasi berhasil dibuat.',
-                'data' => $location,
-            ], 201);
+            return $this->successResponse($location, 'Lokasi berhasil dibuat.', 201);
         } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => $e->getMessage(),
-            ], 500);
+            return $this->errorResponse($e->getMessage(), 500);
         }
     }
 
@@ -50,16 +43,10 @@ class LocationController extends Controller
         $location = $this->locationService->getById($id);
 
         if (!$location) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Lokasi tidak ditemukan.',
-            ], 404);
+            return $this->errorResponse('Lokasi tidak ditemukan.', 404);
         }
 
-        return response()->json([
-            'status' => 'success',
-            'data' => $location,
-        ]);
+        return $this->successResponse($location, 'Detail lokasi berhasil diambil');
     }
 
     public function update(UpdateLocationRequest $request, int $id): JsonResponse
@@ -67,16 +54,10 @@ class LocationController extends Controller
         $updated = $this->locationService->update($id, $request->validated());
 
         if (!$updated) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Lokasi tidak ditemukan.',
-            ], 404);
+            return $this->errorResponse('Lokasi tidak ditemukan.', 404);
         }
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Lokasi berhasil diperbarui.',
-        ]);
+        return $this->successResponse(null, 'Lokasi berhasil diperbarui.');
     }
 
     public function destroy(int $id): JsonResponse
@@ -85,21 +66,12 @@ class LocationController extends Controller
             $deleted = $this->locationService->delete($id);
 
             if (!$deleted) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Lokasi tidak ditemukan.',
-                ], 404);
+                return $this->errorResponse('Lokasi tidak ditemukan.', 404);
             }
 
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Lokasi berhasil dihapus.',
-            ]);
+            return $this->successResponse(null, 'Lokasi berhasil dihapus.');
         } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => $e->getMessage(),
-            ], 422);
+            return $this->errorResponse($e->getMessage(), 422);
         }
     }
 }
