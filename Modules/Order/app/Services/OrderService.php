@@ -19,6 +19,11 @@ class OrderService
                 if ($existing->status === 'CANCELLED' && $newStatus !== 'CANCELLED') {
                     $newStatus = 'CANCELLED'; // Protect local cancellation
                 }
+                
+                // Protect local PROCESSING state since sandbox logistics is bypassed
+                if ($existing->status === 'PROCESSING' && $newStatus === 'AWAITING_SHIPMENT') {
+                    $newStatus = 'PROCESSING';
+                }
 
                 DB::table('orders')
                     ->where('id', $existing->id)
