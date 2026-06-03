@@ -3,54 +3,72 @@
 namespace Modules\Inbound\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Inbound\Services\InboundService;
+use Modules\Inbound\Http\Requests\StoreInboundRequest;
+use Modules\Inbound\Http\Requests\ReceiveInboundRequest;
 
 class InboundController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
+    public function __construct(
+        protected InboundService $inboundService
+    ) {}
+
+    public function index(Request $request): JsonResponse
     {
-        return view('inbound::index');
+        $limit = $request->query('limit', 10);
+        $inbounds = $this->inboundService->getAllPaginated($limit);
+
+        return $this->successPaginatedResponse($inbounds, 'Daftar inbound berhasil diambil');
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
+    public function show(int $id): JsonResponse
     {
-        return view('inbound::create');
+        $inbound = $this->inboundService->getById($id);
+
+        if (!$inbound) {
+            return $this->errorResponse('Dokumen Inbound tidak ditemukan', 404);
+        }
+
+        return $this->successResponse($inbound, 'Detail Inbound berhasil diambil');
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request) {}
-
-    /**
-     * Show the specified resource.
-     */
-    public function show($id)
+    public function store(StoreInboundRequest $request): JsonResponse
     {
-        return view('inbound::show');
+        try {
+            $inbound = $this->inboundService->createDraft($request->validated());
+            return $this->successResponse($inbound, 'Draft Inbound berhasil dibuat', 201);
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 500);
+        }
     }
 
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit($id)
+    public function receive(int $id, ReceiveInboundRequest $request): JsonResponse
     {
-        return view('inbound::edit');
+        try {
+            $inbound = $this->inboundService->receive($id, $request->validated());
+            return $this->successResponse($inbound, 'Penerimaan Inbound berhasil diproses');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 500);
+        }
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, $id) {}
+    public function receivedItems(Request $request): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+        $items = $this->inboundService->getReceivedItemsPaginated($limit);
 
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy($id) {}
+        return $this->successPaginatedResponse($items, 'Daftar barang diterima berhasil diambil');
+    }
+
+    public function autoPutaway(\Modules\Inbound\Http\Requests\AutoPutawayRequest $request): JsonResponse
+    {
+        try {
+            $results = $this->inboundService->autoPutaway($request->validated());
+            return $this->successResponse($results, 'Auto-putaway berhasil dieksekusi', 200);
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 500);
+        }
+    }
 }
