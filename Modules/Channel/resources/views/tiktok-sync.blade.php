@@ -170,10 +170,9 @@
                                                 <input type="hidden" name="shop_id" value="7494685794425930858">
                                                 <input type="hidden" name="order_id" value="{{ $o->order_number }}">
                                                 <select name="reason" class="text-xs border-slate-300 rounded-md shadow-sm focus:border-rose-500 focus:ring-rose-500 py-1" required>
-                                                    <option value="seller_cancel_reason_out_of_stock">Stok Habis</option>
-                                                    <option value="seller_cancel_reason_wrong_price">Salah Harga</option>
-                                                    <option value="seller_cancel_unable_to_deliver_to_buyer_address">Alamat Tidak Terjangkau</option>
-                                                    <option value="seller_cancel_reason_logistics_issue">Kendala Logistik</option>
+                                                    <option value="seller_cancel_reason_out_of_stock">Out of stock</option>
+                                                    <option value="seller_cancel_reason_wrong_price">Pricing error</option>
+                                                    <option value="seller_cancel_paid_reason_address_not_deliver">Unable to deliver to buyer address</option>
                                                 </select>
                                                 <button type="submit" class="text-rose-600 hover:text-rose-900 bg-rose-50 hover:bg-rose-100 px-3 py-1 rounded-md transition-colors" onclick="return confirm('Tolak pesanan ini?')">Decline</button>
                                             </form>
