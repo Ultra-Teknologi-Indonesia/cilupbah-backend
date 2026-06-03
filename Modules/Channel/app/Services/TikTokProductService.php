@@ -101,7 +101,7 @@ class TikTokProductService
         $res = $this->client->request('POST', '/product/202309/products', ['shop_cipher' => $shopCipher], $payload, $accessToken);
         
         if (isset($res['data']['product_id'])) {
-            DB::table('products')->where('id', $productId)->update(['tiktok_product_id' => $res['data']['product_id']]);
+            DB::table('products')->where('id', $productId)->update(['channel_product_id' => $res['data']['product_id']]);
         }
 
         return $res;
@@ -161,7 +161,7 @@ class TikTokProductService
         }
 
         $product = DB::table('products')->where('id', $productId)->first();
-        if (!$product || !$product->tiktok_product_id) {
+        if (!$product || !$product->channel_product_id) {
             throw new \Exception("Product not found or not synced to TikTok yet.");
         }
 
@@ -188,19 +188,19 @@ class TikTokProductService
             ];
         }
 
-        $pricePayload = ['product_id' => $product->tiktok_product_id, 'skus' => $skus];
-        $invPayload = ['product_id' => $product->tiktok_product_id, 'skus' => $inventorySkus];
+        $pricePayload = ['product_id' => $product->channel_product_id, 'skus' => $skus];
+        $invPayload = ['product_id' => $product->channel_product_id, 'skus' => $inventorySkus];
 
         // 1. Update Price
         try {
-            $this->client->request('POST', "/product/202309/products/{$product->tiktok_product_id}/prices/update", ['shop_cipher' => $shop->shop_cipher ?? ''], $pricePayload, $shop->access_token);
+            $this->client->request('POST', "/product/202309/products/{$product->channel_product_id}/prices/update", ['shop_cipher' => $shop->shop_cipher ?? ''], $pricePayload, $shop->access_token);
         } catch (\Exception $e) {
             Log::warning("TikTok price update failed (sandbox bypass): " . $e->getMessage());
         }
 
         // 2. Update Inventory
         try {
-            $this->client->request('POST', "/product/202309/products/{$product->tiktok_product_id}/inventory/update", ['shop_cipher' => $shop->shop_cipher ?? ''], $invPayload, $shop->access_token);
+            $this->client->request('POST', "/product/202309/products/{$product->channel_product_id}/inventory/update", ['shop_cipher' => $shop->shop_cipher ?? ''], $invPayload, $shop->access_token);
         } catch (\Exception $e) {
             Log::warning("TikTok inventory update failed (sandbox bypass): " . $e->getMessage());
         }
