@@ -15,9 +15,9 @@ class LocationService
         protected LocationBinRepository $binRepository
     ) {}
 
-    public function getAll(array $filters = []): Collection
+    public function getAllPaginated(int $limit = 10)
     {
-        return $this->locationRepository->all($filters);
+        return $this->locationRepository->getAllPaginated($limit);
     }
 
     public function getById(int $id): ?Location
@@ -43,25 +43,27 @@ class LocationService
 
     public function update(int $id, array $data): bool
     {
-        return $this->locationRepository->update($id, $data);
+        return DB::transaction(function () use ($id, $data) {
+            return $this->locationRepository->update($id, $data);
+        });
     }
 
     public function delete(int $id): bool
     {
-        $location = $this->locationRepository->findById($id);
-        if (!$location) {
-            return false;
-        }
+        return DB::transaction(function () use ($id) {
+            $location = $this->locationRepository->findById($id);
+            if (!$location) {
+                return false;
+            }
 
-        $hasInventory = DB::table('inventories')
-            ->where('location_id', $id)
-            ->exists();
+            $hasInventory = \Modules\Inventory\Models\Inventory::where('location_id', $id)->exists();
 
-        if ($hasInventory) {
-            throw new \Exception('Lokasi tidak dapat dihapus karena masih memiliki data stok.');
-        }
+            if ($hasInventory) {
+                throw new \Exception('Lokasi tidak dapat dihapus karena masih memiliki data stok.');
+            }
 
-        return $this->locationRepository->delete($id);
+            return $this->locationRepository->delete($id);
+        });
     }
 
     public function getActiveWarehouses(): Collection
