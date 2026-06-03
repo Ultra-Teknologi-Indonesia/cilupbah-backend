@@ -1,0 +1,1214 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "Staging Superapp API",
+        "description": "API Documentation for Staging Superapp",
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "/",
+            "description": "API Server"
+        }
+    ],
+    "paths": {
+        "/api/v1/auth/authorize": {
+            "get": {
+                "tags": [
+                    "Auth (Global)"
+                ],
+                "summary": "Authorize OAuth",
+                "description": "Redirect to the marketplace OAuth page",
+                "operationId": "authorizeMarketplace",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "query",
+                        "description": "tiktok|shopee|tokopedia|lazada",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "redirect_uri",
+                        "in": "query",
+                        "description": "Callback URL",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "302": {
+                        "description": "Redirects to authorization URL"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/auth/callback": {
+            "post": {
+                "tags": [
+                    "Auth (Global)"
+                ],
+                "summary": "OAuth Callback",
+                "description": "Exchange auth_code for access_token",
+                "operationId": "authCallback",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "marketplace": {
+                                        "type": "string",
+                                        "example": "tiktok"
+                                    },
+                                    "code": {
+                                        "type": "string",
+                                        "example": "<auth_code>"
+                                    },
+                                    "state": {
+                                        "type": "string",
+                                        "example": "<state>",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successfully authenticated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/auth/refresh": {
+            "post": {
+                "tags": [
+                    "Auth (Global)"
+                ],
+                "summary": "Refresh Token",
+                "description": "Refresh access token",
+                "operationId": "refreshToken",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "marketplace": {
+                                        "type": "string",
+                                        "example": "tiktok"
+                                    },
+                                    "shop_id": {
+                                        "type": "string",
+                                        "example": "12345678"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Token refreshed successfully"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/auth/revoke": {
+            "post": {
+                "tags": [
+                    "Auth (Global)"
+                ],
+                "summary": "Revoke Token",
+                "description": "Cabut otorisasi toko",
+                "operationId": "revokeToken",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "marketplace": {
+                                        "type": "string",
+                                        "example": "tiktok"
+                                    },
+                                    "shop_id": {
+                                        "type": "string",
+                                        "example": "12345678"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Token revoked successfully"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/auth/shops": {
+            "get": {
+                "tags": [
+                    "Auth (Global)"
+                ],
+                "summary": "List Authorized Shops",
+                "description": "Daftar semua toko yang sudah terotorisasi",
+                "operationId": "listAuthorizedShops",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "query",
+                        "description": "Filter by marketplace (opsional)",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/{marketplace}/orders": {
+            "get": {
+                "tags": [
+                    "Orders"
+                ],
+                "summary": "Get orders from a specific marketplace",
+                "description": "Returns list of orders for the specified marketplace (e.g., tiktok, shopee, tokopedia) after syncing from the marketplace.",
+                "operationId": "getMarketplaceOrder",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "description": "Marketplace name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "marketplace": {
+                                            "type": "string",
+                                            "example": "tiktok"
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/{marketplace}/orders/{order_id}": {
+            "get": {
+                "tags": [
+                    "Orders"
+                ],
+                "summary": "Get order detail from a specific marketplace",
+                "operationId": "showMarketplaceOrder",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "order_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/{marketplace}/orders/{order_id}/ship": {
+            "post": {
+                "tags": [
+                    "Orders"
+                ],
+                "summary": "Ship order on a specific marketplace",
+                "operationId": "shipMarketplaceOrder",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "order_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/{marketplace}/orders/{order_id}/shipping-document": {
+            "get": {
+                "tags": [
+                    "Orders"
+                ],
+                "summary": "Get shipping document for order",
+                "operationId": "shippingDocumentMarketplaceOrder",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "order_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/media/upload": {
+            "post": {
+                "tags": [
+                    "Media"
+                ],
+                "summary": "Upload a media file (image/video)",
+                "description": "Uploads an image or video file and returns its public URL.",
+                "operationId": "uploadMedia",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "required": [
+                                    "file"
+                                ],
+                                "properties": {
+                                    "file": {
+                                        "description": "The media file to upload (image or video)",
+                                        "type": "string",
+                                        "format": "binary"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "File uploaded successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "id": {
+                                            "type": "integer",
+                                            "example": 1
+                                        },
+                                        "url": {
+                                            "type": "string",
+                                            "example": "http://localhost:8000/storage/uploads/filename.jpg"
+                                        },
+                                        "filename": {
+                                            "type": "string",
+                                            "example": "filename.jpg"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation failed or no file provided"
+                    }
+                }
+            }
+        },
+        "/api/v1/{marketplace}/products": {
+            "get": {
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Get products from a specific marketplace",
+                "description": "Returns list of products for the specified marketplace (e.g., tiktok, shopee, tokopedia) after syncing from the marketplace.",
+                "operationId": "getMarketplaceProduct",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "description": "Marketplace name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "marketplace": {
+                                            "type": "string",
+                                            "example": "tiktok"
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Upload / Create product for a specific marketplace",
+                "description": "Creates a product locally and prepares it for syncing with the specified marketplace.",
+                "operationId": "storeMarketplaceProduct",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateProductRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Product created successfully"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/{marketplace}/products/{product_id}": {
+            "get": {
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Get product detail from a specific marketplace",
+                "operationId": "showMarketplaceProduct",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "product_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Update product on a specific marketplace",
+                "operationId": "updateMarketplaceProduct",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "product_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Delete product on a specific marketplace",
+                "operationId": "destroyMarketplaceProduct",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "product_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/{marketplace}/products/{product_id}/activate": {
+            "put": {
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Activate product on a specific marketplace",
+                "operationId": "activateMarketplaceProduct",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "product_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/{marketplace}/products/{product_id}/deactivate": {
+            "put": {
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Deactivate product on a specific marketplace",
+                "operationId": "deactivateMarketplaceProduct",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "product_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/{marketplace}/products/{product_id}/stock": {
+            "put": {
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Update product stock on a specific marketplace",
+                "operationId": "updateStockMarketplaceProduct",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "product_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/{marketplace}/products/{product_id}/price": {
+            "put": {
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Update product price on a specific marketplace",
+                "operationId": "updatePriceMarketplaceProduct",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "product_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/{marketplace}/products/categories": {
+            "get": {
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Get marketplace categories",
+                "operationId": "getCategories",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/{marketplace}/products/images": {
+            "post": {
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Upload product image to marketplace",
+                "operationId": "uploadImageProduct",
+                "parameters": [
+                    {
+                        "name": "marketplace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "media_id": {
+                                        "type": "integer",
+                                        "example": 1
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "CreateProductRequest": {
+                "required": [
+                    "category_id",
+                    "name",
+                    "variants"
+                ],
+                "properties": {
+                    "brand_id": {
+                        "type": "integer",
+                        "example": 101,
+                        "nullable": true
+                    },
+                    "category_id": {
+                        "type": "integer",
+                        "example": 54
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Sony Alpha A6000 Kit 16-50mm"
+                    },
+                    "sku": {
+                        "type": "string",
+                        "example": "SONY-A6000-COPY-1234",
+                        "nullable": true
+                    },
+                    "description": {
+                        "type": "string",
+                        "example": "Kamera mirrorless ringan dengan sensor 24.3MP",
+                        "nullable": true
+                    },
+                    "search_keyword": {
+                        "type": "string",
+                        "example": "kamera sony, alpha, a6000, mirrorless",
+                        "nullable": true
+                    },
+                    "order_type": {
+                        "type": "string",
+                        "example": "PREORDER",
+                        "nullable": true,
+                        "enum": [
+                            "REGULER",
+                            "PREORDER",
+                            "COD"
+                        ]
+                    },
+                    "indent_days": {
+                        "type": "integer",
+                        "example": 1,
+                        "nullable": true
+                    },
+                    "weight": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 1.5,
+                        "nullable": true
+                    },
+                    "length": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 12,
+                        "nullable": true
+                    },
+                    "width": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 10,
+                        "nullable": true
+                    },
+                    "height": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 4,
+                        "nullable": true
+                    },
+                    "condition": {
+                        "type": "string",
+                        "example": "NEW",
+                        "nullable": true,
+                        "enum": [
+                            "NEW",
+                            "USED"
+                        ]
+                    },
+                    "is_cod_allowed": {
+                        "type": "boolean",
+                        "example": false,
+                        "nullable": true
+                    },
+                    "danger_level": {
+                        "type": "integer",
+                        "example": 0,
+                        "nullable": true
+                    },
+                    "is_draft": {
+                        "type": "boolean",
+                        "example": false,
+                        "nullable": true
+                    },
+                    "showcase_id": {
+                        "type": "integer",
+                        "example": null,
+                        "nullable": true
+                    },
+                    "is_active": {
+                        "type": "boolean",
+                        "example": true,
+                        "nullable": true
+                    },
+                    "specifications": {
+                        "type": "array",
+                        "items": {
+                            "properties": {
+                                "attribute_id": {
+                                    "type": "integer",
+                                    "example": 36
+                                },
+                                "attribute_option_id": {
+                                    "type": "integer",
+                                    "example": null,
+                                    "nullable": true
+                                },
+                                "text_value": {
+                                    "type": "string",
+                                    "example": "24.3 MP",
+                                    "nullable": true
+                                }
+                            },
+                            "type": "object"
+                        },
+                        "nullable": true
+                    },
+                    "media": {
+                        "type": "array",
+                        "items": {
+                            "properties": {
+                                "url": {
+                                    "type": "string",
+                                    "example": "https://example.com/image1.jpg"
+                                },
+                                "media_type": {
+                                    "type": "string",
+                                    "example": "image",
+                                    "nullable": true,
+                                    "enum": [
+                                        "image",
+                                        "video"
+                                    ]
+                                },
+                                "is_primary": {
+                                    "type": "boolean",
+                                    "example": true,
+                                    "nullable": true
+                                },
+                                "sort_order": {
+                                    "type": "integer",
+                                    "example": 1,
+                                    "nullable": true
+                                }
+                            },
+                            "type": "object"
+                        },
+                        "nullable": true
+                    },
+                    "variation_types": {
+                        "type": "array",
+                        "items": {
+                            "properties": {
+                                "attribute_id": {
+                                    "type": "integer",
+                                    "example": 1
+                                },
+                                "sort_order": {
+                                    "type": "integer",
+                                    "example": 1,
+                                    "nullable": true
+                                }
+                            },
+                            "type": "object"
+                        },
+                        "nullable": true
+                    },
+                    "variants": {
+                        "type": "array",
+                        "items": {
+                            "required": [
+                                "sku",
+                                "sell_price"
+                            ],
+                            "properties": {
+                                "sku": {
+                                    "type": "string",
+                                    "example": "SONY-A6000-BLACK-L-1234"
+                                },
+                                "barcode": {
+                                    "type": "string",
+                                    "example": "899123456789",
+                                    "nullable": true
+                                },
+                                "buy_price": {
+                                    "type": "number",
+                                    "format": "float",
+                                    "example": 5000000,
+                                    "nullable": true
+                                },
+                                "sell_price": {
+                                    "type": "number",
+                                    "format": "float",
+                                    "example": 6000000
+                                },
+                                "weight": {
+                                    "type": "number",
+                                    "format": "float",
+                                    "example": 1.2,
+                                    "nullable": true
+                                },
+                                "length": {
+                                    "type": "number",
+                                    "format": "float",
+                                    "example": 12,
+                                    "nullable": true
+                                },
+                                "width": {
+                                    "type": "number",
+                                    "format": "float",
+                                    "example": 10,
+                                    "nullable": true
+                                },
+                                "height": {
+                                    "type": "number",
+                                    "format": "float",
+                                    "example": 4,
+                                    "nullable": true
+                                },
+                                "is_serial_batch": {
+                                    "type": "boolean",
+                                    "example": false,
+                                    "nullable": true
+                                },
+                                "is_active": {
+                                    "type": "boolean",
+                                    "example": true,
+                                    "nullable": true
+                                },
+                                "options": {
+                                    "type": "array",
+                                    "items": {
+                                        "properties": {
+                                            "attribute_id": {
+                                                "type": "integer",
+                                                "example": 1
+                                            },
+                                            "value": {
+                                                "type": "string",
+                                                "example": "Black"
+                                            }
+                                        },
+                                        "type": "object"
+                                    },
+                                    "nullable": true
+                                },
+                                "media": {
+                                    "type": "array",
+                                    "items": {
+                                        "properties": {
+                                            "url": {
+                                                "type": "string",
+                                                "example": "https://example.com/variant-black.jpg"
+                                            },
+                                            "media_type": {
+                                                "type": "string",
+                                                "example": "image",
+                                                "nullable": true,
+                                                "enum": [
+                                                    "image",
+                                                    "video"
+                                                ]
+                                            },
+                                            "is_primary": {
+                                                "type": "boolean",
+                                                "example": true,
+                                                "nullable": true
+                                            },
+                                            "sort_order": {
+                                                "type": "integer",
+                                                "example": 1,
+                                                "nullable": true
+                                            }
+                                        },
+                                        "type": "object"
+                                    },
+                                    "nullable": true
+                                },
+                                "wholesale_prices": {
+                                    "type": "array",
+                                    "items": {
+                                        "properties": {
+                                            "min_qty": {
+                                                "type": "integer",
+                                                "example": 10
+                                            },
+                                            "price": {
+                                                "type": "number",
+                                                "format": "float",
+                                                "example": 5800000
+                                            },
+                                            "customer_type": {
+                                                "type": "string",
+                                                "example": "B2B",
+                                                "nullable": true
+                                            }
+                                        },
+                                        "type": "object"
+                                    },
+                                    "nullable": true
+                                }
+                            },
+                            "type": "object"
+                        }
+                    }
+                },
+                "type": "object"
+            }
+        },
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "name": "Authorization",
+                "in": "header",
+                "bearerFormat": "JWT",
+                "scheme": "bearer"
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "Auth (Global)",
+            "description": "Auth (Global)"
+        },
+        {
+            "name": "Orders",
+            "description": "Orders"
+        },
+        {
+            "name": "Media",
+            "description": "Media"
+        },
+        {
+            "name": "Products",
+            "description": "Products"
+        }
+    ]
+}

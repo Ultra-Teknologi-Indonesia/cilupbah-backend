@@ -1,0 +1,5881 @@
+{
+  "info": {
+    "_postman_id": "60804a8e-5b91-4048-aa62-dc5a699b2737",
+    "name": "🌐 Unified Omnichannel API",
+    "description": "Unified Marketplace API — Standar endpoint untuk TikTok Shop, Shopee, Tokopedia, Lazada.\n\nPola endpoint: /api/v1/{marketplace}/{resource}\nmarketplace: tiktok | shopee | tokopedia | lazada\n\nSemua response menggunakan Unified Schema yang sama.\nAdapter di backend yang handle perbedaan tiap marketplace.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "shop_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "redirect_uri",
+      "value": "http://localhost:3000/api/v1/auth/callback",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "id": "5a06fd8d-4aaa-432a-9132-e9d526e08d93",
+      "name": "🔐 Auth (Global)",
+      "description": "OAuth & token management — berlaku untuk semua marketplace",
+      "item": [
+        {
+          "id": "cd8f1bcd-d44c-42ba-ad0c-18040030445f",
+          "name": "Authorize OAuth",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "X-Shop-Id",
+                "value": "{{shop_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/authorize",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "authorize"
+              ],
+              "variable": [],
+              "query": [
+                {
+                  "key": "marketplace",
+                  "value": "tiktok",
+                  "description": "tiktok|shopee|tokopedia|lazada"
+                },
+                {
+                  "key": "redirect_uri",
+                  "value": "{{redirect_uri}}",
+                  "description": "Callback URL"
+                }
+              ]
+            },
+            "description": "Redirect ke halaman OAuth marketplace"
+          },
+          "response": []
+        },
+        {
+          "id": "bf6f39f4-8e73-40c2-9fc2-1619b90ba33e",
+          "name": "OAuth Callback",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "X-Shop-Id",
+                "value": "{{shop_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/callback",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "callback"
+              ],
+              "variable": []
+            },
+            "description": "Tukar auth_code → access_token",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"marketplace\": \"tiktok\",\n  \"code\": \"<auth_code>\",\n  \"state\": \"<state>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "2e9980ca-9c27-4152-bc26-e40088102759",
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "X-Shop-Id",
+                "value": "{{shop_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/refresh",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "refresh"
+              ],
+              "variable": []
+            },
+            "description": "Refresh access token",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"marketplace\": \"tiktok\",\n  \"shop_id\": \"{{shop_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "841d460f-f135-4247-92bb-27f344199f84",
+          "name": "Revoke Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "X-Shop-Id",
+                "value": "{{shop_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/revoke",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "revoke"
+              ],
+              "variable": []
+            },
+            "description": "Cabut otorisasi toko",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"marketplace\": \"tiktok\",\n  \"shop_id\": \"{{shop_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "b3b506a3-e7a3-441d-b7ca-0580f89d3639",
+          "name": "List Authorized Shops",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "X-Shop-Id",
+                "value": "{{shop_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/shops",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "shops"
+              ],
+              "variable": [],
+              "query": [
+                {
+                  "key": "marketplace",
+                  "value": "tiktok",
+                  "description": "Filter by marketplace (opsional)"
+                }
+              ]
+            },
+            "description": "Daftar semua toko yang sudah terotorisasi"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "295859bf-1b39-4e31-b369-be8034697289",
+      "name": "🛒 TikTok Shop",
+      "description": "Endpoints untuk marketplace: tiktok",
+      "item": [
+        {
+          "id": "0e3eed67-5bfc-4185-ba9e-1e3ebb991732",
+          "name": "📦 Product",
+          "description": "Product endpoints — tiktok",
+          "item": [
+            {
+              "id": "d34e665f-79bf-447c-8e04-867c7a4d6d22",
+              "name": "List Products",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/products",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "products"
+                  ],
+                  "variable": [],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Halaman"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "description": "Jumlah per halaman"
+                    },
+                    {
+                      "key": "status",
+                      "value": "ACTIVE",
+                      "description": "ACTIVE|INACTIVE|PENDING"
+                    },
+                    {
+                      "key": "keyword",
+                      "value": "",
+                      "description": "Cari nama produk"
+                    }
+                  ]
+                },
+                "description": "PULL — Ambil semua produk dari marketplace"
+              },
+              "response": []
+            },
+            {
+              "id": "bab72293-abe4-4b29-acda-b989bb3ee45f",
+              "name": "Get Product Detail",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/products/:product_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "products",
+                    ":product_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "PULL — Detail satu produk beserta SKU & varian"
+              },
+              "response": []
+            },
+            {
+              "id": "673a6196-91fc-4995-80df-981e8cf427b7",
+              "name": "Create Product",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/products",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "products"
+                  ],
+                  "variable": []
+                },
+                "description": "PUSH — Buat produk baru ke marketplace",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Nama Produk\",\n  \"description\": \"Deskripsi produk\",\n  \"category_id\": \"<category_id>\",\n  \"images\": [\n    \"https://example.com/img.jpg\"\n  ],\n  \"skus\": [\n    {\n      \"seller_sku\": \"SKU-001\",\n      \"price\": 50000,\n      \"stock\": 100,\n      \"variants\": {\n        \"color\": \"Merah\",\n        \"size\": \"M\"\n      }\n    }\n  ],\n  \"weight\": 300,\n  \"brand\": \"<brand_name>\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "23adfa96-ef82-4494-a3e0-ba8f476ff940",
+              "name": "Update Product",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/products/:product_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "products",
+                    ":product_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "PUSH — Update info produk",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Nama Produk Updated\",\n  \"description\": \"Deskripsi baru\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "c440fd4c-bbc9-453b-8b86-cc37a05fc5e9",
+              "name": "Delete Product",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/products/:product_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "products",
+                    ":product_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "Hapus produk dari marketplace"
+              },
+              "response": []
+            },
+            {
+              "id": "4e54309c-4986-4c98-a16c-d1371487db04",
+              "name": "Activate Product",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/products/:product_id/activate",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "products",
+                    ":product_id",
+                    "activate"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "Publish / aktifkan produk"
+              },
+              "response": []
+            },
+            {
+              "id": "79ccdf69-9c18-4b18-aaff-8e9a9ae0faf6",
+              "name": "Deactivate Product",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/products/:product_id/deactivate",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "products",
+                    ":product_id",
+                    "deactivate"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "Nonaktifkan / unlisted produk"
+              },
+              "response": []
+            },
+            {
+              "id": "65acf955-71dc-4f77-adf3-aa740f04f8a7",
+              "name": "Update Stock",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/products/:product_id/stock",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "products",
+                    ":product_id",
+                    "stock"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "Update stok SKU (bisa batch)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"skus\": [\n    {\n      \"sku_id\": \"<sku_id>\",\n      \"stock\": 50\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "6ab60dc6-fa9c-4643-8ff4-9201345f6226",
+              "name": "Update Price",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/products/:product_id/price",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "products",
+                    ":product_id",
+                    "price"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "Update harga SKU (bisa batch)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"skus\": [\n    {\n      \"sku_id\": \"<sku_id>\",\n      \"price\": 45000,\n      \"sale_price\": 40000\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "0757fe1c-9a17-4d78-8cd6-66112f8d950a",
+              "name": "Get Categories",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/products/categories",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "products",
+                    "categories"
+                  ],
+                  "variable": [],
+                  "query": [
+                    {
+                      "key": "parent_id",
+                      "value": "0",
+                      "description": "ID kategori parent (0 = root)"
+                    }
+                  ]
+                },
+                "description": "Daftar kategori produk marketplace"
+              },
+              "response": []
+            },
+            {
+              "id": "542f6a5e-f676-4e24-8423-0b44c4048ca4",
+              "name": "Upload Image",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/products/images",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "products",
+                    "images"
+                  ],
+                  "variable": []
+                },
+                "description": "Upload gambar produk",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"note\": \"Gunakan multipart/form-data, field: file\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "id": "91e3f91a-f42b-4849-b384-c35ac84e75ef",
+          "name": "🛒 Order",
+          "description": "Order endpoints — tiktok",
+          "item": [
+            {
+              "id": "62849d06-e08a-40cb-884d-c51632d515eb",
+              "name": "List Orders",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/orders",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "orders"
+                  ],
+                  "variable": [],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "AWAITING_CONFIRM",
+                      "description": "UNPAID|AWAITING_CONFIRM|PROCESSING|SHIPPED|DELIVERED|CANCELLED"
+                    },
+                    {
+                      "key": "start_date",
+                      "value": "2024-01-01",
+                      "description": "Format: YYYY-MM-DD"
+                    },
+                    {
+                      "key": "end_date",
+                      "value": "2024-12-31",
+                      "description": "Format: YYYY-MM-DD"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Halaman"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "description": "Jumlah per halaman"
+                    }
+                  ]
+                },
+                "description": "PULL — Daftar order dengan filter"
+              },
+              "response": []
+            },
+            {
+              "id": "b20eccc7-8ca8-4fda-985e-7efc5bda8360",
+              "name": "Get Order Detail",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/orders/:order_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "orders",
+                    ":order_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Detail lengkap satu order beserta items & alamat"
+              },
+              "response": []
+            },
+            {
+              "id": "71241558-ca6a-4c91-917a-6886d393ff25",
+              "name": "Confirm Order",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/orders/:order_id/confirm",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "orders",
+                    ":order_id",
+                    "confirm"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Konfirmasi / accept pesanan dari buyer"
+              },
+              "response": []
+            },
+            {
+              "id": "d9599add-b0f1-4516-9409-cb53a8064b1a",
+              "name": "Cancel Order",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/orders/:order_id/cancel",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "orders",
+                    ":order_id",
+                    "cancel"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Cancel pesanan",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"cancel_reason\": \"OUT_OF_STOCK\",\n  \"cancel_reason_note\": \"Stok habis di gudang\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "ece0ebf9-4fec-47e3-a148-8d0812de4e63",
+              "name": "Bulk Cancel Orders",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/orders/bulk-cancel",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "orders",
+                    "bulk-cancel"
+                  ],
+                  "variable": []
+                },
+                "description": "Cancel banyak order sekaligus",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"order_ids\": [\n    \"<order_id_1>\",\n    \"<order_id_2>\"\n  ],\n  \"cancel_reason\": \"OUT_OF_STOCK\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "4707da5b-66ad-451a-a002-cb9d17df86ec",
+              "name": "Get Order Invoice",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/orders/:order_id/invoice",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "orders",
+                    ":order_id",
+                    "invoice"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Download URL invoice/nota pesanan"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "id": "9cc050e4-4775-4b31-80c4-edac25a42e69",
+          "name": "🚚 Fulfillment",
+          "description": "Fulfillment & tracking — tiktok",
+          "item": [
+            {
+              "id": "dccf73c5-fc75-4df5-849f-718c385d121f",
+              "name": "Get Shipping Providers",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/shipping-providers",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "shipping-providers"
+                  ],
+                  "variable": [],
+                  "query": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>",
+                      "description": "ID order untuk cek kurir yang tersedia"
+                    }
+                  ]
+                },
+                "description": "Daftar kurir tersedia untuk order"
+              },
+              "response": []
+            },
+            {
+              "id": "04323f10-3bfa-48a5-871e-e01cdb8441c7",
+              "name": "Ship Order",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/orders/:order_id/ship",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "orders",
+                    ":order_id",
+                    "ship"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Kirim paket — input data pengiriman",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"provider_id\": \"<provider_id>\",\n  \"tracking_number\": \"JNE1234567890\",\n  \"warehouse_id\": \"<warehouse_id>\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "b6570dc7-0824-4456-9463-913639b6f7a7",
+              "name": "Get Tracking",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/orders/:order_id/tracking",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "orders",
+                    ":order_id",
+                    "tracking"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Cek status & history tracking pengiriman"
+              },
+              "response": []
+            },
+            {
+              "id": "8d3c073f-bcc3-42f8-b9df-54e2c868bcb1",
+              "name": "Update Tracking",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/orders/:order_id/tracking",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "orders",
+                    ":order_id",
+                    "tracking"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Update nomor resi ke marketplace",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"tracking_number\": \"JNE1234567890\",\n  \"provider_id\": \"<provider_id>\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "ae470d4c-85d3-4ba8-9cef-af01d3053c2d",
+              "name": "Get Shipping Label",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/orders/:order_id/label",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "orders",
+                    ":order_id",
+                    "label"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Generate & download shipping label (PDF)"
+              },
+              "response": []
+            },
+            {
+              "id": "c528c9b1-bfe6-4c36-8fce-7dd8f32193b2",
+              "name": "Get Warehouses",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/warehouses",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "warehouses"
+                  ],
+                  "variable": []
+                },
+                "description": "Daftar gudang/warehouse yang terdaftar"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "id": "70db7f8e-9f00-45f9-be6c-a3403cbc87c6",
+          "name": "🔄 Return",
+          "description": "Return & refund — tiktok",
+          "item": [
+            {
+              "id": "4461cd94-855e-4113-b912-5567c7aa2b49",
+              "name": "List Returns",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/returns",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "returns"
+                  ],
+                  "variable": [],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "REQUESTED",
+                      "description": "REQUESTED|APPROVED|REJECTED|COMPLETED"
+                    },
+                    {
+                      "key": "start_date",
+                      "value": "2024-01-01",
+                      "description": "Format: YYYY-MM-DD"
+                    },
+                    {
+                      "key": "end_date",
+                      "value": "2024-12-31",
+                      "description": "Format: YYYY-MM-DD"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Halaman"
+                    }
+                  ]
+                },
+                "description": "Daftar semua permintaan return/refund"
+              },
+              "response": []
+            },
+            {
+              "id": "243a7a56-badc-49dc-9a0d-47965c6841c7",
+              "name": "Get Return Detail",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/returns/:return_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "returns",
+                    ":return_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "return_id",
+                      "value": "<return_id>"
+                    }
+                  ]
+                },
+                "description": "Detail satu permintaan return"
+              },
+              "response": []
+            },
+            {
+              "id": "a0bab31a-5b9e-43de-a5b8-e17599529d42",
+              "name": "Approve Return",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/returns/:return_id/approve",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "returns",
+                    ":return_id",
+                    "approve"
+                  ],
+                  "variable": [
+                    {
+                      "key": "return_id",
+                      "value": "<return_id>"
+                    }
+                  ]
+                },
+                "description": "Setujui permintaan return dari buyer",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"refund_amount\": 50000\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "8139528e-cc06-430b-ab17-f0f51c7da079",
+              "name": "Reject Return",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/returns/:return_id/reject",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "returns",
+                    ":return_id",
+                    "reject"
+                  ],
+                  "variable": [
+                    {
+                      "key": "return_id",
+                      "value": "<return_id>"
+                    }
+                  ]
+                },
+                "description": "Tolak permintaan return",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reject_reason\": \"ITEM_NOT_RETURNED\",\n  \"reject_note\": \"Barang belum dikirim kembali\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "9de73686-9c7a-40c7-9ad0-c00d85b0b2e5",
+              "name": "Process Refund",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/returns/:return_id/refund",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "returns",
+                    ":return_id",
+                    "refund"
+                  ],
+                  "variable": [
+                    {
+                      "key": "return_id",
+                      "value": "<return_id>"
+                    }
+                  ]
+                },
+                "description": "Proses refund ke buyer",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"refund_amount\": 50000,\n  \"reason\": \"Item sesuai permintaan return\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "0d2284f8-0cf7-419f-9209-034c31061568",
+              "name": "Get Return Reasons",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tiktok/returns/reasons",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tiktok",
+                    "returns",
+                    "reasons"
+                  ],
+                  "variable": []
+                },
+                "description": "Master data alasan return yang tersedia"
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "d83a9c2a-cfb7-47fb-a70a-d3785951217e",
+      "name": "🟠 Shopee",
+      "description": "Endpoints untuk marketplace: shopee",
+      "item": [
+        {
+          "id": "50de8214-fbaa-497c-bb00-3a9a41327ba1",
+          "name": "📦 Product",
+          "description": "Product endpoints — shopee",
+          "item": [
+            {
+              "id": "ea971b97-3ad1-437d-a61c-1ba9ff796611",
+              "name": "List Products",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/products",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "products"
+                  ],
+                  "variable": [],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Halaman"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "description": "Jumlah per halaman"
+                    },
+                    {
+                      "key": "status",
+                      "value": "ACTIVE",
+                      "description": "ACTIVE|INACTIVE|PENDING"
+                    },
+                    {
+                      "key": "keyword",
+                      "value": "",
+                      "description": "Cari nama produk"
+                    }
+                  ]
+                },
+                "description": "PULL — Ambil semua produk dari marketplace"
+              },
+              "response": []
+            },
+            {
+              "id": "a0311d1f-4745-48e5-8451-6ff7fa37d549",
+              "name": "Get Product Detail",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/products/:product_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "products",
+                    ":product_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "PULL — Detail satu produk beserta SKU & varian"
+              },
+              "response": []
+            },
+            {
+              "id": "d9651504-e9ad-497e-8589-e9f7acafffde",
+              "name": "Create Product",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/products",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "products"
+                  ],
+                  "variable": []
+                },
+                "description": "PUSH — Buat produk baru ke marketplace",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Nama Produk\",\n  \"description\": \"Deskripsi produk\",\n  \"category_id\": \"<category_id>\",\n  \"images\": [\n    \"https://example.com/img.jpg\"\n  ],\n  \"skus\": [\n    {\n      \"seller_sku\": \"SKU-001\",\n      \"price\": 50000,\n      \"stock\": 100,\n      \"variants\": {\n        \"color\": \"Merah\",\n        \"size\": \"M\"\n      }\n    }\n  ],\n  \"weight\": 300,\n  \"brand\": \"<brand_name>\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "11c6dc32-d6ef-486b-b1a1-053ce2b4f66e",
+              "name": "Update Product",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/products/:product_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "products",
+                    ":product_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "PUSH — Update info produk",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Nama Produk Updated\",\n  \"description\": \"Deskripsi baru\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "adebcbce-95e8-46bc-97b1-1989ca443bb0",
+              "name": "Delete Product",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/products/:product_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "products",
+                    ":product_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "Hapus produk dari marketplace"
+              },
+              "response": []
+            },
+            {
+              "id": "770472c9-261d-49a5-8fcb-8276106734af",
+              "name": "Activate Product",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/products/:product_id/activate",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "products",
+                    ":product_id",
+                    "activate"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "Publish / aktifkan produk"
+              },
+              "response": []
+            },
+            {
+              "id": "cb94fa68-e2f5-4dc6-a798-d8a2fe9e5a9a",
+              "name": "Deactivate Product",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/products/:product_id/deactivate",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "products",
+                    ":product_id",
+                    "deactivate"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "Nonaktifkan / unlisted produk"
+              },
+              "response": []
+            },
+            {
+              "id": "1a05fb3f-d7be-4379-9478-324c686aaf34",
+              "name": "Update Stock",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/products/:product_id/stock",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "products",
+                    ":product_id",
+                    "stock"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "Update stok SKU (bisa batch)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"skus\": [\n    {\n      \"sku_id\": \"<sku_id>\",\n      \"stock\": 50\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "3c074558-c5cf-4dd3-aac9-568143ae4ffe",
+              "name": "Update Price",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/products/:product_id/price",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "products",
+                    ":product_id",
+                    "price"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "Update harga SKU (bisa batch)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"skus\": [\n    {\n      \"sku_id\": \"<sku_id>\",\n      \"price\": 45000,\n      \"sale_price\": 40000\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "f9f1c71a-2cff-4584-8f26-384468828563",
+              "name": "Get Categories",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/products/categories",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "products",
+                    "categories"
+                  ],
+                  "variable": [],
+                  "query": [
+                    {
+                      "key": "parent_id",
+                      "value": "0",
+                      "description": "ID kategori parent (0 = root)"
+                    }
+                  ]
+                },
+                "description": "Daftar kategori produk marketplace"
+              },
+              "response": []
+            },
+            {
+              "id": "e84b96cd-2da3-4286-a699-d0abd1c31be1",
+              "name": "Upload Image",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/products/images",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "products",
+                    "images"
+                  ],
+                  "variable": []
+                },
+                "description": "Upload gambar produk",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"note\": \"Gunakan multipart/form-data, field: file\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "id": "750d8431-462c-4ad6-b03e-1c2dafba859e",
+          "name": "🛒 Order",
+          "description": "Order endpoints — shopee",
+          "item": [
+            {
+              "id": "1a0b3d34-dda4-45fc-b78e-ca940dc9c91d",
+              "name": "List Orders",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/orders",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "orders"
+                  ],
+                  "variable": [],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "AWAITING_CONFIRM",
+                      "description": "UNPAID|AWAITING_CONFIRM|PROCESSING|SHIPPED|DELIVERED|CANCELLED"
+                    },
+                    {
+                      "key": "start_date",
+                      "value": "2024-01-01",
+                      "description": "Format: YYYY-MM-DD"
+                    },
+                    {
+                      "key": "end_date",
+                      "value": "2024-12-31",
+                      "description": "Format: YYYY-MM-DD"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Halaman"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "description": "Jumlah per halaman"
+                    }
+                  ]
+                },
+                "description": "PULL — Daftar order dengan filter"
+              },
+              "response": []
+            },
+            {
+              "id": "3b640989-f437-4d99-a77d-ff212794fee8",
+              "name": "Get Order Detail",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/orders/:order_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "orders",
+                    ":order_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Detail lengkap satu order beserta items & alamat"
+              },
+              "response": []
+            },
+            {
+              "id": "43cb51bc-1a05-4b15-930f-b35e7729f11b",
+              "name": "Confirm Order",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/orders/:order_id/confirm",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "orders",
+                    ":order_id",
+                    "confirm"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Konfirmasi / accept pesanan dari buyer"
+              },
+              "response": []
+            },
+            {
+              "id": "db61022b-14cf-416e-8196-e430296be8d7",
+              "name": "Cancel Order",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/orders/:order_id/cancel",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "orders",
+                    ":order_id",
+                    "cancel"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Cancel pesanan",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"cancel_reason\": \"OUT_OF_STOCK\",\n  \"cancel_reason_note\": \"Stok habis di gudang\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "bf83df5d-5493-4e97-9861-7b43d74a32d1",
+              "name": "Bulk Cancel Orders",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/orders/bulk-cancel",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "orders",
+                    "bulk-cancel"
+                  ],
+                  "variable": []
+                },
+                "description": "Cancel banyak order sekaligus",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"order_ids\": [\n    \"<order_id_1>\",\n    \"<order_id_2>\"\n  ],\n  \"cancel_reason\": \"OUT_OF_STOCK\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "9ae1fe6e-dca7-4b0a-9878-3da417e7ad4b",
+              "name": "Get Order Invoice",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/orders/:order_id/invoice",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "orders",
+                    ":order_id",
+                    "invoice"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Download URL invoice/nota pesanan"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "id": "caddf250-260a-4661-8b03-09bb8e0d63b0",
+          "name": "🚚 Fulfillment",
+          "description": "Fulfillment & tracking — shopee",
+          "item": [
+            {
+              "id": "eca3ba40-50cf-44a8-9795-de21ce8a3d39",
+              "name": "Get Shipping Providers",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/shipping-providers",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "shipping-providers"
+                  ],
+                  "variable": [],
+                  "query": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>",
+                      "description": "ID order untuk cek kurir yang tersedia"
+                    }
+                  ]
+                },
+                "description": "Daftar kurir tersedia untuk order"
+              },
+              "response": []
+            },
+            {
+              "id": "1cc586c7-110f-4391-9e9c-bce3bd0e6f23",
+              "name": "Ship Order",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/orders/:order_id/ship",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "orders",
+                    ":order_id",
+                    "ship"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Kirim paket — input data pengiriman",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"provider_id\": \"<provider_id>\",\n  \"tracking_number\": \"JNE1234567890\",\n  \"warehouse_id\": \"<warehouse_id>\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "89bb6c4e-d212-4d22-ae9f-3a6c3f93fbf5",
+              "name": "Get Tracking",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/orders/:order_id/tracking",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "orders",
+                    ":order_id",
+                    "tracking"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Cek status & history tracking pengiriman"
+              },
+              "response": []
+            },
+            {
+              "id": "e865aea1-f22b-4130-a609-fd45c2ceb630",
+              "name": "Update Tracking",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/orders/:order_id/tracking",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "orders",
+                    ":order_id",
+                    "tracking"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Update nomor resi ke marketplace",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"tracking_number\": \"JNE1234567890\",\n  \"provider_id\": \"<provider_id>\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "d0d6fd68-d8bb-4636-91fc-f3b5e7d32b99",
+              "name": "Get Shipping Label",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/orders/:order_id/label",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "orders",
+                    ":order_id",
+                    "label"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Generate & download shipping label (PDF)"
+              },
+              "response": []
+            },
+            {
+              "id": "ba057add-9f7a-411a-b295-0fb3967070fa",
+              "name": "Get Warehouses",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/warehouses",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "warehouses"
+                  ],
+                  "variable": []
+                },
+                "description": "Daftar gudang/warehouse yang terdaftar"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "id": "38554e1e-b345-4a07-ac1c-b5922eaeb14f",
+          "name": "🔄 Return",
+          "description": "Return & refund — shopee",
+          "item": [
+            {
+              "id": "4047327b-fe82-4ed1-89b8-4e550a3cf870",
+              "name": "List Returns",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/returns",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "returns"
+                  ],
+                  "variable": [],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "REQUESTED",
+                      "description": "REQUESTED|APPROVED|REJECTED|COMPLETED"
+                    },
+                    {
+                      "key": "start_date",
+                      "value": "2024-01-01",
+                      "description": "Format: YYYY-MM-DD"
+                    },
+                    {
+                      "key": "end_date",
+                      "value": "2024-12-31",
+                      "description": "Format: YYYY-MM-DD"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Halaman"
+                    }
+                  ]
+                },
+                "description": "Daftar semua permintaan return/refund"
+              },
+              "response": []
+            },
+            {
+              "id": "43cf8d00-5284-4c40-a4f9-f78f6ea41b25",
+              "name": "Get Return Detail",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/returns/:return_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "returns",
+                    ":return_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "return_id",
+                      "value": "<return_id>"
+                    }
+                  ]
+                },
+                "description": "Detail satu permintaan return"
+              },
+              "response": []
+            },
+            {
+              "id": "99fcaed0-fc0a-4bdd-94ff-469d893f5bd8",
+              "name": "Approve Return",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/returns/:return_id/approve",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "returns",
+                    ":return_id",
+                    "approve"
+                  ],
+                  "variable": [
+                    {
+                      "key": "return_id",
+                      "value": "<return_id>"
+                    }
+                  ]
+                },
+                "description": "Setujui permintaan return dari buyer",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"refund_amount\": 50000\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "73e5ec45-1636-4022-84ae-b48ab8543021",
+              "name": "Reject Return",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/returns/:return_id/reject",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "returns",
+                    ":return_id",
+                    "reject"
+                  ],
+                  "variable": [
+                    {
+                      "key": "return_id",
+                      "value": "<return_id>"
+                    }
+                  ]
+                },
+                "description": "Tolak permintaan return",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reject_reason\": \"ITEM_NOT_RETURNED\",\n  \"reject_note\": \"Barang belum dikirim kembali\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "6adbbe82-e7d9-4c4e-8965-f137614a6c3d",
+              "name": "Process Refund",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/returns/:return_id/refund",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "returns",
+                    ":return_id",
+                    "refund"
+                  ],
+                  "variable": [
+                    {
+                      "key": "return_id",
+                      "value": "<return_id>"
+                    }
+                  ]
+                },
+                "description": "Proses refund ke buyer",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"refund_amount\": 50000,\n  \"reason\": \"Item sesuai permintaan return\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "ebf3eb80-d8f9-487f-8ffe-7484700af654",
+              "name": "Get Return Reasons",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/shopee/returns/reasons",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shopee",
+                    "returns",
+                    "reasons"
+                  ],
+                  "variable": []
+                },
+                "description": "Master data alasan return yang tersedia"
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "6f6edd2e-c05b-44b6-ad66-bdc006011bbd",
+      "name": "🟢 Tokopedia",
+      "description": "Endpoints untuk marketplace: tokopedia",
+      "item": [
+        {
+          "id": "6d79cd20-b9a3-4244-ba50-7958417d9812",
+          "name": "📦 Product",
+          "description": "Product endpoints — tokopedia",
+          "item": [
+            {
+              "id": "f3878117-e2c5-4ee5-bc52-931bf4cc9cff",
+              "name": "List Products",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/products",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "products"
+                  ],
+                  "variable": [],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Halaman"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "description": "Jumlah per halaman"
+                    },
+                    {
+                      "key": "status",
+                      "value": "ACTIVE",
+                      "description": "ACTIVE|INACTIVE|PENDING"
+                    },
+                    {
+                      "key": "keyword",
+                      "value": "",
+                      "description": "Cari nama produk"
+                    }
+                  ]
+                },
+                "description": "PULL — Ambil semua produk dari marketplace"
+              },
+              "response": []
+            },
+            {
+              "id": "8b4feefc-18c3-4ab3-a393-b5fde5cdb506",
+              "name": "Get Product Detail",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/products/:product_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "products",
+                    ":product_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "PULL — Detail satu produk beserta SKU & varian"
+              },
+              "response": []
+            },
+            {
+              "id": "489153ab-798a-411f-95cb-7af40f63d046",
+              "name": "Create Product",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/products",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "products"
+                  ],
+                  "variable": []
+                },
+                "description": "PUSH — Buat produk baru ke marketplace",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Nama Produk\",\n  \"description\": \"Deskripsi produk\",\n  \"category_id\": \"<category_id>\",\n  \"images\": [\n    \"https://example.com/img.jpg\"\n  ],\n  \"skus\": [\n    {\n      \"seller_sku\": \"SKU-001\",\n      \"price\": 50000,\n      \"stock\": 100,\n      \"variants\": {\n        \"color\": \"Merah\",\n        \"size\": \"M\"\n      }\n    }\n  ],\n  \"weight\": 300,\n  \"brand\": \"<brand_name>\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "5d0fcc17-e4bf-4f55-83f0-77f482636fa7",
+              "name": "Update Product",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/products/:product_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "products",
+                    ":product_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "PUSH — Update info produk",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Nama Produk Updated\",\n  \"description\": \"Deskripsi baru\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "95fbae90-bc6c-44e3-9156-629936fc9361",
+              "name": "Delete Product",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/products/:product_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "products",
+                    ":product_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "Hapus produk dari marketplace"
+              },
+              "response": []
+            },
+            {
+              "id": "d77d4182-d9cd-4810-8872-80ea6917bec9",
+              "name": "Activate Product",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/products/:product_id/activate",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "products",
+                    ":product_id",
+                    "activate"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "Publish / aktifkan produk"
+              },
+              "response": []
+            },
+            {
+              "id": "6657f629-d755-42ca-b2b6-4fb196a4b174",
+              "name": "Deactivate Product",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/products/:product_id/deactivate",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "products",
+                    ":product_id",
+                    "deactivate"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "Nonaktifkan / unlisted produk"
+              },
+              "response": []
+            },
+            {
+              "id": "5353b919-aed4-44a6-a62f-204aaae86f66",
+              "name": "Update Stock",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/products/:product_id/stock",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "products",
+                    ":product_id",
+                    "stock"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "Update stok SKU (bisa batch)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"skus\": [\n    {\n      \"sku_id\": \"<sku_id>\",\n      \"stock\": 50\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "4707f186-6f47-41af-b077-735ba346516e",
+              "name": "Update Price",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/products/:product_id/price",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "products",
+                    ":product_id",
+                    "price"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "Update harga SKU (bisa batch)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"skus\": [\n    {\n      \"sku_id\": \"<sku_id>\",\n      \"price\": 45000,\n      \"sale_price\": 40000\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "d0904e32-27a9-486f-bb1f-364eeec65950",
+              "name": "Get Categories",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/products/categories",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "products",
+                    "categories"
+                  ],
+                  "variable": [],
+                  "query": [
+                    {
+                      "key": "parent_id",
+                      "value": "0",
+                      "description": "ID kategori parent (0 = root)"
+                    }
+                  ]
+                },
+                "description": "Daftar kategori produk marketplace"
+              },
+              "response": []
+            },
+            {
+              "id": "817ed337-4082-42ee-b251-925774d5de42",
+              "name": "Upload Image",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/products/images",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "products",
+                    "images"
+                  ],
+                  "variable": []
+                },
+                "description": "Upload gambar produk",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"note\": \"Gunakan multipart/form-data, field: file\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "id": "20aa2a2e-9190-4d12-bdd0-513832888edf",
+          "name": "🛒 Order",
+          "description": "Order endpoints — tokopedia",
+          "item": [
+            {
+              "id": "ea91c302-4682-4b6f-bc84-90b272a660fb",
+              "name": "List Orders",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/orders",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "orders"
+                  ],
+                  "variable": [],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "AWAITING_CONFIRM",
+                      "description": "UNPAID|AWAITING_CONFIRM|PROCESSING|SHIPPED|DELIVERED|CANCELLED"
+                    },
+                    {
+                      "key": "start_date",
+                      "value": "2024-01-01",
+                      "description": "Format: YYYY-MM-DD"
+                    },
+                    {
+                      "key": "end_date",
+                      "value": "2024-12-31",
+                      "description": "Format: YYYY-MM-DD"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Halaman"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "description": "Jumlah per halaman"
+                    }
+                  ]
+                },
+                "description": "PULL — Daftar order dengan filter"
+              },
+              "response": []
+            },
+            {
+              "id": "5ebe6354-6d9f-4d07-86cc-42ffcffd827d",
+              "name": "Get Order Detail",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/orders/:order_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "orders",
+                    ":order_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Detail lengkap satu order beserta items & alamat"
+              },
+              "response": []
+            },
+            {
+              "id": "f4e81d93-e29d-45fc-8dd4-7bcfc37dd9b4",
+              "name": "Confirm Order",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/orders/:order_id/confirm",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "orders",
+                    ":order_id",
+                    "confirm"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Konfirmasi / accept pesanan dari buyer"
+              },
+              "response": []
+            },
+            {
+              "id": "fee722cd-486a-4755-9780-805c2abb8911",
+              "name": "Cancel Order",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/orders/:order_id/cancel",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "orders",
+                    ":order_id",
+                    "cancel"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Cancel pesanan",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"cancel_reason\": \"OUT_OF_STOCK\",\n  \"cancel_reason_note\": \"Stok habis di gudang\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "48adb91b-2aa2-4bed-a019-215817c51387",
+              "name": "Bulk Cancel Orders",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/orders/bulk-cancel",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "orders",
+                    "bulk-cancel"
+                  ],
+                  "variable": []
+                },
+                "description": "Cancel banyak order sekaligus",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"order_ids\": [\n    \"<order_id_1>\",\n    \"<order_id_2>\"\n  ],\n  \"cancel_reason\": \"OUT_OF_STOCK\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "ad797f19-cb70-43b2-ad8f-dd48f3d7a2df",
+              "name": "Get Order Invoice",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/orders/:order_id/invoice",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "orders",
+                    ":order_id",
+                    "invoice"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Download URL invoice/nota pesanan"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "id": "62cb3dc3-f956-4332-8b57-447cfae83b66",
+          "name": "🚚 Fulfillment",
+          "description": "Fulfillment & tracking — tokopedia",
+          "item": [
+            {
+              "id": "6a45ef97-4d2c-410f-b3f2-6248c9a6d7bc",
+              "name": "Get Shipping Providers",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/shipping-providers",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "shipping-providers"
+                  ],
+                  "variable": [],
+                  "query": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>",
+                      "description": "ID order untuk cek kurir yang tersedia"
+                    }
+                  ]
+                },
+                "description": "Daftar kurir tersedia untuk order"
+              },
+              "response": []
+            },
+            {
+              "id": "820da059-6a75-47c0-a9f6-16e2088a88d2",
+              "name": "Ship Order",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/orders/:order_id/ship",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "orders",
+                    ":order_id",
+                    "ship"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Kirim paket — input data pengiriman",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"provider_id\": \"<provider_id>\",\n  \"tracking_number\": \"JNE1234567890\",\n  \"warehouse_id\": \"<warehouse_id>\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "e7ce236a-8744-4315-a859-ab39e26977ea",
+              "name": "Get Tracking",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/orders/:order_id/tracking",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "orders",
+                    ":order_id",
+                    "tracking"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Cek status & history tracking pengiriman"
+              },
+              "response": []
+            },
+            {
+              "id": "d64eef36-55e2-48fd-be48-ed04d2089127",
+              "name": "Update Tracking",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/orders/:order_id/tracking",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "orders",
+                    ":order_id",
+                    "tracking"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Update nomor resi ke marketplace",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"tracking_number\": \"JNE1234567890\",\n  \"provider_id\": \"<provider_id>\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "d0036761-6917-4560-9bba-508653d1dd22",
+              "name": "Get Shipping Label",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/orders/:order_id/label",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "orders",
+                    ":order_id",
+                    "label"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Generate & download shipping label (PDF)"
+              },
+              "response": []
+            },
+            {
+              "id": "d8ba19d8-1d54-4643-ad24-610c33d8da5a",
+              "name": "Get Warehouses",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/warehouses",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "warehouses"
+                  ],
+                  "variable": []
+                },
+                "description": "Daftar gudang/warehouse yang terdaftar"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "id": "9d46cb79-33d2-42b7-a6ee-7283293ecd76",
+          "name": "🔄 Return",
+          "description": "Return & refund — tokopedia",
+          "item": [
+            {
+              "id": "9ede8275-1cfa-4838-b405-96d186557a3a",
+              "name": "List Returns",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/returns",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "returns"
+                  ],
+                  "variable": [],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "REQUESTED",
+                      "description": "REQUESTED|APPROVED|REJECTED|COMPLETED"
+                    },
+                    {
+                      "key": "start_date",
+                      "value": "2024-01-01",
+                      "description": "Format: YYYY-MM-DD"
+                    },
+                    {
+                      "key": "end_date",
+                      "value": "2024-12-31",
+                      "description": "Format: YYYY-MM-DD"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Halaman"
+                    }
+                  ]
+                },
+                "description": "Daftar semua permintaan return/refund"
+              },
+              "response": []
+            },
+            {
+              "id": "21da7565-14b5-4aeb-b925-9b7f22ee8e94",
+              "name": "Get Return Detail",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/returns/:return_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "returns",
+                    ":return_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "return_id",
+                      "value": "<return_id>"
+                    }
+                  ]
+                },
+                "description": "Detail satu permintaan return"
+              },
+              "response": []
+            },
+            {
+              "id": "da1833c0-7ddc-44ac-9af2-4d2249e64489",
+              "name": "Approve Return",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/returns/:return_id/approve",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "returns",
+                    ":return_id",
+                    "approve"
+                  ],
+                  "variable": [
+                    {
+                      "key": "return_id",
+                      "value": "<return_id>"
+                    }
+                  ]
+                },
+                "description": "Setujui permintaan return dari buyer",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"refund_amount\": 50000\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "07c05788-8ba1-4204-95fe-ca3222c97ab4",
+              "name": "Reject Return",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/returns/:return_id/reject",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "returns",
+                    ":return_id",
+                    "reject"
+                  ],
+                  "variable": [
+                    {
+                      "key": "return_id",
+                      "value": "<return_id>"
+                    }
+                  ]
+                },
+                "description": "Tolak permintaan return",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reject_reason\": \"ITEM_NOT_RETURNED\",\n  \"reject_note\": \"Barang belum dikirim kembali\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "7f2d993c-0e03-490c-b113-87cbb9358042",
+              "name": "Process Refund",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/returns/:return_id/refund",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "returns",
+                    ":return_id",
+                    "refund"
+                  ],
+                  "variable": [
+                    {
+                      "key": "return_id",
+                      "value": "<return_id>"
+                    }
+                  ]
+                },
+                "description": "Proses refund ke buyer",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"refund_amount\": 50000,\n  \"reason\": \"Item sesuai permintaan return\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "29537a23-3598-4d55-9d13-75bc394bde43",
+              "name": "Get Return Reasons",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/tokopedia/returns/reasons",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tokopedia",
+                    "returns",
+                    "reasons"
+                  ],
+                  "variable": []
+                },
+                "description": "Master data alasan return yang tersedia"
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "71a688af-c77e-4030-b308-0df2175a56ca",
+      "name": "🔵 Lazada",
+      "description": "Endpoints untuk marketplace: lazada",
+      "item": [
+        {
+          "id": "b090a46c-2625-43cc-a362-6e13137fbe58",
+          "name": "📦 Product",
+          "description": "Product endpoints — lazada",
+          "item": [
+            {
+              "id": "cbcb6b03-268f-43b6-ace2-c230c2245130",
+              "name": "List Products",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/products",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "products"
+                  ],
+                  "variable": [],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Halaman"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "description": "Jumlah per halaman"
+                    },
+                    {
+                      "key": "status",
+                      "value": "ACTIVE",
+                      "description": "ACTIVE|INACTIVE|PENDING"
+                    },
+                    {
+                      "key": "keyword",
+                      "value": "",
+                      "description": "Cari nama produk"
+                    }
+                  ]
+                },
+                "description": "PULL — Ambil semua produk dari marketplace"
+              },
+              "response": []
+            },
+            {
+              "id": "89824cea-a3c5-4101-a633-e4b11de2df61",
+              "name": "Get Product Detail",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/products/:product_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "products",
+                    ":product_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "PULL — Detail satu produk beserta SKU & varian"
+              },
+              "response": []
+            },
+            {
+              "id": "9fa575e3-9890-46dc-a890-f893e0f0c75d",
+              "name": "Create Product",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/products",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "products"
+                  ],
+                  "variable": []
+                },
+                "description": "PUSH — Buat produk baru ke marketplace",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Nama Produk\",\n  \"description\": \"Deskripsi produk\",\n  \"category_id\": \"<category_id>\",\n  \"images\": [\n    \"https://example.com/img.jpg\"\n  ],\n  \"skus\": [\n    {\n      \"seller_sku\": \"SKU-001\",\n      \"price\": 50000,\n      \"stock\": 100,\n      \"variants\": {\n        \"color\": \"Merah\",\n        \"size\": \"M\"\n      }\n    }\n  ],\n  \"weight\": 300,\n  \"brand\": \"<brand_name>\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "3c0e3766-5413-46db-a822-a1340ff1c893",
+              "name": "Update Product",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/products/:product_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "products",
+                    ":product_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "PUSH — Update info produk",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Nama Produk Updated\",\n  \"description\": \"Deskripsi baru\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "a3d6aac1-95ab-41ef-a025-3e815d1fadd2",
+              "name": "Delete Product",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/products/:product_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "products",
+                    ":product_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "Hapus produk dari marketplace"
+              },
+              "response": []
+            },
+            {
+              "id": "bf77f3f9-4869-4670-808d-172b827a2f77",
+              "name": "Activate Product",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/products/:product_id/activate",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "products",
+                    ":product_id",
+                    "activate"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "Publish / aktifkan produk"
+              },
+              "response": []
+            },
+            {
+              "id": "66e9db2a-487f-43fe-8280-d84d084fd3c5",
+              "name": "Deactivate Product",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/products/:product_id/deactivate",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "products",
+                    ":product_id",
+                    "deactivate"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "Nonaktifkan / unlisted produk"
+              },
+              "response": []
+            },
+            {
+              "id": "18afc1a6-9e24-4abf-9f56-091b69fd918d",
+              "name": "Update Stock",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/products/:product_id/stock",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "products",
+                    ":product_id",
+                    "stock"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "Update stok SKU (bisa batch)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"skus\": [\n    {\n      \"sku_id\": \"<sku_id>\",\n      \"stock\": 50\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "96751826-ec3a-471d-a854-432529c93644",
+              "name": "Update Price",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/products/:product_id/price",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "products",
+                    ":product_id",
+                    "price"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "<product_id>"
+                    }
+                  ]
+                },
+                "description": "Update harga SKU (bisa batch)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"skus\": [\n    {\n      \"sku_id\": \"<sku_id>\",\n      \"price\": 45000,\n      \"sale_price\": 40000\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "68df1485-f273-49c6-81be-a504c147319c",
+              "name": "Get Categories",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/products/categories",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "products",
+                    "categories"
+                  ],
+                  "variable": [],
+                  "query": [
+                    {
+                      "key": "parent_id",
+                      "value": "0",
+                      "description": "ID kategori parent (0 = root)"
+                    }
+                  ]
+                },
+                "description": "Daftar kategori produk marketplace"
+              },
+              "response": []
+            },
+            {
+              "id": "0025e674-3df6-4b82-bcb4-e6ea42cbc255",
+              "name": "Upload Image",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/products/images",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "products",
+                    "images"
+                  ],
+                  "variable": []
+                },
+                "description": "Upload gambar produk",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"note\": \"Gunakan multipart/form-data, field: file\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "id": "1d3943d3-bb68-4d5b-9c2a-d7640498bf1a",
+          "name": "🛒 Order",
+          "description": "Order endpoints — lazada",
+          "item": [
+            {
+              "id": "f28ad458-71b3-44ab-a1ee-ae93f0c6a276",
+              "name": "List Orders",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/orders",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "orders"
+                  ],
+                  "variable": [],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "AWAITING_CONFIRM",
+                      "description": "UNPAID|AWAITING_CONFIRM|PROCESSING|SHIPPED|DELIVERED|CANCELLED"
+                    },
+                    {
+                      "key": "start_date",
+                      "value": "2024-01-01",
+                      "description": "Format: YYYY-MM-DD"
+                    },
+                    {
+                      "key": "end_date",
+                      "value": "2024-12-31",
+                      "description": "Format: YYYY-MM-DD"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Halaman"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "description": "Jumlah per halaman"
+                    }
+                  ]
+                },
+                "description": "PULL — Daftar order dengan filter"
+              },
+              "response": []
+            },
+            {
+              "id": "a3f8278f-deea-4ae5-b53d-ceb4ba82da6a",
+              "name": "Get Order Detail",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/orders/:order_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "orders",
+                    ":order_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Detail lengkap satu order beserta items & alamat"
+              },
+              "response": []
+            },
+            {
+              "id": "fecccf6c-bc1b-4c30-9432-96e0a81a30b0",
+              "name": "Confirm Order",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/orders/:order_id/confirm",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "orders",
+                    ":order_id",
+                    "confirm"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Konfirmasi / accept pesanan dari buyer"
+              },
+              "response": []
+            },
+            {
+              "id": "6b1e9773-2bcc-4f9d-9666-f7653da38069",
+              "name": "Cancel Order",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/orders/:order_id/cancel",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "orders",
+                    ":order_id",
+                    "cancel"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Cancel pesanan",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"cancel_reason\": \"OUT_OF_STOCK\",\n  \"cancel_reason_note\": \"Stok habis di gudang\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "96692000-09a4-4df5-b1b7-e4b14d37e263",
+              "name": "Bulk Cancel Orders",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/orders/bulk-cancel",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "orders",
+                    "bulk-cancel"
+                  ],
+                  "variable": []
+                },
+                "description": "Cancel banyak order sekaligus",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"order_ids\": [\n    \"<order_id_1>\",\n    \"<order_id_2>\"\n  ],\n  \"cancel_reason\": \"OUT_OF_STOCK\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "72dd374a-ae28-4d7c-930d-3a394d56ac3e",
+              "name": "Get Order Invoice",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/orders/:order_id/invoice",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "orders",
+                    ":order_id",
+                    "invoice"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Download URL invoice/nota pesanan"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "id": "badc2ed7-e77c-40c3-b799-b9bfb4ca09ad",
+          "name": "🚚 Fulfillment",
+          "description": "Fulfillment & tracking — lazada",
+          "item": [
+            {
+              "id": "c61bddb3-81b4-44de-89db-08d94018a697",
+              "name": "Get Shipping Providers",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/shipping-providers",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "shipping-providers"
+                  ],
+                  "variable": [],
+                  "query": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>",
+                      "description": "ID order untuk cek kurir yang tersedia"
+                    }
+                  ]
+                },
+                "description": "Daftar kurir tersedia untuk order"
+              },
+              "response": []
+            },
+            {
+              "id": "3ef33647-5bd5-451b-be53-b2f5e580468e",
+              "name": "Ship Order",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/orders/:order_id/ship",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "orders",
+                    ":order_id",
+                    "ship"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Kirim paket — input data pengiriman",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"provider_id\": \"<provider_id>\",\n  \"tracking_number\": \"JNE1234567890\",\n  \"warehouse_id\": \"<warehouse_id>\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "19f10499-7d7c-4647-b957-f979a5ff50f5",
+              "name": "Get Tracking",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/orders/:order_id/tracking",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "orders",
+                    ":order_id",
+                    "tracking"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Cek status & history tracking pengiriman"
+              },
+              "response": []
+            },
+            {
+              "id": "76795372-e073-4c0d-9dce-b6ef421e94c6",
+              "name": "Update Tracking",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/orders/:order_id/tracking",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "orders",
+                    ":order_id",
+                    "tracking"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Update nomor resi ke marketplace",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"tracking_number\": \"JNE1234567890\",\n  \"provider_id\": \"<provider_id>\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "70929763-1404-4985-92b6-e26588d3c769",
+              "name": "Get Shipping Label",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/orders/:order_id/label",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "orders",
+                    ":order_id",
+                    "label"
+                  ],
+                  "variable": [
+                    {
+                      "key": "order_id",
+                      "value": "<order_id>"
+                    }
+                  ]
+                },
+                "description": "Generate & download shipping label (PDF)"
+              },
+              "response": []
+            },
+            {
+              "id": "b3ef936d-45b0-458f-8d35-726260b95011",
+              "name": "Get Warehouses",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/warehouses",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "warehouses"
+                  ],
+                  "variable": []
+                },
+                "description": "Daftar gudang/warehouse yang terdaftar"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "id": "af0e7f27-0167-440e-a706-9731ebf8ebd0",
+          "name": "🔄 Return",
+          "description": "Return & refund — lazada",
+          "item": [
+            {
+              "id": "dc3f96fb-c730-483a-8a61-9dec12631e13",
+              "name": "List Returns",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/returns",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "returns"
+                  ],
+                  "variable": [],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "REQUESTED",
+                      "description": "REQUESTED|APPROVED|REJECTED|COMPLETED"
+                    },
+                    {
+                      "key": "start_date",
+                      "value": "2024-01-01",
+                      "description": "Format: YYYY-MM-DD"
+                    },
+                    {
+                      "key": "end_date",
+                      "value": "2024-12-31",
+                      "description": "Format: YYYY-MM-DD"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Halaman"
+                    }
+                  ]
+                },
+                "description": "Daftar semua permintaan return/refund"
+              },
+              "response": []
+            },
+            {
+              "id": "efae6e71-1b1c-4184-b359-641bce676ba3",
+              "name": "Get Return Detail",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/returns/:return_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "returns",
+                    ":return_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "return_id",
+                      "value": "<return_id>"
+                    }
+                  ]
+                },
+                "description": "Detail satu permintaan return"
+              },
+              "response": []
+            },
+            {
+              "id": "54647b67-7683-4b74-9bf5-2b8886d27fd4",
+              "name": "Approve Return",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/returns/:return_id/approve",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "returns",
+                    ":return_id",
+                    "approve"
+                  ],
+                  "variable": [
+                    {
+                      "key": "return_id",
+                      "value": "<return_id>"
+                    }
+                  ]
+                },
+                "description": "Setujui permintaan return dari buyer",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"refund_amount\": 50000\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "a9e691e6-ef4f-4fbf-81aa-d494428127ea",
+              "name": "Reject Return",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/returns/:return_id/reject",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "returns",
+                    ":return_id",
+                    "reject"
+                  ],
+                  "variable": [
+                    {
+                      "key": "return_id",
+                      "value": "<return_id>"
+                    }
+                  ]
+                },
+                "description": "Tolak permintaan return",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reject_reason\": \"ITEM_NOT_RETURNED\",\n  \"reject_note\": \"Barang belum dikirim kembali\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "320ffca9-0b8b-4486-9183-ec02c9b4e7e2",
+              "name": "Process Refund",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/returns/:return_id/refund",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "returns",
+                    ":return_id",
+                    "refund"
+                  ],
+                  "variable": [
+                    {
+                      "key": "return_id",
+                      "value": "<return_id>"
+                    }
+                  ]
+                },
+                "description": "Proses refund ke buyer",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"refund_amount\": 50000,\n  \"reason\": \"Item sesuai permintaan return\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "id": "e800f173-7d52-41fe-9e09-50d6fa885c1d",
+              "name": "Get Return Reasons",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}"
+                  },
+                  {
+                    "key": "X-Shop-Id",
+                    "value": "{{shop_id}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/lazada/returns/reasons",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "lazada",
+                    "returns",
+                    "reasons"
+                  ],
+                  "variable": []
+                },
+                "description": "Master data alasan return yang tersedia"
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
