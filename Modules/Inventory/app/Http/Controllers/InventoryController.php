@@ -3,54 +3,47 @@
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Inventory\Services\InventoryService;
 
 class InventoryController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
+    public function __construct(
+        protected InventoryService $inventoryService
+    ) {}
+
+    public function index(Request $request): JsonResponse
     {
-        return view('inventory::index');
+        $stocks = $this->inventoryService->getAllStocks($request->only([
+            'item_id', 'location_id'
+        ]));
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $stocks,
+        ]);
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
+    public function show(int $itemId): JsonResponse
     {
-        return view('inventory::create');
+        $stocks = $this->inventoryService->getStockByItem($itemId);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $stocks,
+        ]);
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request) {}
-
-    /**
-     * Show the specified resource.
-     */
-    public function show($id)
+    public function movements(Request $request): JsonResponse
     {
-        return view('inventory::show');
+        $history = $this->inventoryService->getMovementHistory($request->only([
+            'item_id', 'location_id', 'source', 'date_from', 'date_to'
+        ]));
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $history,
+        ]);
     }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit($id)
-    {
-        return view('inventory::edit');
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, $id) {}
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy($id) {}
 }
