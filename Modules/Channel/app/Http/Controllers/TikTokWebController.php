@@ -6,31 +6,25 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Services\TikTokProductService;
-
-use Illuminate\Support\Facades\DB;
+use Modules\Channel\Services\ChannelDashboardService;
+use App\Traits\ApiResponse;
 
 class TikTokWebController extends Controller
 {
+    use ApiResponse;
+
+    protected ChannelDashboardService $dashboardService;
+
+    public function __construct(ChannelDashboardService $dashboardService)
+    {
+        $this->dashboardService = $dashboardService;
+    }
+
     public function index()
     {
-        $products = DB::table('products')->orderBy('id', 'desc')->get();
-        $orders = DB::table('orders')->orderBy('id', 'desc')->get();
-        
-        foreach ($orders as $order) {
-            $items = DB::table('order_items')->where('order_id', $order->id)->get();
-            $itemNames = [];
-            foreach ($items as $item) {
-                // Find variant to get product_id
-                $variant = DB::table('product_variants')->where('sku', $item->sku)->first();
-                if ($variant) {
-                    $product = DB::table('products')->where('id', $variant->product_id)->first();
-                    $itemNames[] = $product ? $product->name : $item->sku;
-                } else {
-                    $itemNames[] = $item->sku ?: 'Unknown Item';
-                }
-            }
-            $order->product_names = implode(', ', $itemNames);
-        }
+        $data = $this->dashboardService->getDashboardData();
+        $products = $data['products'];
+        $orders = $data['orders'];
 
         return view('channel::tiktok-sync', compact('products', 'orders'));
     }
@@ -212,28 +206,38 @@ class TikTokWebController extends Controller
             'shop_id' => 'required|string'
         ]);
 
-        $unsyncedProducts = DB::table('products')->whereNull('tiktok_product_id')->get();
-        if ($unsyncedProducts->isEmpty()) {
-            return redirect()->back()->with('success', "Semua produk sudah tersinkron!");
-        }
-
-        $successCount = 0;
-        $failCount = 0;
-
-        foreach ($unsyncedProducts as $p) {
-            try {
-                $productService->pushProduct($p->id, $request->shop_id);
-                $successCount++;
-            } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::error("Bulk Push Failed for Product {$p->id}: " . $e->getMessage());
-                $failCount++;
-            }
-        }
-
-        $msg = "Bulk Push Selesai. Sukses: {$successCount}, Gagal: {$failCount}.";
+        $failCount = $productService->bulkPushProducts($request->shop_id);
+        
         if ($failCount > 0) {
-            return redirect()->back()->with('error', $msg);
+            return redirect()->back()->with('error', "Bulk Push selesai dengan {$failCount} kegagalan.");
         }
-        return redirect()->back()->with('success', $msg);
+        
+        return redirect()->back()->with('success', "Semua produk berhasil di-push secara massal.");
+    }
+    
+    public function getCancelReasons(Request $request, TikTokOrderService $orderService)
+    {
+        try {
+            $reasons = $orderService->getCancelReasons();
+            return $this->successResponse($reasons, 'Cancel reasons fetched successfully');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 500);
+        }
+    }
+
+    public function cancelProduct(Request $request, TikTokOrderService $orderService)
+    {
+        $request->validate([
+            'order_id' => 'required|string',
+            'reason' => 'required|string'
+        ]);
+
+        try {
+            $res = $orderService->cancelProduct($request->order_id, $request->reason);
+            return $this->successResponse($res, 'Pesanan berhasil dibatalkan');
+        } catch (\Exception $e) {
+            $status = strpos($e->getMessage(), 'Hanya berlaku') !== false || strpos($e->getMessage(), 'tidak ditemukan') !== false ? 400 : 500;
+            return $this->errorResponse($e->getMessage(), $status);
+        }
     }
 }
