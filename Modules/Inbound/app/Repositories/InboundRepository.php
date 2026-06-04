@@ -30,7 +30,7 @@ class InboundRepository
 
     public function findByIdForUpdate(int $id): ?Inbound
     {
-        return Inbound::lockForUpdate()->find($id);
+        return Inbound::where('id', $id)->lockForUpdate()->first();
     }
 
     public function create(array $data): Inbound
@@ -51,7 +51,7 @@ class InboundRepository
 
     public function updateItemReceivedQty(int $itemId, int $addedQty): bool
     {
-        $item = InboundItem::lockForUpdate()->find($itemId);
+        $item = InboundItem::where('id', $itemId)->lockForUpdate()->first();
         if ($item) {
             $item->received_qty += $addedQty;
             return $item->save();
