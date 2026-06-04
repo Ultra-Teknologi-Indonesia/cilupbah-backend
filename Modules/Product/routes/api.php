@@ -10,6 +10,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     // General Media Upload Endpoint
     Route::post('media/upload', [MediaController::class, 'upload']);
+
+    // Import Endpoints
+    Route::post('products/import/single', [\Modules\Product\Http\Controllers\ProductImportController::class, 'importSingle']);
+    Route::post('products/import/bundle', [\Modules\Product\Http\Controllers\ProductImportController::class, 'importBundle']);
 });
 
 // Channel specific product routes (Temporarily Unprotected for Testing)
