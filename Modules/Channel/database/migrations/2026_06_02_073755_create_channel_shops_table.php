@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('channel_shops', function (Blueprint $table) {
             $table->id();
-            $table->string('channel_name')->default('tiktok');
+            $table->foreignId('channel_id')->nullable()->constrained('channels')->cascadeOnDelete();
             $table->string('shop_id')->unique();
             $table->string('shop_name')->nullable();
             $table->string('shop_cipher')->nullable();
