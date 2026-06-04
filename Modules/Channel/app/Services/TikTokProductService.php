@@ -207,4 +207,82 @@ class TikTokProductService
 
         return true;
     }
+
+    public function pushUpdate(int $productId, string $shopId)
+    {
+        $shop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
+        if (!$shop || !$shop->access_token) {
+            throw new \Exception("No access token found for shop: {$shopId}");
+        }
+
+        $product = DB::table('products')->where('id', $productId)->first();
+        if (!$product || !$product->channel_product_id) {
+            throw new \Exception("Product not found or not synced to TikTok yet");
+        }
+
+        $variants = DB::table('product_variants')->where('product_id', $productId)->get();
+        $media = DB::table('product_media')->where('product_id', $productId)->get();
+
+        $uploadedImageIds = [];
+        foreach ($media as $m) {
+            $uploadedImageIds[] = $m->url; 
+        }
+
+        $internalProduct = (array)$product;
+        $internalProduct['variants'] = $variants->map(function ($v) {
+            $variantArr = (array)$v;
+            $options = DB::table('variant_options')->where('variant_id', $v->id)->get()->toArray();
+            $variantArr['options'] = array_map(fn($opt) => (array)$opt, $options);
+            return $variantArr;
+        })->toArray();
+
+        $payload = $this->mapper->map($internalProduct, $uploadedImageIds);
+
+        return $this->client->request('PUT', "/product/202309/products/{$product->channel_product_id}", ['shop_cipher' => $shop->shop_cipher ?? ''], $payload, $shop->access_token);
+    }
+
+    public function deleteProduct(int $productId, string $shopId)
+    {
+        $shop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
+        if (!$shop || !$shop->access_token) {
+            throw new \Exception("No access token found for shop: {$shopId}");
+        }
+
+        $product = DB::table('products')->where('id', $productId)->first();
+        if (!$product || !$product->channel_product_id) {
+            return true;
+        }
+
+        return $this->client->request('DELETE', "/product/202309/products", ['shop_cipher' => $shop->shop_cipher ?? ''], ['product_ids' => [$product->channel_product_id]], $shop->access_token);
+    }
+
+    public function activateProduct(int $productId, string $shopId)
+    {
+        $shop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
+        if (!$shop || !$shop->access_token) {
+            throw new \Exception("No access token found for shop: {$shopId}");
+        }
+
+        $product = DB::table('products')->where('id', $productId)->first();
+        if (!$product || !$product->channel_product_id) {
+            throw new \Exception("Product not synced to TikTok yet");
+        }
+
+        return $this->client->request('POST', "/product/202309/products/activate", ['shop_cipher' => $shop->shop_cipher ?? ''], ['product_ids' => [$product->channel_product_id]], $shop->access_token);
+    }
+
+    public function deactivateProduct(int $productId, string $shopId)
+    {
+        $shop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
+        if (!$shop || !$shop->access_token) {
+            throw new \Exception("No access token found for shop: {$shopId}");
+        }
+
+        $product = DB::table('products')->where('id', $productId)->first();
+        if (!$product || !$product->channel_product_id) {
+            throw new \Exception("Product not synced to TikTok yet");
+        }
+
+        return $this->client->request('POST', "/product/202309/products/deactivate", ['shop_cipher' => $shop->shop_cipher ?? ''], ['product_ids' => [$product->channel_product_id]], $shop->access_token);
+    }
 }

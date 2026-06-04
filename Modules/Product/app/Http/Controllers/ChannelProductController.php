@@ -243,14 +243,20 @@ class ChannelProductController extends Controller
             ->firstOrFail();
         
         $data = $request->validate([
+            'shop_id' => 'required|string',
             'name' => 'sometimes|required|string|max:255',
             'description' => 'nullable|string',
         ]);
 
+        $shopId = $data['shop_id'];
+        unset($data['shop_id']);
+
         $product->update($data);
 
-        // Untuk fitur update ke TikTok secara native (jika belum ada servis khusus di TikTokProductService)
-        // Saat ini belum ada pushUpdate() di TikTokProductService, jadi kita hanya update lokal dulu
+        if ($channel === 'tiktok') {
+            $tiktokService = app(\Modules\Channel\Services\TikTokProductService::class);
+            $tiktokService->pushUpdate($product->id, $shopId);
+        }
         
         return response()->json([
             'status' => 'success',
@@ -269,11 +275,22 @@ class ChannelProductController extends Controller
     #[OA\Parameter(name: "channel", in: "path", required: true, schema: new OA\Schema(type: "string"))]
     #[OA\Parameter(name: "id", in: "path", required: true, schema: new OA\Schema(type: "string"))]
     #[OA\Response(response: 200, description: "Product deleted successfully")]
-    public function destroy(string $channel, string $id): JsonResponse
+    public function destroy(Request $request, string $channel, string $id): JsonResponse
     {
+        $shopId = $request->input('shop_id');
+        if (!$shopId) {
+            return response()->json(['status' => 'error', 'message' => 'shop_id is required'], 400);
+        }
+
         $product = Product::where('channel_product_id', $id)
             ->when(is_numeric($id), fn($q) => $q->orWhere('id', $id))
             ->firstOrFail();
+            
+        if ($channel === 'tiktok') {
+            $tiktokService = app(\Modules\Channel\Services\TikTokProductService::class);
+            $tiktokService->deleteProduct($product->id, $shopId);
+        }
+            
         $product->delete();
 
         return response()->json([
@@ -295,12 +312,23 @@ class ChannelProductController extends Controller
     #[OA\Parameter(name: "channel", in: "path", required: true, schema: new OA\Schema(type: "string"))]
     #[OA\Parameter(name: "id", in: "path", required: true, schema: new OA\Schema(type: "string"))]
     #[OA\Response(response: 200, description: "Product activated successfully")]
-    public function activate(string $channel, string $id): JsonResponse
+    public function activate(Request $request, string $channel, string $id): JsonResponse
     {
+        $shopId = $request->input('shop_id');
+        if (!$shopId) {
+            return response()->json(['status' => 'error', 'message' => 'shop_id is required'], 400);
+        }
+
         $product = Product::where('channel_product_id', $id)
             ->when(is_numeric($id), fn($q) => $q->orWhere('id', $id))
             ->firstOrFail();
+            
         $product->update(['is_active' => true]);
+
+        if ($channel === 'tiktok') {
+            $tiktokService = app(\Modules\Channel\Services\TikTokProductService::class);
+            $tiktokService->activateProduct($product->id, $shopId);
+        }
 
         return response()->json([
             'status' => 'success',
@@ -319,12 +347,23 @@ class ChannelProductController extends Controller
     #[OA\Parameter(name: "channel", in: "path", required: true, schema: new OA\Schema(type: "string"))]
     #[OA\Parameter(name: "id", in: "path", required: true, schema: new OA\Schema(type: "string"))]
     #[OA\Response(response: 200, description: "Product deactivated successfully")]
-    public function deactivate(string $channel, string $id): JsonResponse
+    public function deactivate(Request $request, string $channel, string $id): JsonResponse
     {
+        $shopId = $request->input('shop_id');
+        if (!$shopId) {
+            return response()->json(['status' => 'error', 'message' => 'shop_id is required'], 400);
+        }
+
         $product = Product::where('channel_product_id', $id)
             ->when(is_numeric($id), fn($q) => $q->orWhere('id', $id))
             ->firstOrFail();
+            
         $product->update(['is_active' => false]);
+
+        if ($channel === 'tiktok') {
+            $tiktokService = app(\Modules\Channel\Services\TikTokProductService::class);
+            $tiktokService->deactivateProduct($product->id, $shopId);
+        }
 
         return response()->json([
             'status' => 'success',
