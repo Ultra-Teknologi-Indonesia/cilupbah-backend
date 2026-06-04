@@ -5,8 +5,26 @@ namespace Modules\Channel\Repositories;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Models\ChannelShop;
 
+use Spatie\QueryBuilder\QueryBuilder;
+use Spatie\QueryBuilder\AllowedFilter;
+use App\Filters\FuzzyFilter;
+
 class ChannelShopRepository
 {
+    public function getPaginatedShops()
+    {
+        return QueryBuilder::for(ChannelShop::class)
+            ->with('channel')
+            ->allowedFilters(
+                AllowedFilter::custom('search', new FuzzyFilter(), 'shop_name'),
+                'channel_id',
+                'is_active'
+            )
+            ->allowedSorts('shop_name', 'created_at', 'id')
+            ->defaultSort('-created_at')
+            ->paginate(request('per_page', 15))
+            ->appends(request()->query());
+    }
     public function findByShopId(string $shopId)
     {
         return DB::table('channel_shops')->where('shop_id', $shopId)->first();
