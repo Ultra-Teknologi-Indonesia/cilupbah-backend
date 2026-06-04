@@ -129,7 +129,8 @@ class TikTokClient
             'grant_type' => 'authorized_code',
         ];
 
-        $url = $this->baseUrl . $path . '?' . http_build_query($queries);
+        $authBaseUrl = 'https://auth.tiktok-shops.com';
+        $url = $authBaseUrl . $path . '?' . http_build_query($queries);
 
         $response = Http::get($url);
 
@@ -154,7 +155,8 @@ class TikTokClient
             'grant_type' => 'refresh_token',
         ];
 
-        $url = $this->baseUrl . $path . '?' . http_build_query($queries);
+        $authBaseUrl = 'https://auth.tiktok-shops.com';
+        $url = $authBaseUrl . $path . '?' . http_build_query($queries);
 
         $response = Http::get($url);
 
