@@ -13,7 +13,6 @@ Route::post('tiktok-sync/push', [TikTokWebController::class, 'pushProduct'])->na
 Route::post('tiktok-sync/products/bulk-push', [TikTokWebController::class, 'bulkPush'])->name('tiktok-sync.bulk-push');
 Route::post('tiktok-sync/products/sync', [TikTokWebController::class, 'syncProduct'])->name('tiktok-sync.sync-product');
 Route::post('tiktok-sync/products/store', [TikTokWebController::class, 'storeProduct'])->name('tiktok-sync.store-product');
-
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('channels', ChannelController::class)->names('channel');
 });
