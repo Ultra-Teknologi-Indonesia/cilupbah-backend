@@ -277,4 +277,25 @@ class TikTokProductService
 
         return $this->client->request('POST', "/product/202309/products/deactivate", ['shop_cipher' => $shop->shop_cipher ?? ''], ['product_ids' => [$product->channel_product_id]], $shop->access_token);
     }
+
+    public function bulkPushProducts(string $shopId): int
+    {
+        $failCount = 0;
+        $products = $this->productRepository->getActiveProducts();
+
+        foreach ($products as $product) {
+            try {
+                if (empty($product->channel_product_id)) {
+                    $this->pushProduct($product->id, $shopId);
+                } else {
+                    $this->pushUpdate($product->id, $shopId);
+                }
+            } catch (\Exception $e) {
+                Log::error("Failed to bulk push product {$product->id} to TikTok: " . $e->getMessage());
+                $failCount++;
+            }
+        }
+
+        return $failCount;
+    }
 }
