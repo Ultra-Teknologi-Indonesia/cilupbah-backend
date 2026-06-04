@@ -3,6 +3,7 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Repositories\ChannelProductRepository;
 
