@@ -12,6 +12,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('media/upload', [MediaController::class, 'upload']);
 
     // Import Endpoints
+    Route::get('products/import/template/single', [\Modules\Product\Http\Controllers\ProductImportController::class, 'downloadSingleTemplate']);
+    Route::get('products/import/template/bundle', [\Modules\Product\Http\Controllers\ProductImportController::class, 'downloadBundleTemplate']);
     Route::post('products/import/single', [\Modules\Product\Http\Controllers\ProductImportController::class, 'importSingle']);
     Route::post('products/import/bundle', [\Modules\Product\Http\Controllers\ProductImportController::class, 'importBundle']);
 });
