@@ -7,7 +7,6 @@ class TikTokToInternalProductMapper
     public function map(array $tiktokProduct): array
     {
         $internal = [
-            // Dummy category if we don't have mapping
             'category_id' => 1,
             'name' => $tiktokProduct['title'] ?? 'TikTok Product',
             'description' => $tiktokProduct['description'] ?? '',
@@ -35,15 +34,17 @@ class TikTokToInternalProductMapper
                     'media_type' => 'image',
                     'url' => $img['urls'][0] ?? $img['uri'] ?? '',
                     'is_primary' => $idx === 0,
-                    'sort_order' => $idx
+                    'sort_order' => $idx,
                 ];
             }
         }
 
         if (!empty($tiktokProduct['skus'])) {
             foreach ($tiktokProduct['skus'] as $skuData) {
-                $sku = !empty($skuData['seller_sku']) ? $skuData['seller_sku'] : ('TK-' . $skuData['id']);
-                
+                $sku = !empty($skuData['seller_sku'])
+                    ? $skuData['seller_sku']
+                    : ('TK-' . $skuData['id']);
+
                 $price = 0;
                 if (isset($skuData['price']['tax_exclusive_price'])) {
                     $price = $skuData['price']['tax_exclusive_price'];
@@ -57,13 +58,12 @@ class TikTokToInternalProductMapper
                 $internal['variants'][] = [
                     'sku' => $sku,
                     'sell_price' => $price,
-                    'buy_price' => $price, // Assuming same for simplicity
+                    'buy_price' => $price,
                     'weight' => $internal['weight'] ?? 0,
                     'is_active' => true,
                 ];
             }
         } else {
-            // fallback if no SKUs (unlikely in TikTok)
             $internal['variants'][] = [
                 'sku' => 'TK-' . $tiktokProduct['id'],
                 'sell_price' => 0,
@@ -71,7 +71,6 @@ class TikTokToInternalProductMapper
             ];
         }
 
-        // Main product SKU can just be the first variant's SKU
         $internal['sku'] = $internal['variants'][0]['sku'] ?? null;
 
         return $internal;
