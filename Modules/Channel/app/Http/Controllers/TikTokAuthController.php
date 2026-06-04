@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Modules\Channel\Services\TikTokClient;
 use Illuminate\Support\Facades\DB;
+use Modules\Channel\Models\ChannelShop;
 
 class TikTokAuthController extends Controller
 {
@@ -53,10 +54,10 @@ class TikTokAuthController extends Controller
                 $shopCipher = $shop['cipher'] ?? $shop['shop_cipher'] ?? null;
                 $shopName = $shop['name'] ?? $shop['shop_name'] ?? null;
 
-                DB::table('channel_shops')->updateOrInsert(
+                ChannelShop::updateOrCreate(
                     ['shop_id' => $shopId],
                     [
-                        'channel_name' => 'tiktok',
+                        'channel_id' => \Modules\Channel\Models\Channel::where('code', 'tiktok')->value('id'),
                         'shop_name' => $shopName,
                         'shop_cipher' => $shopCipher,
                         'access_token' => $accessToken,
