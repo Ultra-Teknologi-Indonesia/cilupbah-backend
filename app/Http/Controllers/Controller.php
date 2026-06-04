@@ -16,8 +16,17 @@ use App\Traits\ApiResponse;
  * )
  *
  * @OA\Server(
- *      url="http://localhost",
+ *      url="http://localhost:8000",
  *      description="Demo API Server"
+ * )
+ *
+ * @OA\SecurityScheme(
+ *      securityScheme="bearerAuth",
+ *      in="header",
+ *      name="bearerAuth",
+ *      type="http",
+ *      scheme="bearer",
+ *      bearerFormat="JWT",
  * )
  */
 abstract class Controller
