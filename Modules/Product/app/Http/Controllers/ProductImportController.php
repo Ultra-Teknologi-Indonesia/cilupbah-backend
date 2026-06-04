@@ -48,4 +48,22 @@ class ProductImportController extends Controller
             return $this->errorResponse('Gagal melakukan import bundle: ' . $e->getMessage(), 500);
         }
     }
+
+    public function downloadSingleTemplate()
+    {
+        $path = base_path('template_import_productv2.xlsx');
+        if (!file_exists($path)) {
+            return $this->errorResponse('Template tidak ditemukan', 404);
+        }
+        return response()->download($path, 'Template_Import_Product.xlsx');
+    }
+
+    public function downloadBundleTemplate()
+    {
+        $path = base_path('template_import_bundle.xlsx');
+        if (!file_exists($path)) {
+            return $this->errorResponse('Template tidak ditemukan', 404);
+        }
+        return response()->download($path, 'Template_Import_Bundle.xlsx');
+    }
 }
