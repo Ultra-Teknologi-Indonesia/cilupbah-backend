@@ -12,38 +12,49 @@ class OrderService
         try {
             DB::beginTransaction();
 
-            $existing = DB::table('orders')->where('order_number', $orderData['order_number'])->first();
+            $existing = DB::table('orders')->where('salesorder_no', $orderData['salesorder_no'])->first();
+
+            $orderRow = [
+                'salesorder_no' => $orderData['salesorder_no'],
+                'channel_shop_id' => $orderData['channel_shop_id'],
+                'customer_name' => $orderData['customer_name'],
+                'transaction_date' => $orderData['transaction_date'],
+                'sub_total' => $orderData['sub_total'],
+                'total_disc' => $orderData['total_disc'],
+                'total_tax' => $orderData['total_tax'],
+                'shipping_cost' => $orderData['shipping_cost'],
+                'insurance_cost' => $orderData['insurance_cost'],
+                'grand_total' => $orderData['grand_total'],
+                'shipping_full_name' => $orderData['shipping_full_name'],
+                'shipping_phone' => $orderData['shipping_phone'],
+                'shipping_address' => $orderData['shipping_address'],
+                'shipping_city' => $orderData['shipping_city'],
+                'shipping_province' => $orderData['shipping_province'],
+                'shipping_post_code' => $orderData['shipping_post_code'],
+                'shipping_country' => $orderData['shipping_country'],
+                'channel_status' => $orderData['channel_status'],
+                'status' => $orderData['status'],
+                'is_paid' => $orderData['is_paid'],
+                'payment_method' => $orderData['payment_method'],
+                'source' => $orderData['source'],
+                'updated_at' => now(),
+            ];
 
             if ($existing) {
                 $newStatus = $orderData['status'];
                 if ($existing->status === 'CANCELLED' && $newStatus !== 'CANCELLED') {
-                    $newStatus = 'CANCELLED'; // Protect local cancellation
+                    $orderRow['status'] = 'CANCELLED';
                 }
                 
-                // Protect local PROCESSING state since sandbox logistics is bypassed
-                if ($existing->status === 'PROCESSING' && $newStatus === 'AWAITING_SHIPMENT') {
-                    $newStatus = 'PROCESSING';
+                if ($existing->status === 'PROCESSING' && $orderData['channel_status'] === 'AWAITING_SHIPMENT') {
+                    $orderRow['status'] = 'PROCESSING';
                 }
 
-                DB::table('orders')
-                    ->where('id', $existing->id)
-                    ->update([
-                        'status' => $newStatus,
-                        'total_amount' => $orderData['total_amount'],
-                        'customer_name' => $orderData['customer_name'] ?? $existing->customer_name,
-                        'updated_at' => now(),
-                    ]);
+                DB::table('orders')->where('id', $existing->id)->update($orderRow);
                 $orderId = $existing->id;
             } else {
-                $orderId = DB::table('orders')->insertGetId([
-                    'order_number' => $orderData['order_number'],
-                    'shop_id' => $orderData['shop_id'],
-                    'status' => $orderData['status'],
-                    'total_amount' => $orderData['total_amount'],
-                    'customer_name' => $orderData['customer_name'] ?? null,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
+                $orderRow['created_at'] = now();
+                $orderId = DB::table('orders')->insertGetId($orderRow);
             }
 
             if (isset($orderData['items']) && is_array($orderData['items'])) {
@@ -51,11 +62,26 @@ class OrderService
                 
                 $itemsToInsert = [];
                 foreach ($orderData['items'] as $item) {
+                    $itemId = null;
+                    if (!empty($item['sku'])) {
+                        $variant = DB::table('product_variants')->where('sku', $item['sku'])->first();
+                        if ($variant) {
+                            $itemId = $variant->id;
+                        }
+                    }
+
                     $itemsToInsert[] = [
                         'order_id' => $orderId,
-                        'sku' => $item['sku'] ?? null,
-                        'quantity' => $item['quantity'],
+                        'item_id' => $itemId,
+                        'channel_product_id' => $item['channel_product_id'],
+                        'sku' => $item['sku'],
+                        'description' => $item['description'],
+                        'qty_in_base' => $item['qty_in_base'],
                         'price' => $item['price'],
+                        'disc' => $item['disc'],
+                        'disc_amount' => $item['disc_amount'],
+                        'tax_amount' => $item['tax_amount'],
+                        'amount' => $item['amount'],
                         'created_at' => now(),
                         'updated_at' => now(),
                     ];
