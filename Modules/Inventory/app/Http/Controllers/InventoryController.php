@@ -3,54 +3,40 @@
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Inventory\Services\InventoryService;
+use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Models\InventoryMovement;
+use Spatie\QueryBuilder\QueryBuilder;
+use Spatie\QueryBuilder\AllowedFilter;
 
 class InventoryController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
+    public function __construct(
+        protected InventoryService $inventoryService
+    ) {}
+
+    public function index(Request $request): JsonResponse
     {
-        return view('inventory::index');
+        $limit = $request->query('limit', 10);
+        $stocks = $this->inventoryService->getAllPaginated($limit);
+
+        return $this->successPaginatedResponse($stocks, 'Daftar stok berhasil diambil');
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
+    public function show(int $itemId): JsonResponse
     {
-        return view('inventory::create');
+        $stocks = $this->inventoryService->getStockByItem($itemId);
+
+        return $this->successResponse($stocks, 'Detail stok per item berhasil diambil');
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request) {}
-
-    /**
-     * Show the specified resource.
-     */
-    public function show($id)
+    public function movements(Request $request): JsonResponse
     {
-        return view('inventory::show');
+        $limit = $request->query('limit', 10);
+        $movements = $this->inventoryService->getHistoryPaginated($limit);
+
+        return $this->successPaginatedResponse($movements, 'Riwayat pergerakan stok berhasil diambil');
     }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit($id)
-    {
-        return view('inventory::edit');
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, $id) {}
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy($id) {}
 }
