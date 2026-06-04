@@ -18,4 +18,7 @@ Route::prefix('v1/tiktok')->group(function () {
     Route::get('stores/{id}', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'show']);
     Route::delete('stores/{id}', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'destroy']);
     Route::post('stores/{id}/refresh-token', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'refreshToken']);
+    
+    Route::post('auto-sync/pull-orders', [\Modules\Channel\Http\Controllers\TikTokAutoSyncController::class, 'pullOrders']);
+    Route::post('auto-sync/pull-products', [\Modules\Channel\Http\Controllers\TikTokAutoSyncController::class, 'pullProducts']);
 });
