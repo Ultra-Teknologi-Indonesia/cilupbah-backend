@@ -8,13 +8,87 @@ use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Http\Requests\AdjustStockRequest;
 use Modules\Inventory\Http\Requests\TransferStockRequest;
 use Modules\Inventory\Http\Requests\PutawayStockRequest;
+use OpenApi\Attributes as OA;
 
+#[OA\Tag(name: 'Inventory Transactions', description: 'API Endpoints for Inventory Transactions')]
+#[OA\Schema(
+    schema: 'AdjustStockRequest',
+    required: ['item_id', 'location_id', 'qty', 'created_by'],
+    type: 'object',
+    properties: [
+        new OA\Property(property: 'item_id', type: 'integer', example: 10),
+        new OA\Property(property: 'location_id', type: 'integer', example: 1),
+        new OA\Property(property: 'bin_id', type: 'integer', example: 1, nullable: true),
+        new OA\Property(property: 'batch_no', type: 'string', example: 'BATCH-001', nullable: true),
+        new OA\Property(property: 'serial_no', type: 'string', example: 'SN-001', nullable: true),
+        new OA\Property(property: 'expired_date', type: 'string', format: 'date', example: '2026-12-31', nullable: true),
+        new OA\Property(property: 'qty', type: 'integer', example: 10),
+        new OA\Property(property: 'created_by', type: 'string', example: 'admin')
+    ]
+)]
+#[OA\Schema(
+    schema: 'PutawayStockRequest',
+    required: ['item_id', 'location_id', 'source_bin_id', 'destination_bin_id', 'qty', 'created_by'],
+    type: 'object',
+    properties: [
+        new OA\Property(property: 'item_id', type: 'integer', example: 10),
+        new OA\Property(property: 'location_id', type: 'integer', example: 1),
+        new OA\Property(property: 'source_bin_id', type: 'integer', example: 1),
+        new OA\Property(property: 'destination_bin_id', type: 'integer', example: 2),
+        new OA\Property(property: 'batch_no', type: 'string', example: 'BATCH-001', nullable: true),
+        new OA\Property(property: 'serial_no', type: 'string', example: 'SN-001', nullable: true),
+        new OA\Property(property: 'expired_date', type: 'string', format: 'date', example: '2026-12-31', nullable: true),
+        new OA\Property(property: 'qty', type: 'integer', example: 50),
+        new OA\Property(property: 'created_by', type: 'string', example: 'admin')
+    ]
+)]
+#[OA\Schema(
+    schema: 'TransferStockRequest',
+    required: ['item_id', 'source_location_id', 'destination_location_id', 'qty', 'created_by'],
+    type: 'object',
+    properties: [
+        new OA\Property(property: 'item_id', type: 'integer', example: 10),
+        new OA\Property(property: 'source_location_id', type: 'integer', example: 1),
+        new OA\Property(property: 'source_bin_id', type: 'integer', example: 1, nullable: true),
+        new OA\Property(property: 'destination_location_id', type: 'integer', example: 2),
+        new OA\Property(property: 'destination_bin_id', type: 'integer', example: 3, nullable: true),
+        new OA\Property(property: 'batch_no', type: 'string', example: 'BATCH-001', nullable: true),
+        new OA\Property(property: 'serial_no', type: 'string', example: 'SN-001', nullable: true),
+        new OA\Property(property: 'expired_date', type: 'string', format: 'date', example: '2026-12-31', nullable: true),
+        new OA\Property(property: 'qty', type: 'integer', example: 20),
+        new OA\Property(property: 'created_by', type: 'string', example: 'admin')
+    ]
+)]
 class InventoryTransactionController extends Controller
 {
     public function __construct(
         protected InventoryService $inventoryService
     ) {}
 
+    #[OA\Post(
+        path: '/api/v1/inventory/adjustments',
+        summary: 'Adjust inventory stock',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory Transactions'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(ref: '#/components/schemas/AdjustStockRequest')
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Stock adjustment berhasil.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'data', type: 'object'),
+                        new OA\Property(property: 'message', type: 'string', example: 'Stock adjustment berhasil.')
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: 'Unauthenticated'),
+            new OA\Response(response: 422, description: 'Validation Error')
+        ]
+    )]
     public function adjust(AdjustStockRequest $request): JsonResponse
     {
         try {
@@ -26,6 +100,30 @@ class InventoryTransactionController extends Controller
         }
     }
 
+    #[OA\Post(
+        path: '/api/v1/inventory/transfers',
+        summary: 'Transfer inventory stock (Transfer Out)',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory Transactions'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(ref: '#/components/schemas/TransferStockRequest')
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Transfer Out berhasil dibuat.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'data', type: 'object'),
+                        new OA\Property(property: 'message', type: 'string', example: 'Transfer Out berhasil dibuat, barang sedang dalam perjalanan (Transit).')
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: 'Unauthenticated'),
+            new OA\Response(response: 422, description: 'Validation Error')
+        ]
+    )]
     public function transferOut(\Modules\Inventory\Http\Requests\TransferOutRequest $request): JsonResponse
     {
         try {
@@ -36,6 +134,38 @@ class InventoryTransactionController extends Controller
         }
     }
 
+    #[OA\Post(
+        path: '/api/v1/inventory/transfers/{id}/in',
+        summary: 'Transfer In inventory stock',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory Transactions'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the transfer', schema: new OA\Schema(type: 'integer'))
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                type: 'object',
+                properties: [
+                    new OA\Property(property: 'received_by', type: 'string', example: 'admin')
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Transfer In berhasil.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'data', type: 'object'),
+                        new OA\Property(property: 'message', type: 'string', example: 'Transfer In berhasil, stok telah masuk ke gudang tujuan.')
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: 'Unauthenticated'),
+            new OA\Response(response: 422, description: 'Validation Error')
+        ]
+    )]
     public function transferIn(\Modules\Inventory\Http\Requests\TransferInRequest $request, int $id): JsonResponse
     {
         try {
@@ -46,6 +176,19 @@ class InventoryTransactionController extends Controller
         }
     }
 
+    #[OA\Get(
+        path: '/api/v1/inventory/transfers/transit',
+        summary: 'Get list of transit transfers',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory Transactions'],
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, description: 'Number of items per page', schema: new OA\Schema(type: 'integer', default: 10))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar barang dalam perjalanan (Transit).'),
+            new OA\Response(response: 401, description: 'Unauthenticated')
+        ]
+    )]
     public function transitList(\Illuminate\Http\Request $request): JsonResponse
     {
         $limit = $request->query('limit', 10);
@@ -56,6 +199,19 @@ class InventoryTransactionController extends Controller
         return $this->successPaginatedResponse($transfers, 'Daftar barang dalam perjalanan (Transit).');
     }
 
+    #[OA\Get(
+        path: '/api/v1/inventory/transfers',
+        summary: 'Get all transfers list',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory Transactions'],
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, description: 'Number of items per page', schema: new OA\Schema(type: 'integer', default: 10))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar semua dokumen transfer.'),
+            new OA\Response(response: 401, description: 'Unauthenticated')
+        ]
+    )]
     public function transfersList(\Illuminate\Http\Request $request): JsonResponse
     {
         $limit = $request->query('limit', 10);
@@ -65,6 +221,30 @@ class InventoryTransactionController extends Controller
         return $this->successPaginatedResponse($transfers, 'Daftar semua dokumen transfer.');
     }
 
+    #[OA\Post(
+        path: '/api/v1/inventory/putaway',
+        summary: 'Putaway inventory stock',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory Transactions'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(ref: '#/components/schemas/PutawayStockRequest')
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Putaway berhasil.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'data', type: 'object'),
+                        new OA\Property(property: 'message', type: 'string', example: 'Putaway berhasil.')
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: 'Unauthenticated'),
+            new OA\Response(response: 422, description: 'Validation Error')
+        ]
+    )]
     public function putaway(PutawayStockRequest $request): JsonResponse
     {
         try {
