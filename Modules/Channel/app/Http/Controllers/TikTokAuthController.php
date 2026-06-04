@@ -13,7 +13,7 @@ class TikTokAuthController extends Controller
 
     public function redirect(TikTokClient $client)
     {
-        $redirectUri = env('TIKTOK_REDIRECT_URI');
+        $redirectUri = config('services.tiktok.redirect_uri');
         $url = $client->getAuthUrl($redirectUri);
         return redirect()->away($url);
     }
@@ -27,7 +27,7 @@ class TikTokAuthController extends Controller
         }
 
         try {
-            $redirectUri = env('TIKTOK_REDIRECT_URI');
+            $redirectUri = config('services.tiktok.redirect_uri');
             $savedShops = $authService->handleCallback($code, $redirectUri);
 
             $shopNames = collect($savedShops)->pluck('shop_name')->join(', ');

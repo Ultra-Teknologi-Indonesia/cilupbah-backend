@@ -13,9 +13,13 @@ class TikTokClient
 
     public function __construct()
     {
-        $this->appKey = config('services.tiktok.app_key', env('TIKTOK_APP_KEY'));
-        $this->appSecret = config('services.tiktok.app_secret', env('TIKTOK_APP_SECRET'));
+        $this->appKey = config('services.tiktok.app_key');
+        $this->appSecret = config('services.tiktok.app_secret');
         $this->baseUrl = config('services.tiktok.base_url', 'https://open-api.tiktokglobalshop.com');
+
+        if (!$this->appKey || !$this->appSecret) {
+            throw new \RuntimeException('TikTok credentials are not configured. Set TIKTOK_APP_KEY and TIKTOK_APP_SECRET.');
+        }
     }
 
     public function generateSignature(string $path, array $queries, $body = null, bool $isMultipart = false, string $method = 'POST'): string
