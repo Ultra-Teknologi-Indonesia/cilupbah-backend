@@ -1,0 +1,19 @@
+services:
+  app:
+    image: staging-superapp-prod
+    container_name: cilupbah-staging
+    entrypoint: ["/usr/local/bin/start.staging.sh"]   # ← override ke staging script
+    ports:
+      - "8000:8000"
+    volumes:
+      - /var/www/cilupbah:/var/www/html
+    environment:
+      - APP_ENV=staging
+      - APP_DEBUG=false
+    restart: unless-stopped
+
+  db:
+    container_name: cilupbah-staging-db
+    ports:
+      - "127.0.0.1:5432:5432"
+    restart: unless-stopped
