@@ -22,19 +22,23 @@ class TikTokAuthController extends Controller
     {
         $code = $request->query('code');
         if (!$code) {
-            return $this->errorResponse('No auth code provided by TikTok', 400);
+            return redirect('/channels')
+                ->with('error', 'Binding gagal: TikTok tidak mengirimkan kode otorisasi.');
         }
 
         try {
             $redirectUri = env('TIKTOK_REDIRECT_URI');
             $savedShops = $authService->handleCallback($code, $redirectUri);
 
-            return $this->successResponse(
-                ['shops_authorized' => $savedShops, 'note' => 'You can now use the tiktok:push-product command with any of the above shop IDs.'],
-                'TikTok authorized successfully for ISV'
-            );
+            $shopNames = collect($savedShops)->pluck('shop_name')->join(', ');
+            $count = count($savedShops);
+
+            return redirect('/channels')
+                ->with('success', "{$count} toko TikTok berhasil dihubungkan: {$shopNames}")
+                ->with('new_shops', $savedShops);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            return redirect('/channels')
+                ->with('error', 'Binding gagal: ' . $e->getMessage());
         }
     }
 }

@@ -3,55 +3,58 @@
 namespace Modules\Channel\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
+use Modules\Channel\Models\Channel;
+use Modules\Channel\Services\TikTokAuthService;
 
 class ChannelController extends Controller
 {
+    use ApiResponse;
+
+    protected TikTokAuthService $authService;
+
+    public function __construct(TikTokAuthService $authService)
+    {
+        $this->authService = $authService;
+    }
+
     /**
-     * Display a listing of the resource.
+     * Display channels with their bound shops.
      */
     public function index()
     {
-        $channels = \Modules\Channel\Models\Channel::with('shops')->get();
+        $channels = Channel::with('shops')->get();
         return view('channel::index', compact('channels'));
     }
 
     /**
-     * Show the form for creating a new resource.
+     * Disconnect (soft-delete) a shop from its channel.
      */
-    public function create()
+    public function disconnectShop(int $id)
     {
-        return view('channel::create');
+        try {
+            $this->authService->disconnectStore($id);
+            return redirect()->route('channel.index')
+                ->with('success', 'Toko berhasil diputuskan dari channel.');
+        } catch (\Exception $e) {
+            return redirect()->route('channel.index')
+                ->with('error', 'Gagal memutuskan toko: ' . $e->getMessage());
+        }
     }
 
     /**
-     * Store a newly created resource in storage.
+     * Refresh the access token for a shop.
      */
-    public function store(Request $request) {}
-
-    /**
-     * Show the specified resource.
-     */
-    public function show($id)
+    public function refreshShopToken(int $id)
     {
-        return view('channel::show');
+        try {
+            $result = $this->authService->refreshStoreToken($id);
+            return redirect()->route('channel.index')
+                ->with('success', "Token toko \"{$result['shop_name']}\" berhasil diperbarui.");
+        } catch (\Exception $e) {
+            return redirect()->route('channel.index')
+                ->with('error', 'Gagal memperbarui token: ' . $e->getMessage());
+        }
     }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit($id)
-    {
-        return view('channel::edit');
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, $id) {}
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy($id) {}
 }
