@@ -76,6 +76,12 @@ class TikTokClient
             $response = $http->post($fullUrl, $body);
         } elseif ($requestMethod === 'get') {
             $response = $http->get($fullUrl);
+        } elseif ($requestMethod === 'put') {
+            $jsonBody = empty($body) ? '{}' : json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            $response = $http->withBody($jsonBody, 'application/json')->put($fullUrl);
+        } elseif ($requestMethod === 'delete') {
+            $jsonBody = empty($body) ? '{}' : json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            $response = $http->withBody($jsonBody, 'application/json')->delete($fullUrl);
         } else {
             $jsonBody = empty($body) ? '{}' : json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
             $response = $http->withBody($jsonBody, 'application/json')->post($fullUrl);
