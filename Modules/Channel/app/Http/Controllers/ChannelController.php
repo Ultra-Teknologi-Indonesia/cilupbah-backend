@@ -12,7 +12,8 @@ class ChannelController extends Controller
      */
     public function index()
     {
-        return view('channel::index');
+        $channels = \Modules\Channel\Models\Channel::with('shops')->get();
+        return view('channel::index', compact('channels'));
     }
 
     /**
