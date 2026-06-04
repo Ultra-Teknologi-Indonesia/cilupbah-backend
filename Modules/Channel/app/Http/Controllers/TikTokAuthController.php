@@ -17,7 +17,7 @@ class TikTokAuthController extends Controller
     {
         $redirectUri = config('services.tiktok.redirect_uri');
         $url = $client->getAuthUrl($redirectUri);
-        return redirect()->away($url);
+        return $this->successResponse(['auth_url' => $url], 'Auth URL generated successfully.');
     }
 
     public function callback(Request $request, \Modules\Channel\Services\TikTokAuthService $authService)
@@ -37,8 +37,7 @@ class TikTokAuthController extends Controller
 
         $code = $request->query('code');
         if (!$code) {
-            return redirect('/channels')
-                ->with('error', 'Binding gagal: TikTok tidak mengirimkan kode otorisasi.');
+            return $this->errorResponse('Binding gagal: TikTok tidak mengirimkan kode otorisasi.', 400);
         }
 
         try {
@@ -48,9 +47,9 @@ class TikTokAuthController extends Controller
             $shopNames = collect($savedShops)->pluck('shop_name')->join(', ');
             $count = count($savedShops);
 
-            return redirect('/channels')
-                ->with('success', "{$count} toko TikTok berhasil dihubungkan: {$shopNames}")
-                ->with('new_shops', $savedShops);
+            return $this->successResponse([
+                'new_shops' => $savedShops
+            ], "{$count} toko TikTok berhasil dihubungkan: {$shopNames}");
         } catch (\Exception $e) {
             // Log the exception details for debugging
             try {
@@ -62,8 +61,7 @@ class TikTokAuthController extends Controller
                 // ignore logging failure
             }
 
-            return redirect('/channels')
-                ->with('error', 'Binding gagal: ' . $e->getMessage());
+            return $this->errorResponse('Binding gagal: ' . $e->getMessage(), 500);
         }
     }
 

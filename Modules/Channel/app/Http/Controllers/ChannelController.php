@@ -5,27 +5,33 @@ namespace Modules\Channel\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
-use Modules\Channel\Models\Channel;
+use Modules\Channel\Services\ChannelService;
 use Modules\Channel\Services\TikTokAuthService;
 
 class ChannelController extends Controller
 {
     use ApiResponse;
 
+    protected ChannelService $channelService;
     protected TikTokAuthService $authService;
 
-    public function __construct(TikTokAuthService $authService)
+    public function __construct(ChannelService $channelService, TikTokAuthService $authService)
     {
+        $this->channelService = $channelService;
         $this->authService = $authService;
     }
 
     /**
-     * Display channels with their bound shops.
+     * Display paginated channels with their bound shops.
      */
     public function index()
     {
-        $channels = Channel::with('shops')->get();
-        return view('channel::index', compact('channels'));
+        try {
+            $channels = $this->channelService->getPaginatedChannels();
+            return $this->successResponse($channels, 'Daftar channel berhasil diambil.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 500);
+        }
     }
 
     /**
@@ -35,11 +41,9 @@ class ChannelController extends Controller
     {
         try {
             $this->authService->disconnectStore($id);
-            return redirect()->route('channel.index')
-                ->with('success', 'Toko berhasil diputuskan dari channel.');
+            return $this->successResponse(null, 'Toko berhasil diputuskan dari channel.');
         } catch (\Exception $e) {
-            return redirect()->route('channel.index')
-                ->with('error', 'Gagal memutuskan toko: ' . $e->getMessage());
+            return $this->errorResponse('Gagal memutuskan toko: ' . $e->getMessage(), 500);
         }
     }
 
@@ -50,11 +54,9 @@ class ChannelController extends Controller
     {
         try {
             $result = $this->authService->refreshStoreToken($id);
-            return redirect()->route('channel.index')
-                ->with('success', "Token toko \"{$result['shop_name']}\" berhasil diperbarui.");
+            return $this->successResponse($result, "Token toko berhasil diperbarui.");
         } catch (\Exception $e) {
-            return redirect()->route('channel.index')
-                ->with('error', 'Gagal memperbarui token: ' . $e->getMessage());
+            return $this->errorResponse('Gagal memperbarui token: ' . $e->getMessage(), 500);
         }
     }
 }

@@ -11,14 +11,21 @@ Route::prefix('v1/tiktok')->group(function () {
     Route::get('auth', [\Modules\Channel\Http\Controllers\TikTokAuthController::class, 'redirect']);
     Route::get('callback', [\Modules\Channel\Http\Controllers\TikTokAuthController::class, 'callback']);
     Route::get('callback-debug', [\Modules\Channel\Http\Controllers\TikTokAuthController::class, 'callbackDebug']);
-    Route::get('cancel-reasons', [\Modules\Channel\Http\Controllers\TikTokWebController::class, 'getCancelReasons']);
-    Route::post('cancel-product', [\Modules\Channel\Http\Controllers\TikTokWebController::class, 'cancelProduct']);
+    Route::get('cancel-reasons', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'getCancelReasons']);
+    Route::post('cancel-product', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'cancelProduct']);
 
     Route::get('stores', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'index']);
     Route::get('stores/{id}', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'show']);
     Route::delete('stores/{id}', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'destroy']);
     Route::post('stores/{id}/refresh-token', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'refreshToken']);
     
-    Route::post('auto-sync/pull-orders', [\Modules\Channel\Http\Controllers\TikTokAutoSyncController::class, 'pullOrders']);
-    Route::post('auto-sync/pull-products', [\Modules\Channel\Http\Controllers\TikTokAutoSyncController::class, 'pullProducts']);
+    Route::post('auto-sync/pull-orders', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pullOrdersAll']);
+    Route::post('auto-sync/pull-products', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pullProductsAll']);
+    
+    Route::post('sync/pull', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pullOrders']);
+    Route::post('sync/accept', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'acceptOrder']);
+    Route::post('sync/decline', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'declineOrder']);
+    Route::post('sync/products/push', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pushProduct']);
+    Route::post('sync/products/sync', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'syncProduct']);
+    Route::post('sync/products/bulk-push', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'bulkPush']);
 });

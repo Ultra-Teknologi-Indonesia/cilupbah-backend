@@ -6,23 +6,26 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Modules\Channel\Services\TikTokAuthService;
+use Modules\Channel\Repositories\ChannelShopRepository;
 
 class TikTokStoreController extends Controller
 {
     use ApiResponse;
 
     protected TikTokAuthService $authService;
+    protected ChannelShopRepository $shopRepository;
 
-    public function __construct(TikTokAuthService $authService)
+    public function __construct(TikTokAuthService $authService, ChannelShopRepository $shopRepository)
     {
         $this->authService = $authService;
+        $this->shopRepository = $shopRepository;
     }
 
     public function index()
     {
         try {
-            $stores = $this->authService->getStores();
-            return $this->successResponse($stores, 'Daftar toko TikTok berhasil diambil');
+            $stores = $this->shopRepository->getPaginatedShops();
+            return $this->successResponse($stores, 'Daftar toko berhasil diambil');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 500);
         }
