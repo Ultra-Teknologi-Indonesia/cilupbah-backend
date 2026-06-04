@@ -52,6 +52,16 @@ class TikTokAuthController extends Controller
                 ->with('success', "{$count} toko TikTok berhasil dihubungkan: {$shopNames}")
                 ->with('new_shops', $savedShops);
         } catch (\Exception $e) {
+            // Log the exception details for debugging
+            try {
+                Log::error('TikTok callback processing failed', [
+                    'message' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+            } catch (\Throwable $_) {
+                // ignore logging failure
+            }
+
             return redirect('/channels')
                 ->with('error', 'Binding gagal: ' . $e->getMessage());
         }
