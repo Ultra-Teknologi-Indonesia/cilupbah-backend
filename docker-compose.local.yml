@@ -1,0 +1,17 @@
+services:
+  app:
+    image: staging-superapp-dev
+    container_name: staging-superapp
+    ports:
+      - "8000:8000"
+      - "5173:5173"
+    volumes:
+      - .:/var/www/html
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+
+  db:
+    container_name: staging-superapp-db
+    ports:
+      - "5432:5432"
