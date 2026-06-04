@@ -1,24 +1,32 @@
 services:
   app:
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: staging-superapp-prod
     container_name: cilupbah-staging
-    entrypoint: ["/usr/local/bin/start.staging.sh"]   # ← override ke staging script
+    entrypoint: ["/usr/local/bin/start.staging.sh"]
     ports:
-      - "8000:8000"
+      - "8001:8000"
     volumes:
       - /var/www/cilupbah:/var/www/html
     environment:
       - APP_ENV=staging
       - APP_DEBUG=false
+    depends_on:
+      - db
     restart: unless-stopped
 
   db:
     container_name: cilupbah-staging-db
-    image: postgres:15
-    ports:
-      - "127.0.0.1:5432:5432"
+    image: postgres:15-alpine
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=cilupbah
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: cilupbah
+    volumes:
+      - staging_pgdata:/var/lib/postgresql/data
     restart: unless-stopped
+
+volumes:
+  staging_pgdata:
