@@ -97,7 +97,7 @@ class OrderController extends Controller
     public function index(Request $request)
     {
         if ($request->wantsJson() || $request->is('api/*')) {
-            $orders = \Modules\Order\Models\Order::latest()->paginate(15);
+            $orders = \Modules\Order\Models\Order::with('items')->latest()->paginate(15);
             return response()->json([
                 'status' => 'success',
                 'data' => $orders
