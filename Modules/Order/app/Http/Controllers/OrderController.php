@@ -162,7 +162,12 @@ class OrderController extends Controller
     public function show(Request $request, $id)
     {
         if ($request->wantsJson() || $request->is('api/*')) {
-            $order = \Modules\Order\Models\Order::with('items')->find($id);
+            // Find by primary key (id) or salesorder_no
+            $order = \Modules\Order\Models\Order::with('items')
+                ->where('id', $id)
+                ->orWhere('salesorder_no', $id)
+                ->first();
+                
             if (!$order) {
                 return response()->json(['status' => 'error', 'message' => 'Data tidak ditemukan', 'data' => null], 404);
             }
