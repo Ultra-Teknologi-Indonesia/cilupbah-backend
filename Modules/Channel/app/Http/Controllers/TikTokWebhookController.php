@@ -22,7 +22,7 @@ class TikTokWebhookController extends Controller
         $appSecret = config('services.tiktok.app_secret');
         $signature = $request->header('authorization') ?? $request->header('x-tts-webhook-signature'); 
         
-        $calculatedSignature = \Modules\Channel\Helpers\TikTokSignature::generateFromRequest($request, $appSecret);
+        $calculatedSignature = \Modules\Channel\Helpers\TikTokSignature::generateWebhookSignature($rawBody, $appSecret);
         
         if ($signature !== $calculatedSignature) {
             Log::warning('TikTok Webhook Signature Mismatch', [

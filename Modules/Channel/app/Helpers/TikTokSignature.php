@@ -64,4 +64,9 @@ class TikTokSignature
             $contentType
         );
     }
+
+    public static function generateWebhookSignature(string $body, string $appSecret): string
+    {
+        return hash_hmac('sha256', $body, $appSecret);
+    }
 }
