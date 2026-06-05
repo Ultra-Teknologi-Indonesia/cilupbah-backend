@@ -23,7 +23,7 @@ class TikTokToInternalOrderMapper
                 $items[] = [
                     'channel_product_id' => $li['product_id'] ?? null,
                     'sku'                => $li['seller_sku'] ?? null,
-                    'description'        => trim(($li['product_name'] ?? '') . ($li['sku_name'] ? ' - ' . $li['sku_name'] : '')),
+                    'description'        => trim(($li['product_name'] ?? '') . (isset($li['sku_name']) && $li['sku_name'] ? ' - ' . $li['sku_name'] : '')),
                     'qty_in_base'        => $qty,
                     'price'              => $price,
                     'disc'               => $disc,
