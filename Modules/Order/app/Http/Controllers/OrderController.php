@@ -94,8 +94,16 @@ class OrderController extends Controller
             new OA\Response(response: 401, description: 'Unauthenticated')
         ]
     )]
-    public function index()
+    public function index(Request $request)
     {
+        if ($request->wantsJson() || $request->is('api/*')) {
+            $orders = \Modules\Order\Models\Order::latest()->paginate(15);
+            return response()->json([
+                'status' => 'success',
+                'data' => $orders
+            ]);
+        }
+
         return view('order::index');
     }
 
@@ -151,8 +159,19 @@ class OrderController extends Controller
             new OA\Response(response: 404, description: 'Order not found')
         ]
     )]
-    public function show($id)
+    public function show(Request $request, $id)
     {
+        if ($request->wantsJson() || $request->is('api/*')) {
+            $order = \Modules\Order\Models\Order::with('items')->find($id);
+            if (!$order) {
+                return response()->json(['status' => 'error', 'message' => 'Data tidak ditemukan', 'data' => null], 404);
+            }
+            return response()->json([
+                'status' => 'success',
+                'data' => $order
+            ]);
+        }
+
         return view('order::show');
     }
 
