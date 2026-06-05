@@ -32,13 +32,20 @@ class Order extends Model
         'cancel_reason',
         'channel_status',
         'payment_method',
+        'payment_method_name',
+        'tracking_number',
+        'shipping_provider',
+        'buyer_message',
+        'seller_note',
+        'paid_time',
         'source',
     ];
 
     protected $casts = [
         'transaction_date' => 'datetime',
-        'is_paid' => 'boolean',
-        'is_canceled' => 'boolean',
+        'paid_time'        => 'datetime',
+        'is_paid'          => 'boolean',
+        'is_canceled'      => 'boolean',
     ];
 
     public function items(): HasMany
