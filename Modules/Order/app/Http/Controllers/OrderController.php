@@ -3,80 +3,9 @@
 namespace Modules\Order\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use OpenApi\Attributes as OA;
-
-use App\Traits\ApiResponse;
-use Modules\Order\Services\OrderService;
+use Modules\Order\Http\Resources\OrderResource;
 
 #[OA\Tag(name: 'Orders', description: 'API Endpoints for Orders')]
-#[OA\Schema(
-    schema: 'Order',
-    title: 'Order Schema',
-    type: 'object',
-    properties: [
-        new OA\Property(property: 'id', type: 'integer', example: 1),
-        new OA\Property(property: 'salesorder_no', type: 'string', example: 'SO-12345'),
-        new OA\Property(property: 'channel_shop_id', type: 'integer', example: 1),
-        new OA\Property(property: 'customer_name', type: 'string', example: 'John Doe'),
-        new OA\Property(property: 'transaction_date', type: 'string', format: 'date-time', example: '2026-06-04T12:00:00Z'),
-        new OA\Property(property: 'sub_total', type: 'number', format: 'float', example: 100.00),
-        new OA\Property(property: 'total_disc', type: 'number', format: 'float', example: 10.00),
-        new OA\Property(property: 'total_tax', type: 'number', format: 'float', example: 5.00),
-        new OA\Property(property: 'shipping_cost', type: 'number', format: 'float', example: 15.00),
-        new OA\Property(property: 'insurance_cost', type: 'number', format: 'float', example: 2.00),
-        new OA\Property(property: 'grand_total', type: 'number', format: 'float', example: 112.00),
-        new OA\Property(property: 'shipping_full_name', type: 'string', example: 'John Doe'),
-        new OA\Property(property: 'shipping_phone', type: 'string', example: '+6281234567890'),
-        new OA\Property(property: 'shipping_address', type: 'string', example: 'Jl. Sudirman No. 1'),
-        new OA\Property(property: 'shipping_area', type: 'string', example: 'Kebayoran Baru'),
-        new OA\Property(property: 'shipping_city', type: 'string', example: 'Jakarta Selatan'),
-        new OA\Property(property: 'shipping_province', type: 'string', example: 'DKI Jakarta'),
-        new OA\Property(property: 'shipping_post_code', type: 'string', example: '12190'),
-        new OA\Property(property: 'shipping_country', type: 'string', example: 'Indonesia'),
-        new OA\Property(property: 'status', type: 'string', example: 'pending'),
-        new OA\Property(property: 'is_paid', type: 'boolean', example: false),
-        new OA\Property(property: 'is_canceled', type: 'boolean', example: false),
-        new OA\Property(property: 'cancel_reason', type: 'string', example: null),
-        new OA\Property(property: 'channel_status', type: 'string', example: 'new'),
-        new OA\Property(property: 'payment_method', type: 'string', example: 'bank_transfer'),
-        new OA\Property(property: 'source', type: 'string', example: 'api'),
-        new OA\Property(property: 'created_at', type: 'string', format: 'date-time', example: '2026-06-04T12:00:00Z'),
-        new OA\Property(property: 'updated_at', type: 'string', format: 'date-time', example: '2026-06-04T12:00:00Z'),
-    ]
-)]
-#[OA\Schema(
-    schema: 'StoreOrderRequest',
-    required: ['salesorder_no', 'customer_name', 'transaction_date'],
-    type: 'object',
-    properties: [
-        new OA\Property(property: 'salesorder_no', type: 'string', example: 'SO-12345'),
-        new OA\Property(property: 'channel_shop_id', type: 'integer', example: 1),
-        new OA\Property(property: 'customer_name', type: 'string', example: 'John Doe'),
-        new OA\Property(property: 'transaction_date', type: 'string', format: 'date-time', example: '2026-06-04T12:00:00Z'),
-        new OA\Property(property: 'sub_total', type: 'number', format: 'float', example: 100.00),
-        new OA\Property(property: 'total_disc', type: 'number', format: 'float', example: 10.00),
-        new OA\Property(property: 'total_tax', type: 'number', format: 'float', example: 5.00),
-        new OA\Property(property: 'shipping_cost', type: 'number', format: 'float', example: 15.00),
-        new OA\Property(property: 'insurance_cost', type: 'number', format: 'float', example: 2.00),
-        new OA\Property(property: 'grand_total', type: 'number', format: 'float', example: 112.00),
-        new OA\Property(property: 'shipping_full_name', type: 'string', example: 'John Doe'),
-        new OA\Property(property: 'shipping_phone', type: 'string', example: '+6281234567890'),
-        new OA\Property(property: 'shipping_address', type: 'string', example: 'Jl. Sudirman No. 1'),
-        new OA\Property(property: 'shipping_area', type: 'string', example: 'Kebayoran Baru'),
-        new OA\Property(property: 'shipping_city', type: 'string', example: 'Jakarta Selatan'),
-        new OA\Property(property: 'shipping_province', type: 'string', example: 'DKI Jakarta'),
-        new OA\Property(property: 'shipping_post_code', type: 'string', example: '12190'),
-        new OA\Property(property: 'shipping_country', type: 'string', example: 'Indonesia'),
-        new OA\Property(property: 'status', type: 'string', example: 'pending'),
-        new OA\Property(property: 'is_paid', type: 'boolean', example: false),
-        new OA\Property(property: 'is_canceled', type: 'boolean', example: false),
-        new OA\Property(property: 'cancel_reason', type: 'string', example: null),
-        new OA\Property(property: 'channel_status', type: 'string', example: 'new'),
-        new OA\Property(property: 'payment_method', type: 'string', example: 'bank_transfer'),
-        new OA\Property(property: 'source', type: 'string', example: 'api'),
-    ]
-)]
 class OrderController extends Controller
 {
     use ApiResponse;
@@ -110,7 +39,10 @@ class OrderController extends Controller
     {
         if ($request->wantsJson() || $request->is('api/*')) {
             $orders = $this->orderService->getPaginatedOrders();
-            return $this->successResponse($orders);
+            $orders->getCollection()->transform(function($order) {
+                return new OrderResource($order);
+            });
+            return $this->successPaginatedResponse($orders);
         }
 
         return view('order::index');
@@ -175,7 +107,7 @@ class OrderController extends Controller
             if (!$order) {
                 return $this->errorResponse('Data tidak ditemukan', 404);
             }
-            return $this->successResponse($order);
+            return $this->successResponse(new OrderResource($order));
         }
 
         return view('order::show');
