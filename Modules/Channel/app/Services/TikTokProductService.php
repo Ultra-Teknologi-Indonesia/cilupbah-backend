@@ -134,7 +134,7 @@ class TikTokProductService
         $count = 0;
         foreach ($res['data']['products'] as $item) {
             try {
-                $internalData = $mapper->map($item);
+                $internalData = $mapper->map($item, $shopId);
                 $insertedId = $productService->upsertFromChannel($internalData);
                 
                 if ($insertedId) {

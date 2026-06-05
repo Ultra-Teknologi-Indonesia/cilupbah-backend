@@ -33,7 +33,8 @@ class ProductService
     {
         return DB::transaction(function () use ($productId, $data) {
             $productData = Arr::only($data, [
-                'name', 'description', 'weight', 'length', 'width', 'height', 'is_active'
+                'name', 'description', 'weight', 'length', 'width', 'height', 'is_active',
+                'channel_shop_id', 'source'
             ]);
             
             if (!empty($productData)) {
@@ -76,7 +77,8 @@ class ProductService
         return DB::transaction(function () use ($data) {
             $productData = Arr::only($data, [
                 'category_id', 'brand_id', 'name', 'description', 
-                'weight', 'length', 'width', 'height', 'is_active'
+                'weight', 'length', 'width', 'height', 'is_active',
+                'channel_shop_id', 'source'
             ]);
             
             $productId = DB::table('products')->insertGetId(array_merge($productData, [
