@@ -1,0 +1,66 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: staging-superapp-dev
+    container_name: cilupbah-local
+    entrypoint: ["/usr/local/bin/start.sh"]
+    ports:
+      - "8000:8000"
+      - "5173:5173"
+    volumes:
+      - .:/var/www/html
+      - vendor_data:/var/www/html/vendor
+      - node_modules_data:/var/www/html/node_modules
+    env_file:
+      - .env.docker
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+  horizon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: staging-superapp-dev
+    container_name: cilupbah-local-horizon
+    entrypoint: ["php", "artisan", "horizon"]
+    volumes:
+      - .:/var/www/html
+      - vendor_data:/var/www/html/vendor
+      - node_modules_data:/var/www/html/node_modules
+    env_file:
+      - .env.docker
+    depends_on:
+      - app
+      - db
+      - redis
+    restart: unless-stopped
+
+  redis:
+    container_name: cilupbah-local-redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - local_redisdata:/data
+
+  db:
+    container_name: cilupbah-local-db
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: superapp_user
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: superapp
+    ports:
+      - "5433:5432"
+    volumes:
+      - local_pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  local_pgdata:
+  local_redisdata:
+  vendor_data:
+  node_modules_data:

@@ -1,15 +1,15 @@
 #!/bin/bash
 set -e
 
-if [ ! -d "vendor" ]; then
-    echo "Installing Composer dependencies..."
-    composer install
+if [ -f .env.docker ]; then
+    cp .env.docker .env
 fi
 
-if [ ! -d "node_modules" ]; then
-    echo "Installing Node dependencies..."
-    npm install
-fi
+echo "Installing Composer dependencies..."
+composer install
+
+echo "Installing Node dependencies..."
+npm install
 
 php artisan migrate --force
 
