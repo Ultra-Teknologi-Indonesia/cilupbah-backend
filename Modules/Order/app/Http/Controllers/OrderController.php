@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use OpenApi\Attributes as OA;
 
+use App\Traits\ApiResponse;
+use Modules\Order\Services\OrderService;
+
 #[OA\Tag(name: 'Orders', description: 'API Endpoints for Orders')]
 #[OA\Schema(
     schema: 'Order',
@@ -76,6 +79,15 @@ use OpenApi\Attributes as OA;
 )]
 class OrderController extends Controller
 {
+    use ApiResponse;
+
+    protected OrderService $orderService;
+
+    public function __construct(OrderService $orderService)
+    {
+        $this->orderService = $orderService;
+    }
+
     #[OA\Get(
         path: '/api/v1/orders',
         summary: 'Get a list of orders',
@@ -97,11 +109,8 @@ class OrderController extends Controller
     public function index(Request $request)
     {
         if ($request->wantsJson() || $request->is('api/*')) {
-            $orders = \Modules\Order\Models\Order::with('items')->latest()->paginate(15);
-            return response()->json([
-                'status' => 'success',
-                'data' => $orders
-            ]);
+            $orders = $this->orderService->getPaginatedOrders();
+            return $this->successResponse($orders);
         }
 
         return view('order::index');
@@ -162,17 +171,11 @@ class OrderController extends Controller
     public function show(Request $request, $id)
     {
         if ($request->wantsJson() || $request->is('api/*')) {
-            $order = \Modules\Order\Models\Order::with('items')
-                        ->where('id', $id)
-                        ->orWhere('salesorder_no', $id)
-                        ->first();
+            $order = $this->orderService->getOrderById($id);
             if (!$order) {
-                return response()->json(['status' => 'error', 'message' => 'Data tidak ditemukan', 'data' => null], 404);
+                return $this->errorResponse('Data tidak ditemukan', 404);
             }
-            return response()->json([
-                'status' => 'success',
-                'data' => $order
-            ]);
+            return $this->successResponse($order);
         }
 
         return view('order::show');
