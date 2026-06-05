@@ -293,18 +293,7 @@ Berikut SEMUA yang harus dibuat agar 100% menggantikan kedua sistem:
 - [ ] **Effective Batch** — get effective HPP untuk batch SKUs
 - [ ] **Supplier List (HPP context)** — supplier names dari HPP data
 
-#### C3. Finance & Profitability
-> cilupbah-ops: `finance.router` (469 baris — heavy SQL CTE)
-
-- [ ] **Profitability per Product** — omzet, COGS, margin Rp, margin %, status finance
-- [ ] **Fee Breakdown** — admin, service, shipping, voucher, tax, other (per unit & total)
-- [ ] **Fee from Settlement vs Estimated** — real settlement data vs schedule estimation
-- [ ] **Modal Stok** — stok × unit COGS
-- [ ] **Hidden Products** — hide dari finance view
-- [ ] **Product Merge** — grup variant ke master product
-- [ ] **Summary KPIs** — omzet Nd, settlement, HPP coverage
-
-#### C4. Sales Analytics
+#### C3. Sales Analytics
 > cilupbah-ops: `sales.router`
 
 - [ ] **Sales List** — paginated, filter by status/channel/store/shipper/month/date range
@@ -313,7 +302,7 @@ Berikut SEMUA yang harus dibuat agar 100% menggantikan kedua sistem:
 - [ ] **Sales Profitability** — margin per order
 - [ ] **Filter Options** — dynamic status/channel/store/shipper options
 
-#### C5. Stock Replenishment (SR)
+#### C4. Stock Replenishment (SR)
 > cilupbah-ops: `stock.router`
 
 - [ ] **SR Produk** — per-product: stok, avg hari, status, rec PO, supplier, keb hari
@@ -322,14 +311,14 @@ Berikut SEMUA yang harus dibuat agar 100% menggantikan kedua sistem:
 - [ ] **Bulk Update SKU kebHari/Supplier/Bin** — mass update config
 - [ ] **Update Product/SKU Config** — supplier override, MOQ, lead time, keb hari
 
-#### C6. Forecast (Proyeksi Stok)
+#### C5. Forecast (Proyeksi Stok)
 > cilupbah-ops: `forecast.router` (175 baris)
 
 - [ ] **Proyeksi 90 Hari** — stockout forecast per SKU, bucketed (Week 1-2, Week 3-4, Bulan 2, Bulan 3, Aman)
 - [ ] **Rec PO per Bucket** — recommended PO quantity per time bucket
 - [ ] **Summary** — count SKU habis dalam 30/60/90 hari
 
-#### C7. Loss Control (Failed Delivery / Returns)
+#### C6. Loss Control (Failed Delivery / Returns)
 > cilupbah-ops: `loss.router` (massive — scan, match, timeline, recap)
 
 - [ ] **Loss Summary** — overview kerugian dari failed delivery/returns
@@ -345,40 +334,7 @@ Berikut SEMUA yang harus dibuat agar 100% menggantikan kedua sistem:
 - [ ] **Status Overview & Counts** — dashboard-level overview
 - [ ] **List Shippers & Channels** — dynamic filter options
 
-#### C8. Cash Position
-> cilupbah-ops: `cash.router`
-
-- [ ] **Cash Position** — saldo kas (owner-only)
-
-#### C9. Tax Management
-> cilupbah-ops: `tax.router`
-
-- [ ] **Tax Entity CRUD** — badan usaha, NPWP, etc
-- [ ] **Tax Employee CRUD** — karyawan per badan usaha
-- [ ] **Tax Expense** — input pengeluaran untuk perhitungan pajak
-- [ ] **Tax Dashboard** — ringkasan kewajiban pajak
-- [ ] **Tax Simulation** — simulasi pajak
-
-#### C10. Warranty System
-> cilupbah-ops: `warranty.router`
-
-- [ ] **Warranty Claim (Public)** — customer lookup order → submit claim → check status
-- [ ] **Warranty Admin** — list claims, approve, ship replacement, reject, mark completed
-- [ ] **Warranty Status Counts** — overview per status
-- [ ] **Warranty Category Rules** — auto-approval rules per category
-
-#### C11. AI & Super AI
-> cilupbah-ops: `ai.router`, `superai.router`
-
-- [ ] **AI Chat** — OpenAI-powered business assistant (chat, conversation history, delete)
-- [ ] **Super AI Config** — intents, skills, slots, scenarios, guardrails
-- [ ] **Super AI Playground** — test AI responses
-- [ ] **Super AI Channels** — deploy AI ke channels (marketplace chat)
-- [ ] **Super AI Knowledge** — custom knowledge base
-- [ ] **Super AI Memory** — conversation memory/context
-- [ ] **AI Redact** — auto-redact supplier contact info dari dokumen
-
-#### C12. Product Management Extended (dari cilupbah-ops)
+#### C7. Product Management Extended (dari cilupbah-ops)
 > cilupbah-ops: `product.router`
 
 - [ ] **Product Catalog** — enriched catalog view
@@ -398,28 +354,7 @@ Berikut SEMUA yang harus dibuat agar 100% menggantikan kedua sistem:
 - [ ] **Contact Categories** — kategori kontak
 - [ ] **Customers & Suppliers** — list terpisah
 
-#### D2. Cash Bank
-> Jubelio: `/cashbank/payments/`, `/cashbank/receives`
-
-- [ ] **Cash Bank Payments** — catat pembayaran keluar
-- [ ] **Cash Bank Receives** — catat penerimaan
-
-#### D3. Journal & Accounting
-> Jubelio: `/journal/`, `/journal/{id}`, `/journal/manual-journal/`, `/accounts/lookup/all`
-
-- [ ] **Journal CRUD** — entri jurnal akuntansi
-- [ ] **Manual Journal** — input manual
-- [ ] **Account Lookup** — chart of accounts
-
-#### D4. Invoicing
-> Jubelio: `/sales/invoices/`, `/sales/invoices/{id}`, `/sales/invoices/overdue/`, `/sales/invoices/unpaid/`, `/sales/invoices/summary/`
-
-- [ ] **Sales Invoices CRUD** — buat & kelola invoice
-- [ ] **Invoice Reports** — overdue, unpaid, summary
-- [ ] **Create Invoice from Packlist** — `POST /sales/packlists/create-invoice`
-- [ ] **Invoice Payment** — `POST /sales/packlists/create-invoice-payment`
-
-#### D5. Sales Orders Extended
+#### D2. Sales Orders Extended
 > Jubelio: `/sales/orders/`, `/sales/orders/{id}`, `/sales/orders/cancel/`, `/sales/orders/failed/`, etc.
 
 - [ ] **Cancel Order** — `POST /sales/orders/cancel/`
@@ -433,23 +368,13 @@ Berikut SEMUA yang harus dibuat agar 100% menggantikan kedua sistem:
 - [ ] **Failed Orders** — `GET /sales/orders/failed/`
 - [ ] **Unfulfilled** — `GET /sales/unfullfilled/`
 
-#### D6. Sales Settlements
-> Jubelio: `/sales/settlements/`, `/sales/settlements/{id}`
-
-- [ ] **Settlements CRUD** — marketplace settlement tracking
-
-#### D7. Couriers
+#### D3. Couriers
 > Jubelio: `/couriers`, `/couriers/{id}`, `/couriers/tenant/{id}`, `/wms/couriers`
 
 - [ ] **Courier CRUD** — manage kurir
 - [ ] **Tenant Couriers** — kurir per tenant
 
-#### D8. Taxes
-> Jubelio: `/taxes/`
-
-- [ ] **Tax Rates** — manage tarif pajak
-
-#### D9. Variations
+#### D4. Variations
 > Jubelio: `/variations`
 
 - [ ] **Variation Templates** — manage variasi produk (size, color, etc.)
@@ -576,8 +501,6 @@ Berikut SEMUA yang harus dibuat agar 100% menggantikan kedua sistem:
 - [ ] Migration: `hpp_configs`, `product_merges`, `product_hidden`, `settings`, `sync_logs`
 - [ ] DashboardService: KPIs, quickWins, syncStatus (replicate dashboard.router)
 - [ ] HppService: cascading resolver (SKU → Product → Legacy), bulk import
-- [ ] FinanceService: profitability per product, fee breakdown, settlement vs estimated
-- [ ] CashService: cash position
 
 **Rasyid (Sales Analytics + Stock Replenishment + Forecast + Loss):**
 - [ ] SalesAnalyticsService: list, KPIs, detail, profitability, filter options
@@ -606,14 +529,10 @@ Berikut SEMUA yang harus dibuat agar 100% menggantikan kedua sistem:
 **Rasyid (Blibli + Sync Engine + Warranty + AI):**
 - [ ] BlibliClient + Services + Mappers
 - [ ] Sync Engine (scheduler, gap detection, backfill — replicate cilupbah-ops scheduler.ts)
-- [ ] WarrantyService: claim, approve, ship, reject, complete, category rules
-- [ ] AI Chat foundation (OpenAI integration)
-- [ ] Tax management, Settings, User roles
 
 ### Milestone 6 — Accounting, Reports, Polish (Minggu 6)
 
 **Darel:**
-- [ ] Journal, Invoicing, Cash Bank
 - [ ] All Reports with Excel export
 - [ ] Region master data
 - [ ] Product merge/hide
@@ -622,7 +541,6 @@ Berikut SEMUA yang harus dibuat agar 100% menggantikan kedua sistem:
 **Rasyid:**
 - [ ] Contacts CRUD, Couriers, Variations
 - [ ] Sales Orders extended (cancel, AWB, mark complete, etc.)
-- [ ] Settlements tracking
 - [ ] Supplier portal fine-tuning
 - [ ] Final API documentation update
 
@@ -650,19 +568,14 @@ Berikut SEMUA yang harus dibuat agar 100% menggantikan kedua sistem:
 | **Retur (Sales+Purchase)** | ~15 | 🔴 0% | Rasyid (M2) |
 | **Dashboard & KPIs** | ~5 | 🔴 0% | Darel (M3) |
 | **HPP** | ~15 | 🔴 0% | Darel (M3) |
-| **Finance/Profitability** | ~5 | 🔴 0% | Darel (M3) |
 | **Sales Analytics** | ~8 | 🔴 0% | Rasyid (M3) |
 | **Stock Replenishment** | ~10 | 🔴 0% | Rasyid (M3) |
 | **Forecast** | ~3 | 🔴 0% | Rasyid (M3) |
 | **Loss Control** | ~15 | 🔴 0% | Rasyid (M3) |
-| **Cash/Tax** | ~10 | 🔴 0% | Darel (M3) |
-| **Warranty** | ~12 | 🔴 0% | Rasyid (M5) |
-| **AI/SuperAI** | ~10 | 🔴 0% | Rasyid (M5) |
 | **Sync Engine** | ~15 | 🔴 0% | Rasyid (M5) |
 | **Webhook** | ~12 | 🟡 5% skeleton | Rasyid (M2) |
 | **Notification** | ~4 | 🟡 5% skeleton | Rasyid (M2) |
 | **Report** | ~12 | 🟡 5% skeleton | Darel (M6) |
-| **Accounting (Journal/Invoice/CashBank)** | ~15 | 🔴 0% | Darel (M6) |
 | **Contacts/Couriers** | ~10 | 🔴 0% | Rasyid (M6) |
 | **Sales Orders Extended** | ~10 | 🔴 0% | Rasyid (M6) |
 | **Settings/User Roles** | ~8 | 🔴 0% | Rasyid (M5) |
@@ -683,7 +596,6 @@ Berikut SEMUA yang harus dibuat agar 100% menggantikan kedua sistem:
    - HPP Cascading Resolver (3-tier: SKU → Product → Legacy)
    - Product Merge/Unmerge (group variants ke master product)
    - Stock Replenishment Calculator (avg hari, status, rec PO, keb hari)
-   - Finance profitability (CTE-based SQL, per-SKU fee allocation)
    - Loss Control scan/match workflow
    - Sync Engine (cron scheduler, gated execution, watchdog, gap detection)
    - Supplier Portal (multi-tenant role separation, AI file redaction)
