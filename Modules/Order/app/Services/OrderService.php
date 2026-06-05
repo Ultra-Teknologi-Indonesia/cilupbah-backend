@@ -12,7 +12,7 @@ class OrderService
         try {
             DB::beginTransaction();
 
-            $existing = DB::table('orders')->where('salesorder_no', $orderData['salesorder_no'])->first();
+            $existing = DB::table('orders')->where('salesorder_no', $orderData['salesorder_no'])->lockForUpdate()->first();
 
             $orderRow = [
                 'salesorder_no' => $orderData['salesorder_no'],

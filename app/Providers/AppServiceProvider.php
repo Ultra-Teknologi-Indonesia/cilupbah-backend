@@ -19,6 +19,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        \Illuminate\Support\Facades\RateLimiter::for('tiktok_api', function ($job) {
+            return \Illuminate\Cache\RateLimiting\Limit::perSecond(20);
+        });
     }
 }
