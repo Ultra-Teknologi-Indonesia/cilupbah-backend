@@ -69,6 +69,41 @@ class TikTokOrderService
         return $count;
     }
 
+    public function pullOrderById(string $shopId, string $orderId): ?int
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (!$shop || !$shop->access_token) {
+            throw new \Exception("No access token found for shop: {$shopId}");
+        }
+
+        $accessToken = $shop->access_token;
+        $shopCipher = $shop->shop_cipher ?? '';
+
+        $queries = [
+            'shop_cipher' => $shopCipher,
+            'ids' => $orderId,
+        ];
+
+        $res = $this->client->request('GET', '/order/202309/orders', $queries, [], $accessToken);
+        
+        if (!isset($res['data']['orders']) || empty($res['data']['orders'])) {
+            return 0; 
+        }
+
+        $count = 0;
+        foreach ($res['data']['orders'] as $item) {
+            try {
+                $internalData = $this->mapper->map($item, $shopId);
+                $this->orderService->upsertFromChannel($internalData);
+                $count++;
+            } catch (\Exception $e) {
+                Log::error("Failed to pull specific order {$item['id']}: " . $e->getMessage());
+            }
+        }
+        
+        return $count;
+    }
+
     public function acceptOrder(string $shopId, string $orderId): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);

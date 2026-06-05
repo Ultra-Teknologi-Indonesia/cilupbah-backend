@@ -24,27 +24,13 @@ class TikTokClient
 
     public function generateSignature(string $path, array $queries, $body = null, bool $isMultipart = false, string $method = 'POST'): string
     {
-        $signParams = collect($queries)->except(['sign', 'access_token'])->toArray();
-
-        ksort($signParams);
-
-        $paramString = '';
-        foreach ($signParams as $k => $v) {
-            $paramString .= $k . $v;
+        $contentType = $isMultipart ? 'multipart/form-data' : 'application/json';
+        
+        if (!$isMultipart && empty($body) && strtoupper($method) !== 'GET') {
+            $body = '{}';
         }
 
-        $bodyString = '';
-        if (!$isMultipart) {
-            if (empty($body) && strtoupper($method) !== 'GET') {
-                $bodyString = '{}';
-            } elseif (!empty($body)) {
-                $bodyString = json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-            }
-        }
-
-        $stringToSign = $this->appSecret . $path . $paramString . $bodyString . $this->appSecret;
-
-        return hash_hmac('sha256', $stringToSign, $this->appSecret);
+        return \Modules\Channel\Helpers\TikTokSignature::generate($path, $queries, $body, $this->appSecret, $contentType);
     }
 
     public function request(string $method, string $path, array $queries = [], array $body = [], ?string $accessToken = null, array $files = [])
