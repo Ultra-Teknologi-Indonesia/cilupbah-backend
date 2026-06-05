@@ -116,7 +116,7 @@ Berikut SEMUA yang harus dibuat agar 100% menggantikan kedua sistem:
   - _cilupbah-ops: `supplierPortal.updatePOItemPL, updateItemPrices, updatePOHeader, submitPL`_
 - [ ] **Supplier Review** — post-delivery review (category: PAYMENT_DEDUCT/RESEND/MATCHED/OTHER)
   - _cilupbah-ops: `supplierPortal.submitReview`_
-- [ ] **Supplier File Upload** — PL file, invoice file (dengan AI redaction)
+- [ ] **Supplier File Upload** — PL file, invoice file
   - _cilupbah-ops: `supplierPortal.uploadPLFile, deletePLFile, uploadInvoiceFile, deleteInvoiceFile`_
 - [ ] **Supplier Chat** — komunikasi supplier ↔ buyer
   - _cilupbah-ops: `supplierPortal.chat`_
@@ -338,14 +338,14 @@ Berikut SEMUA yang harus dibuat agar 100% menggantikan kedua sistem:
 > cilupbah-ops: `product.router`
 
 - [ ] **Product Catalog** — enriched catalog view
-- [ ] **Product Merge Suggestions** — AI-powered duplicate detection
+- [ ] **Product Merge Suggestions** — duplicate detection
 - [ ] **Product Merge/Unmerge** — manual & auto merge variants ke master
 - [ ] **Product Hide/Unhide** — bulk hide dari dashboard/finance
 - [ ] **Bulk Merge** — mass merge products
 
 ---
 
-### D. ACCOUNTING & CONTACTS (dari Jubelio API)
+### D. CONTACTS & COURIERS (dari Jubelio API)
 
 #### D1. Contacts
 > Jubelio: `/contacts/`, `/contacts/{id}`, `/contacts/customers/`, `/contacts/suppliers/`, `/contacts/customers-suppliers/`, `/contact/category/`
@@ -497,13 +497,13 @@ Berikut SEMUA yang harus dibuat agar 100% menggantikan kedua sistem:
 
 ### Milestone 3 — Business Intelligence (Minggu 3-4)
 
-**Darel (Dashboard + Finance + HPP):**
+**Darel (Dashboard + HPP):**
 - [ ] Migration: `hpp_configs`, `product_merges`, `product_hidden`, `settings`, `sync_logs`
 - [ ] DashboardService: KPIs, quickWins, syncStatus (replicate dashboard.router)
 - [ ] HppService: cascading resolver (SKU → Product → Legacy), bulk import
 
 **Rasyid (Sales Analytics + Stock Replenishment + Forecast + Loss):**
-- [ ] SalesAnalyticsService: list, KPIs, detail, profitability, filter options
+- [ ] SalesAnalyticsService: list, KPIs, detail, filter options
 - [ ] StockReplenishmentService: SR produk, SR SKU, bulk update config
 - [ ] ForecastService: proyeksi 90 hari, rec PO per bucket
 - [ ] LossControlService: summary, list, scan, match, timeline, recap
@@ -526,11 +526,11 @@ Berikut SEMUA yang harus dibuat agar 100% menggantikan kedua sistem:
 - [ ] ChannelStockSyncService
 - [ ] Auto-fulfill: order PROCESSING → Outbound → reserve → ship → update marketplace
 
-**Rasyid (Blibli + Sync Engine + Warranty + AI):**
+**Rasyid (Blibli + Sync Engine):**
 - [ ] BlibliClient + Services + Mappers
 - [ ] Sync Engine (scheduler, gap detection, backfill — replicate cilupbah-ops scheduler.ts)
 
-### Milestone 6 — Accounting, Reports, Polish (Minggu 6)
+### Milestone 6 — Reports, Polish (Minggu 6)
 
 **Darel:**
 - [ ] All Reports with Excel export
@@ -598,7 +598,7 @@ Berikut SEMUA yang harus dibuat agar 100% menggantikan kedua sistem:
    - Stock Replenishment Calculator (avg hari, status, rec PO, keb hari)
    - Loss Control scan/match workflow
    - Sync Engine (cron scheduler, gated execution, watchdog, gap detection)
-   - Supplier Portal (multi-tenant role separation, AI file redaction)
+   - Supplier Portal (multi-tenant role separation)
 
 3. **Standar Kode:** Service-Repository Pattern, ApiResponse trait, Spatie QueryBuilder, no logic in Controllers
 
