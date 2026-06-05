@@ -10,11 +10,15 @@ use App\Filters\FuzzyFilter;
 
 class OrderRepository
 {
-    /**
-     * Get paginated orders using Spatie QueryBuilder.
-     */
     public function getPaginatedOrders()
     {
+        $request = request();
+        if ($request->has('search')) {
+            $request->merge([
+                'filter' => array_merge($request->input('filter', []), ['search' => $request->input('search')])
+            ]);
+        }
+
         return QueryBuilder::for(Order::class)
             ->allowedFilters(
                 AllowedFilter::custom('search', new FuzzyFilter(), 'customer_name,salesorder_no'),
@@ -34,9 +38,6 @@ class OrderRepository
             ->appends(request()->query());
     }
 
-    /**
-     * Get a specific order by ID with relationships.
-     */
     public function getOrderById(int|string $id): ?Order
     {
         return QueryBuilder::for(Order::class)
@@ -44,9 +45,6 @@ class OrderRepository
             ->find($id);
     }
 
-    /**
-     * Upsert an order by its salesorder_no.
-     */
     public function upsertOrderBySalesOrderNo(string $salesOrderNo, array $orderData): ?Order
     {
         $existing = DB::table('orders')->where('salesorder_no', $salesOrderNo)->lockForUpdate()->first();
@@ -78,7 +76,6 @@ class OrderRepository
         ];
 
         if ($existing) {
-            // Business logic for status overrides
             if ($existing->status === 'CANCELLED' && $orderData['status'] !== 'CANCELLED') {
                 $orderRow['status'] = 'CANCELLED';
             }
@@ -96,9 +93,6 @@ class OrderRepository
         return Order::find($orderId);
     }
 
-    /**
-     * Sync order items for an order.
-     */
     public function syncOrderItems(int $orderId, array $items): void
     {
         DB::table('order_items')->where('order_id', $orderId)->delete();
