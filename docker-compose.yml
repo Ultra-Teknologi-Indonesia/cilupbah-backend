@@ -5,6 +5,21 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - db
+      - redis
+
+  horizon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: php artisan horizon
+    depends_on:
+      - db
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
 
   db:
     image: postgres:15-alpine
@@ -17,3 +32,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
