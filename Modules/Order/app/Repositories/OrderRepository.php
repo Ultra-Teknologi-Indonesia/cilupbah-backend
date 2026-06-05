@@ -33,7 +33,7 @@ class OrderRepository
                 'transaction_date',
                 'grand_total'
             )
-            ->allowedIncludes(['items'])
+            ->allowedIncludes('items')
             ->paginate(request('per_page', 10))
             ->appends(request()->query());
     }
@@ -41,7 +41,7 @@ class OrderRepository
     public function getOrderById(int|string $id): ?Order
     {
         return QueryBuilder::for(Order::class)
-            ->allowedIncludes(['items'])
+            ->allowedIncludes('items')
             ->find($id);
     }
 
