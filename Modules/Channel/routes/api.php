@@ -8,6 +8,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 });
 
 Route::prefix('v1/tiktok')->group(function () {
+    Route::post('webhook', [\Modules\Channel\Http\Controllers\TikTokWebhookController::class, 'handle']);
+    
     Route::get('auth', [\Modules\Channel\Http\Controllers\TikTokAuthController::class, 'redirect']);
     Route::get('callback', [\Modules\Channel\Http\Controllers\TikTokAuthController::class, 'callback']);
     Route::get('callback-debug', [\Modules\Channel\Http\Controllers\TikTokAuthController::class, 'callbackDebug']);
