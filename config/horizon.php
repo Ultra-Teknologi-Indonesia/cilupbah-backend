@@ -197,7 +197,7 @@ return [
     */
 
     'defaults' => [
-        'supervisor-1' => [
+        'supervisor-default' => [
             'connection' => 'redis',
             'queue' => ['default', 'tiktok_webhooks'],
             'balance' => 'auto',
@@ -210,28 +210,123 @@ return [
             'timeout' => 60,
             'nice' => 0,
         ],
+        'supervisor-orders' => [
+            'connection' => 'redis',
+            'queue' => ['orders'],
+            'balance' => 'auto',
+            'minProcesses' => 2,
+            'maxProcesses' => 10,
+            'timeout' => 60,
+            'tries' => 3,
+            'backoff' => [5, 15, 30],
+            'memory' => 128,
+            'nice' => 0,
+        ],
+        'supervisor-fulfillment' => [
+            'connection' => 'redis',
+            'queue' => ['fulfillment'],
+            'balance' => 'auto',
+            'minProcesses' => 2,
+            'maxProcesses' => 10,
+            'timeout' => 60,
+            'tries' => 3,
+            'backoff' => [5, 15, 30],
+            'memory' => 128,
+            'nice' => 0,
+        ],
+        'supervisor-stock-sync' => [
+            'connection' => 'redis',
+            'queue' => ['stock-sync'],
+            'balance' => 'auto',
+            'minProcesses' => 2,
+            'maxProcesses' => 10,
+            'timeout' => 60,
+            'tries' => 3,
+            'backoff' => [5, 15, 30],
+            'memory' => 128,
+            'nice' => 0,
+        ],
+        'supervisor-failed-jobs' => [
+            'connection' => 'redis',
+            'queue' => ['failed-jobs'],
+            'balance' => 'auto',
+            'minProcesses' => 1,
+            'maxProcesses' => 3,
+            'timeout' => 60,
+            'tries' => 1,
+            'memory' => 128,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
         'production' => [
-            'supervisor-1' => [
+            'supervisor-default' => [
                 'maxProcesses' => 10,
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
+            'supervisor-orders' => [
+                'minProcesses' => 2,
+                'maxProcesses' => 10,
+            ],
+            'supervisor-fulfillment' => [
+                'minProcesses' => 2,
+                'maxProcesses' => 10,
+            ],
+            'supervisor-stock-sync' => [
+                'minProcesses' => 2,
+                'maxProcesses' => 10,
+            ],
+            'supervisor-failed-jobs' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 3,
+            ],
         ],
-        
+
         'staging' => [
-            'supervisor-1' => [
+            'supervisor-default' => [
                 'maxProcesses' => 10,
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
+            ],
+            'supervisor-orders' => [
+                'minProcesses' => 2,
+                'maxProcesses' => 10,
+            ],
+            'supervisor-fulfillment' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 5,
+            ],
+            'supervisor-stock-sync' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 5,
+            ],
+            'supervisor-failed-jobs' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 2,
             ],
         ],
 
         'local' => [
-            'supervisor-1' => [
+            'supervisor-default' => [
                 'maxProcesses' => 3,
+            ],
+            'supervisor-orders' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 3,
+            ],
+            'supervisor-fulfillment' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 2,
+            ],
+            'supervisor-stock-sync' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 2,
+            ],
+            'supervisor-failed-jobs' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 1,
             ],
         ],
     ],

@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use OpenApi\Attributes as OA;
 
 use App\Traits\ApiResponse;
+use Modules\Order\Models\Order;
 use Modules\Order\Services\OrderService;
 use Modules\Order\Http\Resources\OrderResource;
 
@@ -81,7 +82,47 @@ class OrderController extends Controller
             new OA\Response(response: 422, description: 'Validation Error')
         ]
     )]
-    public function store(Request $request) {}
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'salesorder_no'       => 'required|string',
+            'channel_shop_id'     => 'nullable|string',
+            'customer_name'       => 'required|string|max:255',
+            'transaction_date'    => 'nullable|date',
+            'sub_total'           => 'nullable|numeric|min:0',
+            'total_disc'          => 'nullable|numeric|min:0',
+            'total_tax'           => 'nullable|numeric|min:0',
+            'shipping_cost'       => 'nullable|numeric|min:0',
+            'insurance_cost'      => 'nullable|numeric|min:0',
+            'grand_total'         => 'nullable|numeric|min:0',
+            'shipping_full_name'  => 'nullable|string|max:255',
+            'shipping_phone'      => 'nullable|string|max:50',
+            'shipping_address'    => 'nullable|string',
+            'shipping_area'       => 'nullable|string|max:255',
+            'shipping_city'       => 'nullable|string|max:255',
+            'shipping_province'   => 'nullable|string|max:255',
+            'shipping_post_code'  => 'nullable|string|max:20',
+            'shipping_country'    => 'nullable|string|max:100',
+            'payment_method'      => 'nullable|string|max:100',
+            'payment_method_name' => 'nullable|string|max:255',
+            'source'              => 'nullable|string|max:50',
+            'buyer_message'       => 'nullable|string',
+            'seller_note'         => 'nullable|string',
+            'items'               => 'required|array|min:1',
+            'items.*.sku'         => 'required|string',
+            'items.*.description' => 'nullable|string',
+            'items.*.qty_in_base' => 'required|integer|min:1',
+            'items.*.price'       => 'required|numeric|min:0',
+            'items.*.disc'        => 'nullable|numeric|min:0',
+            'items.*.disc_amount' => 'nullable|numeric|min:0',
+            'items.*.tax_amount'  => 'nullable|numeric|min:0',
+            'items.*.amount'      => 'nullable|numeric|min:0',
+        ]);
+
+        $order = $this->orderService->createOrder($validated);
+
+        return $this->successResponse(new OrderResource($order), 'Order created', 201);
+    }
 
     #[OA\Get(
         path: '/api/v1/orders/{order}',
@@ -150,7 +191,22 @@ class OrderController extends Controller
             new OA\Response(response: 422, description: 'Validation Error')
         ]
     )]
-    public function update(Request $request, $id) {}
+    public function update(Request $request, $id)
+    {
+        $order = Order::findOrFail($id);
+
+        $validated = $request->validate([
+            'customer_name'    => 'sometimes|string|max:255',
+            'shipping_address' => 'sometimes|string',
+            'seller_note'      => 'sometimes|nullable|string',
+            'status'           => 'sometimes|string|in:pending,reserved,picked,packed,shipped,cancelled',
+            'cancel_reason'    => 'nullable|string|max:255',
+        ]);
+
+        $order = $this->orderService->updateOrder($order, $validated);
+
+        return $this->successResponse(new OrderResource($order), 'Order updated');
+    }
 
     #[OA\Delete(
         path: '/api/v1/orders/{order}',
@@ -166,5 +222,12 @@ class OrderController extends Controller
             new OA\Response(response: 404, description: 'Order not found')
         ]
     )]
-    public function destroy($id) {}
+    public function destroy($id)
+    {
+        $order = Order::with('items')->findOrFail($id);
+
+        $this->orderService->deleteOrder($order);
+
+        return $this->successResponse(null, 'Order deleted');
+    }
 }

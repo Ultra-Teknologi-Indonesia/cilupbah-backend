@@ -84,13 +84,6 @@ class OrderRepository
         ];
 
         if ($existing) {
-            if ($existing->status === 'CANCELLED' && $orderData['status'] !== 'CANCELLED') {
-                $orderRow['status'] = 'CANCELLED';
-            }
-            if ($existing->status === 'PROCESSING' && $orderData['channel_status'] === 'AWAITING_SHIPMENT') {
-                $orderRow['status'] = 'PROCESSING';
-            }
-
             DB::table('orders')->where('id', $existing->id)->update($orderRow);
             $orderId = $existing->id;
         } else {

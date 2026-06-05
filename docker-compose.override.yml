@@ -26,7 +26,7 @@ services:
       dockerfile: Dockerfile
     image: staging-superapp-dev
     container_name: cilupbah-local-horizon
-    entrypoint: ["php", "artisan", "horizon"]
+    entrypoint: ["/bin/bash", "-c", "cp -f .env.docker .env && php artisan horizon"]
     volumes:
       - .:/var/www/html
       - vendor_data:/var/www/html/vendor
