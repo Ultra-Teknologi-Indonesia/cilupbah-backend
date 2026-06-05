@@ -126,4 +126,11 @@ return [
         'table' => 'failed_jobs',
     ],
 
+    'names' => [
+        'orders'      => env('QUEUE_NAME_ORDERS', 'orders'),
+        'fulfillment' => env('QUEUE_NAME_FULFILLMENT', 'fulfillment'),
+        'stock_sync'  => env('QUEUE_NAME_STOCK_SYNC', 'stock-sync'),
+        'failed_jobs' => env('QUEUE_NAME_FAILED_JOBS', 'failed-jobs'),
+    ],
+
 ];
