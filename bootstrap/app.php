@@ -3,6 +3,10 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Modules\Order\Exceptions\CannotDeleteActiveOrderException;
+use Modules\Order\Exceptions\DuplicateOrderException;
+use Modules\Order\Exceptions\InsufficientStockException;
+use Modules\Order\Exceptions\InvalidStatusTransitionException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -20,6 +24,22 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $exceptions->render(function (\Throwable $e, \Illuminate\Http\Request $request) {
             if ($request->is('api/*')) {
+                if ($e instanceof DuplicateOrderException) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => $e->getMessage(),
+                    ], 409);
+                }
+
+                if ($e instanceof InsufficientStockException
+                    || $e instanceof InvalidStatusTransitionException
+                    || $e instanceof CannotDeleteActiveOrderException) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => $e->getMessage(),
+                    ], 422);
+                }
+
                 if ($e instanceof \Illuminate\Validation\ValidationException) {
                     return response()->json([
                         'status' => 'error',
@@ -36,7 +56,7 @@ return Application::configure(basePath: dirname(__DIR__))
                     ], 401);
                 }
 
-                if ($e instanceof \Symfony\Component\HttpKernel\Exception\NotFoundHttpException || 
+                if ($e instanceof \Symfony\Component\HttpKernel\Exception\NotFoundHttpException ||
                     $e instanceof \Illuminate\Database\Eloquent\ModelNotFoundException) {
                     return response()->json([
                         'status' => 'error',

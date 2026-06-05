@@ -161,6 +161,11 @@ class TikTokProductService
         }
 
         $variants = $this->productRepository->getVariantsByProductId($productId);
+
+        $channelWarehouse = DB::table('channel_warehouses')
+            ->where('store_id', $shopId)
+            ->first();
+
         $skus = [];
         $inventorySkus = [];
 
@@ -172,12 +177,21 @@ class TikTokProductService
                     'currency' => 'IDR'
                 ]
             ];
+
+            $availableQty = 0;
+            if ($channelWarehouse) {
+                $availableQty = (int) DB::table('inventories')
+                    ->where('item_id', $productId)
+                    ->where('location_id', $channelWarehouse->location_id)
+                    ->sum('available');
+            }
+
             $inventorySkus[] = [
                 'seller_sku' => $v->sku,
                 'inventory' => [
                     [
-                        'quantity' => 100,
-                        'warehouse_id' => 'dummy_warehouse'
+                        'quantity' => max(0, $availableQty),
+                        'warehouse_id' => $channelWarehouse->channel_location_id ?? '',
                     ]
                 ]
             ];
@@ -189,16 +203,32 @@ class TikTokProductService
         try {
             $this->client->request('POST', "/product/202309/products/{$product->channel_product_id}/prices/update", ['shop_cipher' => $shop->shop_cipher ?? ''], $pricePayload, $shop->access_token);
         } catch (\Exception $e) {
-            Log::warning("TikTok price update failed (sandbox bypass): " . $e->getMessage());
+            Log::warning("TikTok price update failed: " . $e->getMessage());
         }
 
         try {
             $this->client->request('POST', "/product/202309/products/{$product->channel_product_id}/inventory/update", ['shop_cipher' => $shop->shop_cipher ?? ''], $invPayload, $shop->access_token);
         } catch (\Exception $e) {
-            Log::warning("TikTok inventory update failed (sandbox bypass): " . $e->getMessage());
+            Log::warning("TikTok inventory update failed: " . $e->getMessage());
         }
 
         return true;
+    }
+
+    public function syncInventoryBySku(string $sku, string $shopId): bool
+    {
+        $variant = $this->productRepository->getVariantBySku($sku);
+        if (!$variant) {
+            return false;
+        }
+
+        try {
+            $this->syncPriceAndInventory($variant->product_id, $shopId);
+            return true;
+        } catch (\Exception $e) {
+            Log::warning("syncInventoryBySku failed for {$sku} on shop {$shopId}: " . $e->getMessage());
+            return false;
+        }
     }
 
     public function pushUpdate(int $productId, string $shopId)
