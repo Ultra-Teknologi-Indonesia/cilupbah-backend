@@ -9,5 +9,10 @@
     "Channel": true,
     "Webhook": true,
     "Report": true,
-    "Notification": true
+    "Notification": true,
+    "Finance": true,
+    "Supplier": true,
+    "Warranty": true,
+    "AI": true,
+    "Tax": true
 }
