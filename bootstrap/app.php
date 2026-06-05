@@ -28,6 +28,14 @@ return Application::configure(basePath: dirname(__DIR__))
                     ], 422);
                 }
 
+                if ($e instanceof \Illuminate\Auth\AuthenticationException) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Unauthenticated',
+                        'data' => null
+                    ], 401);
+                }
+
                 if ($e instanceof \Symfony\Component\HttpKernel\Exception\NotFoundHttpException || 
                     $e instanceof \Illuminate\Database\Eloquent\ModelNotFoundException) {
                     return response()->json([
