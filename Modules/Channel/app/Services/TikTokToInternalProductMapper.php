@@ -4,9 +4,11 @@ namespace Modules\Channel\Services;
 
 class TikTokToInternalProductMapper
 {
-    public function map(array $tiktokProduct): array
+    public function map(array $tiktokProduct, string $shopId): array
     {
         $internal = [
+            'channel_shop_id' => $shopId,
+            'source' => 'tiktok',
             'category_id' => 1,
             'name' => $tiktokProduct['title'] ?? 'TikTok Product',
             'description' => $tiktokProduct['description'] ?? '',
