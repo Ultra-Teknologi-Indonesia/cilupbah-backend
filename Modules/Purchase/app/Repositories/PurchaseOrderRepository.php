@@ -35,13 +35,13 @@ class PurchaseOrderRepository
             ->paginate($limit);
     }
 
-    public function findById(int $id): ?PurchaseOrder
+    public function findById(string $id): ?PurchaseOrder
     {
         return PurchaseOrder::with(['supplier', 'location', 'items.product:id,name,sku'])
             ->find($id);
     }
 
-    public function findByIdForUpdate(int $id): ?PurchaseOrder
+    public function findByIdForUpdate(string $id): ?PurchaseOrder
     {
         return PurchaseOrder::with('items')
             ->lockForUpdate()
@@ -69,7 +69,7 @@ class PurchaseOrderRepository
         $po->update(['status' => $status]);
     }
 
-    public function updateItemReceivedQty(int $itemId, int $addQty): void
+    public function updateItemReceivedQty(string $itemId, int $addQty): void
     {
         PurchaseOrderItem::where('id', $itemId)
             ->increment('received_qty', $addQty);

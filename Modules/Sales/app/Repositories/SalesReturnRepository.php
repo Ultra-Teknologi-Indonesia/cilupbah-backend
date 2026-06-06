@@ -35,13 +35,13 @@ class SalesReturnRepository
             ->paginate($limit);
     }
 
-    public function findById(int $id): ?SalesReturn
+    public function findById(string $id): ?SalesReturn
     {
         return SalesReturn::with(['order', 'location', 'items.product:id,name,sku'])
             ->find($id);
     }
 
-    public function findByIdForUpdate(int $id): ?SalesReturn
+    public function findByIdForUpdate(string $id): ?SalesReturn
     {
         return SalesReturn::with('items')
             ->lockForUpdate()

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Collection;
 
 class InventoryRepository
 {
-    public function getByLocation(int $locationId): Collection
+    public function getByLocation(string $locationId): Collection
     {
         return Inventory::where('location_id', $locationId)
             ->with(['product', 'bin'])
@@ -21,7 +21,7 @@ class InventoryRepository
             ->get();
     }
 
-    public function findExact(string $itemId, int $locationId, ?string $binId, string $batchNo = '', string $serialNo = ''): ?Inventory
+    public function findExact(string $itemId, string $locationId, ?string $binId, string $batchNo = '', string $serialNo = ''): ?Inventory
     {
         return Inventory::where('item_id', $itemId)
             ->where('location_id', $locationId)
@@ -31,7 +31,7 @@ class InventoryRepository
             ->first();
     }
 
-    public function findExactForUpdate(string $itemId, int $locationId, ?string $binId, string $batchNo = '', string $serialNo = ''): ?Inventory
+    public function findExactForUpdate(string $itemId, string $locationId, ?string $binId, string $batchNo = '', string $serialNo = ''): ?Inventory
     {
         return Inventory::where('item_id', $itemId)
             ->where('location_id', $locationId)

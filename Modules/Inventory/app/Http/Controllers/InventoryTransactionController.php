@@ -166,7 +166,7 @@ class InventoryTransactionController extends Controller
             new OA\Response(response: 422, description: 'Validation Error')
         ]
     )]
-    public function transferIn(\Modules\Inventory\Http\Requests\TransferInRequest $request, int $id): JsonResponse
+    public function transferIn(\Modules\Inventory\Http\Requests\TransferInRequest $request, string $id): JsonResponse
     {
         try {
             $result = $this->inventoryService->transferIn($id, $request->validated());
@@ -210,7 +210,7 @@ class InventoryTransactionController extends Controller
             new OA\Response(response: 404, description: 'Transfer tidak ditemukan.')
         ]
     )]
-    public function transferShow(int $id): JsonResponse
+    public function transferShow(string $id): JsonResponse
     {
         $transfer = $this->inventoryService->getTransferById($id);
 

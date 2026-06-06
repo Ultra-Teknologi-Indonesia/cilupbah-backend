@@ -88,7 +88,7 @@ class InventoryController extends Controller
             new OA\Response(response: 401, description: 'Unauthenticated')
         ]
     )]
-    public function show(int $itemId): JsonResponse
+    public function show(string $itemId): JsonResponse
     {
         $stocks = $this->inventoryService->getStockByItem($itemId);
 

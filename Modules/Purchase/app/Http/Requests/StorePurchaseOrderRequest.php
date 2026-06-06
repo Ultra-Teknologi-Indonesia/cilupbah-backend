@@ -23,7 +23,7 @@ class StorePurchaseOrderRequest extends FormRequest
             'notes'                => ['nullable', 'string'],
             'created_by'           => ['required', 'string', 'max:100'],
             'items'                => ['required', 'array', 'min:1'],
-            'items.*.item_id'      => ['required', 'uuid', 'exists:products,id'],
+            'items.*.item_id'      => ['required', 'string', 'size:32', 'exists:products,id'],
             'items.*.qty'          => ['required', 'integer', 'min:1'],
             'items.*.unit_price'   => ['required', 'numeric', 'min:0'],
         ];

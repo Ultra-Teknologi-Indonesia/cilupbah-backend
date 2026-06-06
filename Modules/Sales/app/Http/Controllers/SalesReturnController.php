@@ -71,7 +71,7 @@ class SalesReturnController extends Controller
             new OA\Response(response: 404, description: 'Return tidak ditemukan'),
         ]
     )]
-    public function show(int $id): JsonResponse
+    public function show(string $id): JsonResponse
     {
         $return = $this->returnService->getById($id);
 
@@ -140,7 +140,7 @@ class SalesReturnController extends Controller
             new OA\Response(response: 500, description: 'Server Error'),
         ]
     )]
-    public function accept(int $id, Request $request): JsonResponse
+    public function accept(string $id, Request $request): JsonResponse
     {
         $request->validate(['processed_by' => 'required|string|max:100']);
 
@@ -172,7 +172,7 @@ class SalesReturnController extends Controller
             new OA\Response(response: 500, description: 'Server Error'),
         ]
     )]
-    public function reject(int $id, Request $request): JsonResponse
+    public function reject(string $id, Request $request): JsonResponse
     {
         $request->validate([
             'processed_by' => 'required|string|max:100',
@@ -206,7 +206,7 @@ class SalesReturnController extends Controller
             new OA\Response(response: 500, description: 'Server Error'),
         ]
     )]
-    public function complete(int $id, Request $request): JsonResponse
+    public function complete(string $id, Request $request): JsonResponse
     {
         $request->validate(['processed_by' => 'required|string|max:100']);
 

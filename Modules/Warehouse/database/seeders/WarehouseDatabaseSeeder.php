@@ -9,7 +9,9 @@ class WarehouseDatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        $locationId = DB::table('locations')->insertGetId([
+        $locationId = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();
+        DB::table('locations')->insert([
+            'id' => $locationId,
             'location_code' => 'WH-PUSAT',
             'location_name' => 'Gudang Pusat',
             'location_type' => 'Gudang',

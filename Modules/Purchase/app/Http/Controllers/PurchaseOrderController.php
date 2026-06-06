@@ -73,7 +73,7 @@ class PurchaseOrderController extends Controller
             new OA\Response(response: 404, description: 'PO tidak ditemukan'),
         ]
     )]
-    public function show(int $id): JsonResponse
+    public function show(string $id): JsonResponse
     {
         $po = $this->poService->getById($id);
 
@@ -135,7 +135,7 @@ class PurchaseOrderController extends Controller
             new OA\Response(response: 500, description: 'Server Error'),
         ]
     )]
-    public function approve(int $id): JsonResponse
+    public function approve(string $id): JsonResponse
     {
         try {
             $po = $this->poService->approve($id);
@@ -171,7 +171,7 @@ class PurchaseOrderController extends Controller
             new OA\Response(response: 500, description: 'Server Error'),
         ]
     )]
-    public function receive(int $id, ReceivePurchaseOrderRequest $request): JsonResponse
+    public function receive(string $id, ReceivePurchaseOrderRequest $request): JsonResponse
     {
         try {
             $result = $this->poService->receive($id, $request->validated());
@@ -194,7 +194,7 @@ class PurchaseOrderController extends Controller
             new OA\Response(response: 500, description: 'Server Error'),
         ]
     )]
-    public function cancel(int $id): JsonResponse
+    public function cancel(string $id): JsonResponse
     {
         try {
             $po = $this->poService->cancel($id);
@@ -217,7 +217,7 @@ class PurchaseOrderController extends Controller
             new OA\Response(response: 500, description: 'Server Error'),
         ]
     )]
-    public function destroy(int $id): JsonResponse
+    public function destroy(string $id): JsonResponse
     {
         try {
             $this->poService->delete($id);

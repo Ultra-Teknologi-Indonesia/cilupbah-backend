@@ -105,19 +105,19 @@ return new class extends Migration
 
         // Other modules
         Schema::table('inventories', function (Blueprint $table) {
-            $table->foreign('item_id')->references('id')->on('products');
+            $table->foreign('item_id')->references('id')->on('product_variants');
         });
         Schema::table('inventory_movements', function (Blueprint $table) {
-            $table->foreign('item_id')->references('id')->on('products');
+            $table->foreign('item_id')->references('id')->on('product_variants');
         });
         Schema::table('purchase_order_items', function (Blueprint $table) {
-            $table->foreign('item_id')->references('id')->on('products');
+            $table->foreign('item_id')->references('id')->on('product_variants');
         });
         Schema::table('inventory_transfer_items', function (Blueprint $table) {
-            $table->foreign('item_id')->references('id')->on('products');
+            $table->foreign('item_id')->references('id')->on('product_variants');
         });
         Schema::table('sales_return_items', function (Blueprint $table) {
-            $table->foreign('item_id')->references('id')->on('products');
+            $table->foreign('item_id')->references('id')->on('product_variants');
         });
     }
 

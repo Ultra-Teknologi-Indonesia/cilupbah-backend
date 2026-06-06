@@ -88,7 +88,7 @@ class SupplierController extends Controller
             new OA\Response(response: 404, description: 'Supplier tidak ditemukan'),
         ]
     )]
-    public function show(int $id): JsonResponse
+    public function show(string $id): JsonResponse
     {
         $supplier = $this->supplierService->getById($id);
 
@@ -120,7 +120,7 @@ class SupplierController extends Controller
             new OA\Response(response: 404, description: 'Supplier tidak ditemukan'),
         ]
     )]
-    public function update(UpdateSupplierRequest $request, int $id): JsonResponse
+    public function update(UpdateSupplierRequest $request, string $id): JsonResponse
     {
         try {
             $supplier = $this->supplierService->update($id, $request->validated());
@@ -143,7 +143,7 @@ class SupplierController extends Controller
             new OA\Response(response: 404, description: 'Supplier tidak ditemukan'),
         ]
     )]
-    public function destroy(int $id): JsonResponse
+    public function destroy(string $id): JsonResponse
     {
         try {
             $this->supplierService->delete($id);

@@ -71,7 +71,7 @@ class Inbound extends Model
         return $query->where('type', $type);
     }
 
-    public function scopeByLocation($query, int $locationId)
+    public function scopeByLocation($query, string $locationId)
     {
         return $query->where('location_id', $locationId);
     }
