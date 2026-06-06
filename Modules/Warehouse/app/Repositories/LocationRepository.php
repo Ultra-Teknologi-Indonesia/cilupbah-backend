@@ -4,19 +4,21 @@ namespace Modules\Warehouse\Repositories;
 
 use Modules\Warehouse\Models\Location;
 use Illuminate\Database\Eloquent\Collection;
+use Spatie\QueryBuilder\QueryBuilder;
+use Spatie\QueryBuilder\AllowedFilter;
 
 class LocationRepository
 {
     public function getAllPaginated(int $limit = 10)
     {
-        return \Spatie\QueryBuilder\QueryBuilder::for(Location::class)
+        return QueryBuilder::for(Location::class)
+            ->allowedSearch('location_name')
             ->allowedFilters(
-                \Spatie\QueryBuilder\AllowedFilter::custom('q', new \App\Filters\FuzzyFilter(), 'location_name'),
-                \Spatie\QueryBuilder\AllowedFilter::exact('is_active'),
-                \Spatie\QueryBuilder\AllowedFilter::exact('is_warehouse'),
-                \Spatie\QueryBuilder\AllowedFilter::exact('is_fbl'),
-                \Spatie\QueryBuilder\AllowedFilter::exact('is_tcb'),
-                \Spatie\QueryBuilder\AllowedFilter::exact('is_fbs'),
+                AllowedFilter::exact('is_active'),
+                AllowedFilter::exact('is_warehouse'),
+                AllowedFilter::exact('is_fbl'),
+                AllowedFilter::exact('is_tcb'),
+                AllowedFilter::exact('is_fbs'),
                 'location_type',
                 'city',
                 'province'

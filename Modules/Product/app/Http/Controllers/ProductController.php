@@ -29,7 +29,7 @@ class ProductController extends Controller
             new OA\Parameter(name: 'page', in: 'query', required: false, description: 'Page number', schema: new OA\Schema(type: 'integer', default: 1)),
             new OA\Parameter(name: 'limit', in: 'query', required: false, description: 'Number of items per page', schema: new OA\Schema(type: 'integer', default: 20)),
             new OA\Parameter(name: 'filter[is_active]', in: 'query', required: false, description: 'Filter aktif/tidak aktif (true/false/1/0)', schema: new OA\Schema(type: 'boolean')),
-            new OA\Parameter(name: 'filter[name]', in: 'query', required: false, description: 'Cari berdasarkan nama produk dengan Fuzzy Search', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'search', in: 'query', required: false, description: 'Cari berdasarkan nama produk dengan PostgreSQL Full-Text Search', schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'Sort field (e.g. name, -created_at)', schema: new OA\Schema(type: 'string'))
         ],
         responses: [
@@ -52,8 +52,8 @@ class ProductController extends Controller
         
         $products = \Spatie\QueryBuilder\QueryBuilder::for(\Modules\Product\Models\Product::class)
             ->with(['variants', 'media', 'category', 'brand'])
+            ->allowedSearch('name')
             ->allowedFilters(
-                \Spatie\QueryBuilder\AllowedFilter::custom('name', new \App\Filters\FuzzyFilter()),
                 \Spatie\QueryBuilder\AllowedFilter::exact('is_active')
             )
             ->allowedSorts('name', 'created_at')

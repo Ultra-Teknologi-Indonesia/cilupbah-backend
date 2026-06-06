@@ -5,7 +5,7 @@ namespace Modules\Channel\Repositories;
 use Modules\Channel\Models\Channel;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
-use App\Filters\FuzzyFilter;
+
 
 class ChannelRepository
 {
@@ -13,8 +13,9 @@ class ChannelRepository
     {
         return QueryBuilder::for(Channel::class)
             ->with('shops')
+            ->allowedSearch('name')
             ->allowedFilters(
-                AllowedFilter::custom('search', new FuzzyFilter(), 'name'),
+                AllowedFilter::exact('is_active'),
                 'code'
             )
             ->allowedSorts('name', 'created_at', 'id')

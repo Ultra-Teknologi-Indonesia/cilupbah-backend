@@ -6,27 +6,20 @@ use Illuminate\Support\Facades\DB;
 use Modules\Order\Models\Order;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
-use App\Filters\FuzzyFilter;
+
 
 class OrderRepository
 {
     public function getPaginatedOrders()
     {
-        $request = request();
-        if ($request->has('search')) {
-            $request->merge([
-                'filter' => array_merge($request->input('filter', []), ['search' => $request->input('search')])
-            ]);
-        }
-
         return QueryBuilder::for(Order::class)
+            ->allowedSearch('customer_name', 'salesorder_no')
             ->allowedFilters(
-                AllowedFilter::custom('search', new FuzzyFilter(), 'customer_name,salesorder_no'),
-                'status',
+                AllowedFilter::exact('status'),
                 'channel_status',
                 'source',
                 'is_paid',
-                'is_canceled'
+                'is_active'
             )
             ->allowedSorts(
                 'created_at',

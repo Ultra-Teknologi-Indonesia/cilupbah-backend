@@ -9,9 +9,7 @@ use Modules\Warehouse\Services\LocationService;
 use Modules\Warehouse\Http\Requests\StoreLocationRequest;
 use Modules\Warehouse\Http\Requests\UpdateLocationRequest;
 use Modules\Warehouse\Models\Location;
-use Spatie\QueryBuilder\QueryBuilder;
-use Spatie\QueryBuilder\AllowedFilter;
-use App\Filters\FuzzyFilter;
+
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Locations', description: 'API Endpoints for Warehouse Locations')]

@@ -38,8 +38,8 @@ class ChannelProductController extends Controller
         
         $products = \Spatie\QueryBuilder\QueryBuilder::for(Product::class)
             ->with('variants:id,product_id,sku')
+            ->allowedSearch('name')
             ->allowedFilters(
-                \Spatie\QueryBuilder\AllowedFilter::custom('name', new \App\Filters\FuzzyFilter()),
                 \Spatie\QueryBuilder\AllowedFilter::exact('is_active')
             )
             ->allowedSorts('name', 'created_at')

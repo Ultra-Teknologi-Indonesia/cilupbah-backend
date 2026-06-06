@@ -21,31 +21,23 @@ Dokumen ini adalah panduan standar penulisan kode untuk proyek Laravel (`cilupba
 - Seluruh endpoint _listing_ atau _index_ (menampilkan daftar data) WAJIB menggunakan paket `spatie/laravel-query-builder` untuk menangani _pagination_, _sorting_, dan _filtering_ secara otomatis.
 - Pemanggilan `QueryBuilder::for(Model::class)` harus dilakukan di dalam **Repository**.
 
-## 4. Implementasi Pencarian (FuzzyFilter & Parameter `?search=`)
-
-- Untuk pencarian teks bebas, Anda **WAJIB** menggunakan filter kustom `App\Filters\FuzzyFilter` yang sudah mengimplementasikan `ILIKE` dan toleransi _typo_ (`pg_trgm`).
-- **WAJIB menggunakan parameter URL `?search=`** alih-alih bawaan Spatie `?filter[search]=`.
-- Untuk mengakomodasi hal ini, Anda harus me-_merge_ parameter `search` ke dalam `filter` sebelum memanggil Query Builder di dalam Repository.
+## 4. Implementasi Pencarian (Full-Text Search & Parameter `?search=`)
+- Untuk pencarian teks bebas yang sangat akurat, Anda **WAJIB** menggunakan macro `allowedSearch(...)` yang sudah didefinisikan secara global pada `Illuminate\Database\Eloquent\Builder`.
+- Macro ini otomatis menangkap parameter URL `?search=` dan menggunakan PostgreSQL Full-Text Search (`tsvector`, `tsquery`, `ts_rank_cd`) dengan kamus `indonesian`.
+- Anda TIDAK PERLU lagi melakukan manual request merge untuk filter.
+- Cukup panggil `allowedSearch` dan masukkan nama kolom-kolom yang ingin disertakan dalam pencarian FTS.
 - **Contoh Implementasi:**
 
     ```php
     public function getPaginatedData()
     {
-        $request = request();
-        if ($request->has('search')) {
-            $request->merge([
-                'filter' => array_merge($request->input('filter', []), ['search' => $request->input('search')])
-            ]);
-        }
-
         return QueryBuilder::for(MyModel::class)
-            // PENTING: Gunakan variadic argument untuk allowedFilters (tanpa array bungkus [])
+            ->allowedSearch('judul', 'konten') // Pencarian otomatis jika ada ?search=
             ->allowedFilters(
-                AllowedFilter::custom('search', new FuzzyFilter(), 'column_name'),
                 'status'
             )
             ->allowedSorts('created_at', 'name')
-            ...
+            // ...
     }
     ```
 
