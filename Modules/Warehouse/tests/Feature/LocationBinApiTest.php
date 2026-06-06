@@ -111,4 +111,55 @@ class LocationBinApiTest extends TestCase
         
         $this->assertDatabaseHas('location_bins', ['id' => $bin->id]);
     }
+
+    public function test_can_mass_generate_bins(): void
+    {
+        $location = Location::factory()->create();
+
+        $payload = [
+            'floor_code' => 'L',
+            'qty_floor' => 2,
+            'row_code' => 'B',
+            'qty_row' => 2,
+            'column_code' => 'K',
+            'qty_column' => 2,
+            'bin_code' => 'R',
+            'qty_bin' => 2,
+        ];
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/locations/{$location->id}/bins/generate", $payload);
+
+        $response->assertStatus(201)
+                 ->assertJsonPath('data.generated_count', 16);
+
+        $this->assertDatabaseHas('location_bins', [
+            'location_id' => $location->id,
+            'bin_final_code' => 'L2-B2-K2-R2',
+        ]);
+        
+        $this->assertEquals(16, \Modules\Warehouse\Models\LocationBin::where('location_id', $location->id)->count());
+    }
+
+    public function test_cannot_generate_more_than_2000_bins(): void
+    {
+        $location = Location::factory()->create();
+
+        $payload = [
+            'floor_code' => 'L',
+            'qty_floor' => 10,
+            'row_code' => 'B',
+            'qty_row' => 10,
+            'column_code' => 'K',
+            'qty_column' => 10,
+            'bin_code' => 'R',
+            'qty_bin' => 3, // 10 * 10 * 10 * 3 = 3000
+        ];
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/locations/{$location->id}/bins/generate", $payload);
+
+        $response->assertStatus(422)
+                 ->assertJsonValidationErrors(['total_combinations']);
+    }
 }

@@ -75,4 +75,61 @@ class LocationBinService
 
         return !empty($parts) ? implode('-', $parts) : 'DEFAULT';
     }
+
+    public function massGenerate(int $locationId, array $data): int
+    {
+        $floorCode = $data['floor_code'];
+        $qtyFloor = $data['qty_floor'];
+        $rowCode = $data['row_code'];
+        $qtyRow = $data['qty_row'];
+        $columnCode = $data['column_code'];
+        $qtyColumn = $data['qty_column'];
+        $binCode = $data['bin_code'];
+        $qtyBin = $data['qty_bin'];
+        $maxQty = $data['max_qty'] ?? 0;
+
+        $now = now();
+        $insertData = [];
+
+        for ($f = 1; $f <= $qtyFloor; $f++) {
+            $fCode = "{$floorCode}{$f}";
+            for ($r = 1; $r <= $qtyRow; $r++) {
+                $rCode = "{$rowCode}{$r}";
+                for ($c = 1; $c <= $qtyColumn; $c++) {
+                    $cCode = "{$columnCode}{$c}";
+                    for ($b = 1; $b <= $qtyBin; $b++) {
+                        $bCode = "{$binCode}{$b}";
+
+                        $binData = [
+                            'floor_code' => $fCode,
+                            'row_code' => $rCode,
+                            'column_code' => $cCode,
+                            'bin_code' => $bCode,
+                        ];
+
+                        $finalCode = $this->generateFinalCode($binData);
+
+                        $insertData[] = [
+                            'location_id' => $locationId,
+                            'floor_code' => $fCode,
+                            'row_code' => $rCode,
+                            'column_code' => $cCode,
+                            'bin_code' => $bCode,
+                            'bin_final_code' => $finalCode,
+                            'is_inbound' => false,
+                            'max_qty' => $maxQty,
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ];
+                    }
+                }
+            }
+        }
+
+        if (!empty($insertData)) {
+            LocationBin::insert($insertData);
+        }
+
+        return count($insertData);
+    }
 }
