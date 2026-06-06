@@ -81,14 +81,14 @@ class SupplierController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Suppliers'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),
             new OA\Response(response: 404, description: 'Supplier tidak ditemukan'),
         ]
     )]
-    public function show(int $id): JsonResponse
+    public function show(string $id): JsonResponse
     {
         $supplier = $this->supplierService->getById($id);
 
@@ -105,7 +105,7 @@ class SupplierController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Suppliers'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
             properties: [
@@ -120,7 +120,7 @@ class SupplierController extends Controller
             new OA\Response(response: 404, description: 'Supplier tidak ditemukan'),
         ]
     )]
-    public function update(UpdateSupplierRequest $request, int $id): JsonResponse
+    public function update(UpdateSupplierRequest $request, string $id): JsonResponse
     {
         try {
             $supplier = $this->supplierService->update($id, $request->validated());
@@ -136,14 +136,14 @@ class SupplierController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Suppliers'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(response: 200, description: 'Supplier berhasil dihapus'),
             new OA\Response(response: 404, description: 'Supplier tidak ditemukan'),
         ]
     )]
-    public function destroy(int $id): JsonResponse
+    public function destroy(string $id): JsonResponse
     {
         try {
             $this->supplierService->delete($id);

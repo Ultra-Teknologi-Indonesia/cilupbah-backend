@@ -25,7 +25,7 @@ class SalesReturnService
         return $this->returnRepository->getUnprocessedMarketplace($limit);
     }
 
-    public function getById(int $id): ?SalesReturn
+    public function getById(string $id): ?SalesReturn
     {
         return $this->returnRepository->findById($id);
     }
@@ -50,7 +50,7 @@ class SalesReturnService
     }
 
     /** Flow [F] accept — marketplace return accepted, stock masuk */
-    public function accept(int $id, array $data): SalesReturn
+    public function accept(string $id, array $data): SalesReturn
     {
         return DB::transaction(function () use ($id, $data) {
             $return = $this->returnRepository->findByIdForUpdate($id);
@@ -84,7 +84,7 @@ class SalesReturnService
     }
 
     /** Flow [F] reject — marketplace return rejected, stock tidak berubah */
-    public function reject(int $id, array $data): SalesReturn
+    public function reject(string $id, array $data): SalesReturn
     {
         return DB::transaction(function () use ($id, $data) {
             $return = $this->returnRepository->findByIdForUpdate($id);
@@ -105,7 +105,7 @@ class SalesReturnService
     }
 
     /** Flow [F] complete — mark as complete (not a return) */
-    public function complete(int $id, array $data): SalesReturn
+    public function complete(string $id, array $data): SalesReturn
     {
         return DB::transaction(function () use ($id, $data) {
             $return = $this->returnRepository->findByIdForUpdate($id);

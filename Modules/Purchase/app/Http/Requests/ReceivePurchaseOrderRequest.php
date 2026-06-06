@@ -16,7 +16,7 @@ class ReceivePurchaseOrderRequest extends FormRequest
         return [
             'received_by'                       => ['required', 'string', 'max:100'],
             'items'                             => ['required', 'array', 'min:1'],
-            'items.*.purchase_order_item_id'    => ['required', 'integer', 'exists:purchase_order_items,id'],
+            'items.*.purchase_order_item_id'    => ['required', 'string', 'exists:purchase_order_items,id'],
             'items.*.qty'                       => ['required', 'integer', 'min:1'],
         ];
     }

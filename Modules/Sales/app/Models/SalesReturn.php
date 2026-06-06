@@ -7,9 +7,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Order\Models\Order;
 use Modules\Warehouse\Models\Location;
+use App\Traits\HasUuid7;
 
 class SalesReturn extends Model
 {
+    use HasUuid7;
+
     protected $fillable = [
         'return_number',
         'order_id',

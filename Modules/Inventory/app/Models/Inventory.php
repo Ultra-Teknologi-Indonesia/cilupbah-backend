@@ -5,9 +5,12 @@ namespace Modules\Inventory\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Traits\HasUuid7;
 
 class Inventory extends Model
 {
+    use HasUuid7;
+
     protected $fillable = [
         'item_id',
         'location_id',

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Collection;
 
 class InventoryMovementRepository
 {
-    public function getByItem(string $itemId, int $locationId): Collection
+    public function getByItem(string $itemId, string $locationId): Collection
     {
         return InventoryMovement::where('item_id', $itemId)
             ->where('location_id', $locationId)

@@ -25,7 +25,7 @@ class PurchaseOrderService
         return $this->poRepository->getReceivable($limit);
     }
 
-    public function getById(int $id): ?PurchaseOrder
+    public function getById(string $id): ?PurchaseOrder
     {
         return $this->poRepository->findById($id);
     }
@@ -55,7 +55,7 @@ class PurchaseOrderService
         });
     }
 
-    public function approve(int $id): PurchaseOrder
+    public function approve(string $id): PurchaseOrder
     {
         return DB::transaction(function () use ($id) {
             $po = $this->poRepository->findByIdForUpdate($id);
@@ -75,7 +75,7 @@ class PurchaseOrderService
     }
 
     /** Receive items from PO → creates Inbound GRN + links back to PO */
-    public function receive(int $poId, array $data): array
+    public function receive(string $poId, array $data): array
     {
         return DB::transaction(function () use ($poId, $data) {
             $po = $this->poRepository->findByIdForUpdate($poId);
@@ -133,7 +133,7 @@ class PurchaseOrderService
         });
     }
 
-    public function update(int $id, array $data): PurchaseOrder
+    public function update(string $id, array $data): PurchaseOrder
     {
         $po = $this->poRepository->findById($id);
 
@@ -148,7 +148,7 @@ class PurchaseOrderService
         return $this->poRepository->update($po, $data);
     }
 
-    public function cancel(int $id): PurchaseOrder
+    public function cancel(string $id): PurchaseOrder
     {
         return DB::transaction(function () use ($id) {
             $po = $this->poRepository->findByIdForUpdate($id);
@@ -171,7 +171,7 @@ class PurchaseOrderService
         });
     }
 
-    public function delete(int $id): bool
+    public function delete(string $id): bool
     {
         $po = $this->poRepository->findById($id);
 

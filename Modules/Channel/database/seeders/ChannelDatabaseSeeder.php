@@ -21,10 +21,17 @@ class ChannelDatabaseSeeder extends Seeder
         ];
 
         foreach ($channels as $channel) {
-            Channel::updateOrCreate(
-                ['code' => $channel['code']],
-                ['name' => $channel['name'], 'is_active' => true]
-            );
+            $existing = Channel::where('code', $channel['code'])->first();
+            if (!$existing) {
+                Channel::create([
+                    'id' => \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString(),
+                    'code' => $channel['code'],
+                    'name' => $channel['name'],
+                    'is_active' => true
+                ]);
+            } else {
+                $existing->update(['name' => $channel['name'], 'is_active' => true]);
+            }
         }
     }
 }

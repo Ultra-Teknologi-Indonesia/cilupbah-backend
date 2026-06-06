@@ -80,8 +80,10 @@ class OrderRepository
             DB::table('orders')->where('id', $existing->id)->update($orderRow);
             $orderId = $existing->id;
         } else {
+            $orderRow['id'] = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();
             $orderRow['created_at'] = now();
-            $orderId = DB::table('orders')->insertGetId($orderRow);
+            DB::table('orders')->insert($orderRow);
+            $orderId = $orderRow['id'];
         }
 
         return Order::find($orderId);

@@ -64,14 +64,14 @@ class SalesReturnController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Returns'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),
             new OA\Response(response: 404, description: 'Return tidak ditemukan'),
         ]
     )]
-    public function show(int $id): JsonResponse
+    public function show(string $id): JsonResponse
     {
         $return = $this->returnService->getById($id);
 
@@ -90,8 +90,8 @@ class SalesReturnController extends Controller
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
             required: ['location_id', 'created_by', 'items'],
             properties: [
-                new OA\Property(property: 'order_id', type: 'integer', nullable: true),
-                new OA\Property(property: 'location_id', type: 'integer', example: 1),
+                new OA\Property(property: 'order_id', type: 'string', nullable: true),
+                new OA\Property(property: 'location_id', type: 'string', example: 1),
                 new OA\Property(property: 'source', type: 'string', enum: ['manual', 'marketplace'], example: 'manual'),
                 new OA\Property(property: 'customer_name', type: 'string'),
                 new OA\Property(property: 'reason', type: 'string'),
@@ -127,7 +127,7 @@ class SalesReturnController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Returns'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
             required: ['processed_by'],
@@ -140,7 +140,7 @@ class SalesReturnController extends Controller
             new OA\Response(response: 500, description: 'Server Error'),
         ]
     )]
-    public function accept(int $id, Request $request): JsonResponse
+    public function accept(string $id, Request $request): JsonResponse
     {
         $request->validate(['processed_by' => 'required|string|max:100']);
 
@@ -158,7 +158,7 @@ class SalesReturnController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Returns'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
             required: ['processed_by'],
@@ -172,7 +172,7 @@ class SalesReturnController extends Controller
             new OA\Response(response: 500, description: 'Server Error'),
         ]
     )]
-    public function reject(int $id, Request $request): JsonResponse
+    public function reject(string $id, Request $request): JsonResponse
     {
         $request->validate([
             'processed_by' => 'required|string|max:100',
@@ -193,7 +193,7 @@ class SalesReturnController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Returns'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
             required: ['processed_by'],
@@ -206,7 +206,7 @@ class SalesReturnController extends Controller
             new OA\Response(response: 500, description: 'Server Error'),
         ]
     )]
-    public function complete(int $id, Request $request): JsonResponse
+    public function complete(string $id, Request $request): JsonResponse
     {
         $request->validate(['processed_by' => 'required|string|max:100']);
 

@@ -32,7 +32,7 @@ class InventoryTransferRepository
         return $query->paginate($limit);
     }
 
-    public function findById(int $id): ?InventoryTransfer
+    public function findById(string $id): ?InventoryTransfer
     {
         return InventoryTransfer::with([
             'sourceLocation',
@@ -43,7 +43,7 @@ class InventoryTransferRepository
         ])->find($id);
     }
 
-    public function findByIdForUpdate(int $id): ?InventoryTransfer
+    public function findByIdForUpdate(string $id): ?InventoryTransfer
     {
         return InventoryTransfer::with('items')
             ->lockForUpdate()
@@ -65,7 +65,7 @@ class InventoryTransferRepository
         $transfer->update(['status' => $status]);
     }
 
-    public function updateItemReceivedQty(int $itemId, int $addQty): void
+    public function updateItemReceivedQty(string $itemId, int $addQty): void
     {
         InventoryTransferItem::where('id', $itemId)
             ->increment('received_qty', $addQty);
