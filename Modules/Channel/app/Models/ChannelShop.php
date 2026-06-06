@@ -5,8 +5,11 @@ namespace Modules\Channel\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+use App\Traits\HasUuid7;
+
 class ChannelShop extends Model
 {
+    use HasUuid7;
     protected $fillable = [
         'channel_id',
         'shop_id',
