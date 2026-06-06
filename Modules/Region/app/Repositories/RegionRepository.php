@@ -17,43 +17,41 @@ class RegionRepository
     public function getProvinces()
     {
         return QueryBuilder::for(Province::class)
+            ->select('id', 'nama')
             ->allowedSearch('nama')
             ->allowedSorts('id', 'nama')
             ->defaultSort('id')
             ->get();
     }
 
-    public function getCities()
+    public function getCities($provinceId)
     {
         return QueryBuilder::for(City::class)
+            ->select('id', 'province_id', 'nama')
+            ->where('province_id', $provinceId)
             ->allowedSearch('nama')
-            ->allowedFilters(
-                AllowedFilter::exact('province_id')
-            )
             ->allowedSorts('id', 'nama', 'province_id')
             ->defaultSort('id')
             ->get();
     }
 
-    public function getDistricts()
+    public function getDistricts($cityId)
     {
         return QueryBuilder::for(District::class)
+            ->select('id', 'city_id', 'nama')
+            ->where('city_id', $cityId)
             ->allowedSearch('nama')
-            ->allowedFilters(
-                AllowedFilter::exact('city_id')
-            )
             ->allowedSorts('id', 'nama', 'city_id')
             ->defaultSort('id')
             ->get();
     }
 
-    public function getVillages()
+    public function getVillages($districtId)
     {
         return QueryBuilder::for(Village::class)
+            ->select('id', 'district_id', 'nama', 'latitude', 'longitude')
+            ->where('district_id', $districtId)
             ->allowedSearch('nama')
-            ->allowedFilters(
-                AllowedFilter::exact('district_id')
-            )
             ->allowedSorts('id', 'nama', 'district_id')
             ->defaultSort('id')
             ->get();

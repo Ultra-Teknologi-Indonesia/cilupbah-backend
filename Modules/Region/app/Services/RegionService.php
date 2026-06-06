@@ -18,18 +18,18 @@ class RegionService
         return $this->regionRepository->getProvinces();
     }
 
-    public function getCities()
+    public function getCities($provinceId)
     {
-        return $this->regionRepository->getCities();
+        return $this->regionRepository->getCities($provinceId);
     }
 
-    public function getDistricts()
+    public function getDistricts($cityId)
     {
-        return $this->regionRepository->getDistricts();
+        return $this->regionRepository->getDistricts($cityId);
     }
 
-    public function getVillages()
+    public function getVillages($districtId)
     {
-        return $this->regionRepository->getVillages();
+        return $this->regionRepository->getVillages($districtId);
     }
 }
