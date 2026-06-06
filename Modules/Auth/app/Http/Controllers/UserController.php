@@ -162,6 +162,7 @@ class UserController extends Controller
                                     ]),
                                     new OA\Property(property: 'target_user_id', type: 'string'),
                                     new OA\Property(property: 'action', type: 'string', example: 'updated'),
+                                    new OA\Property(property: 'message', type: 'string', example: 'Admin membuat akun ini.'),
                                     new OA\Property(property: 'created_at', type: 'string', format: 'date-time')
                                 ]
                             )
