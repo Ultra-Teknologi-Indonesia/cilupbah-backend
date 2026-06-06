@@ -23,7 +23,8 @@ class RoleService
     {
         return DB::transaction(function () use ($data) {
             return $this->roleRepository->create([
-                'name' => $data['name'],
+                'name' => strtolower($data['name']),
+                'description' => $data['description'] ?? null,
                 'guard_name' => 'web' // default spatie guard
             ]);
         });
@@ -39,7 +40,8 @@ class RoleService
             }
 
             $this->roleRepository->update($role, [
-                'name' => $data['name']
+                'name' => strtolower($data['name']),
+                'description' => $data['description'] ?? null,
             ]);
 
             return $role;

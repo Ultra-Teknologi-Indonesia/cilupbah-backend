@@ -46,7 +46,8 @@ class RoleController extends Controller
             content: new OA\JsonContent(
                 required: ['name'],
                 properties: [
-                    new OA\Property(property: 'name', type: 'string', example: 'security')
+                    new OA\Property(property: 'name', type: 'string', example: 'security'),
+                    new OA\Property(property: 'description', type: 'string', example: 'Orang yang bertanggung jawab menjaga keamanan', nullable: true)
                 ]
             )
         ),
@@ -82,7 +83,8 @@ class RoleController extends Controller
             content: new OA\JsonContent(
                 required: ['name'],
                 properties: [
-                    new OA\Property(property: 'name', type: 'string', example: 'security_lead')
+                    new OA\Property(property: 'name', type: 'string', example: 'security_lead'),
+                    new OA\Property(property: 'description', type: 'string', example: 'Pemimpin regu security', nullable: true)
                 ]
             )
         ),
