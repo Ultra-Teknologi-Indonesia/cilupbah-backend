@@ -31,8 +31,7 @@ class StoreUserRequest extends FormRequest
                 'regex:/[A-Z]/',
                 'regex:/[0-9]/',
                 'regex:/[@$!%*#?&]/',
-                'confirmed',
-                'different:email'
+                'confirmed'
             ],
             'role' => ['required', 'string', 'exists:roles,name'],
             'nik' => ['nullable', 'string', 'max:255'],
@@ -46,8 +45,7 @@ class StoreUserRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'password.regex' => 'Password harus mengandung setidaknya satu huruf besar, satu huruf kecil, satu angka, dan satu karakter khusus (@$!%*#?&).',
-            'password.different' => 'Password tidak boleh sama dengan email.',
+            'password.regex' => 'Password harus mengandung setidaknya satu huruf besar, satu huruf kecil, satu angka, dan satu karakter khusus (@$!%*#?&).'
         ];
     }
 }
