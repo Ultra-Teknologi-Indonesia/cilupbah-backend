@@ -15,6 +15,10 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/profile', [AuthController::class, 'profile']);
     Route::get('/roles', [\Modules\Auth\Http\Controllers\RoleController::class, 'index']);
     
+    Route::middleware('role_or_permission:owner|create-role')->post('/roles', [\Modules\Auth\Http\Controllers\RoleController::class, 'store']);
+    Route::middleware('role_or_permission:owner|edit-role')->put('/roles/{id}', [\Modules\Auth\Http\Controllers\RoleController::class, 'update']);
+    Route::middleware('role_or_permission:owner|delete-role')->delete('/roles/{id}', [\Modules\Auth\Http\Controllers\RoleController::class, 'destroy']);
+    
     Route::middleware('role_or_permission:owner|create-user')->group(function () {
         Route::post('/users', [\Modules\Auth\Http\Controllers\UserController::class, 'store']);
     });
@@ -30,5 +34,9 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::middleware('role_or_permission:owner|force-logout-user')->group(function () {
         Route::post('/users/{id}/force-logout', [\Modules\Auth\Http\Controllers\UserController::class, 'forceLogout']);
         Route::post('/users/bulk-force-logout', [\Modules\Auth\Http\Controllers\UserController::class, 'bulkForceLogout']);
+    });
+
+    Route::middleware('role_or_permission:owner|view-permission')->group(function () {
+        Route::get('/permissions', [\Modules\Auth\Http\Controllers\PermissionController::class, 'index']);
     });
 });

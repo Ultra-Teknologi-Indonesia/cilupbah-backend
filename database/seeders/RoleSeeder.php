@@ -35,7 +35,13 @@ class RoleSeeder extends Seeder
 
         $permissions = [
             'view-user-history',
-            'force-logout-user'
+            'view-dashboard',
+            'force-logout-user',
+            'view-role',
+            'create-role',
+            'edit-role',
+            'delete-role',
+            'view-permission',
         ];
 
         foreach ($permissions as $permission) {
