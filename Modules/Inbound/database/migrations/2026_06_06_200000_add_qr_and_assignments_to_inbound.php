@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('inbound_assignments', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
             $table->uuid('inbound_id');
             $table->foreign('inbound_id')->references('id')->on('inbounds')->onDelete('cascade');
             $table->foreignId('assigned_to')->constrained('users')->cascadeOnDelete();

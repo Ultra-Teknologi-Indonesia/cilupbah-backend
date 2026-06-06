@@ -139,7 +139,7 @@ use OpenApi\Attributes as OA;
     title: 'Inbound Assignment Schema',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'integer', example: 1),
+        new OA\Property(property: 'id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
         new OA\Property(property: 'inbound_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
         new OA\Property(property: 'assigned_to', type: 'integer', example: 5),
         new OA\Property(property: 'assigned_by', type: 'integer', example: 1),
@@ -524,7 +524,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds - Assignment'],
         parameters: [
-            new OA\Parameter(name: 'assignmentId', in: 'path', required: true, description: 'Assignment ID', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'assignmentId', in: 'path', required: true, description: 'Assignment ID', schema: new OA\Schema(type: 'string', format: 'uuid'))
         ],
         responses: [
             new OA\Response(
@@ -539,7 +539,7 @@ class InboundController extends Controller
             new OA\Response(response: 500, description: 'Bukan assignment Anda / sudah dimulai')
         ]
     )]
-    public function startAssignment(int $assignmentId, Request $request): JsonResponse
+    public function startAssignment(string $assignmentId, Request $request): JsonResponse
     {
         try {
             $assignment = $this->inboundService->startAssignment($assignmentId, $request->user()->id);

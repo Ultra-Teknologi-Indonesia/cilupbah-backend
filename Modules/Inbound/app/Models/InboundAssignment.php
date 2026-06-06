@@ -3,11 +3,14 @@
 namespace Modules\Inbound\Models;
 
 use App\Models\User;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class InboundAssignment extends Model
 {
+    use HasUuids;
+
     const STATUS_PENDING    = 'PENDING';
     const STATUS_IN_PROGRESS = 'IN_PROGRESS';
     const STATUS_COMPLETED  = 'COMPLETED';

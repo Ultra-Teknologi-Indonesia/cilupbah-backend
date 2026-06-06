@@ -20,6 +20,7 @@ class InboundScanFlowTest extends TestCase
     private LocationBin $inboundBin;
     private LocationBin $storageBin;
     private Product $product;
+    private ProductVariant $variant;
     private User $admin;
     private User $worker;
 
@@ -80,7 +81,7 @@ class InboundScanFlowTest extends TestCase
             'is_active'   => true,
         ]);
 
-        ProductVariant::create([
+        $this->variant = ProductVariant::create([
             'product_id' => $this->product->id,
             'sku'        => 'LAPTOP-001-8GB',
             'sell_price' => 7500000,
@@ -100,7 +101,7 @@ class InboundScanFlowTest extends TestCase
             'expected_date' => now()->addDays(3)->toDateString(),
             'created_by'    => 'admin',
             'items'         => [
-                ['item_id' => $this->product->id, 'expected_qty' => 20],
+                ['item_id' => $this->variant->id, 'expected_qty' => 20],
             ],
         ]);
 
@@ -247,7 +248,7 @@ class InboundScanFlowTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('data.id', $itemId)
-            ->assertJsonPath('data.item_id', $this->product->id);
+            ->assertJsonPath('data.item_id', $this->variant->id);
     }
 
     public function test_scan_invalid_qr_returns_404(): void
@@ -280,13 +281,13 @@ class InboundScanFlowTest extends TestCase
         $response->assertOk();
 
         $this->assertDatabaseHas('inventories', [
-            'item_id'     => $this->product->id,
+            'item_id'     => $this->variant->id,
             'location_id' => $this->warehouse->id,
             'bin_id'      => $this->storageBin->id,
         ]);
 
         $inventory = \DB::table('inventories')
-            ->where('item_id', $this->product->id)
+            ->where('item_id', $this->variant->id)
             ->where('bin_id', $this->storageBin->id)
             ->first();
         $this->assertEquals(20, $inventory->on_hand);
@@ -345,7 +346,7 @@ class InboundScanFlowTest extends TestCase
             'expected_date' => now()->addDays(3)->toDateString(),
             'created_by'    => 'admin',
             'items'         => [
-                ['item_id' => $this->product->id, 'expected_qty' => 10],
+                ['item_id' => $this->variant->id, 'expected_qty' => 10],
             ],
         ]);
 
@@ -403,7 +404,7 @@ class InboundScanFlowTest extends TestCase
 
         // 8. Verify inventory updated
         $inventory = \DB::table('inventories')
-            ->where('item_id', $this->product->id)
+            ->where('item_id', $this->variant->id)
             ->where('bin_id', $this->storageBin->id)
             ->first();
 
@@ -432,7 +433,7 @@ class InboundScanFlowTest extends TestCase
             'expected_date' => now()->toDateString(),
             'created_by'    => 'admin',
             'items'         => [
-                ['item_id' => $this->product->id, 'expected_qty' => 20],
+                ['item_id' => $this->variant->id, 'expected_qty' => 20],
             ],
         ]);
 

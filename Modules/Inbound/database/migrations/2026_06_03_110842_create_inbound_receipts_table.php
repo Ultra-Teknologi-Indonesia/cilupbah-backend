@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('inbound_receipts', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
             $table->uuid('inbound_item_id');
             $table->integer('qty');
             $table->uuid('bin_id');

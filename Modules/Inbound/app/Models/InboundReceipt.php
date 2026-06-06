@@ -2,12 +2,15 @@
 
 namespace Modules\Inbound\Models;
 
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\Warehouse\Models\LocationBin;
 
 class InboundReceipt extends Model
 {
+    use HasUuids;
+
     protected $fillable = [
         'inbound_item_id',
         'qty',

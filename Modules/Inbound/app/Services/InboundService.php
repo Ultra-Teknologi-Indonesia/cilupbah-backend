@@ -356,7 +356,7 @@ class InboundService
         return $this->inboundRepository->getAssignmentsByWorker($userId, $status);
     }
 
-    public function startAssignment(int $assignmentId, int $userId): InboundAssignment
+    public function startAssignment(string $assignmentId, int $userId): InboundAssignment
     {
         $assignment = InboundAssignment::findOrFail($assignmentId);
 
