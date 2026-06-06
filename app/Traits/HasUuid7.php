@@ -1,6 +1,6 @@
 <?php
 
-namespace Modules\Warehouse\Traits;
+namespace App\Traits;
 
 use Ramsey\Uuid\Uuid;
 

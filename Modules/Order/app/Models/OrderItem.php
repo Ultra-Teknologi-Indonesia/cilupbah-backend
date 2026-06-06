@@ -6,8 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\Product\Models\Product;
 
+use App\Traits\HasUuid7;
+
 class OrderItem extends Model
 {
+    use HasUuid7;
     protected $fillable = [
         'order_id',
         'item_id',

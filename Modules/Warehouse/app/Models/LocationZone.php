@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-use Modules\Warehouse\Traits\HasUuid7;
+use App\Traits\HasUuid7;
 
 class LocationZone extends Model
 {

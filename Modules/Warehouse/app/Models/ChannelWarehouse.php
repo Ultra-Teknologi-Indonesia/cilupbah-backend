@@ -5,7 +5,7 @@ namespace Modules\Warehouse\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-use Modules\Warehouse\Traits\HasUuid7;
+use App\Traits\HasUuid7;
 
 class ChannelWarehouse extends Model
 {
