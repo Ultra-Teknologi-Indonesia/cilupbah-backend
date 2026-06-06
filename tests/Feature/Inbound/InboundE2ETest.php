@@ -28,6 +28,9 @@ class InboundE2ETest extends TestCase
     private Product $product1;
     private Product $product2;
     private Product $product3;
+    private ProductVariant $variant1;
+    private ProductVariant $variant2;
+    private ProductVariant $variant3;
     private Supplier $supplier;
 
     protected function setUp(): void
@@ -57,6 +60,7 @@ class InboundE2ETest extends TestCase
 
         $this->inboundBin = LocationBin::create([
             'location_id'    => $this->warehouse->id,
+
             'floor_code'     => 'F1',
             'row_code'       => 'R0',
             'column_code'    => 'C0',
@@ -68,6 +72,7 @@ class InboundE2ETest extends TestCase
 
         $this->storageBin1 = LocationBin::create([
             'location_id'    => $this->warehouse->id,
+
             'floor_code'     => 'F1',
             'row_code'       => 'R1',
             'column_code'    => 'C1',
@@ -79,6 +84,7 @@ class InboundE2ETest extends TestCase
 
         $this->storageBin2 = LocationBin::create([
             'location_id'    => $this->warehouse->id,
+
             'floor_code'     => 'F1',
             'row_code'       => 'R1',
             'column_code'    => 'C2',
@@ -90,6 +96,7 @@ class InboundE2ETest extends TestCase
 
         LocationBin::create([
             'location_id'    => $this->warehouse2->id,
+
             'floor_code'     => 'F1',
             'row_code'       => 'R0',
             'column_code'    => 'C0',
@@ -107,21 +114,21 @@ class InboundE2ETest extends TestCase
         $this->product1 = Product::create([
             'category_id' => $categoryId, 'name' => 'Laptop Test', 'sku' => 'LAP-001', 'is_active' => true,
         ]);
-        ProductVariant::create([
+        $this->variant1 = ProductVariant::create([
             'product_id' => $this->product1->id, 'sku' => 'LAP-001-V1', 'sell_price' => 7000000, 'is_active' => true,
         ]);
 
         $this->product2 = Product::create([
             'category_id' => $categoryId, 'name' => 'Mouse Test', 'sku' => 'MOU-001', 'is_active' => true,
         ]);
-        ProductVariant::create([
+        $this->variant2 = ProductVariant::create([
             'product_id' => $this->product2->id, 'sku' => 'MOU-001-V1', 'sell_price' => 500000, 'is_active' => true,
         ]);
 
         $this->product3 = Product::create([
             'category_id' => $categoryId, 'name' => 'Keyboard Test', 'sku' => 'KBD-001', 'is_active' => true,
         ]);
-        ProductVariant::create([
+        $this->variant3 = ProductVariant::create([
             'product_id' => $this->product3->id, 'sku' => 'KBD-001-V1', 'sell_price' => 1000000, 'is_active' => true,
         ]);
 

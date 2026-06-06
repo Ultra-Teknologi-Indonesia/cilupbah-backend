@@ -10,8 +10,10 @@ return new class extends Migration
     {
         Schema::create('product_bundles', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('bundle_variant_id')->constrained('product_variants')->cascadeOnDelete();
-            $table->foreignId('component_variant_id')->constrained('product_variants')->cascadeOnDelete();
+            $table->uuid('bundle_variant_id');
+            $table->uuid('component_variant_id');
+            $table->foreign('bundle_variant_id')->references('id')->on('product_variants')->onDelete('cascade');
+            $table->foreign('component_variant_id')->references('id')->on('product_variants')->onDelete('cascade');
             $table->integer('qty')->default(1);
             $table->timestamps();
         });

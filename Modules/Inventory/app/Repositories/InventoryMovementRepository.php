@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Collection;
 
 class InventoryMovementRepository
 {
-    public function getByItem(int $itemId, int $locationId): Collection
+    public function getByItem(string $itemId, int $locationId): Collection
     {
         return InventoryMovement::where('item_id', $itemId)
             ->where('location_id', $locationId)
@@ -31,7 +31,7 @@ class InventoryMovementRepository
     public function getHistoryPaginated(int $limit = 10)
     {
         return \Spatie\QueryBuilder\QueryBuilder::for(InventoryMovement::class)
-            ->with(['product:id,name,sku', 'location:id,location_name', 'bin:id,bin_final_code'])
+            ->with(['product:id,sku,product_id', 'location:id,location_name', 'bin:id,bin_final_code'])
             ->allowedFilters(
                 \Spatie\QueryBuilder\AllowedFilter::exact('item_id'),
                 \Spatie\QueryBuilder\AllowedFilter::exact('location_id'),

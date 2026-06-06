@@ -4,6 +4,7 @@ namespace Modules\Product\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Str;
 
 class ProductService
 {
@@ -29,7 +30,7 @@ class ProductService
         return $this->createProduct($data);
     }
 
-    public function updateProduct(int $productId, array $data)
+    public function updateProduct(string $productId, array $data)
     {
         return DB::transaction(function () use ($productId, $data) {
             $productData = Arr::only($data, [
@@ -60,6 +61,7 @@ class ProductService
                         DB::table('product_variants')->where('id', $existingVariant->id)->update($variantData);
                     } else {
                         DB::table('product_variants')->insert(array_merge($variantData, [
+                            'id' => (string) Str::orderedUuid(),
                             'product_id' => $productId,
                             'sku' => $variant['sku'],
                             'created_at' => now(),
@@ -81,7 +83,9 @@ class ProductService
                 'channel_shop_id', 'source'
             ]);
             
-            $productId = DB::table('products')->insertGetId(array_merge($productData, [
+            $productId = (string) Str::orderedUuid();
+            DB::table('products')->insert(array_merge($productData, [
+                'id' => $productId,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]));
@@ -135,7 +139,9 @@ class ProductService
                         'sku', 'sell_price', 'is_active'
                     ]);
                     
-                    $variantId = DB::table('product_variants')->insertGetId(array_merge($variantData, [
+                    $variantId = (string) Str::orderedUuid();
+                    DB::table('product_variants')->insert(array_merge($variantData, [
+                        'id' => $variantId,
                         'product_id' => $productId,
                         'created_at' => now(),
                         'updated_at' => now(),

@@ -10,7 +10,8 @@ return new class extends Migration
     {
         Schema::create('product_wholesale_prices', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('variant_id')->constrained('product_variants')->cascadeOnDelete();
+            $table->uuid('variant_id');
+            $table->foreign('variant_id')->references('id')->on('product_variants')->onDelete('cascade');
             $table->string('customer_type');
             $table->integer('min_qty');
             $table->integer('max_qty')->nullable();

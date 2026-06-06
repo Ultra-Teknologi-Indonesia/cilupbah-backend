@@ -10,15 +10,19 @@ use Modules\Inbound\Http\Requests\StoreInboundRequest;
 use Modules\Inbound\Http\Requests\ReceiveInboundRequest;
 use Modules\Inbound\Http\Requests\PutawayRequest;
 use Modules\Inbound\Http\Requests\AutoPutawayRequest;
+use Modules\Inbound\Http\Requests\AssignInboundRequest;
+use Modules\Inbound\Http\Requests\ScanPutawayRequest;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Inbounds', description: 'API Endpoints for Inbounds')]
+#[OA\Tag(name: 'Inbounds - Assignment', description: 'Admin assign tugas ke pekerja gudang')]
+#[OA\Tag(name: 'Inbounds - QR Scan', description: 'Pekerja scan QR barang & lokasi rak untuk putaway')]
 #[OA\Schema(
     schema: 'Inbound',
     title: 'Inbound Schema',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'integer', example: 1),
+        new OA\Property(property: 'id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
         new OA\Property(property: 'location_id', type: 'integer', example: 1),
         new OA\Property(property: 'transaction_number', type: 'string', example: 'INB-20260604-0001'),
         new OA\Property(property: 'reference_number', type: 'string', example: 'PO-2026-0001', nullable: true),
@@ -51,7 +55,7 @@ use OpenApi\Attributes as OA;
                 type: 'object',
                 required: ['item_id', 'expected_qty'],
                 properties: [
-                    new OA\Property(property: 'item_id', type: 'integer', example: 10),
+                    new OA\Property(property: 'item_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
                     new OA\Property(property: 'expected_qty', type: 'integer', example: 50)
                 ]
             )
@@ -71,7 +75,7 @@ use OpenApi\Attributes as OA;
                 type: 'object',
                 required: ['inbound_item_id', 'qty'],
                 properties: [
-                    new OA\Property(property: 'inbound_item_id', type: 'integer', example: 1),
+                    new OA\Property(property: 'inbound_item_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
                     new OA\Property(property: 'qty', type: 'integer', example: 50),
                     new OA\Property(property: 'condition', type: 'string', enum: ['GOOD', 'DAMAGE'], example: 'GOOD', nullable: true),
                     new OA\Property(property: 'batch_no', type: 'string', example: 'BATCH-001', nullable: true),
@@ -94,8 +98,8 @@ use OpenApi\Attributes as OA;
                 type: 'object',
                 required: ['inbound_item_id', 'destination_bin_id', 'qty'],
                 properties: [
-                    new OA\Property(property: 'inbound_item_id', type: 'integer', example: 1),
-                    new OA\Property(property: 'destination_bin_id', type: 'integer', example: 5),
+                    new OA\Property(property: 'inbound_item_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
+                    new OA\Property(property: 'destination_bin_id', type: 'string', format: 'uuid', example: '660e8400-e29b-41d4-a716-446655440001'),
                     new OA\Property(property: 'qty', type: 'integer', example: 50),
                     new OA\Property(property: 'batch_no', type: 'string', example: 'BATCH-001', nullable: true),
                     new OA\Property(property: 'serial_no', type: 'string', example: 'SN-001', nullable: true)
@@ -110,6 +114,80 @@ use OpenApi\Attributes as OA;
     type: 'object',
     properties: [
         new OA\Property(property: 'created_by', type: 'string', example: 'warehouse_admin'),
+    ]
+)]
+#[OA\Schema(
+    schema: 'InboundItem',
+    title: 'Inbound Item Schema',
+    type: 'object',
+    properties: [
+        new OA\Property(property: 'id', type: 'string', format: 'uuid', description: 'UUID primary key — digunakan sebagai QR code label barang', example: '550e8400-e29b-41d4-a716-446655440000'),
+        new OA\Property(property: 'inbound_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
+        new OA\Property(property: 'item_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
+        new OA\Property(property: 'expected_qty', type: 'integer', example: 50),
+        new OA\Property(property: 'received_qty', type: 'integer', example: 0),
+        new OA\Property(property: 'putaway_qty', type: 'integer', example: 0),
+        new OA\Property(property: 'discrepancy_qty', type: 'integer', example: 0),
+        new OA\Property(property: 'discrepancy_note', type: 'string', nullable: true),
+        new OA\Property(property: 'condition', type: 'string', enum: ['GOOD', 'DAMAGE'], example: 'GOOD'),
+        new OA\Property(property: 'created_at', type: 'string', format: 'date-time'),
+        new OA\Property(property: 'updated_at', type: 'string', format: 'date-time'),
+    ]
+)]
+#[OA\Schema(
+    schema: 'InboundAssignment',
+    title: 'Inbound Assignment Schema',
+    type: 'object',
+    properties: [
+        new OA\Property(property: 'id', type: 'integer', example: 1),
+        new OA\Property(property: 'inbound_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
+        new OA\Property(property: 'assigned_to', type: 'integer', example: 5),
+        new OA\Property(property: 'assigned_by', type: 'integer', example: 1),
+        new OA\Property(property: 'status', type: 'string', enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED'], example: 'PENDING'),
+        new OA\Property(property: 'notes', type: 'string', example: 'Prioritas tinggi', nullable: true),
+        new OA\Property(property: 'started_at', type: 'string', format: 'date-time', nullable: true),
+        new OA\Property(property: 'completed_at', type: 'string', format: 'date-time', nullable: true),
+        new OA\Property(property: 'created_at', type: 'string', format: 'date-time'),
+        new OA\Property(property: 'updated_at', type: 'string', format: 'date-time'),
+        new OA\Property(
+            property: 'worker',
+            type: 'object',
+            properties: [
+                new OA\Property(property: 'id', type: 'integer', example: 5),
+                new OA\Property(property: 'name', type: 'string', example: 'Budi Pekerja'),
+                new OA\Property(property: 'email', type: 'string', example: 'budi@warehouse.com'),
+            ],
+            nullable: true
+        ),
+        new OA\Property(
+            property: 'assigner',
+            type: 'object',
+            properties: [
+                new OA\Property(property: 'id', type: 'integer', example: 1),
+                new OA\Property(property: 'name', type: 'string', example: 'Admin Gudang'),
+                new OA\Property(property: 'email', type: 'string', example: 'admin@warehouse.com'),
+            ],
+            nullable: true
+        ),
+    ]
+)]
+#[OA\Schema(
+    schema: 'AssignInboundRequest',
+    required: ['assigned_to'],
+    type: 'object',
+    properties: [
+        new OA\Property(property: 'assigned_to', type: 'integer', description: 'User ID pekerja', example: 5),
+        new OA\Property(property: 'notes', type: 'string', description: 'Catatan untuk pekerja', example: 'Prioritas tinggi', nullable: true),
+    ]
+)]
+#[OA\Schema(
+    schema: 'ScanPutawayRequest',
+    required: ['inbound_item_id', 'bin_id', 'qty'],
+    type: 'object',
+    properties: [
+        new OA\Property(property: 'inbound_item_id', type: 'string', format: 'uuid', description: 'Scan 1: UUID dari label barang (= inbound_items.id)', example: '550e8400-e29b-41d4-a716-446655440000'),
+        new OA\Property(property: 'bin_id', type: 'string', format: 'uuid', description: 'Scan 2: UUID dari rak tujuan (= location_bins.id)', example: '660e8400-e29b-41d4-a716-446655440001'),
+        new OA\Property(property: 'qty', type: 'integer', description: 'Jumlah barang yang di-putaway', example: 10),
     ]
 )]
 class InboundController extends Controller
@@ -148,14 +226,14 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid'))
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),
             new OA\Response(response: 404, description: 'Dokumen Inbound tidak ditemukan')
         ]
     )]
-    public function show(int $id): JsonResponse
+    public function show(string $id): JsonResponse
     {
         $inbound = $this->inboundService->getById($id);
 
@@ -194,7 +272,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid'))
         ],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: '#/components/schemas/ReceiveInboundRequest')),
         responses: [
@@ -203,7 +281,7 @@ class InboundController extends Controller
             new OA\Response(response: 500, description: 'Server Error')
         ]
     )]
-    public function receive(int $id, ReceiveInboundRequest $request): JsonResponse
+    public function receive(string $id, ReceiveInboundRequest $request): JsonResponse
     {
         try {
             $inbound = $this->inboundService->receive($id, $request->validated());
@@ -219,7 +297,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid'))
         ],
         requestBody: new OA\RequestBody(
             required: true,
@@ -233,7 +311,7 @@ class InboundController extends Controller
             new OA\Response(response: 500, description: 'Server Error')
         ]
     )]
-    public function closeReceiving(int $id, Request $request): JsonResponse
+    public function closeReceiving(string $id, Request $request): JsonResponse
     {
         $request->validate(['closed_by' => 'required|string|max:100']);
 
@@ -251,7 +329,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid'))
         ],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: '#/components/schemas/PutawayRequest')),
         responses: [
@@ -260,7 +338,7 @@ class InboundController extends Controller
             new OA\Response(response: 500, description: 'Server Error')
         ]
     )]
-    public function putaway(int $id, PutawayRequest $request): JsonResponse
+    public function putaway(string $id, PutawayRequest $request): JsonResponse
     {
         try {
             $inbound = $this->inboundService->processPutaway($id, $request->validated());
@@ -276,7 +354,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid'))
         ],
         requestBody: new OA\RequestBody(
             required: true,
@@ -287,7 +365,7 @@ class InboundController extends Controller
             new OA\Response(response: 500, description: 'Server Error')
         ]
     )]
-    public function autoPutaway(int $id, Request $request): JsonResponse
+    public function autoPutaway(string $id, Request $request): JsonResponse
     {
         $request->validate(['created_by' => 'required|string|max:100']);
 
@@ -325,16 +403,222 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid'))
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),
         ]
     )]
-    public function pendingPutaway(int $id): JsonResponse
+    public function pendingPutaway(string $id): JsonResponse
     {
         $items = $this->inboundService->getItemsPendingPutaway($id);
         return $this->successResponse($items, 'Items pending putaway');
+    }
+
+    // ─── ASSIGNMENT ───
+
+    #[OA\Post(
+        path: '/api/v1/inbounds/{id}/assign',
+        summary: 'Assign inbound to a worker',
+        description: 'Admin gudang assign dokumen inbound ke pekerja. Pekerja akan melihat tugas ini di endpoint my-assignments.',
+        security: [['bearerAuth' => []]],
+        tags: ['Inbounds - Assignment'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'Inbound ID', schema: new OA\Schema(type: 'string', format: 'uuid'))
+        ],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: '#/components/schemas/AssignInboundRequest')),
+        responses: [
+            new OA\Response(
+                response: 201,
+                description: 'Berhasil assign',
+                content: new OA\JsonContent(properties: [
+                    new OA\Property(property: 'success', type: 'boolean', example: true),
+                    new OA\Property(property: 'message', type: 'string', example: 'Inbound berhasil di-assign'),
+                    new OA\Property(property: 'data', ref: '#/components/schemas/InboundAssignment'),
+                ])
+            ),
+            new OA\Response(response: 422, description: 'Validation Error'),
+            new OA\Response(response: 500, description: 'Inbound sudah COMPLETED/CANCELLED')
+        ]
+    )]
+    public function assign(string $id, AssignInboundRequest $request): JsonResponse
+    {
+        try {
+            $assignment = $this->inboundService->assignWorker(
+                $id,
+                $request->assigned_to,
+                $request->user()->id,
+                $request->notes
+            );
+            return $this->successResponse(
+                $assignment->load('worker:id,name,email', 'assigner:id,name,email'),
+                'Inbound berhasil di-assign',
+                201
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 500);
+        }
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inbounds/{id}/assignments',
+        summary: 'Get assignments for an inbound',
+        description: 'Lihat semua pekerja yang di-assign ke dokumen inbound tertentu.',
+        security: [['bearerAuth' => []]],
+        tags: ['Inbounds - Assignment'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'Inbound ID', schema: new OA\Schema(type: 'string', format: 'uuid'))
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Daftar assignment',
+                content: new OA\JsonContent(properties: [
+                    new OA\Property(property: 'success', type: 'boolean', example: true),
+                    new OA\Property(property: 'message', type: 'string'),
+                    new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/InboundAssignment')),
+                ])
+            ),
+        ]
+    )]
+    public function assignments(string $id): JsonResponse
+    {
+        $assignments = $this->inboundService->getAssignments($id);
+        return $this->successResponse($assignments, 'Daftar assignment berhasil diambil');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inbounds/my-assignments',
+        summary: 'Get current user assignments',
+        description: 'Pekerja melihat daftar tugas inbound yang di-assign ke dia. Bisa filter berdasarkan status.',
+        security: [['bearerAuth' => []]],
+        tags: ['Inbounds - Assignment'],
+        parameters: [
+            new OA\Parameter(name: 'status', in: 'query', required: false, description: 'Filter berdasarkan status', schema: new OA\Schema(type: 'string', enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED']))
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Daftar assignment saya',
+                content: new OA\JsonContent(properties: [
+                    new OA\Property(property: 'success', type: 'boolean', example: true),
+                    new OA\Property(property: 'message', type: 'string'),
+                    new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/InboundAssignment')),
+                ])
+            ),
+        ]
+    )]
+    public function myAssignments(Request $request): JsonResponse
+    {
+        $assignments = $this->inboundService->getMyAssignments(
+            $request->user()->id,
+            $request->query('status')
+        );
+        return $this->successResponse($assignments, 'Daftar assignment Anda');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/inbounds/assignments/{assignmentId}/start',
+        summary: 'Start working on an assignment',
+        description: 'Pekerja memulai tugas. Status berubah dari PENDING ke IN_PROGRESS. Hanya pemilik assignment yang bisa start.',
+        security: [['bearerAuth' => []]],
+        tags: ['Inbounds - Assignment'],
+        parameters: [
+            new OA\Parameter(name: 'assignmentId', in: 'path', required: true, description: 'Assignment ID', schema: new OA\Schema(type: 'integer'))
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Assignment dimulai',
+                content: new OA\JsonContent(properties: [
+                    new OA\Property(property: 'success', type: 'boolean', example: true),
+                    new OA\Property(property: 'message', type: 'string', example: 'Assignment dimulai'),
+                    new OA\Property(property: 'data', ref: '#/components/schemas/InboundAssignment'),
+                ])
+            ),
+            new OA\Response(response: 500, description: 'Bukan assignment Anda / sudah dimulai')
+        ]
+    )]
+    public function startAssignment(int $assignmentId, Request $request): JsonResponse
+    {
+        try {
+            $assignment = $this->inboundService->startAssignment($assignmentId, $request->user()->id);
+            return $this->successResponse($assignment, 'Assignment dimulai');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 500);
+        }
+    }
+
+    // ─── QR SCAN ───
+
+    #[OA\Get(
+        path: '/api/v1/inbounds/scan/{qrCode}',
+        summary: 'Scan QR — lookup inbound item by UUID primary key',
+        description: 'Pekerja scan QR code pada label barang. UUID pada QR = primary key inbound_items. Mengembalikan detail item inbound beserta info gudang dan produk.',
+        security: [['bearerAuth' => []]],
+        tags: ['Inbounds - QR Scan'],
+        parameters: [
+            new OA\Parameter(name: 'qrCode', in: 'path', required: true, description: 'UUID primary key inbound item (= QR code label)', schema: new OA\Schema(type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'))
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Item ditemukan',
+                content: new OA\JsonContent(properties: [
+                    new OA\Property(property: 'success', type: 'boolean', example: true),
+                    new OA\Property(property: 'message', type: 'string', example: 'Item ditemukan'),
+                    new OA\Property(property: 'data', ref: '#/components/schemas/InboundItem'),
+                ])
+            ),
+            new OA\Response(response: 404, description: 'QR Code tidak ditemukan')
+        ]
+    )]
+    public function scanQr(string $qrCode): JsonResponse
+    {
+        try {
+            $item = $this->inboundService->lookupByQr($qrCode);
+            return $this->successResponse($item, 'Item ditemukan');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 404);
+        }
+    }
+
+    #[OA\Post(
+        path: '/api/v1/inbounds/scan-putaway',
+        summary: 'Scan QR barang + scan QR rak → putaway & update inventory',
+        description: 'Pekerja scan 2x: (1) scan QR label barang (= inbound_items.id UUID), (2) scan QR lokasi rak (= location_bins.id UUID). Sistem memindahkan stock dari inbound bin ke rak tujuan dan update inventory. Jika semua item sudah putaway, inbound otomatis COMPLETED dan assignment auto-selesai.',
+        security: [['bearerAuth' => []]],
+        tags: ['Inbounds - QR Scan'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: '#/components/schemas/ScanPutawayRequest')),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Putaway berhasil, stock diperbarui',
+                content: new OA\JsonContent(properties: [
+                    new OA\Property(property: 'success', type: 'boolean', example: true),
+                    new OA\Property(property: 'message', type: 'string', example: 'Putaway berhasil, stock diperbarui'),
+                    new OA\Property(property: 'data', ref: '#/components/schemas/InboundItem'),
+                ])
+            ),
+            new OA\Response(response: 404, description: 'QR rak tidak ditemukan'),
+            new OA\Response(response: 422, description: 'Validation Error — inbound_item_id / bin_id bukan UUID'),
+            new OA\Response(response: 500, description: 'Qty melebihi pending / inbound belum RECEIVED')
+        ]
+    )]
+    public function scanPutaway(ScanPutawayRequest $request): JsonResponse
+    {
+        try {
+            $item = $this->inboundService->scanPutaway(
+                $request->inbound_item_id,
+                $request->bin_id,
+                $request->qty,
+                $request->user()->id
+            );
+            return $this->successResponse($item, 'Putaway berhasil, stock diperbarui');
+        } catch (\Exception $e) {
+            $code = str_contains($e->getMessage(), 'tidak ditemukan') ? 404 : 500;
+            return $this->errorResponse($e->getMessage(), $code);
+        }
     }
 
     #[OA\Post(
@@ -343,14 +627,14 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid'))
         ],
         responses: [
             new OA\Response(response: 200, description: 'Inbound dibatalkan'),
             new OA\Response(response: 500, description: 'Server Error')
         ]
     )]
-    public function cancel(int $id): JsonResponse
+    public function cancel(string $id): JsonResponse
     {
         try {
             $inbound = $this->inboundService->cancel($id);

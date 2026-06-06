@@ -21,7 +21,7 @@ class InventoryService
     ) {}
 
 
-    public function getStockByItem(int $itemId): Collection
+    public function getStockByItem(string $itemId): Collection
     {
         return $this->inventoryRepository->getByItem($itemId);
     }
@@ -234,7 +234,7 @@ class InventoryService
         });
     }
 
-    public function reserveStock(int $itemId, int $locationId, int $qty, string $transactionNumber, string $createdBy): Inventory
+    public function reserveStock(string $itemId, int $locationId, int $qty, string $transactionNumber, string $createdBy): Inventory
     {
         return DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber, $createdBy) {
             $inventory = $this->inventoryRepository->findExactForUpdate($itemId, $locationId, null);
@@ -263,7 +263,7 @@ class InventoryService
         });
     }
 
-    public function fulfillStock(int $itemId, int $locationId, int $qty, string $transactionNumber, string $createdBy): Inventory
+    public function fulfillStock(string $itemId, int $locationId, int $qty, string $transactionNumber, string $createdBy): Inventory
     {
         return DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber, $createdBy) {
             $inventory = $this->inventoryRepository->findExactForUpdate($itemId, $locationId, null);
