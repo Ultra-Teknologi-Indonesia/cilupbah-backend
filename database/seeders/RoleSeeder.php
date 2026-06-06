@@ -15,18 +15,18 @@ class RoleSeeder extends Seeder
     public function run(): void
     {
         $roles = [
-            'Merchandiser' => 'Orang yang bertanggung jawab mencatatkan pembelian langsung (biasanya pembelian reseller, B2B, dll)',
-            'Customer Service' => 'Orang yang berhubungan dengan customer, membalas chat, mengedit pesanan sesuai permintaan customer',
-            'Warehouse Staff' => 'Orang yang bekerja di gudang. Menempatkan barang, pick dan pack dan melakukan stock opname',
-            'Bookkeeper' => 'Orang yang bertanggung jawab di pembukuan (akunting) perusaan',
-            'Purchasing' => 'Orang yang bertanggung jawab di proses pembelian dan kontak dengan vendor',
-            'Sales' => 'Orang yang bertanggung jawab mencatatkan pembelian langsung (Biasanya pembelian reseller, B2B, dll)',
-            'POS Cashier' => 'Kasir outlet toko Fisik',
-            'Store Manager' => 'Orang yang bertanggung jawab terhadap operasional toko fisik',
-            'Supervisior' => 'Orang yang bertanggung jawab terhadap operasional Jubelio sehari-hari',
-            'Administrator' => 'Orang yang bertanggung jawab terhadap seluruh aspek aplikasi Jubelio kecuali billing',
-            'Owner' => 'Owner dari akun Jubelio',
-            'Auditor' => 'Orang yang ditunjuk untuk memeriksa operasional Jubelio'
+            'owner' => 'Pemilik Sistem',
+            'admin' => 'Administrator Sistem',
+            'purchasing' => 'Staff Pembelian',
+            'warehouse' => 'Staff Gudang',
+            'picker' => 'Staff Picker Gudang',
+            'checker' => 'Staff Checker Gudang',
+            'handover' => 'Staff Serah Terima Gudang',
+            'cs marketplace' => 'Customer Service Marketplace',
+            'putaway' => 'Staff Penempatan Gudang',
+            'kepala gudang' => 'Kepala Gudang',
+            'leader outbound' => 'Leader Outbound Gudang',
+            'leader inbound' => 'Leader Inbound Gudang'
         ];
 
         foreach ($roles as $role => $description) {
