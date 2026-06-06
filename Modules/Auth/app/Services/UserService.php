@@ -19,6 +19,14 @@ class UserService
     ) {}
 
     /**
+     * Get paginated users.
+     */
+    public function getPaginatedUsers(): LengthAwarePaginator
+    {
+        return $this->userRepository->getPaginatedUsers();
+    }
+
+    /**
      * Create a new user with assigned role.
      */
     public function createUser(array $data): User

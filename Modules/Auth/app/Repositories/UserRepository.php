@@ -7,6 +7,20 @@ use Illuminate\Database\Eloquent\Collection;
 
 class UserRepository
 {
+    public function getPaginatedUsers(): \Illuminate\Pagination\LengthAwarePaginator
+    {
+        return \Spatie\QueryBuilder\QueryBuilder::for(User::class)
+            ->with(['roles', 'permissions']) // Eager load roles & permissions
+            ->allowedSearch('name', 'email')
+            ->allowedFilters([
+                \Spatie\QueryBuilder\AllowedFilter::scope('role'),
+                \Spatie\QueryBuilder\AllowedFilter::exact('warehouse_id')
+            ])
+            ->allowedSorts('name', 'created_at')
+            ->defaultSort('-created_at')
+            ->paginate(request('per_page', 10))
+            ->appends(request()->query());
+    }
     public function findById(string $id): User
     {
         return User::findOrFail($id);

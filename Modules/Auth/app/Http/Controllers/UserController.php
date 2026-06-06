@@ -19,6 +19,30 @@ class UserController extends Controller
         protected UserService $userService
     ) {}
 
+    #[OA\Get(
+        path: '/api/v1/users',
+        summary: 'Get all users (Paginated)',
+        security: [['bearerAuth' => []]],
+        tags: ['Users'],
+        parameters: [
+            new OA\Parameter(name: 'filter[role]', in: 'query', description: 'Filter by exact role name', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[warehouse_id]', in: 'query', description: 'Filter by exact warehouse ID', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'search', in: 'query', description: 'Search by name or email', required: false, schema: new OA\Schema(type: 'string'))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'List of users retrieved successfully'),
+            new OA\Response(response: 401, description: 'Unauthenticated')
+        ]
+    )]
+    public function index(): JsonResponse
+    {
+        $users = $this->userService->getPaginatedUsers();
+
+        return $this->successPaginatedResponse(
+            ProfileResource::collection($users)
+        );
+    }
+
     #[OA\Post(
         path: '/api/v1/users',
         summary: 'Create a new user',

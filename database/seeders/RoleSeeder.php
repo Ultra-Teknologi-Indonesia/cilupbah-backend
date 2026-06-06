@@ -37,6 +37,7 @@ class RoleSeeder extends Seeder
 
         $permissions = [
             'view-user-history',
+            'view-user',
             'view-dashboard',
             'force-logout-user',
             'view-role',
