@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use OpenApi\Attributes as OA;
+use App\Traits\ApiResponse;
 
 class MediaController extends Controller
 {
+    use ApiResponse;
     #[OA\Post(
         path: "/api/v1/media/upload",
         summary: "Upload media",
@@ -63,20 +65,13 @@ class MediaController extends Controller
             $mediaId = 'id-' . $filename; // Simulasi Media ID
             $mediaUrl = url('storage/media/' . $filename); // Simulasi URL
 
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Media uploaded successfully',
-                'data' => [
-                    'media_id' => $mediaId,
-                    'name' => $filename,
-                    'url' => $mediaUrl,
-                ]
-            ], 201);
+            return $this->successResponse([
+                'media_id' => $mediaId,
+                'name' => $filename,
+                'url' => $mediaUrl,
+            ], 'Media uploaded successfully', 201);
         }
 
-        return response()->json([
-            'status' => 'error',
-            'message' => 'No file provided'
-        ], 400);
+        return $this->errorResponse('No file provided', 400);
     }
 }

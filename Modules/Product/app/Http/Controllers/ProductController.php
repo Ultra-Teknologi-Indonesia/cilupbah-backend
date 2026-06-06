@@ -8,9 +8,11 @@ use Illuminate\Http\JsonResponse;
 use Modules\Product\Http\Requests\CreateProductRequest;
 use Modules\Product\Services\ProductService;
 use OpenApi\Attributes as OA;
+use App\Traits\ApiResponse;
 
 class ProductController extends Controller
 {
+    use ApiResponse;
     protected ProductService $productService;
 
     public function __construct(ProductService $productService)
@@ -48,7 +50,7 @@ class ProductController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->input('limit', 20);
+        $limit = $request->input('limit', 10);
         
         $products = \Spatie\QueryBuilder\QueryBuilder::for(\Modules\Product\Models\Product::class)
             ->with(['variants', 'media', 'category', 'brand'])
@@ -58,17 +60,7 @@ class ProductController extends Controller
             )
             ->allowedSorts('name', 'created_at')
             ->paginate($limit);
-        
-        return response()->json([
-            'status' => 'success',
-            'data' => $products->items(),
-            'meta' => [
-                'current_page' => $products->currentPage(),
-                'last_page' => $products->lastPage(),
-                'per_page' => $products->perPage(),
-                'total' => $products->total(),
-            ]
-        ]);
+        return $this->successPaginatedResponse($products, 'Get products success');
     }
 
     /**
@@ -86,20 +78,11 @@ class ProductController extends Controller
     {
         try {
             $productId = $this->productService->createProduct($request->validated());
-            
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Product created successfully',
-                'data' => [
-                    'product_id' => $productId
-                ]
-            ], 201);
+            return $this->successResponse([
+                'product_id' => $productId
+            ], 'Product created successfully', 201);
         } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to create product',
-                'error' => $e->getMessage()
-            ], 500);
+            return $this->errorResponse('Failed to create product', 500, ['error' => $e->getMessage()]);
         }
     }
 

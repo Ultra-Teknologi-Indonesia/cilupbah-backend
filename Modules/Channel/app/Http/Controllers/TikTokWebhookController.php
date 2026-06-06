@@ -5,9 +5,11 @@ namespace Modules\Channel\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use App\Traits\ApiResponse;
 
 class TikTokWebhookController extends Controller
 {
+    use ApiResponse;
     public function handle(Request $request)
     {
         $rawBody = $request->getContent();
@@ -30,7 +32,7 @@ class TikTokWebhookController extends Controller
                 'expected' => $calculatedSignature,
                 'received' => $signature
             ]);
-            return response()->json(['message' => 'Unauthorized'], 401);
+            return $this->errorResponse('Unauthorized', 401);
         }
 
         $payload = $request->all();
@@ -39,9 +41,6 @@ class TikTokWebhookController extends Controller
             ->onConnection('redis')
             ->onQueue('tiktok_webhooks');
 
-        return response()->json([
-            'code' => 0,
-            'message' => 'Success'
-        ], 200);
+        return $this->successResponse(['code' => 0], 'Success');
     }
 }

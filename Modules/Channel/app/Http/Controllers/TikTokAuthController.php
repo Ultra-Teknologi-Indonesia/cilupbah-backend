@@ -73,12 +73,12 @@ class TikTokAuthController extends Controller
     {
         // Only allow in non-production environment as a safety guard
         if (config('app.env') === 'production') {
-            return response()->json(['error' => 'Not available in production'], 403);
+            return $this->errorResponse('Not available in production', 403);
         }
 
         $path = storage_path('logs/laravel.log');
         if (!file_exists($path)) {
-            return response()->json(['entries' => []]);
+            return $this->successResponse(['entries' => []], 'Log read success');
         }
 
         // Read last portion of the log to keep memory usage reasonable
@@ -134,6 +134,6 @@ class TikTokAuthController extends Controller
         // return newest first
         $entries = array_reverse($entries);
 
-        return response()->json(['entries' => $entries]);
+        return $this->successResponse(['entries' => $entries], 'Log read success');
     }
 }

@@ -9,9 +9,11 @@ use OpenApi\Attributes as OA;
 use Modules\Product\Models\Product;
 use Modules\Product\Services\ProductService;
 use Modules\Product\Http\Requests\CreateProductRequest;
+use App\Traits\ApiResponse;
 
 class ChannelProductController extends Controller
 {
+    use ApiResponse;
     protected ProductService $productService;
 
     public function __construct(ProductService $productService)
@@ -45,20 +47,7 @@ class ChannelProductController extends Controller
             ->allowedSorts('name', 'created_at')
             ->paginate($limit);
 
-        $meta = [
-            'current_page' => $products->currentPage(),
-            'last_page' => $products->lastPage(),
-            'per_page' => $products->perPage(),
-            'total' => $products->total(),
-        ];
-
-        return response()->json([
-            'status' => 'success',
-            'channel' => $channel,
-            'message' => 'Get products success',
-            'data' => $products->items(),
-            'meta' => $meta
-        ]);
+        return $this->successPaginatedResponse($products, 'Get products success');
     }
 
     #[OA\Get(
@@ -77,12 +66,7 @@ class ChannelProductController extends Controller
             ->when(is_numeric($id), fn($q) => $q->orWhere('id', $id))
             ->firstOrFail();
 
-        return response()->json([
-            'status' => 'success',
-            'channel' => $channel,
-            'message' => 'Get product detail success',
-            'data' => $product
-        ]);
+        return $this->successResponse($product, 'Get product detail success');
     }
 
     #[OA\Post(
@@ -187,10 +171,7 @@ class ChannelProductController extends Controller
     {
         $shopId = $request->input('shop_id');
         if (!$shopId) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'shop_id is required'
-            ], 400);
+            return $this->errorResponse('shop_id is required', 400);
         }
 
         try {
@@ -205,24 +186,14 @@ class ChannelProductController extends Controller
                 $res = $tiktokService->pushProduct($productId, $shopId);
             }
 
-            return response()->json([
-                'status' => 'success',
-                'channel' => $channel,
-                'message' => 'Product created and pushed to channel',
-                'data' => [
-                    'id' => $productId,
-                    'channel_product_id' => $res['data']['product_id'] ?? null,
-                    'channel_response' => $res
-                ]
-            ], 201);
+            return $this->successResponse([
+                'id' => $productId,
+                'channel_product_id' => $res['data']['product_id'] ?? null,
+                'channel_response' => $res
+            ], 'Product created and pushed to channel', 201);
             
         } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'channel' => $channel,
-                'message' => 'Failed to create and push product',
-                'error' => $e->getMessage()
-            ], 500);
+            return $this->errorResponse('Failed to create and push product', 500, ['error' => $e->getMessage()]);
         }
     }
 
@@ -258,12 +229,7 @@ class ChannelProductController extends Controller
             $tiktokService->pushUpdate($product->id, $shopId);
         }
         
-        return response()->json([
-            'status' => 'success',
-            'channel' => $channel,
-            'message' => 'Product updated successfully',
-            'data' => $product
-        ]);
+        return $this->successResponse($product, 'Product updated successfully');
     }
 
     #[OA\Delete(
@@ -279,7 +245,7 @@ class ChannelProductController extends Controller
     {
         $shopId = $request->input('shop_id');
         if (!$shopId) {
-            return response()->json(['status' => 'error', 'message' => 'shop_id is required'], 400);
+            return $this->errorResponse('shop_id is required', 400);
         }
 
         $product = Product::where('channel_product_id', $id)
@@ -293,14 +259,7 @@ class ChannelProductController extends Controller
             
         $product->delete();
 
-        return response()->json([
-            'status' => 'success',
-            'channel' => $channel,
-            'message' => 'Product deleted successfully',
-            'data' => [
-                'success' => true
-            ]
-        ]);
+        return $this->successResponse(['success' => true], 'Product deleted successfully');
     }
 
     #[OA\Put(
@@ -316,7 +275,7 @@ class ChannelProductController extends Controller
     {
         $shopId = $request->input('shop_id');
         if (!$shopId) {
-            return response()->json(['status' => 'error', 'message' => 'shop_id is required'], 400);
+            return $this->errorResponse('shop_id is required', 400);
         }
 
         $product = Product::where('channel_product_id', $id)
@@ -330,12 +289,7 @@ class ChannelProductController extends Controller
             $tiktokService->activateProduct($product->id, $shopId);
         }
 
-        return response()->json([
-            'status' => 'success',
-            'channel' => $channel,
-            'message' => 'Product activated successfully',
-            'data' => $product
-        ]);
+        return $this->successResponse($product, 'Product activated successfully');
     }
 
     #[OA\Put(
@@ -351,7 +305,7 @@ class ChannelProductController extends Controller
     {
         $shopId = $request->input('shop_id');
         if (!$shopId) {
-            return response()->json(['status' => 'error', 'message' => 'shop_id is required'], 400);
+            return $this->errorResponse('shop_id is required', 400);
         }
 
         $product = Product::where('channel_product_id', $id)
@@ -365,12 +319,7 @@ class ChannelProductController extends Controller
             $tiktokService->deactivateProduct($product->id, $shopId);
         }
 
-        return response()->json([
-            'status' => 'success',
-            'channel' => $channel,
-            'message' => 'Product deactivated successfully',
-            'data' => $product
-        ]);
+        return $this->successResponse($product, 'Product deactivated successfully');
     }
 
     #[OA\Put(
@@ -397,14 +346,7 @@ class ChannelProductController extends Controller
             $tiktokService->syncPriceAndInventory((int)$id, $shopId);
         }
 
-        return response()->json([
-            'status' => 'success',
-            'channel' => $channel,
-            'message' => 'Product stock updated successfully',
-            'data' => [
-                'success' => true
-            ]
-        ]);
+        return $this->successResponse(['success' => true], 'Product stock updated successfully');
     }
 
     #[OA\Put(
@@ -431,14 +373,7 @@ class ChannelProductController extends Controller
             $tiktokService->syncPriceAndInventory((int)$id, $shopId);
         }
 
-        return response()->json([
-            'status' => 'success',
-            'channel' => $channel,
-            'message' => 'Product price updated successfully',
-            'data' => [
-                'success' => true
-            ]
-        ]);
+        return $this->successResponse(['success' => true], 'Product price updated successfully');
     }
 
     #[OA\Get(
@@ -452,11 +387,6 @@ class ChannelProductController extends Controller
     #[OA\Response(response: 200, description: "Get categories success")]
     public function categories(Request $request, string $channel): JsonResponse
     {
-        return response()->json([
-            'status' => 'success',
-            'channel' => $channel,
-            'message' => 'Get categories success',
-            'data' => []
-        ]);
+        return $this->successResponse([], 'Get categories success');
     }
 }
