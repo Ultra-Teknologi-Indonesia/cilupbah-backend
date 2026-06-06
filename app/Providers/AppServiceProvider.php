@@ -23,6 +23,8 @@ class AppServiceProvider extends ServiceProvider
             return $user->hasRole('owner') ? true : null;
         });
 
+        \App\Models\User::observe(\App\Observers\UserObserver::class);
+
         \Laravel\Sanctum\Sanctum::usePersonalAccessTokenModel(\App\Models\PersonalAccessToken::class);
 
         if (config('app.env') === 'production' || config('app.env') === 'staging') {

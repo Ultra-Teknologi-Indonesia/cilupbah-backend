@@ -126,4 +126,165 @@ class UserController extends Controller
 
         return $this->successResponse(new ProfileResource($user), 'Pengguna berhasil diperbarui.');
     }
+
+    #[OA\Get(
+        path: '/api/v1/users/{id}/histories',
+        summary: 'Get user history',
+        security: [['bearerAuth' => []]],
+        tags: ['Users'],
+        parameters: [
+            new OA\Parameter(
+                name: 'id',
+                in: 'path',
+                required: true,
+                description: 'User ID',
+                schema: new OA\Schema(type: 'string', example: '018f6b...')
+            )
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'User histories retrieved successfully',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'status', type: 'string', example: 'success'),
+                        new OA\Property(property: 'message', type: 'string', example: 'Riwayat pengguna berhasil dimuat.'),
+                        new OA\Property(
+                            property: 'data',
+                            type: 'array',
+                            items: new OA\Items(
+                                properties: [
+                                    new OA\Property(property: 'id', type: 'string', example: '018f6b...'),
+                                    new OA\Property(property: 'actor', type: 'object', nullable: true, properties: [
+                                        new OA\Property(property: 'id', type: 'string'),
+                                        new OA\Property(property: 'name', type: 'string'),
+                                        new OA\Property(property: 'email', type: 'string')
+                                    ]),
+                                    new OA\Property(property: 'target_user_id', type: 'string'),
+                                    new OA\Property(property: 'action', type: 'string', example: 'updated'),
+                                    new OA\Property(property: 'changes', type: 'object', nullable: true),
+                                    new OA\Property(property: 'created_at', type: 'string', format: 'date-time')
+                                ]
+                            )
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 404, description: 'User not found')
+        ]
+    )]
+    public function histories(string $id): JsonResponse
+    {
+        $user = \App\Models\User::findOrFail($id);
+        
+        $histories = \App\Models\UserHistory::with('actor')
+            ->where('target_user_id', $user->id)
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return $this->successResponse(
+            \App\Http\Resources\UserHistoryResource::collection($histories), 
+            'Riwayat pengguna berhasil dimuat.'
+        );
+    }
+
+    #[OA\Post(
+        path: '/api/v1/users/{id}/force-logout',
+        summary: 'Force logout a single user',
+        security: [['bearerAuth' => []]],
+        tags: ['Users'],
+        parameters: [
+            new OA\Parameter(
+                name: 'id',
+                in: 'path',
+                required: true,
+                description: 'User ID',
+                schema: new OA\Schema(type: 'string', example: '018f6b...')
+            )
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'User force logged out successfully',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'status', type: 'string', example: 'success'),
+                        new OA\Property(property: 'message', type: 'string', example: 'Sesi pengguna berhasil diputus.')
+                    ]
+                )
+            ),
+            new OA\Response(response: 404, description: 'User not found'),
+            new OA\Response(response: 403, description: 'Forbidden access')
+        ]
+    )]
+    public function forceLogout(string $id): JsonResponse
+    {
+        $user = \App\Models\User::findOrFail($id);
+        
+        $user->tokens()->delete();
+
+        \App\Models\UserHistory::create([
+            'actor_id' => \Illuminate\Support\Facades\Auth::id(),
+            'target_user_id' => $user->id,
+            'action' => 'force_logged_out',
+            'changes' => null,
+        ]);
+
+        return $this->successResponse(null, 'Sesi pengguna berhasil diputus.');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/users/bulk-force-logout',
+        summary: 'Bulk force logout multiple users',
+        security: [['bearerAuth' => []]],
+        tags: ['Users'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['user_ids'],
+                properties: [
+                    new OA\Property(property: 'user_ids', type: 'array', items: new OA\Items(type: 'string', example: '018f6b...')),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Users force logged out successfully',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'status', type: 'string', example: 'success'),
+                        new OA\Property(property: 'message', type: 'string', example: 'Sesi pengguna yang dipilih berhasil diputus.')
+                    ]
+                )
+            ),
+            new OA\Response(response: 422, description: 'Validation error'),
+            new OA\Response(response: 403, description: 'Forbidden access')
+        ]
+    )]
+    public function bulkForceLogout(\Illuminate\Http\Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_ids' => ['required', 'array', 'min:1'],
+            'user_ids.*' => ['required', 'string', 'exists:users,id'],
+        ]);
+
+        $actorId = \Illuminate\Support\Facades\Auth::id();
+
+        foreach ($validated['user_ids'] as $userId) {
+            $user = \App\Models\User::find($userId);
+            if ($user) {
+                $user->tokens()->delete();
+
+                \App\Models\UserHistory::create([
+                    'actor_id' => $actorId,
+                    'target_user_id' => $user->id,
+                    'action' => 'force_logged_out',
+                    'changes' => null,
+                ]);
+            }
+        }
+
+        return $this->successResponse(null, 'Sesi pengguna yang dipilih berhasil diputus.');
+    }
 }

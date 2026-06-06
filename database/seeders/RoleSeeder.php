@@ -32,5 +32,14 @@ class RoleSeeder extends Seeder
         foreach ($roles as $role) {
             Role::firstOrCreate(['name' => $role, 'guard_name' => 'web']);
         }
+
+        $permissions = [
+            'view-user-history',
+            'force-logout-user'
+        ];
+
+        foreach ($permissions as $permission) {
+            \App\Models\Permission::firstOrCreate(['name' => $permission, 'guard_name' => 'web']);
+        }
     }
 }
