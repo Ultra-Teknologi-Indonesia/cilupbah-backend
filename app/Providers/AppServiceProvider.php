@@ -19,6 +19,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        \Laravel\Sanctum\Sanctum::usePersonalAccessTokenModel(\App\Models\PersonalAccessToken::class);
+
         if (config('app.env') === 'production' || config('app.env') === 'staging') {
             \Illuminate\Support\Facades\URL::forceScheme('https');
         }

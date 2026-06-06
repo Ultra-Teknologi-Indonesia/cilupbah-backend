@@ -7,13 +7,14 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 use App\Traits\HasUuid7;
 
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable, HasRoles, HasUuid7;
+    use HasApiTokens, HasFactory, Notifiable, HasRoles, HasUuid7;
 
     protected $keyType = 'string';
     public $incrementing = false;
