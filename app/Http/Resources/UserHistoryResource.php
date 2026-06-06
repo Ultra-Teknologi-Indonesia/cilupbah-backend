@@ -15,12 +15,13 @@ class UserHistoryResource extends JsonResource
     public function toArray(Request $request): array
     {
         $actorName = $this->actor ? $this->actor->name : 'Sistem';
+        $targetName = $this->targetUser ? $this->targetUser->name : 'Pengguna (Telah Dihapus)';
 
         $message = match($this->action) {
-            'created' => "{$actorName} membuat akun ini.",
-            'updated' => "{$actorName} memperbarui informasi akun ini.",
-            'deleted' => "{$actorName} menghapus akun ini.",
-            'force_logged_out' => "{$actorName} memutus sesi (force logout) akun ini secara paksa.",
+            'created' => "{$actorName} membuat akun {$targetName}.",
+            'updated' => "{$actorName} memperbarui informasi akun {$targetName}.",
+            'deleted' => "{$actorName} menghapus akun {$targetName}.",
+            'force_logged_out' => "{$actorName} memutus sesi (force logout) akun {$targetName} secara paksa.",
             default => "Aksi tidak dikenal.",
         };
 

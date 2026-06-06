@@ -12,7 +12,7 @@ class UserHistoryRepository
     public function getHistoriesByUserId(string $userId): LengthAwarePaginator|Collection
     {
         return QueryBuilder::for(UserHistory::class)
-            ->with('actor')
+            ->with(['actor', 'targetUser'])
             ->where('target_user_id', $userId)
             ->allowedSorts('created_at', 'action')
             ->defaultSort('-created_at')
