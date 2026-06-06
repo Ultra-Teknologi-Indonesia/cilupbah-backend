@@ -5,10 +5,15 @@ use Modules\Inbound\Http\Controllers\InboundController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inbounds/received-items', [InboundController::class, 'receivedItems'])->name('inbounds.receivedItems');
-    Route::post('inbounds/auto-putaway', [InboundController::class, 'autoPutaway'])->name('inbounds.autoPutaway');
-    
+
     Route::get('inbounds', [InboundController::class, 'index'])->name('inbounds.index');
     Route::post('inbounds', [InboundController::class, 'store'])->name('inbounds.store');
     Route::get('inbounds/{id}', [InboundController::class, 'show'])->name('inbounds.show');
+
     Route::post('inbounds/{id}/receive', [InboundController::class, 'receive'])->name('inbounds.receive');
+    Route::post('inbounds/{id}/close-receiving', [InboundController::class, 'closeReceiving'])->name('inbounds.closeReceiving');
+    Route::post('inbounds/{id}/putaway', [InboundController::class, 'putaway'])->name('inbounds.putaway');
+    Route::post('inbounds/{id}/auto-putaway', [InboundController::class, 'autoPutaway'])->name('inbounds.autoPutaway');
+    Route::get('inbounds/{id}/pending-putaway', [InboundController::class, 'pendingPutaway'])->name('inbounds.pendingPutaway');
+    Route::post('inbounds/{id}/cancel', [InboundController::class, 'cancel'])->name('inbounds.cancel');
 });
