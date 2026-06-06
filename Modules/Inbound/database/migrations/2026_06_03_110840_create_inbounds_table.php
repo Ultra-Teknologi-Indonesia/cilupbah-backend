@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('inbounds', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
             $table->unsignedBigInteger('location_id');
             $table->string('transaction_number', 100)->unique();
             $table->string('reference_number', 100)->nullable()->index();

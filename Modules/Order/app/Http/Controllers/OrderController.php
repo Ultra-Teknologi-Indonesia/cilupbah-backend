@@ -12,6 +12,60 @@ use Modules\Order\Services\OrderService;
 use Modules\Order\Http\Resources\OrderResource;
 
 #[OA\Tag(name: 'Orders', description: 'API Endpoints for Orders')]
+#[OA\Schema(
+    schema: 'Order',
+    title: 'Order Schema',
+    type: 'object',
+    properties: [
+        new OA\Property(property: 'id', type: 'integer', example: 1),
+        new OA\Property(property: 'salesorder_no', type: 'string', example: 'SO-2026-0001'),
+        new OA\Property(property: 'channel_shop_id', type: 'string', nullable: true),
+        new OA\Property(property: 'customer_name', type: 'string', example: 'John Doe'),
+        new OA\Property(property: 'transaction_date', type: 'string', format: 'date-time', nullable: true),
+        new OA\Property(property: 'sub_total', type: 'number', format: 'double', example: 100000),
+        new OA\Property(property: 'total_disc', type: 'number', format: 'double', example: 0),
+        new OA\Property(property: 'total_tax', type: 'number', format: 'double', example: 11000),
+        new OA\Property(property: 'shipping_cost', type: 'number', format: 'double', example: 15000),
+        new OA\Property(property: 'insurance_cost', type: 'number', format: 'double', example: 0),
+        new OA\Property(property: 'grand_total', type: 'number', format: 'double', example: 126000),
+        new OA\Property(property: 'status', type: 'string', example: 'PENDING'),
+        new OA\Property(property: 'is_paid', type: 'boolean', example: false),
+        new OA\Property(property: 'is_canceled', type: 'boolean', example: false),
+        new OA\Property(property: 'source', type: 'string', example: 'manual', nullable: true),
+        new OA\Property(property: 'created_at', type: 'string', format: 'date-time'),
+        new OA\Property(property: 'updated_at', type: 'string', format: 'date-time'),
+    ]
+)]
+#[OA\Schema(
+    schema: 'StoreOrderRequest',
+    required: ['salesorder_no', 'customer_name', 'items'],
+    type: 'object',
+    properties: [
+        new OA\Property(property: 'salesorder_no', type: 'string', example: 'SO-2026-0001'),
+        new OA\Property(property: 'customer_name', type: 'string', example: 'John Doe'),
+        new OA\Property(property: 'channel_shop_id', type: 'string', nullable: true),
+        new OA\Property(property: 'transaction_date', type: 'string', format: 'date', nullable: true),
+        new OA\Property(property: 'sub_total', type: 'number', nullable: true),
+        new OA\Property(property: 'grand_total', type: 'number', nullable: true),
+        new OA\Property(property: 'source', type: 'string', nullable: true),
+        new OA\Property(
+            property: 'items',
+            type: 'array',
+            items: new OA\Items(
+                type: 'object',
+                required: ['sku', 'qty_in_base', 'price'],
+                properties: [
+                    new OA\Property(property: 'sku', type: 'string', example: 'LAPTOP-001'),
+                    new OA\Property(property: 'description', type: 'string', nullable: true),
+                    new OA\Property(property: 'qty_in_base', type: 'integer', example: 2),
+                    new OA\Property(property: 'price', type: 'number', example: 7500000),
+                    new OA\Property(property: 'disc', type: 'number', nullable: true),
+                    new OA\Property(property: 'amount', type: 'number', nullable: true),
+                ]
+            )
+        )
+    ]
+)]
 class OrderController extends Controller
 {
     use ApiResponse;

@@ -59,7 +59,7 @@ class OrderLifecycleTest extends TestCase
         ]);
 
         $this->inventory = Inventory::create([
-            'item_id'     => $this->product->id,
+            'item_id'     => $this->variant->id,
             'location_id' => $this->location->id,
             'bin_id'      => null,
             'batch_no'    => '',
@@ -149,7 +149,7 @@ class OrderLifecycleTest extends TestCase
         $this->postJson('/api/v1/orders', $payload)->assertStatus(201);
 
         $this->assertDatabaseHas('inventory_movements', [
-            'item_id'            => $this->product->id,
+            'item_id'            => $this->variant->id,
             'source'             => 'ORDER_RESERVE',
             'transaction_number' => $payload['salesorder_no'],
         ]);
@@ -534,7 +534,7 @@ class OrderLifecycleTest extends TestCase
         ]);
 
         $inventory2 = Inventory::create([
-            'item_id'     => $product2->id,
+            'item_id'     => $variant2->id,
             'location_id' => $this->location->id,
             'bin_id'      => null,
             'batch_no'    => '',

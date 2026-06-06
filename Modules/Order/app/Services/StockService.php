@@ -15,7 +15,7 @@ class StockService
         protected InventoryMovementRepository $movementRepository,
     ) {}
 
-    public function reserve(string $sku, int $itemId, int $locationId, int $qty, string $transactionNumber): void
+    public function reserve(string $sku, string $itemId, int $locationId, int $qty, string $transactionNumber): void
     {
         $this->mutate($sku, $itemId, $locationId, function (Inventory $inventory) use ($sku, $qty, $transactionNumber, $itemId, $locationId) {
             if ($inventory->available < $qty) {
@@ -40,7 +40,7 @@ class StockService
         });
     }
 
-    public function pick(string $sku, int $itemId, int $locationId, int $qty, string $transactionNumber): void
+    public function pick(string $sku, string $itemId, int $locationId, int $qty, string $transactionNumber): void
     {
         $this->mutate($sku, $itemId, $locationId, function (Inventory $inventory) use ($qty, $transactionNumber, $itemId, $locationId) {
             $inventory->reserved -= $qty;
@@ -60,7 +60,7 @@ class StockService
         });
     }
 
-    public function ship(string $sku, int $itemId, int $locationId, int $qty, string $transactionNumber): void
+    public function ship(string $sku, string $itemId, int $locationId, int $qty, string $transactionNumber): void
     {
         $this->mutate($sku, $itemId, $locationId, function (Inventory $inventory) use ($qty, $transactionNumber, $itemId, $locationId) {
             $inventory->on_hand -= $qty;
@@ -80,7 +80,7 @@ class StockService
         });
     }
 
-    public function cancel(string $sku, int $itemId, int $locationId, int $qty, string $transactionNumber): void
+    public function cancel(string $sku, string $itemId, int $locationId, int $qty, string $transactionNumber): void
     {
         $this->mutate($sku, $itemId, $locationId, function (Inventory $inventory) use ($qty, $transactionNumber, $itemId, $locationId) {
             $inventory->reserved -= $qty;
@@ -106,7 +106,7 @@ class StockService
      *
      * @return bool false if lock could not be acquired
      */
-    public function mutate(string $sku, int $itemId, int $locationId, callable $callback): bool
+    public function mutate(string $sku, string $itemId, int $locationId, callable $callback): bool
     {
         $lock = Cache::lock("stock:{$sku}", 30);
 

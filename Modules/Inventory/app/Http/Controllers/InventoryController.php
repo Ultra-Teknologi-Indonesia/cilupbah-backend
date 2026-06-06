@@ -19,9 +19,9 @@ use OpenApi\Attributes as OA;
     type: 'object',
     properties: [
         new OA\Property(property: 'id', type: 'integer', example: 1),
-        new OA\Property(property: 'item_id', type: 'integer', example: 10),
+        new OA\Property(property: 'item_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
         new OA\Property(property: 'location_id', type: 'integer', example: 1),
-        new OA\Property(property: 'bin_id', type: 'integer', example: 1, nullable: true),
+        new OA\Property(property: 'bin_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000', nullable: true),
         new OA\Property(property: 'batch_no', type: 'string', example: 'BATCH-001', nullable: true),
         new OA\Property(property: 'serial_no', type: 'string', example: 'SN-001', nullable: true),
         new OA\Property(property: 'expired_date', type: 'string', format: 'date', example: '2026-12-31', nullable: true),

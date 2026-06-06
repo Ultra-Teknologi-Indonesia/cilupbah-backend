@@ -4,6 +4,8 @@ namespace Modules\Inbound\Services;
 
 use Modules\Inbound\Repositories\InboundRepository;
 use Modules\Inbound\Models\Inbound;
+use Modules\Inbound\Models\InboundAssignment;
+use Modules\Inbound\Models\InboundItem;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Warehouse\Services\LocationBinService;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +24,7 @@ class InboundService
         return $this->inboundRepository->getAllPaginated($limit);
     }
 
-    public function getById(int $id): ?Inbound
+    public function getById(string $id): ?Inbound
     {
         return $this->inboundRepository->findById($id);
     }
@@ -80,7 +82,7 @@ class InboundService
 
     // ─── TAHAP 1: RECEIVE ITEMS ───
 
-    public function receive(int $inboundId, array $data): Inbound
+    public function receive(string $inboundId, array $data): Inbound
     {
         return DB::transaction(function () use ($inboundId, $data) {
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
@@ -160,7 +162,7 @@ class InboundService
     }
 
     /** Mark discrepancy and close receiving even if partial */
-    public function closeReceiving(int $inboundId, string $closedBy): Inbound
+    public function closeReceiving(string $inboundId, string $closedBy): Inbound
     {
         return DB::transaction(function () use ($inboundId, $closedBy) {
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
@@ -199,7 +201,7 @@ class InboundService
     // ─── TAHAP 2: PUTAWAY ───
 
     /** Manual putaway — user specifies destination bins */
-    public function processPutaway(int $inboundId, array $data): Inbound
+    public function processPutaway(string $inboundId, array $data): Inbound
     {
         return DB::transaction(function () use ($inboundId, $data) {
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
@@ -252,7 +254,7 @@ class InboundService
     }
 
     /** Auto putaway — system assigns bins based on available capacity */
-    public function autoPutaway(int $inboundId, string $createdBy): Inbound
+    public function autoPutaway(string $inboundId, string $createdBy): Inbound
     {
         return DB::transaction(function () use ($inboundId, $createdBy) {
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
@@ -316,12 +318,146 @@ class InboundService
         return $this->inboundRepository->getReceivedItemsPaginated($limit);
     }
 
-    public function getItemsPendingPutaway(int $inboundId)
+    public function getItemsPendingPutaway(string $inboundId)
     {
         return $this->inboundRepository->getItemsPendingPutaway($inboundId);
     }
 
-    public function cancel(int $inboundId): Inbound
+    // ─── ASSIGNMENT ───
+
+    public function assignWorker(string $inboundId, int $assignedTo, int $assignedBy, ?string $notes = null): InboundAssignment
+    {
+        $inbound = $this->inboundRepository->findById($inboundId);
+
+        if (! $inbound) {
+            throw new \Exception("Dokumen Inbound tidak ditemukan.");
+        }
+
+        if ($inbound->status === Inbound::STATUS_CANCELLED || $inbound->status === Inbound::STATUS_COMPLETED) {
+            throw new \Exception("Inbound berstatus {$inbound->status}, tidak bisa di-assign.");
+        }
+
+        return $this->inboundRepository->createAssignment([
+            'inbound_id'  => $inboundId,
+            'assigned_to' => $assignedTo,
+            'assigned_by' => $assignedBy,
+            'status'      => InboundAssignment::STATUS_PENDING,
+            'notes'       => $notes,
+        ]);
+    }
+
+    public function getAssignments(string $inboundId)
+    {
+        return $this->inboundRepository->getAssignmentsByInbound($inboundId);
+    }
+
+    public function getMyAssignments(int $userId, ?string $status = null)
+    {
+        return $this->inboundRepository->getAssignmentsByWorker($userId, $status);
+    }
+
+    public function startAssignment(string $assignmentId, int $userId): InboundAssignment
+    {
+        $assignment = InboundAssignment::findOrFail($assignmentId);
+
+        if ($assignment->assigned_to !== $userId) {
+            throw new \Exception("Assignment ini bukan milik Anda.");
+        }
+
+        if ($assignment->status !== InboundAssignment::STATUS_PENDING) {
+            throw new \Exception("Assignment sudah berstatus {$assignment->status}.");
+        }
+
+        $assignment->update([
+            'status'     => InboundAssignment::STATUS_IN_PROGRESS,
+            'started_at' => now(),
+        ]);
+
+        return $assignment->fresh()->load('inbound.items', 'worker:id,name');
+    }
+
+    // ─── QR SCAN ───
+
+    public function lookupByQr(string $uuid): InboundItem
+    {
+        $item = $this->inboundRepository->findItemByUuid($uuid);
+
+        if (! $item) {
+            throw new \Exception("QR Code tidak ditemukan.");
+        }
+
+        return $item->load('inbound.location', 'variant:id,sku,product_id');
+    }
+
+    public function scanPutaway(string $inboundItemId, string $binId, int $qty, int $userId): InboundItem
+    {
+        return DB::transaction(function () use ($inboundItemId, $binId, $qty, $userId) {
+            $inboundItem = $this->inboundRepository->findItemByUuidForUpdate($inboundItemId);
+
+            if (! $inboundItem) {
+                throw new \Exception("QR Code barang tidak ditemukan.");
+            }
+
+            $destinationBin = \Modules\Warehouse\Models\LocationBin::find($binId);
+
+            if (! $destinationBin) {
+                throw new \Exception("QR Code rak tidak ditemukan.");
+            }
+
+            $inbound = $inboundItem->inbound;
+
+            if (! $inbound->isPutawayable() && $inbound->status !== Inbound::STATUS_RECEIVED) {
+                throw new \Exception("Inbound berstatus {$inbound->status}, tidak bisa di-putaway.");
+            }
+
+            $pendingQty = $inboundItem->pendingPutawayQty();
+            if ($qty > $pendingQty) {
+                throw new \Exception("Qty putaway ({$qty}) melebihi pending putaway ({$pendingQty}).");
+            }
+
+            $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
+            if (! $defaultBin) {
+                throw new \Exception("Gudang ini belum memiliki Bin Inbound default.");
+            }
+
+            $this->inventoryService->putaway([
+                'item_id'            => $inboundItem->item_id,
+                'location_id'        => $inbound->location_id,
+                'source_bin_id'      => $defaultBin->id,
+                'destination_bin_id' => $destinationBin->id,
+                'qty'                => $qty,
+                'batch_no'           => '',
+                'serial_no'          => '',
+                'created_by'         => "user:{$userId}",
+            ]);
+
+            $this->inboundRepository->updateItemPutawayQty($inboundItem->id, $qty);
+
+            $inbound->load('items');
+            $this->resolveInboundPutawayStatus($inbound);
+
+            $this->completeAssignmentIfDone($inbound, $userId);
+
+            return $inboundItem->fresh()->load('inbound', 'variant:id,sku,product_id');
+        });
+    }
+
+    private function completeAssignmentIfDone(Inbound $inbound, int $userId): void
+    {
+        if ($inbound->status !== Inbound::STATUS_COMPLETED) {
+            return;
+        }
+
+        $inbound->assignments()
+            ->where('assigned_to', $userId)
+            ->where('status', InboundAssignment::STATUS_IN_PROGRESS)
+            ->update([
+                'status'       => InboundAssignment::STATUS_COMPLETED,
+                'completed_at' => now(),
+            ]);
+    }
+
+    public function cancel(string $inboundId): Inbound
     {
         return DB::transaction(function () use ($inboundId) {
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);

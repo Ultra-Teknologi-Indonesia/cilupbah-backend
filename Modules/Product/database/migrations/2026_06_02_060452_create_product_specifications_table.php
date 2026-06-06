@@ -10,7 +10,8 @@ return new class extends Migration
     {
         Schema::create('product_specifications', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('product_id')->constrained()->cascadeOnDelete();
+            $table->uuid('product_id');
+            $table->foreign('product_id')->references('id')->on('products')->onDelete('cascade');
             $table->foreignId('attribute_id')->constrained();
             $table->foreignId('attribute_option_id')->nullable()->constrained();
             $table->string('text_value')->nullable();

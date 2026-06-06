@@ -6,16 +6,13 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('inbound_receipts', function (Blueprint $table) {
-            $table->id();
-            $table->unsignedBigInteger('inbound_item_id');
+            $table->uuid('id')->primary();
+            $table->uuid('inbound_item_id');
             $table->integer('qty');
-            $table->unsignedBigInteger('bin_id');
+            $table->uuid('bin_id');
             $table->string('batch_no', 100)->nullable();
             $table->string('serial_no', 100)->nullable();
             $table->string('received_by', 100);
@@ -27,9 +24,6 @@ return new class extends Migration
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('inbound_receipts');

@@ -25,7 +25,7 @@ class StoreInboundRequest extends FormRequest
             'expected_date'     => ['required', 'date'],
             'created_by'        => ['required', 'string', 'max:100'],
             'items'             => ['required', 'array', 'min:1'],
-            'items.*.item_id'   => ['required', 'integer'],
+            'items.*.item_id'   => ['required', 'uuid'],
             'items.*.expected_qty' => ['required', 'integer', 'min:1'],
         ];
     }

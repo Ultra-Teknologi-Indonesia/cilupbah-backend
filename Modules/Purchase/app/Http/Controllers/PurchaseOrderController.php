@@ -100,7 +100,7 @@ class PurchaseOrderController extends Controller
                 new OA\Property(property: 'items', type: 'array', items: new OA\Items(
                     required: ['item_id', 'qty', 'unit_price'],
                     properties: [
-                        new OA\Property(property: 'item_id', type: 'integer', example: 1),
+                        new OA\Property(property: 'item_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
                         new OA\Property(property: 'qty', type: 'integer', example: 100),
                         new OA\Property(property: 'unit_price', type: 'number', example: 15000),
                     ]

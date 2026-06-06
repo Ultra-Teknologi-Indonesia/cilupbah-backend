@@ -1,0 +1,11 @@
+{
+    "name": "Inbound",
+    "alias": "inbound",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Inbound\\Providers\\InboundServiceProvider"
+    ],
+    "files": []
+}

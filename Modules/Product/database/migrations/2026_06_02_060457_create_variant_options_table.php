@@ -10,7 +10,8 @@ return new class extends Migration
     {
         Schema::create('variant_options', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('variant_id')->constrained('product_variants')->cascadeOnDelete();
+            $table->uuid('variant_id');
+            $table->foreign('variant_id')->references('id')->on('product_variants')->onDelete('cascade');
             $table->foreignId('attribute_id')->constrained();
             $table->string('value');
             $table->timestamps();
