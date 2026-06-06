@@ -11,7 +11,6 @@ use Modules\Warehouse\Http\Requests\UpdateLocationRequest;
 use Modules\Warehouse\Models\Location;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
-use App\Filters\FuzzyFilter;
 
 class LocationController extends Controller
 {
