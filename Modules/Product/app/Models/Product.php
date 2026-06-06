@@ -13,6 +13,8 @@ class Product extends Model
      */
     protected $fillable = [
         'channel_product_id',
+        'channel_shop_id',
+        'source',
         'category_id',
         'brand_id',
         'name',

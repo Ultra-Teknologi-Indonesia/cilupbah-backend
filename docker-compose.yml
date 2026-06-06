@@ -3,24 +3,26 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: staging-superapp-dev
-    container_name: staging-superapp
-    ports:
-      - "8000:8000"
-      - "5173:5173"
-    volumes:
-      - .:/var/www/html
-    environment:
-      - APP_ENV=local
-      - APP_DEBUG=true
     depends_on:
       - db
-  
+      - redis
+
+  horizon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: php artisan horizon
+    depends_on:
+      - db
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+
   db:
     image: postgres:15-alpine
-    container_name: staging-superapp-db
-    ports:
-      - "5432:5432"
     environment:
       - POSTGRES_DB=superapp
       - POSTGRES_USER=superapp_user
@@ -30,3 +32,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:

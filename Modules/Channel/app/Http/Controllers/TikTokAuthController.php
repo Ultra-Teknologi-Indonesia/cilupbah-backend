@@ -5,80 +5,135 @@ namespace Modules\Channel\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Modules\Channel\Services\TikTokClient;
-use Illuminate\Support\Facades\DB;
+use App\Traits\ApiResponse;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Http\Response;
 
 class TikTokAuthController extends Controller
 {
+    use ApiResponse;
+
     public function redirect(TikTokClient $client)
     {
-        $redirectUri = env('TIKTOK_REDIRECT_URI');
+        $redirectUri = config('services.tiktok.redirect_uri');
         $url = $client->getAuthUrl($redirectUri);
-        return redirect()->away($url);
+        return $this->successResponse(['auth_url' => $url], 'Auth URL generated successfully.');
     }
 
-    public function callback(Request $request, TikTokClient $client)
+    public function callback(Request $request, \Modules\Channel\Services\TikTokAuthService $authService)
     {
+        // Temporary debug log to capture incoming TikTok callback payload for verification
+        try {
+            Log::info('TikTok callback received', [
+                'query' => $request->query(),
+                'ip' => $request->ip(),
+                'headers' => $request->headers->all(),
+                'body' => $request->all(),
+            ]);
+        } catch (\Throwable $e) {
+            // ensure logging failure won't break callback flow
+            Log::warning('Failed writing TikTok callback debug log', ['error' => $e->getMessage()]);
+        }
+
         $code = $request->query('code');
         if (!$code) {
-            return response()->json(['error' => 'No auth code provided by TikTok'], 400);
+            return $this->errorResponse('Binding gagal: TikTok tidak mengirimkan kode otorisasi.', 400);
         }
 
-        $redirectUri = env('TIKTOK_REDIRECT_URI');
-        $tokenData = $client->getAccessToken($code, $redirectUri);
-
-        if (isset($tokenData['code']) && $tokenData['code'] !== 0) {
-            return response()->json(['error' => 'Failed to get access token', 'details' => $tokenData], 400);
-        }
-
-        $data = $tokenData['data'] ?? [];
-        $accessToken = $data['access_token'] ?? null;
-
-        if (!$accessToken) {
-            return response()->json(['error' => 'No access token received', 'details' => $tokenData], 400);
-        }
-
-        // As an ISV, one seller account might grant access to multiple shops.
-        // We fetch the authorized shops using the obtained access token.
         try {
-            $shopsResponse = $client->getAuthorizedShops($accessToken);
-            if (isset($shopsResponse['code']) && $shopsResponse['code'] !== 0) {
-                return response()->json(['error' => 'Failed to fetch authorized shops', 'details' => $shopsResponse], 400);
-            }
+            $redirectUri = config('services.tiktok.redirect_uri');
+            $savedShops = $authService->handleCallback($code, $redirectUri);
 
-            $shops = $shopsResponse['data']['shops'] ?? [];
-            $savedShops = [];
+            $shopNames = collect($savedShops)->pluck('shop_name')->join(', ');
+            $count = count($savedShops);
 
-            foreach ($shops as $shop) {
-                $shopId = $shop['id'] ?? $shop['shop_id'] ?? 'unknown';
-                $shopCipher = $shop['cipher'] ?? $shop['shop_cipher'] ?? null;
-                $shopName = $shop['name'] ?? $shop['shop_name'] ?? null;
-
-                DB::table('channel_shops')->updateOrInsert(
-                    ['shop_id' => $shopId],
-                    [
-                        'channel_name' => 'tiktok',
-                        'shop_name' => $shopName,
-                        'shop_cipher' => $shopCipher,
-                        'access_token' => $accessToken,
-                        'refresh_token' => $data['refresh_token'] ?? null,
-                        'token_expires_at' => isset($data['access_token_expire_in']) ? now()->addSeconds($data['access_token_expire_in']) : null,
-                        'refresh_token_expires_at' => isset($data['refresh_token_expire_in']) ? now()->addSeconds($data['refresh_token_expire_in']) : null,
-                        'is_active' => true,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]
-                );
-
-                $savedShops[] = ['shop_id' => $shopId, 'shop_name' => $shopName];
-            }
-
-            return response()->json([
-                'message' => 'TikTok authorized successfully for ISV',
-                'shops_authorized' => $savedShops,
-                'note' => 'You can now use the tiktok:push-product command with any of the above shop IDs.'
-            ]);
+            return $this->successResponse([
+                'new_shops' => $savedShops
+            ], "{$count} toko TikTok berhasil dihubungkan: {$shopNames}");
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Error fetching shops', 'message' => $e->getMessage()], 500);
+            // Log the exception details for debugging
+            try {
+                Log::error('TikTok callback processing failed', [
+                    'message' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+            } catch (\Throwable $_) {
+                // ignore logging failure
+            }
+
+            return $this->errorResponse('Binding gagal: ' . $e->getMessage(), 500);
         }
+    }
+
+    /**
+     * Temporary debug endpoint to read recent TikTok callback log entries.
+     * Use only for debugging in staging and remove after verification.
+     */
+    public function callbackDebug(Request $request)
+    {
+        // Only allow in non-production environment as a safety guard
+        if (config('app.env') === 'production') {
+            return response()->json(['error' => 'Not available in production'], 403);
+        }
+
+        $path = storage_path('logs/laravel.log');
+        if (!file_exists($path)) {
+            return response()->json(['entries' => []]);
+        }
+
+        // Read last portion of the log to keep memory usage reasonable
+        $lines = [];
+        $handle = fopen($path, 'r');
+        if ($handle) {
+            $pos = -1;
+            $chunk = '';
+            $maxBytes = 1000000; // read up to ~1MB from the end
+            fseek($handle, 0, SEEK_END);
+            $size = ftell($handle);
+            $readFrom = max(0, $size - $maxBytes);
+            fseek($handle, $readFrom);
+            while (!feof($handle)) {
+                $lines[] = fgets($handle);
+            }
+            fclose($handle);
+        } else {
+            // fallback: read whole file
+            $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+        }
+
+        $entries = [];
+        $needle = 'TikTok callback received';
+        foreach ($lines as $line) {
+            if (strpos($line, $needle) !== false) {
+                // capture timestamp if present
+                $timestamp = null;
+                if (preg_match('/^\[([^\]]+)\]/', $line, $m)) {
+                    $timestamp = $m[1];
+                }
+                // try to extract JSON context after the message
+                $pos = strpos($line, $needle);
+                $jsonPart = trim(substr($line, $pos + strlen($needle)));
+                $decoded = null;
+                if ($jsonPart) {
+                    // remove any leading colon or dash
+                    $jsonPart = preg_replace('/^[^\{]*\{/', '{', $jsonPart);
+                    $firstBrace = strpos($jsonPart, '{');
+                    if ($firstBrace !== false) {
+                        $jsonPart = substr($jsonPart, $firstBrace);
+                        $decoded = json_decode($jsonPart, true);
+                    }
+                }
+                $entries[] = [
+                    'timestamp' => $timestamp,
+                    'raw' => $line,
+                    'data' => $decoded,
+                ];
+            }
+        }
+
+        // return newest first
+        $entries = array_reverse($entries);
+
+        return response()->json(['entries' => $entries]);
     }
 }

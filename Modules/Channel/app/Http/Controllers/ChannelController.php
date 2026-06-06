@@ -3,54 +3,80 @@
 namespace Modules\Channel\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
+use Modules\Channel\Services\ChannelService;
+use Modules\Channel\Services\TikTokAuthService;
 
 class ChannelController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
+    use ApiResponse;
+
+    protected ChannelService $channelService;
+    protected TikTokAuthService $authService;
+
+    public function __construct(ChannelService $channelService, TikTokAuthService $authService)
     {
-        return view('channel::index');
+        $this->channelService = $channelService;
+        $this->authService = $authService;
     }
 
     /**
-     * Show the form for creating a new resource.
+     * Display paginated channels with their bound shops.
      */
-    public function create()
+    public function index(Request $request)
     {
-        return view('channel::create');
+        try {
+            $channels = $this->channelService->getPaginatedChannels();
+            
+            if ($request->is('api/*') || $request->wantsJson()) {
+                return $this->successResponse($channels, 'Daftar channel berhasil diambil.');
+            }
+            
+            return view('channel::index', compact('channels'));
+        } catch (\Exception $e) {
+            if ($request->is('api/*') || $request->wantsJson()) {
+                return $this->errorResponse($e->getMessage(), 500);
+            }
+            return back()->with('error', $e->getMessage());
+        }
     }
 
     /**
-     * Store a newly created resource in storage.
+     * Disconnect (soft-delete) a shop from its channel.
      */
-    public function store(Request $request) {}
-
-    /**
-     * Show the specified resource.
-     */
-    public function show($id)
+    public function disconnectShop(Request $request, int $id)
     {
-        return view('channel::show');
+        try {
+            $this->authService->disconnectStore($id);
+            if ($request->is('api/*') || $request->wantsJson()) {
+                return $this->successResponse(null, 'Toko berhasil diputuskan dari channel.');
+            }
+            return back()->with('success', 'Toko berhasil diputuskan dari channel.');
+        } catch (\Exception $e) {
+            if ($request->is('api/*') || $request->wantsJson()) {
+                return $this->errorResponse('Gagal memutuskan toko: ' . $e->getMessage(), 500);
+            }
+            return back()->with('error', 'Gagal memutuskan toko: ' . $e->getMessage());
+        }
     }
 
     /**
-     * Show the form for editing the specified resource.
+     * Refresh the access token for a shop.
      */
-    public function edit($id)
+    public function refreshShopToken(Request $request, int $id)
     {
-        return view('channel::edit');
+        try {
+            $result = $this->authService->refreshStoreToken($id);
+            if ($request->is('api/*') || $request->wantsJson()) {
+                return $this->successResponse($result, "Token toko berhasil diperbarui.");
+            }
+            return back()->with('success', 'Token toko berhasil diperbarui.');
+        } catch (\Exception $e) {
+            if ($request->is('api/*') || $request->wantsJson()) {
+                return $this->errorResponse('Gagal memperbarui token: ' . $e->getMessage(), 500);
+            }
+            return back()->with('error', 'Gagal memperbarui token: ' . $e->getMessage());
+        }
     }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, $id) {}
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy($id) {}
 }

@@ -1,0 +1,92 @@
+name: CI/CD Pipeline
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [closed]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Validate Code
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: pdo, pdo_pgsql, pgsql, zip, gd, bcmath, exif, intl
+          coverage: none
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v3
+        with:
+          path: vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist --optimize-autoloader
+        env:
+          COMPOSER_PROCESS_TIMEOUT: 0
+          COMPOSER_NO_INTERACTION: 1
+          COMPOSER_NO_AUDIT: 1
+
+      - name: Validate composer.json
+        run: composer validate --strict
+
+  deploy:
+    name: Deploy to VPS
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DEPLOY_SERVER }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          timeout: 60m
+          command_timeout: 60m
+          script: |
+            set -e
+            cd ${{ secrets.DEPLOY_PATH }}
+
+            # ── Rollback: save current commit before pulling ──────────────────
+            PREVIOUS_COMMIT=$(git rev-parse HEAD)
+            echo "Previous commit: $PREVIOUS_COMMIT"
+
+            # ── Rollback handler: restore if anything fails ───────────────────
+            rollback() {
+              echo "⚠️  Deployment failed — rolling back to $PREVIOUS_COMMIT"
+              git reset --hard "$PREVIOUS_COMMIT"
+              
+              # Rebuild and restart using the previous commit
+              docker compose -f docker-compose.staging.yml up -d --build --remove-orphans
+              
+              echo "✅ Rollback complete"
+              exit 1
+            }
+            trap rollback ERR
+
+            # ── Pull latest code ──────────────────────────────────────────────
+            git reset --hard HEAD
+            git pull origin main
+
+            # ── Rebuild and Restart via Docker Compose ────────────────────────
+            echo "Building and starting container..."
+            docker compose -f docker-compose.staging.yml up -d --build --remove-orphans
+
+            # Deployment succeeded — disarm the rollback trap
+            trap - ERR
+            echo "✅ Deployment successful"
