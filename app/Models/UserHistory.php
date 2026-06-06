@@ -14,11 +14,6 @@ class UserHistory extends Model
         'actor_id',
         'target_user_id',
         'action',
-        'changes',
-    ];
-
-    protected $casts = [
-        'changes' => 'array',
     ];
 
     public function actor()

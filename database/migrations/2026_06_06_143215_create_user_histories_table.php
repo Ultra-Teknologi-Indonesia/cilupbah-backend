@@ -15,8 +15,7 @@ return new class extends Migration
             $table->string('id', 32)->primary();
             $table->string('actor_id', 32)->nullable()->comment('User who performed the action');
             $table->string('target_user_id', 32)->comment('User who was affected');
-            $table->string('action')->comment('created, updated, deleted, force_logged_out');
-            $table->jsonb('changes')->nullable()->comment('JSON object of changes made');
+            $table->enum('action', ['created', 'updated', 'deleted', 'force_logged_out']);
             $table->timestamps();
 
             $table->foreign('actor_id')->references('id')->on('users')->onDelete('set null');

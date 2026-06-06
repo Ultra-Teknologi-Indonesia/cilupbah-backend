@@ -162,7 +162,6 @@ class UserController extends Controller
                                     ]),
                                     new OA\Property(property: 'target_user_id', type: 'string'),
                                     new OA\Property(property: 'action', type: 'string', example: 'updated'),
-                                    new OA\Property(property: 'changes', type: 'object', nullable: true),
                                     new OA\Property(property: 'created_at', type: 'string', format: 'date-time')
                                 ]
                             )
@@ -227,7 +226,6 @@ class UserController extends Controller
             'actor_id' => \Illuminate\Support\Facades\Auth::id(),
             'target_user_id' => $user->id,
             'action' => 'force_logged_out',
-            'changes' => null,
         ]);
 
         return $this->successResponse(null, 'Sesi pengguna berhasil diputus.');
@@ -280,7 +278,6 @@ class UserController extends Controller
                     'actor_id' => $actorId,
                     'target_user_id' => $user->id,
                     'action' => 'force_logged_out',
-                    'changes' => null,
                 ]);
             }
         }

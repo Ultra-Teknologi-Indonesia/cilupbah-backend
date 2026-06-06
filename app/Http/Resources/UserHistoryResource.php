@@ -23,7 +23,6 @@ class UserHistoryResource extends JsonResource
             ] : null,
             'target_user_id' => $this->target_user_id,
             'action' => $this->action,
-            'changes' => $this->changes,
             'created_at' => $this->created_at->toIso8601String(),
         ];
     }
