@@ -43,7 +43,14 @@ class AuthController extends Controller
                         new OA\Property(property: 'message', type: 'string', example: 'Berhasil masuk. Selamat datang kembali!'),
                         new OA\Property(property: 'data', type: 'object', properties: [
                             new OA\Property(property: 'access_token', type: 'string', example: '1|xyz...'),
-                            new OA\Property(property: 'token_type', type: 'string', example: 'Bearer')
+                            new OA\Property(property: 'token_type', type: 'string', example: 'Bearer'),
+                            new OA\Property(property: 'user', type: 'object', properties: [
+                                new OA\Property(property: 'id', type: 'string', example: '018f6b...'),
+                                new OA\Property(property: 'name', type: 'string', example: 'Test User'),
+                                new OA\Property(property: 'email', type: 'string', example: 'test@example.com'),
+                                new OA\Property(property: 'roles', type: 'array', items: new OA\Items(type: 'string', example: 'admin')),
+                                new OA\Property(property: 'permissions', type: 'array', items: new OA\Items(type: 'string', example: 'create-user'))
+                            ])
                         ])
                     ]
                 )
@@ -64,7 +71,13 @@ class AuthController extends Controller
             return $this->errorResponse('Email atau kata sandi yang Anda masukkan salah.', 401);
         }
 
-        return $this->successResponse($data, 'Berhasil masuk. Selamat datang kembali!');
+        $responseData = [
+            'access_token' => $data['access_token'],
+            'token_type'   => $data['token_type'],
+            'user'         => new ProfileResource($data['user']),
+        ];
+
+        return $this->successResponse($responseData, 'Berhasil masuk. Selamat datang kembali!');
     }
 
     #[OA\Get(

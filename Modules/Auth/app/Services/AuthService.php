@@ -15,11 +15,13 @@ class AuthService
             return null;
         }
 
+        $user->load('roles', 'permissions');
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return [
             'access_token' => $token,
             'token_type' => 'Bearer',
+            'user' => $user,
         ];
     }
 
