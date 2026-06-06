@@ -17,4 +17,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::middleware('role_or_permission:owner|create-user')->group(function () {
         Route::post('/users', [\Modules\Auth\Http\Controllers\UserController::class, 'store']);
     });
+    
+    Route::middleware('role_or_permission:owner|edit-user')->group(function () {
+        Route::put('/users/{id}', [\Modules\Auth\Http\Controllers\UserController::class, 'update']);
+    });
 });

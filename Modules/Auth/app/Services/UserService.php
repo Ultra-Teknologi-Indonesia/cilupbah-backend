@@ -27,4 +27,30 @@ class UserService
             return $user;
         });
     }
+
+    /**
+     * Update an existing user.
+     */
+    public function updateUser(string $id, array $data): User
+    {
+        return DB::transaction(function () use ($id, $data) {
+            $user = User::findOrFail($id);
+
+            $user->name = $data['name'];
+            $user->email = $data['email'];
+            
+            if (isset($data['password']) && !empty($data['password'])) {
+                $user->password = Hash::make($data['password']);
+            }
+
+            $user->nik = $data['nik'] ?? null;
+            $user->warehouse_id = $data['warehouse_id'] ?? null;
+            
+            $user->save();
+
+            $user->syncRoles([$data['role']]);
+
+            return $user;
+        });
+    }
 }
