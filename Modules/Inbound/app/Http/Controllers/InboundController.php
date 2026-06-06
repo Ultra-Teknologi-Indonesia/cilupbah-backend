@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Modules\Inbound\Services\InboundService;
 use Modules\Inbound\Http\Requests\StoreInboundRequest;
 use Modules\Inbound\Http\Requests\ReceiveInboundRequest;
+use Modules\Inbound\Http\Requests\PutawayRequest;
 use Modules\Inbound\Http\Requests\AutoPutawayRequest;
 use OpenApi\Attributes as OA;
 
@@ -21,12 +22,14 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'location_id', type: 'integer', example: 1),
         new OA\Property(property: 'transaction_number', type: 'string', example: 'INB-20260604-0001'),
         new OA\Property(property: 'reference_number', type: 'string', example: 'PO-2026-0001', nullable: true),
-        new OA\Property(property: 'type', type: 'string', enum: ['PURCHASE_ORDER', 'SALES_RETURN', 'TRANSIT_IN'], example: 'PURCHASE_ORDER'),
-        new OA\Property(property: 'status', type: 'string', example: 'DRAFT'),
+        new OA\Property(property: 'type', type: 'string', enum: ['PURCHASE_ORDER', 'SALES_RETURN', 'TRANSIT_IN', 'CONSIGNMENT'], example: 'PURCHASE_ORDER'),
+        new OA\Property(property: 'source_type', type: 'string', example: 'purchase_order', nullable: true),
+        new OA\Property(property: 'source_id', type: 'integer', example: 1, nullable: true),
+        new OA\Property(property: 'status', type: 'string', enum: ['DRAFT', 'PARTIAL', 'RECEIVED', 'PUTAWAY_IN_PROGRESS', 'COMPLETED', 'CANCELLED'], example: 'DRAFT'),
         new OA\Property(property: 'expected_date', type: 'string', format: 'date-time', example: '2026-06-05T00:00:00Z'),
         new OA\Property(property: 'created_by', type: 'string', example: 'admin'),
-        new OA\Property(property: 'created_at', type: 'string', format: 'date-time', example: '2026-06-04T12:00:00Z'),
-        new OA\Property(property: 'updated_at', type: 'string', format: 'date-time', example: '2026-06-04T12:00:00Z'),
+        new OA\Property(property: 'created_at', type: 'string', format: 'date-time'),
+        new OA\Property(property: 'updated_at', type: 'string', format: 'date-time'),
     ]
 )]
 #[OA\Schema(
@@ -36,7 +39,9 @@ use OpenApi\Attributes as OA;
     properties: [
         new OA\Property(property: 'location_id', type: 'integer', example: 1),
         new OA\Property(property: 'reference_number', type: 'string', example: 'PO-2026-0001', nullable: true),
-        new OA\Property(property: 'type', type: 'string', enum: ['PURCHASE_ORDER', 'SALES_RETURN', 'TRANSIT_IN'], example: 'PURCHASE_ORDER'),
+        new OA\Property(property: 'type', type: 'string', enum: ['PURCHASE_ORDER', 'SALES_RETURN', 'TRANSIT_IN', 'CONSIGNMENT'], example: 'PURCHASE_ORDER'),
+        new OA\Property(property: 'source_type', type: 'string', example: 'purchase_order', nullable: true),
+        new OA\Property(property: 'source_id', type: 'integer', example: 1, nullable: true),
         new OA\Property(property: 'expected_date', type: 'string', format: 'date', example: '2026-06-05'),
         new OA\Property(property: 'created_by', type: 'string', example: 'admin'),
         new OA\Property(
@@ -77,21 +82,19 @@ use OpenApi\Attributes as OA;
     ]
 )]
 #[OA\Schema(
-    schema: 'AutoPutawayRequest',
-    required: ['location_id', 'inbound_ids', 'created_by', 'putaway_items'],
+    schema: 'PutawayRequest',
+    required: ['created_by', 'putaway_items'],
     type: 'object',
     properties: [
-        new OA\Property(property: 'location_id', type: 'integer', example: 1),
-        new OA\Property(property: 'inbound_ids', type: 'array', items: new OA\Items(type: 'integer', example: 1)),
         new OA\Property(property: 'created_by', type: 'string', example: 'warehouse_admin'),
         new OA\Property(
             property: 'putaway_items',
             type: 'array',
             items: new OA\Items(
                 type: 'object',
-                required: ['item_id', 'destination_bin_id', 'qty'],
+                required: ['inbound_item_id', 'destination_bin_id', 'qty'],
                 properties: [
-                    new OA\Property(property: 'item_id', type: 'integer', example: 10),
+                    new OA\Property(property: 'inbound_item_id', type: 'integer', example: 1),
                     new OA\Property(property: 'destination_bin_id', type: 'integer', example: 5),
                     new OA\Property(property: 'qty', type: 'integer', example: 50),
                     new OA\Property(property: 'batch_no', type: 'string', example: 'BATCH-001', nullable: true),
@@ -99,6 +102,14 @@ use OpenApi\Attributes as OA;
                 ]
             )
         )
+    ]
+)]
+#[OA\Schema(
+    schema: 'AutoPutawayRequest',
+    required: ['created_by'],
+    type: 'object',
+    properties: [
+        new OA\Property(property: 'created_by', type: 'string', example: 'warehouse_admin'),
     ]
 )]
 class InboundController extends Controller
@@ -113,19 +124,13 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, description: 'Number of items per page', schema: new OA\Schema(type: 'integer', default: 10))
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'filter[status]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[type]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
         ],
         responses: [
-            new OA\Response(
-                response: 200,
-                description: 'Successful operation',
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/Inbound')),
-                        new OA\Property(property: 'message', type: 'string', example: 'Daftar inbound berhasil diambil')
-                    ]
-                )
-            ),
+            new OA\Response(response: 200, description: 'Successful operation'),
             new OA\Response(response: 401, description: 'Unauthenticated')
         ]
     )]
@@ -143,20 +148,10 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the inbound', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
         ],
         responses: [
-            new OA\Response(
-                response: 200,
-                description: 'Successful operation',
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: 'data', ref: '#/components/schemas/Inbound'),
-                        new OA\Property(property: 'message', type: 'string', example: 'Detail Inbound berhasil diambil')
-                    ]
-                )
-            ),
-            new OA\Response(response: 401, description: 'Unauthenticated'),
+            new OA\Response(response: 200, description: 'Successful operation'),
             new OA\Response(response: 404, description: 'Dokumen Inbound tidak ditemukan')
         ]
     )]
@@ -164,7 +159,7 @@ class InboundController extends Controller
     {
         $inbound = $this->inboundService->getById($id);
 
-        if (!$inbound) {
+        if (! $inbound) {
             return $this->errorResponse('Dokumen Inbound tidak ditemukan', 404);
         }
 
@@ -173,25 +168,12 @@ class InboundController extends Controller
 
     #[OA\Post(
         path: '/api/v1/inbounds',
-        summary: 'Create a draft inbound',
+        summary: 'Create a draft inbound (GRN)',
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
-        requestBody: new OA\RequestBody(
-            required: true,
-            content: new OA\JsonContent(ref: '#/components/schemas/StoreInboundRequest')
-        ),
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: '#/components/schemas/StoreInboundRequest')),
         responses: [
-            new OA\Response(
-                response: 201,
-                description: 'Draft Inbound created successfully',
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: 'data', ref: '#/components/schemas/Inbound'),
-                        new OA\Property(property: 'message', type: 'string', example: 'Draft Inbound berhasil dibuat')
-                    ]
-                )
-            ),
-            new OA\Response(response: 401, description: 'Unauthenticated'),
+            new OA\Response(response: 201, description: 'Draft Inbound berhasil dibuat'),
             new OA\Response(response: 422, description: 'Validation Error'),
             new OA\Response(response: 500, description: 'Server Error')
         ]
@@ -208,29 +190,15 @@ class InboundController extends Controller
 
     #[OA\Post(
         path: '/api/v1/inbounds/{id}/receive',
-        summary: 'Process receiving for inbound',
+        summary: 'Receive items for inbound',
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the inbound to receive', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
         ],
-        requestBody: new OA\RequestBody(
-            required: true,
-            content: new OA\JsonContent(ref: '#/components/schemas/ReceiveInboundRequest')
-        ),
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: '#/components/schemas/ReceiveInboundRequest')),
         responses: [
-            new OA\Response(
-                response: 200,
-                description: 'Penerimaan Inbound berhasil diproses',
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: 'data', ref: '#/components/schemas/Inbound'),
-                        new OA\Property(property: 'message', type: 'string', example: 'Penerimaan Inbound berhasil diproses')
-                    ]
-                )
-            ),
-            new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 404, description: 'Inbound not found'),
+            new OA\Response(response: 200, description: 'Penerimaan berhasil diproses'),
             new OA\Response(response: 422, description: 'Validation Error'),
             new OA\Response(response: 500, description: 'Server Error')
         ]
@@ -245,26 +213,102 @@ class InboundController extends Controller
         }
     }
 
-    #[OA\Get(
-        path: '/api/v1/inbounds/received-items',
-        summary: 'Get list of received items',
+    #[OA\Post(
+        path: '/api/v1/inbounds/{id}/close-receiving',
+        summary: 'Close receiving (mark discrepancy and move to putaway)',
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, description: 'Number of items per page', schema: new OA\Schema(type: 'integer', default: 10))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['closed_by'],
+                properties: [new OA\Property(property: 'closed_by', type: 'string', example: 'admin')]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Receiving ditutup'),
+            new OA\Response(response: 500, description: 'Server Error')
+        ]
+    )]
+    public function closeReceiving(int $id, Request $request): JsonResponse
+    {
+        $request->validate(['closed_by' => 'required|string|max:100']);
+
+        try {
+            $inbound = $this->inboundService->closeReceiving($id, $request->closed_by);
+            return $this->successResponse($inbound, 'Receiving ditutup, discrepancy tercatat');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 500);
+        }
+    }
+
+    #[OA\Post(
+        path: '/api/v1/inbounds/{id}/putaway',
+        summary: 'Manual putaway — assign items to specific bins',
+        security: [['bearerAuth' => []]],
+        tags: ['Inbounds'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+        ],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: '#/components/schemas/PutawayRequest')),
+        responses: [
+            new OA\Response(response: 200, description: 'Putaway berhasil diproses'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+            new OA\Response(response: 500, description: 'Server Error')
+        ]
+    )]
+    public function putaway(int $id, PutawayRequest $request): JsonResponse
+    {
+        try {
+            $inbound = $this->inboundService->processPutaway($id, $request->validated());
+            return $this->successResponse($inbound, 'Putaway berhasil diproses');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 500);
+        }
+    }
+
+    #[OA\Post(
+        path: '/api/v1/inbounds/{id}/auto-putaway',
+        summary: 'Auto putaway — system assigns bins automatically',
+        security: [['bearerAuth' => []]],
+        tags: ['Inbounds'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(ref: '#/components/schemas/AutoPutawayRequest')
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Auto-putaway berhasil'),
+            new OA\Response(response: 500, description: 'Server Error')
+        ]
+    )]
+    public function autoPutaway(int $id, Request $request): JsonResponse
+    {
+        $request->validate(['created_by' => 'required|string|max:100']);
+
+        try {
+            $inbound = $this->inboundService->autoPutaway($id, $request->created_by);
+            return $this->successResponse($inbound, 'Auto-putaway berhasil dieksekusi');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 500);
+        }
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inbounds/received-items',
+        summary: 'Get list of received items (receipts)',
+        security: [['bearerAuth' => []]],
+        tags: ['Inbounds'],
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10))
         ],
         responses: [
-            new OA\Response(
-                response: 200,
-                description: 'Successful operation',
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: 'data', type: 'array', items: new OA\Items(type: 'object')),
-                        new OA\Property(property: 'message', type: 'string', example: 'Daftar barang diterima berhasil diambil')
-                    ]
-                )
-            ),
-            new OA\Response(response: 401, description: 'Unauthenticated')
+            new OA\Response(response: 200, description: 'Successful operation'),
         ]
     )]
     public function receivedItems(Request $request): JsonResponse
@@ -275,36 +319,42 @@ class InboundController extends Controller
         return $this->successPaginatedResponse($items, 'Daftar barang diterima berhasil diambil');
     }
 
-    #[OA\Post(
-        path: '/api/v1/inbounds/auto-putaway',
-        summary: 'Execute auto-putaway',
+    #[OA\Get(
+        path: '/api/v1/inbounds/{id}/pending-putaway',
+        summary: 'Get items pending putaway for an inbound',
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
-        requestBody: new OA\RequestBody(
-            required: true,
-            content: new OA\JsonContent(ref: '#/components/schemas/AutoPutawayRequest')
-        ),
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+        ],
         responses: [
-            new OA\Response(
-                response: 200,
-                description: 'Auto-putaway berhasil dieksekusi',
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: 'data', type: 'object'),
-                        new OA\Property(property: 'message', type: 'string', example: 'Auto-putaway berhasil dieksekusi')
-                    ]
-                )
-            ),
-            new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 422, description: 'Validation Error'),
+            new OA\Response(response: 200, description: 'Successful operation'),
+        ]
+    )]
+    public function pendingPutaway(int $id): JsonResponse
+    {
+        $items = $this->inboundService->getItemsPendingPutaway($id);
+        return $this->successResponse($items, 'Items pending putaway');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/inbounds/{id}/cancel',
+        summary: 'Cancel an inbound',
+        security: [['bearerAuth' => []]],
+        tags: ['Inbounds'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Inbound dibatalkan'),
             new OA\Response(response: 500, description: 'Server Error')
         ]
     )]
-    public function autoPutaway(AutoPutawayRequest $request): JsonResponse
+    public function cancel(int $id): JsonResponse
     {
         try {
-            $results = $this->inboundService->autoPutaway($request->validated());
-            return $this->successResponse($results, 'Auto-putaway berhasil dieksekusi', 200);
+            $inbound = $this->inboundService->cancel($id);
+            return $this->successResponse($inbound, 'Inbound berhasil dibatalkan');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 500);
         }

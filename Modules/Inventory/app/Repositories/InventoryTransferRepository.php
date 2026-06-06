@@ -1,0 +1,73 @@
+<?php
+
+namespace Modules\Inventory\Repositories;
+
+use Modules\Inventory\Models\InventoryTransfer;
+use Modules\Inventory\Models\InventoryTransferItem;
+use Spatie\QueryBuilder\QueryBuilder;
+use Spatie\QueryBuilder\AllowedFilter;
+
+class InventoryTransferRepository
+{
+    public function getTransfersPaginated(array $filters = [], int $limit = 10)
+    {
+        $query = QueryBuilder::for(InventoryTransfer::class)
+            ->with([
+                'sourceLocation:id,location_name',
+                'destinationLocation:id,location_name',
+                'items.product:id,name,sku',
+            ])
+            ->allowedFilters(
+                AllowedFilter::exact('status'),
+                AllowedFilter::exact('source_location_id'),
+                AllowedFilter::exact('destination_location_id')
+            )
+            ->allowedSorts('transfer_number', 'created_at', 'shipped_at')
+            ->defaultSort('-created_at');
+
+        if (isset($filters['status'])) {
+            $query->where('status', $filters['status']);
+        }
+
+        return $query->paginate($limit);
+    }
+
+    public function findById(int $id): ?InventoryTransfer
+    {
+        return InventoryTransfer::with([
+            'sourceLocation',
+            'destinationLocation',
+            'items.product:id,name,sku',
+            'items.sourceBin:id,bin_final_code',
+            'items.destinationBin:id,bin_final_code',
+        ])->find($id);
+    }
+
+    public function findByIdForUpdate(int $id): ?InventoryTransfer
+    {
+        return InventoryTransfer::with('items')
+            ->lockForUpdate()
+            ->find($id);
+    }
+
+    public function create(array $data): InventoryTransfer
+    {
+        return InventoryTransfer::create($data);
+    }
+
+    public function createItem(array $data): InventoryTransferItem
+    {
+        return InventoryTransferItem::create($data);
+    }
+
+    public function updateStatus(InventoryTransfer $transfer, string $status): void
+    {
+        $transfer->update(['status' => $status]);
+    }
+
+    public function updateItemReceivedQty(int $itemId, int $addQty): void
+    {
+        InventoryTransferItem::where('id', $itemId)
+            ->increment('received_qty', $addQty);
+    }
+}

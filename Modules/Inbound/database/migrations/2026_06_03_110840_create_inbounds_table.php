@@ -16,8 +16,8 @@ return new class extends Migration
             $table->unsignedBigInteger('location_id');
             $table->string('transaction_number', 100)->unique();
             $table->string('reference_number', 100)->nullable()->index();
-            $table->enum('type', ['PURCHASE_ORDER', 'SALES_RETURN', 'TRANSIT_IN']);
-            $table->enum('status', ['DRAFT', 'PARTIAL', 'COMPLETED', 'CANCELLED'])->default('DRAFT');
+            $table->string('type', 30);
+            $table->string('status', 30)->default('DRAFT');
             $table->dateTime('expected_date');
             $table->string('created_by', 100);
             $table->timestamps();

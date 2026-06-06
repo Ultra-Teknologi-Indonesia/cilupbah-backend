@@ -14,6 +14,7 @@ class InboundReceipt extends Model
         'bin_id',
         'batch_no',
         'serial_no',
+        'condition',
         'received_by',
         'received_date',
     ];
@@ -29,6 +30,6 @@ class InboundReceipt extends Model
 
     public function bin(): BelongsTo
     {
-        return $this->belongsTo(LocationBin::class);
+        return $this->belongsTo(LocationBin::class, 'bin_id');
     }
 }

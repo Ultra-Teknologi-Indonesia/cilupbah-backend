@@ -192,11 +192,33 @@ class InventoryTransactionController extends Controller
     public function transitList(\Illuminate\Http\Request $request): JsonResponse
     {
         $limit = $request->query('limit', 10);
-        $repo = app(\Modules\Inventory\Repositories\InventoryTransferRepository::class);
-        // Default filter for transit is handled by status query param, but we could enforce it here if needed.
-        $transfers = $repo->getTransfersPaginated(['status' => 'IN_TRANSIT'], $limit);
+        $transfers = $this->inventoryService->getTransfersPaginated(['status' => 'IN_TRANSIT'], $limit);
 
         return $this->successPaginatedResponse($transfers, 'Daftar barang dalam perjalanan (Transit).');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inventory/transfers/{id}',
+        summary: 'Get transfer details',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory Transactions'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Detail transfer.'),
+            new OA\Response(response: 404, description: 'Transfer tidak ditemukan.')
+        ]
+    )]
+    public function transferShow(int $id): JsonResponse
+    {
+        $transfer = $this->inventoryService->getTransferById($id);
+
+        if (! $transfer) {
+            return $this->errorResponse('Transfer tidak ditemukan', 404);
+        }
+
+        return $this->successResponse($transfer, 'Detail transfer berhasil diambil');
     }
 
     #[OA\Get(
@@ -215,8 +237,7 @@ class InventoryTransactionController extends Controller
     public function transfersList(\Illuminate\Http\Request $request): JsonResponse
     {
         $limit = $request->query('limit', 10);
-        $repo = app(\Modules\Inventory\Repositories\InventoryTransferRepository::class);
-        $transfers = $repo->getTransfersPaginated([], $limit);
+        $transfers = $this->inventoryService->getTransfersPaginated([], $limit);
 
         return $this->successPaginatedResponse($transfers, 'Daftar semua dokumen transfer.');
     }

@@ -15,5 +15,7 @@
     "Supplier": true,
     "Warranty": true,
     "AI": true,
-    "Tax": true
+    "Tax": true,
+    "Purchase": true,
+    "Sales": true
 }
