@@ -40,7 +40,7 @@ class AuthController extends Controller
                 content: new OA\JsonContent(
                     properties: [
                         new OA\Property(property: 'status', type: 'string', example: 'success'),
-                        new OA\Property(property: 'message', type: 'string', example: 'Login successful'),
+                        new OA\Property(property: 'message', type: 'string', example: 'Berhasil masuk. Selamat datang kembali!'),
                         new OA\Property(property: 'data', type: 'object', properties: [
                             new OA\Property(property: 'access_token', type: 'string', example: '1|xyz...'),
                             new OA\Property(property: 'token_type', type: 'string', example: 'Bearer')
@@ -48,7 +48,7 @@ class AuthController extends Controller
                     ]
                 )
             ),
-            new OA\Response(response: 401, description: 'Invalid credentials')
+            new OA\Response(response: 401, description: 'Email atau kata sandi yang Anda masukkan salah.')
         ]
     )]
     public function login(Request $request): JsonResponse
@@ -61,10 +61,10 @@ class AuthController extends Controller
         $data = $this->authService->login($credentials);
 
         if (! $data) {
-            return $this->errorResponse('Invalid credentials', 401);
+            return $this->errorResponse('Email atau kata sandi yang Anda masukkan salah.', 401);
         }
 
-        return $this->successResponse($data, 'Login successful');
+        return $this->successResponse($data, 'Berhasil masuk. Selamat datang kembali!');
     }
 
     #[OA\Get(
@@ -79,7 +79,7 @@ class AuthController extends Controller
                 content: new OA\JsonContent(
                     properties: [
                         new OA\Property(property: 'status', type: 'string', example: 'success'),
-                        new OA\Property(property: 'message', type: 'string', example: 'User profile retrieved'),
+                        new OA\Property(property: 'message', type: 'string', example: 'Profil berhasil dimuat.'),
                         new OA\Property(property: 'data', type: 'object', properties: [
                             new OA\Property(property: 'id', type: 'string', example: '018f6b...'),
                             new OA\Property(property: 'name', type: 'string', example: 'Test User'),
@@ -97,7 +97,7 @@ class AuthController extends Controller
     {
         $profile = $this->authService->getProfile($request->user());
 
-        return $this->successResponse(new ProfileResource($profile), 'User profile retrieved');
+        return $this->successResponse(new ProfileResource($profile), 'Profil berhasil dimuat.');
     }
 
     #[OA\Post(
@@ -112,7 +112,7 @@ class AuthController extends Controller
                 content: new OA\JsonContent(
                     properties: [
                         new OA\Property(property: 'status', type: 'string', example: 'success'),
-                        new OA\Property(property: 'message', type: 'string', example: 'Logged out successfully'),
+                        new OA\Property(property: 'message', type: 'string', example: 'Anda telah berhasil keluar.'),
                         new OA\Property(property: 'data', type: 'object', nullable: true)
                     ]
                 )
@@ -124,6 +124,6 @@ class AuthController extends Controller
     {
         $this->authService->logout($request->user());
 
-        return $this->successResponse(null, 'Logged out successfully');
+        return $this->successResponse(null, 'Anda telah berhasil keluar.');
     }
 }
