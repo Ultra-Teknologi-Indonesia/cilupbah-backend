@@ -182,4 +182,19 @@ class LocationBinController extends Controller
             return $this->errorResponse($e->getMessage(), 422);
         }
     }
+
+    public function generate(\Modules\Warehouse\Http\Requests\GenerateLocationBinRequest $request, int $locationId): JsonResponse
+    {
+        try {
+            $count = $this->binService->massGenerate($locationId, $request->validated());
+
+            return $this->successResponse(
+                ['generated_count' => $count], 
+                "Berhasil membuat {$count} rak.", 
+                201
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 500);
+        }
+    }
 }

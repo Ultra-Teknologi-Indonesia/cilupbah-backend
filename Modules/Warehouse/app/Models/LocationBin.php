@@ -4,9 +4,17 @@ namespace Modules\Warehouse\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class LocationBin extends Model
 {
+    use HasFactory;
+
+    protected static function newFactory()
+    {
+        return \Modules\Warehouse\Database\Factories\LocationBinFactory::new();
+    }
+
     protected $fillable = [
         'location_id',
         'floor_code',

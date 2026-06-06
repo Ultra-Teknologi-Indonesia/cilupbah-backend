@@ -10,6 +10,7 @@
     "Webhook": true,
     "Report": true,
     "Notification": true,
+    "Region": true,
     "Finance": true,
     "Supplier": true,
     "Warranty": true,
