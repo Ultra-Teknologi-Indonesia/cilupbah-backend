@@ -4,9 +4,12 @@ namespace Modules\Inventory\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\HasUuid7;
 
 class InventoryMovement extends Model
 {
+    use HasUuid7;
+
     protected $fillable = [
         'item_id',
         'location_id',
@@ -25,7 +28,7 @@ class InventoryMovement extends Model
 
     public function product(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\Product::class, 'item_id');
+        return $this->belongsTo(\Modules\Product\Models\ProductVariant::class, 'item_id');
     }
 
     public function location(): BelongsTo

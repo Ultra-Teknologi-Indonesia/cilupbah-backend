@@ -2,6 +2,7 @@
 
 namespace Modules\Inbound\Models;
 
+use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -9,6 +10,7 @@ use Modules\Warehouse\Models\Location;
 
 class Inbound extends Model
 {
+    use HasUuid7;
     const TYPE_PURCHASE_ORDER = 'PURCHASE_ORDER';
     const TYPE_SALES_RETURN   = 'SALES_RETURN';
     const TYPE_TRANSIT_IN     = 'TRANSIT_IN';
@@ -54,6 +56,11 @@ class Inbound extends Model
         return $this->hasMany(InboundItem::class);
     }
 
+    public function assignments(): HasMany
+    {
+        return $this->hasMany(InboundAssignment::class);
+    }
+
     public function scopeByStatus($query, string $status)
     {
         return $query->where('status', $status);
@@ -64,7 +71,7 @@ class Inbound extends Model
         return $query->where('type', $type);
     }
 
-    public function scopeByLocation($query, int $locationId)
+    public function scopeByLocation($query, string $locationId)
     {
         return $query->where('location_id', $locationId);
     }

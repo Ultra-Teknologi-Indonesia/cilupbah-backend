@@ -11,10 +11,10 @@ use OpenApi\Attributes as OA;
     title: 'Order Resource',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'integer', example: 1),
+        new OA\Property(property: 'id', type: 'string', example: 1),
         new OA\Property(property: 'salesorder_no', type: 'string', example: 'SO-12345'),
         new OA\Property(property: 'source', type: 'string', example: 'tiktok'),
-        new OA\Property(property: 'channel_shop_id', type: 'integer', example: 1),
+        new OA\Property(property: 'channel_shop_id', type: 'string', example: 1),
         new OA\Property(property: 'customer_name', type: 'string', example: 'John Doe'),
         new OA\Property(property: 'transaction_date', type: 'string', format: 'date-time', example: '2026-06-04T12:00:00Z'),
 

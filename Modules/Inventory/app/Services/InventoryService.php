@@ -21,12 +21,12 @@ class InventoryService
     ) {}
 
 
-    public function getStockByItem(int $itemId): Collection
+    public function getStockByItem(string $itemId): Collection
     {
         return $this->inventoryRepository->getByItem($itemId);
     }
 
-    public function getStockByLocation(int $locationId): Collection
+    public function getStockByLocation(string $locationId): Collection
     {
         return $this->inventoryRepository->getByLocation($locationId);
     }
@@ -234,7 +234,7 @@ class InventoryService
         });
     }
 
-    public function reserveStock(int $itemId, int $locationId, int $qty, string $transactionNumber, string $createdBy): Inventory
+    public function reserveStock(string $itemId, string $locationId, int $qty, string $transactionNumber, string $createdBy): Inventory
     {
         return DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber, $createdBy) {
             $inventory = $this->inventoryRepository->findExactForUpdate($itemId, $locationId, null);
@@ -263,7 +263,7 @@ class InventoryService
         });
     }
 
-    public function fulfillStock(int $itemId, int $locationId, int $qty, string $transactionNumber, string $createdBy): Inventory
+    public function fulfillStock(string $itemId, string $locationId, int $qty, string $transactionNumber, string $createdBy): Inventory
     {
         return DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber, $createdBy) {
             $inventory = $this->inventoryRepository->findExactForUpdate($itemId, $locationId, null);
@@ -364,7 +364,7 @@ class InventoryService
         });
     }
 
-    public function transferIn(int $transferId, array $data): InventoryTransfer
+    public function transferIn(string $transferId, array $data): InventoryTransfer
     {
         return DB::transaction(function () use ($transferId, $data) {
             $transfer = $this->transferRepository->findByIdForUpdate($transferId);
@@ -450,7 +450,7 @@ class InventoryService
         return $this->transferRepository->getTransfersPaginated($filters, $limit);
     }
 
-    public function getTransferById(int $id): ?InventoryTransfer
+    public function getTransferById(string $id): ?InventoryTransfer
     {
         return $this->transferRepository->findById($id);
     }

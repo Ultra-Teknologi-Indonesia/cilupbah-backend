@@ -2,6 +2,7 @@
 
 namespace Modules\Inbound\Models;
 
+use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -9,6 +10,8 @@ use Modules\Product\Models\ProductVariant;
 
 class InboundItem extends Model
 {
+    use HasUuid7;
+
     protected $fillable = [
         'inbound_id',
         'item_id',

@@ -37,8 +37,10 @@ class ProductImportService
                 DB::table('products')->where('id', $product->id)->update($productData);
                 $productId = $product->id;
             } else {
+                $productData['id'] = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();
                 $productData['created_at'] = now();
-                $productId = DB::table('products')->insertGetId($productData);
+                DB::table('products')->insert($productData);
+                $productId = $productData['id'];
             }
 
             // 4. Upsert Variant
@@ -57,8 +59,10 @@ class ProductImportService
                 DB::table('product_variants')->where('id', $variant->id)->update($variantData);
                 $variantId = $variant->id;
             } else {
+                $variantData['id'] = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();
                 $variantData['created_at'] = now();
-                $variantId = DB::table('product_variants')->insertGetId($variantData);
+                DB::table('product_variants')->insert($variantData);
+                $variantId = $variantData['id'];
             }
 
             // 5. Media

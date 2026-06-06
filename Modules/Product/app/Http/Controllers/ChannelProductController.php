@@ -343,7 +343,7 @@ class ChannelProductController extends Controller
         
         if ($channel === 'tiktok' && $shopId) {
             $tiktokService = app(\Modules\Channel\Services\TikTokProductService::class);
-            $tiktokService->syncPriceAndInventory((int)$id, $shopId);
+            $tiktokService->syncPriceAndInventory($id, $shopId);
         }
 
         return $this->successResponse(['success' => true], 'Product stock updated successfully');
@@ -370,7 +370,7 @@ class ChannelProductController extends Controller
         
         if ($channel === 'tiktok' && $shopId) {
             $tiktokService = app(\Modules\Channel\Services\TikTokProductService::class);
-            $tiktokService->syncPriceAndInventory((int)$id, $shopId);
+            $tiktokService->syncPriceAndInventory($id, $shopId);
         }
 
         return $this->successResponse(['success' => true], 'Product price updated successfully');

@@ -7,21 +7,21 @@ use Illuminate\Database\Eloquent\Collection;
 
 class InventoryRepository
 {
-    public function getByLocation(int $locationId): Collection
+    public function getByLocation(string $locationId): Collection
     {
         return Inventory::where('location_id', $locationId)
             ->with(['product', 'bin'])
             ->get();
     }
 
-    public function getByItem(int $itemId): Collection
+    public function getByItem(string $itemId): Collection
     {
         return Inventory::where('item_id', $itemId)
             ->with(['location', 'bin'])
             ->get();
     }
 
-    public function findExact(int $itemId, int $locationId, ?int $binId, string $batchNo = '', string $serialNo = ''): ?Inventory
+    public function findExact(string $itemId, string $locationId, ?string $binId, string $batchNo = '', string $serialNo = ''): ?Inventory
     {
         return Inventory::where('item_id', $itemId)
             ->where('location_id', $locationId)
@@ -31,7 +31,7 @@ class InventoryRepository
             ->first();
     }
 
-    public function findExactForUpdate(int $itemId, int $locationId, ?int $binId, string $batchNo = '', string $serialNo = ''): ?Inventory
+    public function findExactForUpdate(string $itemId, string $locationId, ?string $binId, string $batchNo = '', string $serialNo = ''): ?Inventory
     {
         return Inventory::where('item_id', $itemId)
             ->where('location_id', $locationId)
@@ -53,7 +53,7 @@ class InventoryRepository
         return $inventory->save();
     }
 
-    public function getTotalAvailableByItem(int $itemId): int
+    public function getTotalAvailableByItem(string $itemId): int
     {
         return (int) Inventory::where('item_id', $itemId)->sum('available');
     }
@@ -61,7 +61,7 @@ class InventoryRepository
     public function getAllPaginated(int $limit = 10)
     {
         return \Spatie\QueryBuilder\QueryBuilder::for(Inventory::class)
-            ->with(['product:id,name,sku', 'location:id,location_name', 'bin:id,bin_final_code'])
+            ->with(['product:id,sku,product_id', 'location:id,location_name', 'bin:id,bin_final_code'])
             ->allowedFilters(
                 \Spatie\QueryBuilder\AllowedFilter::exact('item_id'),
                 \Spatie\QueryBuilder\AllowedFilter::exact('location_id'),

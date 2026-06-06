@@ -17,7 +17,7 @@ class SupplierService
         return $this->supplierRepository->getAllPaginated($limit);
     }
 
-    public function getById(int $id): ?Supplier
+    public function getById(string $id): ?Supplier
     {
         return $this->supplierRepository->findById($id);
     }
@@ -31,7 +31,7 @@ class SupplierService
         return $this->supplierRepository->create($data);
     }
 
-    public function update(int $id, array $data): Supplier
+    public function update(string $id, array $data): Supplier
     {
         $supplier = $this->supplierRepository->findById($id);
 
@@ -42,7 +42,7 @@ class SupplierService
         return $this->supplierRepository->update($supplier, $data);
     }
 
-    public function delete(int $id): bool
+    public function delete(string $id): bool
     {
         $supplier = $this->supplierRepository->findById($id);
 

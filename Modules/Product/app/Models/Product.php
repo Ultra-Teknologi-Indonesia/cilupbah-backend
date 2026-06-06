@@ -2,10 +2,12 @@
 
 namespace Modules\Product\Models;
 
+use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 
 class Product extends Model
 {
+    use HasUuid7;
     /**
      * The attributes that are mass assignable.
      *

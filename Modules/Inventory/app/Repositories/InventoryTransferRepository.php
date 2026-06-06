@@ -15,7 +15,7 @@ class InventoryTransferRepository
             ->with([
                 'sourceLocation:id,location_name',
                 'destinationLocation:id,location_name',
-                'items.product:id,name,sku',
+                'items.product:id,sku,product_id',
             ])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
@@ -32,18 +32,18 @@ class InventoryTransferRepository
         return $query->paginate($limit);
     }
 
-    public function findById(int $id): ?InventoryTransfer
+    public function findById(string $id): ?InventoryTransfer
     {
         return InventoryTransfer::with([
             'sourceLocation',
             'destinationLocation',
-            'items.product:id,name,sku',
+            'items.product:id,sku,product_id',
             'items.sourceBin:id,bin_final_code',
             'items.destinationBin:id,bin_final_code',
         ])->find($id);
     }
 
-    public function findByIdForUpdate(int $id): ?InventoryTransfer
+    public function findByIdForUpdate(string $id): ?InventoryTransfer
     {
         return InventoryTransfer::with('items')
             ->lockForUpdate()
@@ -65,7 +65,7 @@ class InventoryTransferRepository
         $transfer->update(['status' => $status]);
     }
 
-    public function updateItemReceivedQty(int $itemId, int $addQty): void
+    public function updateItemReceivedQty(string $itemId, int $addQty): void
     {
         InventoryTransferItem::where('id', $itemId)
             ->increment('received_qty', $addQty);

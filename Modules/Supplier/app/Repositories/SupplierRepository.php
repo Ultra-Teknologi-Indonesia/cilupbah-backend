@@ -21,7 +21,7 @@ class SupplierRepository
             ->paginate($limit);
     }
 
-    public function findById(int $id): ?Supplier
+    public function findById(string $id): ?Supplier
     {
         return Supplier::find($id);
     }

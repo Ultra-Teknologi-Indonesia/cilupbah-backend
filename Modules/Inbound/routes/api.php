@@ -5,10 +5,17 @@ use Modules\Inbound\Http\Controllers\InboundController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inbounds/received-items', [InboundController::class, 'receivedItems'])->name('inbounds.receivedItems');
+    Route::get('inbounds/my-assignments', [InboundController::class, 'myAssignments'])->name('inbounds.myAssignments');
+    Route::get('inbounds/scan/{qrCode}', [InboundController::class, 'scanQr'])->name('inbounds.scanQr');
+    Route::post('inbounds/scan-putaway', [InboundController::class, 'scanPutaway'])->name('inbounds.scanPutaway');
 
     Route::get('inbounds', [InboundController::class, 'index'])->name('inbounds.index');
     Route::post('inbounds', [InboundController::class, 'store'])->name('inbounds.store');
     Route::get('inbounds/{id}', [InboundController::class, 'show'])->name('inbounds.show');
+
+    Route::post('inbounds/{id}/assign', [InboundController::class, 'assign'])->name('inbounds.assign');
+    Route::get('inbounds/{id}/assignments', [InboundController::class, 'assignments'])->name('inbounds.assignments');
+    Route::post('inbounds/assignments/{assignmentId}/start', [InboundController::class, 'startAssignment'])->name('inbounds.startAssignment');
 
     Route::post('inbounds/{id}/receive', [InboundController::class, 'receive'])->name('inbounds.receive');
     Route::post('inbounds/{id}/close-receiving', [InboundController::class, 'closeReceiving'])->name('inbounds.closeReceiving');

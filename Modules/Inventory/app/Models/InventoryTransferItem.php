@@ -5,9 +5,12 @@ namespace Modules\Inventory\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\Warehouse\Models\LocationBin;
+use App\Traits\HasUuid7;
 
 class InventoryTransferItem extends Model
 {
+    use HasUuid7;
+
     protected $fillable = [
         'inventory_transfer_id',
         'item_id',
@@ -26,7 +29,7 @@ class InventoryTransferItem extends Model
 
     public function product(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Product\Models\Product::class, 'item_id');
+        return $this->belongsTo(\Modules\Product\Models\ProductVariant::class, 'item_id');
     }
 
     public function sourceBin(): BelongsTo

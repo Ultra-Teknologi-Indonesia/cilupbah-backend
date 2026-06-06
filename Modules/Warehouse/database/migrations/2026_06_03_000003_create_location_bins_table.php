@@ -9,18 +9,18 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('location_bins', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
             $table->foreignId('location_id')->constrained('locations')->cascadeOnDelete();
-            
+
             $table->string('floor_code', 20)->nullable();
             $table->string('row_code', 20)->nullable();
             $table->string('column_code', 20)->nullable();
             $table->string('bin_code', 20)->nullable();
-            
+
             $table->string('bin_final_code', 100);
             $table->integer('max_qty')->default(0);
             $table->boolean('is_inbound')->default(false);
-            
+
             $table->timestamps();
 
             $table->index('bin_final_code');

@@ -28,6 +28,9 @@ class InboundE2ETest extends TestCase
     private Product $product1;
     private Product $product2;
     private Product $product3;
+    private ProductVariant $variant1;
+    private ProductVariant $variant2;
+    private ProductVariant $variant3;
     private Supplier $supplier;
 
     protected function setUp(): void
@@ -57,6 +60,7 @@ class InboundE2ETest extends TestCase
 
         $this->inboundBin = LocationBin::create([
             'location_id'    => $this->warehouse->id,
+
             'floor_code'     => 'F1',
             'row_code'       => 'R0',
             'column_code'    => 'C0',
@@ -68,6 +72,7 @@ class InboundE2ETest extends TestCase
 
         $this->storageBin1 = LocationBin::create([
             'location_id'    => $this->warehouse->id,
+
             'floor_code'     => 'F1',
             'row_code'       => 'R1',
             'column_code'    => 'C1',
@@ -79,6 +84,7 @@ class InboundE2ETest extends TestCase
 
         $this->storageBin2 = LocationBin::create([
             'location_id'    => $this->warehouse->id,
+
             'floor_code'     => 'F1',
             'row_code'       => 'R1',
             'column_code'    => 'C2',
@@ -90,6 +96,7 @@ class InboundE2ETest extends TestCase
 
         LocationBin::create([
             'location_id'    => $this->warehouse2->id,
+
             'floor_code'     => 'F1',
             'row_code'       => 'R0',
             'column_code'    => 'C0',
@@ -107,21 +114,21 @@ class InboundE2ETest extends TestCase
         $this->product1 = Product::create([
             'category_id' => $categoryId, 'name' => 'Laptop Test', 'sku' => 'LAP-001', 'is_active' => true,
         ]);
-        ProductVariant::create([
+        $this->variant1 = ProductVariant::create([
             'product_id' => $this->product1->id, 'sku' => 'LAP-001-V1', 'sell_price' => 7000000, 'is_active' => true,
         ]);
 
         $this->product2 = Product::create([
             'category_id' => $categoryId, 'name' => 'Mouse Test', 'sku' => 'MOU-001', 'is_active' => true,
         ]);
-        ProductVariant::create([
+        $this->variant2 = ProductVariant::create([
             'product_id' => $this->product2->id, 'sku' => 'MOU-001-V1', 'sell_price' => 500000, 'is_active' => true,
         ]);
 
         $this->product3 = Product::create([
             'category_id' => $categoryId, 'name' => 'Keyboard Test', 'sku' => 'KBD-001', 'is_active' => true,
         ]);
-        ProductVariant::create([
+        $this->variant3 = ProductVariant::create([
             'product_id' => $this->product3->id, 'sku' => 'KBD-001-V1', 'sell_price' => 1000000, 'is_active' => true,
         ]);
 
@@ -130,9 +137,9 @@ class InboundE2ETest extends TestCase
         ]);
 
         // Stock in warehouse2 for transfer tests
-        foreach ([$this->product1, $this->product2] as $p) {
+        foreach ([$this->variant1, $this->variant2] as $v) {
             Inventory::create([
-                'item_id' => $p->id, 'location_id' => $this->warehouse2->id,
+                'item_id' => $v->id, 'location_id' => $this->warehouse2->id,
                 'bin_id' => null, 'batch_no' => '', 'serial_no' => '',
                 'on_hand' => 100, 'on_order' => 0, 'reserved' => 0, 'available' => 100,
             ]);
@@ -273,7 +280,7 @@ class InboundE2ETest extends TestCase
             'destination_location_id' => $this->warehouse->id,
             'created_by'              => 'admin',
             'items'                   => [
-                ['item_id' => $this->product1->id, 'qty' => 15],
+                ['item_id' => $this->variant1->id, 'qty' => 15],
             ],
         ]);
 
@@ -281,7 +288,7 @@ class InboundE2ETest extends TestCase
         $data = $response->json('data');
         $this->assertEquals('IN_TRANSIT', $data['status']);
 
-        $inv = Inventory::where('item_id', $this->product1->id)
+        $inv = Inventory::where('item_id', $this->variant1->id)
             ->where('location_id', $this->warehouse2->id)->first();
         $this->assertEquals(85, $inv->on_hand);
     }
@@ -297,7 +304,7 @@ class InboundE2ETest extends TestCase
         $response->assertOk();
         $this->assertEquals('RECEIVED', $response->json('data.status'));
 
-        $destInv = Inventory::where('item_id', $this->product1->id)
+        $destInv = Inventory::where('item_id', $this->variant1->id)
             ->where('location_id', $this->warehouse->id)->first();
         $this->assertNotNull($destInv);
         $this->assertEquals(15, $destInv->on_hand);
@@ -442,7 +449,7 @@ class InboundE2ETest extends TestCase
             'expected_date'  => now()->addDays(3)->toDateString(),
             'created_by'     => 'admin',
             'items'          => [
-                ['item_id' => $this->product3->id, 'expected_qty' => 50],
+                ['item_id' => $this->variant3->id, 'expected_qty' => 50],
             ],
         ]);
 
@@ -520,9 +527,9 @@ class InboundE2ETest extends TestCase
             ->assertJsonPath('data.status', 'COMPLETED');
 
         $storageBin1Inv = Inventory::where('bin_id', $this->storageBin1->id)
-            ->where('item_id', $this->product1->id)->first();
+            ->where('item_id', $this->variant1->id)->first();
         $storageBin2Inv = Inventory::where('bin_id', $this->storageBin2->id)
-            ->where('item_id', $this->product1->id)->first();
+            ->where('item_id', $this->variant1->id)->first();
 
         $this->assertEquals(5, $storageBin1Inv->on_hand);
         $this->assertEquals(5, $storageBin2Inv->on_hand);
@@ -608,7 +615,7 @@ class InboundE2ETest extends TestCase
         ])->assertOk();
 
         // Stock at inbound bin
-        $inboundStock = Inventory::where('item_id', $this->product1->id)
+        $inboundStock = Inventory::where('item_id', $this->variant1->id)
             ->where('bin_id', $this->inboundBin->id)->first();
         $this->assertEquals(20, $inboundStock->on_hand);
 
@@ -622,7 +629,7 @@ class InboundE2ETest extends TestCase
         $inboundStock->refresh();
         $this->assertEquals(0, $inboundStock->on_hand);
 
-        $storageStock = Inventory::where('item_id', $this->product1->id)
+        $storageStock = Inventory::where('item_id', $this->variant1->id)
             ->where('bin_id', $this->storageBin1->id)->first();
         $this->assertEquals(20, $storageStock->on_hand);
 
@@ -643,7 +650,7 @@ class InboundE2ETest extends TestCase
             'type'          => 'PURCHASE_ORDER',
             'expected_date' => now()->toDateString(),
             'created_by'    => 'admin',
-            'items'         => [['item_id' => $this->product1->id, 'expected_qty' => 10]],
+            'items'         => [['item_id' => $this->variant1->id, 'expected_qty' => 10]],
         ])->assertStatus(201);
 
         $this->getJson('/api/v1/inbounds')
@@ -761,7 +768,7 @@ class InboundE2ETest extends TestCase
             'destination_location_id' => $this->warehouse->id,
             'created_by'              => 'admin',
             'items'                   => [
-                ['item_id' => $this->product1->id, 'qty' => 15],
+                ['item_id' => $this->variant1->id, 'qty' => 15],
             ],
         ]);
 
@@ -776,7 +783,7 @@ class InboundE2ETest extends TestCase
             'expected_date' => now()->toDateString(),
             'created_by'    => 'admin',
             'items'         => [
-                ['item_id' => $this->product1->id, 'expected_qty' => $expectedQty],
+                ['item_id' => $this->variant1->id, 'expected_qty' => $expectedQty],
             ],
         ]);
 

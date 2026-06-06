@@ -243,36 +243,40 @@
                     {
                         "name": "limit",
                         "in": "query",
-                        "description": "Number of items per page",
                         "required": false,
                         "schema": {
                             "type": "integer",
                             "default": 10
                         }
+                    },
+                    {
+                        "name": "filter[status]",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[type]",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[location_id]",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successful operation",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "data": {
-                                            "type": "array",
-                                            "items": {
-                                                "$ref": "#/components/schemas/Inbound"
-                                            }
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Daftar inbound berhasil diambil"
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
+                        "description": "Successful operation"
                     },
                     "401": {
                         "description": "Unauthenticated"
@@ -288,7 +292,7 @@
                 "tags": [
                     "Inbounds"
                 ],
-                "summary": "Create a draft inbound",
+                "summary": "Create a draft inbound (GRN)",
                 "operationId": "e06bf9cb2c64e30c6b727817eee8b12c",
                 "requestBody": {
                     "required": true,
@@ -302,26 +306,7 @@
                 },
                 "responses": {
                     "201": {
-                        "description": "Draft Inbound created successfully",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/components/schemas/Inbound"
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Draft Inbound berhasil dibuat"
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthenticated"
+                        "description": "Draft Inbound berhasil dibuat"
                     },
                     "422": {
                         "description": "Validation Error"
@@ -348,35 +333,16 @@
                     {
                         "name": "id",
                         "in": "path",
-                        "description": "ID of the inbound",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string",
+                            "format": "uuid"
                         }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successful operation",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/components/schemas/Inbound"
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Detail Inbound berhasil diambil"
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthenticated"
+                        "description": "Successful operation"
                     },
                     "404": {
                         "description": "Dokumen Inbound tidak ditemukan"
@@ -394,16 +360,16 @@
                 "tags": [
                     "Inbounds"
                 ],
-                "summary": "Process receiving for inbound",
+                "summary": "Receive items for inbound",
                 "operationId": "65adb0a914c3886b6d0acb367bbedb9c",
                 "parameters": [
                     {
                         "name": "id",
                         "in": "path",
-                        "description": "ID of the inbound to receive",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string",
+                            "format": "uuid"
                         }
                     }
                 ],
@@ -419,32 +385,151 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Penerimaan Inbound berhasil diproses",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/components/schemas/Inbound"
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Penerimaan Inbound berhasil diproses"
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthenticated"
-                    },
-                    "404": {
-                        "description": "Inbound not found"
+                        "description": "Penerimaan berhasil diproses"
                     },
                     "422": {
                         "description": "Validation Error"
+                    },
+                    "500": {
+                        "description": "Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inbounds/{id}/close-receiving": {
+            "post": {
+                "tags": [
+                    "Inbounds"
+                ],
+                "summary": "Close receiving (mark discrepancy and move to putaway)",
+                "operationId": "f92350759f37f8b6c5bc6ef06ba03d2d",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "closed_by"
+                                ],
+                                "properties": {
+                                    "closed_by": {
+                                        "type": "string",
+                                        "example": "admin"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Receiving ditutup"
+                    },
+                    "500": {
+                        "description": "Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inbounds/{id}/putaway": {
+            "post": {
+                "tags": [
+                    "Inbounds"
+                ],
+                "summary": "Manual putaway — assign items to specific bins",
+                "operationId": "94389068b2ab522401b4cecfd1861dbc",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PutawayRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Putaway berhasil diproses"
+                    },
+                    "422": {
+                        "description": "Validation Error"
+                    },
+                    "500": {
+                        "description": "Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inbounds/{id}/auto-putaway": {
+            "post": {
+                "tags": [
+                    "Inbounds"
+                ],
+                "summary": "Auto putaway — system assigns bins automatically",
+                "operationId": "512bf7d067728269e6d78dd442d3fcc0",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/AutoPutawayRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Auto-putaway berhasil"
                     },
                     "500": {
                         "description": "Server Error"
@@ -462,13 +547,12 @@
                 "tags": [
                     "Inbounds"
                 ],
-                "summary": "Get list of received items",
+                "summary": "Get list of received items (receipts)",
                 "operationId": "0d1f90f1b636492b691f2471e97bc19a",
                 "parameters": [
                     {
                         "name": "limit",
                         "in": "query",
-                        "description": "Number of items per page",
                         "required": false,
                         "schema": {
                             "type": "integer",
@@ -478,29 +562,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successful operation",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "data": {
-                                            "type": "array",
-                                            "items": {
-                                                "type": "object"
-                                            }
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Daftar barang diterima berhasil diambil"
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthenticated"
+                        "description": "Successful operation"
                     }
                 },
                 "security": [
@@ -510,36 +572,83 @@
                 ]
             }
         },
-        "/api/v1/inbounds/auto-putaway": {
-            "post": {
+        "/api/v1/inbounds/{id}/pending-putaway": {
+            "get": {
                 "tags": [
                     "Inbounds"
                 ],
-                "summary": "Execute auto-putaway",
-                "operationId": "0ecec2d75eb9d70e7799270ae091ca1c",
+                "summary": "Get items pending putaway for an inbound",
+                "operationId": "0516d41ed606e9a3cecb1df7cd2eb387",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inbounds/{id}/assign": {
+            "post": {
+                "tags": [
+                    "Inbounds - Assignment"
+                ],
+                "summary": "Assign inbound to a worker",
+                "description": "Admin gudang assign dokumen inbound ke pekerja. Pekerja akan melihat tugas ini di endpoint my-assignments.",
+                "operationId": "8134ea353f0f9bae574a2f5444eb4a77",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Inbound ID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/AutoPutawayRequest"
+                                "$ref": "#/components/schemas/AssignInboundRequest"
                             }
                         }
                     }
                 },
                 "responses": {
-                    "200": {
-                        "description": "Auto-putaway berhasil dieksekusi",
+                    "201": {
+                        "description": "Berhasil assign",
                         "content": {
                             "application/json": {
                                 "schema": {
                                     "properties": {
-                                        "data": {
-                                            "type": "object"
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
                                         },
                                         "message": {
                                             "type": "string",
-                                            "example": "Auto-putaway berhasil dieksekusi"
+                                            "example": "Inbound berhasil di-assign"
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/InboundAssignment"
                                         }
                                     },
                                     "type": "object"
@@ -547,11 +656,323 @@
                             }
                         }
                     },
-                    "401": {
-                        "description": "Unauthenticated"
-                    },
                     "422": {
                         "description": "Validation Error"
+                    },
+                    "500": {
+                        "description": "Inbound sudah COMPLETED/CANCELLED"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inbounds/{id}/assignments": {
+            "get": {
+                "tags": [
+                    "Inbounds - Assignment"
+                ],
+                "summary": "Get assignments for an inbound",
+                "description": "Lihat semua pekerja yang di-assign ke dokumen inbound tertentu.",
+                "operationId": "7a8bc8d2113f193f07095fdecd36a688",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Inbound ID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Daftar assignment",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/InboundAssignment"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inbounds/my-assignments": {
+            "get": {
+                "tags": [
+                    "Inbounds - Assignment"
+                ],
+                "summary": "Get current user assignments",
+                "description": "Pekerja melihat daftar tugas inbound yang di-assign ke dia. Bisa filter berdasarkan status.",
+                "operationId": "f4f0f2a9013eabde21879632ee77f309",
+                "parameters": [
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "description": "Filter berdasarkan status",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "PENDING",
+                                "IN_PROGRESS",
+                                "COMPLETED"
+                            ]
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Daftar assignment saya",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/InboundAssignment"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inbounds/assignments/{assignmentId}/start": {
+            "post": {
+                "tags": [
+                    "Inbounds - Assignment"
+                ],
+                "summary": "Start working on an assignment",
+                "description": "Pekerja memulai tugas. Status berubah dari PENDING ke IN_PROGRESS. Hanya pemilik assignment yang bisa start.",
+                "operationId": "b58d1c4c419d3d3c505eb474458ebf88",
+                "parameters": [
+                    {
+                        "name": "assignmentId",
+                        "in": "path",
+                        "description": "Assignment ID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Assignment dimulai",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Assignment dimulai"
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/InboundAssignment"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Bukan assignment Anda / sudah dimulai"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inbounds/scan/{qrCode}": {
+            "get": {
+                "tags": [
+                    "Inbounds - QR Scan"
+                ],
+                "summary": "Scan QR — lookup inbound item by UUID primary key",
+                "description": "Pekerja scan QR code pada label barang. UUID pada QR = primary key inbound_items. Mengembalikan detail item inbound beserta info gudang dan produk.",
+                "operationId": "ee0aecef3c41a528e9ea581eb8395ae4",
+                "parameters": [
+                    {
+                        "name": "qrCode",
+                        "in": "path",
+                        "description": "UUID primary key inbound item (= QR code label)",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "example": "550e8400-e29b-41d4-a716-446655440000"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Item ditemukan",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Item ditemukan"
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/InboundItem"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "QR Code tidak ditemukan"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inbounds/scan-putaway": {
+            "post": {
+                "tags": [
+                    "Inbounds - QR Scan"
+                ],
+                "summary": "Scan QR barang + scan QR rak → putaway & update inventory",
+                "description": "Pekerja scan 2x: (1) scan QR label barang (= inbound_items.id UUID), (2) scan QR lokasi rak (= location_bins.id UUID). Sistem memindahkan stock dari inbound bin ke rak tujuan dan update inventory. Jika semua item sudah putaway, inbound otomatis COMPLETED dan assignment auto-selesai.",
+                "operationId": "d00367aca196b208c814ee37c93bbf44",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ScanPutawayRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Putaway berhasil, stock diperbarui",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Putaway berhasil, stock diperbarui"
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/InboundItem"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "QR rak tidak ditemukan"
+                    },
+                    "422": {
+                        "description": "Validation Error — inbound_item_id / bin_id bukan UUID"
+                    },
+                    "500": {
+                        "description": "Qty melebihi pending / inbound belum RECEIVED"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inbounds/{id}/cancel": {
+            "post": {
+                "tags": [
+                    "Inbounds"
+                ],
+                "summary": "Cancel an inbound",
+                "operationId": "3f6e8fd8ba69996fe82bc4dab93b01ff",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Inbound dibatalkan"
                     },
                     "500": {
                         "description": "Server Error"
@@ -870,7 +1291,7 @@
                         "description": "ID of the transfer",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -949,6 +1370,38 @@
                     },
                     "401": {
                         "description": "Unauthenticated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inventory/transfers/{id}": {
+            "get": {
+                "tags": [
+                    "Inventory Transactions"
+                ],
+                "summary": "Get transfer details",
+                "operationId": "f50276dfe6660ec4261cd56fc9d1d69c",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Detail transfer."
+                    },
+                    "404": {
+                        "description": "Transfer tidak ditemukan."
                     }
                 },
                 "security": [
@@ -1328,7 +1781,7 @@
                         "description": "ID of the order",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -2271,9 +2724,9 @@
                         }
                     },
                     {
-                        "name": "filter[name]",
+                        "name": "search",
                         "in": "query",
-                        "description": "Cari berdasarkan nama produk dengan Fuzzy Search",
+                        "description": "Cari berdasarkan nama produk dengan PostgreSQL Full-Text Search",
                         "required": false,
                         "schema": {
                             "type": "string"
@@ -2316,6 +2769,375 @@
                         }
                     }
                 }
+            }
+        },
+        "/api/v1/purchase/orders": {
+            "get": {
+                "tags": [
+                    "Purchase Orders"
+                ],
+                "summary": "Get list of purchase orders",
+                "operationId": "89cbb8f0d2a7701962038ee59e78ae84",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10
+                        }
+                    },
+                    {
+                        "name": "filter[status]",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[supplier_id]",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[search]",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Purchase Orders"
+                ],
+                "summary": "Create a new Purchase Order",
+                "operationId": "d01bb6ad4d00462721bb26c0e8aefd9d",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "supplier_id",
+                                    "location_id",
+                                    "order_date",
+                                    "created_by",
+                                    "items"
+                                ],
+                                "properties": {
+                                    "supplier_id": {
+                                        "type": "string",
+                                        "example": 1
+                                    },
+                                    "location_id": {
+                                        "type": "string",
+                                        "example": 1
+                                    },
+                                    "order_date": {
+                                        "type": "string",
+                                        "format": "date",
+                                        "example": "2026-06-06"
+                                    },
+                                    "expected_date": {
+                                        "type": "string",
+                                        "format": "date",
+                                        "example": "2026-06-13"
+                                    },
+                                    "created_by": {
+                                        "type": "string",
+                                        "example": "admin"
+                                    },
+                                    "items": {
+                                        "type": "array",
+                                        "items": {
+                                            "required": [
+                                                "item_id",
+                                                "qty",
+                                                "unit_price"
+                                            ],
+                                            "properties": {
+                                                "item_id": {
+                                                    "type": "string",
+                                                    "format": "uuid",
+                                                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                                                },
+                                                "qty": {
+                                                    "type": "integer",
+                                                    "example": 100
+                                                },
+                                                "unit_price": {
+                                                    "type": "number",
+                                                    "example": 15000
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "PO berhasil dibuat"
+                    },
+                    "422": {
+                        "description": "Validation Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/purchase/orders/receivable": {
+            "get": {
+                "tags": [
+                    "Purchase Orders"
+                ],
+                "summary": "Get POs that can be received",
+                "operationId": "74bba0d2355023a09d7adceaf09b7a88",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/purchase/orders/{id}": {
+            "get": {
+                "tags": [
+                    "Purchase Orders"
+                ],
+                "summary": "Get PO details",
+                "operationId": "3716e519d4c0d759c699604cfecf3e28",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    },
+                    "404": {
+                        "description": "PO tidak ditemukan"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Purchase Orders"
+                ],
+                "summary": "Delete a draft PO",
+                "operationId": "146d3bcb25d22686d52715a0194a6645",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "PO berhasil dihapus"
+                    },
+                    "500": {
+                        "description": "Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/purchase/orders/{id}/approve": {
+            "post": {
+                "tags": [
+                    "Purchase Orders"
+                ],
+                "summary": "Approve a draft PO (set to OPEN)",
+                "operationId": "7a02383308b378844d9d24a71035d929",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "PO berhasil diapprove"
+                    },
+                    "500": {
+                        "description": "Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/purchase/orders/{id}/receive": {
+            "post": {
+                "tags": [
+                    "Purchase Orders"
+                ],
+                "summary": "Receive items from PO (creates Inbound GRN)",
+                "operationId": "5806327e160247b0f320fd0e13043418",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "received_by",
+                                    "items"
+                                ],
+                                "properties": {
+                                    "received_by": {
+                                        "type": "string",
+                                        "example": "warehouse_staff"
+                                    },
+                                    "items": {
+                                        "type": "array",
+                                        "items": {
+                                            "required": [
+                                                "purchase_order_item_id",
+                                                "qty"
+                                            ],
+                                            "properties": {
+                                                "purchase_order_item_id": {
+                                                    "type": "string",
+                                                    "example": 1
+                                                },
+                                                "qty": {
+                                                    "type": "integer",
+                                                    "example": 50
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Receive berhasil, Inbound GRN dibuat"
+                    },
+                    "500": {
+                        "description": "Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/purchase/orders/{id}/cancel": {
+            "post": {
+                "tags": [
+                    "Purchase Orders"
+                ],
+                "summary": "Cancel a PO",
+                "operationId": "7e2fe8caebeb24ff55549344cfaba214",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "PO berhasil dibatalkan"
+                    },
+                    "500": {
+                        "description": "Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
             }
         },
         "/api/v1/reports": {
@@ -2532,6 +3354,603 @@
                     },
                     "404": {
                         "description": "Report not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/sales/returns": {
+            "get": {
+                "tags": [
+                    "Sales Returns"
+                ],
+                "summary": "Get list of sales returns",
+                "operationId": "e7e9321f83b763526b334561f7de0ffc",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10
+                        }
+                    },
+                    {
+                        "name": "filter[status]",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[source]",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Sales Returns"
+                ],
+                "summary": "Create a sales return (with or without order/invoice)",
+                "operationId": "79b24388c7331545da1a29165cce88bb",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "location_id",
+                                    "created_by",
+                                    "items"
+                                ],
+                                "properties": {
+                                    "order_id": {
+                                        "type": "string",
+                                        "nullable": true
+                                    },
+                                    "location_id": {
+                                        "type": "string",
+                                        "example": 1
+                                    },
+                                    "source": {
+                                        "type": "string",
+                                        "example": "manual",
+                                        "enum": [
+                                            "manual",
+                                            "marketplace"
+                                        ]
+                                    },
+                                    "customer_name": {
+                                        "type": "string"
+                                    },
+                                    "reason": {
+                                        "type": "string"
+                                    },
+                                    "created_by": {
+                                        "type": "string",
+                                        "example": "admin"
+                                    },
+                                    "items": {
+                                        "type": "array",
+                                        "items": {
+                                            "required": [
+                                                "item_id",
+                                                "qty"
+                                            ],
+                                            "properties": {
+                                                "item_id": {
+                                                    "type": "string",
+                                                    "format": "uuid",
+                                                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                                                },
+                                                "qty": {
+                                                    "type": "integer",
+                                                    "example": 2
+                                                },
+                                                "condition": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "GOOD",
+                                                        "DAMAGE"
+                                                    ]
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Sales return berhasil dibuat"
+                    },
+                    "422": {
+                        "description": "Validation Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/sales/returns/unprocessed": {
+            "get": {
+                "tags": [
+                    "Sales Returns"
+                ],
+                "summary": "Get unprocessed marketplace returns",
+                "operationId": "1c7b2d3e717f001c95762dd8b1de3e39",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/sales/returns/{id}": {
+            "get": {
+                "tags": [
+                    "Sales Returns"
+                ],
+                "summary": "Get sales return details",
+                "operationId": "b6e8d0f51b77218db6f62c1a8a1e0873",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    },
+                    "404": {
+                        "description": "Return tidak ditemukan"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/sales/returns/{id}/accept": {
+            "post": {
+                "tags": [
+                    "Sales Returns"
+                ],
+                "summary": "Accept a return (stock masuk ke gudang)",
+                "operationId": "e49b8df221b19b3cc64925891277d37d",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "processed_by"
+                                ],
+                                "properties": {
+                                    "processed_by": {
+                                        "type": "string",
+                                        "example": "warehouse_staff"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Return diterima, Inbound GRN dibuat"
+                    },
+                    "500": {
+                        "description": "Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/sales/returns/{id}/reject": {
+            "post": {
+                "tags": [
+                    "Sales Returns"
+                ],
+                "summary": "Reject a return (stock tidak berubah)",
+                "operationId": "5484e55ced87bb13bb47166ac52177c1",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "processed_by"
+                                ],
+                                "properties": {
+                                    "processed_by": {
+                                        "type": "string",
+                                        "example": "warehouse_staff"
+                                    },
+                                    "reason": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Return ditolak"
+                    },
+                    "500": {
+                        "description": "Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/sales/returns/{id}/complete": {
+            "post": {
+                "tags": [
+                    "Sales Returns"
+                ],
+                "summary": "Mark return as complete",
+                "operationId": "e12dab321350b47819bc0e1ca3e41cad",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "processed_by"
+                                ],
+                                "properties": {
+                                    "processed_by": {
+                                        "type": "string",
+                                        "example": "admin"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Return selesai"
+                    },
+                    "500": {
+                        "description": "Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/suppliers": {
+            "get": {
+                "tags": [
+                    "Suppliers"
+                ],
+                "summary": "Get list of suppliers",
+                "operationId": "fee94db6d05c8f291056bbdd9612216a",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10
+                        }
+                    },
+                    {
+                        "name": "filter[status]",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[search]",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Suppliers"
+                ],
+                "summary": "Create a new supplier",
+                "operationId": "95e3e269bfff0f9139d068d89c915dc7",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "name"
+                                ],
+                                "properties": {
+                                    "code": {
+                                        "type": "string",
+                                        "example": "SUP-001"
+                                    },
+                                    "name": {
+                                        "type": "string",
+                                        "example": "PT Maju Jaya"
+                                    },
+                                    "company_name": {
+                                        "type": "string",
+                                        "example": "PT Maju Jaya Sentosa"
+                                    },
+                                    "email": {
+                                        "type": "string",
+                                        "example": "info@majujaya.com"
+                                    },
+                                    "phone": {
+                                        "type": "string",
+                                        "example": "021-5551234"
+                                    },
+                                    "address": {
+                                        "type": "string"
+                                    },
+                                    "city": {
+                                        "type": "string",
+                                        "example": "Jakarta"
+                                    },
+                                    "tax_id": {
+                                        "type": "string",
+                                        "example": "01.234.567.8-901.000"
+                                    },
+                                    "contact_person": {
+                                        "type": "string"
+                                    },
+                                    "payment_term": {
+                                        "type": "string",
+                                        "example": "NET30"
+                                    },
+                                    "notes": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Supplier berhasil dibuat"
+                    },
+                    "422": {
+                        "description": "Validation Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/suppliers/{id}": {
+            "get": {
+                "tags": [
+                    "Suppliers"
+                ],
+                "summary": "Get supplier details",
+                "operationId": "2a7be420ebfd2ce7b44957f630222e20",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation"
+                    },
+                    "404": {
+                        "description": "Supplier tidak ditemukan"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Suppliers"
+                ],
+                "summary": "Update a supplier",
+                "operationId": "da41dbd7188ab7872c01f8e38bb81f27",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    },
+                                    "email": {
+                                        "type": "string"
+                                    },
+                                    "phone": {
+                                        "type": "string"
+                                    },
+                                    "status": {
+                                        "type": "string",
+                                        "enum": [
+                                            "active",
+                                            "inactive"
+                                        ]
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Supplier berhasil diupdate"
+                    },
+                    "404": {
+                        "description": "Supplier tidak ditemukan"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Suppliers"
+                ],
+                "summary": "Delete a supplier",
+                "operationId": "9eb11b62b6577e82c2409ee77aebf696",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Supplier berhasil dihapus"
+                    },
+                    "404": {
+                        "description": "Supplier tidak ditemukan"
                     }
                 },
                 "security": [
@@ -2800,36 +4219,95 @@
                 ]
             }
         },
-        "/api/v1/bins": {
+        "/api/v1/locations/{locationId}/bins/preview": {
             "post": {
                 "tags": [
                     "Location Bins"
                 ],
-                "summary": "Create a new location bin",
-                "operationId": "bd22ebd92b807fc4b050b730dff97274",
+                "summary": "Preview location bins generation",
+                "operationId": "b75febec019dd996cb6a4ddbdf636740",
+                "parameters": [
+                    {
+                        "name": "locationId",
+                        "in": "path",
+                        "description": "ID of the location",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/StoreLocationBinRequest"
+                                "required": [
+                                    "floor_code",
+                                    "qty_floor",
+                                    "row_code",
+                                    "qty_row",
+                                    "column_code",
+                                    "qty_column",
+                                    "bin_code",
+                                    "qty_bin"
+                                ],
+                                "properties": {
+                                    "floor_code": {
+                                        "type": "string",
+                                        "example": "FL"
+                                    },
+                                    "qty_floor": {
+                                        "type": "integer",
+                                        "example": 1
+                                    },
+                                    "row_code": {
+                                        "type": "string",
+                                        "example": "RW"
+                                    },
+                                    "qty_row": {
+                                        "type": "integer",
+                                        "example": 2
+                                    },
+                                    "column_code": {
+                                        "type": "string",
+                                        "example": "C"
+                                    },
+                                    "qty_column": {
+                                        "type": "integer",
+                                        "example": 3
+                                    },
+                                    "bin_code": {
+                                        "type": "string",
+                                        "example": "B"
+                                    },
+                                    "qty_bin": {
+                                        "type": "integer",
+                                        "example": 4
+                                    },
+                                    "max_qty": {
+                                        "type": "integer",
+                                        "example": 100
+                                    }
+                                },
+                                "type": "object"
                             }
                         }
                     }
                 },
                 "responses": {
-                    "201": {
-                        "description": "Bin created successfully",
+                    "200": {
+                        "description": "Preview generated successfully",
                         "content": {
                             "application/json": {
                                 "schema": {
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/components/schemas/LocationBin"
+                                            "type": "object"
                                         },
                                         "message": {
                                             "type": "string",
-                                            "example": "Bin berhasil dibuat."
+                                            "example": "Preview berhasil di-generate"
                                         }
                                     },
                                     "type": "object"
@@ -2842,59 +4320,6 @@
                     },
                     "422": {
                         "description": "Validation Error"
-                    }
-                },
-                "security": [
-                    {
-                        "bearerAuth": []
-                    }
-                ]
-            }
-        },
-        "/api/v1/bins/{id}": {
-            "delete": {
-                "tags": [
-                    "Location Bins"
-                ],
-                "summary": "Delete a location bin",
-                "operationId": "308b8ecae0668e97a6140eb0b7670658",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "description": "ID of the location bin to delete",
-                        "required": true,
-                        "schema": {
-                            "type": "integer"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Bin deleted successfully",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "data": {
-                                            "type": "object",
-                                            "nullable": true
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Bin berhasil dihapus."
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthenticated"
-                    },
-                    "404": {
-                        "description": "Bin tidak ditemukan."
                     }
                 },
                 "security": [
@@ -3079,7 +4504,7 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/StoreLocationRequest"
+                                "$ref": "#/components/schemas/UpdateLocationRequest"
                             }
                         }
                     }
@@ -3164,6 +4589,58 @@
                     },
                     "404": {
                         "description": "Lokasi tidak ditemukan."
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/locations/{locationId}/zones": {
+            "get": {
+                "tags": [
+                    "Location Zones"
+                ],
+                "summary": "Get list of zones for a location",
+                "operationId": "ae6ce26ffb4ba2370e1f608557aefa65",
+                "parameters": [
+                    {
+                        "name": "locationId",
+                        "in": "path",
+                        "description": "ID of the location",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/LocationZone"
+                                            }
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Daftar zona berhasil diambil"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
                     }
                 },
                 "security": [
@@ -3459,11 +4936,12 @@
                 "title": "Inbound Schema",
                 "properties": {
                     "id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
                     },
                     "location_id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1
                     },
                     "transaction_number": {
@@ -3481,12 +4959,31 @@
                         "enum": [
                             "PURCHASE_ORDER",
                             "SALES_RETURN",
-                            "TRANSIT_IN"
+                            "TRANSIT_IN",
+                            "CONSIGNMENT"
                         ]
+                    },
+                    "source_type": {
+                        "type": "string",
+                        "example": "purchase_order",
+                        "nullable": true
+                    },
+                    "source_id": {
+                        "type": "string",
+                        "example": 1,
+                        "nullable": true
                     },
                     "status": {
                         "type": "string",
-                        "example": "DRAFT"
+                        "example": "DRAFT",
+                        "enum": [
+                            "DRAFT",
+                            "PARTIAL",
+                            "RECEIVED",
+                            "PUTAWAY_IN_PROGRESS",
+                            "COMPLETED",
+                            "CANCELLED"
+                        ]
                     },
                     "expected_date": {
                         "type": "string",
@@ -3499,13 +4996,11 @@
                     },
                     "created_at": {
                         "type": "string",
-                        "format": "date-time",
-                        "example": "2026-06-04T12:00:00Z"
+                        "format": "date-time"
                     },
                     "updated_at": {
                         "type": "string",
-                        "format": "date-time",
-                        "example": "2026-06-04T12:00:00Z"
+                        "format": "date-time"
                     }
                 },
                 "type": "object"
@@ -3520,7 +5015,7 @@
                 ],
                 "properties": {
                     "location_id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1
                     },
                     "reference_number": {
@@ -3534,8 +5029,19 @@
                         "enum": [
                             "PURCHASE_ORDER",
                             "SALES_RETURN",
-                            "TRANSIT_IN"
+                            "TRANSIT_IN",
+                            "CONSIGNMENT"
                         ]
+                    },
+                    "source_type": {
+                        "type": "string",
+                        "example": "purchase_order",
+                        "nullable": true
+                    },
+                    "source_id": {
+                        "type": "string",
+                        "example": 1,
+                        "nullable": true
                     },
                     "expected_date": {
                         "type": "string",
@@ -3555,8 +5061,9 @@
                             ],
                             "properties": {
                                 "item_id": {
-                                    "type": "integer",
-                                    "example": 10
+                                    "type": "string",
+                                    "format": "uuid",
+                                    "example": "550e8400-e29b-41d4-a716-446655440000"
                                 },
                                 "expected_qty": {
                                     "type": "integer",
@@ -3588,8 +5095,9 @@
                             ],
                             "properties": {
                                 "inbound_item_id": {
-                                    "type": "integer",
-                                    "example": 1
+                                    "type": "string",
+                                    "format": "uuid",
+                                    "example": "550e8400-e29b-41d4-a716-446655440000"
                                 },
                                 "qty": {
                                     "type": "integer",
@@ -3621,25 +5129,12 @@
                 },
                 "type": "object"
             },
-            "AutoPutawayRequest": {
+            "PutawayRequest": {
                 "required": [
-                    "location_id",
-                    "inbound_ids",
                     "created_by",
                     "putaway_items"
                 ],
                 "properties": {
-                    "location_id": {
-                        "type": "integer",
-                        "example": 1
-                    },
-                    "inbound_ids": {
-                        "type": "array",
-                        "items": {
-                            "type": "integer",
-                            "example": 1
-                        }
-                    },
                     "created_by": {
                         "type": "string",
                         "example": "warehouse_admin"
@@ -3648,18 +5143,20 @@
                         "type": "array",
                         "items": {
                             "required": [
-                                "item_id",
+                                "inbound_item_id",
                                 "destination_bin_id",
                                 "qty"
                             ],
                             "properties": {
-                                "item_id": {
-                                    "type": "integer",
-                                    "example": 10
+                                "inbound_item_id": {
+                                    "type": "string",
+                                    "format": "uuid",
+                                    "example": "550e8400-e29b-41d4-a716-446655440000"
                                 },
                                 "destination_bin_id": {
-                                    "type": "integer",
-                                    "example": 5
+                                    "type": "string",
+                                    "format": "uuid",
+                                    "example": "660e8400-e29b-41d4-a716-446655440001"
                                 },
                                 "qty": {
                                     "type": "integer",
@@ -3682,24 +5179,234 @@
                 },
                 "type": "object"
             },
+            "AutoPutawayRequest": {
+                "required": [
+                    "created_by"
+                ],
+                "properties": {
+                    "created_by": {
+                        "type": "string",
+                        "example": "warehouse_admin"
+                    }
+                },
+                "type": "object"
+            },
+            "InboundItem": {
+                "title": "Inbound Item Schema",
+                "properties": {
+                    "id": {
+                        "description": "UUID primary key — digunakan sebagai QR code label barang",
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
+                    },
+                    "inbound_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
+                    },
+                    "item_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
+                    },
+                    "expected_qty": {
+                        "type": "integer",
+                        "example": 50
+                    },
+                    "received_qty": {
+                        "type": "integer",
+                        "example": 0
+                    },
+                    "putaway_qty": {
+                        "type": "integer",
+                        "example": 0
+                    },
+                    "discrepancy_qty": {
+                        "type": "integer",
+                        "example": 0
+                    },
+                    "discrepancy_note": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "condition": {
+                        "type": "string",
+                        "example": "GOOD",
+                        "enum": [
+                            "GOOD",
+                            "DAMAGE"
+                        ]
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                },
+                "type": "object"
+            },
+            "InboundAssignment": {
+                "title": "Inbound Assignment Schema",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
+                    },
+                    "inbound_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
+                    },
+                    "assigned_to": {
+                        "type": "integer",
+                        "example": 5
+                    },
+                    "assigned_by": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "status": {
+                        "type": "string",
+                        "example": "PENDING",
+                        "enum": [
+                            "PENDING",
+                            "IN_PROGRESS",
+                            "COMPLETED"
+                        ]
+                    },
+                    "notes": {
+                        "type": "string",
+                        "example": "Prioritas tinggi",
+                        "nullable": true
+                    },
+                    "started_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "completed_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "worker": {
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "example": 5
+                            },
+                            "name": {
+                                "type": "string",
+                                "example": "Budi Pekerja"
+                            },
+                            "email": {
+                                "type": "string",
+                                "example": "budi@warehouse.com"
+                            }
+                        },
+                        "type": "object",
+                        "nullable": true
+                    },
+                    "assigner": {
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "example": 1
+                            },
+                            "name": {
+                                "type": "string",
+                                "example": "Admin Gudang"
+                            },
+                            "email": {
+                                "type": "string",
+                                "example": "admin@warehouse.com"
+                            }
+                        },
+                        "type": "object",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "AssignInboundRequest": {
+                "required": [
+                    "assigned_to"
+                ],
+                "properties": {
+                    "assigned_to": {
+                        "description": "User ID pekerja",
+                        "type": "integer",
+                        "example": 5
+                    },
+                    "notes": {
+                        "description": "Catatan untuk pekerja",
+                        "type": "string",
+                        "example": "Prioritas tinggi",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "ScanPutawayRequest": {
+                "required": [
+                    "inbound_item_id",
+                    "bin_id",
+                    "qty"
+                ],
+                "properties": {
+                    "inbound_item_id": {
+                        "description": "Scan 1: UUID dari label barang (= inbound_items.id)",
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
+                    },
+                    "bin_id": {
+                        "description": "Scan 2: UUID dari rak tujuan (= location_bins.id)",
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "660e8400-e29b-41d4-a716-446655440001"
+                    },
+                    "qty": {
+                        "description": "Jumlah barang yang di-putaway",
+                        "type": "integer",
+                        "example": 10
+                    }
+                },
+                "type": "object"
+            },
             "InventoryStock": {
                 "title": "Inventory Stock Schema",
                 "properties": {
                     "id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1
                     },
                     "item_id": {
-                        "type": "integer",
-                        "example": 10
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
                     },
                     "location_id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1
                     },
                     "bin_id": {
-                        "type": "integer",
-                        "example": 1,
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000",
                         "nullable": true
                     },
                     "batch_no": {
@@ -3744,16 +5451,18 @@
                 ],
                 "properties": {
                     "item_id": {
-                        "type": "integer",
-                        "example": 10
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
                     },
                     "location_id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1
                     },
                     "bin_id": {
-                        "type": "integer",
-                        "example": 1,
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000",
                         "nullable": true
                     },
                     "batch_no": {
@@ -3794,20 +5503,23 @@
                 ],
                 "properties": {
                     "item_id": {
-                        "type": "integer",
-                        "example": 10
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
                     },
                     "location_id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1
                     },
                     "source_bin_id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
                     },
                     "destination_bin_id": {
-                        "type": "integer",
-                        "example": 2
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "660e8400-e29b-41d4-a716-446655440001"
                     },
                     "batch_no": {
                         "type": "string",
@@ -3846,25 +5558,28 @@
                 ],
                 "properties": {
                     "item_id": {
-                        "type": "integer",
-                        "example": 10
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
                     },
                     "source_location_id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1
                     },
                     "source_bin_id": {
-                        "type": "integer",
-                        "example": 1,
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000",
                         "nullable": true
                     },
                     "destination_location_id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 2
                     },
                     "destination_bin_id": {
-                        "type": "integer",
-                        "example": 3,
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "660e8400-e29b-41d4-a716-446655440001",
                         "nullable": true
                     },
                     "batch_no": {
@@ -3955,15 +5670,236 @@
                 "title": "Order Schema",
                 "properties": {
                     "id": {
+                        "type": "string",
+                        "example": 1
+                    },
+                    "salesorder_no": {
+                        "type": "string",
+                        "example": "SO-2026-0001"
+                    },
+                    "channel_shop_id": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "customer_name": {
+                        "type": "string",
+                        "example": "John Doe"
+                    },
+                    "transaction_date": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "sub_total": {
+                        "type": "number",
+                        "format": "double",
+                        "example": 100000
+                    },
+                    "total_disc": {
+                        "type": "number",
+                        "format": "double",
+                        "example": 0
+                    },
+                    "total_tax": {
+                        "type": "number",
+                        "format": "double",
+                        "example": 11000
+                    },
+                    "shipping_cost": {
+                        "type": "number",
+                        "format": "double",
+                        "example": 15000
+                    },
+                    "insurance_cost": {
+                        "type": "number",
+                        "format": "double",
+                        "example": 0
+                    },
+                    "grand_total": {
+                        "type": "number",
+                        "format": "double",
+                        "example": 126000
+                    },
+                    "status": {
+                        "type": "string",
+                        "example": "PENDING"
+                    },
+                    "is_paid": {
+                        "type": "boolean",
+                        "example": false
+                    },
+                    "is_canceled": {
+                        "type": "boolean",
+                        "example": false
+                    },
+                    "source": {
+                        "type": "string",
+                        "example": "manual",
+                        "nullable": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                },
+                "type": "object"
+            },
+            "StoreOrderRequest": {
+                "required": [
+                    "salesorder_no",
+                    "customer_name",
+                    "items"
+                ],
+                "properties": {
+                    "salesorder_no": {
+                        "type": "string",
+                        "example": "SO-2026-0001"
+                    },
+                    "customer_name": {
+                        "type": "string",
+                        "example": "John Doe"
+                    },
+                    "channel_shop_id": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "transaction_date": {
+                        "type": "string",
+                        "format": "date",
+                        "nullable": true
+                    },
+                    "sub_total": {
+                        "type": "number",
+                        "nullable": true
+                    },
+                    "grand_total": {
+                        "type": "number",
+                        "nullable": true
+                    },
+                    "source": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "required": [
+                                "sku",
+                                "qty_in_base",
+                                "price"
+                            ],
+                            "properties": {
+                                "sku": {
+                                    "type": "string",
+                                    "example": "LAPTOP-001"
+                                },
+                                "description": {
+                                    "type": "string",
+                                    "nullable": true
+                                },
+                                "qty_in_base": {
+                                    "type": "integer",
+                                    "example": 2
+                                },
+                                "price": {
+                                    "type": "number",
+                                    "example": 7500000
+                                },
+                                "disc": {
+                                    "type": "number",
+                                    "nullable": true
+                                },
+                                "amount": {
+                                    "type": "number",
+                                    "nullable": true
+                                }
+                            },
+                            "type": "object"
+                        }
+                    }
+                },
+                "type": "object"
+            },
+            "OrderItemResource": {
+                "title": "Order Item Resource",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "example": 1
+                    },
+                    "item_id": {
+                        "type": "string",
+                        "example": 5,
+                        "nullable": true
+                    },
+                    "channel_product_id": {
+                        "type": "string",
+                        "example": "TT_PROD_001",
+                        "nullable": true
+                    },
+                    "sku": {
+                        "type": "string",
+                        "example": "SKU-001",
+                        "nullable": true
+                    },
+                    "description": {
+                        "type": "string",
+                        "example": "Produk A",
+                        "nullable": true
+                    },
+                    "qty_in_base": {
                         "type": "integer",
+                        "example": 2
+                    },
+                    "price": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 50000
+                    },
+                    "disc": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 0
+                    },
+                    "disc_amount": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 0
+                    },
+                    "tax_amount": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 5000
+                    },
+                    "amount": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 100000
+                    }
+                },
+                "type": "object"
+            },
+            "OrderResource": {
+                "title": "Order Resource",
+                "properties": {
+                    "id": {
+                        "type": "string",
                         "example": 1
                     },
                     "salesorder_no": {
                         "type": "string",
                         "example": "SO-12345"
                     },
+                    "source": {
+                        "type": "string",
+                        "example": "tiktok"
+                    },
                     "channel_shop_id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1
                     },
                     "customer_name": {
@@ -3975,71 +5911,13 @@
                         "format": "date-time",
                         "example": "2026-06-04T12:00:00Z"
                     },
-                    "sub_total": {
-                        "type": "number",
-                        "format": "float",
-                        "example": 100
-                    },
-                    "total_disc": {
-                        "type": "number",
-                        "format": "float",
-                        "example": 10
-                    },
-                    "total_tax": {
-                        "type": "number",
-                        "format": "float",
-                        "example": 5
-                    },
-                    "shipping_cost": {
-                        "type": "number",
-                        "format": "float",
-                        "example": 15
-                    },
-                    "insurance_cost": {
-                        "type": "number",
-                        "format": "float",
-                        "example": 2
-                    },
-                    "grand_total": {
-                        "type": "number",
-                        "format": "float",
-                        "example": 112
-                    },
-                    "shipping_full_name": {
-                        "type": "string",
-                        "example": "John Doe"
-                    },
-                    "shipping_phone": {
-                        "type": "string",
-                        "example": "+6281234567890"
-                    },
-                    "shipping_address": {
-                        "type": "string",
-                        "example": "Jl. Sudirman No. 1"
-                    },
-                    "shipping_area": {
-                        "type": "string",
-                        "example": "Kebayoran Baru"
-                    },
-                    "shipping_city": {
-                        "type": "string",
-                        "example": "Jakarta Selatan"
-                    },
-                    "shipping_province": {
-                        "type": "string",
-                        "example": "DKI Jakarta"
-                    },
-                    "shipping_post_code": {
-                        "type": "string",
-                        "example": "12190"
-                    },
-                    "shipping_country": {
-                        "type": "string",
-                        "example": "Indonesia"
-                    },
                     "status": {
                         "type": "string",
-                        "example": "pending"
+                        "example": "PENDING"
+                    },
+                    "channel_status": {
+                        "type": "string",
+                        "example": "UNPAID"
                     },
                     "is_paid": {
                         "type": "boolean",
@@ -4049,21 +5927,86 @@
                         "type": "boolean",
                         "example": false
                     },
-                    "cancel_reason": {
-                        "type": "string",
-                        "example": null
-                    },
-                    "channel_status": {
-                        "type": "string",
-                        "example": "new"
-                    },
                     "payment_method": {
                         "type": "string",
-                        "example": "bank_transfer"
+                        "example": null,
+                        "nullable": true
                     },
-                    "source": {
-                        "type": "string",
-                        "example": "api"
+                    "sub_total": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 100000
+                    },
+                    "total_disc": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 10000
+                    },
+                    "total_tax": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 5000
+                    },
+                    "shipping_cost": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 15000
+                    },
+                    "insurance_cost": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 2000
+                    },
+                    "grand_total": {
+                        "type": "number",
+                        "format": "float",
+                        "example": 112000
+                    },
+                    "shipping": {
+                        "properties": {
+                            "full_name": {
+                                "type": "string",
+                                "example": "John Doe",
+                                "nullable": true
+                            },
+                            "phone": {
+                                "type": "string",
+                                "example": "+6281234567890",
+                                "nullable": true
+                            },
+                            "address": {
+                                "type": "string",
+                                "example": "Jl. Sudirman No. 1",
+                                "nullable": true
+                            },
+                            "city": {
+                                "type": "string",
+                                "example": "Jakarta Selatan",
+                                "nullable": true
+                            },
+                            "province": {
+                                "type": "string",
+                                "example": "DKI Jakarta",
+                                "nullable": true
+                            },
+                            "post_code": {
+                                "type": "string",
+                                "example": "12190",
+                                "nullable": true
+                            },
+                            "country": {
+                                "type": "string",
+                                "example": "Indonesia",
+                                "nullable": true
+                            }
+                        },
+                        "type": "object"
+                    },
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/OrderItemResource"
+                        }
                     },
                     "created_at": {
                         "type": "string",
@@ -4074,123 +6017,6 @@
                         "type": "string",
                         "format": "date-time",
                         "example": "2026-06-04T12:00:00Z"
-                    }
-                },
-                "type": "object"
-            },
-            "StoreOrderRequest": {
-                "required": [
-                    "salesorder_no",
-                    "customer_name",
-                    "transaction_date"
-                ],
-                "properties": {
-                    "salesorder_no": {
-                        "type": "string",
-                        "example": "SO-12345"
-                    },
-                    "channel_shop_id": {
-                        "type": "integer",
-                        "example": 1
-                    },
-                    "customer_name": {
-                        "type": "string",
-                        "example": "John Doe"
-                    },
-                    "transaction_date": {
-                        "type": "string",
-                        "format": "date-time",
-                        "example": "2026-06-04T12:00:00Z"
-                    },
-                    "sub_total": {
-                        "type": "number",
-                        "format": "float",
-                        "example": 100
-                    },
-                    "total_disc": {
-                        "type": "number",
-                        "format": "float",
-                        "example": 10
-                    },
-                    "total_tax": {
-                        "type": "number",
-                        "format": "float",
-                        "example": 5
-                    },
-                    "shipping_cost": {
-                        "type": "number",
-                        "format": "float",
-                        "example": 15
-                    },
-                    "insurance_cost": {
-                        "type": "number",
-                        "format": "float",
-                        "example": 2
-                    },
-                    "grand_total": {
-                        "type": "number",
-                        "format": "float",
-                        "example": 112
-                    },
-                    "shipping_full_name": {
-                        "type": "string",
-                        "example": "John Doe"
-                    },
-                    "shipping_phone": {
-                        "type": "string",
-                        "example": "+6281234567890"
-                    },
-                    "shipping_address": {
-                        "type": "string",
-                        "example": "Jl. Sudirman No. 1"
-                    },
-                    "shipping_area": {
-                        "type": "string",
-                        "example": "Kebayoran Baru"
-                    },
-                    "shipping_city": {
-                        "type": "string",
-                        "example": "Jakarta Selatan"
-                    },
-                    "shipping_province": {
-                        "type": "string",
-                        "example": "DKI Jakarta"
-                    },
-                    "shipping_post_code": {
-                        "type": "string",
-                        "example": "12190"
-                    },
-                    "shipping_country": {
-                        "type": "string",
-                        "example": "Indonesia"
-                    },
-                    "status": {
-                        "type": "string",
-                        "example": "pending"
-                    },
-                    "is_paid": {
-                        "type": "boolean",
-                        "example": false
-                    },
-                    "is_canceled": {
-                        "type": "boolean",
-                        "example": false
-                    },
-                    "cancel_reason": {
-                        "type": "string",
-                        "example": null
-                    },
-                    "channel_status": {
-                        "type": "string",
-                        "example": "new"
-                    },
-                    "payment_method": {
-                        "type": "string",
-                        "example": "bank_transfer"
-                    },
-                    "source": {
-                        "type": "string",
-                        "example": "api"
                     }
                 },
                 "type": "object"
@@ -4295,8 +6121,9 @@
                             ],
                             "properties": {
                                 "item_id": {
-                                    "type": "integer",
-                                    "example": 10
+                                    "type": "string",
+                                    "format": "uuid",
+                                    "example": "550e8400-e29b-41d4-a716-446655440000"
                                 },
                                 "qty": {
                                     "type": "integer",
@@ -4375,12 +6202,12 @@
                         "example": 1
                     },
                     "location_id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "018f6b..."
                     },
                     "channel_id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "018f6b..."
                     },
                     "store_id": {
                         "type": "string",
@@ -4415,12 +6242,12 @@
                 ],
                 "properties": {
                     "location_id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "018f6b..."
                     },
                     "channel_id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "018f6b..."
                     },
                     "store_id": {
                         "type": "string",
@@ -4491,48 +6318,6 @@
                     "updated_at": {
                         "type": "string",
                         "format": "date-time"
-                    }
-                },
-                "type": "object"
-            },
-            "StoreLocationBinRequest": {
-                "required": [
-                    "location_id"
-                ],
-                "properties": {
-                    "location_id": {
-                        "type": "integer",
-                        "example": 1
-                    },
-                    "floor_code": {
-                        "type": "string",
-                        "example": "FL-01",
-                        "nullable": true
-                    },
-                    "row_code": {
-                        "type": "string",
-                        "example": "RW-02",
-                        "nullable": true
-                    },
-                    "column_code": {
-                        "type": "string",
-                        "example": "COL-A",
-                        "nullable": true
-                    },
-                    "bin_code": {
-                        "type": "string",
-                        "example": "BIN-100",
-                        "nullable": true
-                    },
-                    "max_qty": {
-                        "type": "integer",
-                        "example": 100,
-                        "nullable": true
-                    },
-                    "is_inbound": {
-                        "type": "boolean",
-                        "example": false,
-                        "nullable": true
                     }
                 },
                 "type": "object"
@@ -4623,6 +6408,72 @@
                     "updated_at": {
                         "type": "string",
                         "format": "date-time"
+                    },
+                    "zones": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/LocationZone"
+                        }
+                    }
+                },
+                "type": "object"
+            },
+            "LocationLayoutRack": {
+                "required": [
+                    "floor_code",
+                    "row_code",
+                    "column_code",
+                    "bin_code",
+                    "bin_final_code"
+                ],
+                "properties": {
+                    "floor_code": {
+                        "type": "string",
+                        "example": "FL1"
+                    },
+                    "row_code": {
+                        "type": "string",
+                        "example": "RW1"
+                    },
+                    "column_code": {
+                        "type": "string",
+                        "example": "C1"
+                    },
+                    "bin_code": {
+                        "type": "string",
+                        "example": "B1"
+                    },
+                    "bin_final_code": {
+                        "type": "string",
+                        "example": "FL1-RW1-C1-B1"
+                    },
+                    "max_qty": {
+                        "type": "integer",
+                        "example": 100
+                    }
+                },
+                "type": "object"
+            },
+            "LocationLayoutZone": {
+                "required": [
+                    "zone_code",
+                    "racks"
+                ],
+                "properties": {
+                    "zone_code": {
+                        "type": "string",
+                        "example": "Z-A"
+                    },
+                    "zone_name": {
+                        "type": "string",
+                        "example": "Zona Kosmetik",
+                        "nullable": true
+                    },
+                    "racks": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/LocationLayoutRack"
+                        }
                     }
                 },
                 "type": "object"
@@ -4705,6 +6556,134 @@
                         "type": "boolean",
                         "example": false,
                         "nullable": true
+                    },
+                    "layout": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/LocationLayoutZone"
+                        },
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "UpdateLocationRequest": {
+                "properties": {
+                    "location_code": {
+                        "type": "string",
+                        "example": "WH-01"
+                    },
+                    "location_name": {
+                        "type": "string",
+                        "example": "Main Warehouse"
+                    },
+                    "location_type": {
+                        "type": "string",
+                        "example": "WAREHOUSE"
+                    },
+                    "address": {
+                        "type": "string",
+                        "example": "Jl. Jenderal Sudirman No. 1",
+                        "nullable": true
+                    },
+                    "area": {
+                        "type": "string",
+                        "example": "Central",
+                        "nullable": true
+                    },
+                    "city": {
+                        "type": "string",
+                        "example": "Jakarta",
+                        "nullable": true
+                    },
+                    "province": {
+                        "type": "string",
+                        "example": "DKI Jakarta",
+                        "nullable": true
+                    },
+                    "post_code": {
+                        "type": "string",
+                        "example": "10220",
+                        "nullable": true
+                    },
+                    "is_warehouse": {
+                        "type": "boolean",
+                        "example": true,
+                        "nullable": true
+                    },
+                    "is_multi_origin": {
+                        "type": "boolean",
+                        "example": false,
+                        "nullable": true
+                    },
+                    "default_warehouse_user": {
+                        "type": "string",
+                        "example": "admin@warehouse.com",
+                        "nullable": true
+                    },
+                    "is_active": {
+                        "type": "boolean",
+                        "example": true,
+                        "nullable": true
+                    },
+                    "is_fbl": {
+                        "type": "boolean",
+                        "example": false,
+                        "nullable": true
+                    },
+                    "is_tcb": {
+                        "type": "boolean",
+                        "example": false,
+                        "nullable": true
+                    },
+                    "is_fbs": {
+                        "type": "boolean",
+                        "example": false,
+                        "nullable": true
+                    },
+                    "layout": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/LocationLayoutZone"
+                        },
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "LocationZone": {
+                "title": "Location Zone Schema",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "location_id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "zone_code": {
+                        "type": "string",
+                        "example": "Z-A"
+                    },
+                    "zone_name": {
+                        "type": "string",
+                        "example": "Zona Makanan",
+                        "nullable": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "bins": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/LocationBin"
+                        }
                     }
                 },
                 "type": "object"
@@ -4784,6 +6763,14 @@
             "description": "API Endpoints for Inbounds"
         },
         {
+            "name": "Inbounds - Assignment",
+            "description": "Admin assign tugas ke pekerja gudang"
+        },
+        {
+            "name": "Inbounds - QR Scan",
+            "description": "Pekerja scan QR barang & lokasi rak untuk putaway"
+        },
+        {
             "name": "Inventory",
             "description": "API Endpoints for Inventory"
         },
@@ -4804,8 +6791,20 @@
             "description": "API Endpoints for Outbounds"
         },
         {
+            "name": "Purchase Orders",
+            "description": "API Endpoints for Purchase Orders"
+        },
+        {
             "name": "Reports",
             "description": "API Endpoints for Reports"
+        },
+        {
+            "name": "Sales Returns",
+            "description": "API Endpoints for Sales Returns"
+        },
+        {
+            "name": "Suppliers",
+            "description": "API Endpoints for Suppliers"
         },
         {
             "name": "Channel Warehouses",
@@ -4818,6 +6817,10 @@
         {
             "name": "Locations",
             "description": "API Endpoints for Warehouse Locations"
+        },
+        {
+            "name": "Location Zones",
+            "description": "API Endpoints for Warehouse Zones"
         },
         {
             "name": "Webhooks",

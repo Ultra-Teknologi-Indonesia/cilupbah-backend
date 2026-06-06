@@ -32,7 +32,8 @@ return new class extends Migration
         Schema::create('sales_return_items', function (Blueprint $table) {
             $table->id();
             $table->foreignId('sales_return_id')->constrained('sales_returns')->cascadeOnDelete();
-            $table->foreignId('item_id')->constrained('products')->restrictOnDelete();
+            $table->uuid('item_id');
+            $table->foreign('item_id')->references('id')->on('products')->onDelete('restrict');
             $table->integer('qty');
             $table->string('condition', 20)->default('GOOD');
             $table->text('notes')->nullable();
