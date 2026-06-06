@@ -19,10 +19,7 @@ class RegionController extends Controller
     public function provinces(): JsonResponse
     {
         $data = $this->regionService->getProvinces();
-        return response()->json([
-            'message' => 'success',
-            'data' => $data
-        ]);
+        return $this->successResponse($data, 'success');
     }
 
     public function cities(Request $request): JsonResponse
@@ -32,10 +29,7 @@ class RegionController extends Controller
         ]);
 
         $data = $this->regionService->getCities($request->query('province_id'));
-        return response()->json([
-            'message' => 'success',
-            'data' => $data
-        ]);
+        return $this->successResponse($data, 'success');
     }
 
     public function districts(Request $request): JsonResponse
@@ -45,10 +39,7 @@ class RegionController extends Controller
         ]);
 
         $data = $this->regionService->getDistricts($request->query('city_id'));
-        return response()->json([
-            'message' => 'success',
-            'data' => $data
-        ]);
+        return $this->successResponse($data, 'success');
     }
 
     public function villages(Request $request): JsonResponse
@@ -58,9 +49,6 @@ class RegionController extends Controller
         ]);
 
         $data = $this->regionService->getVillages($request->query('district_id'));
-        return response()->json([
-            'message' => 'success',
-            'data' => $data
-        ]);
+        return $this->successResponse($data, 'success');
     }
 }
