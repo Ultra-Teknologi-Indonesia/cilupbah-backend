@@ -33,7 +33,8 @@ class StoreUserRequest extends FormRequest
                 'regex:/[@$!%*#?&]/',
                 'confirmed'
             ],
-            'role' => ['required', 'string', 'exists:roles,name'],
+            'roles' => ['required', 'array', 'min:1'],
+            'roles.*' => ['required', 'string', 'exists:roles,name', 'not_in:owner'],
             'nik' => ['nullable', 'string', 'max:255'],
             'warehouse_id' => ['nullable', 'string', 'exists:locations,id'],
         ];
@@ -45,7 +46,8 @@ class StoreUserRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'password.regex' => 'Password harus mengandung setidaknya satu huruf besar, satu huruf kecil, satu angka, dan satu karakter khusus (@$!%*#?&).'
+            'password.regex' => 'Password harus mengandung setidaknya satu huruf besar, satu huruf kecil, satu angka, dan satu karakter khusus (@$!%*#?&).',
+            'roles.*.not_in' => 'Role owner tidak dapat diberikan kepada pengguna baru.'
         ];
     }
 }

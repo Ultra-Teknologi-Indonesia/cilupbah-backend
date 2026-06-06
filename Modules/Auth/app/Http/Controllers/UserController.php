@@ -27,13 +27,13 @@ class UserController extends Controller
         requestBody: new OA\RequestBody(
             required: true,
             content: new OA\JsonContent(
-                required: ['name', 'email', 'password', 'password_confirmation', 'role'],
+                required: ['name', 'email', 'password', 'password_confirmation', 'roles'],
                 properties: [
                     new OA\Property(property: 'name', type: 'string', example: 'John Doe'),
                     new OA\Property(property: 'email', type: 'string', format: 'email', example: 'john@example.com'),
                     new OA\Property(property: 'password', type: 'string', format: 'password', example: 'StrongP@ssw0rd!'),
                     new OA\Property(property: 'password_confirmation', type: 'string', format: 'password', example: 'StrongP@ssw0rd!'),
-                    new OA\Property(property: 'role', type: 'string', example: 'picker'),
+                    new OA\Property(property: 'roles', type: 'array', items: new OA\Items(type: 'string', example: 'picker')),
                     new OA\Property(property: 'nik', type: 'string', nullable: true, example: '3201012345678901'),
                     new OA\Property(property: 'warehouse_id', type: 'string', nullable: true, example: '018f6b...'),
                 ]
@@ -85,13 +85,13 @@ class UserController extends Controller
         requestBody: new OA\RequestBody(
             required: true,
             content: new OA\JsonContent(
-                required: ['name', 'email', 'role'],
+                required: ['name', 'email', 'roles'],
                 properties: [
                     new OA\Property(property: 'name', type: 'string', example: 'John Doe Updated'),
                     new OA\Property(property: 'email', type: 'string', format: 'email', example: 'john.updated@example.com'),
                     new OA\Property(property: 'password', type: 'string', format: 'password', nullable: true, example: 'NewStrongP@ssw0rd!'),
                     new OA\Property(property: 'password_confirmation', type: 'string', format: 'password', nullable: true, example: 'NewStrongP@ssw0rd!'),
-                    new OA\Property(property: 'role', type: 'string', example: 'checker'),
+                    new OA\Property(property: 'roles', type: 'array', items: new OA\Items(type: 'string', example: 'checker')),
                     new OA\Property(property: 'nik', type: 'string', nullable: true, example: '3201012345678901'),
                     new OA\Property(property: 'warehouse_id', type: 'string', nullable: true, example: '018f6b...'),
                 ]

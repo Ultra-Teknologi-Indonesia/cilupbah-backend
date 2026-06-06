@@ -36,10 +36,38 @@ class UpdateUserRequest extends FormRequest
                 'regex:/[@$!%*#?&]/',
                 'confirmed'
             ],
-            'role' => ['required', 'string', 'exists:roles,name'],
+            'roles' => ['required', 'array', 'min:1'],
+            'roles.*' => [
+                'required', 
+                'string', 
+                'exists:roles,name',
+                function ($attribute, $value, $fail) use ($userId) {
+                    // Prevent assigning 'owner' to someone who isn't already the owner
+                    if ($value === 'owner') {
+                        $user = \App\Models\User::find($userId);
+                        if (!$user || !$user->hasRole('owner')) {
+                            $fail('Role owner tidak dapat diberikan atau dipindahkan ke pengguna lain.');
+                        }
+                    }
+                }
+            ],
             'nik' => ['nullable', 'string', 'max:255'],
             'warehouse_id' => ['nullable', 'string', 'exists:locations,id'],
         ];
+    }
+
+    protected function passedValidation()
+    {
+        // If the user being edited IS the owner, force their roles to include 'owner'
+        // so they cannot accidentally remove their own owner role.
+        $user = \App\Models\User::find($this->route('id'));
+        if ($user && $user->hasRole('owner')) {
+            $roles = $this->input('roles', []);
+            if (!in_array('owner', $roles)) {
+                $roles[] = 'owner';
+                $this->merge(['roles' => $roles]);
+            }
+        }
     }
 
     /**

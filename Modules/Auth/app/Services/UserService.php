@@ -22,7 +22,7 @@ class UserService
                 'warehouse_id' => $data['warehouse_id'] ?? null,
             ]);
 
-            $user->assignRole($data['role']);
+            $user->assignRole($data['roles']);
 
             return $user;
         });
@@ -48,7 +48,7 @@ class UserService
             
             $user->save();
 
-            $user->syncRoles([$data['role']]);
+            $user->syncRoles($data['roles']);
 
             return $user;
         });
