@@ -22,33 +22,21 @@ class RegionController extends Controller
         return $this->successResponse($data, 'success');
     }
 
-    public function cities(Request $request): JsonResponse
+    public function cities(Request $request, string $province_id): JsonResponse
     {
-        $request->validate([
-            'province_id' => 'required|string'
-        ]);
-
-        $data = $this->regionService->getCities($request->query('province_id'));
+        $data = $this->regionService->getCities($province_id);
         return $this->successResponse($data, 'success');
     }
 
-    public function districts(Request $request): JsonResponse
+    public function districts(Request $request, string $city_id): JsonResponse
     {
-        $request->validate([
-            'city_id' => 'required|string'
-        ]);
-
-        $data = $this->regionService->getDistricts($request->query('city_id'));
+        $data = $this->regionService->getDistricts($city_id);
         return $this->successResponse($data, 'success');
     }
 
-    public function villages(Request $request): JsonResponse
+    public function villages(Request $request, string $district_id): JsonResponse
     {
-        $request->validate([
-            'district_id' => 'required|string'
-        ]);
-
-        $data = $this->regionService->getVillages($request->query('district_id'));
+        $data = $this->regionService->getVillages($district_id);
         return $this->successResponse($data, 'success');
     }
 }
