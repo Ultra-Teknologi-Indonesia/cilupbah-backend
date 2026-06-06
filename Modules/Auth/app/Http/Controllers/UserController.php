@@ -43,6 +43,31 @@ class UserController extends Controller
         );
     }
 
+    #[OA\Get(
+        path: '/api/v1/users/export',
+        summary: 'Export all users to Excel',
+        security: [['bearerAuth' => []]],
+        tags: ['Users'],
+        parameters: [
+            new OA\Parameter(name: 'filter[role]', in: 'query', description: 'Filter by exact role name', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[warehouse_id]', in: 'query', description: 'Filter by exact warehouse ID', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'search', in: 'query', description: 'Search by name or email', required: false, schema: new OA\Schema(type: 'string'))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Excel file generated'),
+            new OA\Response(response: 401, description: 'Unauthenticated')
+        ]
+    )]
+    public function export()
+    {
+        $query = $this->userService->getExportUsersQuery();
+        
+        return \Maatwebsite\Excel\Facades\Excel::download(
+            new \Modules\Auth\Exports\UsersExport($query),
+            'users_export_' . now()->format('Ymd_His') . '.xlsx'
+        );
+    }
+
     #[OA\Post(
         path: '/api/v1/users',
         summary: 'Create a new user',

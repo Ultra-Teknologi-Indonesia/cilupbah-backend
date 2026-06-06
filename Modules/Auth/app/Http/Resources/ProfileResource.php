@@ -20,6 +20,9 @@ class ProfileResource extends JsonResource
             'email' => $this->email,
             'roles' => $this->roles->pluck('name'),
             'permissions' => $this->getAllPermissions()->pluck('name'),
+            'nik' => $this->nik,
+            'warehouse_id' => $this->warehouse_id,
+            'last_login_at' => $this->last_login_at?->toIso8601String(),
         ];
     }
 }

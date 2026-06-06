@@ -20,6 +20,8 @@ class AuthService
             return null;
         }
 
+        $user->update(['last_login_at' => now()]);
+
         $user->load('roles', 'permissions');
         $token = $user->createToken('auth_token')->plainTextToken;
 

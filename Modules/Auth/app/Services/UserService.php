@@ -27,6 +27,14 @@ class UserService
     }
 
     /**
+     * Get query for user export.
+     */
+    public function getExportUsersQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        return $this->userRepository->getExportUsersQuery();
+    }
+
+    /**
      * Create a new user with assigned role.
      */
     public function createUser(array $data): User
