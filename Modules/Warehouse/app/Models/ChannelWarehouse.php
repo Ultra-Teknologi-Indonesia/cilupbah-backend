@@ -5,8 +5,12 @@ namespace Modules\Warehouse\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+use Modules\Warehouse\Traits\HasUuid7;
+
 class ChannelWarehouse extends Model
 {
+    use HasUuid7;
+
     protected $fillable = [
         'location_id',
         'channel_id',

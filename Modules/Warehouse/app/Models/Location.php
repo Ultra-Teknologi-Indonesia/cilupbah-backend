@@ -6,9 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
+use Modules\Warehouse\Traits\HasUuid7;
+
 class Location extends Model
 {
-    use HasFactory;
+    use HasFactory, HasUuid7;
 
     protected static function newFactory()
     {

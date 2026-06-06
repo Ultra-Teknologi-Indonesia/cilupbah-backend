@@ -6,8 +6,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+use Modules\Warehouse\Traits\HasUuid7;
+
 class LocationZone extends Model
 {
+    use HasUuid7;
+
     protected $fillable = [
         'location_id',
         'zone_code',
