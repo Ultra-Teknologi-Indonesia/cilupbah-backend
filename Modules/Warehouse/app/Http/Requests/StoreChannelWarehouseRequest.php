@@ -15,7 +15,7 @@ class StoreChannelWarehouseRequest extends FormRequest
     {
         return [
             'location_id' => 'required|exists:locations,id',
-            'channel_id' => 'required|integer',
+            'channel_id' => 'required|string',
             'store_id' => 'required|string|max:255',
             'channel_location_id' => 'required|string|max:255',
             'channel_location_type' => 'nullable|string|max:50',

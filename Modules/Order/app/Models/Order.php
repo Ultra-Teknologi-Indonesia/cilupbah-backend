@@ -5,8 +5,11 @@ namespace Modules\Order\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+use App\Traits\HasUuid7;
+
 class Order extends Model
 {
+    use HasUuid7;
     protected $fillable = [
         'salesorder_no',
         'channel_shop_id',

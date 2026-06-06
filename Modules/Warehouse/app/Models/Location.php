@@ -6,9 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
+use App\Traits\HasUuid7;
+
 class Location extends Model
 {
-    use HasFactory;
+    use HasFactory, HasUuid7;
 
     protected static function newFactory()
     {
@@ -50,6 +52,11 @@ class Location extends Model
     public function bins(): HasMany
     {
         return $this->hasMany(LocationBin::class);
+    }
+
+    public function zones(): HasMany
+    {
+        return $this->hasMany(LocationZone::class);
     }
 
     public function inventories(): HasMany

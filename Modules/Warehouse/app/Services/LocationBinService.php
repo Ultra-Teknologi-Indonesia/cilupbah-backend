@@ -27,43 +27,7 @@ class LocationBinService
         return $this->binRepository->getDefaultBin($locationId);
     }
 
-    public function create(array $data): LocationBin
-    {
-        return \Illuminate\Support\Facades\DB::transaction(function () use ($data) {
-            $data['bin_final_code'] = $this->generateFinalCode($data);
-            return $this->binRepository->create($data);
-        });
-    }
-
-    public function update(int $id, array $data): bool
-    {
-        return \Illuminate\Support\Facades\DB::transaction(function () use ($id, $data) {
-            if (isset($data['floor_code']) || isset($data['row_code']) || isset($data['column_code']) || isset($data['bin_code'])) {
-                $bin = $this->binRepository->findById($id);
-                $merged = array_merge($bin->toArray(), $data);
-                $data['bin_final_code'] = $this->generateFinalCode($merged);
-            }
-
-            return $this->binRepository->update($id, $data);
-        });
-    }
-
-    public function delete(int $id): bool
-    {
-        return \Illuminate\Support\Facades\DB::transaction(function () use ($id) {
-            $bin = $this->binRepository->findById($id);
-            if (!$bin) {
-                return false;
-            }
-
-            if ($bin->is_inbound) {
-                throw new \Exception('Bin inbound (default) tidak dapat dihapus.');
-            }
-
-            return $this->binRepository->delete($id);
-        });
-    }
-
+    // Protected methods
     protected function generateFinalCode(array $data): string
     {
         $parts = array_filter([
@@ -76,7 +40,7 @@ class LocationBinService
         return !empty($parts) ? implode('-', $parts) : 'DEFAULT';
     }
 
-    public function massGenerate(int $locationId, array $data): int
+    public function previewMassGenerate(array $data): array
     {
         $floorCode = $data['floor_code'];
         $qtyFloor = $data['qty_floor'];
@@ -88,8 +52,7 @@ class LocationBinService
         $qtyBin = $data['qty_bin'];
         $maxQty = $data['max_qty'] ?? 0;
 
-        $now = now();
-        $insertData = [];
+        $previewData = [];
 
         for ($f = 1; $f <= $qtyFloor; $f++) {
             $fCode = "{$floorCode}{$f}";
@@ -109,27 +72,23 @@ class LocationBinService
 
                         $finalCode = $this->generateFinalCode($binData);
 
-                        $insertData[] = [
-                            'location_id' => $locationId,
+                        $previewData[] = [
                             'floor_code' => $fCode,
                             'row_code' => $rCode,
                             'column_code' => $cCode,
                             'bin_code' => $bCode,
                             'bin_final_code' => $finalCode,
-                            'is_inbound' => false,
                             'max_qty' => $maxQty,
-                            'created_at' => $now,
-                            'updated_at' => $now,
                         ];
                     }
                 }
             }
         }
 
-        if (!empty($insertData)) {
-            LocationBin::insert($insertData);
-        }
-
-        return count($insertData);
+        return [
+            'total_racks' => count($previewData),
+            'preview_samples' => array_slice($previewData, 0, 10), // return top 10 as sample for UI
+            'all_racks' => $previewData
+        ];
     }
 }

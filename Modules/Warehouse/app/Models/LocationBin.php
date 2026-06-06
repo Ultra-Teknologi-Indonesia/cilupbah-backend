@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
+use App\Traits\HasUuid7;
+
 class LocationBin extends Model
 {
     use HasFactory, HasUuids;
@@ -18,6 +20,7 @@ class LocationBin extends Model
 
     protected $fillable = [
         'location_id',
+        'zone_id',
         'floor_code',
         'row_code',
         'column_code',
@@ -34,5 +37,10 @@ class LocationBin extends Model
     public function location(): BelongsTo
     {
         return $this->belongsTo(Location::class);
+    }
+
+    public function zone(): BelongsTo
+    {
+        return $this->belongsTo(LocationZone::class, 'zone_id');
     }
 }

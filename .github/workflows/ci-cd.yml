@@ -62,18 +62,19 @@ jobs:
             set -e
             cd ${{ secrets.DEPLOY_PATH }}
 
-            # ── Rollback: save current commit before pulling ──────────────────
+            # ── Save current commit before pulling ────────────────────────────
             PREVIOUS_COMMIT=$(git rev-parse HEAD)
             echo "Previous commit: $PREVIOUS_COMMIT"
 
-            # ── Rollback handler: restore if anything fails ───────────────────
+            # ── Rollback handler ──────────────────────────────────────────────
             rollback() {
               echo "⚠️  Deployment failed — rolling back to $PREVIOUS_COMMIT"
               git reset --hard "$PREVIOUS_COMMIT"
-              
-              # Rebuild and restart using the previous commit
-              docker compose -f docker-compose.staging.yml up -d --build --remove-orphans
-              
+
+              # Bersihkan semua container dulu sebelum naik kembali
+              docker compose -f docker-compose.staging.yml down --remove-orphans --timeout 30
+              docker compose -f docker-compose.staging.yml up -d --build
+
               echo "✅ Rollback complete"
               exit 1
             }
@@ -83,10 +84,18 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            # ── Rebuild and Restart via Docker Compose ────────────────────────
-            echo "Building and starting container..."
-            docker compose -f docker-compose.staging.yml up -d --build --remove-orphans
+            # ── Rebuild & Restart: down dulu, baru up ────────────────────────
+            echo "Stopping existing containers..."
+            docker compose -f docker-compose.staging.yml down --remove-orphans --timeout 30
 
-            # Deployment succeeded — disarm the rollback trap
+            echo "Building and starting containers..."
+            docker compose -f docker-compose.staging.yml up -d --build
+
+            # ── Health check sederhana ────────────────────────────────────────
+            echo "Waiting for app to be ready..."
+            sleep 5
+            docker compose -f docker-compose.staging.yml ps --filter "status=running" | grep -q "cilupbah-staging" \
+              || { echo "❌ Container not running after deploy!"; exit 1; }
+
             trap - ERR
             echo "✅ Deployment successful"
