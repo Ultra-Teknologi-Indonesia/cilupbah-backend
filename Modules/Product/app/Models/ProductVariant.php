@@ -2,12 +2,12 @@
 
 namespace Modules\Product\Models;
 
-use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 
 class ProductVariant extends Model
 {
-    use HasUuids;
+    use HasUuid7;
     protected $fillable = [
         'product_id',
         'sku',

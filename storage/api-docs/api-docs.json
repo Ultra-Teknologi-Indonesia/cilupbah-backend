@@ -270,7 +270,7 @@
                         "in": "query",
                         "required": false,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -335,7 +335,8 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string",
+                            "format": "uuid"
                         }
                     }
                 ],
@@ -367,7 +368,8 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string",
+                            "format": "uuid"
                         }
                     }
                 ],
@@ -412,7 +414,8 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string",
+                            "format": "uuid"
                         }
                     }
                 ],
@@ -463,7 +466,8 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string",
+                            "format": "uuid"
                         }
                     }
                 ],
@@ -508,7 +512,8 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string",
+                            "format": "uuid"
                         }
                     }
                 ],
@@ -580,7 +585,8 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string",
+                            "format": "uuid"
                         }
                     }
                 ],
@@ -611,7 +617,8 @@
                         "description": "Inbound ID",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string",
+                            "format": "uuid"
                         }
                     }
                 ],
@@ -678,7 +685,8 @@
                         "description": "Inbound ID",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string",
+                            "format": "uuid"
                         }
                     }
                 ],
@@ -789,7 +797,8 @@
                         "description": "Assignment ID",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string",
+                            "format": "uuid"
                         }
                     }
                 ],
@@ -833,14 +842,14 @@
                 "tags": [
                     "Inbounds - QR Scan"
                 ],
-                "summary": "Scan QR — lookup inbound item by UUID",
-                "description": "Pekerja scan QR code pada label barang. Mengembalikan detail item inbound beserta info gudang dan produk.",
+                "summary": "Scan QR — lookup inbound item by UUID primary key",
+                "description": "Pekerja scan QR code pada label barang. UUID pada QR = primary key inbound_items. Mengembalikan detail item inbound beserta info gudang dan produk.",
                 "operationId": "ee0aecef3c41a528e9ea581eb8395ae4",
                 "parameters": [
                     {
                         "name": "qrCode",
                         "in": "path",
-                        "description": "UUID dari QR code label barang",
+                        "description": "UUID primary key inbound item (= QR code label)",
                         "required": true,
                         "schema": {
                             "type": "string",
@@ -890,7 +899,7 @@
                     "Inbounds - QR Scan"
                 ],
                 "summary": "Scan QR barang + scan QR rak → putaway & update inventory",
-                "description": "Pekerja scan 2x: (1) scan QR label barang, (2) scan QR lokasi rak tujuan. Sistem memindahkan stock dari inbound bin ke rak tujuan dan update tabel inventory. Jika semua item sudah putaway, inbound otomatis COMPLETED dan assignment auto-selesai.",
+                "description": "Pekerja scan 2x: (1) scan QR label barang (= inbound_items.id UUID), (2) scan QR lokasi rak (= location_bins.id UUID). Sistem memindahkan stock dari inbound bin ke rak tujuan dan update inventory. Jika semua item sudah putaway, inbound otomatis COMPLETED dan assignment auto-selesai.",
                 "operationId": "d00367aca196b208c814ee37c93bbf44",
                 "requestBody": {
                     "required": true,
@@ -930,7 +939,7 @@
                         "description": "QR rak tidak ditemukan"
                     },
                     "422": {
-                        "description": "Validation Error — qr_code / bin_qr_code bukan UUID"
+                        "description": "Validation Error — inbound_item_id / bin_id bukan UUID"
                     },
                     "500": {
                         "description": "Qty melebihi pending / inbound belum RECEIVED"
@@ -956,7 +965,8 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string",
+                            "format": "uuid"
                         }
                     }
                 ],
@@ -1281,7 +1291,7 @@
                         "description": "ID of the transfer",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -1382,7 +1392,7 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -1771,7 +1781,7 @@
                         "description": "ID of the order",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -2791,7 +2801,7 @@
                         "in": "query",
                         "required": false,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     },
                     {
@@ -2834,11 +2844,11 @@
                                 ],
                                 "properties": {
                                     "supplier_id": {
-                                        "type": "integer",
+                                        "type": "string",
                                         "example": 1
                                     },
                                     "location_id": {
-                                        "type": "integer",
+                                        "type": "string",
                                         "example": 1
                                     },
                                     "order_date": {
@@ -2865,8 +2875,9 @@
                                             ],
                                             "properties": {
                                                 "item_id": {
-                                                    "type": "integer",
-                                                    "example": 1
+                                                    "type": "string",
+                                                    "format": "uuid",
+                                                    "example": "550e8400-e29b-41d4-a716-446655440000"
                                                 },
                                                 "qty": {
                                                     "type": "integer",
@@ -2944,7 +2955,7 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -2974,7 +2985,7 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -3006,7 +3017,7 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -3038,7 +3049,7 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -3065,7 +3076,7 @@
                                             ],
                                             "properties": {
                                                 "purchase_order_item_id": {
-                                                    "type": "integer",
+                                                    "type": "string",
                                                     "example": 1
                                                 },
                                                 "qty": {
@@ -3110,7 +3121,7 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -3415,11 +3426,11 @@
                                 ],
                                 "properties": {
                                     "order_id": {
-                                        "type": "integer",
+                                        "type": "string",
                                         "nullable": true
                                     },
                                     "location_id": {
-                                        "type": "integer",
+                                        "type": "string",
                                         "example": 1
                                     },
                                     "source": {
@@ -3449,8 +3460,9 @@
                                             ],
                                             "properties": {
                                                 "item_id": {
-                                                    "type": "integer",
-                                                    "example": 1
+                                                    "type": "string",
+                                                    "format": "uuid",
+                                                    "example": "550e8400-e29b-41d4-a716-446655440000"
                                                 },
                                                 "qty": {
                                                     "type": "integer",
@@ -3531,7 +3543,7 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -3563,7 +3575,7 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -3614,7 +3626,7 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -3668,7 +3680,7 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -3841,7 +3853,7 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -3871,7 +3883,7 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -3929,7 +3941,7 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -4207,36 +4219,95 @@
                 ]
             }
         },
-        "/api/v1/bins": {
+        "/api/v1/locations/{locationId}/bins/preview": {
             "post": {
                 "tags": [
                     "Location Bins"
                 ],
-                "summary": "Create a new location bin",
-                "operationId": "bd22ebd92b807fc4b050b730dff97274",
+                "summary": "Preview location bins generation",
+                "operationId": "b75febec019dd996cb6a4ddbdf636740",
+                "parameters": [
+                    {
+                        "name": "locationId",
+                        "in": "path",
+                        "description": "ID of the location",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/StoreLocationBinRequest"
+                                "required": [
+                                    "floor_code",
+                                    "qty_floor",
+                                    "row_code",
+                                    "qty_row",
+                                    "column_code",
+                                    "qty_column",
+                                    "bin_code",
+                                    "qty_bin"
+                                ],
+                                "properties": {
+                                    "floor_code": {
+                                        "type": "string",
+                                        "example": "FL"
+                                    },
+                                    "qty_floor": {
+                                        "type": "integer",
+                                        "example": 1
+                                    },
+                                    "row_code": {
+                                        "type": "string",
+                                        "example": "RW"
+                                    },
+                                    "qty_row": {
+                                        "type": "integer",
+                                        "example": 2
+                                    },
+                                    "column_code": {
+                                        "type": "string",
+                                        "example": "C"
+                                    },
+                                    "qty_column": {
+                                        "type": "integer",
+                                        "example": 3
+                                    },
+                                    "bin_code": {
+                                        "type": "string",
+                                        "example": "B"
+                                    },
+                                    "qty_bin": {
+                                        "type": "integer",
+                                        "example": 4
+                                    },
+                                    "max_qty": {
+                                        "type": "integer",
+                                        "example": 100
+                                    }
+                                },
+                                "type": "object"
                             }
                         }
                     }
                 },
                 "responses": {
-                    "201": {
-                        "description": "Bin created successfully",
+                    "200": {
+                        "description": "Preview generated successfully",
                         "content": {
                             "application/json": {
                                 "schema": {
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/components/schemas/LocationBin"
+                                            "type": "object"
                                         },
                                         "message": {
                                             "type": "string",
-                                            "example": "Bin berhasil dibuat."
+                                            "example": "Preview berhasil di-generate"
                                         }
                                     },
                                     "type": "object"
@@ -4249,59 +4320,6 @@
                     },
                     "422": {
                         "description": "Validation Error"
-                    }
-                },
-                "security": [
-                    {
-                        "bearerAuth": []
-                    }
-                ]
-            }
-        },
-        "/api/v1/bins/{id}": {
-            "delete": {
-                "tags": [
-                    "Location Bins"
-                ],
-                "summary": "Delete a location bin",
-                "operationId": "308b8ecae0668e97a6140eb0b7670658",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "description": "ID of the location bin to delete",
-                        "required": true,
-                        "schema": {
-                            "type": "integer"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Bin deleted successfully",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "data": {
-                                            "type": "object",
-                                            "nullable": true
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Bin berhasil dihapus."
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthenticated"
-                    },
-                    "404": {
-                        "description": "Bin tidak ditemukan."
                     }
                 },
                 "security": [
@@ -4486,7 +4504,7 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/StoreLocationRequest"
+                                "$ref": "#/components/schemas/UpdateLocationRequest"
                             }
                         }
                     }
@@ -4571,6 +4589,58 @@
                     },
                     "404": {
                         "description": "Lokasi tidak ditemukan."
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/locations/{locationId}/zones": {
+            "get": {
+                "tags": [
+                    "Location Zones"
+                ],
+                "summary": "Get list of zones for a location",
+                "operationId": "ae6ce26ffb4ba2370e1f608557aefa65",
+                "parameters": [
+                    {
+                        "name": "locationId",
+                        "in": "path",
+                        "description": "ID of the location",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/LocationZone"
+                                            }
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Daftar zona berhasil diambil"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
                     }
                 },
                 "security": [
@@ -4866,11 +4936,12 @@
                 "title": "Inbound Schema",
                 "properties": {
                     "id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
                     },
                     "location_id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1
                     },
                     "transaction_number": {
@@ -4898,7 +4969,7 @@
                         "nullable": true
                     },
                     "source_id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1,
                         "nullable": true
                     },
@@ -4944,7 +5015,7 @@
                 ],
                 "properties": {
                     "location_id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1
                     },
                     "reference_number": {
@@ -4968,7 +5039,7 @@
                         "nullable": true
                     },
                     "source_id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1,
                         "nullable": true
                     },
@@ -4990,8 +5061,9 @@
                             ],
                             "properties": {
                                 "item_id": {
-                                    "type": "integer",
-                                    "example": 10
+                                    "type": "string",
+                                    "format": "uuid",
+                                    "example": "550e8400-e29b-41d4-a716-446655440000"
                                 },
                                 "expected_qty": {
                                     "type": "integer",
@@ -5023,8 +5095,9 @@
                             ],
                             "properties": {
                                 "inbound_item_id": {
-                                    "type": "integer",
-                                    "example": 1
+                                    "type": "string",
+                                    "format": "uuid",
+                                    "example": "550e8400-e29b-41d4-a716-446655440000"
                                 },
                                 "qty": {
                                     "type": "integer",
@@ -5076,12 +5149,14 @@
                             ],
                             "properties": {
                                 "inbound_item_id": {
-                                    "type": "integer",
-                                    "example": 1
+                                    "type": "string",
+                                    "format": "uuid",
+                                    "example": "550e8400-e29b-41d4-a716-446655440000"
                                 },
                                 "destination_bin_id": {
-                                    "type": "integer",
-                                    "example": 5
+                                    "type": "string",
+                                    "format": "uuid",
+                                    "example": "660e8400-e29b-41d4-a716-446655440001"
                                 },
                                 "qty": {
                                     "type": "integer",
@@ -5120,18 +5195,17 @@
                 "title": "Inbound Item Schema",
                 "properties": {
                     "id": {
-                        "type": "integer",
-                        "example": 1
+                        "description": "UUID primary key — digunakan sebagai QR code label barang",
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
                     },
                     "inbound_id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
                     },
                     "item_id": {
-                        "type": "integer",
-                        "example": 10
-                    },
-                    "qr_code": {
                         "type": "string",
                         "format": "uuid",
                         "example": "550e8400-e29b-41d4-a716-446655440000"
@@ -5179,12 +5253,14 @@
                 "title": "Inbound Assignment Schema",
                 "properties": {
                     "id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
                     },
                     "inbound_id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
                     },
                     "assigned_to": {
                         "type": "integer",
@@ -5229,7 +5305,7 @@
                     "worker": {
                         "properties": {
                             "id": {
-                                "type": "integer",
+                                "type": "string",
                                 "example": 5
                             },
                             "name": {
@@ -5247,7 +5323,7 @@
                     "assigner": {
                         "properties": {
                             "id": {
-                                "type": "integer",
+                                "type": "string",
                                 "example": 1
                             },
                             "name": {
@@ -5286,19 +5362,19 @@
             },
             "ScanPutawayRequest": {
                 "required": [
-                    "qr_code",
-                    "bin_qr_code",
+                    "inbound_item_id",
+                    "bin_id",
                     "qty"
                 ],
                 "properties": {
-                    "qr_code": {
-                        "description": "Scan 1: UUID QR code dari label barang",
+                    "inbound_item_id": {
+                        "description": "Scan 1: UUID dari label barang (= inbound_items.id)",
                         "type": "string",
                         "format": "uuid",
                         "example": "550e8400-e29b-41d4-a716-446655440000"
                     },
-                    "bin_qr_code": {
-                        "description": "Scan 2: UUID QR code dari rak tujuan",
+                    "bin_id": {
+                        "description": "Scan 2: UUID dari rak tujuan (= location_bins.id)",
                         "type": "string",
                         "format": "uuid",
                         "example": "660e8400-e29b-41d4-a716-446655440001"
@@ -5315,20 +5391,22 @@
                 "title": "Inventory Stock Schema",
                 "properties": {
                     "id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1
                     },
                     "item_id": {
-                        "type": "integer",
-                        "example": 10
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
                     },
                     "location_id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1
                     },
                     "bin_id": {
-                        "type": "integer",
-                        "example": 1,
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000",
                         "nullable": true
                     },
                     "batch_no": {
@@ -5373,16 +5451,18 @@
                 ],
                 "properties": {
                     "item_id": {
-                        "type": "integer",
-                        "example": 10
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
                     },
                     "location_id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1
                     },
                     "bin_id": {
-                        "type": "integer",
-                        "example": 1,
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000",
                         "nullable": true
                     },
                     "batch_no": {
@@ -5423,20 +5503,23 @@
                 ],
                 "properties": {
                     "item_id": {
-                        "type": "integer",
-                        "example": 10
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
                     },
                     "location_id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1
                     },
                     "source_bin_id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
                     },
                     "destination_bin_id": {
-                        "type": "integer",
-                        "example": 2
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "660e8400-e29b-41d4-a716-446655440001"
                     },
                     "batch_no": {
                         "type": "string",
@@ -5475,25 +5558,28 @@
                 ],
                 "properties": {
                     "item_id": {
-                        "type": "integer",
-                        "example": 10
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000"
                     },
                     "source_location_id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1
                     },
                     "source_bin_id": {
-                        "type": "integer",
-                        "example": 1,
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "550e8400-e29b-41d4-a716-446655440000",
                         "nullable": true
                     },
                     "destination_location_id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 2
                     },
                     "destination_bin_id": {
-                        "type": "integer",
-                        "example": 3,
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "660e8400-e29b-41d4-a716-446655440001",
                         "nullable": true
                     },
                     "batch_no": {
@@ -5584,7 +5670,7 @@
                 "title": "Order Schema",
                 "properties": {
                     "id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1
                     },
                     "salesorder_no": {
@@ -5742,11 +5828,11 @@
                 "title": "Order Item Resource",
                 "properties": {
                     "id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1
                     },
                     "item_id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 5,
                         "nullable": true
                     },
@@ -5801,7 +5887,7 @@
                 "title": "Order Resource",
                 "properties": {
                     "id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1
                     },
                     "salesorder_no": {
@@ -5813,7 +5899,7 @@
                         "example": "tiktok"
                     },
                     "channel_shop_id": {
-                        "type": "integer",
+                        "type": "string",
                         "example": 1
                     },
                     "customer_name": {
@@ -6035,8 +6121,9 @@
                             ],
                             "properties": {
                                 "item_id": {
-                                    "type": "integer",
-                                    "example": 10
+                                    "type": "string",
+                                    "format": "uuid",
+                                    "example": "550e8400-e29b-41d4-a716-446655440000"
                                 },
                                 "qty": {
                                     "type": "integer",
@@ -6115,12 +6202,12 @@
                         "example": 1
                     },
                     "location_id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "018f6b..."
                     },
                     "channel_id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "018f6b..."
                     },
                     "store_id": {
                         "type": "string",
@@ -6155,12 +6242,12 @@
                 ],
                 "properties": {
                     "location_id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "018f6b..."
                     },
                     "channel_id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "018f6b..."
                     },
                     "store_id": {
                         "type": "string",
@@ -6231,48 +6318,6 @@
                     "updated_at": {
                         "type": "string",
                         "format": "date-time"
-                    }
-                },
-                "type": "object"
-            },
-            "StoreLocationBinRequest": {
-                "required": [
-                    "location_id"
-                ],
-                "properties": {
-                    "location_id": {
-                        "type": "integer",
-                        "example": 1
-                    },
-                    "floor_code": {
-                        "type": "string",
-                        "example": "FL-01",
-                        "nullable": true
-                    },
-                    "row_code": {
-                        "type": "string",
-                        "example": "RW-02",
-                        "nullable": true
-                    },
-                    "column_code": {
-                        "type": "string",
-                        "example": "COL-A",
-                        "nullable": true
-                    },
-                    "bin_code": {
-                        "type": "string",
-                        "example": "BIN-100",
-                        "nullable": true
-                    },
-                    "max_qty": {
-                        "type": "integer",
-                        "example": 100,
-                        "nullable": true
-                    },
-                    "is_inbound": {
-                        "type": "boolean",
-                        "example": false,
-                        "nullable": true
                     }
                 },
                 "type": "object"
@@ -6363,6 +6408,72 @@
                     "updated_at": {
                         "type": "string",
                         "format": "date-time"
+                    },
+                    "zones": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/LocationZone"
+                        }
+                    }
+                },
+                "type": "object"
+            },
+            "LocationLayoutRack": {
+                "required": [
+                    "floor_code",
+                    "row_code",
+                    "column_code",
+                    "bin_code",
+                    "bin_final_code"
+                ],
+                "properties": {
+                    "floor_code": {
+                        "type": "string",
+                        "example": "FL1"
+                    },
+                    "row_code": {
+                        "type": "string",
+                        "example": "RW1"
+                    },
+                    "column_code": {
+                        "type": "string",
+                        "example": "C1"
+                    },
+                    "bin_code": {
+                        "type": "string",
+                        "example": "B1"
+                    },
+                    "bin_final_code": {
+                        "type": "string",
+                        "example": "FL1-RW1-C1-B1"
+                    },
+                    "max_qty": {
+                        "type": "integer",
+                        "example": 100
+                    }
+                },
+                "type": "object"
+            },
+            "LocationLayoutZone": {
+                "required": [
+                    "zone_code",
+                    "racks"
+                ],
+                "properties": {
+                    "zone_code": {
+                        "type": "string",
+                        "example": "Z-A"
+                    },
+                    "zone_name": {
+                        "type": "string",
+                        "example": "Zona Kosmetik",
+                        "nullable": true
+                    },
+                    "racks": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/LocationLayoutRack"
+                        }
                     }
                 },
                 "type": "object"
@@ -6445,6 +6556,134 @@
                         "type": "boolean",
                         "example": false,
                         "nullable": true
+                    },
+                    "layout": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/LocationLayoutZone"
+                        },
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "UpdateLocationRequest": {
+                "properties": {
+                    "location_code": {
+                        "type": "string",
+                        "example": "WH-01"
+                    },
+                    "location_name": {
+                        "type": "string",
+                        "example": "Main Warehouse"
+                    },
+                    "location_type": {
+                        "type": "string",
+                        "example": "WAREHOUSE"
+                    },
+                    "address": {
+                        "type": "string",
+                        "example": "Jl. Jenderal Sudirman No. 1",
+                        "nullable": true
+                    },
+                    "area": {
+                        "type": "string",
+                        "example": "Central",
+                        "nullable": true
+                    },
+                    "city": {
+                        "type": "string",
+                        "example": "Jakarta",
+                        "nullable": true
+                    },
+                    "province": {
+                        "type": "string",
+                        "example": "DKI Jakarta",
+                        "nullable": true
+                    },
+                    "post_code": {
+                        "type": "string",
+                        "example": "10220",
+                        "nullable": true
+                    },
+                    "is_warehouse": {
+                        "type": "boolean",
+                        "example": true,
+                        "nullable": true
+                    },
+                    "is_multi_origin": {
+                        "type": "boolean",
+                        "example": false,
+                        "nullable": true
+                    },
+                    "default_warehouse_user": {
+                        "type": "string",
+                        "example": "admin@warehouse.com",
+                        "nullable": true
+                    },
+                    "is_active": {
+                        "type": "boolean",
+                        "example": true,
+                        "nullable": true
+                    },
+                    "is_fbl": {
+                        "type": "boolean",
+                        "example": false,
+                        "nullable": true
+                    },
+                    "is_tcb": {
+                        "type": "boolean",
+                        "example": false,
+                        "nullable": true
+                    },
+                    "is_fbs": {
+                        "type": "boolean",
+                        "example": false,
+                        "nullable": true
+                    },
+                    "layout": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/LocationLayoutZone"
+                        },
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "LocationZone": {
+                "title": "Location Zone Schema",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "location_id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "zone_code": {
+                        "type": "string",
+                        "example": "Z-A"
+                    },
+                    "zone_name": {
+                        "type": "string",
+                        "example": "Zona Makanan",
+                        "nullable": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "bins": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/LocationBin"
+                        }
                     }
                 },
                 "type": "object"
@@ -6578,6 +6817,10 @@
         {
             "name": "Locations",
             "description": "API Endpoints for Warehouse Locations"
+        },
+        {
+            "name": "Location Zones",
+            "description": "API Endpoints for Warehouse Zones"
         },
         {
             "name": "Webhooks",

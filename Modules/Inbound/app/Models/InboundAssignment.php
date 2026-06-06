@@ -3,13 +3,13 @@
 namespace Modules\Inbound\Models;
 
 use App\Models\User;
-use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class InboundAssignment extends Model
 {
-    use HasUuids;
+    use HasUuid7;
 
     const STATUS_PENDING    = 'PENDING';
     const STATUS_IN_PROGRESS = 'IN_PROGRESS';

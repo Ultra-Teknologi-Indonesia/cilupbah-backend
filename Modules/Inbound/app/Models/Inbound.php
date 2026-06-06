@@ -2,7 +2,7 @@
 
 namespace Modules\Inbound\Models;
 
-use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,7 +10,7 @@ use Modules\Warehouse\Models\Location;
 
 class Inbound extends Model
 {
-    use HasUuids;
+    use HasUuid7;
     const TYPE_PURCHASE_ORDER = 'PURCHASE_ORDER';
     const TYPE_SALES_RETURN   = 'SALES_RETURN';
     const TYPE_TRANSIT_IN     = 'TRANSIT_IN';

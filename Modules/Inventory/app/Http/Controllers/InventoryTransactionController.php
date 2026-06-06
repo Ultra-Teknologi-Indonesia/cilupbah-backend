@@ -17,7 +17,7 @@ use OpenApi\Attributes as OA;
     type: 'object',
     properties: [
         new OA\Property(property: 'item_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
-        new OA\Property(property: 'location_id', type: 'integer', example: 1),
+        new OA\Property(property: 'location_id', type: 'string', example: 1),
         new OA\Property(property: 'bin_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000', nullable: true),
         new OA\Property(property: 'batch_no', type: 'string', example: 'BATCH-001', nullable: true),
         new OA\Property(property: 'serial_no', type: 'string', example: 'SN-001', nullable: true),
@@ -32,7 +32,7 @@ use OpenApi\Attributes as OA;
     type: 'object',
     properties: [
         new OA\Property(property: 'item_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
-        new OA\Property(property: 'location_id', type: 'integer', example: 1),
+        new OA\Property(property: 'location_id', type: 'string', example: 1),
         new OA\Property(property: 'source_bin_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
         new OA\Property(property: 'destination_bin_id', type: 'string', format: 'uuid', example: '660e8400-e29b-41d4-a716-446655440001'),
         new OA\Property(property: 'batch_no', type: 'string', example: 'BATCH-001', nullable: true),
@@ -48,9 +48,9 @@ use OpenApi\Attributes as OA;
     type: 'object',
     properties: [
         new OA\Property(property: 'item_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
-        new OA\Property(property: 'source_location_id', type: 'integer', example: 1),
+        new OA\Property(property: 'source_location_id', type: 'string', example: 1),
         new OA\Property(property: 'source_bin_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000', nullable: true),
-        new OA\Property(property: 'destination_location_id', type: 'integer', example: 2),
+        new OA\Property(property: 'destination_location_id', type: 'string', example: 2),
         new OA\Property(property: 'destination_bin_id', type: 'string', format: 'uuid', example: '660e8400-e29b-41d4-a716-446655440001', nullable: true),
         new OA\Property(property: 'batch_no', type: 'string', example: 'BATCH-001', nullable: true),
         new OA\Property(property: 'serial_no', type: 'string', example: 'SN-001', nullable: true),
@@ -140,7 +140,7 @@ class InventoryTransactionController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inventory Transactions'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the transfer', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the transfer', schema: new OA\Schema(type: 'string'))
         ],
         requestBody: new OA\RequestBody(
             required: true,
@@ -203,7 +203,7 @@ class InventoryTransactionController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inventory Transactions'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(response: 200, description: 'Detail transfer.'),

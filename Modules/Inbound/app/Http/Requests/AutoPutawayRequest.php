@@ -14,7 +14,7 @@ class AutoPutawayRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'location_id' => ['required', 'integer', 'exists:locations,id'],
+            'location_id' => ['required', 'string', 'exists:locations,id'],
             'inbound_ids' => ['required', 'array'],
             'inbound_ids.*' => ['uuid'],
             'created_by' => ['required', 'string', 'max:100'],

@@ -14,8 +14,8 @@ class StoreSalesReturnRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'order_id'           => ['nullable', 'integer', 'exists:orders,id'],
-            'location_id'        => ['required', 'integer', 'exists:locations,id'],
+            'order_id'           => ['nullable', 'string', 'exists:orders,id'],
+            'location_id'        => ['required', 'string', 'exists:locations,id'],
             'source'             => ['nullable', 'string', 'in:manual,marketplace'],
             'customer_name'      => ['nullable', 'string', 'max:255'],
             'customer_contact'   => ['nullable', 'string', 'max:255'],

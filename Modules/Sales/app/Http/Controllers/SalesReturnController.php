@@ -64,7 +64,7 @@ class SalesReturnController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Returns'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),
@@ -90,8 +90,8 @@ class SalesReturnController extends Controller
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
             required: ['location_id', 'created_by', 'items'],
             properties: [
-                new OA\Property(property: 'order_id', type: 'integer', nullable: true),
-                new OA\Property(property: 'location_id', type: 'integer', example: 1),
+                new OA\Property(property: 'order_id', type: 'string', nullable: true),
+                new OA\Property(property: 'location_id', type: 'string', example: 1),
                 new OA\Property(property: 'source', type: 'string', enum: ['manual', 'marketplace'], example: 'manual'),
                 new OA\Property(property: 'customer_name', type: 'string'),
                 new OA\Property(property: 'reason', type: 'string'),
@@ -127,7 +127,7 @@ class SalesReturnController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Returns'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
             required: ['processed_by'],
@@ -158,7 +158,7 @@ class SalesReturnController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Returns'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
             required: ['processed_by'],
@@ -193,7 +193,7 @@ class SalesReturnController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Returns'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
             required: ['processed_by'],

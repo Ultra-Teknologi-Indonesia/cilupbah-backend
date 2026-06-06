@@ -23,12 +23,12 @@ use OpenApi\Attributes as OA;
     type: 'object',
     properties: [
         new OA\Property(property: 'id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
-        new OA\Property(property: 'location_id', type: 'integer', example: 1),
+        new OA\Property(property: 'location_id', type: 'string', example: 1),
         new OA\Property(property: 'transaction_number', type: 'string', example: 'INB-20260604-0001'),
         new OA\Property(property: 'reference_number', type: 'string', example: 'PO-2026-0001', nullable: true),
         new OA\Property(property: 'type', type: 'string', enum: ['PURCHASE_ORDER', 'SALES_RETURN', 'TRANSIT_IN', 'CONSIGNMENT'], example: 'PURCHASE_ORDER'),
         new OA\Property(property: 'source_type', type: 'string', example: 'purchase_order', nullable: true),
-        new OA\Property(property: 'source_id', type: 'integer', example: 1, nullable: true),
+        new OA\Property(property: 'source_id', type: 'string', example: 1, nullable: true),
         new OA\Property(property: 'status', type: 'string', enum: ['DRAFT', 'PARTIAL', 'RECEIVED', 'PUTAWAY_IN_PROGRESS', 'COMPLETED', 'CANCELLED'], example: 'DRAFT'),
         new OA\Property(property: 'expected_date', type: 'string', format: 'date-time', example: '2026-06-05T00:00:00Z'),
         new OA\Property(property: 'created_by', type: 'string', example: 'admin'),
@@ -41,11 +41,11 @@ use OpenApi\Attributes as OA;
     required: ['location_id', 'type', 'expected_date', 'created_by', 'items'],
     type: 'object',
     properties: [
-        new OA\Property(property: 'location_id', type: 'integer', example: 1),
+        new OA\Property(property: 'location_id', type: 'string', example: 1),
         new OA\Property(property: 'reference_number', type: 'string', example: 'PO-2026-0001', nullable: true),
         new OA\Property(property: 'type', type: 'string', enum: ['PURCHASE_ORDER', 'SALES_RETURN', 'TRANSIT_IN', 'CONSIGNMENT'], example: 'PURCHASE_ORDER'),
         new OA\Property(property: 'source_type', type: 'string', example: 'purchase_order', nullable: true),
-        new OA\Property(property: 'source_id', type: 'integer', example: 1, nullable: true),
+        new OA\Property(property: 'source_id', type: 'string', example: 1, nullable: true),
         new OA\Property(property: 'expected_date', type: 'string', format: 'date', example: '2026-06-05'),
         new OA\Property(property: 'created_by', type: 'string', example: 'admin'),
         new OA\Property(
@@ -153,7 +153,7 @@ use OpenApi\Attributes as OA;
             property: 'worker',
             type: 'object',
             properties: [
-                new OA\Property(property: 'id', type: 'integer', example: 5),
+                new OA\Property(property: 'id', type: 'string', example: 5),
                 new OA\Property(property: 'name', type: 'string', example: 'Budi Pekerja'),
                 new OA\Property(property: 'email', type: 'string', example: 'budi@warehouse.com'),
             ],
@@ -163,7 +163,7 @@ use OpenApi\Attributes as OA;
             property: 'assigner',
             type: 'object',
             properties: [
-                new OA\Property(property: 'id', type: 'integer', example: 1),
+                new OA\Property(property: 'id', type: 'string', example: 1),
                 new OA\Property(property: 'name', type: 'string', example: 'Admin Gudang'),
                 new OA\Property(property: 'email', type: 'string', example: 'admin@warehouse.com'),
             ],
@@ -205,7 +205,7 @@ class InboundController extends Controller
             new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
             new OA\Parameter(name: 'filter[status]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[type]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
-            new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
+            new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),

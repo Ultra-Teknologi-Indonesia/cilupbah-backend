@@ -11,8 +11,8 @@ use OpenApi\Attributes as OA;
     title: 'Order Item Resource',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'integer', example: 1),
-        new OA\Property(property: 'item_id', type: 'integer', nullable: true, example: 5),
+        new OA\Property(property: 'id', type: 'string', example: 1),
+        new OA\Property(property: 'item_id', type: 'string', nullable: true, example: 5),
         new OA\Property(property: 'channel_product_id', type: 'string', nullable: true, example: 'TT_PROD_001'),
         new OA\Property(property: 'sku', type: 'string', nullable: true, example: 'SKU-001'),
         new OA\Property(property: 'description', type: 'string', nullable: true, example: 'Produk A'),

@@ -4,9 +4,12 @@ namespace Modules\Purchase\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\HasUuid7;
 
 class PurchaseOrderItem extends Model
 {
+    use HasUuid7;
+
     protected $fillable = [
         'purchase_order_id',
         'item_id',

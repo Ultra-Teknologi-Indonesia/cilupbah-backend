@@ -14,8 +14,8 @@ class TransferOutRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'source_location_id'          => ['required', 'integer', 'exists:locations,id'],
-            'destination_location_id'     => ['required', 'integer', 'exists:locations,id', 'different:source_location_id'],
+            'source_location_id'          => ['required', 'string', 'exists:locations,id'],
+            'destination_location_id'     => ['required', 'string', 'exists:locations,id', 'different:source_location_id'],
             'notes'                       => ['nullable', 'string'],
             'created_by'                  => ['required', 'string', 'max:100'],
             'items'                       => ['required', 'array', 'min:1'],

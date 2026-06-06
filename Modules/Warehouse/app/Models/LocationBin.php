@@ -2,16 +2,14 @@
 
 namespace Modules\Warehouse\Models;
 
-use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
-use App\Traits\HasUuid7;
-
 class LocationBin extends Model
 {
-    use HasFactory, HasUuids;
+    use HasFactory, HasUuid7;
 
     protected static function newFactory()
     {

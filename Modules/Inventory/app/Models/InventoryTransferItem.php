@@ -5,9 +5,12 @@ namespace Modules\Inventory\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\Warehouse\Models\LocationBin;
+use App\Traits\HasUuid7;
 
 class InventoryTransferItem extends Model
 {
+    use HasUuid7;
+
     protected $fillable = [
         'inventory_transfer_id',
         'item_id',

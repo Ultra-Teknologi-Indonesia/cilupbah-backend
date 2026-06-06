@@ -6,9 +6,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Warehouse\Models\Location;
+use App\Traits\HasUuid7;
 
 class InventoryTransfer extends Model
 {
+    use HasUuid7;
+
     protected $fillable = [
         'transfer_number',
         'source_location_id',

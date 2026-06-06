@@ -7,9 +7,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Supplier\Models\Supplier;
 use Modules\Warehouse\Models\Location;
+use App\Traits\HasUuid7;
 
 class PurchaseOrder extends Model
 {
+    use HasUuid7;
+
     protected $fillable = [
         'po_number',
         'supplier_id',

@@ -15,8 +15,8 @@ class StorePurchaseOrderRequest extends FormRequest
     {
         return [
             'po_number'            => ['nullable', 'string', 'max:50', 'unique:purchase_orders,po_number'],
-            'supplier_id'          => ['required', 'integer', 'exists:suppliers,id'],
-            'location_id'          => ['required', 'integer', 'exists:locations,id'],
+            'supplier_id'          => ['required', 'string', 'exists:suppliers,id'],
+            'location_id'          => ['required', 'string', 'exists:locations,id'],
             'order_date'           => ['required', 'date'],
             'expected_date'        => ['nullable', 'date', 'after_or_equal:order_date'],
             'payment_term'         => ['nullable', 'string', 'max:50'],

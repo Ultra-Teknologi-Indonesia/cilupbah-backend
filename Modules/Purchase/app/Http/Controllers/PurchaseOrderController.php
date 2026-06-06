@@ -25,7 +25,7 @@ class PurchaseOrderController extends Controller
         parameters: [
             new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
             new OA\Parameter(name: 'filter[status]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
-            new OA\Parameter(name: 'filter[supplier_id]', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
+            new OA\Parameter(name: 'filter[supplier_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[search]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
@@ -66,7 +66,7 @@ class PurchaseOrderController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Purchase Orders'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),
@@ -92,8 +92,8 @@ class PurchaseOrderController extends Controller
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
             required: ['supplier_id', 'location_id', 'order_date', 'created_by', 'items'],
             properties: [
-                new OA\Property(property: 'supplier_id', type: 'integer', example: 1),
-                new OA\Property(property: 'location_id', type: 'integer', example: 1),
+                new OA\Property(property: 'supplier_id', type: 'string', example: 1),
+                new OA\Property(property: 'location_id', type: 'string', example: 1),
                 new OA\Property(property: 'order_date', type: 'string', format: 'date', example: '2026-06-06'),
                 new OA\Property(property: 'expected_date', type: 'string', format: 'date', example: '2026-06-13'),
                 new OA\Property(property: 'created_by', type: 'string', example: 'admin'),
@@ -128,7 +128,7 @@ class PurchaseOrderController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Purchase Orders'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(response: 200, description: 'PO berhasil diapprove'),
@@ -151,7 +151,7 @@ class PurchaseOrderController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Purchase Orders'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
             required: ['received_by', 'items'],
@@ -160,7 +160,7 @@ class PurchaseOrderController extends Controller
                 new OA\Property(property: 'items', type: 'array', items: new OA\Items(
                     required: ['purchase_order_item_id', 'qty'],
                     properties: [
-                        new OA\Property(property: 'purchase_order_item_id', type: 'integer', example: 1),
+                        new OA\Property(property: 'purchase_order_item_id', type: 'string', example: 1),
                         new OA\Property(property: 'qty', type: 'integer', example: 50),
                     ]
                 )),
@@ -187,7 +187,7 @@ class PurchaseOrderController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Purchase Orders'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(response: 200, description: 'PO berhasil dibatalkan'),
@@ -210,7 +210,7 @@ class PurchaseOrderController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Purchase Orders'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(response: 200, description: 'PO berhasil dihapus'),
