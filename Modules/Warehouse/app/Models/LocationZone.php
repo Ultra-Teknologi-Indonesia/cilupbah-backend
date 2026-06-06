@@ -4,23 +4,27 @@ namespace Modules\Warehouse\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 use Modules\Warehouse\Traits\HasUuid7;
 
-class ChannelWarehouse extends Model
+class LocationZone extends Model
 {
     use HasUuid7;
 
     protected $fillable = [
         'location_id',
-        'channel_id',
-        'store_id',
-        'channel_location_id',
-        'channel_location_type',
+        'zone_code',
+        'zone_name',
     ];
 
     public function location(): BelongsTo
     {
         return $this->belongsTo(Location::class);
+    }
+
+    public function bins(): HasMany
+    {
+        return $this->hasMany(LocationBin::class, 'zone_id');
     }
 }
