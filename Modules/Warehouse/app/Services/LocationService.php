@@ -5,6 +5,8 @@ namespace Modules\Warehouse\Services;
 use Modules\Warehouse\Repositories\LocationRepository;
 use Modules\Warehouse\Repositories\LocationBinRepository;
 use Modules\Warehouse\Models\Location;
+use Modules\Warehouse\Models\LocationZone;
+use Modules\Warehouse\Models\LocationBin;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -37,15 +39,91 @@ class LocationService
                 'is_inbound' => true,
             ]);
 
-            return $location->load('bins');
+            if (!empty($data['layout']) && is_array($data['layout'])) {
+                $this->syncLayout($location->id, $data['layout']);
+            }
+
+            return $location->load(['bins', 'zones.bins']);
         });
     }
 
     public function update(int $id, array $data): bool
     {
         return DB::transaction(function () use ($id, $data) {
-            return $this->locationRepository->update($id, $data);
+            $updated = $this->locationRepository->update($id, $data);
+
+            if (isset($data['layout']) && is_array($data['layout'])) {
+                $this->syncLayout($id, $data['layout']);
+            }
+
+            return $updated;
         });
+    }
+
+    protected function syncLayout(int $locationId, array $layout): void
+    {
+        $incomingZoneCodes = array_column($layout, 'zone_code');
+
+        // Delete zones that are not in the layout
+        $zonesToDelete = LocationZone::where('location_id', $locationId)
+            ->whereNotIn('zone_code', $incomingZoneCodes)
+            ->get();
+            
+        foreach ($zonesToDelete as $zone) {
+            $zone->delete(); // this will cascade delete bins if DB cascade is set, or we can manually delete
+            LocationBin::where('zone_id', $zone->id)->delete();
+        }
+
+        $now = now();
+
+        foreach ($layout as $zoneData) {
+            $zoneCode = $zoneData['zone_code'];
+            
+            // Check if zone exists
+            $existingZone = LocationZone::where('location_id', $locationId)
+                ->where('zone_code', $zoneCode)
+                ->first();
+
+            if (!$existingZone) {
+                // Create new zone
+                $newZone = LocationZone::create([
+                    'location_id' => $locationId,
+                    'zone_code' => $zoneCode,
+                    'zone_name' => $zoneData['zone_name'] ?? null,
+                ]);
+
+                // Insert racks
+                if (!empty($zoneData['racks']) && is_array($zoneData['racks'])) {
+                    $insertData = [];
+                    foreach ($zoneData['racks'] as $rack) {
+                        $insertData[] = [
+                            'location_id' => $locationId,
+                            'zone_id' => $newZone->id,
+                            'floor_code' => $rack['floor_code'],
+                            'row_code' => $rack['row_code'],
+                            'column_code' => $rack['column_code'],
+                            'bin_code' => $rack['bin_code'],
+                            'bin_final_code' => $rack['bin_final_code'],
+                            'max_qty' => $rack['max_qty'] ?? 0,
+                            'is_inbound' => false,
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ];
+                    }
+
+                    if (!empty($insertData)) {
+                        LocationBin::insert($insertData);
+                    }
+                }
+            } else {
+                // If zone exists, update its name if changed
+                if (isset($zoneData['zone_name']) && $existingZone->zone_name !== $zoneData['zone_name']) {
+                    $existingZone->update(['zone_name' => $zoneData['zone_name']]);
+                }
+                
+                // Note: Racks inside existing zones are strictly untouched per business rules.
+            }
+        }
     }
 
     public function delete(int $id): bool

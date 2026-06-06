@@ -52,6 +52,11 @@ class Location extends Model
         return $this->hasMany(LocationBin::class);
     }
 
+    public function zones(): HasMany
+    {
+        return $this->hasMany(LocationZone::class);
+    }
+
     public function inventories(): HasMany
     {
         return $this->hasMany(\Modules\Inventory\Models\Inventory::class);

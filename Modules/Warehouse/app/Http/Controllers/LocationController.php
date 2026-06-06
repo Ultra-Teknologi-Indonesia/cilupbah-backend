@@ -36,6 +36,30 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'is_fbs', type: 'boolean', example: false, nullable: true),
         new OA\Property(property: 'created_at', type: 'string', format: 'date-time'),
         new OA\Property(property: 'updated_at', type: 'string', format: 'date-time'),
+        new OA\Property(property: 'zones', type: 'array', items: new OA\Items(ref: '#/components/schemas/LocationZone')),
+    ]
+)]
+#[OA\Schema(
+    schema: 'LocationLayoutRack',
+    type: 'object',
+    required: ['floor_code', 'row_code', 'column_code', 'bin_code', 'bin_final_code'],
+    properties: [
+        new OA\Property(property: 'floor_code', type: 'string', example: 'FL1'),
+        new OA\Property(property: 'row_code', type: 'string', example: 'RW1'),
+        new OA\Property(property: 'column_code', type: 'string', example: 'C1'),
+        new OA\Property(property: 'bin_code', type: 'string', example: 'B1'),
+        new OA\Property(property: 'bin_final_code', type: 'string', example: 'FL1-RW1-C1-B1'),
+        new OA\Property(property: 'max_qty', type: 'integer', example: 100),
+    ]
+)]
+#[OA\Schema(
+    schema: 'LocationLayoutZone',
+    type: 'object',
+    required: ['zone_code', 'racks'],
+    properties: [
+        new OA\Property(property: 'zone_code', type: 'string', example: 'Z-A'),
+        new OA\Property(property: 'zone_name', type: 'string', example: 'Zona Kosmetik', nullable: true),
+        new OA\Property(property: 'racks', type: 'array', items: new OA\Items(ref: '#/components/schemas/LocationLayoutRack')),
     ]
 )]
 #[OA\Schema(
@@ -58,6 +82,29 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'is_fbl', type: 'boolean', example: false, nullable: true),
         new OA\Property(property: 'is_tcb', type: 'boolean', example: false, nullable: true),
         new OA\Property(property: 'is_fbs', type: 'boolean', example: false, nullable: true),
+        new OA\Property(property: 'layout', type: 'array', items: new OA\Items(ref: '#/components/schemas/LocationLayoutZone'), nullable: true),
+    ]
+)]
+#[OA\Schema(
+    schema: 'UpdateLocationRequest',
+    type: 'object',
+    properties: [
+        new OA\Property(property: 'location_code', type: 'string', example: 'WH-01'),
+        new OA\Property(property: 'location_name', type: 'string', example: 'Main Warehouse'),
+        new OA\Property(property: 'location_type', type: 'string', example: 'WAREHOUSE'),
+        new OA\Property(property: 'address', type: 'string', example: 'Jl. Jenderal Sudirman No. 1', nullable: true),
+        new OA\Property(property: 'area', type: 'string', example: 'Central', nullable: true),
+        new OA\Property(property: 'city', type: 'string', example: 'Jakarta', nullable: true),
+        new OA\Property(property: 'province', type: 'string', example: 'DKI Jakarta', nullable: true),
+        new OA\Property(property: 'post_code', type: 'string', example: '10220', nullable: true),
+        new OA\Property(property: 'is_warehouse', type: 'boolean', example: true, nullable: true),
+        new OA\Property(property: 'is_multi_origin', type: 'boolean', example: false, nullable: true),
+        new OA\Property(property: 'default_warehouse_user', type: 'string', example: 'admin@warehouse.com', nullable: true),
+        new OA\Property(property: 'is_active', type: 'boolean', example: true, nullable: true),
+        new OA\Property(property: 'is_fbl', type: 'boolean', example: false, nullable: true),
+        new OA\Property(property: 'is_tcb', type: 'boolean', example: false, nullable: true),
+        new OA\Property(property: 'is_fbs', type: 'boolean', example: false, nullable: true),
+        new OA\Property(property: 'layout', type: 'array', items: new OA\Items(ref: '#/components/schemas/LocationLayoutZone'), nullable: true),
     ]
 )]
 class LocationController extends Controller
@@ -175,7 +222,7 @@ class LocationController extends Controller
         ],
         requestBody: new OA\RequestBody(
             required: true,
-            content: new OA\JsonContent(ref: '#/components/schemas/StoreLocationRequest')
+            content: new OA\JsonContent(ref: '#/components/schemas/UpdateLocationRequest')
         ),
         responses: [
             new OA\Response(
