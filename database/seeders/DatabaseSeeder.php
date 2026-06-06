@@ -21,7 +21,7 @@ class DatabaseSeeder extends Seeder
             'name' => 'Test User',
             'email' => 'test@example.com',
         ]);
-
+        $this->call(\Modules\Region\Database\Seeders\RegionDatabaseSeeder::class);
         $this->call(\Modules\Channel\Database\Seeders\ChannelDatabaseSeeder::class);
     }
 }
