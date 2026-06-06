@@ -20,13 +20,7 @@ class RegionController extends Controller
         $data = $this->regionService->getProvinces();
         return response()->json([
             'message' => 'success',
-            'data' => $data->items(),
-            'meta' => [
-                'current_page' => $data->currentPage(),
-                'last_page' => $data->lastPage(),
-                'per_page' => $data->perPage(),
-                'total' => $data->total()
-            ]
+            'data' => $data
         ]);
     }
 
@@ -35,13 +29,7 @@ class RegionController extends Controller
         $data = $this->regionService->getCities();
         return response()->json([
             'message' => 'success',
-            'data' => $data->items(),
-            'meta' => [
-                'current_page' => $data->currentPage(),
-                'last_page' => $data->lastPage(),
-                'per_page' => $data->perPage(),
-                'total' => $data->total()
-            ]
+            'data' => $data
         ]);
     }
 
@@ -50,13 +38,7 @@ class RegionController extends Controller
         $data = $this->regionService->getDistricts();
         return response()->json([
             'message' => 'success',
-            'data' => $data->items(),
-            'meta' => [
-                'current_page' => $data->currentPage(),
-                'last_page' => $data->lastPage(),
-                'per_page' => $data->perPage(),
-                'total' => $data->total()
-            ]
+            'data' => $data
         ]);
     }
 
@@ -65,13 +47,7 @@ class RegionController extends Controller
         $data = $this->regionService->getVillages();
         return response()->json([
             'message' => 'success',
-            'data' => $data->items(),
-            'meta' => [
-                'current_page' => $data->currentPage(),
-                'last_page' => $data->lastPage(),
-                'per_page' => $data->perPage(),
-                'total' => $data->total()
-            ]
+            'data' => $data
         ]);
     }
 }

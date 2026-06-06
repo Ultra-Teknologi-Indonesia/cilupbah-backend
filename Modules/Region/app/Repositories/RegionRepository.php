@@ -20,8 +20,7 @@ class RegionRepository
             ->allowedSearch('nama')
             ->allowedSorts('id', 'nama')
             ->defaultSort('id')
-            ->paginate(request('per_page', 10))
-            ->appends(request()->query());
+            ->get();
     }
 
     public function getCities()
@@ -33,8 +32,7 @@ class RegionRepository
             )
             ->allowedSorts('id', 'nama', 'province_id')
             ->defaultSort('id')
-            ->paginate(request('per_page', 10))
-            ->appends(request()->query());
+            ->get();
     }
 
     public function getDistricts()
@@ -46,8 +44,7 @@ class RegionRepository
             )
             ->allowedSorts('id', 'nama', 'city_id')
             ->defaultSort('id')
-            ->paginate(request('per_page', 10))
-            ->appends(request()->query());
+            ->get();
     }
 
     public function getVillages()
@@ -59,7 +56,6 @@ class RegionRepository
             )
             ->allowedSorts('id', 'nama', 'district_id')
             ->defaultSort('id')
-            ->paginate(request('per_page', 10))
-            ->appends(request()->query());
+            ->get();
     }
 }
