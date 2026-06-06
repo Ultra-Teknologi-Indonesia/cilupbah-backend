@@ -7,11 +7,16 @@ use Illuminate\Http\JsonResponse;
 use App\Models\Role;
 use App\Traits\ApiResponse;
 use OpenApi\Attributes as OA;
+use Modules\Auth\Services\RoleService;
 
 #[OA\Tag(name: 'Roles', description: 'Role Management Endpoints')]
 class RoleController extends Controller
 {
     use ApiResponse;
+
+    public function __construct(
+        protected RoleService $roleService
+    ) {}
 
     #[OA\Get(
         path: '/api/v1/roles',
@@ -44,7 +49,7 @@ class RoleController extends Controller
     )]
     public function index(): JsonResponse
     {
-        $roles = Role::select('id', 'name')->get();
+        $roles = $this->roleService->getAllRoles();
 
         return $this->successResponse($roles, 'Daftar role berhasil dimuat.');
     }

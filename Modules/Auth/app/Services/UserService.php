@@ -2,19 +2,29 @@
 
 namespace Modules\Auth\Services;
 
-use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
+use Modules\Auth\Repositories\UserRepository;
+use Modules\Auth\Repositories\UserHistoryRepository;
+use App\Models\User;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
 
 class UserService
 {
+    public function __construct(
+        protected UserRepository $userRepository,
+        protected UserHistoryRepository $historyRepository
+    ) {}
+
     /**
      * Create a new user with assigned role.
      */
     public function createUser(array $data): User
     {
         return DB::transaction(function () use ($data) {
-            $user = User::create([
+            $user = $this->userRepository->create([
                 'name' => $data['name'],
                 'email' => $data['email'],
                 'password' => Hash::make($data['password']),
@@ -34,23 +44,68 @@ class UserService
     public function updateUser(string $id, array $data): User
     {
         return DB::transaction(function () use ($id, $data) {
-            $user = User::findOrFail($id);
+            $user = $this->userRepository->findById($id);
 
-            $user->name = $data['name'];
-            $user->email = $data['email'];
-            
+            $updateData = [
+                'name' => $data['name'],
+                'email' => $data['email'],
+                'nik' => $data['nik'] ?? null,
+                'warehouse_id' => $data['warehouse_id'] ?? null,
+            ];
+
             if (isset($data['password']) && !empty($data['password'])) {
-                $user->password = Hash::make($data['password']);
+                $updateData['password'] = Hash::make($data['password']);
             }
 
-            $user->nik = $data['nik'] ?? null;
-            $user->warehouse_id = $data['warehouse_id'] ?? null;
-            
-            $user->save();
+            $this->userRepository->update($user, $updateData);
 
             $user->syncRoles($data['roles']);
 
             return $user;
         });
+    }
+
+    /**
+     * Force logout a specific user.
+     */
+    public function forceLogout(string $id): void
+    {
+        $user = $this->userRepository->findById($id);
+        
+        $this->userRepository->deleteTokens($user);
+
+        $this->historyRepository->createHistory([
+            'actor_id' => Auth::id(),
+            'target_user_id' => $user->id,
+            'action' => 'force_logged_out',
+        ]);
+    }
+
+    /**
+     * Bulk force logout multiple users.
+     */
+    public function bulkForceLogout(array $userIds): void
+    {
+        $actorId = Auth::id();
+        $users = $this->userRepository->findByIds($userIds);
+
+        foreach ($users as $user) {
+            $this->userRepository->deleteTokens($user);
+
+            $this->historyRepository->createHistory([
+                'actor_id' => $actorId,
+                'target_user_id' => $user->id,
+                'action' => 'force_logged_out',
+            ]);
+        }
+    }
+
+    /**
+     * Get paginated user histories.
+     */
+    public function getUserHistories(string $userId): LengthAwarePaginator|Collection
+    {
+        $user = $this->userRepository->findById($userId);
+        return $this->historyRepository->getHistoriesByUserId($user->id);
     }
 }

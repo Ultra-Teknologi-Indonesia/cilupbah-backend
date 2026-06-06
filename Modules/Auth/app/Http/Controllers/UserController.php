@@ -174,16 +174,10 @@ class UserController extends Controller
     )]
     public function histories(string $id): JsonResponse
     {
-        $user = \App\Models\User::findOrFail($id);
-        
-        $histories = \App\Models\UserHistory::with('actor')
-            ->where('target_user_id', $user->id)
-            ->orderBy('created_at', 'desc')
-            ->get();
+        $histories = $this->userService->getUserHistories($id);
 
-        return $this->successResponse(
-            \App\Http\Resources\UserHistoryResource::collection($histories), 
-            'Riwayat pengguna berhasil dimuat.'
+        return $this->successPaginatedResponse(
+            \App\Http\Resources\UserHistoryResource::collection($histories)
         );
     }
 
@@ -218,15 +212,7 @@ class UserController extends Controller
     )]
     public function forceLogout(string $id): JsonResponse
     {
-        $user = \App\Models\User::findOrFail($id);
-        
-        $user->tokens()->delete();
-
-        \App\Models\UserHistory::create([
-            'actor_id' => \Illuminate\Support\Facades\Auth::id(),
-            'target_user_id' => $user->id,
-            'action' => 'force_logged_out',
-        ]);
+        $this->userService->forceLogout($id);
 
         return $this->successResponse(null, 'Sesi pengguna berhasil diputus.');
     }
@@ -267,20 +253,7 @@ class UserController extends Controller
             'user_ids.*' => ['required', 'string', 'exists:users,id'],
         ]);
 
-        $actorId = \Illuminate\Support\Facades\Auth::id();
-
-        foreach ($validated['user_ids'] as $userId) {
-            $user = \App\Models\User::find($userId);
-            if ($user) {
-                $user->tokens()->delete();
-
-                \App\Models\UserHistory::create([
-                    'actor_id' => $actorId,
-                    'target_user_id' => $user->id,
-                    'action' => 'force_logged_out',
-                ]);
-            }
-        }
+        $this->userService->bulkForceLogout($validated['user_ids']);
 
         return $this->successResponse(null, 'Sesi pengguna yang dipilih berhasil diputus.');
     }

@@ -4,12 +4,17 @@ namespace Modules\Auth\Services;
 
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
+use Modules\Auth\Repositories\UserRepository;
 
 class AuthService
 {
+    public function __construct(
+        protected UserRepository $userRepository
+    ) {}
+
     public function login(array $credentials): ?array
     {
-        $user = User::where('email', $credentials['email'])->first();
+        $user = $this->userRepository->findByEmail($credentials['email']);
 
         if (! $user || ! Hash::check($credentials['password'], $user->password)) {
             return null;
