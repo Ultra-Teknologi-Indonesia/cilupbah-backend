@@ -72,7 +72,7 @@ jobs:
               git reset --hard "$PREVIOUS_COMMIT"
               
               # Rebuild and restart using the previous commit
-              docker compose -f docker-compose.staging.yml up -d --build --remove-orphans
+              docker compose -f docker-compose.staging.yml up -d --build --remove-orphans --force-recreate
               
               echo "✅ Rollback complete"
               exit 1
@@ -85,7 +85,7 @@ jobs:
 
             # ── Rebuild and Restart via Docker Compose ────────────────────────
             echo "Building and starting container..."
-            docker compose -f docker-compose.staging.yml up -d --build --remove-orphans
+            docker compose -f docker-compose.staging.yml up -d --build --remove-orphans --force-recreate
 
             # Deployment succeeded — disarm the rollback trap
             trap - ERR
