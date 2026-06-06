@@ -5,13 +5,20 @@ namespace Modules\Auth\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
-use App\Models\User;
+use Modules\Auth\Services\AuthService;
+use Modules\Auth\Http\Resources\ProfileResource;
+use App\Traits\ApiResponse;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Auth', description: 'Authentication API Endpoints')]
 class AuthController extends Controller
 {
+    use ApiResponse;
+
+    public function __construct(
+        protected AuthService $authService
+    ) {}
+
     #[OA\Post(
         path: '/api/v1/auth/login',
         summary: 'Login user and get access token',
@@ -32,8 +39,12 @@ class AuthController extends Controller
                 description: 'Successful login',
                 content: new OA\JsonContent(
                     properties: [
-                        new OA\Property(property: 'access_token', type: 'string', example: '1|xyz...'),
-                        new OA\Property(property: 'token_type', type: 'string', example: 'Bearer')
+                        new OA\Property(property: 'status', type: 'string', example: 'success'),
+                        new OA\Property(property: 'message', type: 'string', example: 'Login successful'),
+                        new OA\Property(property: 'data', type: 'object', properties: [
+                            new OA\Property(property: 'access_token', type: 'string', example: '1|xyz...'),
+                            new OA\Property(property: 'token_type', type: 'string', example: 'Bearer')
+                        ])
                     ]
                 )
             ),
@@ -42,34 +53,22 @@ class AuthController extends Controller
     )]
     public function login(Request $request): JsonResponse
     {
-        $request->validate([
+        $credentials = $request->validate([
             'email' => 'required|email',
             'password' => 'required',
         ]);
 
-        $user = User::where('email', $request->email)->first();
+        $data = $this->authService->login($credentials);
 
-        if (! $user || ! Hash::check($request->password, $user->password)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Invalid credentials',
-            ], 401);
+        if (! $data) {
+            return $this->errorResponse('Invalid credentials', 401);
         }
 
-        $token = $user->createToken('auth_token')->plainTextToken;
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Login successful',
-            'data' => [
-                'access_token' => $token,
-                'token_type' => 'Bearer',
-            ]
-        ]);
+        return $this->successResponse($data, 'Login successful');
     }
 
     #[OA\Get(
-        path: '/api/v1/auth/me',
+        path: '/api/v1/profile',
         summary: 'Get current authenticated user profile',
         security: [['bearerAuth' => []]],
         tags: ['Auth'],
@@ -79,12 +78,14 @@ class AuthController extends Controller
                 description: 'Successful operation',
                 content: new OA\JsonContent(
                     properties: [
-                        new OA\Property(property: 'success', type: 'boolean', example: true),
+                        new OA\Property(property: 'status', type: 'string', example: 'success'),
+                        new OA\Property(property: 'message', type: 'string', example: 'User profile retrieved'),
                         new OA\Property(property: 'data', type: 'object', properties: [
                             new OA\Property(property: 'id', type: 'string', example: '018f6b...'),
                             new OA\Property(property: 'name', type: 'string', example: 'Test User'),
                             new OA\Property(property: 'email', type: 'string', example: 'test@example.com'),
-                            new OA\Property(property: 'roles', type: 'array', items: new OA\Items(type: 'string', example: 'admin'))
+                            new OA\Property(property: 'roles', type: 'array', items: new OA\Items(type: 'string', example: 'admin')),
+                            new OA\Property(property: 'permissions', type: 'array', items: new OA\Items(type: 'string', example: 'create-user'))
                         ])
                     ]
                 )
@@ -92,21 +93,11 @@ class AuthController extends Controller
             new OA\Response(response: 401, description: 'Unauthenticated')
         ]
     )]
-    public function me(Request $request): JsonResponse
+    public function profile(Request $request): JsonResponse
     {
-        $user = $request->user()->load('roles', 'permissions');
+        $profile = $this->authService->getProfile($request->user());
 
-        return response()->json([
-            'success' => true,
-            'message' => 'User profile retrieved',
-            'data' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'roles' => $user->roles->pluck('name'),
-                'permissions' => $user->getAllPermissions()->pluck('name'),
-            ]
-        ]);
+        return $this->successResponse(new ProfileResource($profile), 'User profile retrieved');
     }
 
     #[OA\Post(
@@ -120,8 +111,9 @@ class AuthController extends Controller
                 description: 'Successful logout',
                 content: new OA\JsonContent(
                     properties: [
-                        new OA\Property(property: 'success', type: 'boolean', example: true),
-                        new OA\Property(property: 'message', type: 'string', example: 'Logged out successfully')
+                        new OA\Property(property: 'status', type: 'string', example: 'success'),
+                        new OA\Property(property: 'message', type: 'string', example: 'Logged out successfully'),
+                        new OA\Property(property: 'data', type: 'object', nullable: true)
                     ]
                 )
             ),
@@ -130,11 +122,8 @@ class AuthController extends Controller
     )]
     public function logout(Request $request): JsonResponse
     {
-        $request->user()->currentAccessToken()->delete();
+        $this->authService->logout($request->user());
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Logged out successfully'
-        ]);
+        return $this->successResponse(null, 'Logged out successfully');
     }
 }
