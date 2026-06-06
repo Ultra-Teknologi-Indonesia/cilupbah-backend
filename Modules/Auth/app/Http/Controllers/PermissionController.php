@@ -1,0 +1,55 @@
+<?php
+
+namespace Modules\Auth\Http\Controllers;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
+use App\Traits\ApiResponse;
+use Modules\Auth\Services\PermissionService;
+use OpenApi\Attributes as OA;
+
+#[OA\Tag(name: 'Permissions', description: 'Permission Management Endpoints')]
+class PermissionController extends Controller
+{
+    use ApiResponse;
+
+    public function __construct(
+        protected PermissionService $permissionService
+    ) {}
+
+    #[OA\Get(
+        path: '/api/v1/permissions',
+        summary: 'Get all available permissions',
+        security: [['bearerAuth' => []]],
+        tags: ['Permissions'],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'List of permissions retrieved successfully',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'status', type: 'string', example: 'success'),
+                        new OA\Property(property: 'message', type: 'string', example: 'Daftar hak akses berhasil dimuat.'),
+                        new OA\Property(
+                            property: 'data',
+                            type: 'array',
+                            items: new OA\Items(
+                                properties: [
+                                    new OA\Property(property: 'id', type: 'string', example: '018f6b...'),
+                                    new OA\Property(property: 'name', type: 'string', example: 'create-user')
+                                ]
+                            )
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: 'Unauthenticated')
+        ]
+    )]
+    public function index(): JsonResponse
+    {
+        $permissions = $this->permissionService->getAllPermissions();
+
+        return $this->successResponse($permissions, 'Daftar hak akses berhasil dimuat.');
+    }
+}

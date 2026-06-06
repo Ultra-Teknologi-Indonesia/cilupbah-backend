@@ -3,38 +3,86 @@
 namespace Modules\Auth\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Auth\Services\AuthService;
+use Modules\Auth\Http\Resources\ProfileResource;
+use App\Traits\ApiResponse;
 use OpenApi\Attributes as OA;
 
-#[OA\Tag(name: 'Auth', description: 'API Endpoints for Authentication')]
-#[OA\Schema(
-    schema: 'Auth',
-    title: 'Auth Schema',
-    type: 'object',
-    properties: [
-        new OA\Property(property: 'id', type: 'integer', example: 1),
-        new OA\Property(property: 'user_id', type: 'integer', example: 1),
-        new OA\Property(property: 'token', type: 'string', example: '1|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'),
-        new OA\Property(property: 'device_name', type: 'string', example: 'Android Default Device'),
-        new OA\Property(property: 'created_at', type: 'string', format: 'date-time', example: '2026-06-04T12:00:00Z'),
-        new OA\Property(property: 'updated_at', type: 'string', format: 'date-time', example: '2026-06-04T12:00:00Z'),
-    ]
-)]
-#[OA\Schema(
-    schema: 'StoreAuthRequest',
-    required: ['email', 'password'],
-    type: 'object',
-    properties: [
-        new OA\Property(property: 'email', type: 'string', format: 'email', example: 'admin@example.com'),
-        new OA\Property(property: 'password', type: 'string', format: 'password', example: 'secret'),
-        new OA\Property(property: 'device_name', type: 'string', example: 'Web Browser', nullable: true)
-    ]
-)]
+#[OA\Tag(name: 'Auth', description: 'Authentication API Endpoints')]
 class AuthController extends Controller
 {
+    use ApiResponse;
+
+    public function __construct(
+        protected AuthService $authService
+    ) {}
+
+    #[OA\Post(
+        path: '/api/v1/auth/login',
+        summary: 'Login user and get access token',
+        tags: ['Auth'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['email', 'password'],
+                properties: [
+                    new OA\Property(property: 'email', type: 'string', format: 'email', example: 'test@example.com'),
+                    new OA\Property(property: 'password', type: 'string', format: 'password', example: 'password'),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Successful login',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'status', type: 'string', example: 'success'),
+                        new OA\Property(property: 'message', type: 'string', example: 'Berhasil masuk. Selamat datang kembali!'),
+                        new OA\Property(property: 'data', type: 'object', properties: [
+                            new OA\Property(property: 'access_token', type: 'string', example: '1|xyz...'),
+                            new OA\Property(property: 'token_type', type: 'string', example: 'Bearer'),
+                            new OA\Property(property: 'user', type: 'object', properties: [
+                                new OA\Property(property: 'id', type: 'string', example: '018f6b...'),
+                                new OA\Property(property: 'name', type: 'string', example: 'Test User'),
+                                new OA\Property(property: 'email', type: 'string', example: 'test@example.com'),
+                                new OA\Property(property: 'roles', type: 'array', items: new OA\Items(type: 'string', example: 'admin')),
+                                new OA\Property(property: 'permissions', type: 'array', items: new OA\Items(type: 'string', example: 'create-user'))
+                            ])
+                        ])
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: 'Email atau kata sandi yang Anda masukkan salah.')
+        ]
+    )]
+    public function login(Request $request): JsonResponse
+    {
+        $credentials = $request->validate([
+            'email' => 'required|email',
+            'password' => 'required',
+        ]);
+
+        $data = $this->authService->login($credentials);
+
+        if (! $data) {
+            return $this->errorResponse('Email atau kata sandi yang Anda masukkan salah.', 401);
+        }
+
+        $responseData = [
+            'access_token' => $data['access_token'],
+            'token_type'   => $data['token_type'],
+            'user'         => new ProfileResource($data['user']),
+        ];
+
+        return $this->successResponse($responseData, 'Berhasil masuk. Selamat datang kembali!');
+    }
+
     #[OA\Get(
-        path: '/api/v1/auths',
-        summary: 'Get list of active sessions',
+        path: '/api/v1/profile',
+        summary: 'Get current authenticated user profile',
         security: [['bearerAuth' => []]],
         tags: ['Auth'],
         responses: [
@@ -43,121 +91,52 @@ class AuthController extends Controller
                 description: 'Successful operation',
                 content: new OA\JsonContent(
                     properties: [
-                        new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/Auth'))
+                        new OA\Property(property: 'status', type: 'string', example: 'success'),
+                        new OA\Property(property: 'message', type: 'string', example: 'Profil berhasil dimuat.'),
+                        new OA\Property(property: 'data', type: 'object', properties: [
+                            new OA\Property(property: 'id', type: 'string', example: '018f6b...'),
+                            new OA\Property(property: 'name', type: 'string', example: 'Test User'),
+                            new OA\Property(property: 'email', type: 'string', example: 'test@example.com'),
+                            new OA\Property(property: 'roles', type: 'array', items: new OA\Items(type: 'string', example: 'admin')),
+                            new OA\Property(property: 'permissions', type: 'array', items: new OA\Items(type: 'string', example: 'create-user'))
+                        ])
                     ]
                 )
             ),
             new OA\Response(response: 401, description: 'Unauthenticated')
         ]
     )]
-    public function index()
+    public function profile(Request $request): JsonResponse
     {
-        return view('auth::index');
-    }
+        $profile = $this->authService->getProfile($request->user());
 
-    public function create()
-    {
-        return view('auth::create');
+        return $this->successResponse(new ProfileResource($profile), 'Profil berhasil dimuat.');
     }
 
     #[OA\Post(
-        path: '/api/v1/auths',
-        summary: 'Create a new authentication session (Login)',
+        path: '/api/v1/auth/logout',
+        summary: 'Logout user and revoke access token',
         security: [['bearerAuth' => []]],
         tags: ['Auth'],
-        requestBody: new OA\RequestBody(
-            required: true,
-            content: new OA\JsonContent(ref: '#/components/schemas/StoreAuthRequest')
-        ),
-        responses: [
-            new OA\Response(
-                response: 201,
-                description: 'Authentication successful',
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: 'data', ref: '#/components/schemas/Auth')
-                    ]
-                )
-            ),
-            new OA\Response(response: 422, description: 'Validation Error')
-        ]
-    )]
-    public function store(Request $request) {}
-
-    #[OA\Get(
-        path: '/api/v1/auths/{auth}',
-        summary: 'Get authentication session details',
-        security: [['bearerAuth' => []]],
-        tags: ['Auth'],
-        parameters: [
-            new OA\Parameter(name: 'auth', in: 'path', required: true, description: 'ID of the auth session', schema: new OA\Schema(type: 'integer'))
-        ],
         responses: [
             new OA\Response(
                 response: 200,
-                description: 'Successful operation',
+                description: 'Successful logout',
                 content: new OA\JsonContent(
                     properties: [
-                        new OA\Property(property: 'data', ref: '#/components/schemas/Auth')
+                        new OA\Property(property: 'status', type: 'string', example: 'success'),
+                        new OA\Property(property: 'message', type: 'string', example: 'Anda telah berhasil keluar.'),
+                        new OA\Property(property: 'data', type: 'object', nullable: true)
                     ]
                 )
             ),
-            new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 404, description: 'Session not found')
+            new OA\Response(response: 401, description: 'Unauthenticated')
         ]
     )]
-    public function show($id)
+    public function logout(Request $request): JsonResponse
     {
-        return view('auth::show');
+        $this->authService->logout($request->user());
+
+        return $this->successResponse(null, 'Anda telah berhasil keluar.');
     }
-
-    public function edit($id)
-    {
-        return view('auth::edit');
-    }
-
-    #[OA\Put(
-        path: '/api/v1/auths/{auth}',
-        summary: 'Update an existing authentication session',
-        security: [['bearerAuth' => []]],
-        tags: ['Auth'],
-        parameters: [
-            new OA\Parameter(name: 'auth', in: 'path', required: true, description: 'ID of the auth session to update', schema: new OA\Schema(type: 'integer'))
-        ],
-        requestBody: new OA\RequestBody(
-            required: true,
-            content: new OA\JsonContent(ref: '#/components/schemas/StoreAuthRequest')
-        ),
-        responses: [
-            new OA\Response(
-                response: 200,
-                description: 'Session updated successfully',
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: 'data', ref: '#/components/schemas/Auth')
-                    ]
-                )
-            ),
-            new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 404, description: 'Session not found'),
-            new OA\Response(response: 422, description: 'Validation Error')
-        ]
-    )]
-    public function update(Request $request, $id) {}
-
-    #[OA\Delete(
-        path: '/api/v1/auths/{auth}',
-        summary: 'Delete an authentication session (Logout)',
-        security: [['bearerAuth' => []]],
-        tags: ['Auth'],
-        parameters: [
-            new OA\Parameter(name: 'auth', in: 'path', required: true, description: 'ID of the auth session to delete', schema: new OA\Schema(type: 'integer'))
-        ],
-        responses: [
-            new OA\Response(response: 200, description: 'Logout successful'),
-            new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 404, description: 'Session not found')
-        ]
-    )]
-    public function destroy($id) {}
 }
