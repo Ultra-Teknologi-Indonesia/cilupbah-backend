@@ -34,13 +34,8 @@ class InventoryServiceProvider extends ModuleServiceProvider
         RouteServiceProvider::class,
     ];
 
-    /**
-     * Define module schedules.
-     * 
-     * @param $schedule
-     */
-    // protected function configureSchedules(Schedule $schedule): void
-    // {
-    //     $schedule->command('inspire')->hourly();
-    // }
+    protected function configureSchedules(Schedule $schedule): void
+    {
+        $schedule->job(new \Modules\Inventory\Jobs\ReleaseExpiredReservationsJob)->hourly();
+    }
 }

@@ -257,6 +257,18 @@ return [
             'memory' => 128,
             'nice' => 0,
         ],
+        'supervisor-stock' => [
+            'connection' => 'redis',
+            'queue' => ['stock-critical', 'stock-default'],
+            'balance' => 'simple',
+            'minProcesses' => 2,
+            'maxProcesses' => 5,
+            'timeout' => 60,
+            'tries' => 3,
+            'backoff' => [3, 10, 30],
+            'memory' => 128,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
@@ -282,6 +294,10 @@ return [
                 'minProcesses' => 1,
                 'maxProcesses' => 3,
             ],
+            'supervisor-stock' => [
+                'minProcesses' => 2,
+                'maxProcesses' => 5,
+            ],
         ],
 
         'staging' => [
@@ -306,6 +322,10 @@ return [
                 'minProcesses' => 1,
                 'maxProcesses' => 2,
             ],
+            'supervisor-stock' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 3,
+            ],
         ],
 
         'local' => [
@@ -327,6 +347,10 @@ return [
             'supervisor-failed-jobs' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 1,
+            ],
+            'supervisor-stock' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 2,
             ],
         ],
     ],
