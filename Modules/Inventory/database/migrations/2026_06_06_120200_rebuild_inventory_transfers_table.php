@@ -29,11 +29,11 @@ return new class extends Migration
         Schema::create('inventory_transfer_items', function (Blueprint $table) {
             $table->id();
             $table->foreignId('inventory_transfer_id')->constrained('inventory_transfers')->cascadeOnDelete();
-            $table->foreignId('item_id')->constrained('product_variants')->restrictOnDelete();
+            $table->foreignUuid('item_id')->constrained('product_variants')->restrictOnDelete();
             $table->integer('qty');
             $table->integer('received_qty')->default(0);
-            $table->foreignId('source_bin_id')->nullable()->constrained('location_bins')->nullOnDelete();
-            $table->foreignId('destination_bin_id')->nullable()->constrained('location_bins')->nullOnDelete();
+            $table->foreignUuid('source_bin_id')->nullable()->constrained('location_bins')->nullOnDelete();
+            $table->foreignUuid('destination_bin_id')->nullable()->constrained('location_bins')->nullOnDelete();
             $table->string('batch_no', 100)->default('');
             $table->string('serial_no', 100)->default('');
             $table->timestamps();
