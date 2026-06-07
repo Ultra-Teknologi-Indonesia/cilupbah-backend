@@ -82,4 +82,19 @@ class CategoryController extends Controller
             return $this->errorResponse($e->getMessage(), 400);
         }
     }
+
+    public function mapChannel(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'channel_category_ids' => 'required|array',
+            'channel_category_ids.*' => 'required|uuid|exists:channel_categories,id',
+        ]);
+
+        try {
+            $category = $this->categoryService->mapToChannel($id, $validated['channel_category_ids']);
+            return $this->successResponse(new CategoryResource($category), 'Berhasil memetakan kategori ke channel');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 500);
+        }
+    }
 }

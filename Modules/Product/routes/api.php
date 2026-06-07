@@ -7,12 +7,20 @@ use Modules\Product\Http\Controllers\MediaController;
 use Modules\Product\Http\Controllers\CategoryController;
 use Modules\Product\Http\Controllers\BrandController;
 use Modules\Product\Http\Controllers\AttributeController;
+use Modules\Product\Http\Controllers\ChannelCategoryController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::apiResource('products', ProductController::class)->names('product');
+    
+    // Master Data
     Route::apiResource('categories', CategoryController::class)->names('category');
+    Route::post('categories/{category}/map-channel', [CategoryController::class, 'mapChannel']);
+    
     Route::apiResource('brands', BrandController::class)->names('brand');
     Route::apiResource('attributes', AttributeController::class)->names('attribute');
+    
+    // Channel Categories
+    Route::get('channels/{channel}/categories', [ChannelCategoryController::class, 'index']);
 
     // General Media Upload Endpoint
     Route::post('media/upload', [MediaController::class, 'upload']);

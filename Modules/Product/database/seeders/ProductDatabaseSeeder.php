@@ -13,6 +13,7 @@ class ProductDatabaseSeeder extends Seeder
             BrandSeeder::class,
             AttributeSeeder::class,
             CategoryAttributeSeeder::class,
+            ChannelCategorySeeder::class,
         ]);
     }
 }

@@ -40,4 +40,10 @@ class Category extends Model
             ->withPivot('is_required')
             ->withTimestamps();
     }
+
+    public function channelCategories(): BelongsToMany
+    {
+        return $this->belongsToMany(ChannelCategory::class, 'category_channel_mappings')
+            ->withTimestamps();
+    }
 }
