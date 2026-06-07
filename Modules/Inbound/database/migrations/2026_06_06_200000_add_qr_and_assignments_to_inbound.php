@@ -11,9 +11,9 @@ return new class extends Migration
         Schema::create('inbound_assignments', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->foreignId('inbound_id')->constrained('inbounds')->cascadeOnDelete();
-            $table->string('assigned_to', 32);
+            $table->uuid('assigned_to');
             $table->foreign('assigned_to')->references('id')->on('users')->onDelete('cascade');
-            $table->string('assigned_by', 32);
+            $table->uuid('assigned_by');
             $table->foreign('assigned_by')->references('id')->on('users')->onDelete('cascade');
             $table->string('status', 30)->default('PENDING');
             $table->text('notes')->nullable();
