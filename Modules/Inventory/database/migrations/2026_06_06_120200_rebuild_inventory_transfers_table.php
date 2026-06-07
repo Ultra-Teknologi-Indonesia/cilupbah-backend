@@ -32,14 +32,11 @@ return new class extends Migration
             $table->foreignId('item_id')->constrained('product_variants')->restrictOnDelete();
             $table->integer('qty');
             $table->integer('received_qty')->default(0);
-            $table->uuid('source_bin_id')->nullable();
-            $table->uuid('destination_bin_id')->nullable();
+            $table->foreignId('source_bin_id')->nullable()->constrained('location_bins')->nullOnDelete();
+            $table->foreignId('destination_bin_id')->nullable()->constrained('location_bins')->nullOnDelete();
             $table->string('batch_no', 100)->default('');
             $table->string('serial_no', 100)->default('');
             $table->timestamps();
-
-            $table->foreign('source_bin_id')->references('id')->on('location_bins')->nullOnDelete();
-            $table->foreign('destination_bin_id')->references('id')->on('location_bins')->nullOnDelete();
         });
     }
 
