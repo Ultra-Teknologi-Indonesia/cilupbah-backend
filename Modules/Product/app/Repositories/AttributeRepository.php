@@ -14,9 +14,9 @@ class AttributeRepository
     {
         return QueryBuilder::for(Attribute::class)
             ->allowedSearch('name')
-            ->allowedFilters([
-                AllowedFilter::exact('type'),
-            ])
+            ->allowedFilters(
+                AllowedFilter::exact('type')
+            )
             ->allowedSorts('name', 'created_at', 'type')
             ->paginate(request('per_page', $perPage))
             ->appends(request()->query());
@@ -26,9 +26,9 @@ class AttributeRepository
     {
         return QueryBuilder::for(Attribute::class)
             ->allowedSearch('name')
-            ->allowedFilters([
-                AllowedFilter::exact('type'),
-            ])
+            ->allowedFilters(
+                AllowedFilter::exact('type')
+            )
             ->allowedSorts('name', 'created_at', 'type')
             ->get();
     }

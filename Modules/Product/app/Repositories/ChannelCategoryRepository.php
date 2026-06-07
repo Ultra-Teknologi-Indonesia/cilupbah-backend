@@ -14,13 +14,13 @@ class ChannelCategoryRepository
     {
         return QueryBuilder::for(ChannelCategory::class)
             ->where('channel_id', $channelId)
-            ->allowedIncludes(['children', 'parent', 'children.children'])
-            ->allowedFilters([
+            ->allowedIncludes('children', 'parent', 'children.children')
+            ->allowedFilters(
                 AllowedFilter::exact('is_leaf'),
                 AllowedFilter::exact('parent_external_id'),
                 'name',
-                'external_id',
-            ])
+                'external_id'
+            )
             ->defaultSort('name')
             ->paginate($perPage);
     }
@@ -29,13 +29,13 @@ class ChannelCategoryRepository
     {
         return QueryBuilder::for(ChannelCategory::class)
             ->where('channel_id', $channelId)
-            ->allowedIncludes(['children', 'parent', 'children.children'])
-            ->allowedFilters([
+            ->allowedIncludes('children', 'parent', 'children.children')
+            ->allowedFilters(
                 AllowedFilter::exact('is_leaf'),
                 AllowedFilter::exact('parent_external_id'),
                 'name',
-                'external_id',
-            ])
+                'external_id'
+            )
             ->defaultSort('name')
             ->get();
     }
