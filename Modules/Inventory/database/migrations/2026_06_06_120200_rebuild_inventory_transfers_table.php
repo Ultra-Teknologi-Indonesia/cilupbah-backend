@@ -29,8 +29,7 @@ return new class extends Migration
         Schema::create('inventory_transfer_items', function (Blueprint $table) {
             $table->id();
             $table->foreignId('inventory_transfer_id')->constrained('inventory_transfers')->cascadeOnDelete();
-            $table->uuid('item_id');
-            $table->foreign('item_id')->references('id')->on('product_variants')->onDelete('restrict');
+            $table->foreignId('item_id')->constrained('product_variants')->restrictOnDelete();
             $table->integer('qty');
             $table->integer('received_qty')->default(0);
             $table->uuid('source_bin_id')->nullable();

@@ -29,8 +29,7 @@ return new class extends Migration
         Schema::create('purchase_order_items', function (Blueprint $table) {
             $table->id();
             $table->foreignId('purchase_order_id')->constrained('purchase_orders')->cascadeOnDelete();
-            $table->uuid('item_id');
-            $table->foreign('item_id')->references('id')->on('products')->onDelete('restrict');
+            $table->foreignId('item_id')->constrained('products')->restrictOnDelete();
             $table->integer('qty');
             $table->integer('received_qty')->default(0);
             $table->decimal('unit_price', 15, 2)->default(0);
