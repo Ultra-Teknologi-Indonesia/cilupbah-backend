@@ -4,9 +4,15 @@ use Illuminate\Support\Facades\Route;
 use Modules\Product\Http\Controllers\ProductController;
 use Modules\Product\Http\Controllers\ChannelProductController;
 use Modules\Product\Http\Controllers\MediaController;
+use Modules\Product\Http\Controllers\CategoryController;
+use Modules\Product\Http\Controllers\BrandController;
+use Modules\Product\Http\Controllers\AttributeController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::apiResource('products', ProductController::class)->names('product');
+    Route::apiResource('categories', CategoryController::class)->names('category');
+    Route::apiResource('brands', BrandController::class)->names('brand');
+    Route::apiResource('attributes', AttributeController::class)->names('attribute');
 
     // General Media Upload Endpoint
     Route::post('media/upload', [MediaController::class, 'upload']);

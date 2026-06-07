@@ -3,7 +3,9 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
+use Modules\Product\Models\Category;
+use Modules\Product\Models\Brand;
+use Modules\Product\Models\Product;
 use Modules\Warehouse\Models\Warehouse;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Product\Services\ChannelProductService;
@@ -45,39 +47,23 @@ class TestTikTokAgentCommand extends Command
         $scenario = $this->option('scenario');
 
         // 1. Setup Master Data jika kosong
-        $category = DB::table('categories')->where('name', 'Elektronik & Gadget')->first();
-        if (!$category) {
-            $categoryId = DB::table('categories')->insertGetId([
-                'name' => 'Elektronik & Gadget',
-                'description' => 'Kategori elektronik, smartphone, dll.',
-                'is_active' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-        } else {
-            $categoryId = $category->id;
-        }
+        $category = Category::firstOrCreate(
+            ['name' => 'Elektronik & Gadget'],
+            ['description' => 'Kategori elektronik, smartphone, dll.', 'is_active' => true]
+        );
 
-        $brand = DB::table('brands')->where('name', 'Apple')->first();
-        if (!$brand) {
-            $brandId = DB::table('brands')->insertGetId([
-                'name' => 'Apple',
-                'description' => 'Apple Inc.',
-                'is_active' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-        } else {
-            $brandId = $brand->id;
-        }
+        $brand = Brand::firstOrCreate(
+            ['name' => 'Apple'],
+            ['description' => 'Apple Inc.', 'is_active' => true]
+        );
 
         // 2. Data Produk Nyata
         $productData = [
             'name' => 'Apple iPhone 15 Pro Max 256GB - Titanium (Garansi Resmi iBox)',
             'sku' => 'IP15PM-256-NT',
             'description' => 'iPhone 15 Pro Max. Dirancang dengan titanium aerospace-grade, chip A17 Pro yang revolusioner, dan sistem kamera Pro yang paling canggih. Garansi Resmi iBox 1 Tahun.',
-            'category_id' => $categoryId,
-            'brand_id' => $brandId,
+            'category_id' => $category->id,
+            'brand_id' => $brand->id,
             'order_type' => 'REGULER',
             'weight' => 0.25, // 250 gram
             'length' => 16,
