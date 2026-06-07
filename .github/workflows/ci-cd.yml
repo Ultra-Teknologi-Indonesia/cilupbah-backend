@@ -108,12 +108,9 @@ jobs:
             docker compose -f docker-compose.staging.yml ps --filter "status=running" | grep -q "cilupbah-staging" \
               || { echo "❌ Container not running after deploy!"; exit 1; }
 
-            # ── Run Migrations & Seeding ──────────────────────────────────────
+            # ── Run Migrations ──────────────────────────────────────
             echo "Running database migrations..."
             docker exec cilupbah-staging php artisan migrate --force || { echo "❌ Migration failed!"; exit 1; }
-            
-            echo "Running database seeders..."
-            docker exec cilupbah-staging php artisan db:seed --force || { echo "❌ Seeding failed!"; exit 1; }
 
             trap - ERR
             echo "✅ Deployment successful"

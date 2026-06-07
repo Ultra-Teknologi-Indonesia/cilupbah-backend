@@ -17,11 +17,13 @@ class DatabaseSeeder extends Seeder
 
         $this->call(RoleSeeder::class);
 
-        $owner = User::create([
-            'name' => 'Owner Cilupbah',
-            'email' => 'cilupbah@ultra-fit.id',
-            'password' => \Illuminate\Support\Facades\Hash::make('password'),
-        ]);
+        $owner = User::firstOrCreate(
+            ['email' => 'cilupbah@ultra-fit.id'],
+            [
+                'name' => 'Owner Cilupbah',
+                'password' => \Illuminate\Support\Facades\Hash::make('password'),
+            ]
+        );
 
         $owner->assignRole('owner');
 
