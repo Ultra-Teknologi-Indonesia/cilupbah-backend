@@ -31,13 +31,13 @@ class LocationApiTest extends TestCase
 
     public function test_can_create_location_with_layout(): void
     {
+        $villageId = $this->createVillage();
+
         $payload = [
             'location_code' => 'TEST-001',
             'location_name' => 'Test Warehouse',
             'location_type' => 'warehouse',
-            'province' => 'Test Province',
-            'city' => 'Test City',
-            'area' => 'Test Area',
+            'village_id' => $villageId,
             'address' => 'Test Address',
             'post_code' => '12345',
             'is_active' => true,
@@ -47,14 +47,45 @@ class LocationApiTest extends TestCase
         $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/locations', $payload);
 
         $response->assertStatus(201);
-        $this->assertDatabaseHas('locations', ['location_code' => 'TEST-001']);
-        
+        $this->assertDatabaseHas('locations', [
+            'location_code' => 'TEST-001',
+            'village_id' => $villageId,
+        ]);
+
+        // Cukup kirim village_id; provinsi/kota/kecamatan otomatis tersambung lewat relasi
+        $response->assertJsonPath('data.village.district.city.province.id', '32');
+
         // It should also generate default inbound bin
         $locationId = $response->json('data.id');
         $this->assertDatabaseHas('location_bins', [
             'location_id' => $locationId,
             'is_inbound' => true
         ]);
+    }
+
+    public function test_rejects_invalid_village_id(): void
+    {
+        $payload = [
+            'location_code' => 'TEST-003',
+            'location_name' => 'Test Warehouse',
+            'location_type' => 'warehouse',
+            'village_id' => '9999999999',
+        ];
+
+        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/locations', $payload);
+
+        $response->assertStatus(422)
+                 ->assertJsonValidationErrors(['village_id']);
+    }
+
+    private function createVillage(): string
+    {
+        \Modules\Region\Models\Province::create(['id' => '32', 'nama' => 'Jawa Barat']);
+        \Modules\Region\Models\City::create(['id' => '3273', 'province_id' => '32', 'nama' => 'Bandung']);
+        \Modules\Region\Models\District::create(['id' => '327301', 'city_id' => '3273', 'nama' => 'Coblong']);
+        \Modules\Region\Models\Village::create(['id' => '3273011001', 'district_id' => '327301', 'nama' => 'Dago']);
+
+        return '3273011001';
     }
 
     public function test_cannot_create_location_with_missing_required_fields(): void

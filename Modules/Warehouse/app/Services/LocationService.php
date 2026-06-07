@@ -43,7 +43,7 @@ class LocationService
                 $this->syncLayout($location->id, $data['layout']);
             }
 
-            return $location->load(['bins', 'zones.bins']);
+            return $location->load(['bins', 'zones.bins', 'village.district.city.province']);
         });
     }
 

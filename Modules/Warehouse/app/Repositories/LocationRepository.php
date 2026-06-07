@@ -12,6 +12,7 @@ class LocationRepository
     public function getAllPaginated(int $limit = 10)
     {
         return QueryBuilder::for(Location::class)
+            ->with('village.district.city.province')
             ->allowedSearch('location_name')
             ->allowedFilters(
                 AllowedFilter::exact('is_active'),
@@ -20,8 +21,9 @@ class LocationRepository
                 AllowedFilter::exact('is_tcb'),
                 AllowedFilter::exact('is_fbs'),
                 'location_type',
-                'city',
-                'province'
+                AllowedFilter::exact('village_id'),
+                AllowedFilter::exact('village.district.city_id'),
+                AllowedFilter::exact('village.district.city.province_id')
             )
             ->allowedSorts('location_name', 'created_at', 'location_code')
             ->defaultSort('location_name')
@@ -30,7 +32,7 @@ class LocationRepository
 
     public function findById(string $id): ?Location
     {
-        return Location::with(['bins', 'channelWarehouses'])->find($id);
+        return Location::with(['bins', 'channelWarehouses', 'village.district.city.province'])->find($id);
     }
 
     public function findByCode(string $code): ?Location

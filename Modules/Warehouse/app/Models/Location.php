@@ -3,10 +3,12 @@
 namespace Modules\Warehouse\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 use App\Traits\HasUuid7;
+use Modules\Region\Models\Village;
 
 class Location extends Model
 {
@@ -22,9 +24,7 @@ class Location extends Model
         'location_name',
         'location_type',
         'address',
-        'area',
-        'city',
-        'province',
+        'village_id',
         'post_code',
         'is_warehouse',
         'is_multi_origin',
@@ -43,6 +43,11 @@ class Location extends Model
         'is_tcb' => 'boolean',
         'is_fbs' => 'boolean',
     ];
+
+    public function village(): BelongsTo
+    {
+        return $this->belongsTo(Village::class, 'village_id', 'id');
+    }
 
     public function channelWarehouses(): HasMany
     {
