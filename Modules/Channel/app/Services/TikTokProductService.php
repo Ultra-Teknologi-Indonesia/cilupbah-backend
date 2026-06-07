@@ -96,7 +96,24 @@ class TikTokProductService
             return $variantArr;
         })->toArray();
 
-        $payload = $this->mapper->map($internalProduct, $uploadedImageIds);
+        // Get mapped TikTok Category
+        $tiktokCategoryId = null;
+        if (!empty($product->category_id)) {
+            $mappedCategory = \Modules\Product\Models\Category::with(['channelCategories' => function ($q) use ($shop) {
+                $q->where('channel_id', $shop->channel_id);
+            }])->find($product->category_id);
+
+            if ($mappedCategory && $mappedCategory->channelCategories->isNotEmpty()) {
+                $tiktokCategoryId = $mappedCategory->channelCategories->first()->external_id;
+            }
+        }
+
+        $config = [];
+        if ($tiktokCategoryId) {
+            $config['category_id'] = $tiktokCategoryId;
+        }
+
+        $payload = $this->mapper->map($internalProduct, $uploadedImageIds, $config);
 
         $res = $this->client->request('POST', '/product/202309/products', ['shop_cipher' => $shopCipher], $payload, $accessToken);
         

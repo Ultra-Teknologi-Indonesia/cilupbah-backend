@@ -18,9 +18,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     
     Route::apiResource('brands', BrandController::class)->names('brand');
     Route::apiResource('attributes', AttributeController::class)->names('attribute');
-    
-    // Channel Categories
-    Route::get('channels/{channel}/categories', [ChannelCategoryController::class, 'index']);
 
     // General Media Upload Endpoint
     Route::post('media/upload', [MediaController::class, 'upload']);
@@ -32,8 +29,12 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('products/import/bundle', [\Modules\Product\Http\Controllers\ProductImportController::class, 'importBundle']);
 });
 
-// Channel specific product routes (Temporarily Unprotected for Testing)
+// Channel specific routes (Temporarily Unprotected for Testing)
 Route::prefix('v1/{channel}')->group(function () {
+    // Channel Categories
+    Route::get('categories', [ChannelCategoryController::class, 'index']);
+
+    // Channel Products
     Route::get('products/categories', [ChannelProductController::class, 'categories']);
     Route::put('products/{id}/activate', [ChannelProductController::class, 'activate']);
     Route::put('products/{id}/deactivate', [ChannelProductController::class, 'deactivate']);
