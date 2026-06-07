@@ -64,7 +64,9 @@ class AttributeService
 
     public function mapOptionToChannel(int $optionId, array $channelAttributeOptionIds): \Modules\Product\Models\AttributeOption
     {
+        /** @var \Modules\Product\Models\AttributeOption|null $option */
         $option = \Modules\Product\Models\AttributeOption::find($optionId);
+        
         if (!$option) {
             throw new Exception("Attribute Option not found");
         }

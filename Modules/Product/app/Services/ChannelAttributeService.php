@@ -69,34 +69,25 @@ class ChannelAttributeService
             $attributes = $res['data']['attributes'];
 
             foreach ($attributes as $attr) {
-                $attrId = Uuid::uuid7()->toString();
-                
-                // Check if exists
-                $existing = $this->attributeRepository->findByExternalId($category->id, $attr['id']);
-                if ($existing) {
-                    $attrId = $existing->id;
-                    $existing->update([
-                        'name' => $attr['name'],
-                        'is_required' => $attr['is_required'] ?? false,
-                        'is_multiple' => $attr['is_multiple_selection'] ?? false,
-                    ]);
-                } else {
-                    \Modules\Product\Models\ChannelAttribute::create([
-                        'id' => $attrId,
+                // Gunakan updateOrCreate untuk mencegah Race Condition (Integrity Constraint Violation)
+                $channelAttr = \Modules\Product\Models\ChannelAttribute::updateOrCreate(
+                    [
                         'channel_category_id' => $category->id,
                         'external_id' => $attr['id'],
+                    ],
+                    [
                         'name' => $attr['name'],
                         'is_required' => $attr['is_required'] ?? false,
                         'is_multiple' => $attr['is_multiple_selection'] ?? false,
-                    ]);
-                }
+                    ]
+                );
 
                 if (!empty($attr['values'])) {
                     $optionsData = [];
                     foreach ($attr['values'] as $val) {
                         $optionsData[] = [
                             'id' => Uuid::uuid7()->toString(),
-                            'channel_attribute_id' => $attrId,
+                            'channel_attribute_id' => $channelAttr->id,
                             'external_id' => $val['id'],
                             'name' => $val['name'],
                             'created_at' => now(),
@@ -105,7 +96,10 @@ class ChannelAttributeService
                     }
 
                     if (count($optionsData) > 0) {
-                        $this->optionRepository->upsert($optionsData, ['channel_attribute_id', 'external_id']);
+                        // Chunk data untuk menghindari MySQL 'Prepared statement contains too many placeholders' error
+                        foreach (array_chunk($optionsData, 500) as $chunk) {
+                            $this->optionRepository->upsert($chunk, ['channel_attribute_id', 'external_id'], ['name', 'updated_at']);
+                        }
                     }
                 }
             }
