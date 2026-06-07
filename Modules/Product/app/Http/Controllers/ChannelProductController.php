@@ -7,18 +7,18 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use OpenApi\Attributes as OA;
 use Modules\Product\Models\Product;
-use Modules\Product\Services\ProductService;
-use Modules\Product\Http\Requests\CreateProductRequest;
+use Modules\Product\Http\Resources\ProductResource;
+use Modules\Product\Services\ChannelProductService;
 use App\Traits\ApiResponse;
 
 class ChannelProductController extends Controller
 {
     use ApiResponse;
-    protected ProductService $productService;
+    protected ChannelProductService $channelProductService;
 
-    public function __construct(ProductService $productService)
+    public function __construct(ChannelProductService $channelProductService)
     {
-        $this->productService = $productService;
+        $this->channelProductService = $channelProductService;
     }
 
     #[OA\Get(
@@ -36,18 +36,11 @@ class ChannelProductController extends Controller
     #[OA\Response(response: 200, description: "Get products success")]
     public function index(Request $request, string $channel): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $shopId = $request->query('shop_id');
         
-        $products = \Spatie\QueryBuilder\QueryBuilder::for(Product::class)
-            ->with('variants:id,product_id,sku')
-            ->allowedSearch('name')
-            ->allowedFilters(
-                \Spatie\QueryBuilder\AllowedFilter::exact('is_active')
-            )
-            ->allowedSorts('name', 'created_at')
-            ->paginate($limit);
+        $products = $this->channelProductService->getChannelProducts($shopId ?? '');
 
-        return $this->successPaginatedResponse($products, 'Get products success');
+        return $this->successPaginatedResponse(ProductResource::collection($products), 'Berhasil mengambil daftar produk');
     }
 
     #[OA\Get(
@@ -59,14 +52,12 @@ class ChannelProductController extends Controller
     #[OA\Parameter(name: "channel", in: "path", required: true, schema: new OA\Schema(type: "string"))]
     #[OA\Parameter(name: "id", in: "path", required: true, schema: new OA\Schema(type: "string"))]
     #[OA\Response(response: 200, description: "Get product detail success")]
-    public function show(string $channel, string $id): JsonResponse
+    public function show(Request $request, string $channel, string $id): JsonResponse
     {
-        $product = Product::with('variants:id,product_id,sku')
-            ->where('channel_product_id', $id)
-            ->when(is_numeric($id), fn($q) => $q->orWhere('id', $id))
-            ->firstOrFail();
+        $shopId = $request->query('shop_id', '');
+        $product = $this->channelProductService->getProductDetail($id, $shopId);
 
-        return $this->successResponse($product, 'Get product detail success');
+        return $this->successResponse(new ProductResource($product), 'Berhasil mengambil detail produk');
     }
 
     #[OA\Post(
@@ -167,33 +158,19 @@ class ChannelProductController extends Controller
         )
     )]
     #[OA\Response(response: 201, description: "Product created and pushed to channel")]
-    public function store(CreateProductRequest $request, string $channel): JsonResponse
+    public function store(\Modules\Product\Http\Requests\CreateProductRequest $request, string $channel): JsonResponse
     {
         $shopId = $request->input('shop_id');
         if (!$shopId) {
-            return $this->errorResponse('shop_id is required', 400);
+            return $this->errorResponse('shop_id wajib diisi', 400);
         }
 
         try {
-            // 1. Simpan ke database lokal menggunakan ProductService (beserta variannya)
-            $productId = $this->productService->createProduct($request->validated());
-
-            $res = null;
-
-            // 2. Push ke Channel yang dituju
-            if ($channel === 'tiktok') {
-                $tiktokService = app(\Modules\Channel\Services\TikTokProductService::class);
-                $res = $tiktokService->pushProduct($productId, $shopId);
-            }
-
-            return $this->successResponse([
-                'id' => $productId,
-                'channel_product_id' => $res['data']['product_id'] ?? null,
-                'channel_response' => $res
-            ], 'Product created and pushed to channel', 201);
+            $res = $this->channelProductService->createAndPushProduct($request->validated(), $shopId);
             
+            return $this->successResponse($res, 'Produk berhasil dibuat dan dikirim ke channel', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse('Failed to create and push product', 500, ['error' => $e->getMessage()]);
+            return $this->errorResponse('Gagal membuat dan mengirim produk', 500, ['error' => $e->getMessage()]);
         }
     }
 
@@ -209,10 +186,6 @@ class ChannelProductController extends Controller
     #[OA\Response(response: 200, description: "Product updated successfully")]
     public function update(Request $request, string $channel, string $id): JsonResponse
     {
-        $product = Product::where('channel_product_id', $id)
-            ->when(is_numeric($id), fn($q) => $q->orWhere('id', $id))
-            ->firstOrFail();
-        
         $data = $request->validate([
             'shop_id' => 'required|string',
             'name' => 'sometimes|required|string|max:255',
@@ -222,14 +195,9 @@ class ChannelProductController extends Controller
         $shopId = $data['shop_id'];
         unset($data['shop_id']);
 
-        $product->update($data);
-
-        if ($channel === 'tiktok') {
-            $tiktokService = app(\Modules\Channel\Services\TikTokProductService::class);
-            $tiktokService->pushUpdate($product->id, $shopId);
-        }
+        $res = $this->channelProductService->updateAndPushProduct($id, $shopId, $data);
         
-        return $this->successResponse($product, 'Product updated successfully');
+        return $this->successResponse($res, 'Produk berhasil diperbarui');
     }
 
     #[OA\Delete(
@@ -245,21 +213,12 @@ class ChannelProductController extends Controller
     {
         $shopId = $request->input('shop_id');
         if (!$shopId) {
-            return $this->errorResponse('shop_id is required', 400);
+            return $this->errorResponse('shop_id wajib diisi', 400);
         }
 
-        $product = Product::where('channel_product_id', $id)
-            ->when(is_numeric($id), fn($q) => $q->orWhere('id', $id))
-            ->firstOrFail();
-            
-        if ($channel === 'tiktok') {
-            $tiktokService = app(\Modules\Channel\Services\TikTokProductService::class);
-            $tiktokService->deleteProduct($product->id, $shopId);
-        }
-            
-        $product->delete();
+        $this->channelProductService->deleteProduct($id, $shopId);
 
-        return $this->successResponse(['success' => true], 'Product deleted successfully');
+        return $this->successResponse(['success' => true], 'Produk berhasil dihapus');
     }
 
     #[OA\Put(
@@ -275,21 +234,12 @@ class ChannelProductController extends Controller
     {
         $shopId = $request->input('shop_id');
         if (!$shopId) {
-            return $this->errorResponse('shop_id is required', 400);
+            return $this->errorResponse('shop_id wajib diisi', 400);
         }
 
-        $product = Product::where('channel_product_id', $id)
-            ->when(is_numeric($id), fn($q) => $q->orWhere('id', $id))
-            ->firstOrFail();
-            
-        $product->update(['is_active' => true]);
+        $this->channelProductService->activateProduct($id, $shopId);
 
-        if ($channel === 'tiktok') {
-            $tiktokService = app(\Modules\Channel\Services\TikTokProductService::class);
-            $tiktokService->activateProduct($product->id, $shopId);
-        }
-
-        return $this->successResponse($product, 'Product activated successfully');
+        return $this->successResponse(['success' => true], 'Produk berhasil diaktifkan');
     }
 
     #[OA\Put(
@@ -305,21 +255,12 @@ class ChannelProductController extends Controller
     {
         $shopId = $request->input('shop_id');
         if (!$shopId) {
-            return $this->errorResponse('shop_id is required', 400);
+            return $this->errorResponse('shop_id wajib diisi', 400);
         }
 
-        $product = Product::where('channel_product_id', $id)
-            ->when(is_numeric($id), fn($q) => $q->orWhere('id', $id))
-            ->firstOrFail();
-            
-        $product->update(['is_active' => false]);
+        $this->channelProductService->deactivateProduct($id, $shopId);
 
-        if ($channel === 'tiktok') {
-            $tiktokService = app(\Modules\Channel\Services\TikTokProductService::class);
-            $tiktokService->deactivateProduct($product->id, $shopId);
-        }
-
-        return $this->successResponse($product, 'Product deactivated successfully');
+        return $this->successResponse(['success' => true], 'Produk berhasil dinonaktifkan');
     }
 
     #[OA\Put(
@@ -340,13 +281,13 @@ class ChannelProductController extends Controller
     public function updateStock(Request $request, string $channel, string $id): JsonResponse
     {
         $shopId = $request->input('shop_id');
-        
-        if ($channel === 'tiktok' && $shopId) {
-            $tiktokService = app(\Modules\Channel\Services\TikTokProductService::class);
-            $tiktokService->syncPriceAndInventory($id, $shopId);
+        if (!$shopId) {
+            return $this->errorResponse('shop_id wajib diisi', 400);
         }
+        
+        $this->channelProductService->updateStock($id, $shopId);
 
-        return $this->successResponse(['success' => true], 'Product stock updated successfully');
+        return $this->successResponse(['success' => true], 'Stok produk berhasil diperbarui');
     }
 
     #[OA\Put(
@@ -367,13 +308,13 @@ class ChannelProductController extends Controller
     public function updatePrice(Request $request, string $channel, string $id): JsonResponse
     {
         $shopId = $request->input('shop_id');
-        
-        if ($channel === 'tiktok' && $shopId) {
-            $tiktokService = app(\Modules\Channel\Services\TikTokProductService::class);
-            $tiktokService->syncPriceAndInventory($id, $shopId);
+        if (!$shopId) {
+            return $this->errorResponse('shop_id wajib diisi', 400);
         }
+        
+        $this->channelProductService->updatePrice($id, $shopId);
 
-        return $this->successResponse(['success' => true], 'Product price updated successfully');
+        return $this->successResponse(['success' => true], 'Harga produk berhasil diperbarui');
     }
 
     #[OA\Get(

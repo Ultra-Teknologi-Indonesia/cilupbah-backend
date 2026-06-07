@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Queue\Middleware\RateLimited;
 use Modules\Channel\Services\TikTokOrderService;
+use Modules\Channel\Services\WebhookProductHandler;
 
 class ProcessTikTokWebhook implements ShouldQueue
 {
@@ -28,7 +29,7 @@ class ProcessTikTokWebhook implements ShouldQueue
         return [new RateLimited('tiktok_api')];
     }
 
-    public function handle(TikTokOrderService $orderService): void
+    public function handle(TikTokOrderService $orderService, WebhookProductHandler $productHandler): void
     {
         $type = $this->payload['type'] ?? null;
         $shopId = $this->payload['shop_id'] ?? null;
@@ -58,9 +59,11 @@ class ProcessTikTokWebhook implements ShouldQueue
                     break;
                 case 2:
                 case '2':
+                    $productHandler->handleProductStatusChange($this->payload['data'] ?? [], $shopId);
                     break;
                 case 3:
                 case '3':
+                    $productHandler->handleProductUpdate($this->payload['data'] ?? [], $shopId);
                     break;
                 case 4:
                 case '4':
