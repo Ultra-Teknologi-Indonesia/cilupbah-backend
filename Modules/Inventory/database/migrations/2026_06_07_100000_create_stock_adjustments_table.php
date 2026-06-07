@@ -9,10 +9,10 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('stock_adjustments', function (Blueprint $table) {
-            $table->string('id', 32)->primary();
+            $table->uuid('id')->primary();
             $table->string('adjustment_no', 50)->unique();
             $table->dateTime('transaction_date');
-            $table->string('location_id', 32);
+            $table->uuid('location_id');
             $table->foreign('location_id')->references('id')->on('locations')->restrictOnDelete();
             $table->enum('status', ['DRAFT', 'APPROVED', 'CANCELLED'])->default('DRAFT');
             $table->boolean('is_beginning_balance')->default(false);
