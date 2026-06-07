@@ -14,7 +14,8 @@ return new class extends Migration
         Schema::create('attribute_option_channel_mappings', function (Blueprint $table) {
             $table->id();
             $table->foreignId('attribute_option_id')->constrained('attribute_options')->cascadeOnDelete();
-            $table->uuid('channel_attribute_option_id')->constrained('channel_attribute_options')->cascadeOnDelete();
+            $table->string('channel_attribute_option_id', 32);
+            $table->foreign('channel_attribute_option_id')->references('id')->on('channel_attribute_options')->cascadeOnDelete();
             $table->timestamps();
 
             $table->unique(['attribute_option_id', 'channel_attribute_option_id'], 'attr_opt_chan_mapping_unique');

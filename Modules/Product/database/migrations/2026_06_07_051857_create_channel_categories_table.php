@@ -12,8 +12,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('channel_categories', function (Blueprint $table) {
-            $table->uuid('id')->primary();
-            $table->uuid('channel_id')->constrained('channels')->cascadeOnDelete();
+            $table->string('id', 32)->primary();
+            $table->string('channel_id', 32);
+            $table->foreign('channel_id')->references('id')->on('channels')->cascadeOnDelete();
             $table->string('external_id')->index(); // TikTok ID like "601739"
             $table->string('parent_external_id')->default('0')->index();
             $table->string('name');
