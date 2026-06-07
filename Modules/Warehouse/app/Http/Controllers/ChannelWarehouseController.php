@@ -18,9 +18,9 @@ use OpenApi\Attributes as OA;
     title: 'Channel Warehouse Schema',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'integer', example: 1),
-        new OA\Property(property: 'location_id', type: 'string', example: '018f6b...'),
-        new OA\Property(property: 'channel_id', type: 'string', example: '018f6b...'),
+        new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'location_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'channel_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
         new OA\Property(property: 'store_id', type: 'string', example: 'STORE-123'),
         new OA\Property(property: 'channel_location_id', type: 'string', example: 'CH-LOC-123'),
         new OA\Property(property: 'channel_location_type', type: 'string', example: 'WAREHOUSE', nullable: true),
@@ -33,8 +33,8 @@ use OpenApi\Attributes as OA;
     required: ['location_id', 'channel_id', 'store_id', 'channel_location_id'],
     type: 'object',
     properties: [
-        new OA\Property(property: 'location_id', type: 'string', example: '018f6b...'),
-        new OA\Property(property: 'channel_id', type: 'string', example: '018f6b...'),
+        new OA\Property(property: 'location_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'channel_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
         new OA\Property(property: 'store_id', type: 'string', example: 'STORE-123'),
         new OA\Property(property: 'channel_location_id', type: 'string', example: 'CH-LOC-123'),
         new OA\Property(property: 'channel_location_type', type: 'string', example: 'WAREHOUSE', nullable: true),
@@ -117,7 +117,7 @@ class ChannelWarehouseController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Channel Warehouses'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the mapping to delete', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the mapping to delete', schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(
@@ -134,7 +134,7 @@ class ChannelWarehouseController extends Controller
             new OA\Response(response: 404, description: 'Mapping tidak ditemukan.')
         ]
     )]
-    public function destroy(int $id): JsonResponse
+    public function destroy(string $id): JsonResponse
     {
         $deleted = $this->channelWarehouseService->delete($id);
 

@@ -22,13 +22,13 @@ use OpenApi\Attributes as OA;
     title: 'Inbound Schema',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
-        new OA\Property(property: 'location_id', type: 'string', example: 1),
+        new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'location_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
         new OA\Property(property: 'transaction_number', type: 'string', example: 'INB-20260604-0001'),
         new OA\Property(property: 'reference_number', type: 'string', example: 'PO-2026-0001', nullable: true),
         new OA\Property(property: 'type', type: 'string', enum: ['PURCHASE_ORDER', 'SALES_RETURN', 'TRANSIT_IN', 'CONSIGNMENT'], example: 'PURCHASE_ORDER'),
         new OA\Property(property: 'source_type', type: 'string', example: 'purchase_order', nullable: true),
-        new OA\Property(property: 'source_id', type: 'string', example: 1, nullable: true),
+        new OA\Property(property: 'source_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e', nullable: true),
         new OA\Property(property: 'status', type: 'string', enum: ['DRAFT', 'PARTIAL', 'RECEIVED', 'PUTAWAY_IN_PROGRESS', 'COMPLETED', 'CANCELLED'], example: 'DRAFT'),
         new OA\Property(property: 'expected_date', type: 'string', format: 'date-time', example: '2026-06-05T00:00:00Z'),
         new OA\Property(property: 'created_by', type: 'string', example: 'admin'),
@@ -41,11 +41,11 @@ use OpenApi\Attributes as OA;
     required: ['location_id', 'type', 'expected_date', 'created_by', 'items'],
     type: 'object',
     properties: [
-        new OA\Property(property: 'location_id', type: 'string', example: 1),
+        new OA\Property(property: 'location_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
         new OA\Property(property: 'reference_number', type: 'string', example: 'PO-2026-0001', nullable: true),
         new OA\Property(property: 'type', type: 'string', enum: ['PURCHASE_ORDER', 'SALES_RETURN', 'TRANSIT_IN', 'CONSIGNMENT'], example: 'PURCHASE_ORDER'),
         new OA\Property(property: 'source_type', type: 'string', example: 'purchase_order', nullable: true),
-        new OA\Property(property: 'source_id', type: 'string', example: 1, nullable: true),
+        new OA\Property(property: 'source_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e', nullable: true),
         new OA\Property(property: 'expected_date', type: 'string', format: 'date', example: '2026-06-05'),
         new OA\Property(property: 'created_by', type: 'string', example: 'admin'),
         new OA\Property(
@@ -55,7 +55,7 @@ use OpenApi\Attributes as OA;
                 type: 'object',
                 required: ['item_id', 'expected_qty'],
                 properties: [
-                    new OA\Property(property: 'item_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
+                    new OA\Property(property: 'item_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
                     new OA\Property(property: 'expected_qty', type: 'integer', example: 50)
                 ]
             )
@@ -75,7 +75,7 @@ use OpenApi\Attributes as OA;
                 type: 'object',
                 required: ['inbound_item_id', 'qty'],
                 properties: [
-                    new OA\Property(property: 'inbound_item_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
+                    new OA\Property(property: 'inbound_item_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
                     new OA\Property(property: 'qty', type: 'integer', example: 50),
                     new OA\Property(property: 'condition', type: 'string', enum: ['GOOD', 'DAMAGE'], example: 'GOOD', nullable: true),
                     new OA\Property(property: 'batch_no', type: 'string', example: 'BATCH-001', nullable: true),
@@ -98,8 +98,8 @@ use OpenApi\Attributes as OA;
                 type: 'object',
                 required: ['inbound_item_id', 'destination_bin_id', 'qty'],
                 properties: [
-                    new OA\Property(property: 'inbound_item_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
-                    new OA\Property(property: 'destination_bin_id', type: 'string', format: 'uuid', example: '660e8400-e29b-41d4-a716-446655440001'),
+                    new OA\Property(property: 'inbound_item_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+                    new OA\Property(property: 'destination_bin_id', type: 'string', example: '019ea2afad20700aa53cd1aeaf6a31f7'),
                     new OA\Property(property: 'qty', type: 'integer', example: 50),
                     new OA\Property(property: 'batch_no', type: 'string', example: 'BATCH-001', nullable: true),
                     new OA\Property(property: 'serial_no', type: 'string', example: 'SN-001', nullable: true)
@@ -121,9 +121,9 @@ use OpenApi\Attributes as OA;
     title: 'Inbound Item Schema',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'string', format: 'uuid', description: 'UUID primary key — digunakan sebagai QR code label barang', example: '550e8400-e29b-41d4-a716-446655440000'),
-        new OA\Property(property: 'inbound_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
-        new OA\Property(property: 'item_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
+        new OA\Property(property: 'id', type: 'string', description: 'UUID primary key — digunakan sebagai QR code label barang', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'inbound_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'item_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
         new OA\Property(property: 'expected_qty', type: 'integer', example: 50),
         new OA\Property(property: 'received_qty', type: 'integer', example: 0),
         new OA\Property(property: 'putaway_qty', type: 'integer', example: 0),
@@ -139,10 +139,10 @@ use OpenApi\Attributes as OA;
     title: 'Inbound Assignment Schema',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
-        new OA\Property(property: 'inbound_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
-        new OA\Property(property: 'assigned_to', type: 'integer', example: 5),
-        new OA\Property(property: 'assigned_by', type: 'integer', example: 1),
+        new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'inbound_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'assigned_to', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'assigned_by', type: 'string', example: '019ea2afad20700aa53cd1aeaf6a31f7'),
         new OA\Property(property: 'status', type: 'string', enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED'], example: 'PENDING'),
         new OA\Property(property: 'notes', type: 'string', example: 'Prioritas tinggi', nullable: true),
         new OA\Property(property: 'started_at', type: 'string', format: 'date-time', nullable: true),
@@ -153,7 +153,7 @@ use OpenApi\Attributes as OA;
             property: 'worker',
             type: 'object',
             properties: [
-                new OA\Property(property: 'id', type: 'string', example: 5),
+                new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
                 new OA\Property(property: 'name', type: 'string', example: 'Budi Pekerja'),
                 new OA\Property(property: 'email', type: 'string', example: 'budi@warehouse.com'),
             ],
@@ -163,7 +163,7 @@ use OpenApi\Attributes as OA;
             property: 'assigner',
             type: 'object',
             properties: [
-                new OA\Property(property: 'id', type: 'string', example: 1),
+                new OA\Property(property: 'id', type: 'string', example: '019ea2afad20700aa53cd1aeaf6a31f7'),
                 new OA\Property(property: 'name', type: 'string', example: 'Admin Gudang'),
                 new OA\Property(property: 'email', type: 'string', example: 'admin@warehouse.com'),
             ],
@@ -176,7 +176,7 @@ use OpenApi\Attributes as OA;
     required: ['assigned_to'],
     type: 'object',
     properties: [
-        new OA\Property(property: 'assigned_to', type: 'integer', description: 'User ID pekerja', example: 5),
+        new OA\Property(property: 'assigned_to', type: 'string', description: 'User ID pekerja', example: '019ea2afad1d733eafb905816d10590e'),
         new OA\Property(property: 'notes', type: 'string', description: 'Catatan untuk pekerja', example: 'Prioritas tinggi', nullable: true),
     ]
 )]
@@ -185,8 +185,8 @@ use OpenApi\Attributes as OA;
     required: ['inbound_item_id', 'bin_id', 'qty'],
     type: 'object',
     properties: [
-        new OA\Property(property: 'inbound_item_id', type: 'string', format: 'uuid', description: 'Scan 1: UUID dari label barang (= inbound_items.id)', example: '550e8400-e29b-41d4-a716-446655440000'),
-        new OA\Property(property: 'bin_id', type: 'string', format: 'uuid', description: 'Scan 2: UUID dari rak tujuan (= location_bins.id)', example: '660e8400-e29b-41d4-a716-446655440001'),
+        new OA\Property(property: 'inbound_item_id', type: 'string', description: 'Scan 1: UUID dari label barang (= inbound_items.id)', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'bin_id', type: 'string', description: 'Scan 2: UUID dari rak tujuan (= location_bins.id)', example: '019ea2afad20700aa53cd1aeaf6a31f7'),
         new OA\Property(property: 'qty', type: 'integer', description: 'Jumlah barang yang di-putaway', example: 10),
     ]
 )]
@@ -226,7 +226,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),
@@ -272,7 +272,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: '#/components/schemas/ReceiveInboundRequest')),
         responses: [
@@ -297,7 +297,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         requestBody: new OA\RequestBody(
             required: true,
@@ -329,7 +329,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: '#/components/schemas/PutawayRequest')),
         responses: [
@@ -354,7 +354,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         requestBody: new OA\RequestBody(
             required: true,
@@ -403,7 +403,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),
@@ -424,7 +424,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds - Assignment'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'Inbound ID', schema: new OA\Schema(type: 'string', format: 'uuid'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'Inbound ID', schema: new OA\Schema(type: 'string'))
         ],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: '#/components/schemas/AssignInboundRequest')),
         responses: [
@@ -467,7 +467,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds - Assignment'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'Inbound ID', schema: new OA\Schema(type: 'string', format: 'uuid'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'Inbound ID', schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(
@@ -524,7 +524,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds - Assignment'],
         parameters: [
-            new OA\Parameter(name: 'assignmentId', in: 'path', required: true, description: 'Assignment ID', schema: new OA\Schema(type: 'string', format: 'uuid'))
+            new OA\Parameter(name: 'assignmentId', in: 'path', required: true, description: 'Assignment ID', schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(
@@ -558,7 +558,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds - QR Scan'],
         parameters: [
-            new OA\Parameter(name: 'qrCode', in: 'path', required: true, description: 'UUID primary key inbound item (= QR code label)', schema: new OA\Schema(type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'))
+            new OA\Parameter(name: 'qrCode', in: 'path', required: true, description: 'UUID primary key inbound item (= QR code label)', schema: new OA\Schema(type: 'string', example: '019ea2afad1d733eafb905816d10590e'))
         ],
         responses: [
             new OA\Response(
@@ -627,7 +627,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(response: 200, description: 'Inbound dibatalkan'),

@@ -7,6 +7,7 @@ use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundAssignment;
 use Modules\Inbound\Models\InboundItem;
 use Modules\Inventory\Services\InventoryService;
+use Modules\Inventory\Services\PutawayService;
 use Modules\Warehouse\Services\LocationBinService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -16,7 +17,8 @@ class InboundService
     public function __construct(
         protected InboundRepository $inboundRepository,
         protected InventoryService $inventoryService,
-        protected LocationBinService $binService
+        protected LocationBinService $binService,
+        protected PutawayService $putawayService,
     ) {}
 
     public function getAllPaginated(int $limit = 10)
@@ -143,7 +145,6 @@ class InboundService
             $newStatus = $allReceived ? Inbound::STATUS_RECEIVED : Inbound::STATUS_PARTIAL;
             $this->inboundRepository->updateStatus($inbound, $newStatus);
 
-            // Record discrepancy if fully received
             if ($allReceived) {
                 foreach ($inbound->items as $item) {
                     $disc = $item->expected_qty - $item->received_qty;
@@ -155,6 +156,8 @@ class InboundService
                         );
                     }
                 }
+
+                $this->createPutawayFromInbound($inbound, $defaultBin, $data['received_by']);
             }
 
             return $this->getById($inboundId);
@@ -478,6 +481,35 @@ class InboundService
 
             return $this->getById($inboundId);
         });
+    }
+
+    private function createPutawayFromInbound(Inbound $inbound, $defaultBin, string $receivedBy): void
+    {
+        $items = $inbound->items
+            ->filter(fn ($item) => $item->received_qty > 0)
+            ->map(fn ($item) => [
+                'item_id'            => $item->item_id,
+                'source_bin_id'      => $defaultBin->id,
+                'destination_bin_id' => null,
+                'qty'                => $item->received_qty,
+                'batch_no'           => null,
+                'serial_no'          => null,
+            ])
+            ->values()
+            ->toArray();
+
+        if (empty($items)) {
+            return;
+        }
+
+        $this->putawayService->create([
+            'location_id' => $inbound->location_id,
+            'source_type' => 'INBOUND',
+            'source_id'   => $inbound->id,
+            'notes'       => "Auto-generated from Inbound {$inbound->transaction_number}",
+            'created_by'  => $receivedBy,
+            'items'       => $items,
+        ]);
     }
 
     private function resolveInboundPutawayStatus(Inbound $inbound): void

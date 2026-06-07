@@ -28,7 +28,7 @@ class LocationRepository
             ->paginate($limit);
     }
 
-    public function findById(int $id): ?Location
+    public function findById(string $id): ?Location
     {
         return Location::with(['bins', 'channelWarehouses'])->find($id);
     }
@@ -43,12 +43,12 @@ class LocationRepository
         return Location::create($data);
     }
 
-    public function update(int $id, array $data): bool
+    public function update(string $id, array $data): bool
     {
         return Location::where('id', $id)->update($data) > 0;
     }
 
-    public function delete(int $id): bool
+    public function delete(string $id): bool
     {
         return Location::where('id', $id)->delete() > 0;
     }

@@ -92,15 +92,15 @@ class PurchaseOrderController extends Controller
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
             required: ['supplier_id', 'location_id', 'order_date', 'created_by', 'items'],
             properties: [
-                new OA\Property(property: 'supplier_id', type: 'string', example: 1),
-                new OA\Property(property: 'location_id', type: 'string', example: 1),
+                new OA\Property(property: 'supplier_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+                new OA\Property(property: 'location_id', type: 'string', example: '019ea2afad20700aa53cd1aeaf6a31f7'),
                 new OA\Property(property: 'order_date', type: 'string', format: 'date', example: '2026-06-06'),
                 new OA\Property(property: 'expected_date', type: 'string', format: 'date', example: '2026-06-13'),
                 new OA\Property(property: 'created_by', type: 'string', example: 'admin'),
                 new OA\Property(property: 'items', type: 'array', items: new OA\Items(
                     required: ['item_id', 'qty', 'unit_price'],
                     properties: [
-                        new OA\Property(property: 'item_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
+                        new OA\Property(property: 'item_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
                         new OA\Property(property: 'qty', type: 'integer', example: 100),
                         new OA\Property(property: 'unit_price', type: 'number', example: 15000),
                     ]
@@ -160,7 +160,7 @@ class PurchaseOrderController extends Controller
                 new OA\Property(property: 'items', type: 'array', items: new OA\Items(
                     required: ['purchase_order_item_id', 'qty'],
                     properties: [
-                        new OA\Property(property: 'purchase_order_item_id', type: 'string', example: 1),
+                        new OA\Property(property: 'purchase_order_item_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
                         new OA\Property(property: 'qty', type: 'integer', example: 50),
                     ]
                 )),

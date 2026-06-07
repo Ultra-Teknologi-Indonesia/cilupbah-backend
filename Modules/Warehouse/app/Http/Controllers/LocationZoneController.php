@@ -13,8 +13,8 @@ use OpenApi\Attributes as OA;
     title: 'Location Zone Schema',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'integer', example: 1),
-        new OA\Property(property: 'location_id', type: 'integer', example: 1),
+        new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'location_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
         new OA\Property(property: 'zone_code', type: 'string', example: 'Z-A'),
         new OA\Property(property: 'zone_name', type: 'string', example: 'Zona Makanan', nullable: true),
         new OA\Property(property: 'created_at', type: 'string', format: 'date-time'),
@@ -34,7 +34,7 @@ class LocationZoneController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Location Zones'],
         parameters: [
-            new OA\Parameter(name: 'locationId', in: 'path', required: true, description: 'ID of the location', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'locationId', in: 'path', required: true, description: 'ID of the location', schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(
@@ -50,7 +50,7 @@ class LocationZoneController extends Controller
             new OA\Response(response: 401, description: 'Unauthenticated')
         ]
     )]
-    public function index(int $locationId): JsonResponse
+    public function index(string $locationId): JsonResponse
     {
         $zones = $this->zoneRepository->findByLocation($locationId);
 

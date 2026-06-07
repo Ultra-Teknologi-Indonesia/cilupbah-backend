@@ -14,7 +14,7 @@ class ChannelWarehouseService
         protected LocationRepository $locationRepository
     ) {}
 
-    public function getByLocation(int $locationId): Collection
+    public function getByLocation(string $locationId): Collection
     {
         return $this->channelWarehouseRepository->findByLocation($locationId);
     }
@@ -24,7 +24,7 @@ class ChannelWarehouseService
         return $this->channelWarehouseRepository->getAllPaginated($limit);
     }
 
-    public function getByChannel(int $channelId, string $storeId): Collection
+    public function getByChannel(string $channelId, string $storeId): Collection
     {
         return $this->channelWarehouseRepository->findByChannel($channelId, $storeId);
     }
@@ -51,21 +51,21 @@ class ChannelWarehouseService
         });
     }
 
-    public function update(int $id, array $data): bool
+    public function update(string $id, array $data): bool
     {
         return \Illuminate\Support\Facades\DB::transaction(function () use ($id, $data) {
             return $this->channelWarehouseRepository->update($id, $data);
         });
     }
 
-    public function delete(int $id): bool
+    public function delete(string $id): bool
     {
         return \Illuminate\Support\Facades\DB::transaction(function () use ($id) {
             return $this->channelWarehouseRepository->delete($id);
         });
     }
 
-    public function resolveLocationId(int $channelId, string $storeId, string $channelLocationId): ?int
+    public function resolveLocationId(string $channelId, string $storeId, string $channelLocationId): ?string
     {
         return $this->channelWarehouseRepository->resolveLocationId($channelId, $storeId, $channelLocationId);
     }

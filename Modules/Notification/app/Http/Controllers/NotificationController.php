@@ -12,8 +12,8 @@ use OpenApi\Attributes as OA;
     title: 'Notification Schema',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'integer', example: 1),
-        new OA\Property(property: 'user_id', type: 'integer', example: 10),
+        new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'user_id', type: 'string', example: '019ea2afad20700aa53cd1aeaf6a31f7'),
         new OA\Property(property: 'title', type: 'string', example: 'New Order Received'),
         new OA\Property(property: 'message', type: 'string', example: 'You have received a new order from John Doe.'),
         new OA\Property(property: 'is_read', type: 'boolean', example: false),
@@ -26,7 +26,7 @@ use OpenApi\Attributes as OA;
     required: ['title', 'message'],
     type: 'object',
     properties: [
-        new OA\Property(property: 'user_id', type: 'integer', example: 10),
+        new OA\Property(property: 'user_id', type: 'string', example: '019ea2afad20700aa53cd1aeaf6a31f7'),
         new OA\Property(property: 'title', type: 'string', example: 'New Order Received'),
         new OA\Property(property: 'message', type: 'string', example: 'You have received a new order from John Doe.')
     ]
@@ -92,7 +92,7 @@ class NotificationController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Notifications'],
         parameters: [
-            new OA\Parameter(name: 'notification', in: 'path', required: true, description: 'ID of the notification', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'notification', in: 'path', required: true, description: 'ID of the notification', schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(
@@ -124,7 +124,7 @@ class NotificationController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Notifications'],
         parameters: [
-            new OA\Parameter(name: 'notification', in: 'path', required: true, description: 'ID of the notification to update', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'notification', in: 'path', required: true, description: 'ID of the notification to update', schema: new OA\Schema(type: 'string'))
         ],
         requestBody: new OA\RequestBody(
             required: true,
@@ -153,7 +153,7 @@ class NotificationController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Notifications'],
         parameters: [
-            new OA\Parameter(name: 'notification', in: 'path', required: true, description: 'ID of the notification to delete', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'notification', in: 'path', required: true, description: 'ID of the notification to delete', schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(response: 200, description: 'Notification deleted successfully'),

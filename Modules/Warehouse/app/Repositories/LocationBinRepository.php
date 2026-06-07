@@ -7,26 +7,26 @@ use Illuminate\Database\Eloquent\Collection;
 
 class LocationBinRepository
 {
-    public function findByLocation(int $locationId): Collection
+    public function findByLocation(string $locationId): Collection
     {
         return LocationBin::where('location_id', $locationId)
             ->orderBy('bin_final_code')
             ->get();
     }
 
-    public function findById(int $id): ?LocationBin
+    public function findById(string $id): ?LocationBin
     {
         return LocationBin::with('location')->find($id);
     }
 
-    public function findByFinalCode(string $finalCode, int $locationId): ?LocationBin
+    public function findByFinalCode(string $finalCode, string $locationId): ?LocationBin
     {
         return LocationBin::where('bin_final_code', $finalCode)
             ->where('location_id', $locationId)
             ->first();
     }
 
-    public function getDefaultBin(int $locationId): ?LocationBin
+    public function getDefaultBin(string $locationId): ?LocationBin
     {
         return LocationBin::where('location_id', $locationId)
             ->where('is_inbound', true)
@@ -38,12 +38,12 @@ class LocationBinRepository
         return LocationBin::create($data);
     }
 
-    public function update(int $id, array $data): bool
+    public function update(string $id, array $data): bool
     {
         return LocationBin::where('id', $id)->update($data) > 0;
     }
 
-    public function delete(int $id): bool
+    public function delete(string $id): bool
     {
         return LocationBin::where('id', $id)->delete() > 0;
     }

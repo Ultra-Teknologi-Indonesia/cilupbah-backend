@@ -17,7 +17,7 @@ use Modules\Order\Http\Resources\OrderResource;
     title: 'Order Schema',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'string', example: 1),
+        new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
         new OA\Property(property: 'salesorder_no', type: 'string', example: 'SO-2026-0001'),
         new OA\Property(property: 'channel_shop_id', type: 'string', nullable: true),
         new OA\Property(property: 'customer_name', type: 'string', example: 'John Doe'),
@@ -224,7 +224,7 @@ class OrderController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Orders'],
         parameters: [
-            new OA\Parameter(name: 'order', in: 'path', required: true, description: 'ID of the order to update', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'order', in: 'path', required: true, description: 'ID of the order to update', schema: new OA\Schema(type: 'string'))
         ],
         requestBody: new OA\RequestBody(
             required: true,
@@ -268,7 +268,7 @@ class OrderController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Orders'],
         parameters: [
-            new OA\Parameter(name: 'order', in: 'path', required: true, description: 'ID of the order to delete', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'order', in: 'path', required: true, description: 'ID of the order to delete', schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(response: 200, description: 'Order deleted successfully'),

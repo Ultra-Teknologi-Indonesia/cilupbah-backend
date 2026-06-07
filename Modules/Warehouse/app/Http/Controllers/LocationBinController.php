@@ -14,8 +14,8 @@ use OpenApi\Attributes as OA;
     title: 'Location Bin Schema',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'integer', example: 1),
-        new OA\Property(property: 'location_id', type: 'integer', example: 1),
+        new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'location_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
         new OA\Property(property: 'floor_code', type: 'string', example: 'FL-01', nullable: true),
         new OA\Property(property: 'row_code', type: 'string', example: 'RW-02', nullable: true),
         new OA\Property(property: 'column_code', type: 'string', example: 'COL-A', nullable: true),
@@ -39,7 +39,7 @@ class LocationBinController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Location Bins'],
         parameters: [
-            new OA\Parameter(name: 'locationId', in: 'path', required: true, description: 'ID of the location', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'locationId', in: 'path', required: true, description: 'ID of the location', schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(
@@ -55,7 +55,7 @@ class LocationBinController extends Controller
             new OA\Response(response: 401, description: 'Unauthenticated')
         ]
     )]
-    public function index(int $locationId): JsonResponse
+    public function index(string $locationId): JsonResponse
     {
         $bins = $this->binService->getByLocation($locationId);
 
@@ -68,7 +68,7 @@ class LocationBinController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Location Bins'],
         parameters: [
-            new OA\Parameter(name: 'locationId', in: 'path', required: true, description: 'ID of the location', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'locationId', in: 'path', required: true, description: 'ID of the location', schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(
@@ -85,7 +85,7 @@ class LocationBinController extends Controller
             new OA\Response(response: 404, description: 'Default bin tidak ditemukan.')
         ]
     )]
-    public function defaultBin(int $locationId): JsonResponse
+    public function defaultBin(string $locationId): JsonResponse
     {
         $bin = $this->binService->getDefaultBin($locationId);
 
@@ -102,7 +102,7 @@ class LocationBinController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Location Bins'],
         parameters: [
-            new OA\Parameter(name: 'locationId', in: 'path', required: true, description: 'ID of the location', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'locationId', in: 'path', required: true, description: 'ID of the location', schema: new OA\Schema(type: 'string'))
         ],
         requestBody: new OA\RequestBody(
             required: true,
@@ -136,7 +136,7 @@ class LocationBinController extends Controller
             new OA\Response(response: 422, description: 'Validation Error')
         ]
     )]
-    public function preview(GenerateLocationBinRequest $request, int $locationId): JsonResponse
+    public function preview(GenerateLocationBinRequest $request, string $locationId): JsonResponse
     {
         try {
             $preview = $this->binService->previewMassGenerate($request->validated());

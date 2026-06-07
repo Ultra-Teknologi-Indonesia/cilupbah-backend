@@ -12,7 +12,7 @@ use OpenApi\Attributes as OA;
     title: 'Webhook Schema',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'integer', example: 1),
+        new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
         new OA\Property(property: 'name', type: 'string', example: 'Order Status Update'),
         new OA\Property(property: 'url', type: 'string', example: 'https://example.com/webhook'),
         new OA\Property(property: 'secret', type: 'string', example: 'super_secret_key', nullable: true),
@@ -93,7 +93,7 @@ class WebhookController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Webhooks'],
         parameters: [
-            new OA\Parameter(name: 'webhook', in: 'path', required: true, description: 'ID of the webhook', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'webhook', in: 'path', required: true, description: 'ID of the webhook', schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(
@@ -125,7 +125,7 @@ class WebhookController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Webhooks'],
         parameters: [
-            new OA\Parameter(name: 'webhook', in: 'path', required: true, description: 'ID of the webhook to update', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'webhook', in: 'path', required: true, description: 'ID of the webhook to update', schema: new OA\Schema(type: 'string'))
         ],
         requestBody: new OA\RequestBody(
             required: true,
@@ -154,7 +154,7 @@ class WebhookController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Webhooks'],
         parameters: [
-            new OA\Parameter(name: 'webhook', in: 'path', required: true, description: 'ID of the webhook to delete', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'webhook', in: 'path', required: true, description: 'ID of the webhook to delete', schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(response: 200, description: 'Webhook deleted successfully'),

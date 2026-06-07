@@ -7,14 +7,14 @@ use Illuminate\Database\Eloquent\Collection;
 
 class LocationZoneRepository
 {
-    public function findByLocation(int $locationId): Collection
+    public function findByLocation(string $locationId): Collection
     {
         return LocationZone::where('location_id', $locationId)
             ->withCount('bins')
             ->get();
     }
 
-    public function findById(int $id): ?LocationZone
+    public function findById(string $id): ?LocationZone
     {
         return LocationZone::with('bins')->find($id);
     }
@@ -24,7 +24,7 @@ class LocationZoneRepository
         return LocationZone::create($data);
     }
 
-    public function delete(int $id): bool
+    public function delete(string $id): bool
     {
         $zone = LocationZone::find($id);
         if ($zone) {

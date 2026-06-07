@@ -12,8 +12,8 @@ use OpenApi\Attributes as OA;
     title: 'Outbound Schema',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'integer', example: 1),
-        new OA\Property(property: 'location_id', type: 'integer', example: 1),
+        new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'location_id', type: 'string', example: '019ea2afad20700aa53cd1aeaf6a31f7'),
         new OA\Property(property: 'transaction_number', type: 'string', example: 'OUT-20260604-0001'),
         new OA\Property(property: 'reference_number', type: 'string', example: 'SO-2026-0001', nullable: true),
         new OA\Property(property: 'type', type: 'string', enum: ['SALES_ORDER', 'PURCHASE_RETURN', 'TRANSIT_OUT'], example: 'SALES_ORDER'),
@@ -29,7 +29,7 @@ use OpenApi\Attributes as OA;
     required: ['location_id', 'type', 'expected_date', 'created_by', 'items'],
     type: 'object',
     properties: [
-        new OA\Property(property: 'location_id', type: 'integer', example: 1),
+        new OA\Property(property: 'location_id', type: 'string', example: '019ea2afad20700aa53cd1aeaf6a31f7'),
         new OA\Property(property: 'reference_number', type: 'string', example: 'SO-2026-0001', nullable: true),
         new OA\Property(property: 'type', type: 'string', enum: ['SALES_ORDER', 'PURCHASE_RETURN', 'TRANSIT_OUT'], example: 'SALES_ORDER'),
         new OA\Property(property: 'expected_date', type: 'string', format: 'date', example: '2026-06-05'),
@@ -41,7 +41,7 @@ use OpenApi\Attributes as OA;
                 type: 'object',
                 required: ['item_id', 'qty'],
                 properties: [
-                    new OA\Property(property: 'item_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
+                    new OA\Property(property: 'item_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
                     new OA\Property(property: 'qty', type: 'integer', example: 50)
                 ]
             )
@@ -109,7 +109,7 @@ class OutboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Outbounds'],
         parameters: [
-            new OA\Parameter(name: 'outbound', in: 'path', required: true, description: 'ID of the outbound', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'outbound', in: 'path', required: true, description: 'ID of the outbound', schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(
@@ -141,7 +141,7 @@ class OutboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Outbounds'],
         parameters: [
-            new OA\Parameter(name: 'outbound', in: 'path', required: true, description: 'ID of the outbound to update', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'outbound', in: 'path', required: true, description: 'ID of the outbound to update', schema: new OA\Schema(type: 'string'))
         ],
         requestBody: new OA\RequestBody(
             required: true,
@@ -170,7 +170,7 @@ class OutboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Outbounds'],
         parameters: [
-            new OA\Parameter(name: 'outbound', in: 'path', required: true, description: 'ID of the outbound to delete', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'outbound', in: 'path', required: true, description: 'ID of the outbound to delete', schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(response: 200, description: 'Outbound deleted successfully'),

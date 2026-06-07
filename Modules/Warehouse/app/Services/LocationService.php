@@ -22,7 +22,7 @@ class LocationService
         return $this->locationRepository->getAllPaginated($limit);
     }
 
-    public function getById(int $id): ?Location
+    public function getById(string $id): ?Location
     {
         return $this->locationRepository->findById($id);
     }
@@ -47,7 +47,7 @@ class LocationService
         });
     }
 
-    public function update(int $id, array $data): bool
+    public function update(string $id, array $data): bool
     {
         return DB::transaction(function () use ($id, $data) {
             $updated = $this->locationRepository->update($id, $data);
@@ -60,7 +60,7 @@ class LocationService
         });
     }
 
-    protected function syncLayout(int $locationId, array $layout): void
+    protected function syncLayout(string $locationId, array $layout): void
     {
         $incomingZoneCodes = array_column($layout, 'zone_code');
 
@@ -126,7 +126,7 @@ class LocationService
         }
     }
 
-    public function delete(int $id): bool
+    public function delete(string $id): bool
     {
         return DB::transaction(function () use ($id) {
             $location = $this->locationRepository->findById($id);

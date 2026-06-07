@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Collection;
 
 class ChannelWarehouseRepository
 {
-    public function findByLocation(int $locationId): Collection
+    public function findByLocation(string $locationId): Collection
     {
         return ChannelWarehouse::where('location_id', $locationId)->get();
     }
@@ -27,7 +27,7 @@ class ChannelWarehouseRepository
             ->paginate($limit);
     }
 
-    public function findByChannel(int $channelId, string $storeId): Collection
+    public function findByChannel(string $channelId, string $storeId): Collection
     {
         return ChannelWarehouse::where('channel_id', $channelId)
             ->where('store_id', $storeId)
@@ -35,7 +35,7 @@ class ChannelWarehouseRepository
             ->get();
     }
 
-    public function findByChannelLocationId(int $channelId, string $storeId, string $channelLocationId): ?ChannelWarehouse
+    public function findByChannelLocationId(string $channelId, string $storeId, string $channelLocationId): ?ChannelWarehouse
     {
         return ChannelWarehouse::where('channel_id', $channelId)
             ->where('store_id', $storeId)
@@ -48,17 +48,17 @@ class ChannelWarehouseRepository
         return ChannelWarehouse::create($data);
     }
 
-    public function update(int $id, array $data): bool
+    public function update(string $id, array $data): bool
     {
         return ChannelWarehouse::where('id', $id)->update($data) > 0;
     }
 
-    public function delete(int $id): bool
+    public function delete(string $id): bool
     {
         return ChannelWarehouse::where('id', $id)->delete() > 0;
     }
 
-    public function resolveLocationId(int $channelId, string $storeId, string $channelLocationId): ?int
+    public function resolveLocationId(string $channelId, string $storeId, string $channelLocationId): ?string
     {
         $mapping = $this->findByChannelLocationId($channelId, $storeId, $channelLocationId);
         return $mapping?->location_id;

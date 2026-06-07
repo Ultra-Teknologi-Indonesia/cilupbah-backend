@@ -35,7 +35,7 @@ class PermissionController extends Controller
                             type: 'array',
                             items: new OA\Items(
                                 properties: [
-                                    new OA\Property(property: 'id', type: 'string', example: '018f6b...'),
+                                    new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
                                     new OA\Property(property: 'name', type: 'string', example: 'create-user')
                                 ]
                             )

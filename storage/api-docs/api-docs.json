@@ -12,13 +12,117 @@
         }
     ],
     "paths": {
-        "/api/v1/auths": {
+        "/api/v1/auth/login": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Login user and get access token",
+                "operationId": "ccce227a6532e9aa9166893b0a10946a",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "email",
+                                    "password"
+                                ],
+                                "properties": {
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email",
+                                        "example": "test@example.com"
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "format": "password",
+                                        "example": "password"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful login",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Berhasil masuk. Selamat datang kembali!"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "access_token": {
+                                                    "type": "string",
+                                                    "example": "1|xyz..."
+                                                },
+                                                "token_type": {
+                                                    "type": "string",
+                                                    "example": "Bearer"
+                                                },
+                                                "user": {
+                                                    "properties": {
+                                                        "id": {
+                                                            "type": "string",
+                                                            "example": "019ea2afad1d733eafb905816d10590e"
+                                                        },
+                                                        "name": {
+                                                            "type": "string",
+                                                            "example": "Test User"
+                                                        },
+                                                        "email": {
+                                                            "type": "string",
+                                                            "example": "test@example.com"
+                                                        },
+                                                        "roles": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "type": "string",
+                                                                "example": "admin"
+                                                            }
+                                                        },
+                                                        "permissions": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "type": "string",
+                                                                "example": "create-user"
+                                                            }
+                                                        }
+                                                    },
+                                                    "type": "object"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Email atau kata sandi yang Anda masukkan salah."
+                    }
+                }
+            }
+        },
+        "/api/v1/profile": {
             "get": {
                 "tags": [
                     "Auth"
                 ],
-                "summary": "Get list of active sessions",
-                "operationId": "5b25dc05dff7d73b100fc8339fdd0a8b",
+                "summary": "Get current authenticated user profile",
+                "operationId": "544f7bba757093b4d0724cb19f5fa031",
                 "responses": {
                     "200": {
                         "description": "Successful operation",
@@ -26,10 +130,141 @@
                             "application/json": {
                                 "schema": {
                                     "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Profil berhasil dimuat."
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "id": {
+                                                    "type": "string",
+                                                    "example": "019ea2afad1d733eafb905816d10590e"
+                                                },
+                                                "name": {
+                                                    "type": "string",
+                                                    "example": "Test User"
+                                                },
+                                                "email": {
+                                                    "type": "string",
+                                                    "example": "test@example.com"
+                                                },
+                                                "roles": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string",
+                                                        "example": "admin"
+                                                    }
+                                                },
+                                                "permissions": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string",
+                                                        "example": "create-user"
+                                                    }
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/auth/logout": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Logout user and revoke access token",
+                "operationId": "16518d98e370a15ebf10146f70441e39",
+                "responses": {
+                    "200": {
+                        "description": "Successful logout",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Anda telah berhasil keluar."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "nullable": true
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/permissions": {
+            "get": {
+                "tags": [
+                    "Permissions"
+                ],
+                "summary": "Get all available permissions",
+                "operationId": "fe7e560d99a1cba4951733c672f70688",
+                "responses": {
+                    "200": {
+                        "description": "List of permissions retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Daftar hak akses berhasil dimuat."
+                                        },
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/components/schemas/Auth"
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "string",
+                                                        "example": "019ea2afad1d733eafb905816d10590e"
+                                                    },
+                                                    "name": {
+                                                        "type": "string",
+                                                        "example": "create-user"
+                                                    }
+                                                },
+                                                "type": "object"
                                             }
                                         }
                                     },
@@ -47,41 +282,68 @@
                         "bearerAuth": []
                     }
                 ]
+            }
+        },
+        "/api/v1/roles": {
+            "get": {
+                "tags": [
+                    "Roles"
+                ],
+                "summary": "Get all roles (Paginated)",
+                "operationId": "b1c95b0e7e2cfb3907b70ceecac0dd66",
+                "responses": {
+                    "200": {
+                        "description": "List of roles retrieved successfully"
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
             },
             "post": {
                 "tags": [
-                    "Auth"
+                    "Roles"
                 ],
-                "summary": "Create a new authentication session (Login)",
-                "operationId": "85b19cf5d011354b567e5b49e80c2fe4",
+                "summary": "Create a new role",
+                "operationId": "8d0da0a8fbc4102086acc7f6bdefc59a",
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/StoreAuthRequest"
+                                "required": [
+                                    "name"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "security"
+                                    },
+                                    "description": {
+                                        "type": "string",
+                                        "example": "Orang yang bertanggung jawab menjaga keamanan",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
                             }
                         }
                     }
                 },
                 "responses": {
                     "201": {
-                        "description": "Authentication successful",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/components/schemas/Auth"
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
+                        "description": "Role created successfully"
                     },
                     "422": {
-                        "description": "Validation Error"
+                        "description": "Validation error"
+                    },
+                    "403": {
+                        "description": "Forbidden access"
                     }
                 },
                 "security": [
@@ -91,67 +353,22 @@
                 ]
             }
         },
-        "/api/v1/auths/{auth}": {
-            "get": {
-                "tags": [
-                    "Auth"
-                ],
-                "summary": "Get authentication session details",
-                "operationId": "b9a0f53772b394ed8146aa62c5f710be",
-                "parameters": [
-                    {
-                        "name": "auth",
-                        "in": "path",
-                        "description": "ID of the auth session",
-                        "required": true,
-                        "schema": {
-                            "type": "integer"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Successful operation",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/components/schemas/Auth"
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthenticated"
-                    },
-                    "404": {
-                        "description": "Session not found"
-                    }
-                },
-                "security": [
-                    {
-                        "bearerAuth": []
-                    }
-                ]
-            },
+        "/api/v1/roles/{id}": {
             "put": {
                 "tags": [
-                    "Auth"
+                    "Roles"
                 ],
-                "summary": "Update an existing authentication session",
-                "operationId": "bdb2350229b49ea4ec8ea01da7ebabe7",
+                "summary": "Update an existing role",
+                "operationId": "8c93b383b6a67d100b4febc07197e520",
                 "parameters": [
                     {
-                        "name": "auth",
+                        "name": "id",
                         "in": "path",
-                        "description": "ID of the auth session to update",
+                        "description": "Role ID",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string",
+                            "example": "123..."
                         }
                     }
                 ],
@@ -160,35 +377,37 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/StoreAuthRequest"
+                                "required": [
+                                    "name"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "security_lead"
+                                    },
+                                    "description": {
+                                        "type": "string",
+                                        "example": "Pemimpin regu security",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
                             }
                         }
                     }
                 },
                 "responses": {
                     "200": {
-                        "description": "Session updated successfully",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/components/schemas/Auth"
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthenticated"
+                        "description": "Role updated successfully"
                     },
                     "404": {
-                        "description": "Session not found"
+                        "description": "Role not found"
                     },
                     "422": {
-                        "description": "Validation Error"
+                        "description": "Validation error"
+                    },
+                    "403": {
+                        "description": "Forbidden access"
                     }
                 },
                 "security": [
@@ -199,30 +418,611 @@
             },
             "delete": {
                 "tags": [
-                    "Auth"
+                    "Roles"
                 ],
-                "summary": "Delete an authentication session (Logout)",
-                "operationId": "2c0cd457224c669a2fe09b1d679e8b89",
+                "summary": "Delete a role",
+                "operationId": "991c07d49849923690f1da49fb917951",
                 "parameters": [
                     {
-                        "name": "auth",
+                        "name": "id",
                         "in": "path",
-                        "description": "ID of the auth session to delete",
+                        "description": "Role ID",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string",
+                            "example": "123..."
                         }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Logout successful"
+                        "description": "Role deleted successfully"
+                    },
+                    "404": {
+                        "description": "Role not found"
+                    },
+                    "403": {
+                        "description": "Forbidden access"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/users": {
+            "get": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Get all users (Paginated)",
+                "operationId": "79fff04c6dab1fba8ea9400e5d4f8116",
+                "parameters": [
+                    {
+                        "name": "filter[role]",
+                        "in": "query",
+                        "description": "Filter by exact role name",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[warehouse_id]",
+                        "in": "query",
+                        "description": "Filter by exact warehouse ID",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "description": "Search by name or email",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of users retrieved successfully"
                     },
                     "401": {
                         "description": "Unauthenticated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Create a new user",
+                "operationId": "819e11db035f60bf1a67b40a1c56f986",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "name",
+                                    "email",
+                                    "password",
+                                    "password_confirmation",
+                                    "roles"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "John Doe"
+                                    },
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email",
+                                        "example": "john@example.com"
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "format": "password",
+                                        "example": "StrongP@ssw0rd!"
+                                    },
+                                    "password_confirmation": {
+                                        "type": "string",
+                                        "format": "password",
+                                        "example": "StrongP@ssw0rd!"
+                                    },
+                                    "roles": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "example": "picker"
+                                        }
+                                    },
+                                    "nik": {
+                                        "type": "string",
+                                        "example": "3201012345678901",
+                                        "nullable": true
+                                    },
+                                    "warehouse_id": {
+                                        "type": "string",
+                                        "example": "019ea2afad1d733eafb905816d10590e",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "User created successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Pengguna berhasil dibuat."
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "id": {
+                                                    "type": "string",
+                                                    "example": "019ea2afad1d733eafb905816d10590e"
+                                                },
+                                                "name": {
+                                                    "type": "string",
+                                                    "example": "John Doe"
+                                                },
+                                                "email": {
+                                                    "type": "string",
+                                                    "example": "john@example.com"
+                                                },
+                                                "roles": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string",
+                                                        "example": "picker"
+                                                    }
+                                                },
+                                                "permissions": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "403": {
+                        "description": "Forbidden access"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/users/export": {
+            "get": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Export all users to Excel",
+                "operationId": "39f0f0e6e7e545ab7886ee1293d88e30",
+                "parameters": [
+                    {
+                        "name": "filter[role]",
+                        "in": "query",
+                        "description": "Filter by exact role name",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[warehouse_id]",
+                        "in": "query",
+                        "description": "Filter by exact warehouse ID",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "description": "Search by name or email",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Excel file generated"
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/users/{id}": {
+            "put": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Update an existing user",
+                "operationId": "3f1851d1f45041f40bd89f483bf8193a",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "User ID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "example": "019ea2afad1d733eafb905816d10590e"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "name",
+                                    "email",
+                                    "roles"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "John Doe Updated"
+                                    },
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email",
+                                        "example": "john.updated@example.com"
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "format": "password",
+                                        "example": "NewStrongP@ssw0rd!",
+                                        "nullable": true
+                                    },
+                                    "password_confirmation": {
+                                        "type": "string",
+                                        "format": "password",
+                                        "example": "NewStrongP@ssw0rd!",
+                                        "nullable": true
+                                    },
+                                    "roles": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "example": "checker"
+                                        }
+                                    },
+                                    "nik": {
+                                        "type": "string",
+                                        "example": "3201012345678901",
+                                        "nullable": true
+                                    },
+                                    "warehouse_id": {
+                                        "type": "string",
+                                        "example": "019ea2afad1d733eafb905816d10590e",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "User updated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Pengguna berhasil diperbarui."
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "id": {
+                                                    "type": "string",
+                                                    "example": "019ea2afad1d733eafb905816d10590e"
+                                                },
+                                                "name": {
+                                                    "type": "string",
+                                                    "example": "John Doe Updated"
+                                                },
+                                                "email": {
+                                                    "type": "string",
+                                                    "example": "john.updated@example.com"
+                                                },
+                                                "roles": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string",
+                                                        "example": "checker"
+                                                    }
+                                                },
+                                                "permissions": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
                     },
                     "404": {
-                        "description": "Session not found"
+                        "description": "User not found"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "403": {
+                        "description": "Forbidden access"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/users/{id}/histories": {
+            "get": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Get user history",
+                "operationId": "0e87bcb3b687ff7fb18646dc53139385",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "User ID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "example": "019ea2afad1d733eafb905816d10590e"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User histories retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Riwayat pengguna berhasil dimuat."
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "string",
+                                                        "example": "019ea2afad1d733eafb905816d10590e"
+                                                    },
+                                                    "actor": {
+                                                        "properties": {
+                                                            "id": {
+                                                                "type": "string"
+                                                            },
+                                                            "name": {
+                                                                "type": "string"
+                                                            },
+                                                            "email": {
+                                                                "type": "string"
+                                                            }
+                                                        },
+                                                        "type": "object",
+                                                        "nullable": true
+                                                    },
+                                                    "target_user_id": {
+                                                        "type": "string"
+                                                    },
+                                                    "action": {
+                                                        "type": "string",
+                                                        "example": "updated"
+                                                    },
+                                                    "message": {
+                                                        "type": "string",
+                                                        "example": "Admin membuat akun ini."
+                                                    },
+                                                    "created_at": {
+                                                        "type": "string",
+                                                        "format": "date-time"
+                                                    }
+                                                },
+                                                "type": "object"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "User not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/users/{id}/force-logout": {
+            "post": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Force logout a single user",
+                "operationId": "8337b2a29cd3244b48a396036fa49322",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "User ID",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "example": "019ea2afad1d733eafb905816d10590e"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User force logged out successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Sesi pengguna berhasil diputus."
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "User not found"
+                    },
+                    "403": {
+                        "description": "Forbidden access"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/users/bulk-force-logout": {
+            "post": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Bulk force logout multiple users",
+                "operationId": "29337482a90ab6f0252160767cc9b8ab",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "user_ids"
+                                ],
+                                "properties": {
+                                    "user_ids": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "example": "019ea2afad1d733eafb905816d10590e"
+                                        }
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Users force logged out successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Sesi pengguna yang dipilih berhasil diputus."
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "403": {
+                        "description": "Forbidden access"
                     }
                 },
                 "security": [
@@ -335,8 +1135,7 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "string",
-                            "format": "uuid"
+                            "type": "string"
                         }
                     }
                 ],
@@ -368,8 +1167,7 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "string",
-                            "format": "uuid"
+                            "type": "string"
                         }
                     }
                 ],
@@ -414,8 +1212,7 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "string",
-                            "format": "uuid"
+                            "type": "string"
                         }
                     }
                 ],
@@ -466,8 +1263,7 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "string",
-                            "format": "uuid"
+                            "type": "string"
                         }
                     }
                 ],
@@ -512,8 +1308,7 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "string",
-                            "format": "uuid"
+                            "type": "string"
                         }
                     }
                 ],
@@ -585,8 +1380,7 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "string",
-                            "format": "uuid"
+                            "type": "string"
                         }
                     }
                 ],
@@ -617,8 +1411,7 @@
                         "description": "Inbound ID",
                         "required": true,
                         "schema": {
-                            "type": "string",
-                            "format": "uuid"
+                            "type": "string"
                         }
                     }
                 ],
@@ -685,8 +1478,7 @@
                         "description": "Inbound ID",
                         "required": true,
                         "schema": {
-                            "type": "string",
-                            "format": "uuid"
+                            "type": "string"
                         }
                     }
                 ],
@@ -797,8 +1589,7 @@
                         "description": "Assignment ID",
                         "required": true,
                         "schema": {
-                            "type": "string",
-                            "format": "uuid"
+                            "type": "string"
                         }
                     }
                 ],
@@ -853,8 +1644,7 @@
                         "required": true,
                         "schema": {
                             "type": "string",
-                            "format": "uuid",
-                            "example": "550e8400-e29b-41d4-a716-446655440000"
+                            "example": "019ea2afad1d733eafb905816d10590e"
                         }
                     }
                 ],
@@ -965,8 +1755,7 @@
                         "in": "path",
                         "required": true,
                         "schema": {
-                            "type": "string",
-                            "format": "uuid"
+                            "type": "string"
                         }
                     }
                 ],
@@ -1052,7 +1841,7 @@
                         "description": "ID of the item",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -1134,6 +1923,181 @@
                     },
                     "401": {
                         "description": "Unauthenticated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inventory/items/to-stock": {
+            "get": {
+                "tags": [
+                    "Inventory"
+                ],
+                "summary": "Get list of items available to stock",
+                "operationId": "fb54bbfeab2cd7151f784cc84469bde4",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Daftar item to-stock berhasil diambil."
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inventory/stock-products": {
+            "get": {
+                "tags": [
+                    "Inventory"
+                ],
+                "summary": "Get all stock products grouped by product",
+                "operationId": "88d69e56b15110db02e093692c4f39fd",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Daftar stok produk berhasil diambil."
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inventory/history": {
+            "get": {
+                "tags": [
+                    "Inventory"
+                ],
+                "summary": "Get stock movement history with filters",
+                "operationId": "4d7125ee5582d0a7140b14327e2b201e",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10
+                        }
+                    },
+                    {
+                        "name": "filter[item_id]",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[date_from]",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "filter[date_to]",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Riwayat stok berhasil diambil."
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inventory/items/by-location/{locationId}": {
+            "get": {
+                "tags": [
+                    "Inventory"
+                ],
+                "summary": "Get inventory items by location",
+                "operationId": "6d7fc91ec6e647ee70a39b8815a9ad90",
+                "parameters": [
+                    {
+                        "name": "locationId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Stok per lokasi berhasil diambil."
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inventory/purchase-order/items": {
+            "get": {
+                "tags": [
+                    "Inventory"
+                ],
+                "summary": "Get items in purchase orders that are not fully received",
+                "operationId": "64b101e84f9a443949d63e420d85c750",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Daftar item PO berhasil diambil."
                     }
                 },
                 "security": [
@@ -1462,6 +2426,882 @@
                 ]
             }
         },
+        "/api/v1/putaway": {
+            "get": {
+                "tags": [
+                    "Putaway"
+                ],
+                "summary": "Get list of all putaway documents",
+                "operationId": "88cfe57c474ee14e7919e64aa40075ea",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10
+                        }
+                    },
+                    {
+                        "name": "filter[status]",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "NOT_STARTED",
+                                "IN_PROGRESS",
+                                "COMPLETED",
+                                "CANCELLED"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "filter[location_id]",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[assigned_to]",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Daftar putaway berhasil diambil."
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/putaway/not-started": {
+            "get": {
+                "tags": [
+                    "Putaway"
+                ],
+                "summary": "Get list of not started putaway documents",
+                "operationId": "e9e1eef738ef2caf45bfbafc3c6b21d3",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Daftar putaway NOT_STARTED berhasil diambil."
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/putaway/in-progress": {
+            "get": {
+                "tags": [
+                    "Putaway"
+                ],
+                "summary": "Get list of in-progress putaway documents",
+                "operationId": "87c2bb539de2f9521cd1e8dad2d108e6",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Daftar putaway IN_PROGRESS berhasil diambil."
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/putaway/completed": {
+            "get": {
+                "tags": [
+                    "Putaway"
+                ],
+                "summary": "Get list of completed putaway documents",
+                "operationId": "b1ec2e3082a03cc33a271ccbfadc946d",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Daftar putaway COMPLETED berhasil diambil."
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/putaway/{id}": {
+            "get": {
+                "tags": [
+                    "Putaway"
+                ],
+                "summary": "Get putaway document detail",
+                "operationId": "e4f083aee1dc383b7a96d13a94f32c45",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Detail putaway berhasil diambil."
+                    },
+                    "404": {
+                        "description": "Putaway tidak ditemukan."
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/putaway/{id}/items": {
+            "get": {
+                "tags": [
+                    "Putaway"
+                ],
+                "summary": "Get putaway items",
+                "operationId": "1dcc74dbb8a32d86757113475d660928",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Daftar item putaway berhasil diambil."
+                    },
+                    "404": {
+                        "description": "Putaway tidak ditemukan."
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/putaway/assign-staff": {
+            "post": {
+                "tags": [
+                    "Putaway"
+                ],
+                "summary": "Assign staff to putaway documents",
+                "operationId": "1253a2c003e0c9e42aeb626f67c668fa",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "data",
+                                    "performed_by"
+                                ],
+                                "properties": {
+                                    "data": {
+                                        "type": "array",
+                                        "items": {
+                                            "properties": {
+                                                "putaway_id": {
+                                                    "type": "string"
+                                                },
+                                                "assigned_to": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "performed_by": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Staff berhasil di-assign ke putaway."
+                    },
+                    "422": {
+                        "description": "Validation Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/putaway/{id}/start": {
+            "post": {
+                "tags": [
+                    "Putaway"
+                ],
+                "summary": "Start a putaway process",
+                "operationId": "fa012e07532a57a5e2b76e0c0b88cafc",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Putaway berhasil dimulai."
+                    },
+                    "422": {
+                        "description": "Validation Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/putaway/{id}/items/{itemId}/process": {
+            "post": {
+                "tags": [
+                    "Putaway"
+                ],
+                "summary": "Process a putaway item",
+                "operationId": "f3c3933b671cd6544133133ad78d2d94",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "itemId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "destination_bin_id",
+                                    "qty"
+                                ],
+                                "properties": {
+                                    "destination_bin_id": {
+                                        "type": "string"
+                                    },
+                                    "qty": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "202": {
+                        "description": "Proses putaway item sedang dijalankan."
+                    },
+                    "422": {
+                        "description": "Validation Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/putaway/{id}/complete": {
+            "post": {
+                "tags": [
+                    "Putaway"
+                ],
+                "summary": "Complete a putaway process",
+                "operationId": "0de3b0a7c94dd0278997330e82890a1a",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Putaway berhasil diselesaikan."
+                    },
+                    "422": {
+                        "description": "Validation Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inventory/reserved-stocks": {
+            "get": {
+                "tags": [
+                    "Reserved Stock"
+                ],
+                "summary": "Get list of reserved stock documents",
+                "operationId": "65a9b0f3cf42a092d2b99e2245f53594",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10
+                        }
+                    },
+                    {
+                        "name": "filter[status]",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "ACTIVE",
+                                "EXPIRED",
+                                "CANCELLED"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "filter[location_id]",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[q]",
+                        "in": "query",
+                        "description": "Search by reserved_stock_no",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Daftar dokumen reserved stock berhasil diambil."
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Reserved Stock"
+                ],
+                "summary": "Create a new reserved stock document",
+                "operationId": "815e66f552a7d312a6516210a3016af9",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "start_date",
+                                    "end_date",
+                                    "location_id",
+                                    "items"
+                                ],
+                                "properties": {
+                                    "start_date": {
+                                        "type": "string",
+                                        "format": "date-time"
+                                    },
+                                    "end_date": {
+                                        "type": "string",
+                                        "format": "date-time"
+                                    },
+                                    "location_id": {
+                                        "type": "string"
+                                    },
+                                    "is_active": {
+                                        "type": "boolean"
+                                    },
+                                    "notes": {
+                                        "type": "string"
+                                    },
+                                    "items": {
+                                        "type": "array",
+                                        "items": {
+                                            "properties": {
+                                                "item_id": {
+                                                    "type": "string"
+                                                },
+                                                "bin_id": {
+                                                    "type": "string",
+                                                    "nullable": true
+                                                },
+                                                "qty": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "202": {
+                        "description": "Dokumen reserved stock berhasil dibuat, reservasi sedang diproses."
+                    },
+                    "422": {
+                        "description": "Validation Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inventory/reserved-stocks/{id}": {
+            "get": {
+                "tags": [
+                    "Reserved Stock"
+                ],
+                "summary": "Get reserved stock document detail",
+                "operationId": "581e0a5c46a5b963610a1a0768fd1b6f",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Detail reserved stock berhasil diambil."
+                    },
+                    "404": {
+                        "description": "Dokumen tidak ditemukan."
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inventory/reserved-stocks/{id}/cancel": {
+            "post": {
+                "tags": [
+                    "Reserved Stock"
+                ],
+                "summary": "Cancel a reserved stock document",
+                "operationId": "57f467512da27951f17b10d061184f2e",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Dokumen reserved stock berhasil di-cancel, reservasi di-rollback."
+                    },
+                    "422": {
+                        "description": "Validation Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inventory/adjustments/documents": {
+            "get": {
+                "tags": [
+                    "Stock Adjustment"
+                ],
+                "summary": "Get list of stock adjustment documents",
+                "operationId": "7a7e3a2384bcd3a3ee788f88b3a7d26f",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10
+                        }
+                    },
+                    {
+                        "name": "filter[status]",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "DRAFT",
+                                "APPROVED",
+                                "CANCELLED"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "filter[location_id]",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[q]",
+                        "in": "query",
+                        "description": "Search by adjustment_no",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Daftar dokumen adjustment berhasil diambil."
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Stock Adjustment"
+                ],
+                "summary": "Create a new stock adjustment document",
+                "operationId": "9a6aa35da77f904deaad8b4d3df30a90",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "transaction_date",
+                                    "location_id",
+                                    "items"
+                                ],
+                                "properties": {
+                                    "transaction_date": {
+                                        "type": "string",
+                                        "format": "date-time"
+                                    },
+                                    "location_id": {
+                                        "type": "string"
+                                    },
+                                    "is_beginning_balance": {
+                                        "type": "boolean"
+                                    },
+                                    "notes": {
+                                        "type": "string"
+                                    },
+                                    "items": {
+                                        "type": "array",
+                                        "items": {
+                                            "properties": {
+                                                "item_id": {
+                                                    "type": "string"
+                                                },
+                                                "bin_id": {
+                                                    "type": "string",
+                                                    "nullable": true
+                                                },
+                                                "actual_qty": {
+                                                    "type": "integer"
+                                                },
+                                                "batch_no": {
+                                                    "type": "string",
+                                                    "nullable": true
+                                                },
+                                                "serial_no": {
+                                                    "type": "string",
+                                                    "nullable": true
+                                                },
+                                                "notes": {
+                                                    "type": "string",
+                                                    "nullable": true
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Dokumen adjustment berhasil dibuat."
+                    },
+                    "422": {
+                        "description": "Validation Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inventory/adjustments/documents/{id}": {
+            "get": {
+                "tags": [
+                    "Stock Adjustment"
+                ],
+                "summary": "Get stock adjustment document detail",
+                "operationId": "5a77f714c31654f578d4d10c26435dc3",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Detail adjustment berhasil diambil."
+                    },
+                    "404": {
+                        "description": "Dokumen tidak ditemukan."
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Stock Adjustment"
+                ],
+                "summary": "Delete a stock adjustment document (soft delete)",
+                "operationId": "9db1bff6e3ff7fa047c93c47b8193f73",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Dokumen adjustment berhasil dihapus."
+                    },
+                    "422": {
+                        "description": "Validation Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inventory/adjustments/documents/{id}/approve": {
+            "post": {
+                "tags": [
+                    "Stock Adjustment"
+                ],
+                "summary": "Approve a stock adjustment document",
+                "operationId": "491aaefb283be703bf51dd2d46d0d28e",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Dokumen adjustment di-approve, mutasi stok sedang diproses."
+                    },
+                    "422": {
+                        "description": "Validation Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/inventory/adjustments/documents/{id}/cancel": {
+            "post": {
+                "tags": [
+                    "Stock Adjustment"
+                ],
+                "summary": "Cancel a stock adjustment document",
+                "operationId": "599c41e16d6cf8f94ab6267b211421a4",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Dokumen adjustment berhasil di-cancel."
+                    },
+                    "422": {
+                        "description": "Validation Error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/api/v1/notifications": {
             "get": {
                 "tags": [
@@ -1558,7 +3398,7 @@
                         "description": "ID of the notification",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -1604,7 +3444,7 @@
                         "description": "ID of the notification to update",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -1663,7 +3503,7 @@
                         "description": "ID of the notification to delete",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -1827,7 +3667,7 @@
                         "description": "ID of the order to update",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -1886,7 +3726,7 @@
                         "description": "ID of the order to delete",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -2004,7 +3844,7 @@
                         "description": "ID of the outbound",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -2050,7 +3890,7 @@
                         "description": "ID of the outbound to update",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -2109,7 +3949,7 @@
                         "description": "ID of the outbound to delete",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -2845,11 +4685,11 @@
                                 "properties": {
                                     "supplier_id": {
                                         "type": "string",
-                                        "example": 1
+                                        "example": "019ea2afad1d733eafb905816d10590e"
                                     },
                                     "location_id": {
                                         "type": "string",
-                                        "example": 1
+                                        "example": "019ea2afad20700aa53cd1aeaf6a31f7"
                                     },
                                     "order_date": {
                                         "type": "string",
@@ -2876,8 +4716,7 @@
                                             "properties": {
                                                 "item_id": {
                                                     "type": "string",
-                                                    "format": "uuid",
-                                                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                                                    "example": "019ea2afad1d733eafb905816d10590e"
                                                 },
                                                 "qty": {
                                                     "type": "integer",
@@ -3077,7 +4916,7 @@
                                             "properties": {
                                                 "purchase_order_item_id": {
                                                     "type": "string",
-                                                    "example": 1
+                                                    "example": "019ea2afad1d733eafb905816d10590e"
                                                 },
                                                 "qty": {
                                                     "type": "integer",
@@ -3236,7 +5075,7 @@
                         "description": "ID of the report",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -3282,7 +5121,7 @@
                         "description": "ID of the report to update",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -3341,7 +5180,7 @@
                         "description": "ID of the report to delete",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -3431,7 +5270,7 @@
                                     },
                                     "location_id": {
                                         "type": "string",
-                                        "example": 1
+                                        "example": "019ea2afad20700aa53cd1aeaf6a31f7"
                                     },
                                     "source": {
                                         "type": "string",
@@ -3461,8 +5300,7 @@
                                             "properties": {
                                                 "item_id": {
                                                     "type": "string",
-                                                    "format": "uuid",
-                                                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                                                    "example": "019ea2afad1d733eafb905816d10590e"
                                                 },
                                                 "qty": {
                                                     "type": "integer",
@@ -4076,7 +5914,7 @@
                         "description": "ID of the mapping to delete",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -4129,7 +5967,7 @@
                         "description": "ID of the location",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -4181,7 +6019,7 @@
                         "description": "ID of the location",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -4233,7 +6071,7 @@
                         "description": "ID of the location",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -4445,7 +6283,7 @@
                         "description": "ID of the location",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -4495,7 +6333,7 @@
                         "description": "ID of the location to update",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -4559,7 +6397,7 @@
                         "description": "ID of the location to delete",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -4612,7 +6450,7 @@
                         "description": "ID of the location",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -4648,6 +6486,189 @@
                         "bearerAuth": []
                     }
                 ]
+            }
+        },
+        "/api/v1/warranties": {
+            "get": {
+                "tags": [
+                    "Warranty"
+                ],
+                "summary": "Get all warranties",
+                "operationId": "getWarranties",
+                "parameters": [
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success"
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "Warranty"
+                ],
+                "summary": "Create new warranty",
+                "operationId": "storeWarranty",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "product_variant_id",
+                                    "duration_months",
+                                    "start_date",
+                                    "end_date"
+                                ],
+                                "properties": {
+                                    "product_variant_id": {
+                                        "type": "string"
+                                    },
+                                    "order_id": {
+                                        "type": "string",
+                                        "nullable": true
+                                    },
+                                    "serial_no": {
+                                        "type": "string",
+                                        "nullable": true
+                                    },
+                                    "duration_months": {
+                                        "type": "integer"
+                                    },
+                                    "start_date": {
+                                        "type": "string",
+                                        "format": "date"
+                                    },
+                                    "end_date": {
+                                        "type": "string",
+                                        "format": "date"
+                                    },
+                                    "notes": {
+                                        "type": "string",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Created"
+                    }
+                }
+            }
+        },
+        "/api/v1/warranties/{id}": {
+            "get": {
+                "tags": [
+                    "Warranty"
+                ],
+                "summary": "Get warranty by ID",
+                "operationId": "getWarrantyById",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "Warranty"
+                ],
+                "summary": "Update warranty",
+                "operationId": "updateWarranty",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "status": {
+                                        "type": "string"
+                                    },
+                                    "notes": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Updated"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Warranty"
+                ],
+                "summary": "Delete warranty",
+                "operationId": "deleteWarranty",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deleted"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                }
             }
         },
         "/api/v1/webhooks": {
@@ -4746,7 +6767,7 @@
                         "description": "ID of the webhook",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -4792,7 +6813,7 @@
                         "description": "ID of the webhook to update",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -4851,7 +6872,7 @@
                         "description": "ID of the webhook to delete",
                         "required": true,
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -4876,73 +6897,16 @@
     },
     "components": {
         "schemas": {
-            "Auth": {
-                "title": "Auth Schema",
-                "properties": {
-                    "id": {
-                        "type": "integer",
-                        "example": 1
-                    },
-                    "user_id": {
-                        "type": "integer",
-                        "example": 1
-                    },
-                    "token": {
-                        "type": "string",
-                        "example": "1|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                    },
-                    "device_name": {
-                        "type": "string",
-                        "example": "Android Default Device"
-                    },
-                    "created_at": {
-                        "type": "string",
-                        "format": "date-time",
-                        "example": "2026-06-04T12:00:00Z"
-                    },
-                    "updated_at": {
-                        "type": "string",
-                        "format": "date-time",
-                        "example": "2026-06-04T12:00:00Z"
-                    }
-                },
-                "type": "object"
-            },
-            "StoreAuthRequest": {
-                "required": [
-                    "email",
-                    "password"
-                ],
-                "properties": {
-                    "email": {
-                        "type": "string",
-                        "format": "email",
-                        "example": "admin@example.com"
-                    },
-                    "password": {
-                        "type": "string",
-                        "format": "password",
-                        "example": "secret"
-                    },
-                    "device_name": {
-                        "type": "string",
-                        "example": "Web Browser",
-                        "nullable": true
-                    }
-                },
-                "type": "object"
-            },
             "Inbound": {
                 "title": "Inbound Schema",
                 "properties": {
                     "id": {
                         "type": "string",
-                        "format": "uuid",
-                        "example": "550e8400-e29b-41d4-a716-446655440000"
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "location_id": {
                         "type": "string",
-                        "example": 1
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "transaction_number": {
                         "type": "string",
@@ -4970,7 +6934,7 @@
                     },
                     "source_id": {
                         "type": "string",
-                        "example": 1,
+                        "example": "019ea2afad1d733eafb905816d10590e",
                         "nullable": true
                     },
                     "status": {
@@ -5016,7 +6980,7 @@
                 "properties": {
                     "location_id": {
                         "type": "string",
-                        "example": 1
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "reference_number": {
                         "type": "string",
@@ -5040,7 +7004,7 @@
                     },
                     "source_id": {
                         "type": "string",
-                        "example": 1,
+                        "example": "019ea2afad1d733eafb905816d10590e",
                         "nullable": true
                     },
                     "expected_date": {
@@ -5062,8 +7026,7 @@
                             "properties": {
                                 "item_id": {
                                     "type": "string",
-                                    "format": "uuid",
-                                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                                    "example": "019ea2afad1d733eafb905816d10590e"
                                 },
                                 "expected_qty": {
                                     "type": "integer",
@@ -5096,8 +7059,7 @@
                             "properties": {
                                 "inbound_item_id": {
                                     "type": "string",
-                                    "format": "uuid",
-                                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                                    "example": "019ea2afad1d733eafb905816d10590e"
                                 },
                                 "qty": {
                                     "type": "integer",
@@ -5150,13 +7112,11 @@
                             "properties": {
                                 "inbound_item_id": {
                                     "type": "string",
-                                    "format": "uuid",
-                                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                                    "example": "019ea2afad1d733eafb905816d10590e"
                                 },
                                 "destination_bin_id": {
                                     "type": "string",
-                                    "format": "uuid",
-                                    "example": "660e8400-e29b-41d4-a716-446655440001"
+                                    "example": "019ea2afad20700aa53cd1aeaf6a31f7"
                                 },
                                 "qty": {
                                     "type": "integer",
@@ -5197,18 +7157,15 @@
                     "id": {
                         "description": "UUID primary key — digunakan sebagai QR code label barang",
                         "type": "string",
-                        "format": "uuid",
-                        "example": "550e8400-e29b-41d4-a716-446655440000"
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "inbound_id": {
                         "type": "string",
-                        "format": "uuid",
-                        "example": "550e8400-e29b-41d4-a716-446655440000"
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "item_id": {
                         "type": "string",
-                        "format": "uuid",
-                        "example": "550e8400-e29b-41d4-a716-446655440000"
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "expected_qty": {
                         "type": "integer",
@@ -5254,21 +7211,19 @@
                 "properties": {
                     "id": {
                         "type": "string",
-                        "format": "uuid",
-                        "example": "550e8400-e29b-41d4-a716-446655440000"
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "inbound_id": {
                         "type": "string",
-                        "format": "uuid",
-                        "example": "550e8400-e29b-41d4-a716-446655440000"
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "assigned_to": {
-                        "type": "integer",
-                        "example": 5
+                        "type": "string",
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "assigned_by": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "019ea2afad20700aa53cd1aeaf6a31f7"
                     },
                     "status": {
                         "type": "string",
@@ -5306,7 +7261,7 @@
                         "properties": {
                             "id": {
                                 "type": "string",
-                                "example": 5
+                                "example": "019ea2afad1d733eafb905816d10590e"
                             },
                             "name": {
                                 "type": "string",
@@ -5324,7 +7279,7 @@
                         "properties": {
                             "id": {
                                 "type": "string",
-                                "example": 1
+                                "example": "019ea2afad20700aa53cd1aeaf6a31f7"
                             },
                             "name": {
                                 "type": "string",
@@ -5348,8 +7303,8 @@
                 "properties": {
                     "assigned_to": {
                         "description": "User ID pekerja",
-                        "type": "integer",
-                        "example": 5
+                        "type": "string",
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "notes": {
                         "description": "Catatan untuk pekerja",
@@ -5370,14 +7325,12 @@
                     "inbound_item_id": {
                         "description": "Scan 1: UUID dari label barang (= inbound_items.id)",
                         "type": "string",
-                        "format": "uuid",
-                        "example": "550e8400-e29b-41d4-a716-446655440000"
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "bin_id": {
                         "description": "Scan 2: UUID dari rak tujuan (= location_bins.id)",
                         "type": "string",
-                        "format": "uuid",
-                        "example": "660e8400-e29b-41d4-a716-446655440001"
+                        "example": "019ea2afad20700aa53cd1aeaf6a31f7"
                     },
                     "qty": {
                         "description": "Jumlah barang yang di-putaway",
@@ -5392,21 +7345,19 @@
                 "properties": {
                     "id": {
                         "type": "string",
-                        "example": 1
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "item_id": {
                         "type": "string",
-                        "format": "uuid",
-                        "example": "550e8400-e29b-41d4-a716-446655440000"
+                        "example": "019ea2afad20700aa53cd1aeaf6a31f7"
                     },
                     "location_id": {
                         "type": "string",
-                        "example": 1
+                        "example": "019ea2afad2170bbb0e9956fea210bfc"
                     },
                     "bin_id": {
                         "type": "string",
-                        "format": "uuid",
-                        "example": "550e8400-e29b-41d4-a716-446655440000",
+                        "example": "019ea2afad1d733eafb905816d10590e",
                         "nullable": true
                     },
                     "batch_no": {
@@ -5452,17 +7403,15 @@
                 "properties": {
                     "item_id": {
                         "type": "string",
-                        "format": "uuid",
-                        "example": "550e8400-e29b-41d4-a716-446655440000"
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "location_id": {
                         "type": "string",
-                        "example": 1
+                        "example": "019ea2afad20700aa53cd1aeaf6a31f7"
                     },
                     "bin_id": {
                         "type": "string",
-                        "format": "uuid",
-                        "example": "550e8400-e29b-41d4-a716-446655440000",
+                        "example": "019ea2afad2170bbb0e9956fea210bfc",
                         "nullable": true
                     },
                     "batch_no": {
@@ -5504,22 +7453,19 @@
                 "properties": {
                     "item_id": {
                         "type": "string",
-                        "format": "uuid",
-                        "example": "550e8400-e29b-41d4-a716-446655440000"
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "location_id": {
                         "type": "string",
-                        "example": 1
+                        "example": "019ea2afad20700aa53cd1aeaf6a31f7"
                     },
                     "source_bin_id": {
                         "type": "string",
-                        "format": "uuid",
-                        "example": "550e8400-e29b-41d4-a716-446655440000"
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "destination_bin_id": {
                         "type": "string",
-                        "format": "uuid",
-                        "example": "660e8400-e29b-41d4-a716-446655440001"
+                        "example": "019ea2afad20700aa53cd1aeaf6a31f7"
                     },
                     "batch_no": {
                         "type": "string",
@@ -5559,27 +7505,24 @@
                 "properties": {
                     "item_id": {
                         "type": "string",
-                        "format": "uuid",
-                        "example": "550e8400-e29b-41d4-a716-446655440000"
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "source_location_id": {
                         "type": "string",
-                        "example": 1
+                        "example": "019ea2afad20700aa53cd1aeaf6a31f7"
                     },
                     "source_bin_id": {
                         "type": "string",
-                        "format": "uuid",
-                        "example": "550e8400-e29b-41d4-a716-446655440000",
+                        "example": "019ea2afad2170bbb0e9956fea210bfc",
                         "nullable": true
                     },
                     "destination_location_id": {
                         "type": "string",
-                        "example": 2
+                        "example": "019ea2afad2170bbb0e9956fea885852"
                     },
                     "destination_bin_id": {
                         "type": "string",
-                        "format": "uuid",
-                        "example": "660e8400-e29b-41d4-a716-446655440001",
+                        "example": "019ea2afad20700aa53cd1aeaf6a31f7",
                         "nullable": true
                     },
                     "batch_no": {
@@ -5613,12 +7556,12 @@
                 "title": "Notification Schema",
                 "properties": {
                     "id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "user_id": {
-                        "type": "integer",
-                        "example": 10
+                        "type": "string",
+                        "example": "019ea2afad20700aa53cd1aeaf6a31f7"
                     },
                     "title": {
                         "type": "string",
@@ -5652,8 +7595,8 @@
                 ],
                 "properties": {
                     "user_id": {
-                        "type": "integer",
-                        "example": 10
+                        "type": "string",
+                        "example": "019ea2afad20700aa53cd1aeaf6a31f7"
                     },
                     "title": {
                         "type": "string",
@@ -5671,7 +7614,7 @@
                 "properties": {
                     "id": {
                         "type": "string",
-                        "example": 1
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "salesorder_no": {
                         "type": "string",
@@ -6025,12 +7968,12 @@
                 "title": "Outbound Schema",
                 "properties": {
                     "id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "location_id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "019ea2afad20700aa53cd1aeaf6a31f7"
                     },
                     "transaction_number": {
                         "type": "string",
@@ -6086,8 +8029,8 @@
                 ],
                 "properties": {
                     "location_id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "019ea2afad20700aa53cd1aeaf6a31f7"
                     },
                     "reference_number": {
                         "type": "string",
@@ -6122,8 +8065,7 @@
                             "properties": {
                                 "item_id": {
                                     "type": "string",
-                                    "format": "uuid",
-                                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                                    "example": "019ea2afad1d733eafb905816d10590e"
                                 },
                                 "qty": {
                                     "type": "integer",
@@ -6140,8 +8082,8 @@
                 "title": "Report Schema",
                 "properties": {
                     "id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "title": {
                         "type": "string",
@@ -6198,16 +8140,16 @@
                 "title": "Channel Warehouse Schema",
                 "properties": {
                     "id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "location_id": {
                         "type": "string",
-                        "example": "018f6b..."
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "channel_id": {
                         "type": "string",
-                        "example": "018f6b..."
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "store_id": {
                         "type": "string",
@@ -6243,11 +8185,11 @@
                 "properties": {
                     "location_id": {
                         "type": "string",
-                        "example": "018f6b..."
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "channel_id": {
                         "type": "string",
-                        "example": "018f6b..."
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "store_id": {
                         "type": "string",
@@ -6269,12 +8211,12 @@
                 "title": "Location Bin Schema",
                 "properties": {
                     "id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "location_id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "floor_code": {
                         "type": "string",
@@ -6326,8 +8268,8 @@
                 "title": "Location Schema",
                 "properties": {
                     "id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "location_code": {
                         "type": "string",
@@ -6655,12 +8597,12 @@
                 "title": "Location Zone Schema",
                 "properties": {
                     "id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "location_id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "zone_code": {
                         "type": "string",
@@ -6692,8 +8634,8 @@
                 "title": "Webhook Schema",
                 "properties": {
                     "id": {
-                        "type": "integer",
-                        "example": 1
+                        "type": "string",
+                        "example": "019ea2afad1d733eafb905816d10590e"
                     },
                     "name": {
                         "type": "string",
@@ -6756,7 +8698,19 @@
     "tags": [
         {
             "name": "Auth",
-            "description": "API Endpoints for Authentication"
+            "description": "Authentication API Endpoints"
+        },
+        {
+            "name": "Permissions",
+            "description": "Permission Management Endpoints"
+        },
+        {
+            "name": "Roles",
+            "description": "Role Management Endpoints"
+        },
+        {
+            "name": "Users",
+            "description": "User Management Endpoints"
         },
         {
             "name": "Inbounds",
@@ -6777,6 +8731,18 @@
         {
             "name": "Inventory Transactions",
             "description": "API Endpoints for Inventory Transactions"
+        },
+        {
+            "name": "Putaway",
+            "description": "API Endpoints for Standalone Putaway"
+        },
+        {
+            "name": "Reserved Stock",
+            "description": "API Endpoints for Document-based Reserved Stock"
+        },
+        {
+            "name": "Stock Adjustment",
+            "description": "API Endpoints for Document-based Stock Adjustment"
         },
         {
             "name": "Notifications",
@@ -6821,6 +8787,9 @@
         {
             "name": "Location Zones",
             "description": "API Endpoints for Warehouse Zones"
+        },
+        {
+            "name": "Warranty"
         },
         {
             "name": "Webhooks",
