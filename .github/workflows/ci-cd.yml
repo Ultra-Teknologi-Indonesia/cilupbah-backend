@@ -62,6 +62,16 @@ jobs:
             set -e
             cd ${{ secrets.DEPLOY_PATH }}
 
+            # ── Helper: force-clean semua container & network ─────────────────
+            clean_before_up() {
+              docker rm -f \
+                cilupbah-staging \
+                cilupbah-staging-horizon \
+                cilupbah-staging-redis \
+                cilupbah-staging-db 2>/dev/null || true
+              docker network rm cilupbah_default 2>/dev/null || true
+            }
+
             # ── Save current commit before pulling ────────────────────────────
             PREVIOUS_COMMIT=$(git rev-parse HEAD)
             echo "Previous commit: $PREVIOUS_COMMIT"
@@ -71,8 +81,8 @@ jobs:
               echo "⚠️  Deployment failed — rolling back to $PREVIOUS_COMMIT"
               git reset --hard "$PREVIOUS_COMMIT"
 
-              # Bersihkan semua container dulu sebelum naik kembali
               docker compose -f docker-compose.staging.yml down --remove-orphans --timeout 30
+              clean_before_up
               docker compose -f docker-compose.staging.yml up -d --build
 
               echo "✅ Rollback complete"
@@ -84,16 +94,17 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            # ── Rebuild & Restart: down dulu, baru up ────────────────────────
+            # ── Rebuild & Restart ─────────────────────────────────────────────
             echo "Stopping existing containers..."
             docker compose -f docker-compose.staging.yml down --remove-orphans --timeout 30
+            clean_before_up
 
             echo "Building and starting containers..."
             docker compose -f docker-compose.staging.yml up -d --build
 
-            # ── Health check sederhana ────────────────────────────────────────
+            # ── Health check ──────────────────────────────────────────────────
             echo "Waiting for app to be ready..."
-            sleep 5
+            sleep 10
             docker compose -f docker-compose.staging.yml ps --filter "status=running" | grep -q "cilupbah-staging" \
               || { echo "❌ Container not running after deploy!"; exit 1; }
 
