@@ -7,8 +7,8 @@ use Modules\Product\Models\Category;
 use Modules\Product\Models\Brand;
 use Modules\Product\Models\Attribute;
 use Modules\Product\Models\AttributeOption;
-use Modules\Product\Services\ProductService;
-use Ramsey\Uuid\Uuid;
+use Illuminate\Support\Facades\Http;
+use App\Models\User;
 
 class ProductCreateAgentCommand extends Command
 {
@@ -29,7 +29,7 @@ class ProductCreateAgentCommand extends Command
     /**
      * Execute the console command.
      */
-    public function handle(ProductService $productService)
+    public function handle()
     {
         $this->info('🤖 Memulai Agen AI: Create Produk Lokal Realistis...');
 
@@ -79,13 +79,29 @@ class ProductCreateAgentCommand extends Command
             ]
         ];
 
-        $this->info("📦 [CREATE] Menyimpan Produk ke Database Lokal...");
+        $this->info("📦 [CREATE] Menyimpan Produk via API lokal (/api/v1/products)...");
         $this->info("👉 {$productData['name']} (SKU: {$productData['sku']})");
 
         try {
-            $productId = $productService->createProduct($productData);
+            $user = User::first();
+            if (!$user) {
+                $this->error("❌ Tidak ada User di database. Silakan jalankan seeder terlebih dahulu.");
+                return;
+            }
+
+            $token = $user->createToken('AgentCreateToken')->plainTextToken;
+
+            $response = Http::withToken($token)
+                ->post(url('api/v1/products'), $productData);
+
+            if ($response->failed()) {
+                $this->error("❌ Gagal Membuat Produk via API: " . $response->body());
+                return;
+            }
+
+            $productId = $response->json('data.product_id') ?? $response->json('data.id');
             
-            $this->info("✅ Sukses Membuat Produk!");
+            $this->info("✅ Sukses Membuat Produk via API!");
             $this->line("======================================");
             $this->info("PRODUCT ID (UUID) : " . $productId);
             $this->line("======================================");
@@ -93,7 +109,7 @@ class ProductCreateAgentCommand extends Command
             $this->comment("php artisan agent:product-push --product=\"{$productId}\"");
 
         } catch (\Exception $e) {
-            $this->error("❌ Gagal Membuat Produk: " . $e->getMessage());
+            $this->error("❌ Terjadi Kesalahan: " . $e->getMessage());
         }
     }
 }

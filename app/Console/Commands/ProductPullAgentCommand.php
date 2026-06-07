@@ -4,8 +4,8 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Modules\Channel\Models\ChannelShop;
-use Modules\Channel\Jobs\ProcessTikTokWebhook;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Http;
+use Modules\Channel\Helpers\TikTokSignature;
 
 class ProductPullAgentCommand extends Command
 {
@@ -78,19 +78,33 @@ class ProductPullAgentCommand extends Command
 
         $this->info("👉 Shop ID Target: {$shopId}");
         $this->info("👉 Product ID Webhook: {$externalId}");
-        $this->line("👉 Mendispatch Webhook Job...");
+        $this->line("👉 Hit Webhook API Endpoint...");
 
         try {
-            ProcessTikTokWebhook::dispatch($shopId, $dummyPayload);
+            $rawBody = json_encode($dummyPayload);
             
-            $this->info("✅ Webhook berhasil diproses secara asinkron!");
+            // Construct Signature exactly like TikTok
+            $appKey = config('services.tiktok.app_key');
+            $appSecret = config('services.tiktok.app_secret');
+            $signature = TikTokSignature::generateWebhookSignature($appKey, $rawBody, $appSecret);
+
+            $response = Http::withHeaders([
+                'x-tts-webhook-signature' => $signature,
+                'Content-Type' => 'application/json'
+            ])->post(url('api/v1/tiktok/webhook'), $dummyPayload);
+
+            if ($response->failed()) {
+                $this->error("❌ Gagal hit Webhook API: " . $response->body());
+                return;
+            }
+            
+            $this->info("✅ Webhook API berhasil di-hit!");
             $this->line("======================================");
-            $this->info("Job masuk ke queue 'tiktok_webhooks'.");
-            $this->info("Jalankan `php artisan queue:work --queue=tiktok_webhooks` atau `php artisan horizon`");
-            $this->info("untuk melihat proses penarikan (pull) dari webhook.");
+            $this->info("Response: " . json_encode($response->json(), JSON_PRETTY_PRINT));
+            $this->info("Job masuk ke queue 'tiktok_webhooks' melalui endpoint.");
             $this->line("======================================");
         } catch (\Exception $e) {
-            $this->error("❌ Gagal melemparkan Job Webhook: " . $e->getMessage());
+            $this->error("❌ Terjadi Kesalahan Webhook: " . $e->getMessage());
         }
     }
 }

@@ -11,7 +11,8 @@ use Modules\Product\Models\ChannelAttributeOption;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Attribute;
 use Modules\Product\Models\AttributeOption;
-use Modules\Channel\Jobs\SyncProductToChannelJob;
+use Illuminate\Support\Facades\Http;
+use App\Models\User;
 
 class ProductPushAgentCommand extends Command
 {
@@ -96,21 +97,36 @@ class ProductPushAgentCommand extends Command
             }
         }
 
-        $this->info("📦 [PUSH] Melemparkan Job Sinkronisasi ke Queue...");
+        $this->info("📦 [PUSH] Hit API Push Produk ke TikTok...");
         $this->info("👉 Target Produk : {$product->name} (SKU: {$product->sku})");
         $this->info("👉 Target Shop   : {$shop->name} (Platform: {$shop->channel->name})");
 
         try {
-            SyncProductToChannelJob::dispatch($product->id, $shopId, 'push');
+            $user = User::first();
+            if (!$user) {
+                $this->error("❌ Tidak ada User di database.");
+                return;
+            }
+
+            $token = $user->createToken('AgentPushToken')->plainTextToken;
+
+            $response = Http::withToken($token)->post(url('api/v1/tiktok/sync/products/push'), [
+                'shop_id' => $shopId,
+                'product_id' => $product->id,
+            ]);
+
+            if ($response->failed()) {
+                $this->error("❌ Gagal Push Produk via API: " . $response->body());
+                return;
+            }
             
-            $this->info("✅ Job berhasil ditambahkan ke antrean (Queue)!");
+            $this->info("✅ API Push Berhasil Di-hit!");
             $this->line("======================================");
-            $this->info("Jalankan `php artisan queue:work --queue=channel_sync` atau `php artisan horizon`");
-            $this->info("untuk memproses push secara real-time ke TikTok API.");
+            $this->info("Response: " . json_encode($response->json(), JSON_PRETTY_PRINT));
             $this->line("======================================");
 
         } catch (\Exception $e) {
-            $this->error("❌ Gagal melemparkan Job: " . $e->getMessage());
+            $this->error("❌ Terjadi kesalahan: " . $e->getMessage());
         }
     }
 }

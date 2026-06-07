@@ -134,7 +134,7 @@ class TikTokSyncApiController extends Controller
     {
         $request->validate([
             'shop_id' => 'required|string',
-            'product_id' => 'required|integer'
+            'product_id' => 'required|string'
         ]);
 
         try {
@@ -149,7 +149,7 @@ class TikTokSyncApiController extends Controller
     {
         $request->validate([
             'shop_id' => 'required|string',
-            'product_id' => 'required|integer'
+            'product_id' => 'required|string'
         ]);
 
         try {
