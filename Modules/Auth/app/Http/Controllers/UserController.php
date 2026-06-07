@@ -84,7 +84,7 @@ class UserController extends Controller
                     new OA\Property(property: 'password_confirmation', type: 'string', format: 'password', example: 'StrongP@ssw0rd!'),
                     new OA\Property(property: 'roles', type: 'array', items: new OA\Items(type: 'string', example: 'picker')),
                     new OA\Property(property: 'nik', type: 'string', nullable: true, example: '3201012345678901'),
-                    new OA\Property(property: 'warehouse_id', type: 'string', nullable: true, example: '018f6b...'),
+                    new OA\Property(property: 'warehouse_id', type: 'string', nullable: true, example: '019ea2afad1d733eafb905816d10590e'),
                 ]
             )
         ),
@@ -97,7 +97,7 @@ class UserController extends Controller
                         new OA\Property(property: 'status', type: 'string', example: 'success'),
                         new OA\Property(property: 'message', type: 'string', example: 'Pengguna berhasil dibuat.'),
                         new OA\Property(property: 'data', type: 'object', properties: [
-                            new OA\Property(property: 'id', type: 'string', example: '018f6b...'),
+                            new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
                             new OA\Property(property: 'name', type: 'string', example: 'John Doe'),
                             new OA\Property(property: 'email', type: 'string', example: 'john@example.com'),
                             new OA\Property(property: 'roles', type: 'array', items: new OA\Items(type: 'string', example: 'picker')),
@@ -128,7 +128,7 @@ class UserController extends Controller
                 in: 'path',
                 required: true,
                 description: 'User ID',
-                schema: new OA\Schema(type: 'string', example: '018f6b...')
+                schema: new OA\Schema(type: 'string', example: '019ea2afad1d733eafb905816d10590e')
             )
         ],
         requestBody: new OA\RequestBody(
@@ -142,7 +142,7 @@ class UserController extends Controller
                     new OA\Property(property: 'password_confirmation', type: 'string', format: 'password', nullable: true, example: 'NewStrongP@ssw0rd!'),
                     new OA\Property(property: 'roles', type: 'array', items: new OA\Items(type: 'string', example: 'checker')),
                     new OA\Property(property: 'nik', type: 'string', nullable: true, example: '3201012345678901'),
-                    new OA\Property(property: 'warehouse_id', type: 'string', nullable: true, example: '018f6b...'),
+                    new OA\Property(property: 'warehouse_id', type: 'string', nullable: true, example: '019ea2afad1d733eafb905816d10590e'),
                 ]
             )
         ),
@@ -155,7 +155,7 @@ class UserController extends Controller
                         new OA\Property(property: 'status', type: 'string', example: 'success'),
                         new OA\Property(property: 'message', type: 'string', example: 'Pengguna berhasil diperbarui.'),
                         new OA\Property(property: 'data', type: 'object', properties: [
-                            new OA\Property(property: 'id', type: 'string', example: '018f6b...'),
+                            new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
                             new OA\Property(property: 'name', type: 'string', example: 'John Doe Updated'),
                             new OA\Property(property: 'email', type: 'string', example: 'john.updated@example.com'),
                             new OA\Property(property: 'roles', type: 'array', items: new OA\Items(type: 'string', example: 'checker')),
@@ -187,7 +187,7 @@ class UserController extends Controller
                 in: 'path',
                 required: true,
                 description: 'User ID',
-                schema: new OA\Schema(type: 'string', example: '018f6b...')
+                schema: new OA\Schema(type: 'string', example: '019ea2afad1d733eafb905816d10590e')
             )
         ],
         responses: [
@@ -203,7 +203,7 @@ class UserController extends Controller
                             type: 'array',
                             items: new OA\Items(
                                 properties: [
-                                    new OA\Property(property: 'id', type: 'string', example: '018f6b...'),
+                                    new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
                                     new OA\Property(property: 'actor', type: 'object', nullable: true, properties: [
                                         new OA\Property(property: 'id', type: 'string'),
                                         new OA\Property(property: 'name', type: 'string'),
@@ -242,7 +242,7 @@ class UserController extends Controller
                 in: 'path',
                 required: true,
                 description: 'User ID',
-                schema: new OA\Schema(type: 'string', example: '018f6b...')
+                schema: new OA\Schema(type: 'string', example: '019ea2afad1d733eafb905816d10590e')
             )
         ],
         responses: [
@@ -277,7 +277,7 @@ class UserController extends Controller
             content: new OA\JsonContent(
                 required: ['user_ids'],
                 properties: [
-                    new OA\Property(property: 'user_ids', type: 'array', items: new OA\Items(type: 'string', example: '018f6b...')),
+                    new OA\Property(property: 'user_ids', type: 'array', items: new OA\Items(type: 'string', example: '019ea2afad1d733eafb905816d10590e')),
                 ]
             )
         ),

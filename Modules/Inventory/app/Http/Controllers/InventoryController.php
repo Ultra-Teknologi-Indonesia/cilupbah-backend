@@ -19,10 +19,10 @@ use OpenApi\Attributes as OA;
     title: 'Inventory Stock Schema',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'string', example: 1),
-        new OA\Property(property: 'item_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
-        new OA\Property(property: 'location_id', type: 'string', example: 1),
-        new OA\Property(property: 'bin_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000', nullable: true),
+        new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'item_id', type: 'string', example: '019ea2afad20700aa53cd1aeaf6a31f7'),
+        new OA\Property(property: 'location_id', type: 'string', example: '019ea2afad2170bbb0e9956fea210bfc'),
+        new OA\Property(property: 'bin_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e', nullable: true),
         new OA\Property(property: 'batch_no', type: 'string', example: 'BATCH-001', nullable: true),
         new OA\Property(property: 'serial_no', type: 'string', example: 'SN-001', nullable: true),
         new OA\Property(property: 'expired_date', type: 'string', format: 'date', example: '2026-12-31', nullable: true),
@@ -73,7 +73,7 @@ class InventoryController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inventory'],
         parameters: [
-            new OA\Parameter(name: 'itemId', in: 'path', required: true, description: 'ID of the item', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'itemId', in: 'path', required: true, description: 'ID of the item', schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(

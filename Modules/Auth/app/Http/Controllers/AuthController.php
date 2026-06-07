@@ -45,7 +45,7 @@ class AuthController extends Controller
                             new OA\Property(property: 'access_token', type: 'string', example: '1|xyz...'),
                             new OA\Property(property: 'token_type', type: 'string', example: 'Bearer'),
                             new OA\Property(property: 'user', type: 'object', properties: [
-                                new OA\Property(property: 'id', type: 'string', example: '018f6b...'),
+                                new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
                                 new OA\Property(property: 'name', type: 'string', example: 'Test User'),
                                 new OA\Property(property: 'email', type: 'string', example: 'test@example.com'),
                                 new OA\Property(property: 'roles', type: 'array', items: new OA\Items(type: 'string', example: 'admin')),
@@ -94,7 +94,7 @@ class AuthController extends Controller
                         new OA\Property(property: 'status', type: 'string', example: 'success'),
                         new OA\Property(property: 'message', type: 'string', example: 'Profil berhasil dimuat.'),
                         new OA\Property(property: 'data', type: 'object', properties: [
-                            new OA\Property(property: 'id', type: 'string', example: '018f6b...'),
+                            new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
                             new OA\Property(property: 'name', type: 'string', example: 'Test User'),
                             new OA\Property(property: 'email', type: 'string', example: 'test@example.com'),
                             new OA\Property(property: 'roles', type: 'array', items: new OA\Items(type: 'string', example: 'admin')),

@@ -91,7 +91,7 @@ class SalesReturnController extends Controller
             required: ['location_id', 'created_by', 'items'],
             properties: [
                 new OA\Property(property: 'order_id', type: 'string', nullable: true),
-                new OA\Property(property: 'location_id', type: 'string', example: 1),
+                new OA\Property(property: 'location_id', type: 'string', example: '019ea2afad20700aa53cd1aeaf6a31f7'),
                 new OA\Property(property: 'source', type: 'string', enum: ['manual', 'marketplace'], example: 'manual'),
                 new OA\Property(property: 'customer_name', type: 'string'),
                 new OA\Property(property: 'reason', type: 'string'),
@@ -99,7 +99,7 @@ class SalesReturnController extends Controller
                 new OA\Property(property: 'items', type: 'array', items: new OA\Items(
                     required: ['item_id', 'qty'],
                     properties: [
-                        new OA\Property(property: 'item_id', type: 'string', format: 'uuid', example: '550e8400-e29b-41d4-a716-446655440000'),
+                        new OA\Property(property: 'item_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
                         new OA\Property(property: 'qty', type: 'integer', example: 2),
                         new OA\Property(property: 'condition', type: 'string', enum: ['GOOD', 'DAMAGE']),
                     ]

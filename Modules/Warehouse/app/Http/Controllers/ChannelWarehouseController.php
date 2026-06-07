@@ -18,9 +18,9 @@ use OpenApi\Attributes as OA;
     title: 'Channel Warehouse Schema',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'string', example: '018f6b...'),
-        new OA\Property(property: 'location_id', type: 'string', example: '018f6b...'),
-        new OA\Property(property: 'channel_id', type: 'string', example: '018f6b...'),
+        new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'location_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'channel_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
         new OA\Property(property: 'store_id', type: 'string', example: 'STORE-123'),
         new OA\Property(property: 'channel_location_id', type: 'string', example: 'CH-LOC-123'),
         new OA\Property(property: 'channel_location_type', type: 'string', example: 'WAREHOUSE', nullable: true),
@@ -33,8 +33,8 @@ use OpenApi\Attributes as OA;
     required: ['location_id', 'channel_id', 'store_id', 'channel_location_id'],
     type: 'object',
     properties: [
-        new OA\Property(property: 'location_id', type: 'string', example: '018f6b...'),
-        new OA\Property(property: 'channel_id', type: 'string', example: '018f6b...'),
+        new OA\Property(property: 'location_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'channel_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
         new OA\Property(property: 'store_id', type: 'string', example: 'STORE-123'),
         new OA\Property(property: 'channel_location_id', type: 'string', example: 'CH-LOC-123'),
         new OA\Property(property: 'channel_location_type', type: 'string', example: 'WAREHOUSE', nullable: true),

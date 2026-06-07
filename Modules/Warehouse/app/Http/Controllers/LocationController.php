@@ -18,7 +18,7 @@ use OpenApi\Attributes as OA;
     title: 'Location Schema',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'string', example: '018f6b...'),
+        new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
         new OA\Property(property: 'location_code', type: 'string', example: 'WH-01'),
         new OA\Property(property: 'location_name', type: 'string', example: 'Main Warehouse'),
         new OA\Property(property: 'location_type', type: 'string', example: 'WAREHOUSE'),

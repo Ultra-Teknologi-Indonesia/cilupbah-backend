@@ -14,8 +14,8 @@ use OpenApi\Attributes as OA;
     title: 'Location Bin Schema',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'string', example: '018f6b...'),
-        new OA\Property(property: 'location_id', type: 'string', example: '018f6b...'),
+        new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'location_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
         new OA\Property(property: 'floor_code', type: 'string', example: 'FL-01', nullable: true),
         new OA\Property(property: 'row_code', type: 'string', example: 'RW-02', nullable: true),
         new OA\Property(property: 'column_code', type: 'string', example: 'COL-A', nullable: true),

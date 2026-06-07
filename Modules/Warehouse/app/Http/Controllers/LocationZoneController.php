@@ -13,8 +13,8 @@ use OpenApi\Attributes as OA;
     title: 'Location Zone Schema',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'string', example: '018f6b...'),
-        new OA\Property(property: 'location_id', type: 'string', example: '018f6b...'),
+        new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'location_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
         new OA\Property(property: 'zone_code', type: 'string', example: 'Z-A'),
         new OA\Property(property: 'zone_name', type: 'string', example: 'Zona Makanan', nullable: true),
         new OA\Property(property: 'created_at', type: 'string', format: 'date-time'),
