@@ -13,12 +13,12 @@ class CategoryRepository
     public function getPaginated(int $perPage = 10): LengthAwarePaginator
     {
         return QueryBuilder::for(Category::class)
-            ->allowedIncludes(['parent', 'children', 'children.children', 'children.children.children'])
+            ->allowedIncludes('parent', 'children', 'children.children', 'children.children.children', 'attributes')
             ->allowedSearch('name')
-            ->allowedFilters([
+            ->allowedFilters(
                 AllowedFilter::exact('is_active'),
-                AllowedFilter::exact('parent_id'),
-            ])
+                AllowedFilter::exact('parent_id')
+            )
             ->allowedSorts('name', 'created_at')
             ->paginate(request('per_page', $perPage))
             ->appends(request()->query());
@@ -27,12 +27,12 @@ class CategoryRepository
     public function getAll(): Collection
     {
         return QueryBuilder::for(Category::class)
-            ->allowedIncludes(['parent', 'children', 'children.children', 'children.children.children'])
+            ->allowedIncludes('parent', 'children', 'children.children', 'children.children.children', 'attributes')
             ->allowedSearch('name')
-            ->allowedFilters([
+            ->allowedFilters(
                 AllowedFilter::exact('is_active'),
-                AllowedFilter::exact('parent_id'),
-            ])
+                AllowedFilter::exact('parent_id')
+            )
             ->allowedSorts('name', 'created_at')
             ->get();
     }
@@ -40,7 +40,7 @@ class CategoryRepository
     public function findById(int $id): ?Category
     {
         return QueryBuilder::for(Category::class)
-            ->allowedIncludes(['parent', 'children', 'children.children', 'children.children.children'])
+            ->allowedIncludes('parent', 'children', 'children.children', 'children.children.children', 'attributes')
             ->find($id);
     }
 

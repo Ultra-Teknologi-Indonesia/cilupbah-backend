@@ -7,12 +7,19 @@ use Modules\Product\Http\Controllers\MediaController;
 use Modules\Product\Http\Controllers\CategoryController;
 use Modules\Product\Http\Controllers\BrandController;
 use Modules\Product\Http\Controllers\AttributeController;
+use Modules\Product\Http\Controllers\ChannelCategoryController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::apiResource('products', ProductController::class)->names('product');
+    
+    // Master Data
     Route::apiResource('categories', CategoryController::class)->names('category');
+    Route::post('categories/{category}/map-channel', [CategoryController::class, 'mapChannel']);
+    
     Route::apiResource('brands', BrandController::class)->names('brand');
     Route::apiResource('attributes', AttributeController::class)->names('attribute');
+    Route::post('attributes/{attribute}/map-channel', [AttributeController::class, 'mapChannel']);
+    Route::post('attributes/options/{option}/map-channel', [AttributeController::class, 'mapOptionChannel']);
 
     // General Media Upload Endpoint
     Route::post('media/upload', [MediaController::class, 'upload']);
@@ -24,8 +31,13 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('products/import/bundle', [\Modules\Product\Http\Controllers\ProductImportController::class, 'importBundle']);
 });
 
-// Channel specific product routes (Temporarily Unprotected for Testing)
+// Channel specific routes (Temporarily Unprotected for Testing)
 Route::prefix('v1/{channel}')->group(function () {
+    // Channel Categories
+    Route::get('categories', [ChannelCategoryController::class, 'index']);
+    Route::get('categories/{categoryId}/attributes', [\Modules\Product\Http\Controllers\ChannelAttributeController::class, 'index']);
+
+    // Channel Products
     Route::get('products/categories', [ChannelProductController::class, 'categories']);
     Route::put('products/{id}/activate', [ChannelProductController::class, 'activate']);
     Route::put('products/{id}/deactivate', [ChannelProductController::class, 'deactivate']);

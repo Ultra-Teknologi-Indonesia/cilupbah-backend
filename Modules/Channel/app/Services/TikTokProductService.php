@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Repositories\ChannelProductRepository;
+use Modules\Channel\Services\TikTokToInternalOrderMapper;
+use Modules\Channel\Services\TikTokToInternalProductMapper;
 
 class TikTokProductService
 {
@@ -96,7 +98,74 @@ class TikTokProductService
             return $variantArr;
         })->toArray();
 
-        $payload = $this->mapper->map($internalProduct, $uploadedImageIds);
+        // Get mapped TikTok Category
+        $tiktokCategoryId = null;
+        if (!empty($product->category_id)) {
+            $mappedCategory = \Modules\Product\Models\Category::with(['channelCategories' => function ($q) use ($shop) {
+                $q->where('channel_id', $shop->channel_id);
+            }])->find($product->category_id);
+
+            if ($mappedCategory && $mappedCategory->channelCategories->isNotEmpty()) {
+                $tiktokCategoryId = $mappedCategory->channelCategories->first()->external_id;
+            }
+        }
+
+        $config = [];
+        if ($tiktokCategoryId) {
+            $config['category_id'] = $tiktokCategoryId;
+        }
+
+        // Get product specifications and map them
+        $specs = DB::table('product_specifications')
+            ->where('product_id', $productId)
+            ->get();
+
+        $mappedAttributes = [];
+        foreach ($specs as $spec) {
+            // Find mapped attribute
+            $mapping = DB::table('attribute_channel_mappings')
+                ->where('attribute_id', $spec->attribute_id)
+                ->first();
+
+            if ($mapping) {
+                $channelAttr = DB::table('channel_attributes')
+                    ->where('id', $mapping->channel_attribute_id)
+                    ->first();
+
+                if ($channelAttr) {
+                    $attrData = ['id' => $channelAttr->external_id, 'values' => []];
+
+                    if ($spec->attribute_option_id) {
+                        // Find mapped option
+                        $optMapping = DB::table('attribute_option_channel_mappings')
+                            ->where('attribute_option_id', $spec->attribute_option_id)
+                            ->first();
+
+                        if ($optMapping) {
+                            $channelOpt = DB::table('channel_attribute_options')
+                                ->where('id', $optMapping->channel_attribute_option_id)
+                                ->first();
+
+                            if ($channelOpt) {
+                                $attrData['values'][] = ['id' => $channelOpt->external_id, 'name' => $channelOpt->name];
+                            }
+                        }
+                    } else if ($spec->text_value) {
+                        $attrData['values'][] = ['name' => $spec->text_value];
+                    }
+
+                    if (!empty($attrData['values'])) {
+                        $mappedAttributes[] = $attrData;
+                    }
+                }
+            }
+        }
+
+        if (!empty($mappedAttributes)) {
+            $config['attributes'] = $mappedAttributes;
+        }
+
+        $payload = $this->mapper->map($internalProduct, $uploadedImageIds, $config);
 
         $res = $this->client->request('POST', '/product/202309/products', ['shop_cipher' => $shopCipher], $payload, $accessToken);
         

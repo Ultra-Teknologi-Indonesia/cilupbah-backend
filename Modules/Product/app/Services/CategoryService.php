@@ -61,4 +61,12 @@ class CategoryService
 
         return $this->repository->delete($category);
     }
+
+    public function mapToChannel(int $categoryId, array $channelCategoryIds): Category
+    {
+        $category = $this->getCategoryById($categoryId);
+        $category->channelCategories()->sync($channelCategoryIds);
+        
+        return $category->load('channelCategories');
+    }
 }
