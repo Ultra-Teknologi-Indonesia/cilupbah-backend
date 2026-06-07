@@ -57,6 +57,38 @@ class TestTikTokAgentCommand extends Command
             ['description' => 'Apple Inc.', 'is_active' => true]
         );
 
+        // 1.5. Simulasi Mapping Kategori & Atribut Omnichannel
+        $this->info("🔄 Menyiapkan Simulasi Pemetaan (Mapping) Kategori & Atribut Omnichannel...");
+        
+        // Buat atau cari Channel Category (Misal ID TikTok: 839824)
+        $channelCategory = \Modules\Product\Models\ChannelCategory::firstOrCreate([
+            'channel_id' => $shop->channel_id,
+            'external_id' => '839824'
+        ], ['name' => 'Pakaian Dummy']);
+
+        // Map kategori lokal ke kategori TikTok
+        $category->channelCategories()->syncWithoutDetaching([$channelCategory->id]);
+
+        // Setup Channel Attribute
+        $channelAttr = \Modules\Product\Models\ChannelAttribute::updateOrCreate([
+            'channel_category_id' => $channelCategory->id,
+            'external_id' => '100393' // Atribut ID TikTok wajib
+        ], ['name' => 'Bahan', 'is_required' => true]);
+
+        // Setup Channel Attribute Option
+        $channelOpt = \Modules\Product\Models\ChannelAttributeOption::updateOrCreate([
+            'channel_attribute_id' => $channelAttr->id,
+            'external_id' => '1001182' // Opsi ID TikTok
+        ], ['name' => 'Polos']);
+
+        // Setup Local Attribute & Option
+        $localAttr = \Modules\Product\Models\Attribute::firstOrCreate(['name' => 'Material', 'type' => 'spec']);
+        $localOpt = \Modules\Product\Models\AttributeOption::firstOrCreate(['attribute_id' => $localAttr->id, 'value' => 'Polos (Bebas)']);
+
+        // Map Local -> Channel
+        $localAttr->channelAttributes()->syncWithoutDetaching([$channelAttr->id]);
+        $localOpt->channelAttributeOptions()->syncWithoutDetaching([$channelOpt->id]);
+
         // 2. Data Produk Nyata
         $productData = [
             'name' => 'Apple iPhone 15 Pro Max 256GB - Titanium (Garansi Resmi iBox)',
@@ -83,6 +115,14 @@ class TestTikTokAgentCommand extends Command
                     'is_active' => true,
                     // Karena kita buat baru, stok mungkin 0, harus lewat inventori,
                     // Tapi untuk simplifikasi test kita bypass atau asumsikan stock 10
+                ]
+            ],
+
+            // Specifications (Atribut Produk)
+            'specifications' => [
+                [
+                    'attribute_id' => $localAttr->id,
+                    'attribute_option_id' => $localOpt->id,
                 ]
             ]
         ];
