@@ -339,7 +339,7 @@ class OrderService
         }
     }
 
-    private function resolveLocationId(Order $order): int
+    private function resolveLocationId(Order $order): string
     {
         if ($order->channel_shop_id) {
             $mapping = DB::table('channel_warehouses')

@@ -12,17 +12,17 @@ class LocationBinService
         protected LocationBinRepository $binRepository
     ) {}
 
-    public function getByLocation(int $locationId): Collection
+    public function getByLocation(string $locationId): Collection
     {
         return $this->binRepository->findByLocation($locationId);
     }
 
-    public function getById(int $id): ?LocationBin
+    public function getById(string $id): ?LocationBin
     {
         return $this->binRepository->findById($id);
     }
 
-    public function getDefaultBin(int $locationId): ?LocationBin
+    public function getDefaultBin(string $locationId): ?LocationBin
     {
         return $this->binRepository->getDefaultBin($locationId);
     }

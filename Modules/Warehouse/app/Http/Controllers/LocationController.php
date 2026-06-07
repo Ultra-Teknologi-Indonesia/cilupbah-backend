@@ -18,7 +18,7 @@ use OpenApi\Attributes as OA;
     title: 'Location Schema',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'integer', example: 1),
+        new OA\Property(property: 'id', type: 'string', example: '018f6b...'),
         new OA\Property(property: 'location_code', type: 'string', example: 'WH-01'),
         new OA\Property(property: 'location_name', type: 'string', example: 'Main Warehouse'),
         new OA\Property(property: 'location_type', type: 'string', example: 'WAREHOUSE'),
@@ -184,7 +184,7 @@ class LocationController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Locations'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the location', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the location', schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(
@@ -201,7 +201,7 @@ class LocationController extends Controller
             new OA\Response(response: 404, description: 'Lokasi tidak ditemukan.')
         ]
     )]
-    public function show(int $id): JsonResponse
+    public function show(string $id): JsonResponse
     {
         $location = $this->locationService->getById($id);
 
@@ -218,7 +218,7 @@ class LocationController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Locations'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the location to update', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the location to update', schema: new OA\Schema(type: 'string'))
         ],
         requestBody: new OA\RequestBody(
             required: true,
@@ -240,7 +240,7 @@ class LocationController extends Controller
             new OA\Response(response: 422, description: 'Validation Error')
         ]
     )]
-    public function update(UpdateLocationRequest $request, int $id): JsonResponse
+    public function update(UpdateLocationRequest $request, string $id): JsonResponse
     {
         $updated = $this->locationService->update($id, $request->validated());
 
@@ -257,7 +257,7 @@ class LocationController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Locations'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the location to delete', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the location to delete', schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(
@@ -274,7 +274,7 @@ class LocationController extends Controller
             new OA\Response(response: 404, description: 'Lokasi tidak ditemukan.')
         ]
     )]
-    public function destroy(int $id): JsonResponse
+    public function destroy(string $id): JsonResponse
     {
         try {
             $deleted = $this->locationService->delete($id);

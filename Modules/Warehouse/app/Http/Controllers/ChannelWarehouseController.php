@@ -18,7 +18,7 @@ use OpenApi\Attributes as OA;
     title: 'Channel Warehouse Schema',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'integer', example: 1),
+        new OA\Property(property: 'id', type: 'string', example: '018f6b...'),
         new OA\Property(property: 'location_id', type: 'string', example: '018f6b...'),
         new OA\Property(property: 'channel_id', type: 'string', example: '018f6b...'),
         new OA\Property(property: 'store_id', type: 'string', example: 'STORE-123'),
@@ -117,7 +117,7 @@ class ChannelWarehouseController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Channel Warehouses'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the mapping to delete', schema: new OA\Schema(type: 'integer'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the mapping to delete', schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(
@@ -134,7 +134,7 @@ class ChannelWarehouseController extends Controller
             new OA\Response(response: 404, description: 'Mapping tidak ditemukan.')
         ]
     )]
-    public function destroy(int $id): JsonResponse
+    public function destroy(string $id): JsonResponse
     {
         $deleted = $this->channelWarehouseService->delete($id);
 
