@@ -23,9 +23,11 @@ class ChannelAttributeController extends Controller
     public function index(Request $request, string $channelId, string $categoryId): JsonResponse
     {
         try {
-            // Option to force sync from TikTok
             if ($request->query('sync')) {
-                $this->service->syncAttributesFromChannel($channelId, $categoryId);
+                \Modules\Product\Jobs\SyncChannelAttributesJob::dispatch($channelId, $categoryId)
+                    ->onQueue('channel_sync');
+                
+                return $this->successResponse(null, 'Proses sinkronisasi atribut sedang berjalan di latar belakang', 202);
             }
 
             $attributes = $this->service->getPaginated($categoryId);

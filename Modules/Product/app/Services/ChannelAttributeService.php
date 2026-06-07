@@ -43,7 +43,6 @@ class ChannelAttributeService
 
     protected function syncTikTokAttributes(Channel $channel, ChannelCategory $category): void
     {
-        // First we need the shop to get access token, we can use any active tiktok shop
         $shop = \Modules\Channel\Models\ChannelShop::where('channel_id', $channel->id)->first();
         if (!$shop || !$shop->access_token) {
             throw new \Exception("No active TikTok shop found with access token to sync attributes");
@@ -52,7 +51,6 @@ class ChannelAttributeService
         $client = app(TikTokClient::class);
         $queries = ['category_version' => 'v2'];
         
-        // TikTok API: GET /product/202309/categories/{category_id}/attributes
         try {
             $res = $client->request(
                 'GET', 
@@ -69,7 +67,6 @@ class ChannelAttributeService
             $attributes = $res['data']['attributes'];
 
             foreach ($attributes as $attr) {
-                // Gunakan updateOrCreate untuk mencegah Race Condition (Integrity Constraint Violation)
                 $channelAttr = \Modules\Product\Models\ChannelAttribute::updateOrCreate(
                     [
                         'channel_category_id' => $category->id,
@@ -96,7 +93,6 @@ class ChannelAttributeService
                     }
 
                     if (count($optionsData) > 0) {
-                        // Chunk data untuk menghindari MySQL 'Prepared statement contains too many placeholders' error
                         foreach (array_chunk($optionsData, 500) as $chunk) {
                             $this->optionRepository->upsert($chunk, ['channel_attribute_id', 'external_id'], ['name', 'updated_at']);
                         }
