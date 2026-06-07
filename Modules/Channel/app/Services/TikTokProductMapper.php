@@ -4,15 +4,21 @@ namespace Modules\Channel\Services;
 
 class TikTokProductMapper
 {
-    public function map(array $internalProduct, array $uploadedImageIds = []): array
+    public function map(array $internalProduct, array $uploadedImageIds = [], array $config = []): array
     {
+        $categoryId = $config['category_id'] ?? '839824'; // fallback to default
+        $warehouseId = $config['warehouse_id'] ?? '7646426075561690887';
+        $attributes = $config['attributes'] ?? [
+            ['id' => '100393', 'values' => [['id' => '1001182', 'name' => 'Polos']]],
+            ['id' => '100400', 'values' => [['id' => '1001182', 'name' => 'Polos']]]
+        ];
 
         $payload = [
             'save_mode' => 'LISTING', 
             'title' => $internalProduct['name'],
             'description' => $internalProduct['description'] ?? '',
             'category_version' => 'v2',
-            'category_id' => '839824',
+            'category_id' => $categoryId,
             'package_weight' => [
                 'value' => (string)($internalProduct['weight'] ?: 1.0),
                 'unit' => 'KILOGRAM'
@@ -23,20 +29,7 @@ class TikTokProductMapper
                 'height' => (string)(int)($internalProduct['height'] ?: 10),
                 'unit' => 'CENTIMETER'
             ],
-            'product_attributes' => [
-                [
-                    'id' => '100393', 
-                    'values' => [
-                        ['id' => '1001182', 'name' => 'Polos']
-                    ]
-                ],
-                [
-                    'id' => '100400', 
-                    'values' => [
-                        ['id' => '1001182', 'name' => 'Polos']
-                    ]
-                ]
-            ],
+            'product_attributes' => $attributes,
         ];
 
         if (!empty($uploadedImageIds)) {
@@ -60,7 +53,7 @@ class TikTokProductMapper
                     ],
                     'inventory' => [
                         [
-                            'warehouse_id' => '7646426075561690887', 
+                            'warehouse_id' => $warehouseId, 
                             'quantity' => (int)($variant['stock'] ?? 100) 
                         ]
                     ]
@@ -70,7 +63,7 @@ class TikTokProductMapper
                     $salesAttributes = [];
                     foreach ($variant['options'] as $option) {
                         $salesAttributes[] = [
-                            'attribute_id' => '100000', // Requires TikTok Attribute mapping
+                            'attribute_id' => $config['sales_attribute_id'] ?? '100000',
                             'custom_value' => $option['value']
                         ];
                     }

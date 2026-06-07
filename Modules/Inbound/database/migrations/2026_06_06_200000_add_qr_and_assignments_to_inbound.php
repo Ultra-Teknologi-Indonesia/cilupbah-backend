@@ -12,8 +12,10 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->uuid('inbound_id');
             $table->foreign('inbound_id')->references('id')->on('inbounds')->onDelete('cascade');
-            $table->foreignId('assigned_to')->constrained('users')->cascadeOnDelete();
-            $table->foreignId('assigned_by')->constrained('users')->cascadeOnDelete();
+            $table->string('assigned_to', 32);
+            $table->foreign('assigned_to')->references('id')->on('users')->onDelete('cascade');
+            $table->string('assigned_by', 32);
+            $table->foreign('assigned_by')->references('id')->on('users')->onDelete('cascade');
             $table->string('status', 30)->default('PENDING');
             $table->text('notes')->nullable();
             $table->timestamp('started_at')->nullable();

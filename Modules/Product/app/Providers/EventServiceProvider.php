@@ -24,4 +24,16 @@ class EventServiceProvider extends ServiceProvider
      * Configure the proper event listeners for email verification.
      */
     protected function configureEmailVerification(): void {}
+
+    /**
+     * Register any events for your application.
+     *
+     * @return void
+     */
+    public function boot()
+    {
+        parent::boot();
+
+        \Modules\Product\Models\Product::observe(\Modules\Product\Observers\ProductObserver::class);
+    }
 }
