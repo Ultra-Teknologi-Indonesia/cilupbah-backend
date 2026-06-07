@@ -18,6 +18,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     
     Route::apiResource('brands', BrandController::class)->names('brand');
     Route::apiResource('attributes', AttributeController::class)->names('attribute');
+    Route::post('attributes/{attribute}/map-channel', [AttributeController::class, 'mapChannel']);
+    Route::post('attributes/options/{option}/map-channel', [AttributeController::class, 'mapOptionChannel']);
 
     // General Media Upload Endpoint
     Route::post('media/upload', [MediaController::class, 'upload']);
@@ -33,6 +35,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 Route::prefix('v1/{channel}')->group(function () {
     // Channel Categories
     Route::get('categories', [ChannelCategoryController::class, 'index']);
+    Route::get('categories/{categoryId}/attributes', [\Modules\Product\Http\Controllers\ChannelAttributeController::class, 'index']);
 
     // Channel Products
     Route::get('products/categories', [ChannelProductController::class, 'categories']);

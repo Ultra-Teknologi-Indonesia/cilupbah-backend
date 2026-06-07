@@ -18,4 +18,10 @@ class Attribute extends Model
             ->withPivot('is_required')
             ->withTimestamps();
     }
+
+    public function channelAttributes(): BelongsToMany
+    {
+        return $this->belongsToMany(ChannelAttribute::class, 'attribute_channel_mappings')
+            ->withTimestamps();
+    }
 }

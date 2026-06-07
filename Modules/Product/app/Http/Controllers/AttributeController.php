@@ -80,4 +80,34 @@ class AttributeController extends Controller
             return $this->errorResponse($e->getMessage(), 400);
         }
     }
+
+    public function mapChannel(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'channel_attribute_ids' => 'required|array',
+            'channel_attribute_ids.*' => 'required|uuid|exists:channel_attributes,id',
+        ]);
+
+        try {
+            $attribute = $this->attributeService->mapToChannel($id, $validated['channel_attribute_ids']);
+            return $this->successResponse(new AttributeResource($attribute), 'Berhasil memetakan atribut ke channel');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 500);
+        }
+    }
+
+    public function mapOptionChannel(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'channel_attribute_option_ids' => 'required|array',
+            'channel_attribute_option_ids.*' => 'required|uuid|exists:channel_attribute_options,id',
+        ]);
+
+        try {
+            $option = $this->attributeService->mapOptionToChannel($id, $validated['channel_attribute_option_ids']);
+            return $this->successResponse($option, 'Berhasil memetakan opsi atribut ke channel');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 500);
+        }
+    }
 }
