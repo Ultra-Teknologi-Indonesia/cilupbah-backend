@@ -12,9 +12,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('user_histories', function (Blueprint $table) {
-            $table->string('id', 32)->primary();
-            $table->string('actor_id', 32)->nullable()->comment('User who performed the action');
-            $table->string('target_user_id', 32)->comment('User who was affected');
+            $table->uuid('id')->primary();
+            $table->uuid('actor_id')->nullable()->comment('User who performed the action');
+            $table->uuid('target_user_id')->comment('User who was affected');
             $table->enum('action', ['created', 'updated', 'deleted', 'force_logged_out']);
             $table->timestamps();
 

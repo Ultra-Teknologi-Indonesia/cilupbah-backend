@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('attribute_channel_mappings', function (Blueprint $table) {
             $table->id();
             $table->foreignId('attribute_id')->constrained('attributes')->cascadeOnDelete();
-            $table->string('channel_attribute_id', 32);
+            $table->uuid('channel_attribute_id');
             $table->foreign('channel_attribute_id')->references('id')->on('channel_attributes')->cascadeOnDelete();
             $table->timestamps();
 

@@ -9,9 +9,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('product_variant_channel_mappings', function (Blueprint $table) {
-            $table->string('id', 32)->primary();
-            $table->string('product_channel_mapping_id', 32);
-            $table->string('variant_id', 32);
+            $table->uuid('id')->primary();
+            $table->uuid('product_channel_mapping_id');
+            $table->uuid('variant_id');
             $table->string('external_sku_id')->nullable()->comment('ID SKU di marketplace');
             $table->decimal('synced_price', 15, 2)->nullable()->comment('Harga terakhir yang berhasil di-sync');
             $table->integer('synced_stock')->nullable()->comment('Stok terakhir yang berhasil di-sync');

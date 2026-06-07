@@ -13,7 +13,7 @@ trait HasUuid7
     {
         static::creating(function ($model) {
             if (empty($model->{$model->getKeyName()})) {
-                $model->{$model->getKeyName()} = Uuid::uuid7()->getHex()->toString();
+                $model->{$model->getKeyName()} = Uuid::uuid7()->toString();
             }
         });
     }

@@ -73,7 +73,7 @@ return new class extends Migration
                     if ($column === 'id') {
                         DB::statement("ALTER TABLE {$table} ALTER COLUMN id DROP DEFAULT");
                     }
-                    DB::statement("ALTER TABLE {$table} ALTER COLUMN {$column} TYPE VARCHAR(32) USING {$column}::VARCHAR(32)");
+                    DB::statement("ALTER TABLE {$table} ALTER COLUMN {$column} TYPE UUID USING LPAD({$column}::text, 32, '0')::uuid");
                 }
             }
         }

@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('channel_attribute_options', function (Blueprint $table) {
-            $table->string('id', 32)->primary();
-            $table->string('channel_attribute_id', 32);
+            $table->uuid('id')->primary();
+            $table->uuid('channel_attribute_id');
             $table->foreign('channel_attribute_id')->references('id')->on('channel_attributes')->cascadeOnDelete();
             $table->string('external_id')->index(); // TikTok Value ID e.g., "1001182"
             $table->string('name');

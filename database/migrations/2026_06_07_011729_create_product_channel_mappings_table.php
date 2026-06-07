@@ -9,9 +9,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('product_channel_mappings', function (Blueprint $table) {
-            $table->string('id', 32)->primary();
-            $table->string('product_id', 32);
-            $table->string('channel_shop_id', 32);
+            $table->uuid('id')->primary();
+            $table->uuid('product_id');
+            $table->uuid('channel_shop_id');
             $table->string('external_product_id')->nullable()->comment('ID produk di marketplace');
             $table->enum('sync_status', [
                 'pending',
