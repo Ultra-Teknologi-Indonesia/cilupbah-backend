@@ -9,12 +9,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('reserved_stock_items', function (Blueprint $table) {
-            $table->string('id', 32)->primary();
-            $table->string('reserved_stock_id', 32);
+            $table->uuid('id')->primary();
+            $table->uuid('reserved_stock_id');
             $table->foreign('reserved_stock_id')->references('id')->on('reserved_stocks')->cascadeOnDelete();
-            $table->string('item_id', 32);
+            $table->uuid('item_id');
             $table->foreign('item_id')->references('id')->on('product_variants')->restrictOnDelete();
-            $table->string('bin_id', 32)->nullable();
+            $table->uuid('bin_id')->nullable();
             $table->foreign('bin_id')->references('id')->on('location_bins')->nullOnDelete();
             $table->integer('qty');
             $table->timestamps();

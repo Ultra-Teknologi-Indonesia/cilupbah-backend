@@ -9,9 +9,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('reserved_stocks', function (Blueprint $table) {
-            $table->string('id', 32)->primary();
+            $table->uuid('id')->primary();
             $table->string('reserved_stock_no', 50)->unique();
-            $table->string('location_id', 32);
+            $table->uuid('location_id');
             $table->foreign('location_id')->references('id')->on('locations')->restrictOnDelete();
             $table->dateTime('start_date');
             $table->dateTime('end_date');
