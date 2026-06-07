@@ -32,6 +32,7 @@ class WarehouseDatabaseSeeder extends Seeder
         ]);
 
         DB::table('location_bins')->insert([
+            'id' => \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString(),
             'location_id' => $locationId,
             'floor_code' => null,
             'row_code' => null,

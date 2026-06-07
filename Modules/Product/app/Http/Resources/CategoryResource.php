@@ -18,6 +18,7 @@ class CategoryResource extends JsonResource
             'updated_at' => $this->updated_at,
             'children' => CategoryResource::collection($this->whenLoaded('children')),
             'parent' => new CategoryResource($this->whenLoaded('parent')),
+            'attributes' => AttributeResource::collection($this->whenLoaded('attributes')),
         ];
     }
 }
