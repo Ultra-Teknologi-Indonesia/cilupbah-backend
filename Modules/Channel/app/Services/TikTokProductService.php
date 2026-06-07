@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Repositories\ChannelProductRepository;
+use Modules\Channel\Services\TikTokToInternalOrderMapper;
+use Modules\Channel\Services\TikTokToInternalProductMapper;
 
 class TikTokProductService
 {
@@ -114,19 +116,19 @@ class TikTokProductService
         }
 
         // Get product specifications and map them
-        $specs = \Illuminate\Support\Facades\DB::table('product_specifications')
+        $specs = DB::table('product_specifications')
             ->where('product_id', $productId)
             ->get();
 
         $mappedAttributes = [];
         foreach ($specs as $spec) {
             // Find mapped attribute
-            $mapping = \Illuminate\Support\Facades\DB::table('attribute_channel_mappings')
+            $mapping = DB::table('attribute_channel_mappings')
                 ->where('attribute_id', $spec->attribute_id)
                 ->first();
 
             if ($mapping) {
-                $channelAttr = \Illuminate\Support\Facades\DB::table('channel_attributes')
+                $channelAttr = DB::table('channel_attributes')
                     ->where('id', $mapping->channel_attribute_id)
                     ->first();
 
@@ -135,12 +137,12 @@ class TikTokProductService
 
                     if ($spec->attribute_option_id) {
                         // Find mapped option
-                        $optMapping = \Illuminate\Support\Facades\DB::table('attribute_option_channel_mappings')
+                        $optMapping = DB::table('attribute_option_channel_mappings')
                             ->where('attribute_option_id', $spec->attribute_option_id)
                             ->first();
 
                         if ($optMapping) {
-                            $channelOpt = \Illuminate\Support\Facades\DB::table('channel_attribute_options')
+                            $channelOpt = DB::table('channel_attribute_options')
                                 ->where('id', $optMapping->channel_attribute_option_id)
                                 ->first();
 

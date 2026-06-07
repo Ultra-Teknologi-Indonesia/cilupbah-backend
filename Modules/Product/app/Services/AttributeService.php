@@ -53,4 +53,24 @@ class AttributeService
         // Additional validation can be added here if attributes are linked to specifications
         return $this->repository->delete($attribute);
     }
+
+    public function mapToChannel(int $attributeId, array $channelAttributeIds): Attribute
+    {
+        $attribute = $this->getAttributeById($attributeId);
+        $attribute->channelAttributes()->sync($channelAttributeIds);
+        
+        return $attribute->load('channelAttributes');
+    }
+
+    public function mapOptionToChannel(int $optionId, array $channelAttributeOptionIds): \Modules\Product\Models\AttributeOption
+    {
+        $option = \Modules\Product\Models\AttributeOption::find($optionId);
+        if (!$option) {
+            throw new Exception("Attribute Option not found");
+        }
+        
+        $option->channelAttributeOptions()->sync($channelAttributeOptionIds);
+        
+        return $option->load('channelAttributeOptions');
+    }
 }
