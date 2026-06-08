@@ -238,6 +238,29 @@ class ProductController extends Controller
     }
 
     /**
+     * Ajukan produk Download ke In Review.
+     */
+    #[OA\Post(
+        path: '/api/v1/products/{id}/submit-review',
+        summary: 'Submit product for review (download → in_review)',
+        tags: ['Products'],
+        parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [
+            new OA\Response(response: 200, description: 'Product submitted for review'),
+            new OA\Response(response: 422, description: 'Invalid state'),
+            new OA\Response(response: 404, description: 'Product not found')
+        ]
+    )]
+    public function submitForReview(Request $request, $id): JsonResponse
+    {
+        return $this->runLifecycle(
+            $id,
+            fn (Product $product) => $this->lifecycleService->submitForReview($product),
+            'Produk berhasil diajukan ke Review'
+        );
+    }
+
+    /**
      * Approve produk In Review menjadi Master.
      */
     #[OA\Post(

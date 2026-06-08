@@ -6,18 +6,27 @@ class TikTokProductMapper
 {
     public function map(array $internalProduct, array $uploadedImageIds = [], array $config = []): array
     {
-        $categoryId = $config['category_id'] ?? '839824'; // fallback to default
+        // 600048 = "Botol Air" V2 category with Warna (100000) SALES_PROPERTY – works in ID sandbox
+        $categoryId = $config['category_id'] ?? '600048';
         $warehouseId = $config['warehouse_id'] ?? '7646426075561690887';
-        $attributes = $config['attributes'] ?? [
-            ['id' => '100393', 'values' => [['id' => '1001182', 'name' => 'Polos']]],
-            ['id' => '100400', 'values' => [['id' => '1001182', 'name' => 'Polos']]]
+        // Default empty; callers can pass product_attributes via $config if the category requires them
+        $attributes = $config['attributes'] ?? [];
+
+        // Map internal attribute names to TikTok SALES_PROPERTY IDs for category 802952
+        $salesAttrIdMap = [
+            'warna'   => '100000',
+            'color'   => '100000',
+            'ukuran'  => '100007',
+            'size'    => '100007',
+            'varian'  => '100000',
+            'variasi' => '100000',
         ];
 
         $payload = [
-            'save_mode' => 'LISTING', 
+            'save_mode' => 'LISTING',
             'title' => $internalProduct['name'],
             'description' => $internalProduct['description'] ?? '',
-            'category_version' => 'v2',
+            'category_version' => $config['category_version'] ?? 'v2',
             'category_id' => $categoryId,
             'package_weight' => [
                 'value' => (string)($internalProduct['weight'] ?: 1.0),
@@ -29,7 +38,7 @@ class TikTokProductMapper
                 'height' => (string)(int)($internalProduct['height'] ?: 10),
                 'unit' => 'CENTIMETER'
             ],
-            'product_attributes' => $attributes,
+            'product_attributes' => $attributes ?: [],
         ];
 
         if (!empty($uploadedImageIds)) {
@@ -62,9 +71,12 @@ class TikTokProductMapper
                 if (!empty($variant['options'])) {
                     $salesAttributes = [];
                     foreach ($variant['options'] as $option) {
+                        $attrName  = strtolower($option['attribute_name'] ?? '');
+                        $attrId    = $salesAttrIdMap[$attrName]
+                            ?? ($config['sales_attribute_id'] ?? '100000');
                         $salesAttributes[] = [
-                            'attribute_id' => $config['sales_attribute_id'] ?? '100000',
-                            'custom_value' => $option['value']
+                            'attribute_id' => $attrId,
+                            'custom_value' => $option['value'],
                         ];
                     }
                     $sku['sales_attributes'] = $salesAttributes;

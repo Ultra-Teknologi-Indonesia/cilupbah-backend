@@ -58,7 +58,12 @@ class ChannelProductRepository
 
     public function getVariantOptions(string $variantId)
     {
-        return DB::table('variant_options')->where('variant_id', $variantId)->get()->toArray();
+        return DB::table('variant_options')
+            ->leftJoin('attributes', 'attributes.id', '=', 'variant_options.attribute_id')
+            ->where('variant_options.variant_id', $variantId)
+            ->select('variant_options.*', 'attributes.name as attribute_name')
+            ->get()
+            ->toArray();
     }
 
     /**
@@ -91,13 +96,14 @@ class ChannelProductRepository
 
     /**
      * Upsert satu baris product_channel_mappings.
+     * Mengembalikan id baris (UUID) agar caller bisa membuat variant mappings.
      */
     public function upsertChannelMapping(
         string $productId,
         string $shopId,
         ?string $externalProductId = null,
         string $syncStatus = 'synced'
-    ): void {
+    ): string {
         $channelShop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
         if (!$channelShop) {
             throw new \Exception("Channel shop tidak ditemukan untuk shop_id: {$shopId}");
@@ -125,11 +131,12 @@ class ChannelProductRepository
                 ->where('id', $existing->id)
                 ->update($update);
 
-            return;
+            return $existing->id;
         }
 
+        $pcmId = Uuid::uuid7()->getHex()->toString();
         DB::table('product_channel_mappings')->insert([
-            'id'                  => Uuid::uuid7()->getHex()->toString(),
+            'id'                  => $pcmId,
             'product_id'          => $productId,
             'channel_shop_id'     => $channelShop->id,
             'external_product_id' => $externalProductId,
@@ -137,6 +144,45 @@ class ChannelProductRepository
             'last_synced_at'      => $now,
             'created_at'          => $now,
             'updated_at'          => $now,
+        ]);
+
+        return $pcmId;
+    }
+
+    /**
+     * Upsert satu baris product_variant_channel_mappings.
+     * Menyimpan external_sku_id TikTok agar webhook stock-sync bisa bekerja.
+     */
+    public function upsertVariantChannelMapping(
+        string $pcmId,
+        string $variantId,
+        ?string $externalSkuId = null
+    ): void {
+        $now = now();
+
+        $existing = DB::table('product_variant_channel_mappings')
+            ->where('product_channel_mapping_id', $pcmId)
+            ->where('variant_id', $variantId)
+            ->first();
+
+        if ($existing) {
+            $update = ['updated_at' => $now];
+            if ($externalSkuId !== null) {
+                $update['external_sku_id'] = $externalSkuId;
+            }
+            DB::table('product_variant_channel_mappings')
+                ->where('id', $existing->id)
+                ->update($update);
+            return;
+        }
+
+        DB::table('product_variant_channel_mappings')->insert([
+            'id'                         => Uuid::uuid7()->getHex()->toString(),
+            'product_channel_mapping_id' => $pcmId,
+            'variant_id'                 => $variantId,
+            'external_sku_id'            => $externalSkuId,
+            'created_at'                 => $now,
+            'updated_at'                 => $now,
         ]);
     }
 }

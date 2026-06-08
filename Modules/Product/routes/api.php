@@ -19,6 +19,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::apiResource('products', ProductController::class)->names('product');
 
     // Product lifecycle transitions
+    Route::post('products/{id}/submit-review', [ProductController::class, 'submitForReview']);
     Route::post('products/{id}/approve', [ProductController::class, 'approve']);
     Route::post('products/{id}/reject', [ProductController::class, 'reject']);
     Route::post('products/{id}/archive', [ProductController::class, 'archive']);

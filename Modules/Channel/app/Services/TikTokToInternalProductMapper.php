@@ -2,12 +2,17 @@
 
 namespace Modules\Channel\Services;
 
+use Illuminate\Support\Facades\DB;
+
 class TikTokToInternalProductMapper
 {
     public function map(array $tiktokProduct, string $shopId): array
     {
+        $tiktokCategoryId = $tiktokProduct['category_id']
+            ?? ($tiktokProduct['categories'][0]['id'] ?? null);
+
         $internal = [
-            'category_id' => 1,
+            'category_id' => $this->resolveCategoryId($shopId, $tiktokCategoryId),
             'name' => $tiktokProduct['title'] ?? 'TikTok Product',
             'description' => $tiktokProduct['description'] ?? '',
             'condition' => 'NEW',
@@ -76,5 +81,38 @@ class TikTokToInternalProductMapper
         $internal['sku'] = $internal['variants'][0]['sku'] ?? null;
 
         return $internal;
+    }
+
+    /**
+     * Resolve kategori TikTok ke category_id internal via category_channel_mappings.
+     * Fallback ke 1 (kategori root) jika belum ada mapping.
+     */
+    protected function resolveCategoryId(string $shopId, ?string $tiktokCategoryId): int
+    {
+        $fallback = fn () => (int) DB::table('categories')
+            ->whereNull('parent_id')
+            ->orderBy('id')
+            ->value('id');
+
+        if (!$tiktokCategoryId) {
+            return $fallback();
+        }
+
+        $channelId = DB::table('channel_shops')
+            ->where('shop_id', $shopId)
+            ->value('channel_id');
+
+        if (!$channelId) {
+            return $fallback();
+        }
+
+        // Lookup via channel_categories → category_channel_mappings
+        $categoryId = DB::table('category_channel_mappings')
+            ->join('channel_categories', 'channel_categories.id', '=', 'category_channel_mappings.channel_category_id')
+            ->where('channel_categories.channel_id', $channelId)
+            ->where('channel_categories.external_id', (string) $tiktokCategoryId)
+            ->value('category_channel_mappings.category_id');
+
+        return $categoryId ? (int) $categoryId : $fallback();
     }
 }

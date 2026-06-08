@@ -4,10 +4,12 @@ namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Channel\Services\TikTokToInternalOrderMapper;
 use Modules\Channel\Services\TikTokToInternalProductMapper;
+use Modules\Product\Models\ProductSyncLog;
 
 class TikTokProductService
 {
@@ -176,53 +178,135 @@ class TikTokProductService
         return $res;
     }
 
-    public function pullProducts(string $shopId)
+    public function pullProducts(string $shopId): int
     {
         $shop = $this->shopRepository->findByShopId($shopId);
         if (!$shop || !$shop->access_token) {
             throw new \Exception("No access token found for shop: {$shopId}");
         }
 
-        $accessToken = $shop->access_token;
-        $shopCipher = $shop->shop_cipher ?? '';
-
-        $queries = [
-            'shop_cipher' => $shopCipher,
-            'page_size' => 100,
-        ];
-        
-        $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
-        
-        if (!isset($res['data']['products'])) {
-            return 0; 
-        }
+        $accessToken   = $shop->access_token;
+        $shopCipher    = $shop->shop_cipher ?? '';
+        $channelShopId = $shop->id;
 
         $productService = app(\Modules\Product\Services\ProductService::class);
-        $mapper = app(TikTokToInternalProductMapper::class);
+        $mapper         = app(TikTokToInternalProductMapper::class);
 
-        $count = 0;
-        foreach ($res['data']['products'] as $item) {
-            try {
-                $internalData = $mapper->map($item, $shopId);
-                $insertedId = $productService->upsertFromChannel($internalData);
+        $count     = 0;
+        $pageToken = null;
 
-                if ($insertedId) {
-                    // Hubungkan produk hasil download ke channel asal + simpan external_product_id.
-                    $this->productRepository->upsertChannelMapping(
-                        (string) $insertedId,
-                        $shopId,
-                        (string) $item['id'],
-                        'synced'
-                    );
-
-                    $count++;
-                }
-            } catch (\Exception $e) {
-                Log::error("Failed to pull product {$item['id']}: " . $e->getMessage());
+        do {
+            $queries = ['shop_cipher' => $shopCipher, 'page_size' => 100];
+            if ($pageToken) {
+                $queries['page_token'] = $pageToken;
             }
-        }
-        
+
+            try {
+                $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
+            } catch (TokenExpiredException $e) {
+                // Token expired — coba refresh sekali, lalu retry halaman yang sama.
+                $accessToken = $this->refreshShopToken($shop);
+                $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
+            }
+
+            if (!isset($res['data']['products'])) {
+                break;
+            }
+
+            foreach ($res['data']['products'] as $item) {
+                try {
+                    $internalData = $mapper->map($item, $shopId);
+                    $insertedId   = $productService->upsertFromChannel($internalData);
+
+                    if ($insertedId) {
+                        $pcmId = $this->productRepository->upsertChannelMapping(
+                            (string) $insertedId,
+                            $shopId,
+                            (string) $item['id'],
+                            'synced'
+                        );
+
+                        // Isi product_variant_channel_mappings per SKU agar webhook stock-sync bekerja.
+                        foreach ($item['skus'] ?? [] as $skuData) {
+                            $sku = !empty($skuData['seller_sku'])
+                                ? $skuData['seller_sku']
+                                : ('TK-' . $skuData['id']);
+
+                            $variant = DB::table('product_variants')
+                                ->where('product_id', $insertedId)
+                                ->where('sku', $sku)
+                                ->first();
+
+                            if ($variant) {
+                                $this->productRepository->upsertVariantChannelMapping(
+                                    $pcmId,
+                                    $variant->id,
+                                    $skuData['id'] ?? null
+                                );
+                            }
+                        }
+
+                        $count++;
+                    }
+                } catch (\Exception $e) {
+                    Log::error("Failed to pull product {$item['id']}: " . $e->getMessage());
+
+                    ProductSyncLog::record([
+                        'channel_shop_id' => $channelShopId,
+                        'action'          => ProductSyncLog::ACTION_DOWNLOAD,
+                        'status'          => ProductSyncLog::STATUS_FAILED,
+                        'payload'         => [
+                            'external_product_id' => $item['id'],
+                            'title'               => $item['title'] ?? null,
+                        ],
+                        'error_message'   => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            $pageToken = $res['data']['next_page_token'] ?? null;
+
+        } while ($pageToken);
+
         return $count;
+    }
+
+    /**
+     * Refresh access token untuk shop, simpan ke DB, dan kembalikan token baru.
+     */
+    protected function refreshShopToken(object $shop): string
+    {
+        if (empty($shop->refresh_token)) {
+            throw new \Exception("No refresh token available for shop: {$shop->shop_id}");
+        }
+
+        $tokenData = $this->client->refreshAccessToken($shop->refresh_token);
+
+        $newAccessToken  = $tokenData['data']['access_token']  ?? null;
+        $newRefreshToken = $tokenData['data']['refresh_token'] ?? null;
+
+        if (!$newAccessToken) {
+            throw new \Exception("Token refresh failed for shop: {$shop->shop_id}");
+        }
+
+        $update = [
+            'access_token' => $newAccessToken,
+            'updated_at'   => now(),
+        ];
+
+        if ($newRefreshToken) {
+            $update['refresh_token'] = $newRefreshToken;
+        }
+
+        if (!empty($tokenData['data']['access_token_expire_in'])) {
+            $update['token_expires_at'] = now()->addSeconds($tokenData['data']['access_token_expire_in']);
+        }
+
+        DB::table('channel_shops')->where('id', $shop->id)->update($update);
+
+        Log::info("TikTok token refreshed for shop: {$shop->shop_id}");
+
+        return $newAccessToken;
     }
 
     public function syncPriceAndInventory(string $productId, string $shopId)

@@ -11,6 +11,20 @@ use Modules\Product\Models\Product;
 class ProductLifecycleService
 {
     /**
+     * download -> in_review
+     */
+    public function submitForReview(Product $product): Product
+    {
+        if ($product->status !== Product::STATUS_DOWNLOAD) {
+            throw new \DomainException('Hanya produk dengan status Download yang bisa diajukan ke Review');
+        }
+
+        $product->update(['status' => Product::STATUS_IN_REVIEW]);
+
+        return $product;
+    }
+
+    /**
      * in_review -> master
      */
     public function approve(Product $product, ?string $userId = null): Product
