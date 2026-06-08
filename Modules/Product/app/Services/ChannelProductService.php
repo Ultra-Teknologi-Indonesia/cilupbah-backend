@@ -3,6 +3,7 @@
 namespace Modules\Product\Services;
 
 use Modules\Product\Repositories\ProductRepository;
+use Modules\Product\Models\ProductChannelMapping;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\ChannelShop;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -107,6 +108,30 @@ class ChannelProductService
 
         $product = $this->productRepo->findByExternalId($externalId, $channelShopId);
         SyncProductToChannelJob::dispatch($product->id, $channelShopId, 'sync_price_stock');
+    }
+
+    /**
+     * Putus koneksi produk dari 1 channel: hapus baris mapping tanpa menghapus produk lokal.
+     * Throw \RuntimeException (code = HTTP status) untuk kasus tidak terhubung (404) / sedang sync (409).
+     */
+    public function unlinkProduct(string $externalId, string $shopId): void
+    {
+        $channelShopId = $this->requireChannelShopId($shopId);
+
+        $mapping = ProductChannelMapping::where('external_product_id', $externalId)
+            ->where('channel_shop_id', $channelShopId)
+            ->first();
+
+        if (!$mapping) {
+            throw new \RuntimeException('Produk tidak terhubung ke channel ini', 404);
+        }
+
+        if ($mapping->sync_status === 'syncing') {
+            throw new \RuntimeException('Tidak bisa unlink saat proses sync berjalan', 409);
+        }
+
+        // variant mappings ikut terhapus via FK cascade.
+        $mapping->delete();
     }
 
     /**

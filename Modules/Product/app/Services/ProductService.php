@@ -79,6 +79,7 @@ class ProductService
             $productData = Arr::only($data, [
                 'category_id', 'brand_id', 'name', 'description',
                 'weight', 'length', 'width', 'height', 'is_active',
+                'status',
             ]);
             
             $productId = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();

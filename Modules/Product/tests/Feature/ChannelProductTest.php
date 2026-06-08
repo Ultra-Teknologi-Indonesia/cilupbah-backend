@@ -241,4 +241,45 @@ class ChannelProductTest extends TestCase
         $response->assertStatus(200);
         $response->assertJsonStructure(['status', 'message', 'data']);
     }
+
+    // ==================== UNLINK ====================
+
+    public function test_can_unlink_product_from_channel()
+    {
+        $response = $this->deleteJson(
+            "/api/v1/{$this->channel}/products/{$this->externalId}/link",
+            ['shop_id' => $this->shop->shop_id]
+        );
+
+        $response->assertStatus(200);
+
+        // Mapping dihapus, produk lokal tetap ada.
+        $this->assertDatabaseMissing('product_channel_mappings', [
+            'external_product_id' => $this->externalId,
+        ]);
+        $this->assertDatabaseHas('products', ['id' => $this->testProduct->id]);
+    }
+
+    public function test_unlink_not_linked_returns_404()
+    {
+        $response = $this->deleteJson(
+            "/api/v1/{$this->channel}/products/NOT-LINKED-ID/link",
+            ['shop_id' => $this->shop->shop_id]
+        );
+
+        $response->assertStatus(404);
+    }
+
+    public function test_unlink_while_syncing_returns_409()
+    {
+        ProductChannelMapping::where('external_product_id', $this->externalId)
+            ->update(['sync_status' => 'syncing']);
+
+        $response = $this->deleteJson(
+            "/api/v1/{$this->channel}/products/{$this->externalId}/link",
+            ['shop_id' => $this->shop->shop_id]
+        );
+
+        $response->assertStatus(409);
+    }
 }

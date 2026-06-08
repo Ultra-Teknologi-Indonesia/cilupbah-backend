@@ -10,6 +10,9 @@ use Modules\Product\Http\Controllers\AttributeController;
 use Modules\Product\Http\Controllers\ChannelCategoryController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
+    // Harus didefinisikan sebelum apiResource agar tidak tertangkap products/{id}
+    Route::get('products/uploadable', [ProductController::class, 'uploadable']);
+
     Route::apiResource('products', ProductController::class)->names('product');
 
     // Product lifecycle transitions
@@ -50,7 +53,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1/{channel}')->group(function () {
     Route::put('products/{id}/deactivate', [ChannelProductController::class, 'deactivate']);
     Route::put('products/{id}/stock', [ChannelProductController::class, 'updateStock']);
     Route::put('products/{id}/price', [ChannelProductController::class, 'updatePrice']);
-    
+
+    // Putus koneksi produk dari 1 channel (tanpa menghapus produk lokal)
+    Route::delete('products/{id}/link', [ChannelProductController::class, 'unlink']);
+
     // Channel unified products resource
     Route::apiResource('products', ChannelProductController::class)->names('channel.product');
 });

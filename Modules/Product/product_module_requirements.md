@@ -1037,10 +1037,12 @@ GET /api/v1/upload-histories
 - [x] POST /products/{id}/reject (in_review -> download)
 
 ### Phase 4 — Tab Naikkan Produk & Download *(Minggu 3)*
-- [ ] GET /products/uploadable
-- [ ] DELETE /{channel}/products/{id}/link (unlink)
-- [ ] POST /{channel}/download (generic)
-- [ ] POST /{channel}/download/bulk
+- [x] GET /products/uploadable (master tanpa mapping ke shop; resolusi shop_id->UUID)
+- [x] DELETE /{channel}/products/{id}/link (unlink; 404 jika tak terhubung, 409 jika syncing)
+- [x] POST /{channel}/download (generic per-channel; produk masuk status `download`)
+- [x] POST /{channel}/download/bulk (multi-shop)
+- [x] Bonus: wiring status `download` saat pull (mapper + ProductService.createProduct);
+      updateProduct tidak menyentuh status (produk master tetap master saat re-pull)
 
 ### Phase 5 — Draft & Logging *(Minggu 4)*
 - [ ] Migration: tabel product_channel_drafts

@@ -11,6 +11,7 @@ use Modules\Product\Http\Resources\ProductResource;
 use Modules\Product\Models\Product;
 use Modules\Product\Services\ProductService;
 use Modules\Product\Services\ProductLifecycleService;
+use Modules\Channel\Models\ChannelShop;
 use OpenApi\Attributes as OA;
 use App\Traits\ApiResponse;
 
@@ -90,6 +91,49 @@ class ProductController extends Controller
             ->paginate($limit);
 
         return $this->successPaginatedResponse(ProductResource::collection($products), 'Get products success');
+    }
+
+    /**
+     * Daftar produk Master yang BELUM ter-upload ke toko/channel tertentu ("Belum Upload").
+     */
+    #[OA\Get(
+        path: '/api/v1/products/uploadable',
+        summary: 'List uploadable products (belum ter-mapping ke shop)',
+        tags: ['Products'],
+        parameters: [
+            new OA\Parameter(name: 'channel', in: 'query', required: false, description: 'Kode channel (informasional)', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'shop_id', in: 'query', required: true, description: 'shop_id marketplace tujuan', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'search', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+            new OA\Response(response: 422, description: 'Toko tidak ditemukan / shop_id kosong')
+        ]
+    )]
+    public function uploadable(Request $request): JsonResponse
+    {
+        $request->validate([
+            'shop_id' => 'required|string',
+            'channel' => 'nullable|string',
+        ]);
+
+        $channelShopId = ChannelShop::where('shop_id', $request->query('shop_id'))->value('id');
+        if (!$channelShopId) {
+            return $this->errorResponse('Toko tidak ditemukan atau tidak aktif', 422);
+        }
+
+        $limit = $request->input('limit', 10);
+
+        $products = \Spatie\QueryBuilder\QueryBuilder::for(Product::class)
+            ->with(['variants', 'media', 'category', 'brand'])
+            ->where('status', Product::STATUS_MASTER)
+            ->whereDoesntHave('channelMappings', fn ($q) => $q->where('channel_shop_id', $channelShopId))
+            ->allowedSearch('name')
+            ->allowedSorts('name', 'created_at')
+            ->paginate($limit);
+
+        return $this->successPaginatedResponse(ProductResource::collection($products), 'Get uploadable products success');
     }
 
     /**
