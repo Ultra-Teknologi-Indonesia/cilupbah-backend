@@ -11,11 +11,43 @@ use Modules\Product\Http\Controllers\ChannelCategoryController;
 use Modules\Product\Http\Controllers\ProductChannelDraftController;
 use Modules\Product\Http\Controllers\ProductSyncLogController;
 use Modules\Product\Http\Controllers\ChannelMonitorController;
+use Modules\Product\Http\Controllers\ProductMergeController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     // Harus didefinisikan sebelum apiResource agar tidak tertangkap products/{id}
     Route::get('products/uploadable', [ProductController::class, 'uploadable']);
     Route::get('products/channel-drafts', [ProductChannelDraftController::class, 'list']);
+
+    // ── Merge & Auto-Merge produk (lintas store & channel) ──
+    // Akses berbasis Spatie Permission: selama user punya permission-nya, boleh.
+    // Role `owner` otomatis lolos via Gate::before (AppServiceProvider).
+    // Permission di-seed oleh ProductPermissionSeeder.
+    Route::middleware('permission:view-product-merge')->group(function () {
+        Route::get('products/merge/catalog', [ProductMergeController::class, 'catalog']);
+        Route::get('products/merge/suggestions', [ProductMergeController::class, 'suggestions']);
+        Route::get('products/merge/applied', [ProductMergeController::class, 'applied']);
+    });
+
+    Route::middleware('permission:auto-merge-product')->group(function () {
+        Route::post('products/merge/auto', [ProductMergeController::class, 'auto']);
+    });
+
+    Route::middleware('permission:merge-product')->group(function () {
+        Route::post('products/merge/apply', [ProductMergeController::class, 'apply']);
+        Route::post('products/merge/bulk', [ProductMergeController::class, 'bulk']);
+    });
+
+    Route::middleware('permission:unmerge-product')->group(function () {
+        Route::post('products/merge/bulk-unmerge', [ProductMergeController::class, 'bulkUnmerge']);
+        // "master" harus didefinisikan sebelum "{product}" agar tidak tertangkap param
+        Route::delete('products/merge/master', [ProductMergeController::class, 'unmergeMaster']);
+        Route::delete('products/merge/{product}', [ProductMergeController::class, 'unmerge']);
+    });
+
+    Route::middleware('permission:hide-product')->group(function () {
+        Route::post('products/merge/hide', [ProductMergeController::class, 'hide']);
+        Route::post('products/merge/unhide', [ProductMergeController::class, 'unhide']);
+    });
 
     Route::apiResource('products', ProductController::class)->names('product');
 

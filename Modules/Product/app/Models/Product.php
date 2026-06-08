@@ -6,6 +6,7 @@ use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Product extends Model
 {
@@ -107,6 +108,12 @@ class Product extends Model
     public function archivedBy(): BelongsTo
     {
         return $this->belongsTo(\App\Models\User::class, 'archived_by');
+    }
+
+    /** Overlay merge: menempelkan produk ini ke satu master_name. */
+    public function merge(): HasOne
+    {
+        return $this->hasOne(ProductMerge::class);
     }
 
     // ==================== Scopes ====================
