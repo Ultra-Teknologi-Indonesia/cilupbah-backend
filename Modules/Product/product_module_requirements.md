@@ -1030,11 +1030,11 @@ GET /api/v1/upload-histories
 - [x] BUG-008: Fix GET /products/{id} return JSON (+ guard id non-UUID → 404)
 
 ### Phase 3 — Tab Master & Arsip *(Minggu 2)*
-- [ ] PUT /products/{id} implementasi update
-- [ ] POST /products/{id}/archive
-- [ ] POST /products/{id}/restore
-- [ ] POST /products/{id}/approve
-- [ ] POST /products/{id}/reject
+- [x] PUT /products/{id} implementasi update (UpdateProductRequest, field master-level)
+- [x] POST /products/{id}/archive (master -> archived, +reason/archived_by)
+- [x] POST /products/{id}/restore (archived -> master, clear archive fields)
+- [x] POST /products/{id}/approve (in_review -> master, +verified_at/by, validasi kelengkapan)
+- [x] POST /products/{id}/reject (in_review -> download)
 
 ### Phase 4 — Tab Naikkan Produk & Download *(Minggu 3)*
 - [ ] GET /products/uploadable

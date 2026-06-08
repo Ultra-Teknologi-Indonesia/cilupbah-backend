@@ -6,20 +6,37 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Modules\Product\Http\Requests\CreateProductRequest;
+use Modules\Product\Http\Requests\UpdateProductRequest;
 use Modules\Product\Http\Resources\ProductResource;
 use Modules\Product\Models\Product;
 use Modules\Product\Services\ProductService;
+use Modules\Product\Services\ProductLifecycleService;
 use OpenApi\Attributes as OA;
 use App\Traits\ApiResponse;
 
 class ProductController extends Controller
 {
     use ApiResponse;
-    protected ProductService $productService;
 
-    public function __construct(ProductService $productService)
-    {
+    /** Relasi yang dimuat saat mengembalikan detail produk. */
+    private const DETAIL_RELATIONS = [
+        'variants',
+        'media',
+        'category',
+        'brand',
+        'channelMappings.channelShop.channel',
+        'archivedBy',
+    ];
+
+    protected ProductService $productService;
+    protected ProductLifecycleService $lifecycleService;
+
+    public function __construct(
+        ProductService $productService,
+        ProductLifecycleService $lifecycleService
+    ) {
         $this->productService = $productService;
+        $this->lifecycleService = $lifecycleService;
     }
 
     /**
@@ -115,21 +132,7 @@ class ProductController extends Controller
     )]
     public function show($id): JsonResponse
     {
-        // Guard: id non-UUID akan memicu error cast UUID di Postgres, bukan "not found".
-        $normalizedId = str_replace('-', '', (string) $id);
-        if (strlen($normalizedId) !== 32 || !ctype_xdigit($normalizedId)) {
-            return $this->errorResponse('Produk tidak ditemukan', 404);
-        }
-
-        $product = Product::with([
-            'variants',
-            'media',
-            'category',
-            'brand',
-            'channelMappings.channelShop.channel',
-            'archivedBy',
-        ])->find($id);
-
+        $product = $this->findProduct($id, self::DETAIL_RELATIONS);
         if (!$product) {
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
@@ -148,10 +151,156 @@ class ProductController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, $id) {}
+    #[OA\Put(
+        path: '/api/v1/products/{id}',
+        summary: 'Update product',
+        tags: ['Products'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Product updated'),
+            new OA\Response(response: 404, description: 'Product not found')
+        ]
+    )]
+    public function update(UpdateProductRequest $request, $id): JsonResponse
+    {
+        $product = $this->findProduct($id);
+        if (!$product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        $product->update($request->validated());
+
+        return $this->successResponse(
+            new ProductResource($product->fresh(self::DETAIL_RELATIONS)),
+            'Produk berhasil diperbarui'
+        );
+    }
 
     /**
      * Remove the specified resource from storage.
      */
     public function destroy($id) {}
+
+    /**
+     * Approve produk In Review menjadi Master.
+     */
+    #[OA\Post(
+        path: '/api/v1/products/{id}/approve',
+        summary: 'Approve product to Master',
+        tags: ['Products'],
+        parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [
+            new OA\Response(response: 200, description: 'Product approved'),
+            new OA\Response(response: 422, description: 'Invalid state / validation'),
+            new OA\Response(response: 404, description: 'Product not found')
+        ]
+    )]
+    public function approve(Request $request, $id): JsonResponse
+    {
+        return $this->runLifecycle($id, fn (Product $product) => $this->lifecycleService->approve($product, $request->user()?->id), 'Produk berhasil disetujui menjadi Master');
+    }
+
+    /**
+     * Reject produk In Review kembali ke Download.
+     */
+    #[OA\Post(
+        path: '/api/v1/products/{id}/reject',
+        summary: 'Reject product back to Download',
+        tags: ['Products'],
+        parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [
+            new OA\Response(response: 200, description: 'Product rejected'),
+            new OA\Response(response: 422, description: 'Invalid state'),
+            new OA\Response(response: 404, description: 'Product not found')
+        ]
+    )]
+    public function reject(Request $request, $id): JsonResponse
+    {
+        return $this->runLifecycle($id, fn (Product $product) => $this->lifecycleService->reject($product), 'Produk dikembalikan ke Download');
+    }
+
+    /**
+     * Arsipkan produk Master.
+     */
+    #[OA\Post(
+        path: '/api/v1/products/{id}/archive',
+        summary: 'Archive product',
+        tags: ['Products'],
+        parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        requestBody: new OA\RequestBody(required: false, content: new OA\JsonContent(properties: [
+            new OA\Property(property: 'reason', type: 'string', nullable: true)
+        ])),
+        responses: [
+            new OA\Response(response: 200, description: 'Product archived'),
+            new OA\Response(response: 422, description: 'Invalid state'),
+            new OA\Response(response: 404, description: 'Product not found')
+        ]
+    )]
+    public function archive(Request $request, $id): JsonResponse
+    {
+        $validated = $request->validate(['reason' => 'nullable|string|max:255']);
+
+        return $this->runLifecycle(
+            $id,
+            fn (Product $product) => $this->lifecycleService->archive($product, $validated['reason'] ?? null, $request->user()?->id),
+            'Produk berhasil diarsipkan'
+        );
+    }
+
+    /**
+     * Pulihkan produk dari Arsip ke Master.
+     */
+    #[OA\Post(
+        path: '/api/v1/products/{id}/restore',
+        summary: 'Restore product from archive',
+        tags: ['Products'],
+        parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [
+            new OA\Response(response: 200, description: 'Product restored'),
+            new OA\Response(response: 422, description: 'Invalid state'),
+            new OA\Response(response: 404, description: 'Product not found')
+        ]
+    )]
+    public function restore(Request $request, $id): JsonResponse
+    {
+        return $this->runLifecycle($id, fn (Product $product) => $this->lifecycleService->restore($product), 'Produk berhasil dipulihkan ke Master');
+    }
+
+    /**
+     * Jalankan satu transisi lifecycle dengan penanganan not-found (404) & pelanggaran aturan (422).
+     */
+    private function runLifecycle($id, callable $action, string $message): JsonResponse
+    {
+        $product = $this->findProduct($id);
+        if (!$product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        try {
+            $action($product);
+        } catch (\DomainException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
+        return $this->successResponse(
+            new ProductResource($product->fresh(self::DETAIL_RELATIONS)),
+            $message
+        );
+    }
+
+    /**
+     * Cari produk by id dengan guard format UUID (id non-UUID -> null, dipetakan ke 404
+     * agar tidak memicu error cast UUID di Postgres).
+     */
+    private function findProduct($id, array $with = []): ?Product
+    {
+        $normalizedId = str_replace('-', '', (string) $id);
+        if (strlen($normalizedId) !== 32 || !ctype_xdigit($normalizedId)) {
+            return null;
+        }
+
+        return Product::with($with)->find($id);
+    }
 }

@@ -11,7 +11,14 @@ use Modules\Product\Http\Controllers\ChannelCategoryController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::apiResource('products', ProductController::class)->names('product');
-    
+
+    // Product lifecycle transitions
+    Route::post('products/{id}/approve', [ProductController::class, 'approve']);
+    Route::post('products/{id}/reject', [ProductController::class, 'reject']);
+    Route::post('products/{id}/archive', [ProductController::class, 'archive']);
+    Route::post('products/{id}/restore', [ProductController::class, 'restore']);
+
+
     // Master Data
     Route::apiResource('categories', CategoryController::class)->names('category');
     Route::post('categories/{category}/map-channel', [CategoryController::class, 'mapChannel']);
