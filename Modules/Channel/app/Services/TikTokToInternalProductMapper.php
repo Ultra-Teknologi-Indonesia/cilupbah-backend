@@ -7,14 +7,14 @@ class TikTokToInternalProductMapper
     public function map(array $tiktokProduct, string $shopId): array
     {
         $internal = [
-            'channel_shop_id' => $shopId,
-            'source' => 'tiktok',
             'category_id' => 1,
             'name' => $tiktokProduct['title'] ?? 'TikTok Product',
             'description' => $tiktokProduct['description'] ?? '',
             'condition' => 'NEW',
-            'is_draft' => $tiktokProduct['status'] !== 'ACTIVATE',
+            'is_draft' => ($tiktokProduct['status'] ?? null) !== 'ACTIVATE',
             'is_active' => true,
+            // Produk hasil download masuk sebagai 'download' (belum jadi Master).
+            'status' => 'download',
         ];
 
         if (isset($tiktokProduct['package_dimensions'])) {

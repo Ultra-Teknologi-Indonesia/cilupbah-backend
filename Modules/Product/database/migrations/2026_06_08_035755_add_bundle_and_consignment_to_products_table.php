@@ -11,8 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('products_and_variants', function (Blueprint $table) {
-            //
+        Schema::table('products', function (Blueprint $table) {
+            $table->boolean('is_bundle')->default(false)->after('is_active');
+            $table->boolean('is_consignment')->default(false)->after('is_bundle');
         });
     }
 
@@ -21,8 +22,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('products_and_variants', function (Blueprint $table) {
-            //
+        Schema::table('products', function (Blueprint $table) {
+            $table->dropColumn(['is_bundle', 'is_consignment']);
         });
     }
 };

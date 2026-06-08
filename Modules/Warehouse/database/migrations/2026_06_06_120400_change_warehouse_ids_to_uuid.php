@@ -82,12 +82,14 @@ return new class extends Migration
 
         foreach ($tables as $table => $columns) {
             foreach ($columns as $column) {
-                // Drop default sequence if it's the primary key 'id'
-                if ($column === 'id') {
-                    DB::statement("ALTER TABLE {$table} ALTER COLUMN id DROP DEFAULT");
+                if (DB::getDriverName() !== 'sqlite') {
+                    // Drop default sequence if it's the primary key 'id'
+                    if ($column === 'id') {
+                        DB::statement("ALTER TABLE {$table} ALTER COLUMN id DROP DEFAULT");
+                    }
+                    
+                    DB::statement("ALTER TABLE {$table} ALTER COLUMN {$column} TYPE UUID USING LPAD({$column}::text, 32, '0')::uuid");
                 }
-                
-                DB::statement("ALTER TABLE {$table} ALTER COLUMN {$column} TYPE UUID USING LPAD({$column}::text, 32, '0')::uuid");
             }
         }
 

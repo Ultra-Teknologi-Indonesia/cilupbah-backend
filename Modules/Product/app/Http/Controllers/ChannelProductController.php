@@ -317,6 +317,36 @@ class ChannelProductController extends Controller
         return $this->successResponse(['success' => true], 'Harga produk berhasil diperbarui');
     }
 
+    #[OA\Delete(
+        path: "/api/v1/{channel}/products/{id}/link",
+        summary: "Unlink product from channel",
+        description: "Putus koneksi produk dari 1 channel/toko tanpa menghapus produk lokal. Wajib shop_id.",
+        tags: ["Channel Products"]
+    )]
+    #[OA\Parameter(name: "channel", in: "path", required: true, schema: new OA\Schema(type: "string"))]
+    #[OA\Parameter(name: "id", in: "path", required: true, description: "external_product_id", schema: new OA\Schema(type: "string"))]
+    #[OA\RequestBody(required: true, content: new OA\JsonContent(properties: [
+        new OA\Property(property: "shop_id", type: "string")
+    ]))]
+    #[OA\Response(response: 200, description: "Channel link removed")]
+    #[OA\Response(response: 404, description: "Produk tidak terhubung ke channel ini")]
+    #[OA\Response(response: 409, description: "Sedang proses sync")]
+    public function unlink(Request $request, string $channel, string $id): JsonResponse
+    {
+        $shopId = $request->input('shop_id');
+        if (!$shopId) {
+            return $this->errorResponse('shop_id wajib diisi', 400);
+        }
+
+        try {
+            $this->channelProductService->unlinkProduct($id, $shopId);
+        } catch (\RuntimeException $e) {
+            return $this->errorResponse($e->getMessage(), $e->getCode() ?: 422);
+        }
+
+        return $this->successResponse(['success' => true], 'Koneksi channel berhasil diputus');
+    }
+
     #[OA\Get(
         path: "/api/v1/{channel}/products/categories",
         summary: "List categories",

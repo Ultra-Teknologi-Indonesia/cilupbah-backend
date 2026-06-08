@@ -1,0 +1,321 @@
+<?php
+
+namespace Modules\Product\Tests\Feature;
+
+use Tests\TestCase;
+use App\Models\User;
+use Modules\Product\Models\Category;
+use Modules\Product\Models\Brand;
+use Modules\Product\Models\Product;
+use Modules\Channel\Models\Channel;
+use Modules\Channel\Models\ChannelShop;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Ramsey\Uuid\Uuid;
+
+class ProductE2ETest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected User $user;
+    protected Category $category;
+    protected Brand $brand;
+    protected ChannelShop $channelShop;
+    protected string $testProductId;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->user = User::factory()->create();
+        $this->actingAs($this->user);
+
+        // Siapkan master data
+        $this->category = Category::create([
+            'id' => Uuid::uuid7()->getHex()->toString(),
+            'name' => 'Kategori E2E'
+        ]);
+
+        $this->brand = Brand::create([
+            'id' => Uuid::uuid7()->getHex()->toString(),
+            'name' => 'Brand E2E'
+        ]);
+
+        $channel = Channel::create([
+            'id' => Uuid::uuid7()->getHex()->toString(),
+            'name' => 'TikTok E2E',
+            'code' => 'tiktok',
+            'auth_type' => 'oauth2'
+        ]);
+
+        $this->channelShop = ChannelShop::create([
+            'id' => Uuid::uuid7()->getHex()->toString(),
+            'channel_id' => $channel->id,
+            'shop_id' => 'SHPE2E123',
+            'shop_name' => 'Toko TikTok E2E',
+            'is_active' => true
+        ]);
+    }
+
+    public function test_can_create_product_with_variants_and_overrides()
+    {
+        $payload = [
+            'name' => 'Produk E2E Bundle',
+            'category_id' => $this->category->id,
+            'brand_id' => $this->brand->id,
+            'description' => 'Deskripsi produk E2E',
+            'weight' => 2.5,
+            'length' => 10,
+            'width' => 10,
+            'height' => 10,
+            'is_active' => true,
+            'is_bundle' => true,
+            'is_consignment' => false,
+            'variants' => [
+                [
+                    'sku' => 'E2E-VAR-01',
+                    'sell_price' => 100000,
+                    'is_active' => true,
+                    'channel_prices' => [
+                        [
+                            'channel_shop_id' => $this->channelShop->id,
+                            'price' => 125000
+                        ]
+                    ]
+                ]
+            ]
+        ];
+
+        $response = $this->postJson('/api/v1/products', $payload);
+
+         $response->assertStatus(201)
+                 ->assertJsonPath('status', 'success');
+
+        $this->assertDatabaseHas('products', [
+            'name' => 'Produk E2E Bundle',
+            'is_bundle' => true,
+            'is_consignment' => false,
+        ]);
+
+        $this->assertDatabaseHas('product_variants', [
+            'sku' => 'E2E-VAR-01',
+            'sell_price' => 100000,
+        ]);
+
+        $this->assertDatabaseHas('product_variant_channel_mappings', [
+            'override_price' => 125000,
+        ]);
+    }
+
+    public function test_can_read_product_detail()
+    {
+        // 1. Buat dulu
+        $createResponse = $this->postJson('/api/v1/products', [
+            'name' => 'Produk E2E Read',
+            'category_id' => $this->category->id,
+            'weight' => 1,
+            'length' => 1,
+            'width' => 1,
+            'height' => 1,
+            'variants' => [
+                [
+                    'sku' => 'E2E-VAR-READ',
+                    'sell_price' => 50000,
+                    'channel_prices' => [
+                        [
+                            'channel_shop_id' => $this->channelShop->id,
+                            'price' => 55000
+                        ]
+                    ]
+                ]
+            ]
+        ]);
+
+        $productId = $createResponse->json('data.product_id');
+
+        // 2. Baca Detail
+        $readResponse = $this->getJson("/api/v1/products/{$productId}");
+
+         $readResponse->assertStatus(200)
+                     ->assertJsonPath('data.name', 'Produk E2E Read')
+                     ->assertJsonPath('data.variants.0.sku', 'E2E-VAR-READ')
+                     ->assertJsonPath('data.variants.0.sell_price', '50000.00')
+                     ->assertJsonPath('data.variants.0.channel_prices.0.channel_shop_id', $this->channelShop->id)
+                     ->assertJsonPath('data.variants.0.channel_prices.0.price', '55000.00');
+    }
+
+    public function test_can_update_product_and_overrides()
+    {
+        // 1. Buat
+        $createResponse = $this->postJson('/api/v1/products', [
+            'name' => 'Produk E2E Awal',
+            'category_id' => $this->category->id,
+            'variants' => [
+                [
+                    'sku' => 'E2E-VAR-UPDATE',
+                    'sell_price' => 10000,
+                    'channel_prices' => [
+                        [
+                            'channel_shop_id' => $this->channelShop->id,
+                            'price' => 15000
+                        ]
+                    ]
+                ]
+            ]
+        ]);
+
+        $productId = $createResponse->json('data.product_id');
+
+        // 2. Update
+        $updateResponse = $this->putJson("/api/v1/products/{$productId}", [
+            'name' => 'Produk E2E Baru',
+            'category_id' => $this->category->id,
+            'variants' => [
+                [
+                    'sku' => 'E2E-VAR-UPDATE',
+                    'sell_price' => 20000, // Harga dasar berubah
+                    'channel_prices' => [
+                        [
+                            'channel_shop_id' => $this->channelShop->id,
+                            'price' => 30000 // Harga khusus ikut berubah
+                        ]
+                    ]
+                ]
+            ]
+        ]);
+
+        $updateResponse->assertStatus(200);
+
+        $this->assertDatabaseHas('products', [
+            'id' => $productId,
+            'name' => 'Produk E2E Baru',
+        ]);
+
+        $this->assertDatabaseHas('product_variants', [
+            'sku' => 'E2E-VAR-UPDATE',
+            'sell_price' => 20000,
+        ]);
+
+        $this->assertDatabaseHas('product_variant_channel_mappings', [
+            'override_price' => 30000,
+        ]);
+    }
+
+    public function test_can_delete_product()
+    {
+        // 1. Buat
+        $createResponse = $this->postJson('/api/v1/products', [
+            'name' => 'Produk E2E Hapus',
+            'category_id' => $this->category->id,
+            'variants' => [
+                [
+                    'sku' => 'E2E-VAR-DELETE',
+                    'sell_price' => 5000,
+                    'channel_prices' => [
+                        [
+                            'channel_shop_id' => $this->channelShop->id,
+                            'price' => 7000
+                        ]
+                    ]
+                ]
+            ]
+        ]);
+
+        $productId = $createResponse->json('data.product_id');
+
+        // 2. Hapus
+        $deleteResponse = $this->deleteJson("/api/v1/products/{$productId}");
+
+        $deleteResponse->assertStatus(200);
+
+        $this->assertDatabaseMissing('products', [
+            'id' => $productId,
+        ]);
+
+        $this->assertDatabaseMissing('product_variants', [
+            'sku' => 'E2E-VAR-DELETE',
+        ]);
+    }
+
+    public function test_cannot_create_product_with_invalid_payload()
+    {
+        // 1. Missing required fields
+        $response = $this->postJson('/api/v1/products', [
+            'name' => '', // Empty name
+        ]);
+
+        $response->assertStatus(422)
+                 ->assertJsonValidationErrors(['name', 'category_id', 'variants']);
+    }
+
+    public function test_cannot_read_non_existent_product()
+    {
+        $response = $this->getJson('/api/v1/products/not-a-real-id-1234');
+        $response->assertStatus(404);
+    }
+
+    public function test_can_list_products()
+    {
+        // Create 2 products
+        $this->postJson('/api/v1/products', [
+            'name' => 'Produk List 1',
+            'category_id' => $this->category->id,
+            'variants' => [['sku' => 'LIST1', 'sell_price' => 1000]]
+        ]);
+        $this->postJson('/api/v1/products', [
+            'name' => 'Produk List 2',
+            'category_id' => $this->category->id,
+            'variants' => [['sku' => 'LIST2', 'sell_price' => 2000]]
+        ]);
+
+        $response = $this->getJson('/api/v1/products?limit=10');
+         $response->assertStatus(200)
+                 ->assertJsonPath('status', 'success');
+
+        $data = $response->json('data');
+        $this->assertGreaterThanOrEqual(2, count($data));
+    }
+
+    public function test_can_approve_reject_archive_restore_product()
+    {
+        $createResponse = $this->postJson('/api/v1/products', [
+            'name' => 'Produk Lifecycle',
+            'category_id' => $this->category->id,
+            'variants' => [['sku' => 'LIFECYCLE1', 'sell_price' => 5000]],
+            'media' => [['url' => 'http://example.com/image.jpg', 'is_primary' => true]]
+        ]);
+        $productId = $createResponse->json('data.product_id');
+
+        // Set to in_review first
+        \DB::table('products')->where('id', $productId)->update(['status' => 'in_review']);
+
+        // Approve
+        $approveRes = $this->postJson("/api/v1/products/{$productId}/approve");
+          $approveRes->assertStatus(200);
+        $this->assertDatabaseHas('products', ['id' => $productId, 'status' => 'master']);
+
+        // Set to in_review first
+        \DB::table('products')->where('id', $productId)->update(['status' => 'in_review']);
+
+        // Reject (to download)
+        $rejectRes = $this->postJson("/api/v1/products/{$productId}/reject");
+        $rejectRes->assertStatus(200);
+        $this->assertDatabaseHas('products', ['id' => $productId, 'status' => 'download']);
+
+        // Set back to master to allow archive
+        \DB::table('products')->where('id', $productId)->update(['status' => 'master']);
+
+        // Archive
+        $archiveRes = $this->postJson("/api/v1/products/{$productId}/archive", [
+            'reason' => 'Testing archive'
+        ]);
+        $archiveRes->assertStatus(200);
+        $this->assertDatabaseHas('products', ['id' => $productId, 'status' => 'archived']);
+
+        // Restore
+        \DB::table('products')->where('id', $productId)->update(['status' => 'archived']);
+        $restoreRes = $this->postJson("/api/v1/products/{$productId}/restore");
+        $restoreRes->assertStatus(200);
+        $this->assertDatabaseHas('products', ['id' => $productId, 'status' => 'master']);
+    }
+}

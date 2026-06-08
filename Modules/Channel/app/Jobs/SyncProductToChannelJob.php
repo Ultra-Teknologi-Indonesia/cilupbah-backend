@@ -62,8 +62,20 @@ class SyncProductToChannelJob implements ShouldQueue
      */
     public function handle(AdapterFactory $factory): void
     {
-        $product = Product::with('variants')->find($this->productId);
+        $product = Product::with(['variants.channelMappings.channelMapping'])->find($this->productId);
         $shop = ChannelShop::with('channel')->find($this->channelShopId);
+
+        if ($product) {
+            foreach ($product->variants as $variant) {
+                $mapping = $variant->channelMappings->first(function ($map) use ($shop) {
+                    return $map->channelMapping && $map->channelMapping->channel_shop_id === $shop->id;
+                });
+
+                if ($mapping && $mapping->override_price !== null) {
+                    $variant->sell_price = $mapping->override_price;
+                }
+            }
+        }
 
         if (!$product || !$shop) {
             Log::warning("SyncProductToChannelJob skipped: Product or Shop not found.", [

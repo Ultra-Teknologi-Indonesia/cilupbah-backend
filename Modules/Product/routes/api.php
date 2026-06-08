@@ -8,10 +8,33 @@ use Modules\Product\Http\Controllers\CategoryController;
 use Modules\Product\Http\Controllers\BrandController;
 use Modules\Product\Http\Controllers\AttributeController;
 use Modules\Product\Http\Controllers\ChannelCategoryController;
+use Modules\Product\Http\Controllers\ProductChannelDraftController;
+use Modules\Product\Http\Controllers\ProductSyncLogController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
+    // Harus didefinisikan sebelum apiResource agar tidak tertangkap products/{id}
+    Route::get('products/uploadable', [ProductController::class, 'uploadable']);
+    Route::get('products/channel-drafts', [ProductChannelDraftController::class, 'list']);
+
     Route::apiResource('products', ProductController::class)->names('product');
-    
+
+    // Product lifecycle transitions
+    Route::post('products/{id}/approve', [ProductController::class, 'approve']);
+    Route::post('products/{id}/reject', [ProductController::class, 'reject']);
+    Route::post('products/{id}/archive', [ProductController::class, 'archive']);
+    Route::post('products/{id}/restore', [ProductController::class, 'restore']);
+
+    // Channel listing drafts (sub-tab Draft)
+    Route::get('products/{id}/channel-drafts', [ProductChannelDraftController::class, 'index']);
+    Route::post('products/{id}/channel-drafts', [ProductChannelDraftController::class, 'store']);
+    Route::put('products/{id}/channel-drafts/{draft}', [ProductChannelDraftController::class, 'update']);
+    Route::delete('products/{id}/channel-drafts/{draft}', [ProductChannelDraftController::class, 'destroy']);
+
+    // Riwayat upload & download
+    Route::get('upload-histories', [ProductSyncLogController::class, 'uploadHistories']);
+    Route::get('download-histories', [ProductSyncLogController::class, 'downloadHistories']);
+
+
     // Master Data
     Route::apiResource('categories', CategoryController::class)->names('category');
     Route::post('categories/{category}/map-channel', [CategoryController::class, 'mapChannel']);
@@ -31,8 +54,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('products/import/bundle', [\Modules\Product\Http\Controllers\ProductImportController::class, 'importBundle']);
 });
 
-// Channel specific routes (Temporarily Unprotected for Testing)
-Route::prefix('v1/{channel}')->group(function () {
+// Channel specific routes
+Route::middleware(['auth:sanctum'])->prefix('v1/{channel}')->group(function () {
     // Channel Categories
     Route::get('categories', [ChannelCategoryController::class, 'index']);
     Route::get('categories/{categoryId}/attributes', [\Modules\Product\Http\Controllers\ChannelAttributeController::class, 'index']);
@@ -43,7 +66,10 @@ Route::prefix('v1/{channel}')->group(function () {
     Route::put('products/{id}/deactivate', [ChannelProductController::class, 'deactivate']);
     Route::put('products/{id}/stock', [ChannelProductController::class, 'updateStock']);
     Route::put('products/{id}/price', [ChannelProductController::class, 'updatePrice']);
-    
+
+    // Putus koneksi produk dari 1 channel (tanpa menghapus produk lokal)
+    Route::delete('products/{id}/link', [ChannelProductController::class, 'unlink']);
+
     // Channel unified products resource
     Route::apiResource('products', ChannelProductController::class)->names('channel.product');
 });
