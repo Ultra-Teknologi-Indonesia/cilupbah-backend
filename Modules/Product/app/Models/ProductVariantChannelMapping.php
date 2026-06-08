@@ -16,11 +16,13 @@ class ProductVariantChannelMapping extends Model
         'external_sku_id',
         'synced_price',
         'synced_stock',
+        'override_price',
     ];
 
     protected $casts = [
         'synced_price' => 'decimal:2',
         'synced_stock' => 'integer',
+        'override_price' => 'decimal:2',
     ];
 
     // ==================== Relasi ====================

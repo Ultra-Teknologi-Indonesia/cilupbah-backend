@@ -45,6 +45,9 @@ class CreateProductRequest extends FormRequest
             'variants.*.sku' => 'required|string|max:255|unique:product_variants,sku',
             'variants.*.sell_price' => 'required|numeric|min:0',
             'variants.*.is_active' => 'nullable|boolean',
+            'variants.*.channel_prices' => 'nullable|array',
+            'variants.*.channel_prices.*.channel_shop_id' => 'required|uuid',
+            'variants.*.channel_prices.*.price' => 'required|numeric|min:0',
             
             'variants.*.options' => 'nullable|array',
             'variants.*.options.*.attribute_id' => 'required|exists:attributes,id',

@@ -60,6 +60,12 @@ class ProductResource extends JsonResource
                         'sku' => $variant->sku,
                         'sell_price' => $variant->sell_price,
                         'is_active' => $variant->is_active,
+                        'channel_prices' => $variant->relationLoaded('channelMappings') ? $variant->channelMappings->map(function ($map) {
+                            return [
+                                'channel_shop_id' => $map->relationLoaded('channelMapping') ? $map->channelMapping->channel_shop_id : null,
+                                'price' => $map->override_price,
+                            ];
+                        })->filter(fn($m) => $m['price'] !== null)->values() : [],
                     ];
                 });
             }),
