@@ -1024,10 +1024,10 @@ GET /api/v1/upload-histories
 ### Phase 2 — Fondasi Status *(Minggu 1-2)*
 > Satu migration + filter endpoint. Setelah ini semua tab bisa dibedakan.
 
-- [ ] Migration: tambah kolom `status`, `verified_at`, `archived_at`, `archived_by`, `archive_reason`
-- [ ] Implementasi `GET /products?status=`
-- [ ] Perkaya ProductResource (tambah field yang kurang)
-- [ ] BUG-008: Fix GET /products/{id} return JSON
+- [x] Migration: tambah kolom `status`, `verified_at`, `verified_by`, `archived_at`, `archived_by`, `archive_reason`
+- [x] Implementasi `GET /products?status=` (top-level query, + validasi nilai status)
+- [x] Perkaya ProductResource (status, sku, primary_image, price_range, category, brand, channels_count, channel_mappings, verified_at, archived_*)
+- [x] BUG-008: Fix GET /products/{id} return JSON (+ guard id non-UUID → 404)
 
 ### Phase 3 — Tab Master & Arsip *(Minggu 2)*
 - [ ] PUT /products/{id} implementasi update
