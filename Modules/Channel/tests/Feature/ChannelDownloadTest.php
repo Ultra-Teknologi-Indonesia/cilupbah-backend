@@ -76,6 +76,13 @@ class ChannelDownloadTest extends TestCase
             'external_product_id' => 'TIKTOK-PROD-1',
             'sync_status' => 'synced',
         ]);
+
+        // Riwayat download tercatat.
+        $this->assertDatabaseHas('product_sync_logs', [
+            'channel_shop_id' => $shop->id,
+            'action' => 'download',
+            'status' => 'success',
+        ]);
     }
 
     public function test_download_requires_shop_id()

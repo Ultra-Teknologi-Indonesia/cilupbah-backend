@@ -1045,11 +1045,14 @@ GET /api/v1/upload-histories
       updateProduct tidak menyentuh status (produk master tetap master saat re-pull)
 
 ### Phase 5 — Draft & Logging *(Minggu 4)*
-- [ ] Migration: tabel product_channel_drafts
-- [ ] Migration: tabel product_sync_logs
-- [ ] CRUD /products/{id}/channel-drafts
-- [ ] GET /upload-histories
-- [ ] GET /download-histories
+- [x] Migration: tabel product_channel_drafts (unik product+shop, FK cascade)
+- [x] Migration: tabel product_sync_logs (action/status enum, FK nullOnDelete, index)
+- [x] CRUD /products/{id}/channel-drafts (+ GET /products/channel-drafts global, upsert per product+shop)
+- [x] GET /upload-histories (filter status/channel/shop_id/date/search)
+- [x] GET /download-histories (filter status/channel/shop_id/date)
+- [x] Wiring penulisan log: download (ChannelDownloadService), unlink & upload-pending
+      (ChannelProductService). Catatan: finalisasi status upload pending->success/failed
+      idealnya di SyncProductToChannelJob (follow-up).
 
 ---
 

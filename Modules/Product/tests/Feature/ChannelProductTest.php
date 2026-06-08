@@ -145,6 +145,14 @@ class ChannelProductTest extends TestCase
             return $job->action === 'push'
                 && $job->channelShopId === $this->secondaryShop->id;
         });
+
+        // Riwayat upload tercatat sebagai pending.
+        $this->assertDatabaseHas('product_sync_logs', [
+            'product_id' => $productId,
+            'channel_shop_id' => $this->secondaryShop->id,
+            'action' => 'upload',
+            'status' => 'pending',
+        ]);
     }
 
     public function test_can_update_product()
@@ -258,6 +266,13 @@ class ChannelProductTest extends TestCase
             'external_product_id' => $this->externalId,
         ]);
         $this->assertDatabaseHas('products', ['id' => $this->testProduct->id]);
+
+        $this->assertDatabaseHas('product_sync_logs', [
+            'product_id' => $this->testProduct->id,
+            'channel_shop_id' => $this->shop->id,
+            'action' => 'unlink',
+            'status' => 'success',
+        ]);
     }
 
     public function test_unlink_not_linked_returns_404()

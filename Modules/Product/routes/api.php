@@ -8,10 +8,13 @@ use Modules\Product\Http\Controllers\CategoryController;
 use Modules\Product\Http\Controllers\BrandController;
 use Modules\Product\Http\Controllers\AttributeController;
 use Modules\Product\Http\Controllers\ChannelCategoryController;
+use Modules\Product\Http\Controllers\ProductChannelDraftController;
+use Modules\Product\Http\Controllers\ProductSyncLogController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     // Harus didefinisikan sebelum apiResource agar tidak tertangkap products/{id}
     Route::get('products/uploadable', [ProductController::class, 'uploadable']);
+    Route::get('products/channel-drafts', [ProductChannelDraftController::class, 'list']);
 
     Route::apiResource('products', ProductController::class)->names('product');
 
@@ -20,6 +23,16 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('products/{id}/reject', [ProductController::class, 'reject']);
     Route::post('products/{id}/archive', [ProductController::class, 'archive']);
     Route::post('products/{id}/restore', [ProductController::class, 'restore']);
+
+    // Channel listing drafts (sub-tab Draft)
+    Route::get('products/{id}/channel-drafts', [ProductChannelDraftController::class, 'index']);
+    Route::post('products/{id}/channel-drafts', [ProductChannelDraftController::class, 'store']);
+    Route::put('products/{id}/channel-drafts/{draft}', [ProductChannelDraftController::class, 'update']);
+    Route::delete('products/{id}/channel-drafts/{draft}', [ProductChannelDraftController::class, 'destroy']);
+
+    // Riwayat upload & download
+    Route::get('upload-histories', [ProductSyncLogController::class, 'uploadHistories']);
+    Route::get('download-histories', [ProductSyncLogController::class, 'downloadHistories']);
 
 
     // Master Data

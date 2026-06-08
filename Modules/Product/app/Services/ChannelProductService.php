@@ -4,6 +4,7 @@ namespace Modules\Product\Services;
 
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Product\Models\ProductChannelMapping;
+use Modules\Product\Models\ProductSyncLog;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\ChannelShop;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -41,6 +42,13 @@ class ChannelProductService
 
         SyncProductToChannelJob::dispatch($productId, $channelShopId, 'push');
 
+        ProductSyncLog::record([
+            'product_id' => $productId,
+            'channel_shop_id' => $channelShopId,
+            'action' => ProductSyncLog::ACTION_UPLOAD,
+            'status' => ProductSyncLog::STATUS_PENDING,
+        ]);
+
         return [
             'id' => $productId,
             'message' => 'Produk dibuat dan antrean sinkronisasi telah dijalankan'
@@ -56,6 +64,13 @@ class ChannelProductService
         $product->update($data);
 
         SyncProductToChannelJob::dispatch($product->id, $channelShopId, 'update');
+
+        ProductSyncLog::record([
+            'product_id' => $product->id,
+            'channel_shop_id' => $channelShopId,
+            'action' => ProductSyncLog::ACTION_UPLOAD,
+            'status' => ProductSyncLog::STATUS_PENDING,
+        ]);
 
         return [
             'id' => $product->id,
@@ -130,8 +145,17 @@ class ChannelProductService
             throw new \RuntimeException('Tidak bisa unlink saat proses sync berjalan', 409);
         }
 
+        $productId = $mapping->product_id;
+
         // variant mappings ikut terhapus via FK cascade.
         $mapping->delete();
+
+        ProductSyncLog::record([
+            'product_id' => $productId,
+            'channel_shop_id' => $channelShopId,
+            'action' => ProductSyncLog::ACTION_UNLINK,
+            'status' => ProductSyncLog::STATUS_SUCCESS,
+        ]);
     }
 
     /**
