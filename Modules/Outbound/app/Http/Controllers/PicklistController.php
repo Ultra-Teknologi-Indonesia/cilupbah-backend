@@ -236,6 +236,33 @@ class PicklistController extends Controller
     }
 
     #[OA\Post(
+        path: '/api/v1/outbound/picklists/{id}/fail',
+        summary: 'Mark picklist as failed',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Picklist'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(
+            required: false,
+            content: new OA\JsonContent(
+                properties: [
+                    new OA\Property(property: 'reason', type: 'string', nullable: true),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+        ]
+    )]
+    public function fail(string $id, Request $request): JsonResponse
+    {
+        $picklist = $this->picklistService->failPick($id, $request->reason);
+
+        return response()->json(['success' => true, 'data' => $picklist]);
+    }
+
+    #[OA\Post(
         path: '/api/v1/outbound/picklists/{id}/cancel',
         summary: 'Cancel picklist',
         security: [['bearerAuth' => []]],

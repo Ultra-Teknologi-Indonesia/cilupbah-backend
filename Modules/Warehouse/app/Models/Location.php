@@ -25,6 +25,7 @@ class Location extends Model
         'location_type',
         'address',
         'village_id',
+        'default_bin_id',
         'post_code',
         'is_warehouse',
         'is_multi_origin',

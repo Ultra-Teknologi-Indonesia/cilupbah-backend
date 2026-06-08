@@ -14,6 +14,7 @@ class Picklist extends Model
     const STATUS_DRAFT = 'DRAFT';
     const STATUS_IN_PROGRESS = 'IN_PROGRESS';
     const STATUS_COMPLETED = 'COMPLETED';
+    const STATUS_FAILED = 'FAILED';
     const STATUS_CANCELLED = 'CANCELLED';
 
     protected $fillable = [

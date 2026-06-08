@@ -5,11 +5,15 @@ use Modules\Outbound\Http\Controllers\PicklistController;
 use Modules\Outbound\Http\Controllers\PacklistController;
 use Modules\Outbound\Http\Controllers\ShipmentController;
 use Modules\Outbound\Http\Controllers\OutboundFulfillmentController;
+use Modules\Outbound\Http\Controllers\CourierController;
+use Modules\Outbound\Http\Controllers\WmsController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
 
     // Fulfillment Queue Views
     Route::get('orders/{stage}', [OutboundFulfillmentController::class, 'ordersByStage'])->name('outbound.orders.stage');
+    Route::post('orders/change-location', [OutboundFulfillmentController::class, 'changeLocation'])->name('outbound.orders.change-location');
+    Route::post('orders/request-cancel', [OutboundFulfillmentController::class, 'requestCancelOrder'])->name('outbound.orders.request-cancel');
 
     // Picklists
     Route::get('picklists', [PicklistController::class, 'index'])->name('outbound.picklists.index');
@@ -20,6 +24,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('picklists/{id}/start', [PicklistController::class, 'start'])->name('outbound.picklists.start');
     Route::post('picklists/{id}/items/{itemId}/pick', [PicklistController::class, 'pickItem'])->name('outbound.picklists.pick-item');
     Route::post('picklists/{id}/complete', [PicklistController::class, 'complete'])->name('outbound.picklists.complete');
+    Route::post('picklists/{id}/fail', [PicklistController::class, 'fail'])->name('outbound.picklists.fail');
     Route::post('picklists/{id}/cancel', [PicklistController::class, 'cancel'])->name('outbound.picklists.cancel');
     Route::delete('picklists/{id}', [PicklistController::class, 'destroy'])->name('outbound.picklists.destroy');
 
@@ -39,10 +44,25 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     // Shipments
     Route::get('shipments', [ShipmentController::class, 'index'])->name('outbound.shipments.index');
     Route::post('shipments', [ShipmentController::class, 'store'])->name('outbound.shipments.store');
+    Route::post('shipments/scan', [ShipmentController::class, 'scan'])->name('outbound.shipments.scan');
     Route::get('shipments/{id}', [ShipmentController::class, 'show'])->name('outbound.shipments.show');
     Route::post('shipments/{id}/add-orders', [ShipmentController::class, 'addOrders'])->name('outbound.shipments.add-orders');
     Route::post('shipments/{id}/remove-orders', [ShipmentController::class, 'removeOrders'])->name('outbound.shipments.remove-orders');
+    Route::post('shipments/{id}/save-awb', [ShipmentController::class, 'saveAwb'])->name('outbound.shipments.save-awb');
     Route::post('shipments/{id}/hand-over', [ShipmentController::class, 'handOver'])->name('outbound.shipments.hand-over');
     Route::post('shipments/{id}/cancel', [ShipmentController::class, 'cancel'])->name('outbound.shipments.cancel');
     Route::delete('shipments/{id}', [ShipmentController::class, 'destroy'])->name('outbound.shipments.destroy');
+
+    // Couriers
+    Route::get('couriers', [CourierController::class, 'index'])->name('outbound.couriers.index');
+    Route::get('couriers/all', [CourierController::class, 'all'])->name('outbound.couriers.all');
+    Route::post('couriers', [CourierController::class, 'store'])->name('outbound.couriers.store');
+    Route::get('couriers/{id}', [CourierController::class, 'show'])->name('outbound.couriers.show');
+    Route::put('couriers/{id}', [CourierController::class, 'update'])->name('outbound.couriers.update');
+    Route::delete('couriers/{id}', [CourierController::class, 'destroy'])->name('outbound.couriers.destroy');
+
+    // WMS Utilities
+    Route::get('wms/employee/{identifier}', [WmsController::class, 'employee'])->name('outbound.wms.employee');
+    Route::get('wms/default-bin/{locationId}', [WmsController::class, 'defaultBin'])->name('outbound.wms.default-bin');
+    Route::put('wms/default-bin/{locationId}', [WmsController::class, 'setDefaultBin'])->name('outbound.wms.set-default-bin');
 });

@@ -175,6 +175,26 @@ class PicklistService
         return $this->picklistRepository->findById($id);
     }
 
+    public function failPick(string $id, ?string $reason = null): Picklist
+    {
+        $picklist = $this->picklistRepository->findById($id);
+
+        if (!$picklist) {
+            throw new \Exception('Picklist tidak ditemukan.');
+        }
+
+        if (!in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS])) {
+            throw new \Exception("Hanya picklist DRAFT/IN_PROGRESS yang bisa di-fail (saat ini: {$picklist->status}).");
+        }
+
+        $this->picklistRepository->update($id, [
+            'status' => Picklist::STATUS_FAILED,
+            'notes' => $reason ? ($picklist->notes ? $picklist->notes . ' | FAILED: ' . $reason : 'FAILED: ' . $reason) : $picklist->notes,
+        ]);
+
+        return $this->picklistRepository->findById($id);
+    }
+
     public function cancel(string $id): Picklist
     {
         $picklist = $this->picklistRepository->findById($id);

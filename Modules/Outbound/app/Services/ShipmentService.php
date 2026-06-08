@@ -122,6 +122,37 @@ class ShipmentService
         return $this->shipmentRepository->findById($id);
     }
 
+    public function scanShipment(string $barcode): ?Shipment
+    {
+        $shipment = Shipment::where('shipment_no', $barcode)->first();
+
+        if (!$shipment) {
+            $shipmentOrder = \Modules\Outbound\Models\ShipmentOrder::where('tracking_number', $barcode)->first();
+            if ($shipmentOrder) {
+                $shipment = $this->shipmentRepository->findById($shipmentOrder->shipment_id);
+            }
+        }
+
+        if (!$shipment) {
+            throw new \Exception("Shipment dengan barcode/nomor '{$barcode}' tidak ditemukan.");
+        }
+
+        return $this->shipmentRepository->findById($shipment->id);
+    }
+
+    public function updateTrackingNumber(string $shipmentId, string $orderId, string $trackingNumber): void
+    {
+        $shipmentOrder = \Modules\Outbound\Models\ShipmentOrder::where('shipment_id', $shipmentId)
+            ->where('order_id', $orderId)
+            ->first();
+
+        if (!$shipmentOrder) {
+            throw new \Exception('Order tidak ditemukan dalam shipment ini.');
+        }
+
+        $shipmentOrder->update(['tracking_number' => $trackingNumber]);
+    }
+
     public function cancel(string $id): Shipment
     {
         $shipment = $this->shipmentRepository->findById($id);

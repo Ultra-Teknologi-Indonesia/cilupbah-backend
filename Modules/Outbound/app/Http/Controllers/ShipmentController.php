@@ -199,6 +199,72 @@ class ShipmentController extends Controller
     }
 
     #[OA\Post(
+        path: '/api/v1/outbound/shipments/scan',
+        summary: 'Scan shipment by barcode/shipment_no/tracking_number',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Shipment'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['barcode'],
+                properties: [
+                    new OA\Property(property: 'barcode', type: 'string'),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+            new OA\Response(response: 404, description: 'Not Found'),
+        ]
+    )]
+    public function scan(Request $request): JsonResponse
+    {
+        $request->validate(['barcode' => 'required|string']);
+
+        try {
+            $shipment = $this->shipmentService->scanShipment($request->barcode);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 404);
+        }
+
+        return response()->json(['success' => true, 'data' => $shipment]);
+    }
+
+    #[OA\Post(
+        path: '/api/v1/outbound/shipments/{id}/save-awb',
+        summary: 'Save airwaybill/tracking number for an order in shipment',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Shipment'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['order_id', 'tracking_number'],
+                properties: [
+                    new OA\Property(property: 'order_id', type: 'string'),
+                    new OA\Property(property: 'tracking_number', type: 'string'),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+        ]
+    )]
+    public function saveAwb(string $id, Request $request): JsonResponse
+    {
+        $request->validate([
+            'order_id' => 'required|string|exists:orders,id',
+            'tracking_number' => 'required|string|max:100',
+        ]);
+
+        $this->shipmentService->updateTrackingNumber($id, $request->order_id, $request->tracking_number);
+
+        return response()->json(['success' => true, 'message' => 'Tracking number berhasil disimpan.']);
+    }
+
+    #[OA\Post(
         path: '/api/v1/outbound/shipments/{id}/cancel',
         summary: 'Cancel shipment',
         security: [['bearerAuth' => []]],

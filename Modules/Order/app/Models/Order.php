@@ -4,6 +4,8 @@ namespace Modules\Order\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 use App\Traits\HasUuid7;
 
@@ -33,6 +35,9 @@ class Order extends Model
         'is_paid',
         'is_canceled',
         'cancel_reason',
+        'cancel_request_reason',
+        'cancel_requested_at',
+        'cancel_requested_by',
         'channel_status',
         'payment_method',
         'payment_method_name',
@@ -42,11 +47,13 @@ class Order extends Model
         'seller_note',
         'paid_time',
         'source',
+        'location_id',
     ];
 
     protected $casts = [
         'transaction_date' => 'datetime',
         'paid_time'        => 'datetime',
+        'cancel_requested_at' => 'datetime',
         'is_paid'          => 'boolean',
         'is_canceled'      => 'boolean',
     ];
@@ -54,5 +61,25 @@ class Order extends Model
     public function items(): HasMany
     {
         return $this->hasMany(OrderItem::class);
+    }
+
+    public function picklistItems(): HasMany
+    {
+        return $this->hasMany(\Modules\Outbound\Models\PicklistItem::class);
+    }
+
+    public function packlist(): HasOne
+    {
+        return $this->hasOne(\Modules\Outbound\Models\Packlist::class);
+    }
+
+    public function shipmentOrders(): HasMany
+    {
+        return $this->hasMany(\Modules\Outbound\Models\ShipmentOrder::class);
+    }
+
+    public function location(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Warehouse\Models\Location::class);
     }
 }
