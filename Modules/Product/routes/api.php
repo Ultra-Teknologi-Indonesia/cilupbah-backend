@@ -36,8 +36,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('upload-histories', [ProductSyncLogController::class, 'uploadHistories']);
     Route::get('download-histories', [ProductSyncLogController::class, 'downloadHistories']);
 
-    // Pantauan — monitoring agregat status sync per channel
-    Route::get('channel-monitor', [ChannelMonitorController::class, 'summary']);
+    // Pantauan — monitoring status sync produk di channel
+    Route::get('channel-monitor', [ChannelMonitorController::class, 'index']);
+    Route::get('channel-monitor/summary', [ChannelMonitorController::class, 'summary']);
     Route::get('channel-monitor/{shop_id}', [ChannelMonitorController::class, 'detail']);
     Route::get('channel-monitor/{shop_id}/products', [ChannelMonitorController::class, 'products']);
 
