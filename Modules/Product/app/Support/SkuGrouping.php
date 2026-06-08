@@ -38,11 +38,31 @@ class SkuGrouping
     /**
      * Normalisasi nama untuk perbandingan case/whitespace/diakritik-insensitive.
      * Dipakai sebagai KEY grouping katalog + dedup nama.
+     *
+     * Faithful port dari cilupbah-ops:
+     *   name.normalize('NFD').replace(/[̀-ͯ]/g,'').trim().toLowerCase().replace(/\s+/g,' ')
+     *
+     * PENTING: hanya membuang combining diacritical marks (U+0300–U+036F) — karakter
+     * non-latin (CJK, Cyrillic, dll) DIPERTAHANKAN. Tidak boleh pakai Str::ascii()
+     * karena itu mentransliterasi/membuang non-latin → bisa mengolaps banyak produk
+     * berbeda ke satu key kosong.
      */
     public static function normalizeName(?string $name): string
     {
-        // Str::ascii() membuang diakritik (Café -> Cafe); squish() trim + collapse spasi.
-        return (string) Str::of((string) $name)->ascii()->lower()->squish();
+        $s = (string) $name;
+
+        if (class_exists(\Normalizer::class)) {
+            $s = \Normalizer::normalize($s, \Normalizer::FORM_D) ?: $s;
+            $s = preg_replace('/[\x{0300}-\x{036f}]/u', '', $s);
+        } else {
+            // Fallback (intl tidak tersedia): minimal buang diakritik latin.
+            $s = (string) Str::of($s)->ascii();
+        }
+
+        $s = mb_strtolower($s, 'UTF-8');
+        $s = preg_replace('/\s+/u', ' ', trim($s));
+
+        return $s;
     }
 
     /**
