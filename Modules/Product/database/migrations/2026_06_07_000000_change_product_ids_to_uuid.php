@@ -70,10 +70,12 @@ return new class extends Migration
         foreach ($tablesToAlter as $table => $columns) {
             if (Schema::hasTable($table)) {
                 foreach ($columns as $column) {
-                    if ($column === 'id') {
-                        DB::statement("ALTER TABLE {$table} ALTER COLUMN id DROP DEFAULT");
+                    if (DB::getDriverName() !== 'sqlite') {
+                        if ($column === 'id') {
+                            DB::statement("ALTER TABLE {$table} ALTER COLUMN id DROP DEFAULT");
+                        }
+                        DB::statement("ALTER TABLE {$table} ALTER COLUMN {$column} TYPE UUID USING LPAD({$column}::text, 32, '0')::uuid");
                     }
-                    DB::statement("ALTER TABLE {$table} ALTER COLUMN {$column} TYPE UUID USING LPAD({$column}::text, 32, '0')::uuid");
                 }
             }
         }

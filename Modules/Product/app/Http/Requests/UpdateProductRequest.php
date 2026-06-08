@@ -27,6 +27,14 @@ class UpdateProductRequest extends FormRequest
             'height' => 'sometimes|nullable|numeric|min:0',
             'is_cod_allowed' => 'sometimes|boolean',
             'is_active' => 'sometimes|boolean',
+            
+            'variants' => 'sometimes|array|min:1',
+            'variants.*.sku' => 'required_with:variants|string|max:255',
+            'variants.*.sell_price' => 'sometimes|numeric|min:0',
+            'variants.*.is_active' => 'sometimes|boolean',
+            'variants.*.channel_prices' => 'sometimes|nullable|array',
+            'variants.*.channel_prices.*.channel_shop_id' => 'required_with:variants.*.channel_prices|uuid',
+            'variants.*.channel_prices.*.price' => 'required_with:variants.*.channel_prices|numeric|min:0',
         ];
     }
 }

@@ -21,7 +21,7 @@ class ProductController extends Controller
 
     /** Relasi yang dimuat saat mengembalikan detail produk. */
     private const DETAIL_RELATIONS = [
-        'variants',
+        'variants.channelMappings.channelMapping',
         'media',
         'category',
         'brand',
@@ -214,7 +214,7 @@ class ProductController extends Controller
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
-        $product->update($request->validated());
+        $this->productService->updateProduct($id, $request->validated());
 
         return $this->successResponse(
             new ProductResource($product->fresh(self::DETAIL_RELATIONS)),
@@ -225,7 +225,17 @@ class ProductController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy($id) {}
+    public function destroy($id): JsonResponse
+    {
+        $product = $this->findProduct($id);
+        if (!$product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        $product->delete();
+
+        return $this->successResponse(null, 'Produk berhasil dihapus');
+    }
 
     /**
      * Approve produk In Review menjadi Master.
