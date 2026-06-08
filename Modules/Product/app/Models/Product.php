@@ -54,6 +54,8 @@ class Product extends Model
         'archived_at',
         'archived_by',
         'archive_reason',
+        'is_bundle',
+        'is_consignment',
     ];
 
     /**
@@ -71,6 +73,8 @@ class Product extends Model
         'height' => 'decimal:2',
         'verified_at' => 'datetime',
         'archived_at' => 'datetime',
+        'is_bundle' => 'boolean',
+        'is_consignment' => 'boolean',
     ];
 
     // ==================== Relasi ====================

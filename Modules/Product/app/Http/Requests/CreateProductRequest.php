@@ -23,6 +23,8 @@ class CreateProductRequest extends FormRequest
             'width' => 'nullable|numeric|min:0',
             'height' => 'nullable|numeric|min:0',
             'is_active' => 'nullable|boolean',
+            'is_bundle' => 'nullable|boolean',
+            'is_consignment' => 'nullable|boolean',
             
             'specifications' => 'nullable|array',
             'specifications.*.attribute_id' => 'required|exists:attributes,id',

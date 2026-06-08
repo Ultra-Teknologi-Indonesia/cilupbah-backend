@@ -35,6 +35,8 @@ class ProductResource extends JsonResource
                 'id' => $this->brand->id,
                 'name' => $this->brand->name,
             ] : null),
+            'is_bundle' => $this->is_bundle,
+            'is_consignment' => $this->is_consignment,
             'channel_mappings' => $this->whenLoaded('channelMappings', function () {
                 return $this->channelMappings->map(function ($mapping) {
                     $shop = $mapping->relationLoaded('channelShop') ? $mapping->channelShop : null;

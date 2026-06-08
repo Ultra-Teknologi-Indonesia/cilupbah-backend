@@ -35,6 +35,7 @@ class ProductService
         return DB::transaction(function () use ($productId, $data) {
             $productData = Arr::only($data, [
                 'name', 'description', 'weight', 'length', 'width', 'height', 'is_active',
+                'channel_shop_id', 'source', 'is_bundle', 'is_consignment'
             ]);
             
             if (!empty($productData)) {
@@ -79,7 +80,7 @@ class ProductService
             $productData = Arr::only($data, [
                 'category_id', 'brand_id', 'name', 'description',
                 'weight', 'length', 'width', 'height', 'is_active',
-                'status',
+                'status', 'channel_shop_id', 'source', 'is_bundle', 'is_consignment'
             ]);
             
             $productId = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();
