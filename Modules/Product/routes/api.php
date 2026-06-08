@@ -31,8 +31,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('products/import/bundle', [\Modules\Product\Http\Controllers\ProductImportController::class, 'importBundle']);
 });
 
-// Channel specific routes (Temporarily Unprotected for Testing)
-Route::prefix('v1/{channel}')->group(function () {
+// Channel specific routes
+Route::middleware(['auth:sanctum'])->prefix('v1/{channel}')->group(function () {
     // Channel Categories
     Route::get('categories', [ChannelCategoryController::class, 'index']);
     Route::get('categories/{categoryId}/attributes', [\Modules\Product\Http\Controllers\ChannelAttributeController::class, 'index']);

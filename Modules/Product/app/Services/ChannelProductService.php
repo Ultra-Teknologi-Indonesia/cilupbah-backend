@@ -41,8 +41,10 @@ class ChannelProductService
     public function updateAndPushProduct(string $externalId, string $shopId, array $data): array
     {
         $product = $this->productRepo->findByExternalId($externalId, $shopId);
-        
+
         $product->update($data);
+
+        SyncProductToChannelJob::dispatch($product->id, $shopId, 'update');
 
         return [
             'id' => $product->id,
