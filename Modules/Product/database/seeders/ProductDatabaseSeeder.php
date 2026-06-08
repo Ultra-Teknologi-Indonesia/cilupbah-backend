@@ -14,6 +14,7 @@ class ProductDatabaseSeeder extends Seeder
             AttributeSeeder::class,
             CategoryAttributeSeeder::class,
             ChannelCategorySeeder::class,
+            ProductPermissionSeeder::class,
         ]);
     }
 }
