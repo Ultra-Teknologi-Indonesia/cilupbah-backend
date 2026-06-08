@@ -28,17 +28,30 @@ class ChannelProductController extends Controller
         tags: ["Channel Products"]
     )]
     #[OA\Parameter(name: "channel", in: "path", required: true, schema: new OA\Schema(type: "string"))]
+    #[OA\Parameter(name: "shop_id", in: "query", required: true, description: "shop_id marketplace", schema: new OA\Schema(type: "string"))]
     #[OA\Parameter(name: "page", in: "query", required: false, schema: new OA\Schema(type: "integer"))]
-    #[OA\Parameter(name: "limit", in: "query", required: false, schema: new OA\Schema(type: "integer"))]
+    #[OA\Parameter(name: "limit", in: "query", required: false, schema: new OA\Schema(type: "integer", default: 20))]
+    #[OA\Parameter(name: "sync_status", in: "query", required: false, description: "Filter sync status: synced|pending|failed|syncing|deactivated", schema: new OA\Schema(type: "string"))]
     #[OA\Parameter(name: "filter[is_active]", in: "query", required: false, description: "Filter aktif/tidak aktif (true/false/1/0)", schema: new OA\Schema(type: "boolean"))]
     #[OA\Parameter(name: "filter[name]", in: "query", required: false, description: "Cari berdasarkan nama produk", schema: new OA\Schema(type: "string"))]
     #[OA\Parameter(name: "sort", in: "query", required: false, description: "Sort field (e.g. name, -created_at, sell_price)", schema: new OA\Schema(type: "string"))]
     #[OA\Response(response: 200, description: "Get products success")]
+    #[OA\Response(response: 422, description: "sync_status tidak valid")]
     public function index(Request $request, string $channel): JsonResponse
     {
-        $shopId = $request->query('shop_id');
-        
-        $products = $this->channelProductService->getChannelProducts($shopId ?? '');
+        $shopId     = $request->query('shop_id', '');
+        $syncStatus = $request->query('sync_status');
+        $limit      = (int) $request->input('limit', 20);
+
+        $validStatuses = ['synced', 'pending', 'failed', 'syncing', 'deactivated'];
+        if ($syncStatus !== null && !in_array($syncStatus, $validStatuses, true)) {
+            return $this->errorResponse(
+                'sync_status tidak valid. Nilai yang diizinkan: ' . implode(', ', $validStatuses),
+                422
+            );
+        }
+
+        $products = $this->channelProductService->getChannelProducts($shopId, $limit, $syncStatus);
 
         return $this->successPaginatedResponse(ProductResource::collection($products), 'Berhasil mengambil daftar produk');
     }

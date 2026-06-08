@@ -10,6 +10,7 @@ use Modules\Product\Http\Controllers\AttributeController;
 use Modules\Product\Http\Controllers\ChannelCategoryController;
 use Modules\Product\Http\Controllers\ProductChannelDraftController;
 use Modules\Product\Http\Controllers\ProductSyncLogController;
+use Modules\Product\Http\Controllers\ChannelMonitorController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     // Harus didefinisikan sebelum apiResource agar tidak tertangkap products/{id}
@@ -34,6 +35,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     // Riwayat upload & download
     Route::get('upload-histories', [ProductSyncLogController::class, 'uploadHistories']);
     Route::get('download-histories', [ProductSyncLogController::class, 'downloadHistories']);
+
+    // Pantauan — monitoring agregat status sync per channel
+    Route::get('channel-monitor', [ChannelMonitorController::class, 'summary']);
+    Route::get('channel-monitor/{shop_id}', [ChannelMonitorController::class, 'detail']);
+    Route::get('channel-monitor/{shop_id}/products', [ChannelMonitorController::class, 'products']);
 
 
     // Master Data

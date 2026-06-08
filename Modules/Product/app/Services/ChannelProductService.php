@@ -18,12 +18,11 @@ class ChannelProductService
         $this->productRepo = $productRepo;
     }
 
-    public function getChannelProducts(string $shopId): LengthAwarePaginator
+    public function getChannelProducts(string $shopId, int $limit = 20, ?string $syncStatus = null): LengthAwarePaginator
     {
-        // shopId di sini adalah shop_id marketplace; pivot menyimpan channel_shops.id (UUID).
         $channelShopId = $this->resolveChannelShopId($shopId);
 
-        return $this->productRepo->getPaginatedProductsByChannel($channelShopId ?? '');
+        return $this->productRepo->getPaginatedProductsByChannel($channelShopId ?? '', $limit, $syncStatus);
     }
 
     public function getProductDetail(string $externalId, string $shopId)
