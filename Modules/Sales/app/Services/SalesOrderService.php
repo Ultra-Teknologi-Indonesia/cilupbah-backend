@@ -139,6 +139,53 @@ class SalesOrderService
         SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
     }
 
+    public function relocateOrder(SalesOrder $order, string $newLocationId): SalesOrder
+    {
+        return DB::transaction(function () use ($order, $newLocationId) {
+            $oldLocationId = $this->resolveLocationId($order);
+
+            if ($order->status === 'reserved' && $oldLocationId !== $newLocationId) {
+                $order->load('items');
+
+                foreach ($order->items as $item) {
+                    if (! $item->item_id) {
+                        continue;
+                    }
+
+                    $this->stockService->cancel(
+                        $item->sku ?? "item:{$item->item_id}",
+                        $item->item_id,
+                        $oldLocationId,
+                        $item->qty_in_base,
+                        $order->salesorder_no,
+                    );
+                }
+
+                $order->update(['location_id' => $newLocationId]);
+
+                foreach ($order->items as $item) {
+                    if (! $item->item_id) {
+                        continue;
+                    }
+
+                    $this->stockService->reserve(
+                        $item->sku ?? "item:{$item->item_id}",
+                        $item->item_id,
+                        $newLocationId,
+                        $item->qty_in_base,
+                        $order->salesorder_no,
+                    );
+                }
+
+                SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
+            } else {
+                $order->update(['location_id' => $newLocationId]);
+            }
+
+            return $order->fresh();
+        });
+    }
+
     public function upsertFromChannel(array $orderData): ?int
     {
         $channelStatus = $orderData['channel_status'] ?? 'UNKNOWN';
@@ -351,6 +398,10 @@ class SalesOrderService
 
     private function resolveLocationId(SalesOrder $order): string
     {
+        if ($order->location_id) {
+            return $order->location_id;
+        }
+
         if ($order->channel_shop_id) {
             $mapping = DB::table('channel_warehouses')
                 ->where('channel_shop_id', $order->channel_shop_id)
