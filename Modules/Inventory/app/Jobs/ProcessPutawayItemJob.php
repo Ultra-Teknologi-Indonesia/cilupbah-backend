@@ -34,7 +34,13 @@ class ProcessPutawayItemJob implements ShouldQueue
         InventoryRepository $inventoryRepository,
         InventoryMovementRepository $movementRepository,
     ): void {
-        $this->withStockLock($this->itemId, $this->putawayId, function () use ($putawayRepository, $inventoryRepository, $movementRepository) {
+        $putaway = $putawayRepository->findById($this->putawayId);
+
+        if (!$putaway) {
+            throw new \RuntimeException("Putaway tidak ditemukan.");
+        }
+
+        $this->withStockLock($this->itemId, $putaway->location_id, function () use ($putawayRepository, $inventoryRepository, $movementRepository) {
             DB::transaction(function () use ($putawayRepository, $inventoryRepository, $movementRepository) {
                 $putawayItem = $putawayRepository->findItemForUpdate($this->putawayId, $this->itemId);
 

@@ -234,68 +234,6 @@ class InventoryService
         });
     }
 
-    public function reserveStock(string $itemId, string $locationId, int $qty, string $transactionNumber, string $createdBy): Inventory
-    {
-        return DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber, $createdBy) {
-            $inventory = $this->inventoryRepository->findExactForUpdate($itemId, $locationId, null);
-
-            if (!$inventory) {
-                throw new \Exception("Inventory tidak ditemukan untuk reservasi (item: {$itemId}).");
-            }
-
-            // Stok diizinkan menjadi negatif: reservasi tetap dilakukan walau available
-            // kurang dari qty pesanan (available dapat bernilai negatif).
-            $inventory->reserved += $qty;
-            $this->inventoryRepository->updateStock($inventory);
-
-            $this->movementRepository->create([
-                'item_id' => $itemId,
-                'location_id' => $locationId,
-                'bin_id' => null,
-                'transaction_number' => $transactionNumber,
-                'source' => 'RESERVE',
-                'qty' => -$qty,
-                'balance' => $inventory->on_hand,
-                'transaction_date' => now(),
-                'created_by' => $createdBy,
-            ]);
-
-            return $inventory->fresh();
-        });
-    }
-
-    public function fulfillStock(string $itemId, string $locationId, int $qty, string $transactionNumber, string $createdBy): Inventory
-    {
-        return DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber, $createdBy) {
-            $inventory = $this->inventoryRepository->findExactForUpdate($itemId, $locationId, null);
-
-            if (!$inventory) {
-                throw new \Exception("Inventory tidak ditemukan untuk fulfillment (item: {$itemId}).");
-            }
-
-            // Stok diizinkan menjadi negatif: fulfillment tetap mengurangi on_hand walau
-            // melebihi stok rak (on_hand dapat bernilai negatif).
-            $inventory->on_hand -= $qty;
-            $inventory->reserved -= $qty;
-            $this->inventoryRepository->updateStock($inventory);
-
-            $this->movementRepository->create([
-                'item_id' => $itemId,
-                'location_id' => $locationId,
-                'bin_id' => null,
-                'transaction_number' => $transactionNumber,
-                'source' => 'SALES',
-                'qty' => -$qty,
-                'balance' => $inventory->on_hand,
-                'transaction_date' => now(),
-                'created_by' => $createdBy,
-            ]);
-
-            return $inventory->fresh();
-        });
-    }
-
-
     public function getAllPaginated(int $limit = 10)
     {
         return $this->inventoryRepository->getAllPaginated($limit);

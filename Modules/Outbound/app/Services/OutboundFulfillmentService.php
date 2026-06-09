@@ -12,6 +12,10 @@ use Spatie\QueryBuilder\AllowedFilter;
 
 class OutboundFulfillmentService
 {
+    public function __construct(
+        protected \Modules\Sales\Services\SalesOrderService $orderService,
+    ) {}
+
     public function getOrdersByStage(string $stage, int $limit = 10)
     {
         $query = match ($stage) {
@@ -52,9 +56,7 @@ class OutboundFulfillmentService
             throw new \Exception("Order hanya bisa dipindah lokasi saat status pending/reserved (saat ini: {$order->status}).");
         }
 
-        $order->update(['location_id' => $locationId]);
-
-        return $order->fresh();
+        return $this->orderService->relocateOrder($order, $locationId);
     }
 
     public function requestCancelOrder(string $orderId, ?string $reason = null, ?string $requestedBy = null): Order
@@ -144,7 +146,8 @@ class OutboundFulfillmentService
         return Order::where('status', 'reserved')
             ->whereHas('items', function ($q) {
                 $q->whereDoesntHave('inventory', function ($iq) {
-                    $iq->where('available', '>', 0);
+                    $iq->where('available', '>', 0)
+                        ->whereRaw('(sales_orders.location_id IS NULL OR inventories.location_id = sales_orders.location_id)');
                 });
             });
     }
