@@ -62,7 +62,7 @@ class ProductService
                         $variantId = $existingVariant->id;
                     } else {
                         DB::table('product_variants')->insert(array_merge($variantData, [
-                            'id' => \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString(),
+                            'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
                             'product_id' => $productId,
                             'sku' => $variant['sku'],
                             'created_at' => now(),
@@ -133,7 +133,7 @@ class ProductService
                 'status', 'is_bundle', 'is_consignment',
             ]);
             
-            $productId = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();
+            $productId = \Ramsey\Uuid\Uuid::uuid7()->toString();
             DB::table('products')->insert(array_merge($productData, [
                 'id' => $productId,
                 'created_at' => now(),
@@ -189,7 +189,7 @@ class ProductService
                         'sku', 'sell_price', 'is_active'
                     ]);
                     
-                    $variantId = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();
+                    $variantId = \Ramsey\Uuid\Uuid::uuid7()->toString();
                     DB::table('product_variants')->insert(array_merge($variantData, [
                         'id' => $variantId,
                         'product_id' => $productId,

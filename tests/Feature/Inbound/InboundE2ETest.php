@@ -12,7 +12,7 @@ use Modules\Supplier\Models\Supplier;
 use Modules\Purchase\Models\PurchaseOrder;
 use Modules\Purchase\Models\PurchaseOrderItem;
 use Modules\Inbound\Models\Inbound;
-use Modules\Order\Models\Order;
+use Modules\Sales\Models\SalesOrder;
 use App\Models\User;
 use Tests\TestCase;
 
@@ -331,7 +331,7 @@ class InboundE2ETest extends TestCase
 
     public function test_d_create_sales_return_with_order(): void
     {
-        $order = Order::create([
+        $order = SalesOrder::create([
             'salesorder_no'    => 'SO-RET-001',
             'customer_name'    => 'Customer Retur',
             'status'           => 'shipped',

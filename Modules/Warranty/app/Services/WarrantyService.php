@@ -27,7 +27,7 @@ class WarrantyService
 
     public function create(array $data): Warranty
     {
-        $data['id'] = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();
+        $data['id'] = \Ramsey\Uuid\Uuid::uuid7()->toString();
         $data['status'] = 'active';
         
         return $this->repository->create($data);

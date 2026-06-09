@@ -5,10 +5,11 @@ namespace Tests\Feature\Order;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Modules\Inventory\Models\Inventory;
-use Modules\Order\Models\Order;
+use Modules\Sales\Models\SalesOrder;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
+use App\Models\User;
 use Tests\TestCase;
 
 class OrderLifecycleTest extends TestCase
@@ -24,6 +25,7 @@ class OrderLifecycleTest extends TestCase
     {
         parent::setUp();
         Cache::flush();
+        $this->actingAs(User::factory()->create(), 'sanctum');
         $this->seedWarehouseAndStock();
     }
 
@@ -110,14 +112,14 @@ class OrderLifecycleTest extends TestCase
     {
         $payload = $this->orderPayload();
 
-        $response = $this->postJson('/api/v1/orders', $payload);
+        $response = $this->postJson('/api/v1/sales', $payload);
 
         $response->assertStatus(201)
             ->assertJsonPath('data.status', 'reserved')
             ->assertJsonPath('data.customer_name', 'Toko Maju Jaya')
             ->assertJsonCount(1, 'data.items');
 
-        $this->assertDatabaseHas('orders', [
+        $this->assertDatabaseHas('sales_orders', [
             'salesorder_no' => $payload['salesorder_no'],
             'status'        => 'reserved',
         ]);
@@ -135,7 +137,7 @@ class OrderLifecycleTest extends TestCase
             ],
         ]]);
 
-        $this->postJson('/api/v1/orders', $payload)->assertStatus(201);
+        $this->postJson('/api/v1/sales', $payload)->assertStatus(201);
 
         $this->inventory->refresh();
         $this->assertEquals(97, $this->inventory->available);
@@ -146,7 +148,7 @@ class OrderLifecycleTest extends TestCase
     {
         $payload = $this->orderPayload();
 
-        $this->postJson('/api/v1/orders', $payload)->assertStatus(201);
+        $this->postJson('/api/v1/sales', $payload)->assertStatus(201);
 
         $this->assertDatabaseHas('inventory_movements', [
             'item_id'            => $this->variant->id,
@@ -159,8 +161,8 @@ class OrderLifecycleTest extends TestCase
     {
         $payload = $this->orderPayload(['salesorder_no' => 'SO-DUPE-001']);
 
-        $this->postJson('/api/v1/orders', $payload)->assertStatus(201);
-        $this->postJson('/api/v1/orders', $payload)->assertStatus(409);
+        $this->postJson('/api/v1/sales', $payload)->assertStatus(201);
+        $this->postJson('/api/v1/sales', $payload)->assertStatus(409);
     }
 
     public function test_order_exceeding_stock_succeeds_and_stock_goes_negative(): void
@@ -176,7 +178,7 @@ class OrderLifecycleTest extends TestCase
             ],
         ]]);
 
-        $response = $this->postJson('/api/v1/orders', $payload);
+        $response = $this->postJson('/api/v1/sales', $payload);
 
         $response->assertStatus(201)
             ->assertJsonPath('data.status', 'reserved');
@@ -191,17 +193,17 @@ class OrderLifecycleTest extends TestCase
         $payload = $this->orderPayload();
         unset($payload['items']);
 
-        $this->postJson('/api/v1/orders', $payload)->assertStatus(422);
+        $this->postJson('/api/v1/sales', $payload)->assertStatus(422);
     }
 
     // ─── READ ────────────────────────────────────────────────
 
     public function test_list_orders_returns_paginated(): void
     {
-        $this->postJson('/api/v1/orders', $this->orderPayload())->assertStatus(201);
-        $this->postJson('/api/v1/orders', $this->orderPayload())->assertStatus(201);
+        $this->postJson('/api/v1/sales', $this->orderPayload())->assertStatus(201);
+        $this->postJson('/api/v1/sales', $this->orderPayload())->assertStatus(201);
 
-        $response = $this->getJson('/api/v1/orders');
+        $response = $this->getJson('/api/v1/sales');
 
         $response->assertOk()
             ->assertJsonPath('meta.total', 2)
@@ -210,10 +212,10 @@ class OrderLifecycleTest extends TestCase
 
     public function test_show_order_with_items(): void
     {
-        $create = $this->postJson('/api/v1/orders', $this->orderPayload());
+        $create = $this->postJson('/api/v1/sales', $this->orderPayload());
         $orderId = $create->json('data.id');
 
-        $response = $this->getJson("/api/v1/orders/{$orderId}?include=items");
+        $response = $this->getJson("/api/v1/sales/{$orderId}?include=items");
 
         $response->assertOk()
             ->assertJsonPath('data.id', $orderId)
@@ -222,28 +224,29 @@ class OrderLifecycleTest extends TestCase
 
     public function test_show_nonexistent_order_returns_404(): void
     {
-        $this->getJson('/api/v1/orders/99999')->assertStatus(404);
+        $nonexistentId = \Ramsey\Uuid\Uuid::uuid7()->toString();
+        $this->getJson("/api/v1/sales/{$nonexistentId}")->assertStatus(404);
     }
 
     // ─── STATUS FLOW: HAPPY PATH ─────────────────────────────
 
     public function test_full_lifecycle_reserved_to_shipped(): void
     {
-        $create = $this->postJson('/api/v1/orders', $this->orderPayload());
+        $create = $this->postJson('/api/v1/sales', $this->orderPayload());
         $orderId = $create->json('data.id');
 
         // reserved → picked
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'picked'])
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'picked'])
             ->assertOk()
             ->assertJsonPath('data.status', 'picked');
 
         // picked → packed
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'packed'])
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'packed'])
             ->assertOk()
             ->assertJsonPath('data.status', 'packed');
 
         // packed → shipped
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'shipped'])
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'shipped'])
             ->assertOk()
             ->assertJsonPath('data.status', 'shipped');
 
@@ -254,7 +257,7 @@ class OrderLifecycleTest extends TestCase
 
     public function test_pick_decrements_reserved(): void
     {
-        $create = $this->postJson('/api/v1/orders', $this->orderPayload([
+        $create = $this->postJson('/api/v1/sales', $this->orderPayload([
             'items' => [[
                 'sku' => $this->variant->sku, 'description' => 'test',
                 'qty_in_base' => 5, 'price' => 100, 'amount' => 500,
@@ -265,7 +268,7 @@ class OrderLifecycleTest extends TestCase
         $this->inventory->refresh();
         $this->assertEquals(5, $this->inventory->reserved);
 
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'picked']);
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'picked']);
 
         $this->inventory->refresh();
         $this->assertEquals(0, $this->inventory->reserved);
@@ -273,7 +276,7 @@ class OrderLifecycleTest extends TestCase
 
     public function test_ship_decrements_on_hand(): void
     {
-        $create = $this->postJson('/api/v1/orders', $this->orderPayload([
+        $create = $this->postJson('/api/v1/sales', $this->orderPayload([
             'items' => [[
                 'sku' => $this->variant->sku, 'description' => 'test',
                 'qty_in_base' => 5, 'price' => 100, 'amount' => 500,
@@ -281,9 +284,9 @@ class OrderLifecycleTest extends TestCase
         ]));
         $orderId = $create->json('data.id');
 
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'picked']);
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'packed']);
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'shipped']);
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'picked']);
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'packed']);
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'shipped']);
 
         $this->inventory->refresh();
         $this->assertEquals(95, $this->inventory->on_hand);
@@ -293,43 +296,43 @@ class OrderLifecycleTest extends TestCase
 
     public function test_cannot_skip_reserved_to_packed(): void
     {
-        $create = $this->postJson('/api/v1/orders', $this->orderPayload());
+        $create = $this->postJson('/api/v1/sales', $this->orderPayload());
         $orderId = $create->json('data.id');
 
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'packed'])
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'packed'])
             ->assertStatus(422);
     }
 
     public function test_cannot_skip_reserved_to_shipped(): void
     {
-        $create = $this->postJson('/api/v1/orders', $this->orderPayload());
+        $create = $this->postJson('/api/v1/sales', $this->orderPayload());
         $orderId = $create->json('data.id');
 
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'shipped'])
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'shipped'])
             ->assertStatus(422);
     }
 
     public function test_cannot_transition_from_shipped(): void
     {
-        $create = $this->postJson('/api/v1/orders', $this->orderPayload());
+        $create = $this->postJson('/api/v1/sales', $this->orderPayload());
         $orderId = $create->json('data.id');
 
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'picked']);
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'packed']);
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'shipped']);
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'picked']);
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'packed']);
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'shipped']);
 
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'cancelled'])
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'cancelled'])
             ->assertStatus(422);
     }
 
     public function test_cannot_transition_from_cancelled(): void
     {
-        $create = $this->postJson('/api/v1/orders', $this->orderPayload());
+        $create = $this->postJson('/api/v1/sales', $this->orderPayload());
         $orderId = $create->json('data.id');
 
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'cancelled']);
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'cancelled']);
 
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'picked'])
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'picked'])
             ->assertStatus(422);
     }
 
@@ -337,7 +340,7 @@ class OrderLifecycleTest extends TestCase
 
     public function test_cancel_reserved_order_releases_stock(): void
     {
-        $create = $this->postJson('/api/v1/orders', $this->orderPayload([
+        $create = $this->postJson('/api/v1/sales', $this->orderPayload([
             'items' => [[
                 'sku' => $this->variant->sku, 'description' => 'test',
                 'qty_in_base' => 10, 'price' => 100, 'amount' => 1000,
@@ -349,7 +352,7 @@ class OrderLifecycleTest extends TestCase
         $this->assertEquals(90, $this->inventory->available);
         $this->assertEquals(10, $this->inventory->reserved);
 
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'cancelled'])
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'cancelled'])
             ->assertOk()
             ->assertJsonPath('data.status', 'cancelled');
 
@@ -357,7 +360,7 @@ class OrderLifecycleTest extends TestCase
         $this->assertEquals(100, $this->inventory->available);
         $this->assertEquals(0, $this->inventory->reserved);
 
-        $this->assertDatabaseHas('orders', [
+        $this->assertDatabaseHas('sales_orders', [
             'id'          => $orderId,
             'is_canceled' => true,
         ]);
@@ -365,7 +368,7 @@ class OrderLifecycleTest extends TestCase
 
     public function test_cancel_picked_order_releases_stock(): void
     {
-        $create = $this->postJson('/api/v1/orders', $this->orderPayload([
+        $create = $this->postJson('/api/v1/sales', $this->orderPayload([
             'items' => [[
                 'sku' => $this->variant->sku, 'description' => 'test',
                 'qty_in_base' => 5, 'price' => 100, 'amount' => 500,
@@ -373,9 +376,9 @@ class OrderLifecycleTest extends TestCase
         ]));
         $orderId = $create->json('data.id');
 
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'picked']);
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'picked']);
 
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'cancelled'])
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'cancelled'])
             ->assertOk();
 
         $this->inventory->refresh();
@@ -384,7 +387,7 @@ class OrderLifecycleTest extends TestCase
 
     public function test_cancel_packed_order_releases_stock(): void
     {
-        $create = $this->postJson('/api/v1/orders', $this->orderPayload([
+        $create = $this->postJson('/api/v1/sales', $this->orderPayload([
             'items' => [[
                 'sku' => $this->variant->sku, 'description' => 'test',
                 'qty_in_base' => 5, 'price' => 100, 'amount' => 500,
@@ -392,10 +395,10 @@ class OrderLifecycleTest extends TestCase
         ]));
         $orderId = $create->json('data.id');
 
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'picked']);
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'packed']);
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'picked']);
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'packed']);
 
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'cancelled'])
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'cancelled'])
             ->assertOk();
 
         $this->inventory->refresh();
@@ -406,28 +409,28 @@ class OrderLifecycleTest extends TestCase
 
     public function test_delete_pending_order(): void
     {
-        $order = Order::create(array_merge($this->orderPayload(), ['status' => 'pending']));
+        $order = SalesOrder::create(array_merge($this->orderPayload(), ['status' => 'pending']));
 
-        $this->deleteJson("/api/v1/orders/{$order->id}")->assertOk();
+        $this->deleteJson("/api/v1/sales/{$order->id}")->assertOk();
 
-        $this->assertDatabaseMissing('orders', ['id' => $order->id]);
+        $this->assertDatabaseMissing('sales_orders', ['id' => $order->id]);
     }
 
     public function test_delete_cancelled_order(): void
     {
-        $order = Order::create(array_merge($this->orderPayload(), [
+        $order = SalesOrder::create(array_merge($this->orderPayload(), [
             'status'      => 'cancelled',
             'is_canceled' => true,
         ]));
 
-        $this->deleteJson("/api/v1/orders/{$order->id}")->assertOk();
+        $this->deleteJson("/api/v1/sales/{$order->id}")->assertOk();
 
-        $this->assertDatabaseMissing('orders', ['id' => $order->id]);
+        $this->assertDatabaseMissing('sales_orders', ['id' => $order->id]);
     }
 
     public function test_delete_reserved_order_releases_stock_then_deletes(): void
     {
-        $create = $this->postJson('/api/v1/orders', $this->orderPayload([
+        $create = $this->postJson('/api/v1/sales', $this->orderPayload([
             'items' => [[
                 'sku' => $this->variant->sku, 'description' => 'test',
                 'qty_in_base' => 8, 'price' => 100, 'amount' => 800,
@@ -438,9 +441,9 @@ class OrderLifecycleTest extends TestCase
         $this->inventory->refresh();
         $this->assertEquals(92, $this->inventory->available);
 
-        $this->deleteJson("/api/v1/orders/{$orderId}")->assertOk();
+        $this->deleteJson("/api/v1/sales/{$orderId}")->assertOk();
 
-        $this->assertDatabaseMissing('orders', ['id' => $orderId]);
+        $this->assertDatabaseMissing('sales_orders', ['id' => $orderId]);
 
         $this->inventory->refresh();
         $this->assertEquals(100, $this->inventory->available);
@@ -448,40 +451,40 @@ class OrderLifecycleTest extends TestCase
 
     public function test_cannot_delete_picked_order(): void
     {
-        $create = $this->postJson('/api/v1/orders', $this->orderPayload());
+        $create = $this->postJson('/api/v1/sales', $this->orderPayload());
         $orderId = $create->json('data.id');
 
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'picked']);
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'picked']);
 
-        $this->deleteJson("/api/v1/orders/{$orderId}")->assertStatus(422);
+        $this->deleteJson("/api/v1/sales/{$orderId}")->assertStatus(422);
     }
 
     public function test_cannot_delete_shipped_order(): void
     {
-        $create = $this->postJson('/api/v1/orders', $this->orderPayload());
+        $create = $this->postJson('/api/v1/sales', $this->orderPayload());
         $orderId = $create->json('data.id');
 
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'picked']);
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'packed']);
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'shipped']);
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'picked']);
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'packed']);
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'shipped']);
 
-        $this->deleteJson("/api/v1/orders/{$orderId}")->assertStatus(422);
+        $this->deleteJson("/api/v1/sales/{$orderId}")->assertStatus(422);
     }
 
     // ─── UPDATE FIELDS ───────────────────────────────────────
 
     public function test_update_allowed_fields(): void
     {
-        $create = $this->postJson('/api/v1/orders', $this->orderPayload());
+        $create = $this->postJson('/api/v1/sales', $this->orderPayload());
         $orderId = $create->json('data.id');
 
-        $this->putJson("/api/v1/orders/{$orderId}", [
+        $this->putJson("/api/v1/sales/{$orderId}", [
             'customer_name'    => 'Toko Baru Sejahtera',
             'shipping_address' => 'Jl. Gatot Subroto No. 99',
             'seller_note'      => 'Handle with care',
         ])->assertOk();
 
-        $this->assertDatabaseHas('orders', [
+        $this->assertDatabaseHas('sales_orders', [
             'id'               => $orderId,
             'customer_name'    => 'Toko Baru Sejahtera',
             'shipping_address' => 'Jl. Gatot Subroto No. 99',
@@ -491,10 +494,10 @@ class OrderLifecycleTest extends TestCase
 
     public function test_update_status_rejects_invalid_value(): void
     {
-        $create = $this->postJson('/api/v1/orders', $this->orderPayload());
+        $create = $this->postJson('/api/v1/sales', $this->orderPayload());
         $orderId = $create->json('data.id');
 
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'bogus'])
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'bogus'])
             ->assertStatus(422);
     }
 
@@ -504,18 +507,18 @@ class OrderLifecycleTest extends TestCase
     {
         $payload = $this->orderPayload(['salesorder_no' => 'SO-IDEM-001']);
 
-        $create = $this->postJson('/api/v1/orders', $payload)->assertStatus(201);
+        $create = $this->postJson('/api/v1/sales', $payload)->assertStatus(201);
         $orderId = $create->json('data.id');
 
         // release stock first so delete is allowed
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'cancelled']);
-        $this->deleteJson("/api/v1/orders/{$orderId}")->assertOk();
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'cancelled']);
+        $this->deleteJson("/api/v1/sales/{$orderId}")->assertOk();
 
         // re-seed stock (cancelled order released it, but we need fresh inventory)
         $this->inventory->refresh();
 
         // should be able to create again with same salesorder_no
-        $this->postJson('/api/v1/orders', $payload)->assertStatus(201);
+        $this->postJson('/api/v1/sales', $payload)->assertStatus(201);
     }
 
     // ─── MULTI-ITEM ORDERS ──────────────────────────────────
@@ -563,7 +566,7 @@ class OrderLifecycleTest extends TestCase
             ],
         ]);
 
-        $this->postJson('/api/v1/orders', $payload)->assertStatus(201);
+        $this->postJson('/api/v1/sales', $payload)->assertStatus(201);
 
         $this->inventory->refresh();
         $this->assertEquals(97, $this->inventory->available);
@@ -601,9 +604,8 @@ class OrderLifecycleTest extends TestCase
             ]],
         ]);
 
-        // Kedua order diterima walau total qty (8) melebihi stok rak (5).
-        $this->postJson('/api/v1/orders', $payload1)->assertStatus(201);
-        $this->postJson('/api/v1/orders', $payload2)->assertStatus(201);
+        $this->postJson('/api/v1/sales', $payload1)->assertStatus(201);
+        $this->postJson('/api/v1/sales', $payload2)->assertStatus(201);
 
         $this->inventory->refresh();
         $this->assertEquals(8, $this->inventory->reserved);
@@ -617,13 +619,13 @@ class OrderLifecycleTest extends TestCase
         $payload = $this->orderPayload();
         $so = $payload['salesorder_no'];
 
-        $create = $this->postJson('/api/v1/orders', $payload);
+        $create = $this->postJson('/api/v1/sales', $payload);
         $create->assertStatus(201);
         $orderId = $create->json('data.id');
 
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'picked'])->assertOk();
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'packed'])->assertOk();
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'shipped'])->assertOk();
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'picked'])->assertOk();
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'packed'])->assertOk();
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'shipped'])->assertOk();
 
         $this->assertDatabaseHas('inventory_movements', [
             'transaction_number' => $so, 'source' => 'ORDER_RESERVE',
@@ -641,11 +643,11 @@ class OrderLifecycleTest extends TestCase
         $payload = $this->orderPayload();
         $so = $payload['salesorder_no'];
 
-        $create = $this->postJson('/api/v1/orders', $payload);
+        $create = $this->postJson('/api/v1/sales', $payload);
         $create->assertStatus(201);
         $orderId = $create->json('data.id');
 
-        $this->putJson("/api/v1/orders/{$orderId}", ['status' => 'cancelled'])->assertOk();
+        $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'cancelled'])->assertOk();
 
         $this->assertDatabaseHas('inventory_movements', [
             'transaction_number' => $so, 'source' => 'ORDER_CANCEL',

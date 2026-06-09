@@ -9,7 +9,7 @@ class WarehouseDatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        $locationId = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();
+        $locationId = \Ramsey\Uuid\Uuid::uuid7()->toString();
         DB::table('locations')->insert([
             'id' => $locationId,
             'location_code' => 'WH-PUSAT',
@@ -30,7 +30,7 @@ class WarehouseDatabaseSeeder extends Seeder
         ]);
 
         DB::table('location_bins')->insert([
-            'id' => \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString(),
+            'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
             'location_id' => $locationId,
             'floor_code' => null,
             'row_code' => null,

@@ -6,6 +6,7 @@ use Modules\Inventory\Http\Controllers\InventoryTransactionController;
 use Modules\Inventory\Http\Controllers\StockAdjustmentController;
 use Modules\Inventory\Http\Controllers\ReservedStockController;
 use Modules\Inventory\Http\Controllers\PutawayController;
+use Modules\Inventory\Http\Controllers\StockOpnameController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inventory/stocks', [InventoryController::class, 'index'])->name('inventory.stocks.index');
@@ -47,6 +48,24 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('inventory/transfers', [InventoryTransactionController::class, 'transferOut'])->name('inventory.transferOut');
     Route::get('inventory/transfers/{id}', [InventoryTransactionController::class, 'transferShow'])->name('inventory.transfers.show');
     Route::post('inventory/transfers/{id}/receive', [InventoryTransactionController::class, 'transferIn'])->name('inventory.transferIn');
+
+    // Stock Opname
+    Route::prefix('inventory/stock-opname')->group(function () {
+        Route::get('/bins', [StockOpnameController::class, 'bins'])->name('inventory.stockOpname.bins');
+        Route::get('/floors', [StockOpnameController::class, 'floors'])->name('inventory.stockOpname.floors');
+        Route::get('/rows', [StockOpnameController::class, 'rows'])->name('inventory.stockOpname.rows');
+        Route::get('/columns', [StockOpnameController::class, 'columns'])->name('inventory.stockOpname.columns');
+        Route::get('/', [StockOpnameController::class, 'index'])->name('inventory.stockOpname.index');
+        Route::post('/', [StockOpnameController::class, 'store'])->name('inventory.stockOpname.store');
+        Route::get('/{id}', [StockOpnameController::class, 'show'])->name('inventory.stockOpname.show');
+        Route::get('/{id}/items', [StockOpnameController::class, 'items'])->name('inventory.stockOpname.items');
+        Route::post('/{id}/start', [StockOpnameController::class, 'start'])->name('inventory.stockOpname.start');
+        Route::post('/{id}/items/{itemId}/count', [StockOpnameController::class, 'countItem'])->name('inventory.stockOpname.countItem');
+        Route::post('/{id}/finalize', [StockOpnameController::class, 'finalize'])->name('inventory.stockOpname.finalize');
+        Route::post('/{id}/cancel', [StockOpnameController::class, 'cancel'])->name('inventory.stockOpname.cancel');
+        Route::post('/{id}/mark-printed', [StockOpnameController::class, 'markPrinted'])->name('inventory.stockOpname.markPrinted');
+        Route::delete('/{id}', [StockOpnameController::class, 'destroy'])->name('inventory.stockOpname.destroy');
+    });
 
     // Standalone Putaway
     Route::prefix('putaway')->group(function () {

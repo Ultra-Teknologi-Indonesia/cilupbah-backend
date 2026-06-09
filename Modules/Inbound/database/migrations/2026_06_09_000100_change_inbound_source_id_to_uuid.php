@@ -9,8 +9,6 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // source_id bersifat polymorphic (purchase_order, marketplace_return, dll.).
-        // Semua sumber kini ber-id UUID, namun kolom masih unsignedBigInteger → ubah ke UUID.
         Schema::table('inbounds', function (Blueprint $table) {
             $table->dropIndex(['source_type', 'source_id']);
         });
