@@ -6,7 +6,6 @@ use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
-use Modules\Order\Exceptions\InsufficientStockException;
 use App\Traits\StockLockable;
 
 class StockService
@@ -20,15 +19,16 @@ class StockService
 
     public function reserve(string $sku, string $itemId, string $locationId, int $qty, string $transactionNumber): void
     {
-        $this->withStockLock($itemId, $locationId, function () use ($sku, $itemId, $locationId, $qty, $transactionNumber) {
-            DB::transaction(function () use ($sku, $itemId, $locationId, $qty, $transactionNumber) {
+        $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
+            DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
                 $inventory = $this->inventoryRepository->findExactForUpdate($itemId, $locationId, null);
 
-                if (!$inventory || $inventory->available < $qty) {
-                    $available = $inventory ? $inventory->available : 0;
-                    throw new InsufficientStockException($sku, $available, $qty);
+                if (!$inventory) {
+                    throw new \RuntimeException("Inventory tidak ditemukan untuk item {$itemId}.");
                 }
 
+                // Stok diizinkan menjadi negatif: order tetap di-reserve walau stok rak
+                // kurang memenuhi qty pesanan (available dapat bernilai negatif).
                 $inventory->reserved += $qty;
                 $this->inventoryRepository->updateStock($inventory);
 

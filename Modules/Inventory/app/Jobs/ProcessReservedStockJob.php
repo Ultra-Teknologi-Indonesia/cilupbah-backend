@@ -47,10 +47,8 @@ class ProcessReservedStockJob implements ShouldQueue
                         throw new \RuntimeException("Inventory tidak ditemukan untuk item {$item->item_id}.");
                     }
 
-                    if ($inventory->available < $item->qty) {
-                        throw new \RuntimeException("Stok available tidak mencukupi untuk item {$item->item_id} (tersedia: {$inventory->available}, diminta: {$item->qty}).");
-                    }
-
+                    // Stok diizinkan menjadi negatif: reservasi tetap dilakukan walau available
+                    // kurang dari qty (available dapat bernilai negatif).
                     $inventory->reserved += $item->qty;
                     $inventoryRepository->updateStock($inventory);
 
