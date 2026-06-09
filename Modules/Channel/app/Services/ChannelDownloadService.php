@@ -2,20 +2,59 @@
 
 namespace Modules\Channel\Services;
 
+use Modules\Channel\Jobs\DownloadProductsJob;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Models\DownloadTransaction;
 use Modules\Product\Models\ProductSyncLog;
 
 /**
- * Generalisasi proses download (pull) produk dari marketplace per shop,
- * agar tidak terikat ke TikTok saja. Resolusi puller berdasarkan kode channel.
+ * Generalisasi proses download (pull) produk dari marketplace per shop.
+ * Download bersifat asinkron: membuat DownloadTransaction lalu mengantre job.
  */
 class ChannelDownloadService
 {
     /**
-     * Tarik produk dari satu toko pada channel tertentu. Mengembalikan jumlah produk.
-     * Mencatat hasilnya ke product_sync_logs (action=download).
+     * Mulai download satu toko: buat transaksi (queued) + antre job. Asinkron.
      */
-    public function download(string $channel, string $shopId): int
+    public function download(string $channel, string $shopId, ?string $executedBy = null): DownloadTransaction
+    {
+        $this->assertSupported($channel);
+        $channelShopId = $this->requireChannelShopId($shopId);
+
+        $transaction = DownloadTransaction::create([
+            'channel_shop_id' => $channelShopId,
+            'executed_by' => $executedBy,
+            'state' => DownloadTransaction::STATE_QUEUED,
+        ]);
+
+        DownloadProductsJob::dispatch($transaction->id, $channel, $shopId)->afterCommit();
+
+        return $transaction;
+    }
+
+    /**
+     * Mulai download banyak toko. Mengembalikan daftar transaksi yang dibuat.
+     *
+     * @param  array<int, string>  $shopIds
+     * @return array<int, DownloadTransaction>
+     */
+    public function downloadBulk(string $channel, array $shopIds, ?string $executedBy = null): array
+    {
+        $this->assertSupported($channel);
+
+        $transactions = [];
+        foreach ($shopIds as $shopId) {
+            $transactions[] = $this->download($channel, $shopId, $executedBy);
+        }
+
+        return $transactions;
+    }
+
+    /**
+     * Eksekusi pull aktual (dipanggil oleh job). Mengembalikan jumlah produk +
+     * mencatat ke product_sync_logs (action=download).
+     */
+    public function pull(string $channel, string $shopId): int
     {
         $channelShopId = ChannelShop::where('shop_id', $shopId)->value('id');
 
@@ -42,39 +81,25 @@ class ChannelDownloadService
         return $count;
     }
 
-    /**
-     * Tarik produk dari banyak toko sekaligus. Mengembalikan ringkasan per toko.
-     *
-     * @param  array<int, string>  $shopIds
-     * @return array<int, array<string, mixed>>
-     */
-    public function downloadBulk(string $channel, array $shopIds): array
+    protected function assertSupported(string $channel): void
     {
-        $results = [];
+        if (! in_array(strtolower($channel), ['tiktok'], true)) {
+            throw new \RuntimeException("Channel '{$channel}' belum didukung untuk download", 422);
+        }
+    }
 
-        foreach ($shopIds as $shopId) {
-            try {
-                $count = $this->download($channel, $shopId);
-                $results[] = [
-                    'shop_id' => $shopId,
-                    'status' => 'success',
-                    'pulled_count' => $count,
-                ];
-            } catch (\Exception $e) {
-                $results[] = [
-                    'shop_id' => $shopId,
-                    'status' => 'error',
-                    'message' => $e->getMessage(),
-                ];
-            }
+    protected function requireChannelShopId(string $shopId): string
+    {
+        $channelShopId = ChannelShop::where('shop_id', $shopId)->value('id');
+
+        if (! $channelShopId) {
+            throw new \RuntimeException('Toko tidak ditemukan', 422);
         }
 
-        return $results;
+        return $channelShopId;
     }
 
     /**
-     * Pemetaan kode channel → fungsi pull. Tambahkan channel lain di sini.
-     *
      * @return callable(string):int
      */
     protected function pullerFor(string $channel): callable

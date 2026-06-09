@@ -2,11 +2,15 @@
 
 namespace Modules\Channel\Tests\Feature;
 
-use Tests\TestCase;
-use Modules\Channel\Models\ChannelShop;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
+use Modules\Channel\Jobs\DownloadProductsJob;
+use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Models\DownloadTransaction;
+use Modules\Channel\Services\ChannelDownloadService;
+use Tests\TestCase;
 
 class ChannelDownloadTest extends TestCase
 {
@@ -23,7 +27,6 @@ class ChannelDownloadTest extends TestCase
             'services.tiktok.base_url' => 'https://open-api.tiktokglobalshop.com',
         ]);
 
-        // mapper memetakan produk ke category_id = 1
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Cat']);
 
         ChannelShop::create([
@@ -58,12 +61,26 @@ class ChannelDownloadTest extends TestCase
         ]);
     }
 
-    public function test_download_pulls_products_with_download_status()
+    public function test_download_queues_transaction_and_job()
     {
+        Queue::fake();
+
         $response = $this->postJson('/api/v1/tiktok/download', ['shop_id' => 'SHOP-DL-1']);
 
-        $response->assertStatus(200);
-        $response->assertJsonPath('data.pulled_count', 1);
+        $response->assertStatus(202);
+        $response->assertJsonPath('data.state', 'queued');
+
+        $shop = ChannelShop::where('shop_id', 'SHOP-DL-1')->first();
+        $this->assertDatabaseHas('download_transactions', [
+            'channel_shop_id' => $shop->id,
+            'state' => 'queued',
+        ]);
+        Queue::assertPushed(DownloadProductsJob::class);
+    }
+
+    public function test_pull_creates_products_with_download_status()
+    {
+        app(ChannelDownloadService::class)->pull('tiktok', 'SHOP-DL-1');
 
         $this->assertDatabaseHas('products', [
             'name' => 'Downloaded Phone',
@@ -76,8 +93,6 @@ class ChannelDownloadTest extends TestCase
             'external_product_id' => 'TIKTOK-PROD-1',
             'sync_status' => 'synced',
         ]);
-
-        // Riwayat download tercatat.
         $this->assertDatabaseHas('product_sync_logs', [
             'channel_shop_id' => $shop->id,
             'action' => 'download',
@@ -85,10 +100,26 @@ class ChannelDownloadTest extends TestCase
         ]);
     }
 
+    public function test_job_marks_transaction_done()
+    {
+        $shop = ChannelShop::where('shop_id', 'SHOP-DL-1')->first();
+        $trx = DownloadTransaction::create([
+            'channel_shop_id' => $shop->id,
+            'state' => 'queued',
+        ]);
+
+        (new DownloadProductsJob($trx->id, 'tiktok', 'SHOP-DL-1'))
+            ->handle(app(ChannelDownloadService::class));
+
+        $trx->refresh();
+        $this->assertSame('done', $trx->state);
+        $this->assertSame(1, $trx->total_downloaded);
+        $this->assertSame(100, $trx->progress_percent);
+    }
+
     public function test_download_requires_shop_id()
     {
-        $response = $this->postJson('/api/v1/tiktok/download', []);
-        $response->assertStatus(422);
+        $this->postJson('/api/v1/tiktok/download', [])->assertStatus(422);
     }
 
     public function test_download_unsupported_channel_returns_422()
@@ -98,8 +129,10 @@ class ChannelDownloadTest extends TestCase
         $response->assertJsonPath('status', 'error');
     }
 
-    public function test_bulk_download_multiple_shops()
+    public function test_bulk_download_queues_transactions()
     {
+        Queue::fake();
+
         ChannelShop::create([
             'shop_id' => 'SHOP-DL-2',
             'access_token' => 'access-token-2',
@@ -110,7 +143,9 @@ class ChannelDownloadTest extends TestCase
             'shop_ids' => ['SHOP-DL-1', 'SHOP-DL-2'],
         ]);
 
-        $response->assertStatus(200);
-        $response->assertJsonCount(2, 'data.details');
+        $response->assertStatus(202);
+        $response->assertJsonCount(2, 'data');
+        $this->assertSame(2, DownloadTransaction::count());
+        Queue::assertPushed(DownloadProductsJob::class, 2);
     }
 }
