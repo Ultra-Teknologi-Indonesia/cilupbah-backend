@@ -104,9 +104,9 @@ class PurchaseOrderService
 
                 $this->poRepository->updateItemReceivedQty($poItem->id, $receiveItem['qty']);
 
-                $variant = \Modules\Product\Models\ProductVariant::where('product_id', $poItem->item_id)->first();
+                // item_id pada PO item sudah merupakan ProductVariant id (kanonik), pakai langsung.
                 $inboundItems[] = [
-                    'item_id'      => $variant ? $variant->id : $poItem->item_id,
+                    'item_id'      => $poItem->item_id,
                     'expected_qty' => $receiveItem['qty'],
                 ];
             }

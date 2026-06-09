@@ -159,8 +159,8 @@ class InboundE2ETest extends TestCase
             'expected_date' => now()->addDays(7)->toDateString(),
             'created_by'   => 'admin',
             'items'        => [
-                ['item_id' => $this->product1->id, 'qty' => 10, 'unit_price' => 7000000],
-                ['item_id' => $this->product2->id, 'qty' => 20, 'unit_price' => 500000],
+                ['item_id' => $this->variant1->id, 'qty' => 10, 'unit_price' => 7000000],
+                ['item_id' => $this->variant2->id, 'qty' => 20, 'unit_price' => 500000],
             ],
         ]);
 
@@ -347,7 +347,7 @@ class InboundE2ETest extends TestCase
             'reason'      => 'Barang cacat',
             'created_by'  => 'cs_admin',
             'items'       => [
-                ['item_id' => $this->product1->id, 'qty' => 1, 'condition' => 'DAMAGE'],
+                ['item_id' => $this->variant1->id, 'qty' => 1, 'condition' => 'DAMAGE'],
             ],
         ]);
 
@@ -368,7 +368,7 @@ class InboundE2ETest extends TestCase
             'reason'        => 'Tidak sesuai',
             'created_by'    => 'cs_admin',
             'items'         => [
-                ['item_id' => $this->product2->id, 'qty' => 3, 'condition' => 'GOOD'],
+                ['item_id' => $this->variant2->id, 'qty' => 3, 'condition' => 'GOOD'],
             ],
         ]);
 
@@ -579,7 +579,7 @@ class InboundE2ETest extends TestCase
             'order_date'  => now()->toDateString(),
             'created_by'  => 'admin',
             'items'       => [
-                ['item_id' => $this->product1->id, 'qty' => 20, 'unit_price' => 7000000],
+                ['item_id' => $this->variant1->id, 'qty' => 20, 'unit_price' => 7000000],
             ],
         ]);
         $poId = $poResponse->json('data.id');
@@ -746,8 +746,8 @@ class InboundE2ETest extends TestCase
             'order_date'  => now()->toDateString(),
             'created_by'  => 'admin',
             'items'       => [
-                ['item_id' => $this->product1->id, 'qty' => 10, 'unit_price' => 7000000],
-                ['item_id' => $this->product2->id, 'qty' => 20, 'unit_price' => 500000],
+                ['item_id' => $this->variant1->id, 'qty' => 10, 'unit_price' => 7000000],
+                ['item_id' => $this->variant2->id, 'qty' => 20, 'unit_price' => 500000],
             ],
         ]);
 
@@ -816,7 +816,7 @@ class InboundE2ETest extends TestCase
             'reason'        => 'Barang rusak saat pengiriman',
             'created_by'    => 'marketplace_webhook',
             'items'         => [
-                ['item_id' => $this->product2->id, 'qty' => 2, 'condition' => 'DAMAGE'],
+                ['item_id' => $this->variant2->id, 'qty' => 2, 'condition' => 'DAMAGE'],
             ],
         ]);
 

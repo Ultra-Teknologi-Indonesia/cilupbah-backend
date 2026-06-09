@@ -23,7 +23,7 @@ class StoreSalesReturnRequest extends FormRequest
             'notes'              => ['nullable', 'string'],
             'created_by'         => ['required', 'string', 'max:100'],
             'items'              => ['required', 'array', 'min:1'],
-            'items.*.item_id'    => ['required', 'string', 'uuid', 'exists:products,id'],
+            'items.*.item_id'    => ['required', 'string', 'uuid', 'exists:product_variants,id'],
             'items.*.qty'        => ['required', 'integer', 'min:1'],
             'items.*.condition'  => ['nullable', 'string', 'in:GOOD,DAMAGE'],
             'items.*.notes'      => ['nullable', 'string'],
