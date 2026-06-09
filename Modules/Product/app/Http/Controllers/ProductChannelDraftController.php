@@ -3,15 +3,16 @@
 namespace Modules\Product\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use DomainException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Modules\Product\Http\Requests\StoreChannelDraftRequest;
 use Modules\Product\Http\Resources\ProductChannelDraftResource;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelDraft;
+use Modules\Product\Repositories\ProductChannelDraftRepository;
 use Modules\Product\Services\ProductChannelDraftService;
-use Spatie\QueryBuilder\QueryBuilder;
-use Spatie\QueryBuilder\AllowedFilter;
 use OpenApi\Attributes as OA;
 use App\Traits\ApiResponse;
 
@@ -19,12 +20,10 @@ class ProductChannelDraftController extends Controller
 {
     use ApiResponse;
 
-    protected ProductChannelDraftService $draftService;
-
-    public function __construct(ProductChannelDraftService $draftService)
-    {
-        $this->draftService = $draftService;
-    }
+    public function __construct(
+        protected ProductChannelDraftService $draftService,
+        protected ProductChannelDraftRepository $draftRepository,
+    ) {}
 
     /**
      * Daftar semua draft (sub-tab Draft di tab Naikkan Produk), filter ?status=.
@@ -41,21 +40,40 @@ class ProductChannelDraftController extends Controller
     )]
     public function list(Request $request): JsonResponse
     {
-        $drafts = QueryBuilder::for(ProductChannelDraft::class)
-            ->with('channelShop')
-            ->allowedFilters(
-                AllowedFilter::exact('status'),
-                AllowedFilter::exact('channel_shop_id'),
-                AllowedFilter::exact('product_id'),
-            )
-            ->allowedSorts('created_at', 'updated_at')
-            ->defaultSort('-created_at')
-            ->paginate($request->input('limit', 10));
+        $paginator = $this->draftRepository->paginate();
 
-        return $this->successPaginatedResponse(
-            ProductChannelDraftResource::collection($drafts),
-            'Get channel drafts success'
+        $paginator->setCollection(
+            $paginator->getCollection()->map(
+                fn (ProductChannelDraft $draft) => (new ProductChannelDraftResource($draft))->resolve($request)
+            )
         );
+
+        return $this->successPaginatedResponse($paginator, 'Get channel drafts success');
+    }
+
+    public function upload(string $draftId): JsonResponse
+    {
+        try {
+            $this->draftService->uploadDraft($draftId);
+        } catch (ModelNotFoundException) {
+            return $this->errorResponse('Draft tidak ditemukan', 404);
+        } catch (DomainException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
+        return $this->successResponse(null, 'Draft diantrekan untuk upload');
+    }
+
+    public function bulkUpload(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'uuid',
+        ]);
+
+        $result = $this->draftService->bulkUpload($validated['ids']);
+
+        return $this->successResponse($result, "{$result['uploaded']} draft diantrekan untuk upload");
     }
 
     /**
@@ -74,7 +92,12 @@ class ProductChannelDraftController extends Controller
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
-        $drafts = ProductChannelDraft::with('channelShop')
+        $drafts = ProductChannelDraft::with([
+                'product:id,name',
+                'product.variants:id,product_id,sku',
+                'product.media',
+                'channelShop.channel',
+            ])
             ->where('product_id', $id)
             ->get();
 

@@ -15,6 +15,7 @@ use Modules\Channel\Adapters\AdapterFactory;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
+use Modules\Product\Models\ProductSyncLog;
 
 class SyncProductToChannelJob implements ShouldQueue
 {
@@ -161,7 +162,8 @@ class SyncProductToChannelJob implements ShouldQueue
             if ($result['success']) {
                 $newExternalId = $result['external_product_id'] ?? $externalId;
                 $mapping->markAsSynced($newExternalId);
-                
+                $this->recordUploadResult(true, null, $result);
+
                 if (!empty($result['skus'])) {
                     $this->updateVariantMappings($mapping, $product, $result['skus']);
                 }
@@ -170,18 +172,45 @@ class SyncProductToChannelJob implements ShouldQueue
                     $mapping->delete();
                 }
             } else {
-                $mapping->markAsFailed($result['message'] ?? 'Gagal mengeksekusi aksi');
+                $message = $result['message'] ?? 'Gagal mengeksekusi aksi';
+                $mapping->markAsFailed($message);
+                $this->recordUploadResult(false, $message, $result);
                 $this->handleFailure($channelCode);
-                
-                throw new \Exception($result['message'] ?? 'Gagal mengeksekusi aksi');
+
+                throw new \Exception($message);
             }
 
         } catch (\Exception $e) {
             $mapping->markAsFailed($e->getMessage());
+            $this->recordUploadResult(false, $e->getMessage());
             $this->handleFailure($channelCode);
-            
+
             throw $e;
         }
+    }
+
+    protected function recordUploadResult(bool $success, ?string $message, ?array $response = null): void
+    {
+        if (! in_array($this->action, ['push', 'update'], true)) {
+            return;
+        }
+
+        $log = ProductSyncLog::query()
+            ->where('product_id', $this->productId)
+            ->where('channel_shop_id', $this->channelShopId)
+            ->where('action', ProductSyncLog::ACTION_UPLOAD)
+            ->latest()
+            ->first();
+
+        if (! $log) {
+            return;
+        }
+
+        $log->update([
+            'status' => $success ? ProductSyncLog::STATUS_SUCCESS : ProductSyncLog::STATUS_FAILED,
+            'error_message' => $success ? null : $message,
+            'response' => $response,
+        ]);
     }
 
     protected function handleFailure(string $channelCode): void
