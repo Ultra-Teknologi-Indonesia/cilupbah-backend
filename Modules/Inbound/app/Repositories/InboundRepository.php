@@ -145,7 +145,7 @@ class InboundRepository
             ->get();
     }
 
-    public function getAssignmentsByWorker(int $userId, ?string $status = null)
+    public function getAssignmentsByWorker(string $userId, ?string $status = null)
     {
         $query = InboundAssignment::where('assigned_to', $userId)
             ->with(['inbound.location:id,location_name', 'inbound.items']);

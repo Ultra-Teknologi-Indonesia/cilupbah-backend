@@ -328,7 +328,7 @@ class InboundService
 
     // ─── ASSIGNMENT ───
 
-    public function assignWorker(string $inboundId, int $assignedTo, int $assignedBy, ?string $notes = null): InboundAssignment
+    public function assignWorker(string $inboundId, string $assignedTo, string $assignedBy, ?string $notes = null): InboundAssignment
     {
         $inbound = $this->inboundRepository->findById($inboundId);
 
@@ -354,12 +354,12 @@ class InboundService
         return $this->inboundRepository->getAssignmentsByInbound($inboundId);
     }
 
-    public function getMyAssignments(int $userId, ?string $status = null)
+    public function getMyAssignments(string $userId, ?string $status = null)
     {
         return $this->inboundRepository->getAssignmentsByWorker($userId, $status);
     }
 
-    public function startAssignment(string $assignmentId, int $userId): InboundAssignment
+    public function startAssignment(string $assignmentId, string $userId): InboundAssignment
     {
         $assignment = InboundAssignment::findOrFail($assignmentId);
 
@@ -392,7 +392,7 @@ class InboundService
         return $item->load('inbound.location', 'variant:id,sku,product_id');
     }
 
-    public function scanPutaway(string $inboundItemId, string $binId, int $qty, int $userId): InboundItem
+    public function scanPutaway(string $inboundItemId, string $binId, int $qty, string $userId): InboundItem
     {
         return DB::transaction(function () use ($inboundItemId, $binId, $qty, $userId) {
             $inboundItem = $this->inboundRepository->findItemByUuidForUpdate($inboundItemId);
@@ -445,7 +445,7 @@ class InboundService
         });
     }
 
-    private function completeAssignmentIfDone(Inbound $inbound, int $userId): void
+    private function completeAssignmentIfDone(Inbound $inbound, string $userId): void
     {
         if ($inbound->status !== Inbound::STATUS_COMPLETED) {
             return;

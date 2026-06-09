@@ -16,8 +16,8 @@ class PutawayRequest extends FormRequest
         return [
             'created_by'                        => ['required', 'string', 'max:100'],
             'putaway_items'                     => ['required', 'array', 'min:1'],
-            'putaway_items.*.inbound_item_id'   => ['required', 'string', 'size:32', 'exists:inbound_items,id'],
-            'putaway_items.*.destination_bin_id' => ['required', 'string', 'size:32', 'exists:location_bins,id'],
+            'putaway_items.*.inbound_item_id'   => ['required', 'string', 'uuid', 'exists:inbound_items,id'],
+            'putaway_items.*.destination_bin_id' => ['required', 'string', 'uuid', 'exists:location_bins,id'],
             'putaway_items.*.qty'               => ['required', 'integer', 'min:1'],
             'putaway_items.*.batch_no'          => ['nullable', 'string', 'max:100'],
             'putaway_items.*.serial_no'         => ['nullable', 'string', 'max:100'],
