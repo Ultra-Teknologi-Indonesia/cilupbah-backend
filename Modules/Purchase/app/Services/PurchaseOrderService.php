@@ -5,6 +5,7 @@ namespace Modules\Purchase\Services;
 use Modules\Purchase\Repositories\PurchaseOrderRepository;
 use Modules\Purchase\Models\PurchaseOrder;
 use Modules\Inbound\Services\InboundService;
+use Modules\Inventory\Repositories\InventoryRepository;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -12,7 +13,8 @@ class PurchaseOrderService
 {
     public function __construct(
         protected PurchaseOrderRepository $poRepository,
-        protected InboundService $inboundService
+        protected InboundService $inboundService,
+        protected InventoryRepository $inventoryRepository,
     ) {}
 
     public function getAllPaginated(int $limit = 10)
@@ -70,6 +72,11 @@ class PurchaseOrderService
 
             $this->poRepository->updateStatus($po, PurchaseOrder::STATUS_OPEN);
 
+            $po->load('items');
+            foreach ($po->items as $item) {
+                $this->adjustOnOrder($item->item_id, $po->location_id, $item->qty);
+            }
+
             return $this->getById($id);
         });
     }
@@ -104,7 +111,8 @@ class PurchaseOrderService
 
                 $this->poRepository->updateItemReceivedQty($poItem->id, $receiveItem['qty']);
 
-                // item_id pada PO item sudah merupakan ProductVariant id (kanonik), pakai langsung.
+                $this->adjustOnOrder($poItem->item_id, $po->location_id, -$receiveItem['qty']);
+
                 $inboundItems[] = [
                     'item_id'      => $poItem->item_id,
                     'expected_qty' => $receiveItem['qty'],
@@ -165,6 +173,16 @@ class PurchaseOrderService
                 throw new \Exception('PO sudah dibatalkan.');
             }
 
+            if (in_array($po->status, [PurchaseOrder::STATUS_OPEN, PurchaseOrder::STATUS_PARTIAL_RECEIVED])) {
+                $po->load('items');
+                foreach ($po->items as $item) {
+                    $pendingQty = $item->pendingQty();
+                    if ($pendingQty > 0) {
+                        $this->adjustOnOrder($item->item_id, $po->location_id, -$pendingQty);
+                    }
+                }
+            }
+
             $this->poRepository->updateStatus($po, PurchaseOrder::STATUS_CANCELLED);
 
             return $this->getById($id);
@@ -184,5 +202,31 @@ class PurchaseOrderService
         }
 
         return $this->poRepository->delete($po);
+    }
+
+    private function adjustOnOrder(string $itemId, string $locationId, int $qty): void
+    {
+        $inventory = $this->inventoryRepository->findExactForUpdate($itemId, $locationId, null);
+
+        if (! $inventory) {
+            if ($qty <= 0) {
+                return;
+            }
+
+            $inventory = $this->inventoryRepository->create([
+                'item_id'     => $itemId,
+                'location_id' => $locationId,
+                'bin_id'      => null,
+                'batch_no'    => '',
+                'serial_no'   => '',
+                'on_hand'     => 0,
+                'on_order'    => 0,
+                'reserved'    => 0,
+                'available'   => 0,
+            ]);
+        }
+
+        $inventory->on_order = max(0, $inventory->on_order + $qty);
+        $this->inventoryRepository->updateStock($inventory);
     }
 }

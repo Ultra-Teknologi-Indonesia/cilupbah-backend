@@ -5,7 +5,7 @@ namespace Modules\Sales\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductVariant;
 
 use App\Traits\HasUuid7;
 
@@ -39,7 +39,7 @@ class SalesOrderItem extends Model
 
     public function product(): BelongsTo
     {
-        return $this->belongsTo(Product::class, 'item_id');
+        return $this->belongsTo(ProductVariant::class, 'item_id');
     }
 
     public function inventory(): HasMany

@@ -318,10 +318,7 @@ class SalesOrderService
 
     private function releaseStockForOrder(SalesOrder $order): void
     {
-        // Hanya order berstatus 'reserved' yang masih memegang reservasi stok.
-        // Status 'picked'/'packed' sudah melepas reserved saat pick(), sehingga
-        // pembatalan tidak boleh melepas ulang (mencegah reserved menjadi negatif).
-        if ($order->status !== 'reserved') {
+        if (! in_array($order->status, ['reserved', 'picked', 'packed'])) {
             return;
         }
 
@@ -332,13 +329,23 @@ class SalesOrderService
 
             $locationId = $this->resolveLocationId($order);
 
-            $this->stockService->cancel(
-                $item->sku ?? "item:{$item->item_id}",
-                $item->item_id,
-                $locationId,
-                $item->qty_in_base,
-                $order->salesorder_no,
-            );
+            if ($order->status === 'reserved') {
+                $this->stockService->cancel(
+                    $item->sku ?? "item:{$item->item_id}",
+                    $item->item_id,
+                    $locationId,
+                    $item->qty_in_base,
+                    $order->salesorder_no,
+                );
+            } else {
+                $this->stockService->restore(
+                    $item->sku ?? "item:{$item->item_id}",
+                    $item->item_id,
+                    $locationId,
+                    $item->qty_in_base,
+                    $order->salesorder_no,
+                );
+            }
         }
     }
 

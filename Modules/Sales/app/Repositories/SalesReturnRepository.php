@@ -13,7 +13,7 @@ class SalesReturnRepository
     public function getAllPaginated(int $limit = 10)
     {
         return QueryBuilder::for(SalesReturn::class)
-            ->with(['order:id,salesorder_no', 'location:id,location_name', 'items.product:id,name,sku'])
+            ->with(['order:id,salesorder_no', 'location:id,location_name', 'items.product:id,sku,product_id', 'items.product.product:id,name'])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('source'),
@@ -30,14 +30,14 @@ class SalesReturnRepository
         return QueryBuilder::for(SalesReturn::class)
             ->unprocessed()
             ->marketplace()
-            ->with(['order:id,salesorder_no', 'location:id,location_name', 'items.product:id,name,sku'])
+            ->with(['order:id,salesorder_no', 'location:id,location_name', 'items.product:id,sku,product_id', 'items.product.product:id,name'])
             ->defaultSort('-created_at')
             ->paginate($limit);
     }
 
     public function findById(string $id): ?SalesReturn
     {
-        return SalesReturn::with(['order', 'location', 'items.product:id,name,sku'])
+        return SalesReturn::with(['order', 'location', 'items.product:id,sku,product_id', 'items.product.product:id,name'])
             ->find($id);
     }
 

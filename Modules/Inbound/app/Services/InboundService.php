@@ -477,10 +477,35 @@ class InboundService
                 throw new \Exception("Inbound sudah dibatalkan.");
             }
 
+            $this->reverseReceivedStock($inbound);
+
             $this->inboundRepository->updateStatus($inbound, Inbound::STATUS_CANCELLED);
 
             return $this->getById($inboundId);
         });
+    }
+
+    private function reverseReceivedStock(Inbound $inbound): void
+    {
+        $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
+
+        foreach ($inbound->items as $item) {
+            if ($item->received_qty <= 0) {
+                continue;
+            }
+
+            $reverseQty = $item->received_qty - $item->putaway_qty;
+            if ($reverseQty > 0 && $defaultBin) {
+                $this->inventoryService->adjust([
+                    'item_id'            => $item->item_id,
+                    'location_id'        => $inbound->location_id,
+                    'bin_id'             => $defaultBin->id,
+                    'qty'                => -$reverseQty,
+                    'transaction_number' => $inbound->transaction_number . '-CANCEL',
+                    'created_by'         => 'system',
+                ]);
+            }
+        }
     }
 
     private function createPutawayFromInbound(Inbound $inbound, $defaultBin, string $receivedBy): void

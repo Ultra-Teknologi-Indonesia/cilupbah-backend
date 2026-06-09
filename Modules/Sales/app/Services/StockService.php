@@ -57,6 +57,7 @@ class StockService
                     throw new \RuntimeException("Inventory tidak ditemukan untuk item {$itemId}.");
                 }
 
+                $inventory->on_hand -= $qty;
                 $inventory->reserved -= $qty;
                 $this->inventoryRepository->updateStock($inventory);
 
@@ -85,7 +86,32 @@ class StockService
                     throw new \RuntimeException("Inventory tidak ditemukan untuk item {$itemId}.");
                 }
 
-                $inventory->on_hand -= $qty;
+                $this->movementRepository->create([
+                    'item_id'            => $itemId,
+                    'location_id'        => $locationId,
+                    'bin_id'             => null,
+                    'transaction_number' => $transactionNumber,
+                    'source'             => 'ORDER_SHIP',
+                    'qty'                => 0,
+                    'balance'            => $inventory->on_hand,
+                    'transaction_date'   => now(),
+                    'created_by'         => 'system',
+                ]);
+            });
+        });
+    }
+
+    public function restore(string $sku, string $itemId, string $locationId, int $qty, string $transactionNumber): void
+    {
+        $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
+            DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
+                $inventory = $this->inventoryRepository->findExactForUpdate($itemId, $locationId, null);
+
+                if (!$inventory) {
+                    throw new \RuntimeException("Inventory tidak ditemukan untuk item {$itemId}.");
+                }
+
+                $inventory->on_hand += $qty;
                 $this->inventoryRepository->updateStock($inventory);
 
                 $this->movementRepository->create([
@@ -93,8 +119,8 @@ class StockService
                     'location_id'        => $locationId,
                     'bin_id'             => null,
                     'transaction_number' => $transactionNumber,
-                    'source'             => 'ORDER_SHIP',
-                    'qty'                => -$qty,
+                    'source'             => 'ORDER_RESTORE',
+                    'qty'                => $qty,
                     'balance'            => $inventory->on_hand,
                     'transaction_date'   => now(),
                     'created_by'         => 'system',
