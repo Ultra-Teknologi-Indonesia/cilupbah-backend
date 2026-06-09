@@ -35,7 +35,7 @@ class ProductService
         return DB::transaction(function () use ($productId, $data) {
             $productData = Arr::only($data, [
                 'name', 'description', 'weight', 'length', 'width', 'height', 'is_active',
-                'channel_shop_id', 'source'
+                'is_bundle', 'is_consignment',
             ]);
             
             if (!empty($productData)) {
@@ -59,6 +59,7 @@ class ProductService
                     
                     if ($existingVariant) {
                         DB::table('product_variants')->where('id', $existingVariant->id)->update($variantData);
+                        $variantId = $existingVariant->id;
                     } else {
                         DB::table('product_variants')->insert(array_merge($variantData, [
                             'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
@@ -66,6 +67,55 @@ class ProductService
                             'sku' => $variant['sku'],
                             'created_at' => now(),
                         ]));
+                        $variantId = DB::table('product_variants')->where('product_id', $productId)->where('sku', $variant['sku'])->value('id');
+                    }
+
+                    if (!empty($variant['channel_prices'])) {
+                        foreach ($variant['channel_prices'] as $cp) {
+                            $channelShopId = $cp['channel_shop_id'];
+                            
+                            $pcm = DB::table('product_channel_mappings')
+                                ->where('product_id', $productId)
+                                ->where('channel_shop_id', $channelShopId)
+                                ->first();
+                                
+                            if (!$pcm) {
+                                $pcmId = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();
+                                DB::table('product_channel_mappings')->insert([
+                                    'id' => $pcmId,
+                                    'product_id' => $productId,
+                                    'channel_shop_id' => $channelShopId,
+                                    'sync_status' => 'pending',
+                                    'created_at' => now(),
+                                    'updated_at' => now(),
+                                ]);
+                            } else {
+                                $pcmId = $pcm->id;
+                            }
+
+                            $pvcm = DB::table('product_variant_channel_mappings')
+                                ->where('product_channel_mapping_id', $pcmId)
+                                ->where('variant_id', $variantId)
+                                ->first();
+
+                            if ($pvcm) {
+                                DB::table('product_variant_channel_mappings')
+                                    ->where('id', $pvcm->id)
+                                    ->update([
+                                        'override_price' => $cp['price'],
+                                        'updated_at' => now(),
+                                    ]);
+                            } else {
+                                DB::table('product_variant_channel_mappings')->insert([
+                                    'id' => \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString(),
+                                    'product_channel_mapping_id' => $pcmId,
+                                    'variant_id' => $variantId,
+                                    'override_price' => $cp['price'],
+                                    'created_at' => now(),
+                                    'updated_at' => now(),
+                                ]);
+                            }
+                        }
                     }
                 }
             }
@@ -78,9 +128,9 @@ class ProductService
     {
         return DB::transaction(function () use ($data) {
             $productData = Arr::only($data, [
-                'category_id', 'brand_id', 'name', 'description', 
+                'category_id', 'brand_id', 'name', 'description',
                 'weight', 'length', 'width', 'height', 'is_active',
-                'channel_shop_id', 'source'
+                'status', 'is_bundle', 'is_consignment',
             ]);
             
             $productId = \Ramsey\Uuid\Uuid::uuid7()->toString();
@@ -188,6 +238,40 @@ class ProductService
                             ];
                         }, $variant['wholesale_prices']);
                         DB::table('product_wholesale_prices')->insert($wholesales);
+                    }
+
+                    if (!empty($variant['channel_prices'])) {
+                        foreach ($variant['channel_prices'] as $cp) {
+                            $channelShopId = $cp['channel_shop_id'];
+                            
+                            $pcm = DB::table('product_channel_mappings')
+                                ->where('product_id', $productId)
+                                ->where('channel_shop_id', $channelShopId)
+                                ->first();
+                                
+                            if (!$pcm) {
+                                $pcmId = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();
+                                DB::table('product_channel_mappings')->insert([
+                                    'id' => $pcmId,
+                                    'product_id' => $productId,
+                                    'channel_shop_id' => $channelShopId,
+                                    'sync_status' => 'pending',
+                                    'created_at' => now(),
+                                    'updated_at' => now(),
+                                ]);
+                            } else {
+                                $pcmId = $pcm->id;
+                            }
+
+                            DB::table('product_variant_channel_mappings')->insert([
+                                'id' => \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString(),
+                                'product_channel_mapping_id' => $pcmId,
+                                'variant_id' => $variantId,
+                                'override_price' => $cp['price'],
+                                'created_at' => now(),
+                                'updated_at' => now(),
+                            ]);
+                        }
                     }
                 }
             }

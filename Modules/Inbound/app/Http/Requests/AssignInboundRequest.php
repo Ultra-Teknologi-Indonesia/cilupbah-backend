@@ -14,7 +14,7 @@ class AssignInboundRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'assigned_to' => ['required', 'integer', 'exists:users,id'],
+            'assigned_to' => ['required', 'uuid', 'exists:users,id'],
             'notes'       => ['nullable', 'string', 'max:500'],
         ];
     }

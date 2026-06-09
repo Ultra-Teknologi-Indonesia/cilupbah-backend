@@ -18,7 +18,7 @@ class CancelChannelOrderJob implements ShouldQueue
     public array $backoff = [5, 15, 30];
 
     public function __construct(
-        public readonly int|string $orderId,
+        public readonly string $orderId,
         public readonly string $cancelReason,
     ) {
         $this->onQueue(config('queue.names.orders'));

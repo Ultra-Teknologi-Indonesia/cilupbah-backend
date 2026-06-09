@@ -4,10 +4,12 @@ namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Channel\Services\TikTokToInternalOrderMapper;
 use Modules\Channel\Services\TikTokToInternalProductMapper;
+use Modules\Product\Models\ProductSyncLog;
 
 class TikTokProductService
 {
@@ -28,7 +30,7 @@ class TikTokProductService
         $this->productRepository = $productRepository;
     }
 
-    public function pushProduct(int $productId, string $shopId)
+    public function pushProduct(string $productId, string $shopId)
     {
         $shop = $this->shopRepository->findByShopId($shopId);
         if (!$shop || !$shop->access_token) {
@@ -170,54 +172,144 @@ class TikTokProductService
         $res = $this->client->request('POST', '/product/202309/products', ['shop_cipher' => $shopCipher], $payload, $accessToken);
         
         if (isset($res['data']['product_id'])) {
-            $this->productRepository->updateChannelProductId($productId, $res['data']['product_id']);
+            $this->productRepository->updateChannelProductId($productId, $res['data']['product_id'], $shopId);
         }
 
         return $res;
     }
 
-    public function pullProducts(string $shopId)
+    public function pullProducts(string $shopId): int
     {
         $shop = $this->shopRepository->findByShopId($shopId);
         if (!$shop || !$shop->access_token) {
             throw new \Exception("No access token found for shop: {$shopId}");
         }
 
-        $accessToken = $shop->access_token;
-        $shopCipher = $shop->shop_cipher ?? '';
-
-        $queries = [
-            'shop_cipher' => $shopCipher,
-            'page_size' => 100,
-        ];
-        
-        $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
-        
-        if (!isset($res['data']['products'])) {
-            return 0; 
-        }
+        $accessToken   = $shop->access_token;
+        $shopCipher    = $shop->shop_cipher ?? '';
+        $channelShopId = $shop->id;
 
         $productService = app(\Modules\Product\Services\ProductService::class);
-        $mapper = app(TikTokToInternalProductMapper::class);
+        $mapper         = app(TikTokToInternalProductMapper::class);
 
-        $count = 0;
-        foreach ($res['data']['products'] as $item) {
-            try {
-                $internalData = $mapper->map($item, $shopId);
-                $insertedId = $productService->upsertFromChannel($internalData);
-                
-                if ($insertedId) {
-                    $count++;
-                }
-            } catch (\Exception $e) {
-                Log::error("Failed to pull product {$item['id']}: " . $e->getMessage());
+        $count     = 0;
+        $pageToken = null;
+
+        do {
+            $queries = ['shop_cipher' => $shopCipher, 'page_size' => 100];
+            if ($pageToken) {
+                $queries['page_token'] = $pageToken;
             }
-        }
-        
+
+            try {
+                $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
+            } catch (TokenExpiredException $e) {
+                // Token expired — coba refresh sekali, lalu retry halaman yang sama.
+                $accessToken = $this->refreshShopToken($shop);
+                $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
+            }
+
+            if (!isset($res['data']['products'])) {
+                break;
+            }
+
+            foreach ($res['data']['products'] as $item) {
+                try {
+                    $internalData = $mapper->map($item, $shopId);
+                    $insertedId   = $productService->upsertFromChannel($internalData);
+
+                    if ($insertedId) {
+                        $pcmId = $this->productRepository->upsertChannelMapping(
+                            (string) $insertedId,
+                            $shopId,
+                            (string) $item['id'],
+                            'synced'
+                        );
+
+                        // Isi product_variant_channel_mappings per SKU agar webhook stock-sync bekerja.
+                        foreach ($item['skus'] ?? [] as $skuData) {
+                            $sku = !empty($skuData['seller_sku'])
+                                ? $skuData['seller_sku']
+                                : ('TK-' . $skuData['id']);
+
+                            $variant = DB::table('product_variants')
+                                ->where('product_id', $insertedId)
+                                ->where('sku', $sku)
+                                ->first();
+
+                            if ($variant) {
+                                $this->productRepository->upsertVariantChannelMapping(
+                                    $pcmId,
+                                    $variant->id,
+                                    $skuData['id'] ?? null
+                                );
+                            }
+                        }
+
+                        $count++;
+                    }
+                } catch (\Exception $e) {
+                    Log::error("Failed to pull product {$item['id']}: " . $e->getMessage());
+
+                    ProductSyncLog::record([
+                        'channel_shop_id' => $channelShopId,
+                        'action'          => ProductSyncLog::ACTION_DOWNLOAD,
+                        'status'          => ProductSyncLog::STATUS_FAILED,
+                        'payload'         => [
+                            'external_product_id' => $item['id'],
+                            'title'               => $item['title'] ?? null,
+                        ],
+                        'error_message'   => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            $pageToken = $res['data']['next_page_token'] ?? null;
+
+        } while ($pageToken);
+
         return $count;
     }
 
-    public function syncPriceAndInventory(int $productId, string $shopId)
+    /**
+     * Refresh access token untuk shop, simpan ke DB, dan kembalikan token baru.
+     */
+    protected function refreshShopToken(object $shop): string
+    {
+        if (empty($shop->refresh_token)) {
+            throw new \Exception("No refresh token available for shop: {$shop->shop_id}");
+        }
+
+        $tokenData = $this->client->refreshAccessToken($shop->refresh_token);
+
+        $newAccessToken  = $tokenData['data']['access_token']  ?? null;
+        $newRefreshToken = $tokenData['data']['refresh_token'] ?? null;
+
+        if (!$newAccessToken) {
+            throw new \Exception("Token refresh failed for shop: {$shop->shop_id}");
+        }
+
+        $update = [
+            'access_token' => $newAccessToken,
+            'updated_at'   => now(),
+        ];
+
+        if ($newRefreshToken) {
+            $update['refresh_token'] = $newRefreshToken;
+        }
+
+        if (!empty($tokenData['data']['access_token_expire_in'])) {
+            $update['token_expires_at'] = now()->addSeconds($tokenData['data']['access_token_expire_in']);
+        }
+
+        DB::table('channel_shops')->where('id', $shop->id)->update($update);
+
+        Log::info("TikTok token refreshed for shop: {$shop->shop_id}");
+
+        return $newAccessToken;
+    }
+
+    public function syncPriceAndInventory(string $productId, string $shopId)
     {
         $shop = $this->shopRepository->findByShopId($shopId);
         if (!$shop || !$shop->access_token) {
@@ -225,8 +317,13 @@ class TikTokProductService
         }
 
         $product = $this->productRepository->findById($productId);
-        if (!$product || !$product->channel_product_id) {
-            throw new \Exception("Product not found or not synced to TikTok yet.");
+        if (!$product) {
+            throw new \Exception("Product not found.");
+        }
+
+        $externalProductId = $this->productRepository->getExternalProductId($productId, $shopId);
+        if (!$externalProductId) {
+            throw new \Exception("Product not synced to TikTok yet.");
         }
 
         $variants = $this->productRepository->getVariantsByProductId($productId);
@@ -266,17 +363,17 @@ class TikTokProductService
             ];
         }
 
-        $pricePayload = ['product_id' => $product->channel_product_id, 'skus' => $skus];
-        $invPayload = ['product_id' => $product->channel_product_id, 'skus' => $inventorySkus];
+        $pricePayload = ['product_id' => $externalProductId, 'skus' => $skus];
+        $invPayload = ['product_id' => $externalProductId, 'skus' => $inventorySkus];
 
         try {
-            $this->client->request('POST', "/product/202309/products/{$product->channel_product_id}/prices/update", ['shop_cipher' => $shop->shop_cipher ?? ''], $pricePayload, $shop->access_token);
+            $this->client->request('POST', "/product/202309/products/{$externalProductId}/prices/update", ['shop_cipher' => $shop->shop_cipher ?? ''], $pricePayload, $shop->access_token);
         } catch (\Exception $e) {
             Log::warning("TikTok price update failed: " . $e->getMessage());
         }
 
         try {
-            $this->client->request('POST', "/product/202309/products/{$product->channel_product_id}/inventory/update", ['shop_cipher' => $shop->shop_cipher ?? ''], $invPayload, $shop->access_token);
+            $this->client->request('POST', "/product/202309/products/{$externalProductId}/inventory/update", ['shop_cipher' => $shop->shop_cipher ?? ''], $invPayload, $shop->access_token);
         } catch (\Exception $e) {
             Log::warning("TikTok inventory update failed: " . $e->getMessage());
         }
@@ -300,7 +397,7 @@ class TikTokProductService
         }
     }
 
-    public function pushUpdate(int $productId, string $shopId)
+    public function pushUpdate(string $productId, string $shopId)
     {
         $shop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
         if (!$shop || !$shop->access_token) {
@@ -308,8 +405,13 @@ class TikTokProductService
         }
 
         $product = DB::table('products')->where('id', $productId)->first();
-        if (!$product || !$product->channel_product_id) {
-            throw new \Exception("Product not found or not synced to TikTok yet");
+        if (!$product) {
+            throw new \Exception("Product not found");
+        }
+
+        $externalProductId = $this->productRepository->getExternalProductId($productId, $shopId);
+        if (!$externalProductId) {
+            throw new \Exception("Product not synced to TikTok yet");
         }
 
         $variants = DB::table('product_variants')->where('product_id', $productId)->get();
@@ -330,52 +432,52 @@ class TikTokProductService
 
         $payload = $this->mapper->map($internalProduct, $uploadedImageIds);
 
-        return $this->client->request('PUT', "/product/202309/products/{$product->channel_product_id}", ['shop_cipher' => $shop->shop_cipher ?? ''], $payload, $shop->access_token);
+        return $this->client->request('PUT', "/product/202309/products/{$externalProductId}", ['shop_cipher' => $shop->shop_cipher ?? ''], $payload, $shop->access_token);
     }
 
-    public function deleteProduct(int $productId, string $shopId)
+    public function deleteProduct(string $productId, string $shopId)
     {
         $shop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
         if (!$shop || !$shop->access_token) {
             throw new \Exception("No access token found for shop: {$shopId}");
         }
 
-        $product = DB::table('products')->where('id', $productId)->first();
-        if (!$product || !$product->channel_product_id) {
+        $externalProductId = $this->productRepository->getExternalProductId($productId, $shopId);
+        if (!$externalProductId) {
             return true;
         }
 
-        return $this->client->request('DELETE', "/product/202309/products", ['shop_cipher' => $shop->shop_cipher ?? ''], ['product_ids' => [$product->channel_product_id]], $shop->access_token);
+        return $this->client->request('DELETE', "/product/202309/products", ['shop_cipher' => $shop->shop_cipher ?? ''], ['product_ids' => [$externalProductId]], $shop->access_token);
     }
 
-    public function activateProduct(int $productId, string $shopId)
+    public function activateProduct(string $productId, string $shopId)
     {
         $shop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
         if (!$shop || !$shop->access_token) {
             throw new \Exception("No access token found for shop: {$shopId}");
         }
 
-        $product = DB::table('products')->where('id', $productId)->first();
-        if (!$product || !$product->channel_product_id) {
+        $externalProductId = $this->productRepository->getExternalProductId($productId, $shopId);
+        if (!$externalProductId) {
             throw new \Exception("Product not synced to TikTok yet");
         }
 
-        return $this->client->request('POST', "/product/202309/products/activate", ['shop_cipher' => $shop->shop_cipher ?? ''], ['product_ids' => [$product->channel_product_id]], $shop->access_token);
+        return $this->client->request('POST', "/product/202309/products/activate", ['shop_cipher' => $shop->shop_cipher ?? ''], ['product_ids' => [$externalProductId]], $shop->access_token);
     }
 
-    public function deactivateProduct(int $productId, string $shopId)
+    public function deactivateProduct(string $productId, string $shopId)
     {
         $shop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
         if (!$shop || !$shop->access_token) {
             throw new \Exception("No access token found for shop: {$shopId}");
         }
 
-        $product = DB::table('products')->where('id', $productId)->first();
-        if (!$product || !$product->channel_product_id) {
+        $externalProductId = $this->productRepository->getExternalProductId($productId, $shopId);
+        if (!$externalProductId) {
             throw new \Exception("Product not synced to TikTok yet");
         }
 
-        return $this->client->request('POST', "/product/202309/products/deactivate", ['shop_cipher' => $shop->shop_cipher ?? ''], ['product_ids' => [$product->channel_product_id]], $shop->access_token);
+        return $this->client->request('POST', "/product/202309/products/deactivate", ['shop_cipher' => $shop->shop_cipher ?? ''], ['product_ids' => [$externalProductId]], $shop->access_token);
     }
 
     public function bulkPushProducts(string $shopId): int
@@ -385,7 +487,8 @@ class TikTokProductService
 
         foreach ($products as $product) {
             try {
-                if (empty($product->channel_product_id)) {
+                $externalProductId = $this->productRepository->getExternalProductId($product->id, $shopId);
+                if (empty($externalProductId)) {
                     $this->pushProduct($product->id, $shopId);
                 } else {
                     $this->pushUpdate($product->id, $shopId);

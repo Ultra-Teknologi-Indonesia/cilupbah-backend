@@ -4,6 +4,8 @@ namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
+use Modules\Channel\Exceptions\TokenExpiredException;
 
 class TikTokClient
 {
@@ -50,6 +52,8 @@ class TikTokClient
         $queryString = http_build_query($queries);
         $fullUrl = $url . '?' . $queryString;
 
+        $this->throttle();
+
         $requestMethod = strtolower($method);
 
         $headers = [];
@@ -81,15 +85,35 @@ class TikTokClient
 
         if (isset($data['code']) && $data['code'] !== 0) {
             Log::error('TikTok API Error', [
-                'url' => $fullUrl,
-                'body' => $body,
+                'url'      => $fullUrl,
+                'body'     => $body,
                 'response' => $data,
             ]);
+
+            // Token expired / unauthorized — caller harus refresh dan retry.
+            if (in_array((int) $data['code'], [40100, 40102, 40103], true)) {
+                $shopId = $queries['shop_cipher'] ?? 'unknown';
+                throw new TokenExpiredException($shopId, $data['message'] ?? 'Access token expired');
+            }
 
             throw new \Exception("TikTok API Error: " . ($data['message'] ?? 'Unknown error'));
         }
 
         return $data;
+    }
+
+    /**
+     * Throttle sesuai CHANNEL_API_RATE_LIMIT_PER_SECOND.
+     * Blokir (busy-wait) jika sudah melebihi kuota per detik.
+     */
+    protected function throttle(): void
+    {
+        $limit = config('channel.api_rate_limit_per_second', 8);
+
+        if (!RateLimiter::attempt('tiktok-api', $limit, fn () => null, 1)) {
+            $wait = RateLimiter::availableIn('tiktok-api');
+            usleep((int) ($wait * 1_000_000) + 50_000);
+        }
     }
 
     public function getAuthUrl(string $redirectUri, string $state = ''): string

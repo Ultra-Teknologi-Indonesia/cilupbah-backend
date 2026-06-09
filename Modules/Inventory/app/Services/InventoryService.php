@@ -239,11 +239,12 @@ class InventoryService
         return DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber, $createdBy) {
             $inventory = $this->inventoryRepository->findExactForUpdate($itemId, $locationId, null);
 
-            if (!$inventory || $inventory->available < $qty) {
-                $current = $inventory ? $inventory->available : 0;
-                throw new \Exception("Stok available tidak mencukupi untuk reservasi (tersedia: {$current}, diminta: {$qty}).");
+            if (!$inventory) {
+                throw new \Exception("Inventory tidak ditemukan untuk reservasi (item: {$itemId}).");
             }
 
+            // Stok diizinkan menjadi negatif: reservasi tetap dilakukan walau available
+            // kurang dari qty pesanan (available dapat bernilai negatif).
             $inventory->reserved += $qty;
             $this->inventoryRepository->updateStock($inventory);
 
@@ -268,10 +269,12 @@ class InventoryService
         return DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber, $createdBy) {
             $inventory = $this->inventoryRepository->findExactForUpdate($itemId, $locationId, null);
 
-            if (!$inventory || $inventory->on_hand < $qty) {
-                throw new \Exception("Stok on_hand tidak mencukupi untuk fulfillment.");
+            if (!$inventory) {
+                throw new \Exception("Inventory tidak ditemukan untuk fulfillment (item: {$itemId}).");
             }
 
+            // Stok diizinkan menjadi negatif: fulfillment tetap mengurangi on_hand walau
+            // melebihi stok rak (on_hand dapat bernilai negatif).
             $inventory->on_hand -= $qty;
             $inventory->reserved -= $qty;
             $this->inventoryRepository->updateStock($inventory);

@@ -318,9 +318,9 @@ class SalesOrderService
 
     private function releaseStockForOrder(SalesOrder $order): void
     {
-        // Stok hanya perlu dilepas saat order masih berstatus 'reserved'.
-        // Setelah 'picked'/'packed', reserved sudah dikurangi pada proses pick,
-        // sehingga melepas lagi akan membuat reserved negatif (double-release).
+        // Hanya order berstatus 'reserved' yang masih memegang reservasi stok.
+        // Status 'picked'/'packed' sudah melepas reserved saat pick(), sehingga
+        // pembatalan tidak boleh melepas ulang (mencegah reserved menjadi negatif).
         if ($order->status !== 'reserved') {
             return;
         }

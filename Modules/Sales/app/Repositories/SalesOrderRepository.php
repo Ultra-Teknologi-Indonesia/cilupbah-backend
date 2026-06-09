@@ -33,6 +33,10 @@ class SalesOrderRepository
 
     public function getOrderById(int|string $id): ?SalesOrder
     {
+        if (! \Ramsey\Uuid\Uuid::isValid((string) $id)) {
+            return null;
+        }
+
         return QueryBuilder::for(SalesOrder::class)
             ->allowedIncludes('items')
             ->find($id);
@@ -89,7 +93,7 @@ class SalesOrderRepository
         return SalesOrder::find($orderId);
     }
 
-    public function syncOrderItems(int|string $orderId, array $items): void
+    public function syncOrderItems(string $orderId, array $items): void
     {
         DB::table('sales_order_items')->where('order_id', $orderId)->delete();
 

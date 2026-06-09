@@ -6,18 +6,39 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Modules\Product\Http\Requests\CreateProductRequest;
+use Modules\Product\Http\Requests\UpdateProductRequest;
+use Modules\Product\Http\Resources\ProductResource;
+use Modules\Product\Models\Product;
 use Modules\Product\Services\ProductService;
+use Modules\Product\Services\ProductLifecycleService;
+use Modules\Channel\Models\ChannelShop;
+use Modules\Inventory\Models\Inventory;
 use OpenApi\Attributes as OA;
 use App\Traits\ApiResponse;
 
 class ProductController extends Controller
 {
     use ApiResponse;
-    protected ProductService $productService;
 
-    public function __construct(ProductService $productService)
-    {
+    /** Relasi yang dimuat saat mengembalikan detail produk. */
+    private const DETAIL_RELATIONS = [
+        'variants.channelMappings.channelMapping',
+        'media',
+        'category',
+        'brand',
+        'channelMappings.channelShop.channel',
+        'archivedBy',
+    ];
+
+    protected ProductService $productService;
+    protected ProductLifecycleService $lifecycleService;
+
+    public function __construct(
+        ProductService $productService,
+        ProductLifecycleService $lifecycleService
+    ) {
         $this->productService = $productService;
+        $this->lifecycleService = $lifecycleService;
     }
 
     /**
@@ -31,6 +52,7 @@ class ProductController extends Controller
             new OA\Parameter(name: 'page', in: 'query', required: false, description: 'Page number', schema: new OA\Schema(type: 'integer', default: 1)),
             new OA\Parameter(name: 'limit', in: 'query', required: false, description: 'Number of items per page', schema: new OA\Schema(type: 'integer', default: 20)),
             new OA\Parameter(name: 'filter[is_active]', in: 'query', required: false, description: 'Filter aktif/tidak aktif (true/false/1/0)', schema: new OA\Schema(type: 'boolean')),
+            new OA\Parameter(name: 'status', in: 'query', required: false, description: 'Filter status lifecycle: download | in_review | master | archived', schema: new OA\Schema(type: 'string', enum: ['download', 'in_review', 'master', 'archived'])),
             new OA\Parameter(name: 'search', in: 'query', required: false, description: 'Cari berdasarkan nama produk dengan PostgreSQL Full-Text Search', schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'Sort field (e.g. name, -created_at)', schema: new OA\Schema(type: 'string'))
         ],
@@ -51,16 +73,68 @@ class ProductController extends Controller
     public function index(Request $request): JsonResponse
     {
         $limit = $request->input('limit', 10);
-        
-        $products = \Spatie\QueryBuilder\QueryBuilder::for(\Modules\Product\Models\Product::class)
-            ->with(['variants', 'media', 'category', 'brand'])
+
+        $status = $request->query('status');
+        if ($status !== null && !in_array($status, Product::STATUSES, true)) {
+            return $this->errorResponse('Status tidak valid', 422, [
+                'status' => ['Nilai harus salah satu dari: ' . implode(', ', Product::STATUSES)],
+            ]);
+        }
+
+        $products = \Spatie\QueryBuilder\QueryBuilder::for(Product::class)
+            ->with(['variants', 'media', 'category', 'brand', 'channelMappings.channelShop.channel'])
             ->allowedSearch('name')
             ->allowedFilters(
                 \Spatie\QueryBuilder\AllowedFilter::exact('is_active')
             )
             ->allowedSorts('name', 'created_at')
+            ->when($status !== null, fn ($query) => $query->where('status', $status))
             ->paginate($limit);
-        return $this->successPaginatedResponse($products, 'Get products success');
+
+        return $this->successPaginatedResponse(ProductResource::collection($products), 'Get products success');
+    }
+
+    /**
+     * Daftar produk Master yang BELUM ter-upload ke toko/channel tertentu ("Belum Upload").
+     */
+    #[OA\Get(
+        path: '/api/v1/products/uploadable',
+        summary: 'List uploadable products (belum ter-mapping ke shop)',
+        tags: ['Products'],
+        parameters: [
+            new OA\Parameter(name: 'channel', in: 'query', required: false, description: 'Kode channel (informasional)', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'shop_id', in: 'query', required: true, description: 'shop_id marketplace tujuan', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'search', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+            new OA\Response(response: 422, description: 'Toko tidak ditemukan / shop_id kosong')
+        ]
+    )]
+    public function uploadable(Request $request): JsonResponse
+    {
+        $request->validate([
+            'shop_id' => 'required|string',
+            'channel' => 'nullable|string',
+        ]);
+
+        $channelShopId = ChannelShop::where('shop_id', $request->query('shop_id'))->value('id');
+        if (!$channelShopId) {
+            return $this->errorResponse('Toko tidak ditemukan atau tidak aktif', 422);
+        }
+
+        $limit = $request->input('limit', 10);
+
+        $products = \Spatie\QueryBuilder\QueryBuilder::for(Product::class)
+            ->with(['variants', 'media', 'category', 'brand'])
+            ->where('status', Product::STATUS_MASTER)
+            ->whereDoesntHave('channelMappings', fn ($q) => $q->where('channel_shop_id', $channelShopId))
+            ->allowedSearch('name')
+            ->allowedSorts('name', 'created_at')
+            ->paginate($limit);
+
+        return $this->successPaginatedResponse(ProductResource::collection($products), 'Get uploadable products success');
     }
 
     /**
@@ -89,9 +163,26 @@ class ProductController extends Controller
     /**
      * Show the specified resource.
      */
-    public function show($id)
+    #[OA\Get(
+        path: '/api/v1/products/{id}',
+        summary: 'Get product detail',
+        tags: ['Products'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Get product detail success'),
+            new OA\Response(response: 404, description: 'Product not found')
+        ]
+    )]
+    public function show($id): JsonResponse
     {
-        return view('product::show');
+        $product = $this->findProduct($id, self::DETAIL_RELATIONS);
+        if (!$product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        return $this->successResponse(new ProductResource($product), 'Get product detail success');
     }
 
     /**
@@ -105,10 +196,203 @@ class ProductController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, $id) {}
+    #[OA\Put(
+        path: '/api/v1/products/{id}',
+        summary: 'Update product',
+        tags: ['Products'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Product updated'),
+            new OA\Response(response: 404, description: 'Product not found')
+        ]
+    )]
+    public function update(UpdateProductRequest $request, $id): JsonResponse
+    {
+        $product = $this->findProduct($id);
+        if (!$product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        $this->productService->updateProduct($id, $request->validated());
+
+        return $this->successResponse(
+            new ProductResource($product->fresh(self::DETAIL_RELATIONS)),
+            'Produk berhasil diperbarui'
+        );
+    }
 
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy($id) {}
+    public function destroy($id): JsonResponse
+    {
+        $product = $this->findProduct($id);
+        if (!$product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        // Dead-stock guard: produk hanya boleh dihapus jika sudah tidak punya stok on hand.
+        $variantIds = $product->variants()->pluck('id');
+        $stockOnHand = $variantIds->isEmpty()
+            ? 0
+            : (int) Inventory::whereIn('item_id', $variantIds)->sum('on_hand');
+
+        if ($stockOnHand > 0) {
+            return $this->errorResponse(
+                "Produk masih memiliki stok ({$stockOnHand} unit). Hanya produk dead stock (stok habis) yang dapat dihapus. Gunakan Arsip untuk menonaktifkan produk yang masih bergerak.",
+                422
+            );
+        }
+
+        // Soft delete: record produk tetap tersimpan agar history transaksi tetap dapat ditelusuri.
+        $product->delete();
+
+        return $this->successResponse(null, 'Produk berhasil dihapus');
+    }
+
+    /**
+     * Ajukan produk Download ke In Review.
+     */
+    #[OA\Post(
+        path: '/api/v1/products/{id}/submit-review',
+        summary: 'Submit product for review (download → in_review)',
+        tags: ['Products'],
+        parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [
+            new OA\Response(response: 200, description: 'Product submitted for review'),
+            new OA\Response(response: 422, description: 'Invalid state'),
+            new OA\Response(response: 404, description: 'Product not found')
+        ]
+    )]
+    public function submitForReview(Request $request, $id): JsonResponse
+    {
+        return $this->runLifecycle(
+            $id,
+            fn (Product $product) => $this->lifecycleService->submitForReview($product),
+            'Produk berhasil diajukan ke Review'
+        );
+    }
+
+    /**
+     * Approve produk In Review menjadi Master.
+     */
+    #[OA\Post(
+        path: '/api/v1/products/{id}/approve',
+        summary: 'Approve product to Master',
+        tags: ['Products'],
+        parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [
+            new OA\Response(response: 200, description: 'Product approved'),
+            new OA\Response(response: 422, description: 'Invalid state / validation'),
+            new OA\Response(response: 404, description: 'Product not found')
+        ]
+    )]
+    public function approve(Request $request, $id): JsonResponse
+    {
+        return $this->runLifecycle($id, fn (Product $product) => $this->lifecycleService->approve($product, $request->user()?->id), 'Produk berhasil disetujui menjadi Master');
+    }
+
+    /**
+     * Reject produk In Review kembali ke Download.
+     */
+    #[OA\Post(
+        path: '/api/v1/products/{id}/reject',
+        summary: 'Reject product back to Download',
+        tags: ['Products'],
+        parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [
+            new OA\Response(response: 200, description: 'Product rejected'),
+            new OA\Response(response: 422, description: 'Invalid state'),
+            new OA\Response(response: 404, description: 'Product not found')
+        ]
+    )]
+    public function reject(Request $request, $id): JsonResponse
+    {
+        return $this->runLifecycle($id, fn (Product $product) => $this->lifecycleService->reject($product), 'Produk dikembalikan ke Download');
+    }
+
+    /**
+     * Arsipkan produk Master.
+     */
+    #[OA\Post(
+        path: '/api/v1/products/{id}/archive',
+        summary: 'Archive product',
+        tags: ['Products'],
+        parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        requestBody: new OA\RequestBody(required: false, content: new OA\JsonContent(properties: [
+            new OA\Property(property: 'reason', type: 'string', nullable: true)
+        ])),
+        responses: [
+            new OA\Response(response: 200, description: 'Product archived'),
+            new OA\Response(response: 422, description: 'Invalid state'),
+            new OA\Response(response: 404, description: 'Product not found')
+        ]
+    )]
+    public function archive(Request $request, $id): JsonResponse
+    {
+        $validated = $request->validate(['reason' => 'nullable|string|max:255']);
+
+        return $this->runLifecycle(
+            $id,
+            fn (Product $product) => $this->lifecycleService->archive($product, $validated['reason'] ?? null, $request->user()?->id),
+            'Produk berhasil diarsipkan'
+        );
+    }
+
+    /**
+     * Pulihkan produk dari Arsip ke Master.
+     */
+    #[OA\Post(
+        path: '/api/v1/products/{id}/restore',
+        summary: 'Restore product from archive',
+        tags: ['Products'],
+        parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [
+            new OA\Response(response: 200, description: 'Product restored'),
+            new OA\Response(response: 422, description: 'Invalid state'),
+            new OA\Response(response: 404, description: 'Product not found')
+        ]
+    )]
+    public function restore(Request $request, $id): JsonResponse
+    {
+        return $this->runLifecycle($id, fn (Product $product) => $this->lifecycleService->restore($product), 'Produk berhasil dipulihkan ke Master');
+    }
+
+    /**
+     * Jalankan satu transisi lifecycle dengan penanganan not-found (404) & pelanggaran aturan (422).
+     */
+    private function runLifecycle($id, callable $action, string $message): JsonResponse
+    {
+        $product = $this->findProduct($id);
+        if (!$product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        try {
+            $action($product);
+        } catch (\DomainException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
+        return $this->successResponse(
+            new ProductResource($product->fresh(self::DETAIL_RELATIONS)),
+            $message
+        );
+    }
+
+    /**
+     * Cari produk by id dengan guard format UUID (id non-UUID -> null, dipetakan ke 404
+     * agar tidak memicu error cast UUID di Postgres).
+     */
+    private function findProduct($id, array $with = []): ?Product
+    {
+        $normalizedId = str_replace('-', '', (string) $id);
+        if (strlen($normalizedId) !== 32 || !ctype_xdigit($normalizedId)) {
+            return null;
+        }
+
+        return Product::with($with)->find($id);
+    }
 }

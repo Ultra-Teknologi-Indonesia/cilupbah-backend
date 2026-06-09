@@ -28,17 +28,30 @@ class ChannelProductController extends Controller
         tags: ["Channel Products"]
     )]
     #[OA\Parameter(name: "channel", in: "path", required: true, schema: new OA\Schema(type: "string"))]
+    #[OA\Parameter(name: "shop_id", in: "query", required: true, description: "shop_id marketplace", schema: new OA\Schema(type: "string"))]
     #[OA\Parameter(name: "page", in: "query", required: false, schema: new OA\Schema(type: "integer"))]
-    #[OA\Parameter(name: "limit", in: "query", required: false, schema: new OA\Schema(type: "integer"))]
+    #[OA\Parameter(name: "limit", in: "query", required: false, schema: new OA\Schema(type: "integer", default: 20))]
+    #[OA\Parameter(name: "sync_status", in: "query", required: false, description: "Filter sync status: synced|pending|failed|syncing|deactivated", schema: new OA\Schema(type: "string"))]
     #[OA\Parameter(name: "filter[is_active]", in: "query", required: false, description: "Filter aktif/tidak aktif (true/false/1/0)", schema: new OA\Schema(type: "boolean"))]
     #[OA\Parameter(name: "filter[name]", in: "query", required: false, description: "Cari berdasarkan nama produk", schema: new OA\Schema(type: "string"))]
     #[OA\Parameter(name: "sort", in: "query", required: false, description: "Sort field (e.g. name, -created_at, sell_price)", schema: new OA\Schema(type: "string"))]
     #[OA\Response(response: 200, description: "Get products success")]
+    #[OA\Response(response: 422, description: "sync_status tidak valid")]
     public function index(Request $request, string $channel): JsonResponse
     {
-        $shopId = $request->query('shop_id');
-        
-        $products = $this->channelProductService->getChannelProducts($shopId ?? '');
+        $shopId     = $request->query('shop_id', '');
+        $syncStatus = $request->query('sync_status');
+        $limit      = (int) $request->input('limit', 20);
+
+        $validStatuses = ['synced', 'pending', 'failed', 'syncing', 'deactivated'];
+        if ($syncStatus !== null && !in_array($syncStatus, $validStatuses, true)) {
+            return $this->errorResponse(
+                'sync_status tidak valid. Nilai yang diizinkan: ' . implode(', ', $validStatuses),
+                422
+            );
+        }
+
+        $products = $this->channelProductService->getChannelProducts($shopId, $limit, $syncStatus);
 
         return $this->successPaginatedResponse(ProductResource::collection($products), 'Berhasil mengambil daftar produk');
     }
@@ -315,6 +328,36 @@ class ChannelProductController extends Controller
         $this->channelProductService->updatePrice($id, $shopId);
 
         return $this->successResponse(['success' => true], 'Harga produk berhasil diperbarui');
+    }
+
+    #[OA\Delete(
+        path: "/api/v1/{channel}/products/{id}/link",
+        summary: "Unlink product from channel",
+        description: "Putus koneksi produk dari 1 channel/toko tanpa menghapus produk lokal. Wajib shop_id.",
+        tags: ["Channel Products"]
+    )]
+    #[OA\Parameter(name: "channel", in: "path", required: true, schema: new OA\Schema(type: "string"))]
+    #[OA\Parameter(name: "id", in: "path", required: true, description: "external_product_id", schema: new OA\Schema(type: "string"))]
+    #[OA\RequestBody(required: true, content: new OA\JsonContent(properties: [
+        new OA\Property(property: "shop_id", type: "string")
+    ]))]
+    #[OA\Response(response: 200, description: "Channel link removed")]
+    #[OA\Response(response: 404, description: "Produk tidak terhubung ke channel ini")]
+    #[OA\Response(response: 409, description: "Sedang proses sync")]
+    public function unlink(Request $request, string $channel, string $id): JsonResponse
+    {
+        $shopId = $request->input('shop_id');
+        if (!$shopId) {
+            return $this->errorResponse('shop_id wajib diisi', 400);
+        }
+
+        try {
+            $this->channelProductService->unlinkProduct($id, $shopId);
+        } catch (\RuntimeException $e) {
+            return $this->errorResponse($e->getMessage(), $e->getCode() ?: 422);
+        }
+
+        return $this->successResponse(['success' => true], 'Koneksi channel berhasil diputus');
     }
 
     #[OA\Get(

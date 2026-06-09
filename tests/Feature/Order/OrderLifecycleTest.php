@@ -165,8 +165,9 @@ class OrderLifecycleTest extends TestCase
         $this->postJson('/api/v1/sales', $payload)->assertStatus(409);
     }
 
-    public function test_insufficient_stock_returns_422(): void
+    public function test_order_exceeding_stock_succeeds_and_stock_goes_negative(): void
     {
+        // Stok rak hanya 100; order 999 tetap diterima dan stok diizinkan negatif.
         $payload = $this->orderPayload(['items' => [
             [
                 'sku'         => $this->variant->sku,
@@ -179,8 +180,12 @@ class OrderLifecycleTest extends TestCase
 
         $response = $this->postJson('/api/v1/sales', $payload);
 
-        $response->assertStatus(422)
-            ->assertJsonFragment(['status' => 'error']);
+        $response->assertStatus(201)
+            ->assertJsonPath('data.status', 'reserved');
+
+        $this->inventory->refresh();
+        $this->assertEquals(999, $this->inventory->reserved);
+        $this->assertEquals(-899, $this->inventory->available); // 100 - 999
     }
 
     public function test_create_order_requires_items(): void
@@ -574,7 +579,7 @@ class OrderLifecycleTest extends TestCase
 
     // ─── CONCURRENT STOCK SAFETY ─────────────────────────────
 
-    public function test_stock_cannot_go_negative_across_orders(): void
+    public function test_stock_can_go_negative_across_orders(): void
     {
         $this->inventory->update([
             'on_hand'   => 5,
@@ -599,15 +604,12 @@ class OrderLifecycleTest extends TestCase
             ]],
         ]);
 
-        $r1 = $this->postJson('/api/v1/sales', $payload1);
-        $r1->assertStatus(201);
-
-        $r2 = $this->postJson('/api/v1/sales', $payload2);
-        $r2->assertStatus(422);
+        $this->postJson('/api/v1/sales', $payload1)->assertStatus(201);
+        $this->postJson('/api/v1/sales', $payload2)->assertStatus(201);
 
         $this->inventory->refresh();
-        $this->assertEquals(1, $this->inventory->available);
-        $this->assertEquals(4, $this->inventory->reserved);
+        $this->assertEquals(8, $this->inventory->reserved);
+        $this->assertEquals(-3, $this->inventory->available); // 5 - 8
     }
 
     // ─── MOVEMENT AUDIT TRAIL ────────────────────────────────

@@ -8,19 +8,31 @@ use Illuminate\Support\Facades\DB;
 
 class ProductUploadTest extends TestCase
 {
-    // We don't want to refresh the entire database because we already seeded it
-    // use RefreshDatabase; 
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->withoutMiddleware();
+
+        // Master data minimum yang dibutuhkan payload (self-seeded, tidak bergantung seeder dev).
+        DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Kamera']);
+        DB::table('brands')->insertOrIgnore(['id' => 1, 'name' => 'Sony']);
+        DB::table('attributes')->insertOrIgnore([
+            ['id' => 1, 'name' => 'Warna', 'type' => 'sales'],
+            ['id' => 2, 'name' => 'Ukuran', 'type' => 'sales'],
+            ['id' => 36, 'name' => 'Resolusi', 'type' => 'spec'],
+        ]);
+    }
 
     public function test_can_upload_internal_product()
     {
-        // Bypass authentication
-        $this->withoutMiddleware();
-
         $payload = [
-            "brand_id" => 101, // Assumes seeded
-            "category_id" => 54, // Assumes seeded
+            "brand_id" => 1,
+            "category_id" => 1,
             "name" => "Sony Alpha A6000 Kit 16-50mm",
-            "sku" => "SONY-A6000-COPY-" . rand(1000, 9999), // Randomize to avoid unique constraint if run multiple times
+            "sku" => "SONY-A6000-COPY-" . rand(1000, 9999),
             "description" => "Kamera mirrorless ringan dengan sensor 24.3MP",
             "search_keyword" => "kamera sony, alpha, a6000, mirrorless",
             "order_type" => "PREORDER",
@@ -37,7 +49,7 @@ class ProductUploadTest extends TestCase
             "is_active" => true,
             "specifications" => [
                 [
-                    "attribute_id" => 36, // Assumes seeded
+                    "attribute_id" => 36,
                     "attribute_option_id" => null,
                     "text_value" => "24.3 MP"
                 ]
@@ -51,13 +63,12 @@ class ProductUploadTest extends TestCase
                 ]
             ],
             "variation_types" => [
-                ["attribute_id" => 1, "sort_order" => 1], // Assumes seeded
-                ["attribute_id" => 2, "sort_order" => 2]  // Assumes seeded
+                ["attribute_id" => 1, "sort_order" => 1],
+                ["attribute_id" => 2, "sort_order" => 2]
             ],
             "variants" => [
                 [
                     "sku" => "SONY-A6000-BLACK-L-" . rand(1000, 9999),
-                    "barcode" => "899" . rand(100000000, 999999999),
                     "buy_price" => 5000000,
                     "sell_price" => 6000000,
                     "weight" => 1.2,
@@ -111,7 +122,7 @@ class ProductUploadTest extends TestCase
             'product_id' => $productId,
             'sell_price' => 6000000
         ]);
-        
+
         $this->assertDatabaseHas('product_media', [
             'product_id' => $productId,
             'url' => 'https://example.com/image1.jpg'

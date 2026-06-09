@@ -2,24 +2,22 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * source_id bersifat polimorfik (PURCHASE_ORDER, SALES_RETURN, TRANSIT_IN, dll)
-     * yang seluruh sumbernya memakai UUID. Sebelumnya bertipe unsignedBigInteger
-     * sehingga tidak bisa menyimpan UUID. Ubah menjadi uuid.
-     */
     public function up(): void
     {
         Schema::table('inbounds', function (Blueprint $table) {
             $table->dropIndex(['source_type', 'source_id']);
-            $table->dropColumn('source_id');
         });
 
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement("ALTER TABLE inbounds ALTER COLUMN source_id TYPE UUID USING LPAD(source_id::text, 32, '0')::uuid");
+        }
+
         Schema::table('inbounds', function (Blueprint $table) {
-            $table->uuid('source_id')->nullable()->after('source_type');
             $table->index(['source_type', 'source_id']);
         });
     }
@@ -28,11 +26,13 @@ return new class extends Migration
     {
         Schema::table('inbounds', function (Blueprint $table) {
             $table->dropIndex(['source_type', 'source_id']);
-            $table->dropColumn('source_id');
         });
 
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement("ALTER TABLE inbounds ALTER COLUMN source_id TYPE BIGINT USING NULLIF(source_id::text, '')::bigint");
+        }
+
         Schema::table('inbounds', function (Blueprint $table) {
-            $table->unsignedBigInteger('source_id')->nullable()->after('source_type');
             $table->index(['source_type', 'source_id']);
         });
     }
