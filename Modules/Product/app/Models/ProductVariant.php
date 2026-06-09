@@ -40,4 +40,9 @@ class ProductVariant extends Model
     {
         return $this->hasMany(VariantOption::class, 'variant_id');
     }
+
+    public function inventories()
+    {
+        return $this->hasMany(\Modules\Inventory\Models\Inventory::class, 'item_id');
+    }
 }
