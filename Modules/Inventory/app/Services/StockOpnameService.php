@@ -58,7 +58,7 @@ class StockOpnameService
 
                 foreach ($inventories as $inventory) {
                     $items[] = [
-                        'id' => Uuid::uuid7()->getHex()->toString(),
+                        'id' => Uuid::uuid7()->toString(),
                         'stock_opname_id' => $opname->id,
                         'item_id' => $inventory->item_id,
                         'bin_id' => $inventory->bin_id,

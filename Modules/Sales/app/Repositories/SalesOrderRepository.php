@@ -80,7 +80,7 @@ class SalesOrderRepository
             DB::table('sales_orders')->where('id', $existing->id)->update($orderRow);
             $orderId = $existing->id;
         } else {
-            $orderRow['id'] = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();
+            $orderRow['id'] = \Ramsey\Uuid\Uuid::uuid7()->toString();
             $orderRow['created_at'] = now();
             DB::table('sales_orders')->insert($orderRow);
             $orderId = $orderRow['id'];
@@ -104,7 +104,7 @@ class SalesOrderRepository
             }
 
             $itemsToInsert[] = [
-                'id' => \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString(),
+                'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
                 'order_id' => $orderId,
                 'item_id' => $itemId,
                 'channel_product_id' => $item['channel_product_id'] ?? null,

@@ -14,8 +14,8 @@ class ScanPutawayRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'inbound_item_id' => ['required', 'string', 'size:32'],
-            'bin_id'          => ['required', 'string', 'size:32'],
+            'inbound_item_id' => ['required', 'string', 'uuid'],
+            'bin_id'          => ['required', 'string', 'uuid'],
             'qty'             => ['required', 'integer', 'min:1'],
         ];
     }

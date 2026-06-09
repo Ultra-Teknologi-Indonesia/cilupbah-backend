@@ -219,7 +219,7 @@ class OrderLifecycleTest extends TestCase
 
     public function test_show_nonexistent_order_returns_404(): void
     {
-        $nonexistentId = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();
+        $nonexistentId = \Ramsey\Uuid\Uuid::uuid7()->toString();
         $this->getJson("/api/v1/sales/{$nonexistentId}")->assertStatus(404);
     }
 
