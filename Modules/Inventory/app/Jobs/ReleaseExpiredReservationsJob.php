@@ -18,7 +18,7 @@ class ReleaseExpiredReservationsJob implements ShouldQueue
 
     public function __construct()
     {
-        $this->onQueue('stock-default');
+        $this->onQueue(config('queue.names.stock_default'));
     }
 
     public function handle(ReservedStockService $reservedStockService): void

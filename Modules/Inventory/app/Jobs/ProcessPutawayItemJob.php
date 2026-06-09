@@ -26,7 +26,7 @@ class ProcessPutawayItemJob implements ShouldQueue
         protected string $itemId,
         protected array $data,
     ) {
-        $this->onQueue('stock-default');
+        $this->onQueue(config('queue.names.stock_default'));
     }
 
     public function handle(
@@ -87,27 +87,13 @@ class ProcessPutawayItemJob implements ShouldQueue
                     'created_by' => 'system',
                 ]);
 
-                $destInventory = $inventoryRepository->findExactForUpdate(
+                $destInventory = $inventoryRepository->findOrCreateForUpdate(
                     $putawayItem->item_id,
                     $putaway->location_id,
                     $destinationBinId,
                     $putawayItem->batch_no ?? '',
-                    $putawayItem->serial_no ?? ''
+                    $putawayItem->serial_no ?? '',
                 );
-
-                if (!$destInventory) {
-                    $destInventory = $inventoryRepository->create([
-                        'item_id' => $putawayItem->item_id,
-                        'location_id' => $putaway->location_id,
-                        'bin_id' => $destinationBinId,
-                        'batch_no' => $putawayItem->batch_no ?? '',
-                        'serial_no' => $putawayItem->serial_no ?? '',
-                        'on_hand' => 0,
-                        'on_order' => 0,
-                        'reserved' => 0,
-                        'available' => 0,
-                    ]);
-                }
 
                 $destInventory->on_hand += $qty;
                 $inventoryRepository->updateStock($destInventory);
