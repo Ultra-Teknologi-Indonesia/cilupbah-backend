@@ -12,6 +12,7 @@ use Modules\Product\Models\Product;
 use Modules\Product\Services\ProductService;
 use Modules\Product\Services\ProductLifecycleService;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Inventory\Models\Inventory;
 use OpenApi\Attributes as OA;
 use App\Traits\ApiResponse;
 
@@ -232,6 +233,20 @@ class ProductController extends Controller
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
+        // Dead-stock guard: produk hanya boleh dihapus jika sudah tidak punya stok on hand.
+        $variantIds = $product->variants()->pluck('id');
+        $stockOnHand = $variantIds->isEmpty()
+            ? 0
+            : (int) Inventory::whereIn('item_id', $variantIds)->sum('on_hand');
+
+        if ($stockOnHand > 0) {
+            return $this->errorResponse(
+                "Produk masih memiliki stok ({$stockOnHand} unit). Hanya produk dead stock (stok habis) yang dapat dihapus. Gunakan Arsip untuk menonaktifkan produk yang masih bergerak.",
+                422
+            );
+        }
+
+        // Soft delete: record produk tetap tersimpan agar history transaksi tetap dapat ditelusuri.
         $product->delete();
 
         return $this->successResponse(null, 'Produk berhasil dihapus');

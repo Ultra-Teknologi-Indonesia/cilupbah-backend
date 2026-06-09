@@ -223,18 +223,69 @@ class ProductE2ETest extends TestCase
 
         $productId = $createResponse->json('data.product_id');
 
-        // 2. Hapus
+        // 2. Hapus (dead stock: belum ada inventory, on_hand = 0)
         $deleteResponse = $this->deleteJson("/api/v1/products/{$productId}");
 
         $deleteResponse->assertStatus(200);
 
-        $this->assertDatabaseMissing('products', [
+        // Soft delete: produk tidak hilang dari DB, hanya ter-flag deleted_at,
+        // sehingga history transaksi tetap dapat menelusuri produk via withTrashed().
+        $this->assertSoftDeleted('products', [
             'id' => $productId,
         ]);
 
-        $this->assertDatabaseMissing('product_variants', [
+        // Produk tidak lagi muncul di query normal.
+        $this->assertNull(Product::find($productId));
+        $this->assertNotNull(Product::withTrashed()->find($productId));
+
+        // Variant tetap dipertahankan agar item_id pada order_items tetap resolvable.
+        $this->assertDatabaseHas('product_variants', [
             'sku' => 'E2E-VAR-DELETE',
         ]);
+    }
+
+    public function test_cannot_delete_product_that_still_has_stock_on_hand()
+    {
+        // 1. Buat produk dengan satu variant
+        $createResponse = $this->postJson('/api/v1/products', [
+            'name' => 'Produk Masih Bergerak',
+            'category_id' => $this->category->id,
+            'variants' => [
+                [
+                    'sku' => 'E2E-VAR-STOCK',
+                    'sell_price' => 5000,
+                    'channel_prices' => [
+                        [
+                            'channel_shop_id' => $this->channelShop->id,
+                            'price' => 7000
+                        ]
+                    ]
+                ]
+            ]
+        ]);
+
+        $productId = $createResponse->json('data.product_id');
+        $variant = Product::find($productId)->variants()->firstOrFail();
+
+        // 2. Beri stok on hand pada variant tersebut
+        $location = \Modules\Warehouse\Models\Location::create([
+            'location_code' => 'WH-E2E-01',
+            'location_name' => 'Gudang E2E',
+            'location_type' => 'warehouse',
+        ]);
+
+        \Modules\Inventory\Models\Inventory::create([
+            'item_id' => $variant->id,
+            'location_id' => $location->id,
+            'on_hand' => 10,
+            'available' => 10,
+        ]);
+
+        // 3. Coba hapus -> harus ditolak karena masih punya stok (bukan dead stock)
+        $deleteResponse = $this->deleteJson("/api/v1/products/{$productId}");
+
+        $deleteResponse->assertStatus(422);
+        $this->assertNotNull(Product::find($productId), 'Produk tidak boleh terhapus saat masih ada stok');
     }
 
     public function test_cannot_create_product_with_invalid_payload()
