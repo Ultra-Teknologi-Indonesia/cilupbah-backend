@@ -31,7 +31,7 @@ class PacklistItem extends Model
 
     public function orderItem(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Order\Models\OrderItem::class, 'order_item_id');
+        return $this->belongsTo(\Modules\Sales\Models\SalesOrderItem::class, 'order_item_id');
     }
 
     public function product(): BelongsTo

@@ -5,7 +5,7 @@ namespace Modules\Outbound\Services;
 use Modules\Outbound\Repositories\ShipmentRepository;
 use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Jobs\ProcessShipmentHandOverJob;
-use Modules\Order\Models\Order;
+use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Outbound\Models\Packlist;
 use Illuminate\Support\Facades\DB;
 

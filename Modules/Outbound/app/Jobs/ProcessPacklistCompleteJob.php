@@ -8,7 +8,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Modules\Outbound\Models\Packlist;
-use Modules\Order\Services\OrderService;
+use Modules\Sales\Services\SalesOrderService as OrderService;
 
 class ProcessPacklistCompleteJob implements ShouldQueue
 {

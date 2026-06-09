@@ -5,7 +5,7 @@ namespace Modules\Outbound\Services;
 use Modules\Outbound\Repositories\PicklistRepository;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Jobs\ProcessPicklistCompleteJob;
-use Modules\Order\Models\Order;
+use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Inventory\Models\Inventory;
 use Illuminate\Support\Facades\DB;
 

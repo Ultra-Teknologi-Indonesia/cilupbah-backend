@@ -2,7 +2,7 @@
 
 namespace Modules\Outbound\Services;
 
-use Modules\Order\Models\Order;
+use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\ShipmentOrder;

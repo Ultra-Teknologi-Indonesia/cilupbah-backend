@@ -5,7 +5,6 @@
     "Product": true,
     "Inbound": true,
     "Outbound": true,
-    "Order": true,
     "Channel": true,
     "Webhook": true,
     "Report": true,

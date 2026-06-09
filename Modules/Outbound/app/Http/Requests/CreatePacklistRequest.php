@@ -14,7 +14,7 @@ class CreatePacklistRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'order_id' => 'required|string|exists:orders,id',
+            'order_id' => 'required|string|exists:sales_orders,id',
             'location_id' => 'required|string|exists:locations,id',
             'packer_id' => 'nullable|string|exists:users,id',
             'picklist_id' => 'nullable|string|exists:picklists,id',

@@ -8,7 +8,7 @@ class ChannelOrderRepository
 {
     public function getOrdersByChannelAndStatus(string $channelShopId, ?string $status = null)
     {
-        $query = DB::table('orders')->where('channel_shop_id', $channelShopId);
+        $query = DB::table('sales_orders')->where('channel_shop_id', $channelShopId);
         
         if ($status) {
             $query->where('status', $status);
@@ -19,22 +19,22 @@ class ChannelOrderRepository
 
     public function findOrderBySalesOrderNo(string $salesOrderNo)
     {
-        return DB::table('orders')->where('salesorder_no', $salesOrderNo)->first();
+        return DB::table('sales_orders')->where('salesorder_no', $salesOrderNo)->first();
     }
 
     public function getAllOrders()
     {
-        return DB::table('orders')->orderBy('id', 'desc')->get();
+        return DB::table('sales_orders')->orderBy('id', 'desc')->get();
     }
 
     public function getOrderItems(int $orderId)
     {
-        return DB::table('order_items')->where('order_id', $orderId)->get();
+        return DB::table('sales_order_items')->where('order_id', $orderId)->get();
     }
 
     public function updateOrderStatusByOrderNo(string $orderNo, string $status)
     {
-        return DB::table('orders')
+        return DB::table('sales_orders')
             ->where('order_number', $orderNo) 
             ->update(['status' => $status]);
     }

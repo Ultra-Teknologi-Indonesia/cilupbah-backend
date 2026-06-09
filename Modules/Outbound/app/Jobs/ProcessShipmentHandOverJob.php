@@ -8,7 +8,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Modules\Outbound\Models\Shipment;
-use Modules\Order\Services\OrderService;
+use Modules\Sales\Services\SalesOrderService as OrderService;
 
 class ProcessShipmentHandOverJob implements ShouldQueue
 {

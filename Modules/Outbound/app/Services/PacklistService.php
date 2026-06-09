@@ -5,7 +5,7 @@ namespace Modules\Outbound\Services;
 use Modules\Outbound\Repositories\PacklistRepository;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Jobs\ProcessPacklistCompleteJob;
-use Modules\Order\Models\Order;
+use Modules\Sales\Models\SalesOrder as Order;
 use Illuminate\Support\Facades\DB;
 
 class PacklistService

@@ -3,10 +3,10 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Modules\Order\Exceptions\CannotDeleteActiveOrderException;
-use Modules\Order\Exceptions\DuplicateOrderException;
-use Modules\Order\Exceptions\InsufficientStockException;
-use Modules\Order\Exceptions\InvalidStatusTransitionException;
+use Modules\Sales\Exceptions\CannotDeleteActiveOrderException;
+use Modules\Sales\Exceptions\DuplicateOrderException;
+use Modules\Sales\Exceptions\InsufficientStockException;
+use Modules\Sales\Exceptions\InvalidStatusTransitionException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(

@@ -69,7 +69,7 @@ class OutboundFulfillmentController extends Controller
     public function changeLocation(Request $request): JsonResponse
     {
         $request->validate([
-            'order_id' => 'required|string|exists:orders,id',
+            'order_id' => 'required|string|exists:sales_orders,id',
             'location_id' => 'required|string|exists:locations,id',
         ]);
 
@@ -109,7 +109,7 @@ class OutboundFulfillmentController extends Controller
     public function requestCancelOrder(Request $request): JsonResponse
     {
         $request->validate([
-            'order_id' => 'required|string|exists:orders,id',
+            'order_id' => 'required|string|exists:sales_orders,id',
             'reason' => 'nullable|string|max:500',
         ]);
 

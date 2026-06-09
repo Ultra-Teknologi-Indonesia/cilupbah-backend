@@ -255,7 +255,7 @@ class ShipmentController extends Controller
     public function saveAwb(string $id, Request $request): JsonResponse
     {
         $request->validate([
-            'order_id' => 'required|string|exists:orders,id',
+            'order_id' => 'required|string|exists:sales_orders,id',
             'tracking_number' => 'required|string|max:100',
         ]);
 

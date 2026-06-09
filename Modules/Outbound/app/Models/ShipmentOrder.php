@@ -24,7 +24,7 @@ class ShipmentOrder extends Model
 
     public function order(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Order\Models\Order::class);
+        return $this->belongsTo(\Modules\Sales\Models\SalesOrder::class, 'order_id');
     }
 
     public function packlist(): BelongsTo
