@@ -69,6 +69,20 @@ class ProductMergeServiceTest extends TestCase
         $this->assertSame('soft case', SkuGrouping::normalizeName('SOFT  case'));
     }
 
+    public function test_normalize_name_preserves_non_latin_characters(): void
+    {
+        // Paritas cilupbah-ops: hanya buang diakritik, JANGAN buang/transliterasi CJK dll.
+        // (kalau pakai Str::ascii, dua nama berbeda di bawah ini bisa kolaps jadi key kosong)
+        $this->assertSame('iphone 手机壳 hitam', SkuGrouping::normalizeName('iPhone 手机壳 Hitam'));
+        $this->assertSame('手机壳 a', SkuGrouping::normalizeName('手机壳 A'));
+        $this->assertSame('手机膜 b', SkuGrouping::normalizeName('手机膜 B'));
+        // Dua nama CJK berbeda tidak boleh menormalisasi ke string yang sama
+        $this->assertNotSame(
+            SkuGrouping::normalizeName('手机壳 A'),
+            SkuGrouping::normalizeName('手机膜 B'),
+        );
+    }
+
     public function test_name_signature_strips_device_tail(): void
     {
         $this->assertSame('soft case premium', SkuGrouping::nameSignature('Soft Case Premium for iPhone 14 Pro'));

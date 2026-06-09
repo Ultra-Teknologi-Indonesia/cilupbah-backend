@@ -1,6 +1,6 @@
 # Plan: Merge & Auto-Merge Produk (port dari cilupbah-ops)
 
-> Status: **✅ IMPLEMENTED** (25 test hijau) · Target module: `Modules/Product` · Tanggal: 2026-06-08
+> Status: **✅ IMPLEMENTED** (31 test hijau) · Target module: `Modules/Product` · Tanggal: 2026-06-08
 
 ## ✅ Status implementasi
 
@@ -13,6 +13,13 @@ manapun. Tiap master group di `catalog` & `applied` mengembalikan agregat `chann
 `channel_count` (distinct lintas semua produk anggota). Diverifikasi oleh test
 `test_auto_merge_works_across_different_stores_and_channels` (produk SKU `SLR-A` di Shopee +
 `SLR-B` di TikTok → 1 master, `channel_count = 2`, channels `[Shopee, TikTok]`).
+
+**Performa (tetap Eloquent):** query produk induk pakai `->lazy()` (LazyCollection,
+streaming per-chunk 1000) + projeksi kolom (`id, name, sku, category_id, brand_id`),
+jadi tidak menahan ribuan model + relasinya di memori sekaligus. Eager load tetap jalan
+per chunk (bukan `cursor()` yang memicu N+1). Trade-off: query relasi per chunk (≈N/1000×),
+tapi peak memory bounded. Order lazy `mergesWithProducts` dikunci `(master_name, id)`
+agar paginasi offset deterministik (tidak skip/duplikat).
 
 Catatan deviasi kecil dari rencana: **Resources tidak dibuat sebagai file terpisah** —
 service sudah mengembalikan array bersih, dikemas langsung via `ApiResponse`. Endpoint
