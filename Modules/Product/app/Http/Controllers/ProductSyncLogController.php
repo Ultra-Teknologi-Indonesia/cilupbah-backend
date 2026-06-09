@@ -3,10 +3,14 @@
 namespace Modules\Product\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use DomainException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Modules\Product\Http\Resources\ProductSyncLogResource;
+use Modules\Product\Http\Resources\UploadHistoryResource;
 use Modules\Product\Models\ProductSyncLog;
+use Modules\Product\Services\UploadHistoryService;
 use Modules\Channel\Models\ChannelShop;
 use OpenApi\Attributes as OA;
 use App\Traits\ApiResponse;
@@ -14,6 +18,8 @@ use App\Traits\ApiResponse;
 class ProductSyncLogController extends Controller
 {
     use ApiResponse;
+
+    public function __construct(private UploadHistoryService $uploadHistoryService) {}
 
     #[OA\Get(
         path: '/api/v1/upload-histories',
@@ -31,7 +37,51 @@ class ProductSyncLogController extends Controller
     )]
     public function uploadHistories(Request $request): JsonResponse
     {
-        return $this->histories($request, ProductSyncLog::ACTION_UPLOAD, 'Get upload histories success');
+        $paginator = $this->uploadHistoryService->paginate();
+
+        $paginator->setCollection(
+            $paginator->getCollection()->map(
+                fn (ProductSyncLog $log) => (new UploadHistoryResource($log))->resolve($request)
+            )
+        );
+
+        return $this->successPaginatedResponse($paginator, 'Get upload histories success');
+    }
+
+    public function reupload(string $id): JsonResponse
+    {
+        try {
+            $this->uploadHistoryService->reupload($id);
+        } catch (ModelNotFoundException) {
+            return $this->errorResponse('Riwayat upload tidak ditemukan', 404);
+        } catch (DomainException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
+        return $this->successResponse(null, 'Produk diantrekan untuk upload ulang');
+    }
+
+    public function destroy(string $id): JsonResponse
+    {
+        try {
+            $this->uploadHistoryService->delete($id);
+        } catch (ModelNotFoundException) {
+            return $this->errorResponse('Riwayat upload tidak ditemukan', 404);
+        }
+
+        return $this->successResponse(null, 'Riwayat upload dihapus');
+    }
+
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'uuid',
+        ]);
+
+        $deleted = $this->uploadHistoryService->bulkDelete($validated['ids']);
+
+        return $this->successResponse(['deleted' => $deleted], "{$deleted} riwayat upload dihapus");
     }
 
     #[OA\Get(
