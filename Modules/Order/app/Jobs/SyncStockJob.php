@@ -20,7 +20,7 @@ class SyncStockJob implements ShouldQueue
     public array $backoff = [5, 15, 30];
 
     public function __construct(
-        public readonly int $orderId,
+        public readonly string $orderId,
     ) {
         $this->onQueue(config('queue.names.stock_sync'));
     }

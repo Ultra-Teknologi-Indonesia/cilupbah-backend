@@ -318,7 +318,10 @@ class OrderService
 
     private function releaseStockForOrder(Order $order): void
     {
-        if (! in_array($order->status, ['reserved', 'picked', 'packed'])) {
+        // Hanya order berstatus 'reserved' yang masih memegang reservasi stok.
+        // Status 'picked'/'packed' sudah melepas reserved saat pick(), sehingga
+        // pembatalan tidak boleh melepas ulang (mencegah reserved menjadi negatif).
+        if ($order->status !== 'reserved') {
             return;
         }
 

@@ -33,6 +33,12 @@ class OrderRepository
 
     public function getOrderById(int|string $id): ?Order
     {
+        // orders.id bertipe UUID: id non-UUID (mis. "99999") akan memicu error SQL,
+        // jadi anggap tidak ditemukan (404) alih-alih melempar 500.
+        if (! \Ramsey\Uuid\Uuid::isValid((string) $id)) {
+            return null;
+        }
+
         return QueryBuilder::for(Order::class)
             ->allowedIncludes('items')
             ->find($id);
@@ -89,7 +95,7 @@ class OrderRepository
         return Order::find($orderId);
     }
 
-    public function syncOrderItems(int $orderId, array $items): void
+    public function syncOrderItems(string $orderId, array $items): void
     {
         DB::table('order_items')->where('order_id', $orderId)->delete();
 
@@ -104,6 +110,8 @@ class OrderRepository
             }
 
             $itemsToInsert[] = [
+                // order_items.id kini bertipe UUID (tanpa default), insert raw harus generate id sendiri.
+                'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
                 'order_id' => $orderId,
                 'item_id' => $itemId,
                 'channel_product_id' => $item['channel_product_id'] ?? null,
