@@ -12,11 +12,15 @@ use Modules\Product\Http\Controllers\ProductChannelDraftController;
 use Modules\Product\Http\Controllers\ProductSyncLogController;
 use Modules\Product\Http\Controllers\ChannelMonitorController;
 use Modules\Product\Http\Controllers\ProductMergeController;
+use Modules\Product\Http\Controllers\MasterFeedController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     // Harus didefinisikan sebelum apiResource agar tidak tertangkap products/{id}
     Route::get('products/uploadable', [ProductController::class, 'uploadable']);
     Route::get('products/channel-drafts', [ProductChannelDraftController::class, 'list']);
+
+    Route::get('products/master', [MasterFeedController::class, 'index']);
+    Route::get('products/master/{id}', [MasterFeedController::class, 'show']);
 
     // ── Merge & Auto-Merge produk (lintas store & channel) ──
     // Akses berbasis Spatie Permission: selama user punya permission-nya, boleh.
