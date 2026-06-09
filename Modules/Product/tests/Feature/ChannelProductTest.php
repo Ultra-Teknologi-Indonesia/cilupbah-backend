@@ -186,7 +186,7 @@ class ChannelProductTest extends TestCase
         $response = $this->deleteJson("/api/v1/{$this->channel}/products/{$this->externalId}", $payload);
 
         $response->assertStatus(200);
-        $this->assertDatabaseMissing('products', ['id' => $this->testProduct->id]);
+        $this->assertSoftDeleted('products', ['id' => $this->testProduct->id]);
 
         Queue::assertPushed(SyncProductToChannelJob::class, function ($job) {
             return $job->action === 'delete'

@@ -87,6 +87,11 @@ class Product extends Model
         return $this->hasMany(ProductVariant::class);
     }
 
+    public function variationTypes(): HasMany
+    {
+        return $this->hasMany(ProductVariationType::class);
+    }
+
     public function channelMappings(): HasMany
     {
         return $this->hasMany(ProductChannelMapping::class);

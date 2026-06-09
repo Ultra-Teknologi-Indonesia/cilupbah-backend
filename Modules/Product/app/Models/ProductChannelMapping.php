@@ -16,6 +16,7 @@ class ProductChannelMapping extends Model
         'product_id',
         'channel_shop_id',
         'external_product_id',
+        'channel_url',
         'sync_status',
         'error_message',
         'last_synced_at',
