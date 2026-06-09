@@ -34,28 +34,14 @@ class InventoryService
     public function adjust(array $data): Inventory
     {
         return DB::transaction(function () use ($data) {
-            $inventory = $this->inventoryRepository->findExactForUpdate(
+            $inventory = $this->inventoryRepository->findOrCreateForUpdate(
                 $data['item_id'],
                 $data['location_id'],
                 $data['bin_id'] ?? null,
                 $data['batch_no'] ?? '',
-                $data['serial_no'] ?? ''
+                $data['serial_no'] ?? '',
+                ['expired_date' => $data['expired_date'] ?? null],
             );
-
-            if (!$inventory) {
-                $inventory = $this->inventoryRepository->create([
-                    'item_id' => $data['item_id'],
-                    'location_id' => $data['location_id'],
-                    'bin_id' => $data['bin_id'] ?? null,
-                    'batch_no' => $data['batch_no'] ?? '',
-                    'serial_no' => $data['serial_no'] ?? '',
-                    'expired_date' => $data['expired_date'] ?? null,
-                    'on_hand' => 0,
-                    'on_order' => 0,
-                    'reserved' => 0,
-                    'available' => 0,
-                ]);
-            }
 
             $newOnHand = $inventory->on_hand + $data['qty'];
             if ($newOnHand < 0) {
@@ -114,28 +100,14 @@ class InventoryService
                 'created_by' => $data['created_by'],
             ]);
 
-            $destInventory = $this->inventoryRepository->findExactForUpdate(
+            $destInventory = $this->inventoryRepository->findOrCreateForUpdate(
                 $data['item_id'],
                 $data['destination_location_id'],
                 $data['destination_bin_id'] ?? null,
                 $data['batch_no'] ?? '',
-                $data['serial_no'] ?? ''
+                $data['serial_no'] ?? '',
+                ['expired_date' => $data['expired_date'] ?? null],
             );
-
-            if (!$destInventory) {
-                $destInventory = $this->inventoryRepository->create([
-                    'item_id' => $data['item_id'],
-                    'location_id' => $data['destination_location_id'],
-                    'bin_id' => $data['destination_bin_id'] ?? null,
-                    'batch_no' => $data['batch_no'] ?? '',
-                    'serial_no' => $data['serial_no'] ?? '',
-                    'expired_date' => $data['expired_date'] ?? null,
-                    'on_hand' => 0,
-                    'on_order' => 0,
-                    'reserved' => 0,
-                    'available' => 0,
-                ]);
-            }
 
             $destInventory->on_hand += $data['qty'];
             $this->inventoryRepository->updateStock($destInventory);
@@ -192,28 +164,14 @@ class InventoryService
                 'created_by' => $data['created_by'],
             ]);
 
-            $destInventory = $this->inventoryRepository->findExactForUpdate(
+            $destInventory = $this->inventoryRepository->findOrCreateForUpdate(
                 $data['item_id'],
                 $data['location_id'],
                 $data['destination_bin_id'],
                 $data['batch_no'] ?? '',
-                $data['serial_no'] ?? ''
+                $data['serial_no'] ?? '',
+                ['expired_date' => $data['expired_date'] ?? null],
             );
-
-            if (!$destInventory) {
-                $destInventory = $this->inventoryRepository->create([
-                    'item_id' => $data['item_id'],
-                    'location_id' => $data['location_id'],
-                    'bin_id' => $data['destination_bin_id'],
-                    'batch_no' => $data['batch_no'] ?? '',
-                    'serial_no' => $data['serial_no'] ?? '',
-                    'expired_date' => $data['expired_date'] ?? null,
-                    'on_hand' => 0,
-                    'on_order' => 0,
-                    'reserved' => 0,
-                    'available' => 0,
-                ]);
-            }
 
             $destInventory->on_hand += $data['qty'];
             $this->inventoryRepository->updateStock($destInventory);
@@ -321,27 +279,13 @@ class InventoryService
             foreach ($transfer->items as $item) {
                 $qty = $item->qty;
 
-                $destInventory = $this->inventoryRepository->findExactForUpdate(
+                $destInventory = $this->inventoryRepository->findOrCreateForUpdate(
                     $item->item_id,
                     $transfer->destination_location_id,
                     $item->destination_bin_id,
                     $item->batch_no,
-                    $item->serial_no
+                    $item->serial_no,
                 );
-
-                if (! $destInventory) {
-                    $destInventory = $this->inventoryRepository->create([
-                        'item_id'      => $item->item_id,
-                        'location_id'  => $transfer->destination_location_id,
-                        'bin_id'       => $item->destination_bin_id,
-                        'batch_no'     => $item->batch_no,
-                        'serial_no'    => $item->serial_no,
-                        'on_hand'      => 0,
-                        'on_order'     => 0,
-                        'reserved'     => 0,
-                        'available'    => 0,
-                    ]);
-                }
 
                 $destInventory->on_hand += $qty;
                 $this->inventoryRepository->updateStock($destInventory);

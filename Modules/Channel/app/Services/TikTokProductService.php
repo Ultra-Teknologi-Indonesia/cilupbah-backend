@@ -347,7 +347,7 @@ class TikTokProductService
             $availableQty = 0;
             if ($channelWarehouse) {
                 $availableQty = (int) DB::table('inventories')
-                    ->where('item_id', $productId)
+                    ->where('item_id', $v->id)
                     ->where('location_id', $channelWarehouse->location_id)
                     ->sum('available');
             }

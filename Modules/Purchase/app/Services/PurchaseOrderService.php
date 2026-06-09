@@ -6,11 +6,13 @@ use Modules\Purchase\Repositories\PurchaseOrderRepository;
 use Modules\Purchase\Models\PurchaseOrder;
 use Modules\Inbound\Services\InboundService;
 use Modules\Inventory\Repositories\InventoryRepository;
+use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class PurchaseOrderService
 {
+    use StockLockable;
     public function __construct(
         protected PurchaseOrderRepository $poRepository,
         protected InboundService $inboundService,
@@ -206,27 +208,17 @@ class PurchaseOrderService
 
     private function adjustOnOrder(string $itemId, string $locationId, int $qty): void
     {
-        $inventory = $this->inventoryRepository->findExactForUpdate($itemId, $locationId, null);
+        $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty) {
+            DB::transaction(function () use ($itemId, $locationId, $qty) {
+                $inventory = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
 
-        if (! $inventory) {
-            if ($qty <= 0) {
-                return;
-            }
+                if ($qty <= 0 && $inventory->on_order === 0) {
+                    return;
+                }
 
-            $inventory = $this->inventoryRepository->create([
-                'item_id'     => $itemId,
-                'location_id' => $locationId,
-                'bin_id'      => null,
-                'batch_no'    => '',
-                'serial_no'   => '',
-                'on_hand'     => 0,
-                'on_order'    => 0,
-                'reserved'    => 0,
-                'available'   => 0,
-            ]);
-        }
-
-        $inventory->on_order = max(0, $inventory->on_order + $qty);
-        $this->inventoryRepository->updateStock($inventory);
+                $inventory->on_order = max(0, $inventory->on_order + $qty);
+                $this->inventoryRepository->updateStock($inventory);
+            });
+        });
     }
 }

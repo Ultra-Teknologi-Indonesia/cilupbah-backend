@@ -42,6 +42,31 @@ class InventoryRepository
             ->first();
     }
 
+    public function findOrCreateForUpdate(string $itemId, string $locationId, ?string $binId, string $batchNo = '', string $serialNo = '', array $extra = []): Inventory
+    {
+        $inventory = $this->findExactForUpdate($itemId, $locationId, $binId, $batchNo, $serialNo);
+
+        if ($inventory) {
+            return $inventory;
+        }
+
+        try {
+            return Inventory::create(array_merge([
+                'item_id'     => $itemId,
+                'location_id' => $locationId,
+                'bin_id'      => $binId,
+                'batch_no'    => $batchNo,
+                'serial_no'   => $serialNo,
+                'on_hand'     => 0,
+                'on_order'    => 0,
+                'reserved'    => 0,
+                'available'   => 0,
+            ], $extra));
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            return $this->findExactForUpdate($itemId, $locationId, $binId, $batchNo, $serialNo);
+        }
+    }
+
     public function create(array $data): Inventory
     {
         return Inventory::create($data);

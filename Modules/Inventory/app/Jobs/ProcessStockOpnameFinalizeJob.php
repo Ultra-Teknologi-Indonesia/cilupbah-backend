@@ -24,7 +24,7 @@ class ProcessStockOpnameFinalizeJob implements ShouldQueue
         protected string $opnameId,
         protected string $finalizedBy,
     ) {
-        $this->onQueue('stock-critical');
+        $this->onQueue(config('queue.names.stock_critical'));
     }
 
     public function handle(InventoryRepository $inventoryRepository, InventoryMovementRepository $movementRepository): void
@@ -40,27 +40,13 @@ class ProcessStockOpnameFinalizeJob implements ShouldQueue
         foreach ($itemsWithDifference as $item) {
             $this->withStockLock($item->item_id, $opname->location_id, function () use ($item, $opname, $inventoryRepository, $movementRepository) {
                 DB::transaction(function () use ($item, $opname, $inventoryRepository, $movementRepository) {
-                    $inventory = $inventoryRepository->findExactForUpdate(
+                    $inventory = $inventoryRepository->findOrCreateForUpdate(
                         $item->item_id,
                         $opname->location_id,
                         $item->bin_id,
                         $item->batch_no ?? '',
-                        $item->serial_no ?? ''
+                        $item->serial_no ?? '',
                     );
-
-                    if (!$inventory) {
-                        $inventory = $inventoryRepository->create([
-                            'item_id' => $item->item_id,
-                            'location_id' => $opname->location_id,
-                            'bin_id' => $item->bin_id,
-                            'batch_no' => $item->batch_no ?? '',
-                            'serial_no' => $item->serial_no ?? '',
-                            'on_hand' => 0,
-                            'on_order' => 0,
-                            'reserved' => 0,
-                            'available' => 0,
-                        ]);
-                    }
 
                     $inventory->on_hand += $item->qty_difference;
                     $inventoryRepository->updateStock($inventory);

@@ -127,10 +127,12 @@ return [
     ],
 
     'names' => [
-        'orders'      => env('QUEUE_NAME_ORDERS', 'orders'),
-        'fulfillment' => env('QUEUE_NAME_FULFILLMENT', 'fulfillment'),
-        'stock_sync'  => env('QUEUE_NAME_STOCK_SYNC', 'stock-sync'),
-        'failed_jobs' => env('QUEUE_NAME_FAILED_JOBS', 'failed-jobs'),
+        'orders'         => env('QUEUE_NAME_ORDERS', 'orders'),
+        'fulfillment'    => env('QUEUE_NAME_FULFILLMENT', 'fulfillment'),
+        'stock_sync'     => env('QUEUE_NAME_STOCK_SYNC', 'stock-sync'),
+        'stock_critical' => env('QUEUE_NAME_STOCK_CRITICAL', 'stock-critical'),
+        'stock_default'  => env('QUEUE_NAME_STOCK_DEFAULT', 'stock-default'),
+        'failed_jobs'    => env('QUEUE_NAME_FAILED_JOBS', 'failed-jobs'),
     ],
 
 ];

@@ -55,7 +55,7 @@ class ProductResource extends JsonResource
             }),
             'variants' => $this->whenLoaded('variants', function () {
                 return $this->variants->map(function ($variant) {
-                    return [
+                    $data = [
                         'id' => $variant->id,
                         'sku' => $variant->sku,
                         'sell_price' => $variant->sell_price,
@@ -67,6 +67,17 @@ class ProductResource extends JsonResource
                             ];
                         })->filter(fn($m) => $m['price'] !== null)->values() : [],
                     ];
+
+                    if ($variant->relationLoaded('inventories')) {
+                        $data['stock'] = [
+                            'on_hand'   => (int) $variant->inventories->sum('on_hand'),
+                            'reserved'  => (int) $variant->inventories->sum('reserved'),
+                            'on_order'  => (int) $variant->inventories->sum('on_order'),
+                            'available' => (int) $variant->inventories->sum('available'),
+                        ];
+                    }
+
+                    return $data;
                 });
             }),
             'verified_at' => $this->verified_at,

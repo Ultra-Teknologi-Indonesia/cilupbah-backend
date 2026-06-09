@@ -24,7 +24,7 @@ class ProcessStockAdjustmentJob implements ShouldQueue
         protected string $adjustmentId,
         protected string $approvedBy,
     ) {
-        $this->onQueue('stock-critical');
+        $this->onQueue(config('queue.names.stock_critical'));
     }
 
     public function handle(InventoryRepository $inventoryRepository, InventoryMovementRepository $movementRepository): void
@@ -38,27 +38,13 @@ class ProcessStockAdjustmentJob implements ShouldQueue
         foreach ($adjustment->items as $item) {
             $this->withStockLock($item->item_id, $adjustment->location_id, function () use ($item, $adjustment, $inventoryRepository, $movementRepository) {
                 DB::transaction(function () use ($item, $adjustment, $inventoryRepository, $movementRepository) {
-                    $inventory = $inventoryRepository->findExactForUpdate(
+                    $inventory = $inventoryRepository->findOrCreateForUpdate(
                         $item->item_id,
                         $adjustment->location_id,
                         $item->bin_id,
                         $item->batch_no ?? '',
-                        $item->serial_no ?? ''
+                        $item->serial_no ?? '',
                     );
-
-                    if (!$inventory) {
-                        $inventory = $inventoryRepository->create([
-                            'item_id' => $item->item_id,
-                            'location_id' => $adjustment->location_id,
-                            'bin_id' => $item->bin_id,
-                            'batch_no' => $item->batch_no ?? '',
-                            'serial_no' => $item->serial_no ?? '',
-                            'on_hand' => 0,
-                            'on_order' => 0,
-                            'reserved' => 0,
-                            'available' => 0,
-                        ]);
-                    }
 
                     $inventory->on_hand += $item->difference_qty;
                     $inventoryRepository->updateStock($inventory);

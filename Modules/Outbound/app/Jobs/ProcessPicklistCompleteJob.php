@@ -20,7 +20,7 @@ class ProcessPicklistCompleteJob implements ShouldQueue
     public function __construct(
         protected string $picklistId,
     ) {
-        $this->onQueue('stock-critical');
+        $this->onQueue(config('queue.names.stock_critical'));
     }
 
     public function handle(OrderService $orderService): void

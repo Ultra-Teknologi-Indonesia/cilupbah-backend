@@ -4,6 +4,8 @@ namespace Modules\Product\Models;
 
 use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ProductVariant extends Model
 {
@@ -26,17 +28,22 @@ class ProductVariant extends Model
         'sequence_item' => 'integer',
     ];
 
-    public function product()
+    public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
     }
 
-    public function channelMappings()
+    public function inventories(): HasMany
+    {
+        return $this->hasMany(\Modules\Inventory\Models\Inventory::class, 'item_id');
+    }
+
+    public function channelMappings(): HasMany
     {
         return $this->hasMany(ProductVariantChannelMapping::class, 'variant_id');
     }
 
-    public function options()
+    public function options(): HasMany
     {
         return $this->hasMany(VariantOption::class, 'variant_id');
     }
