@@ -110,4 +110,17 @@ class ChannelAttributeService
     {
         return $this->attributeRepository->getPaginated($channelCategoryId, $perPage);
     }
+
+    /**
+     * Jubelio: GET /inventory/items/channel-category-attributes/ — daftar seluruh atribut channel,
+     * opsional difilter per channel_id dan/atau channel_category_id.
+     */
+    public function getAllAttributes(?string $channelId = null, ?string $categoryId = null, int $perPage = 20): LengthAwarePaginator
+    {
+        return \Modules\Product\Models\ChannelAttribute::query()
+            ->with(['options', 'channelCategory'])
+            ->when($categoryId, fn ($q) => $q->where('channel_category_id', $categoryId))
+            ->when($channelId, fn ($q) => $q->whereHas('channelCategory', fn ($c) => $c->where('channel_id', $channelId)))
+            ->paginate($perPage);
+    }
 }

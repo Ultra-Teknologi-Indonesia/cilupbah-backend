@@ -122,6 +122,19 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('products/import/template/bundle', [\Modules\Product\Http\Controllers\ProductImportController::class, 'downloadBundleTemplate']);
     Route::post('products/import/single', [\Modules\Product\Http\Controllers\ProductImportController::class, 'importSingle']);
     Route::post('products/import/bundle', [\Modules\Product\Http\Controllers\ProductImportController::class, 'importBundle']);
+
+    // ── Jubelio compatibility (Product/Inventory items & categories) ──
+    // Item & bundle
+    Route::get('inventory/items/by-sku/{sku}', [ProductController::class, 'showBySku']);
+    Route::get('inventory/item-bundles', [ProductController::class, 'bundles']);
+    Route::post('inventory/items/all-stocks', [ProductController::class, 'allStocks']);
+    Route::post('inventory/items/prices', [ProductController::class, 'prices']);
+    Route::post('inventory/items', [ProductController::class, 'storeBundle']);
+    // Channel attributes (global)
+    Route::get('inventory/items/channel-category-attributes', [\Modules\Product\Http\Controllers\ChannelAttributeController::class, 'all']);
+    // Kategori → channel mapping & store categories
+    Route::get('inventory/categories/category-map/{id}', [CategoryController::class, 'channelMap']);
+    Route::get('inventory/categories/{channel_id}/store-categories/{store_id}', [ChannelCategoryController::class, 'storeCategories']);
 });
 
 // Channel specific routes

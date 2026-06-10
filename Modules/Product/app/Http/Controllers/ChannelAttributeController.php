@@ -36,4 +36,19 @@ class ChannelAttributeController extends Controller
             return $this->errorResponse($e->getMessage(), 500);
         }
     }
+
+    /**
+     * Jubelio: GET /inventory/items/channel-category-attributes/ — Ambil semua atribut kategori channel.
+     * Opsional filter: ?channel_id= & ?category_id=
+     */
+    public function all(Request $request): JsonResponse
+    {
+        $attributes = $this->service->getAllAttributes(
+            $request->query('channel_id'),
+            $request->query('category_id'),
+            (int) $request->query('limit', 20),
+        );
+
+        return $this->successPaginatedResponse(ChannelAttributeResource::collection($attributes), 'Berhasil mengambil semua atribut kategori channel');
+    }
 }
