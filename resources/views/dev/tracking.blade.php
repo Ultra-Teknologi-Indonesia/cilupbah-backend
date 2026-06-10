@@ -114,17 +114,18 @@
                         <td class="p-2 font-mono text-xs break-all" x-text="it.endpoint"></td>
                         <td class="p-2 text-slate-600" x-text="it.function_id"></td>
                         <td class="p-2">
-                            <select :value="it.status" @change="updateField(it,'status',$event.target.value)"
+                            <select x-model="it.status" @change="updateField(it,'status',it.status)"
                                     class="text-xs border rounded px-1 py-1 w-full" :class="statusSelectClass(it.status)">
-                                <template x-for="s in meta.statuses" :key="s">
-                                    <option :value="s" x-text="statusLabel(s)"></option>
-                                </template>
+                                <option value="done">✅ Done</option>
+                                <option value="in_progress">🔄 In Progress</option>
+                                <option value="todo">⬜ Belum</option>
+                                <option value="blocked">⛔ Blocked</option>
                             </select>
                         </td>
                         <td class="p-2">
-                            <select :value="it.pic || ''" @change="updateField(it,'pic',$event.target.value)"
+                            <select x-model="it.pic" @change="updateField(it,'pic',it.pic)"
                                     class="text-xs border rounded px-1 py-1 w-full">
-                                <option value="">—</option>
+                                <option :value="null">—</option>
                                 <option value="Darriel">Darriel</option>
                                 <option value="Rasyid">Rasyid</option>
                             </select>
@@ -152,6 +153,7 @@ function tracker() {
         items: [], summary: {}, meta: {domains:[],pics:[],statuses:[],sources:[]},
         filters: {q:'', domain:'', status:'', pic:'', source:''},
         toast: '',
+        saved: {}, // snapshot nilai tersimpan per id, untuk rollback
         csrf: document.querySelector('meta[name=csrf-token]').content,
 
         qs() { return new URLSearchParams(Object.entries(this.filters).filter(([,v])=>v)).toString(); },
@@ -159,10 +161,13 @@ function tracker() {
             const r = await fetch(`{{ route('dev.tracking.data') }}?${this.qs()}`, {headers:{'Accept':'application/json'}});
             const d = await r.json();
             this.items = d.items; this.summary = d.summary; this.meta = d.meta;
+            this.saved = {};
+            for (const it of this.items) this.saved[it.id] = {status:it.status, pic:it.pic, notes:it.notes};
         },
         async updateField(it, field, value) {
-            const old = it[field];
-            it[field] = value; // optimistic
+            const prev = this.saved[it.id] ? this.saved[it.id][field] : it[field];
+            if (value === prev) return;              // tidak ada perubahan
+            it[field] = value;                       // optimistic (untuk notes)
             const r = await fetch(`{{ url('dev/tracking/items') }}/${it.id}`, {
                 method:'PATCH',
                 headers:{'Content-Type':'application/json','X-CSRF-TOKEN':this.csrf,'Accept':'application/json'},
@@ -171,9 +176,10 @@ function tracker() {
             if (r.ok) {
                 const d = await r.json();
                 this.summary = d.summary;
+                if (this.saved[it.id]) this.saved[it.id][field] = value; // update snapshot
                 this.showToast(`✓ ${field} tersimpan`);
             } else {
-                it[field] = old; // rollback
+                it[field] = prev; // rollback ke nilai tersimpan terakhir
                 this.showToast('✗ gagal menyimpan');
             }
         },
