@@ -2,12 +2,37 @@
 
 namespace Modules\Product\Services;
 
+use DomainException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
+use Modules\Channel\Models\ChannelShop;
+use Modules\Inventory\Models\Inventory;
+use Modules\Product\Models\Product;
 
 class ProductService
 {
+    public function resolveChannelShopId(string $shopId): ?string
+    {
+        return ChannelShop::where('shop_id', $shopId)->value('id');
+    }
+
+    public function deleteProduct(Product $product): void
+    {
+        $variantIds = $product->variants()->pluck('id');
+        $stockOnHand = $variantIds->isEmpty()
+            ? 0
+            : (int) Inventory::whereIn('item_id', $variantIds)->sum('on_hand');
+
+        if ($stockOnHand > 0) {
+            throw new DomainException(
+                "Produk masih memiliki stok ({$stockOnHand} unit). Hanya produk dead stock (stok habis) yang dapat dihapus. Gunakan Arsip untuk menonaktifkan produk yang masih bergerak."
+            );
+        }
+
+        $product->delete();
+    }
+
     public function upsertFromChannel(array $data)
     {
         $sku = $data['sku'] ?? ($data['variants'][0]['sku'] ?? null);

@@ -199,7 +199,7 @@ return [
     'defaults' => [
         'supervisor-default' => [
             'connection' => 'redis',
-            'queue' => ['default', env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks'), env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync')],
+            'queue' => ['default', env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks'), env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'), env('QUEUE_NAME_PRODUCT', 'product')],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 1,
@@ -269,6 +269,18 @@ return [
             'memory' => 128,
             'nice' => 0,
         ],
+        'supervisor-downloads' => [
+            'connection' => 'redis-long',
+            'queue' => ['downloads'],
+            'balance' => 'auto',
+            'minProcesses' => 1,
+            'maxProcesses' => 3,
+            'timeout' => 900,
+            'tries' => 3,
+            'backoff' => [10, 30, 60],
+            'memory' => 256,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
@@ -296,6 +308,10 @@ return [
             ],
             'supervisor-stock' => [
                 'minProcesses' => 2,
+                'maxProcesses' => 5,
+            ],
+            'supervisor-downloads' => [
+                'minProcesses' => 1,
                 'maxProcesses' => 5,
             ],
         ],
@@ -326,6 +342,10 @@ return [
                 'minProcesses' => 1,
                 'maxProcesses' => 3,
             ],
+            'supervisor-downloads' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 3,
+            ],
         ],
 
         'local' => [
@@ -349,6 +369,10 @@ return [
                 'maxProcesses' => 1,
             ],
             'supervisor-stock' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 2,
+            ],
+            'supervisor-downloads' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 2,
             ],

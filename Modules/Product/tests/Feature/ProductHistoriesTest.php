@@ -66,9 +66,9 @@ class ProductHistoriesTest extends TestCase
         $response = $this->getJson('/api/v1/upload-histories');
 
         $response->assertStatus(200);
-        $actions = collect($response->json('data'))->pluck('action')->unique()->values()->all();
-        $this->assertSame(['upload'], $actions);
         $this->assertCount(2, $response->json('data'));
+        $ids = collect($response->json('data'))->pluck('item_group_id')->all();
+        $this->assertContains($this->product->id, $ids);
     }
 
     public function test_download_histories_returns_only_download_logs()
@@ -82,27 +82,28 @@ class ProductHistoriesTest extends TestCase
 
     public function test_upload_histories_filter_by_status()
     {
-        $response = $this->getJson('/api/v1/upload-histories?status=failed');
+        $response = $this->getJson('/api/v1/upload-histories?filter[status]=failed');
 
         $response->assertStatus(200);
         $this->assertCount(1, $response->json('data'));
-        $this->assertSame('failed', $response->json('data.0.status'));
+        $this->assertFalse($response->json('data.0.success'));
+        $this->assertSame('gagal', $response->json('data.0.status_message'));
     }
 
     public function test_upload_histories_filter_by_channel()
     {
-        $response = $this->getJson('/api/v1/upload-histories?channel=tiktok');
+        $response = $this->getJson('/api/v1/upload-histories?filter[channel]=tiktok');
         $response->assertStatus(200);
         $this->assertCount(2, $response->json('data'));
 
-        $empty = $this->getJson('/api/v1/upload-histories?channel=shopee');
+        $empty = $this->getJson('/api/v1/upload-histories?filter[channel]=shopee');
         $empty->assertStatus(200);
         $this->assertCount(0, $empty->json('data'));
     }
 
     public function test_upload_histories_search_by_product()
     {
-        $response = $this->getJson('/api/v1/upload-histories?search=LOG-SKU');
+        $response = $this->getJson('/api/v1/upload-histories?search=Logged');
 
         $response->assertStatus(200);
         $this->assertCount(2, $response->json('data'));

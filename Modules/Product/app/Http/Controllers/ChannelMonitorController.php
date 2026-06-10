@@ -130,8 +130,7 @@ class ChannelMonitorController extends Controller
 
         $results = $this->monitorService->getShopProducts(
             $shopId,
-            $syncStatus,
-            $request->query('search')
+            $syncStatus
         );
 
         if ($results->isEmpty() && !$this->monitorService->getShopDetail($shopId)) {

@@ -20,6 +20,9 @@ Dokumen ini adalah panduan standar penulisan kode untuk proyek Laravel (`cilupba
 
 - Seluruh endpoint _listing_ atau _index_ (menampilkan daftar data) WAJIB menggunakan paket `spatie/laravel-query-builder` untuk menangani _pagination_, _sorting_, dan _filtering_ secara otomatis.
 - Pemanggilan `QueryBuilder::for(Model::class)` harus dilakukan di dalam **Repository**.
+- **Prinsip "pakai jika optimal":** kapan pun Spatie Query Builder memberi manfaat (kueri yang dikendalikan parameter URL — `?search=`, `filter[...]`, `sort=`, `per_page`), Anda WAJIB memakainya. Ini mencakup tidak hanya endpoint index utama, tetapi juga _sub-list_ apa pun yang dapat disaring/diurutkan/dipaginasi oleh frontend.
+- **Pengecualian (Eloquent biasa diperbolehkan):** untuk pengambilan **satu record berdasarkan id/kunci** (`find`, `findOrFail`, `value`, `first` by primary/foreign key dari _route param_) atau **list internal/turunan yang tidak digerakkan query-string** (mis. opsi _dropdown_ statis, agregasi detail satu sumber daya), Spatie Query Builder TIDAK memberi nilai tambah — gunakan Eloquent biasa di dalam Repository. Membungkus lookup semacam ini dengan `QueryBuilder::for` justru dianggap salah pakai.
+- Aturan praktis: jika frontend bisa mengirim `filter`/`sort`/`search`/`per_page` untuk kueri tersebut → **Spatie**. Jika tidak (hanya ambil 1 record atau daftar tetap) → **Eloquent biasa**.
 
 ## 4. Implementasi Pencarian (Full-Text Search & Parameter `?search=`)
 - Untuk pencarian teks bebas yang sangat akurat, Anda **WAJIB** menggunakan macro `allowedSearch(...)` yang sudah didefinisikan secara global pada `Illuminate\Database\Eloquent\Builder`.

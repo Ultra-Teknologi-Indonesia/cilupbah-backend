@@ -5,6 +5,9 @@ use Modules\Channel\Http\Controllers\ChannelController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::apiResource('channels', ChannelController::class)->names('channel');
+
+    Route::get('download-transactions', [\Modules\Channel\Http\Controllers\DownloadTransactionController::class, 'index']);
+    Route::get('download-transactions/{id}', [\Modules\Channel\Http\Controllers\DownloadTransactionController::class, 'show']);
 });
 
 Route::prefix('v1/tiktok')->group(function () {

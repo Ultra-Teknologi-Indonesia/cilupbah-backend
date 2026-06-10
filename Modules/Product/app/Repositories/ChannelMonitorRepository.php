@@ -7,6 +7,7 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
 use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\AllowedSort;
 use Spatie\QueryBuilder\QueryBuilder;
 
 class ChannelMonitorRepository
@@ -118,28 +119,24 @@ class ChannelMonitorRepository
     /**
      * Produk di satu toko (paginated) dengan filter sync_status & search.
      */
-    public function getShopProducts(string $channelShopId, ?string $syncStatus, ?string $search): LengthAwarePaginator
+    public function getShopProducts(string $channelShopId, ?string $syncStatus): LengthAwarePaginator
     {
-        $query = ProductChannelMapping::with([
+        return QueryBuilder::for(ProductChannelMapping::class)
+            ->select('product_channel_mappings.*')
+            ->leftJoin('products', 'products.id', '=', 'product_channel_mappings.product_id')
+            ->where('product_channel_mappings.channel_shop_id', $channelShopId)
+            ->when($syncStatus, fn ($query) => $query->where('product_channel_mappings.sync_status', $syncStatus))
+            ->with([
                 'product:id,name,sku,status',
                 'product.media',
                 'variantMappings.variant:id,product_id,sku,sell_price',
             ])
-            ->where('channel_shop_id', $channelShopId);
-
-        if ($syncStatus) {
-            $query->where('sync_status', $syncStatus);
-        }
-
-        if ($search) {
-            $query->whereHas('product', fn ($q) =>
-                $q->where('name', 'ilike', "%{$search}%")
-                  ->orWhere('sku', 'ilike', "%{$search}%")
-            );
-        }
-
-        return $query
-            ->orderByDesc('last_synced_at')
+            ->allowedSearch('products.name', 'products.sku')
+            ->allowedSorts(
+                AllowedSort::field('last_synced_at', 'product_channel_mappings.last_synced_at'),
+                AllowedSort::field('created_at', 'product_channel_mappings.created_at'),
+            )
+            ->defaultSort('-product_channel_mappings.last_synced_at')
             ->paginate(request('per_page', 10))
             ->appends(request()->query());
     }

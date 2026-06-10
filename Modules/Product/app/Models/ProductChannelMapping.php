@@ -70,7 +70,7 @@ class ProductChannelMapping extends Model
         ]);
     }
 
-    public function markAsSynced(string $externalProductId = null): void
+    public function markAsSynced(?string $externalProductId = null): void
     {
         $data = [
             'sync_status' => 'synced',

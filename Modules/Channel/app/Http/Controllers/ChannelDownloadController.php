@@ -5,6 +5,7 @@ namespace Modules\Channel\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Modules\Channel\Http\Resources\DownloadTransactionResource;
 use Modules\Channel\Services\ChannelDownloadService;
 use OpenApi\Attributes as OA;
 use App\Traits\ApiResponse;
@@ -37,16 +38,17 @@ class ChannelDownloadController extends Controller
         $data = $request->validate(['shop_id' => 'required|string']);
 
         try {
-            $count = $this->downloadService->download($channel, $data['shop_id']);
+            $transaction = $this->downloadService->download($channel, $data['shop_id'], $request->user()?->id);
         } catch (\RuntimeException $e) {
             return $this->errorResponse($e->getMessage(), $e->getCode() ?: 422);
         } catch (\Exception $e) {
-            return $this->errorResponse('Gagal menarik produk: ' . $e->getMessage(), 500);
+            return $this->errorResponse('Gagal memulai download: ' . $e->getMessage(), 500);
         }
 
         return $this->successResponse(
-            ['pulled_count' => $count],
-            "Berhasil menarik {$count} produk dari channel {$channel}"
+            new DownloadTransactionResource($transaction->load('channelShop.channel')),
+            "Download dari channel {$channel} diantrekan",
+            202
         );
     }
 
@@ -68,11 +70,15 @@ class ChannelDownloadController extends Controller
         ]);
 
         try {
-            $results = $this->downloadService->downloadBulk($channel, $data['shop_ids']);
+            $transactions = $this->downloadService->downloadBulk($channel, $data['shop_ids'], $request->user()?->id);
         } catch (\RuntimeException $e) {
             return $this->errorResponse($e->getMessage(), $e->getCode() ?: 422);
         }
 
-        return $this->successResponse(['details' => $results], 'Proses download massal selesai');
+        $collection = collect($transactions)->map(
+            fn ($trx) => (new DownloadTransactionResource($trx->load('channelShop.channel')))->resolve($request)
+        );
+
+        return $this->successResponse($collection, 'Download massal diantrekan', 202);
     }
 }

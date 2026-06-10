@@ -3,15 +3,16 @@
 namespace Modules\Product\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use DomainException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Modules\Product\Http\Requests\StoreChannelDraftRequest;
 use Modules\Product\Http\Resources\ProductChannelDraftResource;
-use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelDraft;
+use Modules\Product\Repositories\ProductChannelDraftRepository;
+use Modules\Product\Repositories\ProductRepository;
 use Modules\Product\Services\ProductChannelDraftService;
-use Spatie\QueryBuilder\QueryBuilder;
-use Spatie\QueryBuilder\AllowedFilter;
 use OpenApi\Attributes as OA;
 use App\Traits\ApiResponse;
 
@@ -19,12 +20,11 @@ class ProductChannelDraftController extends Controller
 {
     use ApiResponse;
 
-    protected ProductChannelDraftService $draftService;
-
-    public function __construct(ProductChannelDraftService $draftService)
-    {
-        $this->draftService = $draftService;
-    }
+    public function __construct(
+        protected ProductChannelDraftService $draftService,
+        protected ProductChannelDraftRepository $draftRepository,
+        protected ProductRepository $productRepository,
+    ) {}
 
     /**
      * Daftar semua draft (sub-tab Draft di tab Naikkan Produk), filter ?status=.
@@ -41,21 +41,40 @@ class ProductChannelDraftController extends Controller
     )]
     public function list(Request $request): JsonResponse
     {
-        $drafts = QueryBuilder::for(ProductChannelDraft::class)
-            ->with('channelShop')
-            ->allowedFilters(
-                AllowedFilter::exact('status'),
-                AllowedFilter::exact('channel_shop_id'),
-                AllowedFilter::exact('product_id'),
-            )
-            ->allowedSorts('created_at', 'updated_at')
-            ->defaultSort('-created_at')
-            ->paginate($request->input('limit', 10));
+        $paginator = $this->draftRepository->paginate();
 
-        return $this->successPaginatedResponse(
-            ProductChannelDraftResource::collection($drafts),
-            'Get channel drafts success'
+        $paginator->setCollection(
+            $paginator->getCollection()->map(
+                fn (ProductChannelDraft $draft) => (new ProductChannelDraftResource($draft))->resolve($request)
+            )
         );
+
+        return $this->successPaginatedResponse($paginator, 'Get channel drafts success');
+    }
+
+    public function upload(string $draftId): JsonResponse
+    {
+        try {
+            $this->draftService->uploadDraft($draftId);
+        } catch (ModelNotFoundException) {
+            return $this->errorResponse('Draft tidak ditemukan', 404);
+        } catch (DomainException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
+        return $this->successResponse(null, 'Draft diantrekan untuk upload');
+    }
+
+    public function bulkUpload(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'uuid',
+        ]);
+
+        $result = $this->draftService->bulkUpload($validated['ids']);
+
+        return $this->successResponse($result, "{$result['uploaded']} draft diantrekan untuk upload");
     }
 
     /**
@@ -70,13 +89,11 @@ class ProductChannelDraftController extends Controller
     )]
     public function index($id): JsonResponse
     {
-        if (!$this->findProduct($id)) {
+        if (!$this->productExists($id)) {
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
-        $drafts = ProductChannelDraft::with('channelShop')
-            ->where('product_id', $id)
-            ->get();
+        $drafts = $this->draftRepository->forProduct($id);
 
         return $this->successResponse(
             ProductChannelDraftResource::collection($drafts),
@@ -100,14 +117,13 @@ class ProductChannelDraftController extends Controller
     )]
     public function store(StoreChannelDraftRequest $request, $id): JsonResponse
     {
-        $product = $this->findProduct($id);
-        if (!$product) {
+        if (!$this->productExists($id)) {
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
         try {
             $draft = $this->draftService->upsertDraft(
-                $product->id,
+                $id,
                 $request->validated()['shop_id'],
                 $request->validated(),
                 $request->user()?->id
@@ -138,7 +154,7 @@ class ProductChannelDraftController extends Controller
     )]
     public function update(Request $request, $id, $draftId): JsonResponse
     {
-        $draft = $this->findDraft($id, $draftId);
+        $draft = $this->resolveDraft($id, $draftId);
         if (!$draft) {
             return $this->errorResponse('Draft tidak ditemukan', 404);
         }
@@ -150,10 +166,8 @@ class ProductChannelDraftController extends Controller
             'status' => 'sometimes|in:draft,ready,cancelled',
         ]);
 
-        $draft->update($data);
-
         return $this->successResponse(
-            new ProductChannelDraftResource($draft->fresh('channelShop')),
+            new ProductChannelDraftResource($this->draftService->updateDraft($draft, $data)),
             'Draft berhasil diperbarui'
         );
     }
@@ -173,34 +187,32 @@ class ProductChannelDraftController extends Controller
     )]
     public function destroy($id, $draftId): JsonResponse
     {
-        $draft = $this->findDraft($id, $draftId);
+        $draft = $this->resolveDraft($id, $draftId);
         if (!$draft) {
             return $this->errorResponse('Draft tidak ditemukan', 404);
         }
 
-        $draft->delete();
+        $this->draftService->deleteDraft($draft);
 
         return $this->successResponse(['success' => true], 'Draft berhasil dihapus');
     }
 
-    private function findProduct($id): ?Product
+    private function productExists($id): bool
     {
         if (!$this->isUuid($id)) {
-            return null;
+            return false;
         }
 
-        return Product::find($id);
+        return $this->productRepository->findWithRelations($id) !== null;
     }
 
-    private function findDraft($productId, $draftId): ?ProductChannelDraft
+    private function resolveDraft($productId, $draftId): ?ProductChannelDraft
     {
         if (!$this->isUuid($productId) || !$this->isUuid($draftId)) {
             return null;
         }
 
-        return ProductChannelDraft::where('id', $draftId)
-            ->where('product_id', $productId)
-            ->first();
+        return $this->draftRepository->findForProduct($productId, $draftId);
     }
 
     private function isUuid($value): bool
