@@ -147,6 +147,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inventory/internal-price-list', [PriceListController::class, 'index']);
     Route::post('inventory/price-list', [PriceListController::class, 'update']);
 
+    // Product Listing (catalog listing & upload errors)
+    Route::post('inventory/catalog/listing', [ProductChannelDraftController::class, 'catalogListing']);
+    Route::get('inventory/items/errors', [ProductSyncLogController::class, 'errors']);
+
     // Promotions (promosi)
     Route::get('inventory/promotions', [PromotionController::class, 'index']);
     Route::post('inventory/promotions', [PromotionController::class, 'store']);
