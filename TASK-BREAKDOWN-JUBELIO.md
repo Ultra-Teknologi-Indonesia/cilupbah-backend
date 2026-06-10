@@ -29,18 +29,18 @@
 | Couriers | 3 | 3 | 0 | 0 | Outbound |
 | Sales | 60 | 60 | 0 | 0 | Sales |
 | Purchasing | 30 | 30 | 0 | 0 | Purchase |
-| Contact | 8 | 0 | 2 | 6 | (Supplier→Contact) |
+| Contact | 8 | 8 | 0 | 0 | Supplier (Contact) |
 | Journal | 5 | 0 | 0 | 5 | Finance ⬜ |
 | Cash & Bank | 4 | 0 | 0 | 4 | Finance ⬜ |
 | Reports | 13 | 0 | 0 | 13 | Report ⬜ |
 | System Setting | 8 | 1 | 1 | 6 | Auth/Setting |
 | Webhooks | 9 | 0 | 1 | 8 | Webhook ⬜ |
 | Channels (marketplace) | 1 | 0 | 1 | 0 | Channel |
-| **TOTAL** | **287** | **225** | **18** | **44** | — |
+| **TOTAL** | **287** | **233** | **16** | **38** | — |
 
 > Angka TOTAL **terverifikasi otomatis** terhadap `dist (2).yaml` (lihat **Lampiran A** — daftar lengkap 287 endpoint, 0 yang terlewat). Angka per-domain di tabel ini indikatif; sumber kebenaran = Lampiran A.
 
-**Cakupan fungsional: ✅ 225 (78%) + 🔄 18 (6%) + ⬜ 44 (15%) ≈ 85% setara penuh.** Dihitung per-operasi termasuk seluruh sub-endpoint Accounting/Sales/Purchase.
+**Cakupan fungsional: ✅ 233 (81%) + 🔄 16 (6%) + ⬜ 38 (13%) ≈ 87% setara penuh.** Dihitung per-operasi termasuk seluruh sub-endpoint Accounting/Sales/Purchase.
 
 ---
 
@@ -462,18 +462,18 @@ Berdasarkan git history (jumlah commit + baris kode lintas semua branch), dengan
 
 ---
 
-## 11. Contact 🔄 (0✅/2🔄/6⬜) — perlu modul Contact terpadu
+## 11. Contact ✅ (8✅/0🔄/0⬜)
 
-| M | Endpoint Jubelio | Fungsi | Status | Implementasi / Task |
+| M | Endpoint Jubelio | Fungsi | Status | Implementasi |
 |---|---|---|---|---|
-| GET | `/contacts/suppliers/` | Get Vendors | 🔄 | `SupplierController@index` (migrasikan ke Contact) |
-| GET | `/contacts/{id}` | Get Contact | 🔄 | `SupplierController@show` (partial) |
-| GET | `/contacts/` | Get All Contacts | ⬜ | **`ContactController@index`** |
-| POST | `/contacts/` | Create/Edit Contact | ⬜ | `@store` |
-| DELETE | `/contacts/` | Delete Contact | ⬜ | `@destroy` |
-| GET | `/contacts/customers/` | Get Customers | ⬜ | `@customers` |
-| GET | `/contacts/customers-suppliers/` | Customers & Vendors | ⬜ | `@customersSuppliers` |
-| GET | `/contact/category/` | Contact Category | ⬜ | `@categories` |
+| GET | `/contacts/suppliers/` | Get Vendors | ✅ | `ContactController@suppliers` |
+| GET | `/contacts/{id}` | Get Contact | ✅ | `ContactController@show` |
+| GET | `/contacts/` | Get All Contacts | ✅ | `ContactController@index` |
+| POST | `/contacts/` | Create/Edit Contact | ✅ | `ContactController@store` |
+| DELETE | `/contacts/` | Delete Contact | ✅ | `ContactController@destroy` |
+| GET | `/contacts/customers/` | Get Customers | ✅ | `ContactController@customers` |
+| GET | `/contacts/customers-suppliers/` | Customers & Vendors | ✅ | `ContactController@customersSuppliers` |
+| GET | `/contact/category/` | Contact Category | ✅ | `ContactController@categories` |
 
 ---
 
@@ -568,7 +568,7 @@ Webhook **outbound** Jubelio = endpoint untuk **menerima** event dari sistem int
 |---|---|---|---:|---|---|
 | ~~**E1. Sales Invoice + Payment + Settlement**~~ | Sales | 🟢 Rasyid | ~~22~~ ✅ | — | ✅ DONE |
 | ~~**E2. Purchase Bill + Payment + Return + Settlement**~~ | Purchase | 🟢 Rasyid | ~~20~~ ✅ | — | ✅ DONE |
-| **E3. Contact terpadu** (customers/suppliers) | Contact (baru) | 🟢 Rasyid | 8 | M | 🥇 P0 (dependency E1/E2) |
+| ~~**E3. Contact terpadu**~~ (customers/suppliers) | Supplier (Contact) | 🟢 Rasyid | ~~8~~ ✅ | — | ✅ DONE |
 | **E4. Finance: Journal + Accounts (CoA)** | Finance | 🔵 Darriel | 5 | L | 🥈 P1 |
 | **E5. Cash & Bank** | Finance | 🔵 Darriel | 4 | M | 🥈 P1 |
 | **E6. Tax lengkap** | Tax | 🔵 Darriel | 1+ | S | 🥈 P1 |
@@ -690,7 +690,7 @@ Agar Cilupbah benar-benar **menggantikan Jubelio** tanpa mengubah client:
 3. **Contract testing** — validasi response tiap endpoint terhadap schema `dist (2).yaml` (mis. `spectator`/`openapi-httpfoundation-testing`).
 4. **Urutan eksekusi:** E3 (Contact) → E1 (Sales Invoice/Payment) → E2 (Purchase Bill/Payment) → E4/E5 (Finance) → E7 (Reports) → E8 (Webhooks) → E9 (Marketplace) → E10/E11 (polish).
 
-**Total endpoint yang masih harus dibuat: ± 44 operasi (⬜) + 18 penyempurnaan (🔄).** *(Sales & Purchase selesai 2026-06-10)*
+**Total endpoint yang masih harus dibuat: ± 38 operasi (⬜) + 16 penyempurnaan (🔄).** *(Sales, Purchase & Contact selesai 2026-06-10)*
 
 ---
 
@@ -698,7 +698,7 @@ Agar Cilupbah benar-benar **menggantikan Jubelio** tanpa mengubah client:
 
 > Dibangkitkan otomatis dari `dist (2).yaml` (superset; mencakup `dist (3).yaml`). Validasi: **287 operasi**, semua punya fungsi & status.
 
-> Rekap: ✅ 185 · 🔄 31 · ⬜ 71
+> Rekap: ✅ 193 · 🔄 29 · ⬜ 65
 
 
 ### Authentication — ✅1 🔄0 ⬜0 (total 1)
@@ -990,18 +990,18 @@ Agar Cilupbah benar-benar **menggantikan Jubelio** tanpa mengubah client:
 | 238 | POST | `/purchase/serial-number/mark-printed` | Cetak barcode produk untuk putaway | ✅ |
 | 239 | GET | `/purchase/serial-number/wms/{bill_detail_id}` | Ambil nomor seri/batch item per bill detail | ✅ |
 
-### Contact — ✅0 🔄2 ⬜6 (total 8)
+### Contact — ✅8 🔄0 ⬜0 (total 8)
 
 | # | Method | Endpoint | Untuk apa (fungsi) | Status |
 |---:|---|---|---|:--:|
-| 240 | GET | `/contact/category/` | Ambil daftar kategori kontak | ⬜ |
-| 241 | GET | `/contacts/` | Ambil semua kontak | ⬜ |
-| 242 | POST | `/contacts/` | Buat/ubah kontak | ⬜ |
-| 243 | DELETE | `/contacts/` | Hapus kontak | ⬜ |
-| 244 | GET | `/contacts/customers-suppliers/` | Ambil kontak yang sekaligus customer & supplier | ⬜ |
-| 245 | GET | `/contacts/customers/` | Ambil daftar customer | ⬜ |
-| 246 | GET | `/contacts/suppliers/` | Ambil daftar supplier/vendor | 🔄 |
-| 247 | GET | `/contacts/{id}` | Ambil detail satu kontak | 🔄 |
+| 240 | GET | `/contact/category/` | Ambil daftar kategori kontak | ✅ |
+| 241 | GET | `/contacts/` | Ambil semua kontak | ✅ |
+| 242 | POST | `/contacts/` | Buat/ubah kontak | ✅ |
+| 243 | DELETE | `/contacts/` | Hapus kontak | ✅ |
+| 244 | GET | `/contacts/customers-suppliers/` | Ambil kontak yang sekaligus customer & supplier | ✅ |
+| 245 | GET | `/contacts/customers/` | Ambil daftar customer | ✅ |
+| 246 | GET | `/contacts/suppliers/` | Ambil daftar supplier/vendor | ✅ |
+| 247 | GET | `/contacts/{id}` | Ambil detail satu kontak | ✅ |
 
 ### Journal — ✅0 🔄0 ⬜5 (total 5)
 
