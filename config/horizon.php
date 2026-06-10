@@ -199,7 +199,7 @@ return [
     'defaults' => [
         'supervisor-default' => [
             'connection' => 'redis',
-            'queue' => ['default', 'tiktok_webhooks', 'channel_sync', 'product'],
+            'queue' => ['default', env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks'), env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'), env('QUEUE_NAME_PRODUCT', 'product')],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 1,

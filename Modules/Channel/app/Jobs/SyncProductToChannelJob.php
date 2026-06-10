@@ -41,8 +41,7 @@ class SyncProductToChannelJob implements ShouldQueue
         $this->channelShopId = $channelShopId;
         $this->action = $action;
 
-        $this->onConnection('redis');
-        $this->onQueue('channel_sync');
+        $this->onQueue(config('queue.names.channel_sync'));
     }
 
     /**
@@ -218,9 +217,8 @@ class SyncProductToChannelJob implements ShouldQueue
         $failKey = "circuit_fail_count:{$channelCode}";
         $threshold = config('channel.circuit_breaker_threshold', 10);
         
-        $count = Cache::increment($failKey);
-        
-        Cache::expire($failKey, 300); 
+        $count = (int) Cache::get($failKey, 0) + 1;
+        Cache::put($failKey, $count, 300);
 
         if ($count >= $threshold) {
             $cooldownMinutes = config('channel.circuit_breaker_cooldown_minutes', 5);

@@ -2,6 +2,7 @@
 
 namespace Modules\Channel\Adapters;
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Contracts\MarketplaceAdapterInterface;
 use Modules\Channel\Models\ChannelShop;
@@ -159,25 +160,37 @@ class TikTokAdapter implements MarketplaceAdapterInterface
 
     public function syncPriceAndStock(Product $product, ChannelShop $shop, string $externalProductId): array
     {
+        $channelWarehouse = DB::table('channel_warehouses')
+            ->where('store_id', $shop->shop_id)
+            ->first();
+
         $inventorySkus = [];
         $priceSkus = [];
-        
+
         foreach ($product->variants as $variant) {
             $mapping = $variant->channelMappings()->whereHas('channelMapping', function($q) use($shop) {
                 $q->where('channel_shop_id', $shop->id);
             })->first();
 
             if ($mapping && $mapping->external_sku_id) {
+                $availableQty = 0;
+                if ($channelWarehouse) {
+                    $availableQty = (int) DB::table('inventories')
+                        ->where('item_id', $variant->id)
+                        ->where('location_id', $channelWarehouse->location_id)
+                        ->sum('available');
+                }
+
                 $inventorySkus[] = [
                     'id' => $mapping->external_sku_id,
                     'inventory' => [
                         [
                             'warehouse_id' => config('channel.tiktok_defaults.warehouse_id', '7646426075561690887'),
-                            'quantity' => (int) ($variant->stock ?? 0)
+                            'quantity' => max(0, $availableQty),
                         ]
                     ]
                 ];
-                
+
                 $priceSkus[] = [
                     'id' => $mapping->external_sku_id,
                     'price' => [

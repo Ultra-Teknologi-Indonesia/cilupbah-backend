@@ -27,7 +27,7 @@ class ChannelOrderRepository
         return DB::table('sales_orders')->orderBy('id', 'desc')->get();
     }
 
-    public function getOrderItems(int $orderId)
+    public function getOrderItems(string $orderId)
     {
         return DB::table('sales_order_items')->where('order_id', $orderId)->get();
     }
@@ -35,7 +35,7 @@ class ChannelOrderRepository
     public function updateOrderStatusByOrderNo(string $orderNo, string $status)
     {
         return DB::table('sales_orders')
-            ->where('order_number', $orderNo) 
+            ->where('salesorder_no', $orderNo)
             ->update(['status' => $status]);
     }
 }
