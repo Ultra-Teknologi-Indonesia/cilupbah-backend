@@ -4,11 +4,13 @@ namespace Modules\Outbound\Services;
 
 use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Outbound\Models\Picklist;
+use Modules\Outbound\Models\PicklistItem;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Inventory\Models\Inventory;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
+use Illuminate\Support\Facades\DB;
 
 class OutboundFulfillmentService
 {
@@ -57,6 +59,93 @@ class OutboundFulfillmentService
         }
 
         return $this->orderService->relocateOrder($order, $locationId);
+    }
+
+    public function findOrderByNo(string $orderNo): ?Order
+    {
+        return Order::where('salesorder_no', $orderNo)
+            ->with([
+                'items.product:id,sku,product_id',
+                'items.product.product:id,product_name',
+                'location:id,location_name,location_code',
+            ])
+            ->first();
+    }
+
+    public function moveToReadyToPick(string $orderId, string $locationId, string $movedBy): Order
+    {
+        $order = Order::find($orderId);
+
+        if (!$order) {
+            throw new \Exception('Order tidak ditemukan.');
+        }
+
+        if ($order->status !== 'reserved') {
+            throw new \Exception("Order harus berstatus 'reserved' untuk dipindah ke ready-to-pick (saat ini: {$order->status}).");
+        }
+
+        $existing = PicklistItem::where('order_id', $orderId)
+            ->whereHas('picklist', fn ($q) => $q->whereNotIn('status', [Picklist::STATUS_CANCELLED, Picklist::STATUS_FAILED]))
+            ->exists();
+
+        if ($existing) {
+            throw new \Exception('Order sudah memiliki picklist aktif.');
+        }
+
+        DB::transaction(function () use ($order, $locationId, $movedBy) {
+            $picklist = Picklist::create([
+                'picklist_no' => $this->generatePicklistNo(),
+                'location_id' => $locationId,
+                'status' => Picklist::STATUS_DRAFT,
+                'created_by' => $movedBy,
+            ]);
+
+            foreach ($order->items as $item) {
+                PicklistItem::create([
+                    'picklist_id' => $picklist->id,
+                    'order_id' => $order->id,
+                    'order_item_id' => $item->id,
+                    'item_id' => $item->item_id,
+                    'qty_ordered' => $item->qty,
+                    'qty_picked' => 0,
+                ]);
+            }
+        });
+
+        return $order->fresh();
+    }
+
+    public function moveToReadyToProcess(string $orderId): Order
+    {
+        $order = Order::find($orderId);
+
+        if (!$order) {
+            throw new \Exception('Order tidak ditemukan.');
+        }
+
+        if ($order->status !== 'reserved') {
+            throw new \Exception("Order harus berstatus 'reserved' untuk dipindah ke ready-to-process (saat ini: {$order->status}).");
+        }
+
+        PicklistItem::where('order_id', $orderId)
+            ->whereHas('picklist', fn ($q) => $q->where('status', Picklist::STATUS_DRAFT))
+            ->delete();
+
+        return $order->fresh();
+    }
+
+    private function generatePicklistNo(): string
+    {
+        $date = now()->format('Ymd');
+        $prefix = "PK-{$date}-";
+
+        $last = Picklist::where('picklist_no', 'like', "{$prefix}%")
+            ->orderByDesc('picklist_no')
+            ->value('picklist_no');
+
+        $seq = $last ? (int) substr($last, -4) + 1 : 1;
+
+        return $prefix . str_pad($seq, 4, '0', STR_PAD_LEFT);
     }
 
     public function requestCancelOrder(string $orderId, ?string $reason = null, ?string $requestedBy = null): Order

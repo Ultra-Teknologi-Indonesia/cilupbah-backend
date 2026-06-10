@@ -16,6 +16,11 @@ class CourierService
         return $this->courierRepository->getAllPaginated($limit);
     }
 
+    public function getByTenant(string $tenantId, int $limit = 10)
+    {
+        return $this->courierRepository->getByTenant($tenantId, $limit);
+    }
+
     public function getAll()
     {
         return $this->courierRepository->getAll();

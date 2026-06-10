@@ -29,6 +29,21 @@ class PacklistService
         return $this->packlistRepository->getItemsPaginated($packlistId, $limit);
     }
 
+    public function scanOrder(string $orderNo): ?Packlist
+    {
+        $packlist = Packlist::where('order_id', function ($q) use ($orderNo) {
+            $q->select('id')
+                ->from('sales_orders')
+                ->where('salesorder_no', $orderNo)
+                ->limit(1);
+        })
+            ->whereIn('status', [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS])
+            ->with(['items.product:id,sku,product_id', 'items.product.product:id,product_name'])
+            ->first();
+
+        return $packlist;
+    }
+
     public function create(array $data): Packlist
     {
         return DB::transaction(function () use ($data) {

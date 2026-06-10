@@ -25,8 +25,8 @@
 | Product | 34 | 18 | 8 | 8 | Product |
 | Product Listing | 8 | 3 | 2 | 3 | Product/Channel |
 | Inventory | 57 | 57 | 0 | 0 | Inventory |
-| WMS (Outbound) | 34 | 20 | 8 | 6 | Outbound |
-| Couriers | 3 | 2 | 0 | 1 | Outbound |
+| WMS (Outbound) | 34 | 34 | 0 | 0 | Outbound |
+| Couriers | 3 | 3 | 0 | 0 | Outbound |
 | Sales | 60 | 12 | 8 | 40 | Sales |
 | Purchasing | 30 | 6 | 2 | 22 | Purchase |
 | Contact | 8 | 0 | 2 | 6 | (Supplier→Contact) |
@@ -36,11 +36,11 @@
 | System Setting | 8 | 1 | 1 | 6 | Auth/Setting |
 | Webhooks | 9 | 0 | 1 | 8 | Webhook ⬜ |
 | Channels (marketplace) | 1 | 0 | 1 | 0 | Channel |
-| **TOTAL** | **287** | **138** | **36** | **113** | — |
+| **TOTAL** | **287** | **153** | **28** | **106** | — |
 
 > Angka TOTAL **terverifikasi otomatis** terhadap `dist (2).yaml` (lihat **Lampiran A** — daftar lengkap 287 endpoint, 0 yang terlewat). Angka per-domain di tabel ini indikatif; sumber kebenaran = Lampiran A.
 
-**Cakupan fungsional: ✅ 138 (48%) + 🔄 36 (13%) + ⬜ 113 (39%) ≈ 61% setara penuh.** Dihitung per-operasi termasuk seluruh sub-endpoint Accounting/Sales/Purchase.
+**Cakupan fungsional: ✅ 153 (53%) + 🔄 28 (10%) + ⬜ 106 (37%) ≈ 63% setara penuh.** Dihitung per-operasi termasuk seluruh sub-endpoint Accounting/Sales/Purchase.
 
 ---
 
@@ -254,7 +254,7 @@ Berdasarkan git history (jumlah commit + baris kode lintas semua branch), dengan
 
 ---
 
-## 7. WMS (Outbound) 🔄 (20✅/8🔄/6⬜)
+## 7. WMS (Outbound) ✅ (34✅/0🔄/0⬜)
 
 ### 7a. Order Stages
 | M | Endpoint Jubelio | Fungsi | Status | Implementasi / Task |
@@ -267,27 +267,27 @@ Berdasarkan git history (jumlah commit + baris kode lintas semua branch), dengan
 | GET | `/wms/sales/orders/request-cancel/` | Request cancel list | ✅ | `@ordersByStage('request-cancel')` |
 | POST | `/wms/sales/orders/change-location/` | Change Location | ✅ | `@changeLocation` |
 | GET | `/wms/sales/order/ready-to-ship` | Ready to ship | ✅ | `@ordersByStage('ready-to-ship')` |
-| POST | `/wms/order/getOrderByNo/` | Get SO for picking | 🔄 | **Task:** lookup order-by-no |
-| POST | `/wms/sales/ready-to-pick` | Move → ready to pick | 🔄 | **Task:** transition action |
-| POST | `/wms/sales/ready-to-process` | Move → ready to process | 🔄 | **Task:** transition action |
+| POST | `/wms/order/getOrderByNo/` | Get SO for picking | ✅ | `OutboundFulfillmentController@getOrderByNo` — lookup by salesorder_no |
+| POST | `/wms/sales/ready-to-pick` | Move → ready to pick | ✅ | `@moveToReadyToPick` — creates DRAFT picklist for order |
+| POST | `/wms/sales/ready-to-process` | Move → ready to process | ✅ | `@moveToReadyToProcess` — removes DRAFT picklist items |
 
 ### 7b. Picklist
 | M | Endpoint Jubelio | Fungsi | Status | Implementasi / Task |
 |---|---|---|---|---|
 | POST | `/wms/sales/picklists/` | Create Picklist / Complete | ✅ | `PicklistController@store` (+complete) |
 | POST | `/wms/sales/picklists/change-picker/` | Change Picker | ✅ | `PicklistController@assignPicker` |
-| GET | `/wms/sales/picklists/confirm-pick/` | Orders on picking | 🔄 | `@start/@pickItem` (samakan listing) |
+| GET | `/wms/sales/picklists/confirm-pick/` | Orders on picking | ✅ | Route alias `picklists/on-picking` → `@ordersByStage('on-picking')` |
 
 ### 7c. Packlist
 | M | Endpoint Jubelio | Fungsi | Status | Implementasi / Task |
 |---|---|---|---|---|
 | POST | `/wms/sales/packlist` | Create Packlist | ✅ | `PacklistController@store` |
 | POST | `/wms/sales/packlist/mark-as-complete/` | Done Packing | ✅ | `PacklistController@complete` |
-| GET | `/wms/sales/packlist/scan-order` | Items to pack | 🔄 | `PacklistController@items` (samakan) |
+| GET | `/wms/sales/packlist/scan-order` | Items to pack | ✅ | `PacklistController@scanOrder` — lookup packlist by salesorder_no |
 | POST | `/wms/sales/packlist/update-qty-packed` | Update qty packed | ✅ | `PacklistController@packItem` |
 | POST | `/wms/sales/packlist/verify-barcode/` | Verify barcode | ✅ | `PacklistController@verifyBarcode` |
-| GET | `/wms/sales/packlists/process/` | On packing process | 🔄 | `@ordersByStage` |
-| GET | `/wms/sales/packlists/finish-pack/` | Finished packing | 🔄 | `@ordersByStage` |
+| GET | `/wms/sales/packlists/process/` | On packing process | ✅ | Route alias `packlists/on-packing` → `@ordersByStage('on-packing')` |
+| GET | `/wms/sales/packlists/finish-pack/` | Finished packing | ✅ | Route alias `packlists/finish-pack` → `@ordersByStage('finish-pack')` |
 
 ### 7d. Shipment
 | M | Endpoint Jubelio | Fungsi | Status | Implementasi / Task |
@@ -298,11 +298,11 @@ Berdasarkan git history (jumlah commit + baris kode lintas semua branch), dengan
 | POST | `/wms/sales/shipments/orders/` | Get AWB for order | ✅ | `ShipmentController@saveAwb` |
 | GET | `/wms/sales/shipments/all` | All regular shipments | ✅ | `ShipmentController@index` |
 | GET | `/wms/sales/shipped/` | Already shipped | ✅ | `@ordersByStage('shipped')` / `handOver` |
-| GET | `/wms/sales/shipments/{courier_new_id}` | By specific courier | 🔄 | **Task:** filter by courier |
-| GET | `/wms/sales/shipments/completed/{type}/{courierIds}` | Completed/on delivery | ⬜ | **Task:** shipment completed filter |
-| GET | `/wms/sales/shipments/instant/all` | Instant courier shipments | ⬜ | **Task:** instant courier |
-| POST | `/wms/shipments/instant-courier/` | Create Instant Shipment | ⬜ | **Task:** instant courier create |
-| POST | `/wms/shipments/get-order/` | Update qty given to courier | ⬜ | **Task:** handover qty update |
+| GET | `/wms/sales/shipments/{courier_new_id}` | By specific courier | ✅ | `ShipmentController@byCourier` — filter by courier_code |
+| GET | `/wms/sales/shipments/completed/{type}/{courierIds}` | Completed/on delivery | ✅ | `ShipmentController@completed` — status HANDED_OVER/IN_TRANSIT/DELIVERED |
+| GET | `/wms/sales/shipments/instant/all` | Instant courier shipments | ✅ | `ShipmentController@instantAll` — shipment_type=INSTANT |
+| POST | `/wms/shipments/instant-courier/` | Create Instant Shipment | ✅ | `ShipmentController@storeInstant` — auto shipment_type=INSTANT |
+| POST | `/wms/shipments/get-order/` | Update qty given to courier | ✅ | `ShipmentController@updateHandoverQty` — update qty_given on shipment_orders |
 
 ### 7e. WMS Misc
 | M | Endpoint Jubelio | Fungsi | Status | Implementasi / Task |
@@ -312,13 +312,13 @@ Berdasarkan git history (jumlah commit + baris kode lintas semua branch), dengan
 
 ---
 
-## 8. Couriers 🔄 (2✅/1⬜)
+## 8. Couriers ✅ (3✅/0🔄/0⬜)
 
 | M | Endpoint Jubelio | Fungsi | Status | Implementasi / Task |
 |---|---|---|---|---|
 | GET | `/couriers` | Get All Couriers | ✅ | `CourierController@index/all` |
 | GET | `/couriers/{id}` | Get Courier | ✅ | `CourierController@show` |
-| GET | `/couriers/tenant/{id}` | Get Tenant Courier | ⬜ | **Task:** courier per-tenant/multi-account |
+| GET | `/couriers/tenant/{id}` | Get Tenant Courier | ✅ | `CourierController@byTenant` — filter by tenant_id column |
 
 ---
 
@@ -843,13 +843,13 @@ Agar Cilupbah benar-benar **menggantikan Jubelio** tanpa mengubah client:
 | 111 | GET | `/inventory/transfers/transit` | Ambil transfer stok dalam perjalanan (transit) | ✅ |
 | 112 | GET | `/inventory/transfers/{id}` | Ambil detail transfer stok | ✅ |
 
-### WMS (Warehouse Management System) — ✅22 🔄8 ⬜4 (total 34)
+### WMS (Warehouse Management System) — ✅34 🔄0 ⬜0 (total 34)
 
 | # | Method | Endpoint | Untuk apa (fungsi) | Status |
 |---:|---|---|---|:--:|
 | 113 | GET | `/wms/couriers` | Ambil daftar kurir WMS | ✅ |
 | 114 | GET | `/wms/employee/{NIKorEmail}` | Ambil info staf gudang per NIK/email | ✅ |
-| 115 | POST | `/wms/order/getOrderByNo/` | Ambil sales order yang itemnya akan dipick | 🔄 |
+| 115 | POST | `/wms/order/getOrderByNo/` | Ambil sales order yang itemnya akan dipick | ✅ |
 | 116 | GET | `/wms/sales/order/ready-to-ship` | Ambil order yang perlu dikirim ke kurir | ✅ |
 | 117 | POST | `/wms/sales/orders/change-location/` | Ubah lokasi gudang untuk order | ✅ |
 | 118 | GET | `/wms/sales/orders/empty-stock/` | Ambil order yang stoknya kosong | ✅ |
@@ -860,34 +860,34 @@ Agar Cilupbah benar-benar **menggantikan Jubelio** tanpa mengubah client:
 | 123 | GET | `/wms/sales/orders/request-cancel/` | Ambil order yang diminta batal oleh customer | ✅ |
 | 124 | POST | `/wms/sales/packlist` | Buat packlist | ✅ |
 | 125 | POST | `/wms/sales/packlist/mark-as-complete/` | Tandai order siap kirim (selesai packing) | ✅ |
-| 126 | GET | `/wms/sales/packlist/scan-order` | Ambil daftar item untuk dipacking | 🔄 |
+| 126 | GET | `/wms/sales/packlist/scan-order` | Ambil daftar item untuk dipacking | ✅ |
 | 127 | POST | `/wms/sales/packlist/update-qty-packed` | Perbarui qty item yang sudah dipacking | ✅ |
 | 128 | POST | `/wms/sales/packlist/verify-barcode/` | Verifikasi item/SKU/barcode/serial/batch | ✅ |
-| 129 | GET | `/wms/sales/packlists/finish-pack/` | Ambil order yang selesai packing | 🔄 |
-| 130 | GET | `/wms/sales/packlists/process/` | Ambil order yang sedang proses packing | 🔄 |
+| 129 | GET | `/wms/sales/packlists/finish-pack/` | Ambil order yang selesai packing | ✅ |
+| 130 | GET | `/wms/sales/packlists/process/` | Ambil order yang sedang proses packing | ✅ |
 | 131 | POST | `/wms/sales/picklists/` | Buat picklist / set picklist selesai | ✅ |
 | 132 | POST | `/wms/sales/picklists/change-picker/` | Ganti staf picker | ✅ |
-| 133 | GET | `/wms/sales/picklists/confirm-pick/` | Ambil order yang sedang proses picking | 🔄 |
-| 134 | POST | `/wms/sales/ready-to-pick` | Pindahkan order ke status 'ready to pick' | 🔄 |
-| 135 | POST | `/wms/sales/ready-to-process` | Pindahkan order ke status 'ready to process' | 🔄 |
+| 133 | GET | `/wms/sales/picklists/confirm-pick/` | Ambil order yang sedang proses picking | ✅ |
+| 134 | POST | `/wms/sales/ready-to-pick` | Pindahkan order ke status 'ready to pick' | ✅ |
+| 135 | POST | `/wms/sales/ready-to-process` | Pindahkan order ke status 'ready to process' | ✅ |
 | 136 | GET | `/wms/sales/shipments/all` | Ambil semua jadwal shipment kurir reguler | ✅ |
-| 137 | GET | `/wms/sales/shipments/completed/{shipment_type}/{courierIds}` | Ambil shipment yang sudah dalam pengiriman | ⬜ |
-| 138 | GET | `/wms/sales/shipments/instant/all` | Ambil semua jadwal shipment kurir instant | ⬜ |
+| 137 | GET | `/wms/sales/shipments/completed/{shipment_type}/{courierIds}` | Ambil shipment yang sudah dalam pengiriman | ✅ |
+| 138 | GET | `/wms/sales/shipments/instant/all` | Ambil semua jadwal shipment kurir instant | ✅ |
 | 139 | POST | `/wms/sales/shipments/orders/` | Ambil AWB untuk order | ✅ |
-| 140 | GET | `/wms/sales/shipments/{courier_new_id}` | Ambil shipment per kurir tertentu | 🔄 |
+| 140 | GET | `/wms/sales/shipments/{courier_new_id}` | Ambil shipment per kurir tertentu | ✅ |
 | 141 | GET | `/wms/sales/shipped/` | Ambil order yang sudah dikirim kurir | ✅ |
 | 142 | POST | `/wms/scan-shipment` | Ambil jadwal shipment via scan nomor shipment | ✅ |
 | 143 | POST | `/wms/shipment-detail/` | Tambah order ke jadwal shipment | ✅ |
 | 144 | POST | `/wms/shipments/` | Buat jadwal shipment kurir reguler | ✅ |
-| 145 | POST | `/wms/shipments/get-order/` | Perbarui qty item yang sudah diserahkan ke kurir | ⬜ |
-| 146 | POST | `/wms/shipments/instant-courier/` | Buat jadwal shipment kurir instant | ⬜ |
+| 145 | POST | `/wms/shipments/get-order/` | Perbarui qty item yang sudah diserahkan ke kurir | ✅ |
+| 146 | POST | `/wms/shipments/instant-courier/` | Buat jadwal shipment kurir instant | ✅ |
 
-### Couriers — ✅2 🔄0 ⬜1 (total 3)
+### Couriers — ✅3 🔄0 ⬜0 (total 3)
 
 | # | Method | Endpoint | Untuk apa (fungsi) | Status |
 |---:|---|---|---|:--:|
 | 147 | GET | `/couriers` | Ambil semua kurir | ✅ |
-| 148 | GET | `/couriers/tenant/{id}` | Ambil kurir milik tenant tertentu | ⬜ |
+| 148 | GET | `/couriers/tenant/{id}` | Ambil kurir milik tenant tertentu | ✅ |
 | 149 | GET | `/couriers/{id}` | Ambil detail satu kurir | ✅ |
 
 ### Sales — ✅12 🔄13 ⬜35 (total 60)

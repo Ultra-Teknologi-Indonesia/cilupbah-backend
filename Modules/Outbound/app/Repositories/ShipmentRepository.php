@@ -26,6 +26,65 @@ class ShipmentRepository
             ->paginate($limit);
     }
 
+    public function getByCourier(string $courierCode, int $limit = 10)
+    {
+        return QueryBuilder::for(
+            Shipment::where('courier_code', $courierCode)
+        )
+            ->with(['location:id,location_name,location_code'])
+            ->withCount('orders')
+            ->allowedFilters(
+                AllowedFilter::exact('status'),
+                AllowedFilter::exact('shipment_type'),
+                AllowedFilter::partial('q', 'shipment_no'),
+            )
+            ->allowedSorts('created_at', 'shipment_no', 'shipment_date')
+            ->defaultSort('-shipment_date')
+            ->paginate($limit);
+    }
+
+    public function getCompleted(string $type, array $courierCodes = [], int $limit = 10)
+    {
+        $query = Shipment::where('shipment_type', strtoupper($type))
+            ->whereIn('status', [
+                Shipment::STATUS_HANDED_OVER,
+                Shipment::STATUS_IN_TRANSIT,
+                Shipment::STATUS_DELIVERED,
+            ]);
+
+        if (!empty($courierCodes)) {
+            $query->whereIn('courier_code', $courierCodes);
+        }
+
+        return QueryBuilder::for($query)
+            ->with(['location:id,location_name,location_code'])
+            ->withCount('orders')
+            ->allowedFilters(
+                AllowedFilter::exact('status'),
+                AllowedFilter::partial('q', 'shipment_no'),
+            )
+            ->allowedSorts('created_at', 'shipment_date', 'handed_over_at')
+            ->defaultSort('-handed_over_at')
+            ->paginate($limit);
+    }
+
+    public function getByType(string $type, int $limit = 10)
+    {
+        return QueryBuilder::for(
+            Shipment::where('shipment_type', $type)
+        )
+            ->with(['location:id,location_name,location_code'])
+            ->withCount('orders')
+            ->allowedFilters(
+                AllowedFilter::exact('status'),
+                AllowedFilter::exact('courier_code'),
+                AllowedFilter::partial('q', 'shipment_no'),
+            )
+            ->allowedSorts('created_at', 'shipment_no', 'shipment_date')
+            ->defaultSort('-shipment_date')
+            ->paginate($limit);
+    }
+
     public function findById(string $id): ?Shipment
     {
         return Shipment::with([

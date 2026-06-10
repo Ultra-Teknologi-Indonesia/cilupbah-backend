@@ -7,6 +7,7 @@ use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Jobs\ProcessShipmentHandOverJob;
 use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Outbound\Models\Packlist;
+use Modules\Outbound\Models\ShipmentOrder;
 use Illuminate\Support\Facades\DB;
 
 class ShipmentService
@@ -18,6 +19,23 @@ class ShipmentService
     public function getAllPaginated(int $limit = 10)
     {
         return $this->shipmentRepository->getAllPaginated($limit);
+    }
+
+    public function getByCourier(string $courierCode, int $limit = 10)
+    {
+        return $this->shipmentRepository->getByCourier($courierCode, $limit);
+    }
+
+    public function getCompleted(string $type, ?string $courierIds = null, int $limit = 10)
+    {
+        $courierCodes = $courierIds ? explode(',', $courierIds) : [];
+
+        return $this->shipmentRepository->getCompleted($type, $courierCodes, $limit);
+    }
+
+    public function getInstantAll(int $limit = 10)
+    {
+        return $this->shipmentRepository->getByType('INSTANT', $limit);
     }
 
     public function getById(string $id): ?Shipment
@@ -151,6 +169,32 @@ class ShipmentService
         }
 
         $shipmentOrder->update(['tracking_number' => $trackingNumber]);
+    }
+
+    public function createInstant(array $data): Shipment
+    {
+        $data['shipment_type'] = 'INSTANT';
+
+        return $this->create($data);
+    }
+
+    public function updateHandoverQty(string $shipmentId, string $orderId, int $qtyGiven): void
+    {
+        $shipmentOrder = ShipmentOrder::where('shipment_id', $shipmentId)
+            ->where('order_id', $orderId)
+            ->first();
+
+        if (!$shipmentOrder) {
+            throw new \Exception('Order tidak ditemukan dalam shipment ini.');
+        }
+
+        $shipment = $this->shipmentRepository->findById($shipmentId);
+
+        if (!$shipment || !in_array($shipment->status, [Shipment::STATUS_HANDED_OVER, Shipment::STATUS_SCHEDULED])) {
+            throw new \Exception('Qty handover hanya bisa diupdate pada shipment SCHEDULED/HANDED_OVER.');
+        }
+
+        $shipmentOrder->update(['qty_given' => $qtyGiven]);
     }
 
     public function cancel(string $id): Shipment

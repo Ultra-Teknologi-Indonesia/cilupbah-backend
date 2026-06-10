@@ -21,6 +21,21 @@ class CourierRepository
             ->paginate($limit);
     }
 
+    public function getByTenant(string $tenantId, int $limit = 10)
+    {
+        return QueryBuilder::for(
+            Courier::where('tenant_id', $tenantId)
+        )
+            ->allowedFilters(
+                AllowedFilter::exact('type'),
+                AllowedFilter::exact('is_active'),
+                AllowedFilter::partial('q', 'name'),
+            )
+            ->allowedSorts('name', 'code', 'created_at')
+            ->defaultSort('name')
+            ->paginate($limit);
+    }
+
     public function getAll()
     {
         return Courier::where('is_active', true)->orderBy('name')->get();
