@@ -24,6 +24,13 @@ class SyncChannelAttributesJob implements ShouldQueue
     {
         $this->channelId = $channelId;
         $this->categoryId = $categoryId;
+        $this->onConnection('redis');
+        $this->onQueue(config('queue.names.product'));
+    }
+
+    public function tags(): array
+    {
+        return ['product', 'channel-attributes', "channel:{$this->channelId}", "category:{$this->categoryId}"];
     }
 
     /**
