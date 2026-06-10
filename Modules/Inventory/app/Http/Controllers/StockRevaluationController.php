@@ -91,7 +91,11 @@ class StockRevaluationController extends Controller
     )]
     public function show(string $id): JsonResponse
     {
-        $revaluation = $this->revaluationService->getById($id);
+        try {
+            $revaluation = $this->revaluationService->getById($id);
+        } catch (\Illuminate\Database\QueryException $e) {
+            return $this->errorResponse('Dokumen revaluasi tidak ditemukan.', 404);
+        }
 
         if (!$revaluation) {
             return $this->errorResponse('Dokumen revaluasi tidak ditemukan.', 404);

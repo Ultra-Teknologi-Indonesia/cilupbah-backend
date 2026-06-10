@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Modules\Sales\Models\SalesOrder;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
+use App\Filters\FuzzyFilter;
 
 
 class SalesOrderRepository
@@ -29,6 +30,85 @@ class SalesOrderRepository
             ->allowedIncludes('items')
             ->paginate(request('per_page', 10))
             ->appends(request()->query());
+    }
+
+    public function getCancelledOrders(int $limit = 10)
+    {
+        return QueryBuilder::for(SalesOrder::class)
+            ->where('is_canceled', true)
+            ->allowedFilters(
+                AllowedFilter::exact('source'),
+                AllowedFilter::custom('search', new FuzzyFilter('customer_name,salesorder_no'))
+            )
+            ->allowedSorts('created_at', 'transaction_date', 'grand_total')
+            ->defaultSort('-created_at')
+            ->paginate($limit);
+    }
+
+    public function getCompletedOrders(int $limit = 10)
+    {
+        return QueryBuilder::for(SalesOrder::class)
+            ->where('status', 'shipped')
+            ->allowedFilters(
+                AllowedFilter::exact('source'),
+                AllowedFilter::custom('search', new FuzzyFilter('customer_name,salesorder_no'))
+            )
+            ->allowedSorts('created_at', 'transaction_date', 'grand_total')
+            ->defaultSort('-created_at')
+            ->paginate($limit);
+    }
+
+    public function getFailedOrders(int $limit = 10)
+    {
+        return QueryBuilder::for(SalesOrder::class)
+            ->where('is_canceled', true)
+            ->whereNotNull('cancel_request_reason')
+            ->allowedFilters(
+                AllowedFilter::exact('source'),
+                AllowedFilter::custom('search', new FuzzyFilter('customer_name,salesorder_no'))
+            )
+            ->allowedSorts('created_at', 'transaction_date')
+            ->defaultSort('-created_at')
+            ->paginate($limit);
+    }
+
+    public function getReturnedOrders(int $limit = 10)
+    {
+        return QueryBuilder::for(SalesOrder::class)
+            ->whereHas('returns')
+            ->with('items')
+            ->allowedFilters(
+                AllowedFilter::exact('status'),
+                AllowedFilter::exact('source'),
+                AllowedFilter::custom('search', new FuzzyFilter('customer_name,salesorder_no'))
+            )
+            ->allowedSorts('created_at', 'transaction_date')
+            ->defaultSort('-created_at')
+            ->paginate($limit);
+    }
+
+    public function getUnfulfilledOrders(int $limit = 10)
+    {
+        return QueryBuilder::for(SalesOrder::class)
+            ->whereDoesntHave('packlist')
+            ->whereDoesntHave('picklistItems')
+            ->whereNotIn('status', ['shipped', 'cancelled'])
+            ->with('items')
+            ->allowedFilters(
+                AllowedFilter::exact('status'),
+                AllowedFilter::exact('source'),
+                AllowedFilter::custom('search', new FuzzyFilter('customer_name,salesorder_no'))
+            )
+            ->allowedSorts('created_at', 'transaction_date')
+            ->defaultSort('-created_at')
+            ->paginate($limit);
+    }
+
+    public function bulkDeleteCancelled(array $ids): int
+    {
+        return SalesOrder::whereIn('id', $ids)
+            ->where('is_canceled', true)
+            ->delete();
     }
 
     public function getOrderById(int|string $id): ?SalesOrder

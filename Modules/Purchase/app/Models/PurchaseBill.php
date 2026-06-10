@@ -56,4 +56,9 @@ class PurchaseBill extends Model
     {
         return $this->hasMany(PurchaseBillItem::class);
     }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(PurchasePayment::class);
+    }
 }

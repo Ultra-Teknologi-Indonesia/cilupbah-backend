@@ -30,6 +30,26 @@ class SalesReturnService
         return $this->returnRepository->findById($id);
     }
 
+    public function getUnpaidReturns(int $limit = 10)
+    {
+        return $this->returnRepository->getUnpaidReturns($limit);
+    }
+
+    public function getAllReturnItems(int $limit = 10)
+    {
+        return $this->returnRepository->getAllReturnItems($limit);
+    }
+
+    public function getRejectedReturnItems(int $limit = 10)
+    {
+        return $this->returnRepository->getRejectedReturnItems($limit);
+    }
+
+    public function getResolvedReturnItems(int $limit = 10)
+    {
+        return $this->returnRepository->getResolvedReturnItems($limit);
+    }
+
     /** Flow [D] — return with invoice/order, or [E] — return without invoice */
     public function create(array $data): SalesReturn
     {

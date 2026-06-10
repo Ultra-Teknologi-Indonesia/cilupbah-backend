@@ -67,4 +67,51 @@ class SalesReturnRepository
         }
         $return->update($updateData);
     }
+
+    public function getUnpaidReturns(int $limit = 10)
+    {
+        return QueryBuilder::for(SalesReturn::class)
+            ->where('status', SalesReturn::STATUS_COMPLETED)
+            ->whereDoesntHave('settlement', function ($q) {
+                $q->where('status', 'COMPLETED');
+            })
+            ->with(['order:id,salesorder_no', 'location:id,location_name', 'items.product:id,sku,product_id'])
+            ->allowedFilters(
+                AllowedFilter::exact('source'),
+                AllowedFilter::custom('search', new FuzzyFilter('return_number,customer_name'))
+            )
+            ->defaultSort('-created_at')
+            ->paginate($limit);
+    }
+
+    public function getAllReturnItems(int $limit = 10)
+    {
+        return QueryBuilder::for(SalesReturnItem::class)
+            ->with(['salesReturn:id,return_number,status', 'product:id,sku,product_id'])
+            ->allowedFilters(
+                AllowedFilter::exact('sales_return_id'),
+                AllowedFilter::exact('condition'),
+            )
+            ->allowedSorts('created_at')
+            ->defaultSort('-created_at')
+            ->paginate($limit);
+    }
+
+    public function getRejectedReturnItems(int $limit = 10)
+    {
+        return QueryBuilder::for(SalesReturnItem::class)
+            ->whereHas('salesReturn', fn ($q) => $q->where('status', SalesReturn::STATUS_REJECTED))
+            ->with(['salesReturn:id,return_number,status', 'product:id,sku,product_id'])
+            ->defaultSort('-created_at')
+            ->paginate($limit);
+    }
+
+    public function getResolvedReturnItems(int $limit = 10)
+    {
+        return QueryBuilder::for(SalesReturnItem::class)
+            ->whereHas('salesReturn', fn ($q) => $q->where('status', SalesReturn::STATUS_COMPLETED))
+            ->with(['salesReturn:id,return_number,status', 'product:id,sku,product_id'])
+            ->defaultSort('-created_at')
+            ->paginate($limit);
+    }
 }

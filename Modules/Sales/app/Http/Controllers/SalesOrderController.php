@@ -284,4 +284,252 @@ class SalesOrderController extends Controller
 
         return $this->successResponse(null, 'Sales order deleted');
     }
+
+    #[OA\Get(
+        path: '/api/v1/sales/orders/cancel',
+        summary: 'Get cancelled orders',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [new OA\Response(response: 200, description: 'Successful operation')]
+    )]
+    public function cancelled(Request $request)
+    {
+        $limit = $request->query('limit', 10);
+        $orders = $this->orderService->getCancelledOrders($limit);
+
+        return $this->successPaginatedResponse($orders, 'Daftar order cancelled');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/sales/orders/completed',
+        summary: 'Get completed (shipped) orders',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [new OA\Response(response: 200, description: 'Successful operation')]
+    )]
+    public function completed(Request $request)
+    {
+        $limit = $request->query('limit', 10);
+        $orders = $this->orderService->getCompletedOrders($limit);
+
+        return $this->successPaginatedResponse($orders, 'Daftar order completed');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/sales/orders/failed',
+        summary: 'Get failed orders',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [new OA\Response(response: 200, description: 'Successful operation')]
+    )]
+    public function failed(Request $request)
+    {
+        $limit = $request->query('limit', 10);
+        $orders = $this->orderService->getFailedOrders($limit);
+
+        return $this->successPaginatedResponse($orders, 'Daftar order failed');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/sales/orders/returned-list',
+        summary: 'Get orders with returns',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [new OA\Response(response: 200, description: 'Successful operation')]
+    )]
+    public function returnedList(Request $request)
+    {
+        $limit = $request->query('limit', 10);
+        $orders = $this->orderService->getReturnedOrders($limit);
+
+        return $this->successPaginatedResponse($orders, 'Daftar order yang di-return');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/sales/orders/delete-canceled',
+        summary: 'Bulk delete cancelled orders',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['ids'],
+            properties: [
+                new OA\Property(property: 'ids', type: 'array', items: new OA\Items(type: 'string')),
+            ]
+        )),
+        responses: [new OA\Response(response: 200, description: 'Orders deleted')]
+    )]
+    public function deleteCanceled(Request $request)
+    {
+        $validated = $request->validate([
+            'ids'   => 'required|array|min:1',
+            'ids.*' => 'required|string|exists:sales_orders,id',
+        ]);
+
+        $count = $this->orderService->bulkDeleteCancelled($validated['ids']);
+
+        return $this->successResponse(['deleted' => $count], "{$count} order cancelled berhasil dihapus");
+    }
+
+    #[OA\Post(
+        path: '/api/v1/sales/orders/mark-as-complete',
+        summary: 'Mark orders as complete (shipped)',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['order_ids'],
+            properties: [
+                new OA\Property(property: 'order_ids', type: 'array', items: new OA\Items(type: 'string')),
+            ]
+        )),
+        responses: [new OA\Response(response: 200, description: 'Orders marked as complete')]
+    )]
+    public function markAsComplete(Request $request)
+    {
+        $validated = $request->validate([
+            'order_ids'   => 'required|array|min:1',
+            'order_ids.*' => 'required|string|exists:sales_orders,id',
+        ]);
+
+        $count = $this->orderService->markAsComplete($validated['order_ids']);
+
+        return $this->successResponse(['completed' => $count], "{$count} order berhasil di-complete");
+    }
+
+    #[OA\Post(
+        path: '/api/v1/sales/orders/save-airwaybill',
+        summary: 'Save AWB (tracking number) to order',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['order_id', 'tracking_number'],
+            properties: [
+                new OA\Property(property: 'order_id', type: 'string'),
+                new OA\Property(property: 'tracking_number', type: 'string'),
+                new OA\Property(property: 'shipping_provider', type: 'string', nullable: true),
+            ]
+        )),
+        responses: [new OA\Response(response: 200, description: 'AWB berhasil disimpan')]
+    )]
+    public function saveAirwaybill(Request $request)
+    {
+        $validated = $request->validate([
+            'order_id'         => 'required|string|exists:sales_orders,id',
+            'tracking_number'  => 'required|string|max:255',
+            'shipping_provider' => 'nullable|string|max:255',
+        ]);
+
+        $order = $this->orderService->saveAirwaybill($validated);
+
+        return $this->successResponse(new SalesOrderResource($order), 'AWB berhasil disimpan');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/sales/orders/save-received-date',
+        summary: 'Save received date on order',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['order_id'],
+            properties: [
+                new OA\Property(property: 'order_id', type: 'string'),
+                new OA\Property(property: 'received_date', type: 'string', format: 'date-time', nullable: true),
+            ]
+        )),
+        responses: [new OA\Response(response: 200, description: 'Received date berhasil disimpan')]
+    )]
+    public function saveReceivedDate(Request $request)
+    {
+        $validated = $request->validate([
+            'order_id'      => 'required|string|exists:sales_orders,id',
+            'received_date' => 'nullable|date',
+        ]);
+
+        $order = $this->orderService->saveReceivedDate($validated);
+
+        return $this->successResponse(new SalesOrderResource($order), 'Received date berhasil disimpan');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/sales/orders/set-as-paid',
+        summary: 'Mark order as paid',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['order_id'],
+            properties: [
+                new OA\Property(property: 'order_id', type: 'string'),
+                new OA\Property(property: 'payment_method', type: 'string', nullable: true),
+                new OA\Property(property: 'paid_time', type: 'string', format: 'date-time', nullable: true),
+            ]
+        )),
+        responses: [new OA\Response(response: 200, description: 'Order berhasil diset paid')]
+    )]
+    public function setAsPaid(Request $request)
+    {
+        $validated = $request->validate([
+            'order_id'       => 'required|string|exists:sales_orders,id',
+            'payment_method' => 'nullable|string|max:100',
+            'paid_time'      => 'nullable|date',
+        ]);
+
+        $order = $this->orderService->setAsPaid($validated);
+
+        return $this->successResponse(new SalesOrderResource($order), 'Order berhasil diset paid');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/sales/request-awb-order',
+        summary: 'Request AWB from courier service',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['order_id'],
+            properties: [
+                new OA\Property(property: 'order_id', type: 'string'),
+                new OA\Property(property: 'courier_code', type: 'string', nullable: true),
+            ]
+        )),
+        responses: [new OA\Response(response: 200, description: 'AWB request submitted')]
+    )]
+    public function requestAwb(Request $request)
+    {
+        $validated = $request->validate([
+            'order_id'     => 'required|string|exists:sales_orders,id',
+            'courier_code' => 'nullable|string|max:50',
+        ]);
+
+        $result = $this->orderService->requestAwb($validated);
+
+        return $this->successResponse($result, 'Request AWB berhasil dikirim');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/sales/unfullfilled',
+        summary: 'Get unfulfilled orders (no picklist/packlist)',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [new OA\Response(response: 200, description: 'Successful operation')]
+    )]
+    public function unfulfilled(Request $request)
+    {
+        $limit = $request->query('limit', 10);
+        $orders = $this->orderService->getUnfulfilledOrders($limit);
+
+        return $this->successPaginatedResponse($orders, 'Daftar order belum fulfill');
+    }
 }

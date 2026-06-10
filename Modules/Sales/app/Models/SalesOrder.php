@@ -51,14 +51,16 @@ class SalesOrder extends Model
         'paid_time',
         'source',
         'location_id',
+        'received_date',
     ];
 
     protected $casts = [
-        'transaction_date' => 'datetime',
-        'paid_time'        => 'datetime',
+        'transaction_date'    => 'datetime',
+        'paid_time'           => 'datetime',
         'cancel_requested_at' => 'datetime',
-        'is_paid'          => 'boolean',
-        'is_canceled'      => 'boolean',
+        'received_date'       => 'datetime',
+        'is_paid'             => 'boolean',
+        'is_canceled'         => 'boolean',
     ];
 
     public function items(): HasMany
@@ -85,5 +87,15 @@ class SalesOrder extends Model
     public function location(): BelongsTo
     {
         return $this->belongsTo(\Modules\Warehouse\Models\Location::class);
+    }
+
+    public function returns(): HasMany
+    {
+        return $this->hasMany(SalesReturn::class, 'order_id');
+    }
+
+    public function invoices(): HasMany
+    {
+        return $this->hasMany(SalesInvoice::class, 'order_id');
     }
 }

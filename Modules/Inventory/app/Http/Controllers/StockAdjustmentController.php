@@ -55,7 +55,11 @@ class StockAdjustmentController extends Controller
     )]
     public function show(string $id): JsonResponse
     {
-        $adjustment = $this->adjustmentService->getById($id);
+        try {
+            $adjustment = $this->adjustmentService->getById($id);
+        } catch (\Illuminate\Database\QueryException $e) {
+            return $this->errorResponse('Dokumen adjustment tidak ditemukan.', 404);
+        }
 
         if (!$adjustment) {
             return $this->errorResponse('Dokumen adjustment tidak ditemukan.', 404);

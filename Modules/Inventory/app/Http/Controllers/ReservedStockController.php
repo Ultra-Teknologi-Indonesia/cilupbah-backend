@@ -55,7 +55,11 @@ class ReservedStockController extends Controller
     )]
     public function show(string $id): JsonResponse
     {
-        $reservedStock = $this->reservedStockService->getById($id);
+        try {
+            $reservedStock = $this->reservedStockService->getById($id);
+        } catch (\Illuminate\Database\QueryException $e) {
+            return $this->errorResponse('Dokumen reserved stock tidak ditemukan.', 404);
+        }
 
         if (!$reservedStock) {
             return $this->errorResponse('Dokumen reserved stock tidak ditemukan.', 404);

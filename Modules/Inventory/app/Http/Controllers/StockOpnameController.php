@@ -108,7 +108,11 @@ class StockOpnameController extends Controller
     )]
     public function show(string $id): JsonResponse
     {
-        $opname = $this->opnameService->getById($id);
+        try {
+            $opname = $this->opnameService->getById($id);
+        } catch (\Illuminate\Database\QueryException $e) {
+            return $this->errorResponse('Dokumen stock opname tidak ditemukan.', 404);
+        }
 
         if (!$opname) {
             return $this->errorResponse('Dokumen stock opname tidak ditemukan.', 404);

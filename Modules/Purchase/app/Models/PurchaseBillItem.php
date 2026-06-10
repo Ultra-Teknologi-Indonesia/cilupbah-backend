@@ -4,6 +4,7 @@ namespace Modules\Purchase\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Traits\HasUuid7;
 
 class PurchaseBillItem extends Model
@@ -31,5 +32,10 @@ class PurchaseBillItem extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(\Modules\Product\Models\ProductVariant::class, 'item_id');
+    }
+
+    public function serialNumbers(): HasMany
+    {
+        return $this->hasMany(PurchaseSerialNumber::class, 'purchase_bill_item_id');
     }
 }

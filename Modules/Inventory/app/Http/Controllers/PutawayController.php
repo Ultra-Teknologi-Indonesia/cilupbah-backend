@@ -117,7 +117,11 @@ class PutawayController extends Controller
     )]
     public function show(string $id): JsonResponse
     {
-        $putaway = $this->putawayService->getById($id);
+        try {
+            $putaway = $this->putawayService->getById($id);
+        } catch (\Illuminate\Database\QueryException $e) {
+            return $this->errorResponse('Putaway tidak ditemukan.', 404);
+        }
 
         if (!$putaway) {
             return $this->errorResponse('Putaway tidak ditemukan.', 404);
