@@ -44,6 +44,37 @@
 
 ---
 
+## 0b. Penanggung Jawab (PIC) per Modul
+
+Berdasarkan git history (jumlah commit + baris kode lintas semua branch), dengan penyesuaian alokasi modul stub.
+
+| Modul | PIC | Dasar |
+|---|---|---|
+| **Product** | 🔵 Darriel | 49 vs 13 commit |
+| **Channel** (TikTok) | 🔵 Darriel | 45 vs 19 commit |
+| **Auth** | 🔵 Darriel | 21 vs 2 commit |
+| **Warehouse** | 🔵 Darriel | 20 vs 12 commit |
+| **Region** | 🔵 Darriel | 7 vs 0 commit |
+| **Finance** | 🔵 Darriel | alokasi (modul stub) |
+| **Tax** | 🔵 Darriel | alokasi (modul stub) |
+| **Webhook** | 🔵 Darriel | alokasi (modul stub) |
+| **AI** | 🔵 Darriel | stub (di luar Jubelio) |
+| **Inventory** | 🟢 Rasyid | baris 6461 vs 2582 |
+| **Inbound** | 🟢 Rasyid | 14 vs 12 commit |
+| **Outbound** | 🟢 Rasyid | 8 vs 3 commit |
+| **Purchase** | 🟢 Rasyid | 12 vs 6 commit |
+| **Sales** | 🟢 Rasyid | 12 vs 6 commit |
+| **Supplier** | 🟢 Rasyid | baris 422 vs 354 |
+| **Warranty** | 🟢 Rasyid | 4 vs 2 commit |
+| **Notification** | 🟢 Rasyid | alokasi (modul stub) |
+| **Report** | 🟢 Rasyid | alokasi (modul stub) |
+
+**Ringkasan:**
+- 🔵 **Darriel** — Katalog, Omnichannel & Foundation: Product, Channel, Auth, Warehouse, Region, Finance, Tax, Webhook, AI.
+- 🟢 **Rasyid** — Operasional Gudang & Transaksi: Inventory, Inbound, Outbound, Purchase, Sales, Supplier, Warranty, Notification, Report.
+
+---
+
 ## 1. Authentication ✅ (1/1)
 
 | M | Endpoint Jubelio | Fungsi | Status | Implementasi Cilupbah |
@@ -533,21 +564,22 @@ Webhook **outbound** Jubelio = endpoint untuk **menerima** event dari sistem int
 
 ## 18. Backlog Modul Baru (ringkasan task besar)
 
-| Epic | Modul Cilupbah | Endpoint baru | Est. | Prioritas |
-|---|---|---:|---|---|
-| **E1. Sales Invoice + Payment + Settlement** | Sales | ~22 | L | 🥇 P0 |
-| **E2. Purchase Bill + Payment + Return + Settlement** | Purchase | ~20 | L | 🥇 P0 |
-| **E3. Contact terpadu** (customers/suppliers) | Contact (baru) | 8 | M | 🥇 P0 (dependency E1/E2) |
-| **E4. Finance: Journal + Accounts (CoA)** | Finance | 5 | L | 🥈 P1 |
-| **E5. Cash & Bank** | Finance | 4 | M | 🥈 P1 |
-| **E6. Tax lengkap** | Tax | 1+ | S | 🥈 P1 |
-| **E7. Reports (PDF/print)** | Report | 13 | L | 🥈 P1 |
-| **E8. Webhooks outbound** | Webhook | 9 | M | 🥉 P2 |
-| **E9. Marketplace: Shopee, Tokopedia, Lazada, Blibli** | Channel | 6+ | XL | 🥉 P2 |
-| **E10. Inventory extended** (promotions, price-list, bundles, revaluations, split, batch) | Inventory/Product | ~14 | L | 🥉 P3 |
-| **E11. System Setting** (account-mapping, return-setting, webhook reg, store-locations) | Setting | 6 | M | 🥉 P3 |
+| Epic | Modul Cilupbah | PIC | Endpoint baru | Est. | Prioritas |
+|---|---|---|---:|---|---|
+| **E1. Sales Invoice + Payment + Settlement** | Sales | 🟢 Rasyid | ~22 | L | 🥇 P0 |
+| **E2. Purchase Bill + Payment + Return + Settlement** | Purchase | 🟢 Rasyid | ~20 | L | 🥇 P0 |
+| **E3. Contact terpadu** (customers/suppliers) | Contact (baru) | 🟢 Rasyid | 8 | M | 🥇 P0 (dependency E1/E2) |
+| **E4. Finance: Journal + Accounts (CoA)** | Finance | 🔵 Darriel | 5 | L | 🥈 P1 |
+| **E5. Cash & Bank** | Finance | 🔵 Darriel | 4 | M | 🥈 P1 |
+| **E6. Tax lengkap** | Tax | 🔵 Darriel | 1+ | S | 🥈 P1 |
+| **E7. Reports (PDF/print)** | Report | 🟢 Rasyid | 13 | L | 🥈 P1 |
+| **E8. Webhooks outbound** | Webhook | 🔵 Darriel | 9 | M | 🥉 P2 |
+| **E9. Marketplace: Shopee, Tokopedia, Lazada, Blibli** | Channel | 🔵 Darriel | 6+ | XL | 🥉 P2 |
+| **E10. Inventory extended** (promotions, price-list, bundles, revaluations, split, batch) | Inventory/Product | 🟢 Rasyid (Inventory) + 🔵 Darriel (Product) | ~14 | L | 🥉 P3 |
+| **E11. System Setting** (account-mapping, return-setting, webhook reg, store-locations) | Setting | 🔵 Darriel | 6 | M | 🥉 P3 |
 
 > Est: S=≤2 hari, M=3–5 hari, L=1–2 minggu, XL=>2 minggu.
+> PIC mengikuti kepemilikan modul di §0b. 🔵 Darriel: E4, E5, E6, E8, E9, E11 (+Product di E10). 🟢 Rasyid: E1, E2, E3, E7, E10 (Inventory).
 
 ---
 
