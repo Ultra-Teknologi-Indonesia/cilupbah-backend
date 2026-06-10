@@ -70,4 +70,9 @@ class InventoryTransferRepository
         InventoryTransferItem::where('id', $itemId)
             ->increment('received_qty', $addQty);
     }
+
+    public function delete(string $id): bool
+    {
+        return InventoryTransfer::where('id', $id)->delete() > 0;
+    }
 }

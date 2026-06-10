@@ -15,6 +15,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     // Inventory enhancements
     Route::get('inventory/items/to-stock', [InventoryController::class, 'itemsToStock'])->name('inventory.items.toStock');
+    Route::get('inventory/items/item-on-stock', [InventoryController::class, 'itemsToStock'])->name('inventory.items.itemOnStock');
     Route::get('inventory/stock-products', [InventoryController::class, 'stockProducts'])->name('inventory.stockProducts');
     Route::get('inventory/history', [InventoryController::class, 'history'])->name('inventory.history');
     Route::get('inventory/items/by-location/{locationId}', [InventoryController::class, 'byLocation'])->name('inventory.items.byLocation');
@@ -43,11 +44,24 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     });
 
     // Document-based transfers
-    Route::get('inventory/transfers', [InventoryTransactionController::class, 'transfersList'])->name('inventory.transfers.index');
     Route::get('inventory/transfers/transit', [InventoryTransactionController::class, 'transitList'])->name('inventory.transfers.transit');
+    Route::get('inventory/transfers/out-finished', [InventoryTransactionController::class, 'finishedList'])->name('inventory.transfers.outFinished');
+    Route::get('inventory/transfers', [InventoryTransactionController::class, 'transfersList'])->name('inventory.transfers.index');
     Route::post('inventory/transfers', [InventoryTransactionController::class, 'transferOut'])->name('inventory.transferOut');
     Route::get('inventory/transfers/{id}', [InventoryTransactionController::class, 'transferShow'])->name('inventory.transfers.show');
+    Route::delete('inventory/transfers/{id}', [InventoryTransactionController::class, 'transferDestroy'])->name('inventory.transfers.destroy');
     Route::post('inventory/transfers/{id}/receive', [InventoryTransactionController::class, 'transferIn'])->name('inventory.transferIn');
+
+    // Alias: items by transfer (same as transfer show)
+    Route::get('inventory/items/by-transfer/{id}', [InventoryTransactionController::class, 'transferShow'])->name('inventory.items.byTransfer');
+
+    // Catalog / set-master alias
+    Route::post('inventory/catalog/set-master', function (\Illuminate\Http\Request $request) {
+        $product = \Modules\Product\Models\Product::findOrFail($request->input('product_id'));
+        $userId = $request->user()->name ?? $request->user()->email;
+        $result = app(\Modules\Product\Services\ProductLifecycleService::class)->approve($product, $userId);
+        return response()->json(['success' => true, 'data' => $result, 'message' => 'Product berhasil di-set sebagai master.']);
+    })->name('inventory.catalog.setMaster');
 
     // Stock Opname
     Route::prefix('inventory/stock-opname')->group(function () {
@@ -59,6 +73,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('/', [StockOpnameController::class, 'store'])->name('inventory.stockOpname.store');
         Route::get('/{id}', [StockOpnameController::class, 'show'])->name('inventory.stockOpname.show');
         Route::get('/{id}/items', [StockOpnameController::class, 'items'])->name('inventory.stockOpname.items');
+        Route::get('/{id}/items/filtered', [StockOpnameController::class, 'filteredItems'])->name('inventory.stockOpname.filteredItems');
         Route::post('/{id}/start', [StockOpnameController::class, 'start'])->name('inventory.stockOpname.start');
         Route::post('/{id}/items/{itemId}/count', [StockOpnameController::class, 'countItem'])->name('inventory.stockOpname.countItem');
         Route::post('/{id}/finalize', [StockOpnameController::class, 'finalize'])->name('inventory.stockOpname.finalize');

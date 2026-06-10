@@ -109,6 +109,35 @@ class StockOpnameRepository
             ->paginate($limit);
     }
 
+    public function getItemsFilteredByRack(string $opnameId, array $rackFilters, int $limit = 10)
+    {
+        $query = QueryBuilder::for(StockOpnameItem::class)
+            ->where('stock_opname_id', $opnameId)
+            ->with(['product:id,sku,product_id', 'bin:id,bin_final_code,floor_code,row_code,column_code'])
+            ->join('location_bins', 'stock_opname_items.bin_id', '=', 'location_bins.id');
+
+        if (!empty($rackFilters['floor_code'])) {
+            $query->where('location_bins.floor_code', $rackFilters['floor_code']);
+        }
+
+        if (!empty($rackFilters['row_code'])) {
+            $query->where('location_bins.row_code', $rackFilters['row_code']);
+        }
+
+        if (!empty($rackFilters['column_code'])) {
+            $query->where('location_bins.column_code', $rackFilters['column_code']);
+        }
+
+        if (!empty($rackFilters['bin_id'])) {
+            $query->where('stock_opname_items.bin_id', $rackFilters['bin_id']);
+        }
+
+        return $query->select('stock_opname_items.*')
+            ->allowedSorts('created_at', 'qty_difference')
+            ->defaultSort('created_at')
+            ->paginate($limit);
+    }
+
     public function getBinsByLocation(string $locationId, ?string $zoneId = null): Collection
     {
         $query = LocationBin::where('location_id', $locationId)

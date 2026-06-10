@@ -339,4 +339,19 @@ class InventoryService
     {
         return $this->transferRepository->findById($id);
     }
+
+    public function deleteTransfer(string $id): void
+    {
+        $transfer = $this->transferRepository->findByIdForUpdate($id);
+
+        if (!$transfer) {
+            throw new \Exception('Transfer tidak ditemukan.');
+        }
+
+        if ($transfer->status !== InventoryTransfer::STATUS_DRAFT) {
+            throw new \Exception("Hanya transfer DRAFT yang bisa dihapus (status saat ini: {$transfer->status}).");
+        }
+
+        $this->transferRepository->delete($id);
+    }
 }

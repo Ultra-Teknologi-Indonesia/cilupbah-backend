@@ -216,6 +216,11 @@ class StockOpnameService
         return $this->opnameRepository->getItemsPaginated($opnameId, $limit);
     }
 
+    public function getItemsFilteredByRack(string $opnameId, array $rackFilters, int $limit = 10)
+    {
+        return $this->opnameRepository->getItemsFilteredByRack($opnameId, $rackFilters, $limit);
+    }
+
     public function getBins(string $locationId, ?string $zoneId = null)
     {
         return $this->opnameRepository->getBinsByLocation($locationId, $zoneId);
