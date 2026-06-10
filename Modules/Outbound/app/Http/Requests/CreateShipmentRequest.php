@@ -17,7 +17,7 @@ class CreateShipmentRequest extends FormRequest
             'location_id' => 'required|string|exists:locations,id',
             'courier_name' => 'nullable|string|max:100',
             'courier_code' => 'nullable|string|max:50',
-            'shipment_type' => 'required|string|in:REGULAR,EXPRESS,SAME_DAY,CARGO',
+            'shipment_type' => 'required|string|in:REGULAR,EXPRESS,SAME_DAY,CARGO,INSTANT',
             'shipment_date' => 'required|date',
             'notes' => 'nullable|string|max:500',
         ];

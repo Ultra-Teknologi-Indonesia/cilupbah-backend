@@ -55,6 +55,32 @@ class PacklistController extends Controller
             new OA\Response(response: 200, description: 'Success'),
         ]
     )]
+    #[OA\Get(
+        path: '/api/v1/outbound/packlists/scan-order',
+        summary: 'Scan order barcode/no to get packlist items for packing',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Packlist'],
+        parameters: [
+            new OA\Parameter(name: 'order_no', in: 'query', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+            new OA\Response(response: 404, description: 'Not Found'),
+        ]
+    )]
+    public function scanOrder(Request $request): JsonResponse
+    {
+        $request->validate(['order_no' => 'required|string']);
+
+        $packlist = $this->packlistService->scanOrder($request->query('order_no'));
+
+        if (!$packlist) {
+            return response()->json(['success' => false, 'message' => 'Packlist aktif tidak ditemukan untuk order ini.'], 404);
+        }
+
+        return response()->json(['success' => true, 'data' => $packlist]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $limit = $request->query('limit', 10);

@@ -18,6 +18,7 @@ class Courier extends Model
         'is_active',
         'supported_shipment_types',
         'metadata',
+        'tenant_id',
     ];
 
     protected $casts = [

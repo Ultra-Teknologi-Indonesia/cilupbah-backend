@@ -51,6 +51,27 @@ class CourierController extends Controller
             new OA\Response(response: 200, description: 'Success'),
         ]
     )]
+    #[OA\Get(
+        path: '/api/v1/outbound/couriers/tenant/{tenantId}',
+        summary: 'Get couriers belonging to a specific tenant',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Couriers'],
+        parameters: [
+            new OA\Parameter(name: 'tenantId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+        ]
+    )]
+    public function byTenant(string $tenantId, Request $request): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+        $data = $this->courierService->getByTenant($tenantId, $limit);
+
+        return response()->json(['success' => true, 'data' => $data]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $limit = $request->query('limit', 10);

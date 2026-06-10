@@ -110,6 +110,148 @@ class ShipmentController extends Controller
             new OA\Response(response: 404, description: 'Not Found'),
         ]
     )]
+    #[OA\Get(
+        path: '/api/v1/outbound/shipments/by-courier/{courierCode}',
+        summary: 'Get shipments filtered by courier code',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Shipment'],
+        parameters: [
+            new OA\Parameter(name: 'courierCode', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+        ]
+    )]
+    public function byCourier(string $courierCode, Request $request): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+        $data = $this->shipmentService->getByCourier($courierCode, $limit);
+
+        return response()->json(['success' => true, 'data' => $data]);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/outbound/shipments/completed/{type}/{courierIds}',
+        summary: 'Get completed/on-delivery shipments by type and courier(s)',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Shipment'],
+        parameters: [
+            new OA\Parameter(name: 'type', in: 'path', required: true, schema: new OA\Schema(type: 'string', enum: ['REGULAR', 'EXPRESS', 'SAME_DAY', 'CARGO', 'INSTANT'])),
+            new OA\Parameter(name: 'courierIds', in: 'path', required: true, description: 'Comma-separated courier codes', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+        ]
+    )]
+    public function completed(string $type, string $courierIds, Request $request): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+        $data = $this->shipmentService->getCompleted($type, $courierIds, $limit);
+
+        return response()->json(['success' => true, 'data' => $data]);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/outbound/shipments/instant',
+        summary: 'Get all instant courier shipments',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Shipment'],
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+        ]
+    )]
+    public function instantAll(Request $request): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+        $data = $this->shipmentService->getInstantAll($limit);
+
+        return response()->json(['success' => true, 'data' => $data]);
+    }
+
+    #[OA\Post(
+        path: '/api/v1/outbound/shipments/instant',
+        summary: 'Create an instant courier shipment',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Shipment'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['location_id', 'shipment_date'],
+                properties: [
+                    new OA\Property(property: 'location_id', type: 'string'),
+                    new OA\Property(property: 'courier_name', type: 'string', nullable: true),
+                    new OA\Property(property: 'courier_code', type: 'string', nullable: true),
+                    new OA\Property(property: 'shipment_date', type: 'string', format: 'date'),
+                    new OA\Property(property: 'notes', type: 'string', nullable: true),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 201, description: 'Created'),
+        ]
+    )]
+    public function storeInstant(Request $request): JsonResponse
+    {
+        $request->validate([
+            'location_id' => 'required|string|exists:locations,id',
+            'shipment_date' => 'required|date',
+            'courier_name' => 'nullable|string|max:100',
+            'courier_code' => 'nullable|string|max:50',
+            'notes' => 'nullable|string|max:500',
+        ]);
+
+        $data = $request->only(['location_id', 'shipment_date', 'courier_name', 'courier_code', 'notes']);
+        $data['created_by'] = auth()->user()->email;
+
+        $shipment = $this->shipmentService->createInstant($data);
+
+        return response()->json(['success' => true, 'data' => $shipment], 201);
+    }
+
+    #[OA\Post(
+        path: '/api/v1/outbound/shipments/{id}/update-handover-qty',
+        summary: 'Update qty given to courier for an order in shipment',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Shipment'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['order_id', 'qty_given'],
+                properties: [
+                    new OA\Property(property: 'order_id', type: 'string'),
+                    new OA\Property(property: 'qty_given', type: 'integer', minimum: 0),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+            new OA\Response(response: 400, description: 'Bad Request'),
+        ]
+    )]
+    public function updateHandoverQty(string $id, Request $request): JsonResponse
+    {
+        $request->validate([
+            'order_id' => 'required|string|exists:sales_orders,id',
+            'qty_given' => 'required|integer|min:0',
+        ]);
+
+        try {
+            $this->shipmentService->updateHandoverQty($id, $request->order_id, $request->qty_given);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 400);
+        }
+
+        return response()->json(['success' => true, 'message' => 'Qty handover berhasil diperbarui.']);
+    }
+
     public function show(string $id): JsonResponse
     {
         $shipment = $this->shipmentService->getById($id);

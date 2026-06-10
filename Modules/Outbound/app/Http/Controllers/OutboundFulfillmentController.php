@@ -106,6 +106,112 @@ class OutboundFulfillmentController extends Controller
             new OA\Response(response: 400, description: 'Bad Request'),
         ]
     )]
+    #[OA\Post(
+        path: '/api/v1/outbound/orders/get-by-no',
+        summary: 'Get sales order by salesorder_no for picking',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Fulfillment'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['order_no'],
+                properties: [
+                    new OA\Property(property: 'order_no', type: 'string'),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+            new OA\Response(response: 404, description: 'Not Found'),
+        ]
+    )]
+    public function getOrderByNo(Request $request): JsonResponse
+    {
+        $request->validate(['order_no' => 'required|string']);
+
+        $order = $this->fulfillmentService->findOrderByNo($request->order_no);
+
+        if (!$order) {
+            return response()->json(['success' => false, 'message' => 'Order tidak ditemukan.'], 404);
+        }
+
+        return response()->json(['success' => true, 'data' => $order]);
+    }
+
+    #[OA\Post(
+        path: '/api/v1/outbound/orders/move-to-ready-to-pick',
+        summary: 'Move order to ready-to-pick stage (creates DRAFT picklist)',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Fulfillment'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['order_id', 'location_id'],
+                properties: [
+                    new OA\Property(property: 'order_id', type: 'string'),
+                    new OA\Property(property: 'location_id', type: 'string'),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+            new OA\Response(response: 400, description: 'Bad Request'),
+        ]
+    )]
+    public function moveToReadyToPick(Request $request): JsonResponse
+    {
+        $request->validate([
+            'order_id' => 'required|string|exists:sales_orders,id',
+            'location_id' => 'required|string|exists:locations,id',
+        ]);
+
+        try {
+            $order = $this->fulfillmentService->moveToReadyToPick(
+                $request->order_id,
+                $request->location_id,
+                auth()->user()->email,
+            );
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 400);
+        }
+
+        return response()->json(['success' => true, 'data' => $order, 'message' => 'Order dipindah ke ready-to-pick.']);
+    }
+
+    #[OA\Post(
+        path: '/api/v1/outbound/orders/move-to-ready-to-process',
+        summary: 'Move order back to ready-to-process stage (removes DRAFT picklist items)',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Fulfillment'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['order_id'],
+                properties: [
+                    new OA\Property(property: 'order_id', type: 'string'),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+            new OA\Response(response: 400, description: 'Bad Request'),
+        ]
+    )]
+    public function moveToReadyToProcess(Request $request): JsonResponse
+    {
+        $request->validate([
+            'order_id' => 'required|string|exists:sales_orders,id',
+        ]);
+
+        try {
+            $order = $this->fulfillmentService->moveToReadyToProcess($request->order_id);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 400);
+        }
+
+        return response()->json(['success' => true, 'data' => $order, 'message' => 'Order dipindah ke ready-to-process.']);
+    }
+
     public function requestCancelOrder(Request $request): JsonResponse
     {
         $request->validate([
