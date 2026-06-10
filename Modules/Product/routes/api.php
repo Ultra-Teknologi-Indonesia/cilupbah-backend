@@ -14,6 +14,7 @@ use Modules\Product\Http\Controllers\ChannelMonitorController;
 use Modules\Product\Http\Controllers\ProductMergeController;
 use Modules\Product\Http\Controllers\MasterFeedController;
 use Modules\Product\Http\Controllers\ReviewFeedController;
+use Modules\Product\Http\Controllers\ArchiveFeedController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     // Harus didefinisikan sebelum apiResource agar tidak tertangkap products/{id}
@@ -26,6 +27,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('products/master/{id}', [MasterFeedController::class, 'show']);
 
     Route::get('products/reviews', [ReviewFeedController::class, 'index']);
+
+    Route::get('products/archives', [ArchiveFeedController::class, 'index']);
+    Route::get('products/archives/{id}', [ArchiveFeedController::class, 'show']);
 
     // ── Merge & Auto-Merge produk (lintas store & channel) ──
     // Akses berbasis Spatie Permission: selama user punya permission-nya, boleh.
