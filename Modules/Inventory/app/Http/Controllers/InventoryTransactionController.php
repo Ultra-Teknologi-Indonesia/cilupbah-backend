@@ -242,6 +242,50 @@ class InventoryTransactionController extends Controller
         return $this->successPaginatedResponse($transfers, 'Daftar semua dokumen transfer.');
     }
 
+    #[OA\Delete(
+        path: '/api/v1/inventory/transfers/{id}',
+        summary: 'Delete a transfer document',
+        description: 'Only DRAFT transfers can be deleted.',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory Transactions'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Transfer berhasil dihapus.'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+        ]
+    )]
+    public function transferDestroy(string $id): JsonResponse
+    {
+        try {
+            $this->inventoryService->deleteTransfer($id);
+            return $this->successResponse(null, 'Transfer berhasil dihapus.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inventory/transfers/out-finished',
+        summary: 'Get finished (received) transfers',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory Transactions'],
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar transfer yang sudah selesai diterima.'),
+        ]
+    )]
+    public function finishedList(\Illuminate\Http\Request $request): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+        $transfers = $this->inventoryService->getTransfersPaginated(['status' => 'RECEIVED'], $limit);
+
+        return $this->successPaginatedResponse($transfers, 'Daftar transfer yang sudah selesai diterima.');
+    }
+
     #[OA\Post(
         path: '/api/v1/inventory/putaway',
         summary: 'Putaway inventory stock',
@@ -275,5 +319,64 @@ class InventoryTransactionController extends Controller
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
+    }
+
+    #[OA\Post(
+        path: '/api/v1/inventory/transfer/mark-printed',
+        summary: 'Mark a transfer document as printed',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory Transactions'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['transfer_id'],
+            properties: [
+                new OA\Property(property: 'transfer_id', type: 'string'),
+            ]
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'Transfer ditandai sudah dicetak.'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+        ]
+    )]
+    public function markTransferPrinted(\Illuminate\Http\Request $request): JsonResponse
+    {
+        try {
+            $request->validate(['transfer_id' => 'required|string']);
+            $printedBy = $request->user()->name ?? $request->user()->email;
+            $transfer = $this->inventoryService->markTransferPrinted($request->input('transfer_id'), $printedBy);
+
+            return $this->successResponse($transfer, 'Transfer ditandai sudah dicetak.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inventory/transfer/delivery',
+        summary: 'Get transfer delivery report (surat jalan)',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory Transactions'],
+        parameters: [
+            new OA\Parameter(name: 'transfer_id', in: 'query', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Data surat jalan transfer berhasil diambil.'),
+            new OA\Response(response: 404, description: 'Transfer tidak ditemukan.'),
+        ]
+    )]
+    public function transferDelivery(\Illuminate\Http\Request $request): JsonResponse
+    {
+        $transferId = $request->query('transfer_id');
+
+        if (!$transferId) {
+            return $this->errorResponse('Parameter transfer_id wajib diisi.', 422);
+        }
+
+        $transfer = $this->inventoryService->getTransferById($transferId);
+
+        if (!$transfer) {
+            return $this->errorResponse('Transfer tidak ditemukan.', 404);
+        }
+
+        return $this->successResponse($transfer, 'Data surat jalan transfer berhasil diambil.');
     }
 }

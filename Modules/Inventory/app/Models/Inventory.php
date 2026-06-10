@@ -22,10 +22,12 @@ class Inventory extends Model
         'on_order',
         'reserved',
         'available',
+        'avg_cost',
     ];
 
     protected $casts = [
         'expired_date' => 'datetime',
+        'avg_cost' => 'decimal:2',
     ];
 
     public function product(): BelongsTo

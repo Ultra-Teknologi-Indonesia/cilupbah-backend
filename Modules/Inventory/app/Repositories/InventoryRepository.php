@@ -4,6 +4,7 @@ namespace Modules\Inventory\Repositories;
 
 use Modules\Inventory\Models\Inventory;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 
 class InventoryRepository
 {
@@ -94,6 +95,66 @@ class InventoryRepository
             )
             ->allowedSorts('available', 'on_hand', 'created_at')
             ->defaultSort('-created_at')
+            ->paginate($limit);
+    }
+
+    public function getStockByItemIds(array $itemIds)
+    {
+        return Inventory::whereIn('item_id', $itemIds)
+            ->with(['product:id,sku,product_id', 'location:id,location_name', 'bin:id,bin_final_code'])
+            ->select('id', 'item_id', 'location_id', 'bin_id', 'batch_no', 'serial_no', 'on_hand', 'on_order', 'reserved', 'available')
+            ->get();
+    }
+
+    public function getOutOfStockInOrder(int $limit = 10)
+    {
+        $orderItemIds = DB::table('sales_order_items')
+            ->join('sales_orders', 'sales_orders.id', '=', 'sales_order_items.order_id')
+            ->whereIn('sales_orders.status', ['PENDING', 'CONFIRMED', 'PROCESSING', 'UNPAID'])
+            ->select('sales_order_items.item_id')
+            ->distinct()
+            ->pluck('item_id');
+
+        if ($orderItemIds->isEmpty()) {
+            return new \Illuminate\Pagination\LengthAwarePaginator([], 0, $limit);
+        }
+
+        return DB::table('product_variants')
+            ->whereIn('product_variants.id', $orderItemIds)
+            ->leftJoin('inventories', 'inventories.item_id', '=', 'product_variants.id')
+            ->join('products', 'products.id', '=', 'product_variants.product_id')
+            ->groupBy('product_variants.id', 'product_variants.sku', 'products.name')
+            ->havingRaw('COALESCE(SUM(inventories.available), 0) <= 0')
+            ->select(
+                'product_variants.id as item_id',
+                'product_variants.sku',
+                'products.name as product_name',
+                DB::raw('COALESCE(SUM(inventories.on_hand), 0) as total_on_hand'),
+                DB::raw('COALESCE(SUM(inventories.available), 0) as total_available'),
+            )
+            ->paginate($limit);
+    }
+
+    public function getBatchNumbers(string $itemId)
+    {
+        return Inventory::where('item_id', $itemId)
+            ->where(function ($q) {
+                $q->where('batch_no', '!=', '')->orWhere('serial_no', '!=', '');
+            })
+            ->select('batch_no', 'serial_no', 'expired_date', 'location_id', 'bin_id')
+            ->selectRaw('SUM(on_hand) as total_on_hand')
+            ->groupBy('batch_no', 'serial_no', 'expired_date', 'location_id', 'bin_id')
+            ->with(['location:id,location_name', 'bin:id,bin_final_code'])
+            ->get();
+    }
+
+    public function getAvailableToSell(string $locationId, int $limit = 10)
+    {
+        return Inventory::where('location_id', $locationId)
+            ->where('available', '>', 0)
+            ->with(['product:id,sku,product_id', 'product.product:id,name', 'bin:id,bin_final_code'])
+            ->select('id', 'item_id', 'location_id', 'bin_id', 'batch_no', 'serial_no', 'on_hand', 'reserved', 'available')
+            ->orderBy('item_id')
             ->paginate($limit);
     }
 }

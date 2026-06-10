@@ -352,6 +352,40 @@ class StockOpnameController extends Controller
     }
 
     #[OA\Get(
+        path: '/api/v1/inventory/stock-opname/{id}/items/filtered',
+        summary: 'Get opname items filtered by rack location',
+        description: 'Filter opname items by floor_code, row_code, column_code, or bin_id.',
+        security: [['bearerAuth' => []]],
+        tags: ['Stock Opname'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'floor_code', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'row_code', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'column_code', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'bin_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar item opname terfilter berhasil diambil.'),
+            new OA\Response(response: 404, description: 'Dokumen tidak ditemukan.'),
+        ]
+    )]
+    public function filteredItems(Request $request, string $id): JsonResponse
+    {
+        $opname = $this->opnameService->getById($id);
+
+        if (!$opname) {
+            return $this->errorResponse('Dokumen stock opname tidak ditemukan.', 404);
+        }
+
+        $limit = $request->query('limit', 10);
+        $rackFilters = $request->only(['floor_code', 'row_code', 'column_code', 'bin_id']);
+        $items = $this->opnameService->getItemsFilteredByRack($id, $rackFilters, $limit);
+
+        return $this->successPaginatedResponse($items, 'Daftar item opname terfilter berhasil diambil.');
+    }
+
+    #[OA\Get(
         path: '/api/v1/inventory/stock-opname/bins',
         summary: 'Get all bins by location for opname scope selection',
         description: 'Retrieve all bin locations for a given location. Used to select opname scope.',

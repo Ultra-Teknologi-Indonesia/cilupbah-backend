@@ -22,11 +22,14 @@ class InventoryTransfer extends Model
         'received_by',
         'shipped_at',
         'received_at',
+        'printed_by',
+        'printed_at',
     ];
 
     protected $casts = [
         'shipped_at'  => 'datetime',
         'received_at' => 'datetime',
+        'printed_at'  => 'datetime',
     ];
 
     const STATUS_DRAFT      = 'DRAFT';

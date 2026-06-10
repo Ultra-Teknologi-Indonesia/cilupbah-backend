@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Inventory\Services\InventoryService;
+use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
+use Modules\Inventory\Http\Requests\SplitItemRequest;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 use Illuminate\Support\Facades\DB;
@@ -34,7 +36,8 @@ use OpenApi\Attributes as OA;
 class InventoryController extends Controller
 {
     public function __construct(
-        protected InventoryService $inventoryService
+        protected InventoryService $inventoryService,
+        protected InventoryRepository $inventoryRepository,
     ) {}
 
     #[OA\Get(
@@ -256,5 +259,256 @@ class InventoryController extends Controller
             ->paginate($limit);
 
         return $this->successPaginatedResponse($items, 'Daftar item PO berhasil diambil.');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/inventory/items/to-adjust',
+        summary: 'Get cost and stock by item IDs for adjustment',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['item_ids'],
+            properties: [
+                new OA\Property(property: 'item_ids', type: 'array', items: new OA\Items(type: 'string')),
+            ]
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'Data stok untuk penyesuaian berhasil diambil.'),
+        ]
+    )]
+    public function toAdjust(Request $request): JsonResponse
+    {
+        $request->validate(['item_ids' => 'required|array', 'item_ids.*' => 'string']);
+
+        $stocks = $this->inventoryRepository->getStockByItemIds($request->input('item_ids'));
+
+        return $this->successResponse($stocks, 'Data stok untuk penyesuaian berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inventory/out-of-stock-in-order',
+        summary: 'Get products that are out of stock but have pending orders',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar produk habis stok dalam order berhasil diambil.'),
+        ]
+    )]
+    public function outOfStockInOrder(Request $request): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+        $items = $this->inventoryRepository->getOutOfStockInOrder($limit);
+
+        return $this->successPaginatedResponse($items, 'Daftar produk habis stok dalam order berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inventory/items/{id}/batch-number',
+        summary: 'Get batch and serial numbers for an item',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar batch number berhasil diambil.'),
+        ]
+    )]
+    public function batchNumbers(string $id): JsonResponse
+    {
+        $batches = $this->inventoryRepository->getBatchNumbers($id);
+
+        return $this->successResponse($batches, 'Daftar batch number berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inventory/items/to-sell/{locationId}',
+        summary: 'Get items available to sell at a location',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        parameters: [
+            new OA\Parameter(name: 'locationId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar item yang bisa dijual berhasil diambil.'),
+        ]
+    )]
+    public function toSell(Request $request, string $locationId): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+        $items = $this->inventoryRepository->getAvailableToSell($locationId, $limit);
+
+        return $this->successPaginatedResponse($items, 'Daftar item yang bisa dijual berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inventory/items/to-sales-return',
+        summary: 'Get items eligible for sales return',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar item retur penjualan berhasil diambil.'),
+        ]
+    )]
+    public function toSalesReturn(Request $request): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+
+        $items = DB::table('sales_return_items')
+            ->join('sales_returns', 'sales_returns.id', '=', 'sales_return_items.sales_return_id')
+            ->join('product_variants', 'product_variants.id', '=', 'sales_return_items.item_id')
+            ->join('products', 'products.id', '=', 'product_variants.product_id')
+            ->whereIn('sales_returns.status', ['PENDING', 'APPROVED'])
+            ->select(
+                'sales_return_items.id',
+                'sales_return_items.item_id',
+                'sales_return_items.qty',
+                'sales_return_items.condition',
+                'sales_returns.return_number',
+                'sales_returns.status as return_status',
+                'sales_returns.order_id',
+                'product_variants.sku',
+                'products.name as product_name',
+            )
+            ->orderByDesc('sales_returns.created_at')
+            ->paginate($limit);
+
+        return $this->successPaginatedResponse($items, 'Daftar item retur penjualan berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inventory/need-restock',
+        summary: 'Get products that need restocking (available < min_stock)',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar produk yang perlu restock berhasil diambil.'),
+        ]
+    )]
+    public function needRestock(Request $request): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+
+        $items = DB::table('product_variants')
+            ->where('product_variants.min_stock', '>', 0)
+            ->leftJoin('inventories', 'inventories.item_id', '=', 'product_variants.id')
+            ->join('products', 'products.id', '=', 'product_variants.product_id')
+            ->groupBy('product_variants.id', 'product_variants.sku', 'product_variants.min_stock', 'products.name')
+            ->havingRaw('COALESCE(SUM(inventories.available), 0) < product_variants.min_stock')
+            ->select(
+                'product_variants.id as item_id',
+                'product_variants.sku',
+                'product_variants.min_stock',
+                'products.name as product_name',
+                DB::raw('COALESCE(SUM(inventories.on_hand), 0) as total_on_hand'),
+                DB::raw('COALESCE(SUM(inventories.available), 0) as total_available'),
+                DB::raw('product_variants.min_stock - COALESCE(SUM(inventories.available), 0) as qty_to_restock'),
+            )
+            ->orderByDesc('qty_to_restock')
+            ->paginate($limit);
+
+        return $this->successPaginatedResponse($items, 'Daftar produk yang perlu restock berhasil diambil.');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/inventory/items/split-item',
+        summary: 'Split item into smaller units',
+        description: 'Deduct qty from source item, add split_into_qty to target item.',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['source_item_id', 'target_item_id', 'location_id', 'qty_to_split', 'split_into_qty'],
+            properties: [
+                new OA\Property(property: 'source_item_id', type: 'string'),
+                new OA\Property(property: 'target_item_id', type: 'string'),
+                new OA\Property(property: 'location_id', type: 'string'),
+                new OA\Property(property: 'bin_id', type: 'string', nullable: true),
+                new OA\Property(property: 'qty_to_split', type: 'integer', example: 1),
+                new OA\Property(property: 'split_into_qty', type: 'integer', example: 10),
+            ]
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'Item berhasil di-split.'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+        ]
+    )]
+    public function splitItem(SplitItemRequest $request): JsonResponse
+    {
+        try {
+            $data = $request->validated();
+            $data['created_by'] = $request->user()->name ?? $request->user()->email;
+
+            $result = $this->inventoryService->splitItem($data);
+
+            return $this->successResponse($result, 'Item berhasil di-split.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inventory/items/by-bill/{docId}',
+        summary: 'Get items by purchase bill',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        parameters: [
+            new OA\Parameter(name: 'docId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar item purchase bill berhasil diambil.'),
+        ]
+    )]
+    public function itemsByBill(string $docId): JsonResponse
+    {
+        $items = DB::table('purchase_bill_items')
+            ->where('purchase_bill_items.purchase_bill_id', $docId)
+            ->join('product_variants', 'product_variants.id', '=', 'purchase_bill_items.item_id')
+            ->join('products', 'products.id', '=', 'product_variants.product_id')
+            ->select(
+                'purchase_bill_items.*',
+                'product_variants.sku',
+                'products.name as product_name',
+            )
+            ->get();
+
+        return $this->successResponse($items, 'Daftar item purchase bill berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inventory/items/by-invoice/{invoiceId}',
+        summary: 'Get items by sales invoice',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        parameters: [
+            new OA\Parameter(name: 'invoiceId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar item sales invoice berhasil diambil.'),
+        ]
+    )]
+    public function itemsByInvoice(string $invoiceId): JsonResponse
+    {
+        $items = DB::table('sales_invoice_items')
+            ->where('sales_invoice_items.sales_invoice_id', $invoiceId)
+            ->join('product_variants', 'product_variants.id', '=', 'sales_invoice_items.item_id')
+            ->join('products', 'products.id', '=', 'product_variants.product_id')
+            ->select(
+                'sales_invoice_items.*',
+                'product_variants.sku',
+                'products.name as product_name',
+            )
+            ->get();
+
+        return $this->successResponse($items, 'Daftar item sales invoice berhasil diambil.');
     }
 }

@@ -17,6 +17,7 @@ class ProductVariant extends Model
         'tax_rate',
         'is_active',
         'is_internal',
+        'min_stock',
         'sequence_item',
     ];
 
@@ -46,10 +47,5 @@ class ProductVariant extends Model
     public function options(): HasMany
     {
         return $this->hasMany(VariantOption::class, 'variant_id');
-    }
-
-    public function inventories()
-    {
-        return $this->hasMany(\Modules\Inventory\Models\Inventory::class, 'item_id');
     }
 }
