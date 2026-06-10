@@ -40,7 +40,6 @@ class SyncProductToChannelJob implements ShouldQueue
         $this->channelShopId = $channelShopId;
         $this->action = $action;
 
-        $this->onConnection('redis');
         $this->onQueue(config('queue.names.channel_sync'));
     }
 
