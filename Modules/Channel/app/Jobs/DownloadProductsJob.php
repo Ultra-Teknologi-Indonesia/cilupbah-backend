@@ -14,11 +14,23 @@ class DownloadProductsJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    public int $timeout = 900;
+
+    public int $tries = 3;
+
     public function __construct(
         public string $transactionId,
         public string $channel,
         public string $shopId,
-    ) {}
+    ) {
+        $this->onConnection('redis-long');
+        $this->onQueue(config('queue.names.downloads'));
+    }
+
+    public function backoff(): array
+    {
+        return [10, 30, 60];
+    }
 
     public function handle(ChannelDownloadService $service): void
     {
@@ -29,13 +41,19 @@ class DownloadProductsJob implements ShouldQueue
 
         $transaction->markDownloading();
 
-        try {
-            $count = $service->pull($this->channel, $this->shopId);
-            $transaction->markDone($count);
-        } catch (\Throwable $e) {
-            $transaction->markFailed($e->getMessage());
+        $count = $service->pull($this->channel, $this->shopId);
 
-            throw $e;
-        }
+        $transaction->markDone($count);
+    }
+
+    public function failed(?\Throwable $e): void
+    {
+        DownloadTransaction::find($this->transactionId)
+            ?->markFailed($e?->getMessage() ?? 'Job download gagal atau melewati batas waktu');
+    }
+
+    public function tags(): array
+    {
+        return ['channel', 'download', "download:{$this->transactionId}", "shop:{$this->shopId}", "channel:{$this->channel}"];
     }
 }

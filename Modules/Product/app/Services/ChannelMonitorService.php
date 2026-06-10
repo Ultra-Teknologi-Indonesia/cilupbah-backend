@@ -88,14 +88,14 @@ class ChannelMonitorService
     /**
      * Produk di satu toko (paginated) dengan filter sync_status & search.
      */
-    public function getShopProducts(string $shopId, ?string $syncStatus, ?string $search): LengthAwarePaginator
+    public function getShopProducts(string $shopId, ?string $syncStatus): LengthAwarePaginator
     {
         $shop = $this->repo->findShopByShopId($shopId);
         if (!$shop) {
             return new LengthAwarePaginator([], 0, 10);
         }
 
-        return $this->repo->getShopProducts($shop->id, $syncStatus, $search);
+        return $this->repo->getShopProducts($shop->id, $syncStatus);
     }
 
     // ==================== Internal ====================

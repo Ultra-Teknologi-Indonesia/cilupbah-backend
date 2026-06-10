@@ -33,6 +33,18 @@ class ProductChannelDraftService
         );
     }
 
+    public function updateDraft(ProductChannelDraft $draft, array $data): ProductChannelDraft
+    {
+        $draft->update($data);
+
+        return $draft->fresh('channelShop');
+    }
+
+    public function deleteDraft(ProductChannelDraft $draft): void
+    {
+        $draft->delete();
+    }
+
     public function uploadDraft(string $draftId): ProductSyncLog
     {
         return DB::transaction(function () use ($draftId) {

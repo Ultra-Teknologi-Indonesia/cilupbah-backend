@@ -73,6 +73,15 @@ return [
             'after_commit' => false,
         ],
 
+        'redis-long' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => env('REDIS_LONG_QUEUE', 'downloads'),
+            'retry_after' => (int) env('REDIS_LONG_QUEUE_RETRY_AFTER', 1200),
+            'block_for' => null,
+            'after_commit' => false,
+        ],
+
         'deferred' => [
             'driver' => 'deferred',
         ],
@@ -127,12 +136,14 @@ return [
     ],
 
     'names' => [
-        'orders'         => env('QUEUE_NAME_ORDERS', 'orders'),
-        'fulfillment'    => env('QUEUE_NAME_FULFILLMENT', 'fulfillment'),
-        'stock_sync'     => env('QUEUE_NAME_STOCK_SYNC', 'stock-sync'),
-        'stock_critical' => env('QUEUE_NAME_STOCK_CRITICAL', 'stock-critical'),
-        'stock_default'  => env('QUEUE_NAME_STOCK_DEFAULT', 'stock-default'),
-        'failed_jobs'    => env('QUEUE_NAME_FAILED_JOBS', 'failed-jobs'),
-    ],
+    'orders'         => env('QUEUE_NAME_ORDERS', 'orders'),
+    'fulfillment'    => env('QUEUE_NAME_FULFILLMENT', 'fulfillment'),
+    'stock_sync'     => env('QUEUE_NAME_STOCK_SYNC', 'stock-sync'),
+    'stock_critical' => env('QUEUE_NAME_STOCK_CRITICAL', 'stock-critical'),
+    'stock_default'  => env('QUEUE_NAME_STOCK_DEFAULT', 'stock-default'),
+    'failed_jobs'    => env('QUEUE_NAME_FAILED_JOBS', 'failed-jobs'),
+    'product'        => env('QUEUE_NAME_PRODUCT', 'product'),
+    'downloads'      => env('QUEUE_NAME_DOWNLOADS', 'downloads'),
+     ],
 
 ];

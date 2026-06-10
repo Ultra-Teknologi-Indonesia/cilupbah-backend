@@ -5,6 +5,7 @@ namespace Modules\Product\Providers;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Product\Console\Commands\PruneUploadHistories;
+use Modules\Product\Jobs\PruneUploadHistoriesJob;
 
 class ProductServiceProvider extends ModuleServiceProvider
 {
@@ -39,6 +40,6 @@ class ProductServiceProvider extends ModuleServiceProvider
 
     protected function configureSchedules(Schedule $schedule): void
     {
-        $schedule->command('products:prune-upload-histories')->daily();
+        $schedule->job(new PruneUploadHistoriesJob())->daily();
     }
 }

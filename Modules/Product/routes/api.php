@@ -14,6 +14,9 @@ use Modules\Product\Http\Controllers\ChannelMonitorController;
 use Modules\Product\Http\Controllers\ProductMergeController;
 use Modules\Product\Http\Controllers\MasterFeedController;
 use Modules\Product\Http\Controllers\ReviewFeedController;
+use Modules\Product\Http\Controllers\ArchiveFeedController;
+use Modules\Product\Http\Controllers\ChannelProductListingController;
+use Modules\Product\Http\Controllers\RaiseProductController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     // Harus didefinisikan sebelum apiResource agar tidak tertangkap products/{id}
@@ -26,6 +29,21 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('products/master/{id}', [MasterFeedController::class, 'show']);
 
     Route::get('products/reviews', [ReviewFeedController::class, 'index']);
+
+    Route::get('products/archives', [ArchiveFeedController::class, 'index']);
+    Route::get('products/archives/{id}', [ArchiveFeedController::class, 'show']);
+
+    Route::get('products/channel-products', [ChannelProductListingController::class, 'index']);
+    Route::get('products/channel-products/{id}', [ChannelProductListingController::class, 'show']);
+
+    Route::get('raise-products', [RaiseProductController::class, 'index']);
+    Route::get('raise-products/{id}', [RaiseProductController::class, 'show']);
+    Route::post('raise-products', [RaiseProductController::class, 'store']);
+    Route::post('raise-products/{id}/raise', [RaiseProductController::class, 'raise']);
+    Route::post('raise-products/{id}/products', [RaiseProductController::class, 'addProduct']);
+    Route::patch('raise-products/{id}/products/{detailId}', [RaiseProductController::class, 'updateProduct']);
+    Route::delete('raise-products/{id}/products/{detailId}', [RaiseProductController::class, 'removeProduct']);
+    Route::delete('raise-products/{id}', [RaiseProductController::class, 'destroy']);
 
     // ── Merge & Auto-Merge produk (lintas store & channel) ──
     // Akses berbasis Spatie Permission: selama user punya permission-nya, boleh.
