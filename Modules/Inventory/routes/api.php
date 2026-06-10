@@ -7,6 +7,7 @@ use Modules\Inventory\Http\Controllers\StockAdjustmentController;
 use Modules\Inventory\Http\Controllers\ReservedStockController;
 use Modules\Inventory\Http\Controllers\PutawayController;
 use Modules\Inventory\Http\Controllers\StockOpnameController;
+use Modules\Inventory\Http\Controllers\StockRevaluationController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inventory/stocks', [InventoryController::class, 'index'])->name('inventory.stocks.index');
@@ -20,7 +21,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inventory/items/to-sales-return', [InventoryController::class, 'toSalesReturn'])->name('inventory.items.toSalesReturn');
     Route::get('inventory/items/{id}/batch-number', [InventoryController::class, 'batchNumbers'])->name('inventory.items.batchNumber');
     Route::post('inventory/items/to-adjust', [InventoryController::class, 'toAdjust'])->name('inventory.items.toAdjust');
+    Route::post('inventory/items/split-item', [InventoryController::class, 'splitItem'])->name('inventory.items.splitItem');
+    Route::get('inventory/items/by-bill/{docId}', [InventoryController::class, 'itemsByBill'])->name('inventory.items.byBill');
+    Route::get('inventory/items/by-invoice/{invoiceId}', [InventoryController::class, 'itemsByInvoice'])->name('inventory.items.byInvoice');
     Route::get('inventory/out-of-stock-in-order', [InventoryController::class, 'outOfStockInOrder'])->name('inventory.outOfStockInOrder');
+    Route::get('inventory/need-restock', [InventoryController::class, 'needRestock'])->name('inventory.needRestock');
     Route::get('inventory/stock-products', [InventoryController::class, 'stockProducts'])->name('inventory.stockProducts');
     Route::get('inventory/history', [InventoryController::class, 'history'])->name('inventory.history');
     Route::get('inventory/items/by-location/{locationId}', [InventoryController::class, 'byLocation'])->name('inventory.items.byLocation');
@@ -57,6 +62,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::delete('inventory/transfers/{id}', [InventoryTransactionController::class, 'transferDestroy'])->name('inventory.transfers.destroy');
     Route::post('inventory/transfers/{id}/receive', [InventoryTransactionController::class, 'transferIn'])->name('inventory.transferIn');
 
+    // Transfer print & delivery
+    Route::post('inventory/transfer/mark-printed', [InventoryTransactionController::class, 'markTransferPrinted'])->name('inventory.transfer.markPrinted');
+    Route::get('inventory/transfer/delivery', [InventoryTransactionController::class, 'transferDelivery'])->name('inventory.transfer.delivery');
+
     // Alias: items by transfer (same as transfer show)
     Route::get('inventory/items/by-transfer/{id}', [InventoryTransactionController::class, 'transferShow'])->name('inventory.items.byTransfer');
 
@@ -67,6 +76,15 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         $result = app(\Modules\Product\Services\ProductLifecycleService::class)->approve($product, $userId);
         return response()->json(['success' => true, 'data' => $result, 'message' => 'Product berhasil di-set sebagai master.']);
     })->name('inventory.catalog.setMaster');
+
+    // Stock Revaluations
+    Route::prefix('inventory/revaluations')->group(function () {
+        Route::get('/', [StockRevaluationController::class, 'index'])->name('inventory.revaluations.index');
+        Route::post('/', [StockRevaluationController::class, 'store'])->name('inventory.revaluations.store');
+        Route::get('/{id}', [StockRevaluationController::class, 'show'])->name('inventory.revaluations.show');
+        Route::post('/{id}/approve', [StockRevaluationController::class, 'approve'])->name('inventory.revaluations.approve');
+        Route::post('/{id}/cancel', [StockRevaluationController::class, 'cancel'])->name('inventory.revaluations.cancel');
+    });
 
     // Stock Opname
     Route::prefix('inventory/stock-opname')->group(function () {

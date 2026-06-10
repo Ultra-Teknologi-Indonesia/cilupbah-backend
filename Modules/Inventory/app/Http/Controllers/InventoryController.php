@@ -9,6 +9,7 @@ use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
+use Modules\Inventory\Http\Requests\SplitItemRequest;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 use Illuminate\Support\Facades\DB;
@@ -380,5 +381,134 @@ class InventoryController extends Controller
             ->paginate($limit);
 
         return $this->successPaginatedResponse($items, 'Daftar item retur penjualan berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inventory/need-restock',
+        summary: 'Get products that need restocking (available < min_stock)',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar produk yang perlu restock berhasil diambil.'),
+        ]
+    )]
+    public function needRestock(Request $request): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+
+        $items = DB::table('product_variants')
+            ->where('product_variants.min_stock', '>', 0)
+            ->leftJoin('inventories', 'inventories.item_id', '=', 'product_variants.id')
+            ->join('products', 'products.id', '=', 'product_variants.product_id')
+            ->groupBy('product_variants.id', 'product_variants.sku', 'product_variants.min_stock', 'products.name')
+            ->havingRaw('COALESCE(SUM(inventories.available), 0) < product_variants.min_stock')
+            ->select(
+                'product_variants.id as item_id',
+                'product_variants.sku',
+                'product_variants.min_stock',
+                'products.name as product_name',
+                DB::raw('COALESCE(SUM(inventories.on_hand), 0) as total_on_hand'),
+                DB::raw('COALESCE(SUM(inventories.available), 0) as total_available'),
+                DB::raw('product_variants.min_stock - COALESCE(SUM(inventories.available), 0) as qty_to_restock'),
+            )
+            ->orderByDesc('qty_to_restock')
+            ->paginate($limit);
+
+        return $this->successPaginatedResponse($items, 'Daftar produk yang perlu restock berhasil diambil.');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/inventory/items/split-item',
+        summary: 'Split item into smaller units',
+        description: 'Deduct qty from source item, add split_into_qty to target item.',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['source_item_id', 'target_item_id', 'location_id', 'qty_to_split', 'split_into_qty'],
+            properties: [
+                new OA\Property(property: 'source_item_id', type: 'string'),
+                new OA\Property(property: 'target_item_id', type: 'string'),
+                new OA\Property(property: 'location_id', type: 'string'),
+                new OA\Property(property: 'bin_id', type: 'string', nullable: true),
+                new OA\Property(property: 'qty_to_split', type: 'integer', example: 1),
+                new OA\Property(property: 'split_into_qty', type: 'integer', example: 10),
+            ]
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'Item berhasil di-split.'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+        ]
+    )]
+    public function splitItem(SplitItemRequest $request): JsonResponse
+    {
+        try {
+            $data = $request->validated();
+            $data['created_by'] = $request->user()->name ?? $request->user()->email;
+
+            $result = $this->inventoryService->splitItem($data);
+
+            return $this->successResponse($result, 'Item berhasil di-split.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inventory/items/by-bill/{docId}',
+        summary: 'Get items by purchase bill',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        parameters: [
+            new OA\Parameter(name: 'docId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar item purchase bill berhasil diambil.'),
+        ]
+    )]
+    public function itemsByBill(string $docId): JsonResponse
+    {
+        $items = DB::table('purchase_bill_items')
+            ->where('purchase_bill_items.purchase_bill_id', $docId)
+            ->join('product_variants', 'product_variants.id', '=', 'purchase_bill_items.item_id')
+            ->join('products', 'products.id', '=', 'product_variants.product_id')
+            ->select(
+                'purchase_bill_items.*',
+                'product_variants.sku',
+                'products.name as product_name',
+            )
+            ->get();
+
+        return $this->successResponse($items, 'Daftar item purchase bill berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inventory/items/by-invoice/{invoiceId}',
+        summary: 'Get items by sales invoice',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        parameters: [
+            new OA\Parameter(name: 'invoiceId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar item sales invoice berhasil diambil.'),
+        ]
+    )]
+    public function itemsByInvoice(string $invoiceId): JsonResponse
+    {
+        $items = DB::table('sales_invoice_items')
+            ->where('sales_invoice_items.sales_invoice_id', $invoiceId)
+            ->join('product_variants', 'product_variants.id', '=', 'sales_invoice_items.item_id')
+            ->join('products', 'products.id', '=', 'product_variants.product_id')
+            ->select(
+                'sales_invoice_items.*',
+                'product_variants.sku',
+                'products.name as product_name',
+            )
+            ->get();
+
+        return $this->successResponse($items, 'Daftar item sales invoice berhasil diambil.');
     }
 }

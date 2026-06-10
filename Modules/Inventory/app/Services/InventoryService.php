@@ -354,4 +354,80 @@ class InventoryService
 
         $this->transferRepository->delete($id);
     }
+
+    public function markTransferPrinted(string $transferId, string $printedBy): InventoryTransfer
+    {
+        $transfer = $this->transferRepository->findById($transferId);
+
+        if (!$transfer) {
+            throw new \Exception('Transfer tidak ditemukan.');
+        }
+
+        $transfer->update([
+            'printed_by' => $printedBy,
+            'printed_at' => now(),
+        ]);
+
+        return $this->transferRepository->findById($transferId);
+    }
+
+    public function splitItem(array $data): array
+    {
+        return DB::transaction(function () use ($data) {
+            $transactionNumber = 'SPL-' . now()->format('Ymd') . '-' . Str::upper(Str::random(4));
+
+            $sourceInventory = $this->inventoryRepository->findExactForUpdate(
+                $data['source_item_id'],
+                $data['location_id'],
+                $data['bin_id'] ?? null,
+            );
+
+            if (!$sourceInventory || $sourceInventory->on_hand < $data['qty_to_split']) {
+                $current = $sourceInventory ? $sourceInventory->on_hand : 0;
+                throw new \Exception("Stok tidak mencukupi untuk split (tersedia: {$current}, diminta: {$data['qty_to_split']}).");
+            }
+
+            $sourceInventory->on_hand -= $data['qty_to_split'];
+            $this->inventoryRepository->updateStock($sourceInventory);
+
+            $this->movementRepository->create([
+                'item_id'            => $data['source_item_id'],
+                'location_id'        => $data['location_id'],
+                'bin_id'             => $data['bin_id'] ?? null,
+                'transaction_number' => $transactionNumber,
+                'source'             => 'SPLIT_OUT',
+                'qty'                => -$data['qty_to_split'],
+                'balance'            => $sourceInventory->on_hand,
+                'transaction_date'   => now(),
+                'created_by'         => $data['created_by'],
+            ]);
+
+            $targetInventory = $this->inventoryRepository->findOrCreateForUpdate(
+                $data['target_item_id'],
+                $data['location_id'],
+                $data['bin_id'] ?? null,
+            );
+
+            $targetInventory->on_hand += $data['split_into_qty'];
+            $this->inventoryRepository->updateStock($targetInventory);
+
+            $this->movementRepository->create([
+                'item_id'            => $data['target_item_id'],
+                'location_id'        => $data['location_id'],
+                'bin_id'             => $data['bin_id'] ?? null,
+                'transaction_number' => $transactionNumber,
+                'source'             => 'SPLIT_IN',
+                'qty'                => $data['split_into_qty'],
+                'balance'            => $targetInventory->on_hand,
+                'transaction_date'   => now(),
+                'created_by'         => $data['created_by'],
+            ]);
+
+            return [
+                'transaction_number' => $transactionNumber,
+                'source'             => $sourceInventory->fresh(),
+                'target'             => $targetInventory->fresh(),
+            ];
+        });
+    }
 }
