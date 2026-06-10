@@ -17,6 +17,9 @@ use Modules\Product\Http\Controllers\ReviewFeedController;
 use Modules\Product\Http\Controllers\ArchiveFeedController;
 use Modules\Product\Http\Controllers\ChannelProductListingController;
 use Modules\Product\Http\Controllers\RaiseProductController;
+use Modules\Product\Http\Controllers\VariantController;
+use Modules\Product\Http\Controllers\PriceListController;
+use Modules\Product\Http\Controllers\PromotionController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     // Harus didefinisikan sebelum apiResource agar tidak tertangkap products/{id}
@@ -135,6 +138,20 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     // Kategori → channel mapping & store categories
     Route::get('inventory/categories/category-map/{id}', [CategoryController::class, 'channelMap']);
     Route::get('inventory/categories/{channel_id}/store-categories/{store_id}', [ChannelCategoryController::class, 'storeCategories']);
+
+    // Variations (varian produk)
+    Route::get('variations', [VariantController::class, 'index']);
+    Route::delete('inventory/items/item-variant', [VariantController::class, 'destroy']);
+
+    // Price List (harga produk)
+    Route::get('inventory/internal-price-list', [PriceListController::class, 'index']);
+    Route::post('inventory/price-list', [PriceListController::class, 'update']);
+
+    // Promotions (promosi)
+    Route::get('inventory/promotions', [PromotionController::class, 'index']);
+    Route::post('inventory/promotions', [PromotionController::class, 'store']);
+    Route::get('inventory/promotions/{id}', [PromotionController::class, 'show'])->whereUuid('id');
+    Route::delete('inventory/promotions/{id}', [PromotionController::class, 'destroy'])->whereUuid('id');
 });
 
 // Channel specific routes
