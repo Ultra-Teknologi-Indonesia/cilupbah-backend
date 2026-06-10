@@ -37,7 +37,7 @@ class ProductImportService
                 DB::table('products')->where('id', $product->id)->update($productData);
                 $productId = $product->id;
             } else {
-                $productData['id'] = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();
+                $productData['id'] = \Ramsey\Uuid\Uuid::uuid7()->toString();
                 $productData['created_at'] = now();
                 DB::table('products')->insert($productData);
                 $productId = $productData['id'];
@@ -59,7 +59,7 @@ class ProductImportService
                 DB::table('product_variants')->where('id', $variant->id)->update($variantData);
                 $variantId = $variant->id;
             } else {
-                $variantData['id'] = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();
+                $variantData['id'] = \Ramsey\Uuid\Uuid::uuid7()->toString();
                 $variantData['created_at'] = now();
                 DB::table('product_variants')->insert($variantData);
                 $variantId = $variantData['id'];

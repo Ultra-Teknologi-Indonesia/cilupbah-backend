@@ -3,7 +3,7 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
-use Modules\Order\Services\OrderService;
+use Modules\Sales\Services\SalesOrderService as OrderService;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Repositories\ChannelOrderRepository;
 

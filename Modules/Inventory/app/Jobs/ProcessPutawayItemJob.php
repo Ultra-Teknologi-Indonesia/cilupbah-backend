@@ -26,7 +26,7 @@ class ProcessPutawayItemJob implements ShouldQueue
         protected string $itemId,
         protected array $data,
     ) {
-        $this->onQueue('stock-default');
+        $this->onQueue(config('queue.names.stock_default'));
     }
 
     public function handle(
@@ -34,7 +34,13 @@ class ProcessPutawayItemJob implements ShouldQueue
         InventoryRepository $inventoryRepository,
         InventoryMovementRepository $movementRepository,
     ): void {
-        $this->withStockLock($this->itemId, $this->putawayId, function () use ($putawayRepository, $inventoryRepository, $movementRepository) {
+        $putaway = $putawayRepository->findById($this->putawayId);
+
+        if (!$putaway) {
+            throw new \RuntimeException("Putaway tidak ditemukan.");
+        }
+
+        $this->withStockLock($this->itemId, $putaway->location_id, function () use ($putawayRepository, $inventoryRepository, $movementRepository) {
             DB::transaction(function () use ($putawayRepository, $inventoryRepository, $movementRepository) {
                 $putawayItem = $putawayRepository->findItemForUpdate($this->putawayId, $this->itemId);
 
@@ -81,27 +87,13 @@ class ProcessPutawayItemJob implements ShouldQueue
                     'created_by' => 'system',
                 ]);
 
-                $destInventory = $inventoryRepository->findExactForUpdate(
+                $destInventory = $inventoryRepository->findOrCreateForUpdate(
                     $putawayItem->item_id,
                     $putaway->location_id,
                     $destinationBinId,
                     $putawayItem->batch_no ?? '',
-                    $putawayItem->serial_no ?? ''
+                    $putawayItem->serial_no ?? '',
                 );
-
-                if (!$destInventory) {
-                    $destInventory = $inventoryRepository->create([
-                        'item_id' => $putawayItem->item_id,
-                        'location_id' => $putaway->location_id,
-                        'bin_id' => $destinationBinId,
-                        'batch_no' => $putawayItem->batch_no ?? '',
-                        'serial_no' => $putawayItem->serial_no ?? '',
-                        'on_hand' => 0,
-                        'on_order' => 0,
-                        'reserved' => 0,
-                        'available' => 0,
-                    ]);
-                }
 
                 $destInventory->on_hand += $qty;
                 $inventoryRepository->updateStock($destInventory);

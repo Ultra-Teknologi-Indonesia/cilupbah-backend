@@ -15,7 +15,7 @@ class StoreWarrantyRequest extends FormRequest
     {
         return [
             'product_variant_id' => ['required', 'string', 'exists:product_variants,id'],
-            'order_id' => ['nullable', 'string', 'exists:orders,id'],
+            'order_id' => ['nullable', 'string', 'exists:sales_orders,id'],
             'serial_no' => ['nullable', 'string', 'max:255'],
             'duration_months' => ['required', 'integer', 'min:1'],
             'start_date' => ['required', 'date'],

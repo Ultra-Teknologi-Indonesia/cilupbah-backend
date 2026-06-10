@@ -35,7 +35,7 @@ return new class extends Migration
                 continue;
             }
 
-            $mappingId = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();
+            $mappingId = \Ramsey\Uuid\Uuid::uuid7()->toString();
 
             DB::table('product_channel_mappings')->insert([
                 'id' => $mappingId,
@@ -55,7 +55,7 @@ return new class extends Migration
 
             foreach ($variants as $variant) {
                 DB::table('product_variant_channel_mappings')->insert([
-                    'id' => \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString(),
+                    'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
                     'product_channel_mapping_id' => $mappingId,
                     'variant_id' => $variant->id,
                     'external_sku_id' => null, // Belum tersedia di kolom lama

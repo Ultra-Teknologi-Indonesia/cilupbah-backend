@@ -24,7 +24,7 @@ class ChannelDatabaseSeeder extends Seeder
             $existing = Channel::where('code', $channel['code'])->first();
             if (!$existing) {
                 Channel::create([
-                    'id' => \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString(),
+                    'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
                     'code' => $channel['code'],
                     'name' => $channel['name'],
                     'is_active' => true

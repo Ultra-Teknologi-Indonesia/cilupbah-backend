@@ -45,7 +45,7 @@ class SalesReturnService
                 $this->returnRepository->createItem($itemData);
             }
 
-            return $return->load('items.product:id,name,sku');
+            return $return->load('items.product:id,sku,product_id', 'items.product.product:id,name');
         });
     }
 

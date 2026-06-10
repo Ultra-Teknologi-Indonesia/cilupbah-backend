@@ -259,7 +259,7 @@ return [
         ],
         'supervisor-stock' => [
             'connection' => 'redis',
-            'queue' => ['stock-critical', 'stock-default'],
+            'queue' => [env('QUEUE_NAME_STOCK_CRITICAL', 'stock-critical'), env('QUEUE_NAME_STOCK_DEFAULT', 'stock-default')],
             'balance' => 'simple',
             'minProcesses' => 2,
             'maxProcesses' => 5,
