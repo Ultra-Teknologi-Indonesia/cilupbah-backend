@@ -212,7 +212,11 @@ class InventoryTransactionController extends Controller
     )]
     public function transferShow(string $id): JsonResponse
     {
-        $transfer = $this->inventoryService->getTransferById($id);
+        try {
+            $transfer = $this->inventoryService->getTransferById($id);
+        } catch (\Illuminate\Database\QueryException $e) {
+            return $this->errorResponse('Transfer tidak ditemukan', 404);
+        }
 
         if (! $transfer) {
             return $this->errorResponse('Transfer tidak ditemukan', 404);
@@ -371,7 +375,11 @@ class InventoryTransactionController extends Controller
             return $this->errorResponse('Parameter transfer_id wajib diisi.', 422);
         }
 
-        $transfer = $this->inventoryService->getTransferById($transferId);
+        try {
+            $transfer = $this->inventoryService->getTransferById($transferId);
+        } catch (\Illuminate\Database\QueryException $e) {
+            return $this->errorResponse('Transfer tidak ditemukan.', 404);
+        }
 
         if (!$transfer) {
             return $this->errorResponse('Transfer tidak ditemukan.', 404);

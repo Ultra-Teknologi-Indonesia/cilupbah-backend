@@ -14,6 +14,9 @@
         <testsuite name="Order">
             <directory>tests/Feature/Order</directory>
         </testsuite>
+        <testsuite name="Inventory">
+            <directory>tests/Feature/Inventory</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>
