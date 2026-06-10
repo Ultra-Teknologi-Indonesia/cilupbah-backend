@@ -5,36 +5,38 @@ namespace Modules\Purchase\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use App\Traits\HasUuid7;
 
-class PurchaseBill extends Model
+class PurchaseReturn extends Model
 {
     use HasUuid7;
 
     protected $fillable = [
-        'bill_number',
+        'return_number',
         'purchase_order_id',
         'supplier_id',
         'location_id',
         'status',
-        'bill_date',
-        'due_date',
+        'return_date',
         'total_amount',
-        'paid_amount',
+        'reason',
         'notes',
         'created_by',
+        'processed_by',
+        'processed_at',
     ];
 
     protected $casts = [
-        'bill_date'    => 'date',
-        'due_date'     => 'date',
-        'total_amount' => 'decimal:2',
-        'paid_amount'  => 'decimal:2',
+        'return_date'   => 'date',
+        'total_amount'  => 'decimal:2',
+        'processed_at'  => 'datetime',
     ];
 
     const STATUS_DRAFT     = 'DRAFT';
-    const STATUS_OPEN      = 'OPEN';
-    const STATUS_PAID      = 'PAID';
+    const STATUS_SUBMITTED = 'SUBMITTED';
+    const STATUS_APPROVED  = 'APPROVED';
+    const STATUS_COMPLETED = 'COMPLETED';
     const STATUS_CANCELLED = 'CANCELLED';
 
     public function purchaseOrder(): BelongsTo
@@ -54,11 +56,11 @@ class PurchaseBill extends Model
 
     public function items(): HasMany
     {
-        return $this->hasMany(PurchaseBillItem::class);
+        return $this->hasMany(PurchaseReturnItem::class);
     }
 
-    public function payments(): HasMany
+    public function settlement(): HasOne
     {
-        return $this->hasMany(PurchasePayment::class);
+        return $this->hasOne(PurchaseReturnSettlement::class, 'return_id');
     }
 }

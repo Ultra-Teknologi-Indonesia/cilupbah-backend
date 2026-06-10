@@ -61,6 +61,16 @@ class PurchaseOrder extends Model
         return $this->hasMany(PurchaseOrderItem::class);
     }
 
+    public function bills(): HasMany
+    {
+        return $this->hasMany(PurchaseBill::class);
+    }
+
+    public function returns(): HasMany
+    {
+        return $this->hasMany(PurchaseReturn::class);
+    }
+
     public function isReceivable(): bool
     {
         return in_array($this->status, [self::STATUS_OPEN, self::STATUS_PARTIAL_RECEIVED]);

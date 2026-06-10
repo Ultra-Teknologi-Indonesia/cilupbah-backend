@@ -4,19 +4,20 @@ namespace Modules\Purchase\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Traits\HasUuid7;
 
-class PurchaseBillItem extends Model
+class PurchaseReturnItem extends Model
 {
     use HasUuid7;
 
     protected $fillable = [
-        'purchase_bill_id',
+        'purchase_return_id',
         'item_id',
         'qty',
         'unit_price',
         'subtotal',
+        'condition',
+        'notes',
     ];
 
     protected $casts = [
@@ -24,18 +25,13 @@ class PurchaseBillItem extends Model
         'subtotal'   => 'decimal:2',
     ];
 
-    public function bill(): BelongsTo
+    public function purchaseReturn(): BelongsTo
     {
-        return $this->belongsTo(PurchaseBill::class, 'purchase_bill_id');
+        return $this->belongsTo(PurchaseReturn::class);
     }
 
     public function product(): BelongsTo
     {
         return $this->belongsTo(\Modules\Product\Models\ProductVariant::class, 'item_id');
-    }
-
-    public function serialNumbers(): HasMany
-    {
-        return $this->hasMany(PurchaseSerialNumber::class, 'purchase_bill_item_id');
     }
 }
