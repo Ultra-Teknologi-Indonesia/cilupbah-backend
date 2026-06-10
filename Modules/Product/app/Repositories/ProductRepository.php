@@ -3,12 +3,92 @@
 namespace Modules\Product\Repositories;
 
 use Modules\Product\Models\Product;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 
 class ProductRepository
 {
+    /**
+     * Cari produk berdasarkan SKU (lookup tunggal): cocokkan SKU produk,
+     * fallback ke SKU varian. Eloquent biasa (bukan Spatie) — bukan listing.
+     */
+    public function findBySku(string $sku, array $with = []): ?Product
+    {
+        $product = Product::with($with)->where('sku', $sku)->first();
+        if ($product) {
+            return $product;
+        }
+
+        $variant = \Modules\Product\Models\ProductVariant::where('sku', $sku)->first();
+
+        return $variant ? Product::with($with)->find($variant->product_id) : null;
+    }
+
+    /**
+     * Listing produk bundle (is_bundle = true) — Spatie Query Builder.
+     */
+    public function paginateBundles(): LengthAwarePaginator
+    {
+        return QueryBuilder::for(Product::class)
+            ->where('is_bundle', true)
+            ->with(['variants', 'media', 'category', 'brand'])
+            ->allowedSearch('name')
+            ->allowedFilters(AllowedFilter::exact('is_active'))
+            ->allowedSorts('name', 'created_at')
+            ->paginate(request('per_page', 10))
+            ->appends(request()->query());
+    }
+
+    /**
+     * Ambil produk + stok varian per kumpulan id (derived list by ids → Eloquent biasa).
+     */
+    public function getByIdsWithStock(array $ids): Collection
+    {
+        return Product::with('variants.inventories')->whereIn('id', $ids)->get();
+    }
+
+    /**
+     * Ambil produk + varian (harga) per kumpulan id (derived list by ids → Eloquent biasa).
+     */
+    public function getByIdsWithVariants(array $ids): Collection
+    {
+        return Product::with('variants:id,product_id,sku,sell_price')
+            ->whereIn('id', $ids)
+            ->get(['id', 'sku', 'name']);
+    }
+
+    /**
+     * Simpan/ubah produk bundle beserta komponennya dalam satu transaksi.
+     *
+     * @param  array<int,array{variant_id:string,qty:int}>  $components
+     */
+    public function saveBundle(?string $id, array $attributes, array $components): Product
+    {
+        return DB::transaction(function () use ($id, $attributes, $components) {
+            $product = $id ? Product::findOrFail($id) : new Product();
+
+            if (! $product->exists) {
+                $product->status = Product::STATUS_MASTER;
+                $product->is_active = true;
+            }
+
+            $product->fill($attributes)->save();
+
+            $product->bundleItems()->delete();
+            foreach ($components as $component) {
+                $product->bundleItems()->create([
+                    'component_variant_id' => $component['variant_id'],
+                    'qty' => $component['qty'],
+                ]);
+            }
+
+            return $product;
+        });
+    }
+
     public function paginateIndex(?string $status = null): LengthAwarePaginator
     {
         return QueryBuilder::for(Product::class)

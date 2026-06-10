@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Modules\Product\Http\Requests\CreateProductRequest;
+use Modules\Product\Http\Requests\ItemIdsRequest;
+use Modules\Product\Http\Requests\StoreBundleRequest;
 use Modules\Product\Http\Requests\UpdateProductRequest;
+use Modules\Product\Http\Resources\ProductPriceResource;
 use Modules\Product\Http\Resources\ProductResource;
+use Modules\Product\Http\Resources\ProductStockResource;
 use Modules\Product\Models\Product;
-use Modules\Product\Models\ProductVariant;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Product\Services\ProductService;
 use Modules\Product\Services\ProductLifecycleService;
@@ -343,16 +346,10 @@ class ProductController extends Controller
 
     /**
      * Jubelio: GET /inventory/items/by-sku/{sku} — Ambil produk per SKU.
-     * Cari berdasarkan SKU produk, fallback ke SKU varian.
      */
     public function showBySku(string $sku): JsonResponse
     {
-        $product = Product::with(self::DETAIL_RELATIONS)->where('sku', $sku)->first();
-
-        if (! $product) {
-            $variant = ProductVariant::where('sku', $sku)->first();
-            $product = $variant ? Product::with(self::DETAIL_RELATIONS)->find($variant->product_id) : null;
-        }
+        $product = $this->productService->getProductBySku($sku);
 
         if (! $product) {
             return $this->errorResponse('Produk dengan SKU tersebut tidak ditemukan', 404);
@@ -364,131 +361,47 @@ class ProductController extends Controller
     /**
      * Jubelio: GET /inventory/item-bundles/ — Ambil semua bundle produk (is_bundle = true).
      */
-    public function bundles(Request $request): JsonResponse
+    public function bundles(): JsonResponse
     {
-        $bundles = Product::query()
-            ->where('is_bundle', true)
-            ->with(['variants', 'media', 'category', 'brand'])
-            ->when($request->filled('search'), fn ($q) => $q->where('name', 'ilike', '%'.$request->query('search').'%'))
-            ->orderByDesc('created_at')
-            ->paginate((int) $request->query('limit', 10));
-
-        return $this->successPaginatedResponse(ProductResource::collection($bundles), 'Get product bundles success');
+        return $this->successPaginatedResponse(
+            ProductResource::collection($this->productService->getBundles()),
+            'Get product bundles success'
+        );
     }
 
     /**
      * Jubelio: POST /inventory/items/all-stocks/ — Ambil stok produk per banyak ID.
-     * Input: { item_ids: [uuid] } (id produk). Output: agregasi stok per produk.
      */
-    public function allStocks(Request $request): JsonResponse
+    public function allStocks(ItemIdsRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'item_ids' => 'required|array',
-            'item_ids.*' => 'required|uuid',
-        ]);
+        $products = $this->productService->getStocksByIds($request->validated()['item_ids']);
 
-        $products = Product::with('variants.inventories')
-            ->whereIn('id', $validated['item_ids'])
-            ->get();
-
-        $data = $products->map(function (Product $product) {
-            $inventories = $product->variants->flatMap->inventories;
-
-            return [
-                'item_id' => $product->id,
-                'sku' => $product->sku,
-                'on_hand' => (int) $inventories->sum('on_hand'),
-                'reserved' => (int) $inventories->sum('reserved'),
-                'on_order' => (int) $inventories->sum('on_order'),
-                'available' => (int) $inventories->sum('available'),
-            ];
-        });
-
-        return $this->successResponse($data, 'Get product stocks success');
+        return $this->successResponse(ProductStockResource::collection($products), 'Get product stocks success');
     }
 
     /**
      * Jubelio: POST /inventory/items/prices/ — Ambil harga produk per banyak ID.
-     * Input: { item_ids: [uuid] } (id produk). Output: harga jual per varian, dikelompokkan per produk.
      */
-    public function prices(Request $request): JsonResponse
+    public function prices(ItemIdsRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'item_ids' => 'required|array',
-            'item_ids.*' => 'required|uuid',
-        ]);
+        $products = $this->productService->getPricesByIds($request->validated()['item_ids']);
 
-        $products = Product::with('variants:id,product_id,sku,sell_price')
-            ->whereIn('id', $validated['item_ids'])
-            ->get(['id', 'sku', 'name']);
-
-        $data = $products->map(function (Product $product) {
-            $prices = $product->variants->pluck('sell_price')->filter(fn ($p) => $p !== null);
-
-            return [
-                'item_id' => $product->id,
-                'sku' => $product->sku,
-                'name' => $product->name,
-                'min_price' => $prices->isNotEmpty() ? (float) $prices->min() : 0,
-                'max_price' => $prices->isNotEmpty() ? (float) $prices->max() : 0,
-                'variants' => $product->variants->map(fn ($v) => [
-                    'id' => $v->id,
-                    'sku' => $v->sku,
-                    'sell_price' => $v->sell_price,
-                ])->values(),
-            ];
-        });
-
-        return $this->successResponse($data, 'Get product prices success');
+        return $this->successResponse(ProductPriceResource::collection($products), 'Get product prices success');
     }
 
     /**
-     * Jubelio: POST /inventory/items/ — Buat/ubah bundle produk.
-     * Body: { name, sku?, category_id?, brand_id?, components: [{ variant_id, qty }] }
-     * Jika dikirim {id}, akan mengubah bundle yang ada (sinkron komponen).
+     * Jubelio: POST /inventory/items/ — Buat/ubah bundle produk (kirim {id} untuk edit).
      */
-    public function storeBundle(Request $request): JsonResponse
+    public function storeBundle(StoreBundleRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'id' => 'nullable|uuid|exists:products,id',
-            'name' => 'required|string|max:255',
-            'sku' => 'nullable|string|max:100',
-            'category_id' => 'required|integer|exists:categories,id',
-            'brand_id' => 'nullable|integer|exists:brands,id',
-            'components' => 'required|array|min:1',
-            'components.*.variant_id' => 'required|uuid|exists:product_variants,id',
-            'components.*.qty' => 'required|integer|min:1',
-        ]);
-
-        $product = \Illuminate\Support\Facades\DB::transaction(function () use ($validated) {
-            $product = isset($validated['id'])
-                ? Product::findOrFail($validated['id'])
-                : new Product(['status' => Product::STATUS_MASTER, 'is_active' => true]);
-
-            $product->fill([
-                'name' => $validated['name'],
-                'sku' => $validated['sku'] ?? $product->sku,
-                'category_id' => $validated['category_id'] ?? $product->category_id,
-                'brand_id' => $validated['brand_id'] ?? $product->brand_id,
-                'is_bundle' => true,
-            ])->save();
-
-            // Sinkron komponen: hapus lama, isi baru.
-            $product->bundleItems()->delete();
-            foreach ($validated['components'] as $component) {
-                $product->bundleItems()->create([
-                    'component_variant_id' => $component['variant_id'],
-                    'qty' => $component['qty'],
-                ]);
-            }
-
-            return $product;
-        });
+        $data = $request->validated();
+        $product = $this->productService->createOrUpdateBundle($data);
+        $isUpdate = isset($data['id']);
 
         return $this->successResponse(
             ['product_id' => $product->id],
-            isset($validated['id']) ? 'Bundle produk berhasil diperbarui' : 'Bundle produk berhasil dibuat',
-            isset($validated['id']) ? 200 : 201,
+            $isUpdate ? 'Bundle produk berhasil diperbarui' : 'Bundle produk berhasil dibuat',
+            $isUpdate ? 200 : 201,
         );
     }
 
