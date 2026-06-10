@@ -1,0 +1,34 @@
+<?php
+
+namespace App\Http\Middleware;
+
+use Closure;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
+
+class DevOnly
+{
+    /**
+     * Izinkan akses hanya di environment local & staging (atau saat di-override).
+     * Diblokir (404) di production. Opsional dilindungi Basic Auth.
+     */
+    public function handle(Request $request, Closure $next): Response
+    {
+        $allowed = config('devtracker.allowed_envs', ['local', 'staging']);
+
+        if (! in_array(app()->environment(), $allowed, true) && ! config('devtracker.enabled')) {
+            abort(404);
+        }
+
+        // Proteksi Basic Auth opsional (mis. di staging).
+        $user = config('devtracker.basic_auth.user');
+        $pass = config('devtracker.basic_auth.pass');
+        if ($user && $pass) {
+            if ($request->getUser() !== $user || $request->getPassword() !== $pass) {
+                return response('Unauthorized', 401, ['WWW-Authenticate' => 'Basic realm="Dev Tracker"']);
+            }
+        }
+
+        return $next($request);
+    }
+}
