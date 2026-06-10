@@ -12,8 +12,8 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->string('bill_number', 50)->unique();
             $table->foreignUuid('purchase_order_id')->nullable()->constrained('purchase_orders')->nullOnDelete();
-            $table->foreignId('supplier_id')->constrained('suppliers')->restrictOnDelete();
-            $table->foreignId('location_id')->constrained('locations')->restrictOnDelete();
+            $table->foreignUuid('supplier_id')->constrained('suppliers')->restrictOnDelete();
+            $table->foreignUuid('location_id')->constrained('locations')->restrictOnDelete();
             $table->string('status', 30)->default('DRAFT');
             $table->date('bill_date');
             $table->date('due_date')->nullable();

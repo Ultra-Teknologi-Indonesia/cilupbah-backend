@@ -32,7 +32,22 @@ return new class extends Migration
             $table->dropPrimary('model_has_roles_role_model_type_primary');
         });
 
-        // 2. Alter column types to VARCHAR(32)
+        // 2. Drop FKs that reference users.id before type change
+        if (DB::getDriverName() !== 'sqlite') {
+            if (Schema::hasTable('putaways')) {
+                Schema::table('putaways', function (Blueprint $table) {
+                    $table->dropForeign(['assigned_to']);
+                });
+            }
+            if (Schema::hasTable('inbound_assignments')) {
+                Schema::table('inbound_assignments', function (Blueprint $table) {
+                    $table->dropForeign(['assigned_to']);
+                    $table->dropForeign(['assigned_by']);
+                });
+            }
+        }
+
+        // 3. Alter column types to UUID
         $tables = [
             'users' => ['id'],
             'sessions' => ['user_id'],
@@ -55,7 +70,25 @@ return new class extends Migration
             }
         }
 
-        // 3. Re-add Primary Keys and Foreign Keys
+        // 4. Convert referencing columns to UUID and re-add FKs
+        if (DB::getDriverName() !== 'sqlite') {
+            if (Schema::hasTable('putaways')) {
+                DB::statement("ALTER TABLE putaways ALTER COLUMN assigned_to TYPE UUID USING LPAD(assigned_to::text, 32, '0')::uuid");
+                Schema::table('putaways', function (Blueprint $table) {
+                    $table->foreign('assigned_to')->references('id')->on('users')->nullOnDelete();
+                });
+            }
+            if (Schema::hasTable('inbound_assignments')) {
+                DB::statement("ALTER TABLE inbound_assignments ALTER COLUMN assigned_to TYPE UUID USING LPAD(assigned_to::text, 32, '0')::uuid");
+                DB::statement("ALTER TABLE inbound_assignments ALTER COLUMN assigned_by TYPE UUID USING LPAD(assigned_by::text, 32, '0')::uuid");
+                Schema::table('inbound_assignments', function (Blueprint $table) {
+                    $table->foreign('assigned_to')->references('id')->on('users')->nullOnDelete();
+                    $table->foreign('assigned_by')->references('id')->on('users')->nullOnDelete();
+                });
+            }
+        }
+
+        // 5. Re-add Primary Keys and Foreign Keys
         Schema::table($tableNames['role_has_permissions'], function (Blueprint $table) use ($pivotRole, $pivotPermission, $tableNames) {
             $table->foreign($pivotPermission)->references('id')->on($tableNames['permissions'])->cascadeOnDelete();
             $table->foreign($pivotRole)->references('id')->on($tableNames['roles'])->cascadeOnDelete();

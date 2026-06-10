@@ -13,7 +13,7 @@ return new class extends Migration
             $table->string('invoice_number', 50)->unique();
             $table->foreignUuid('order_id')->nullable()->constrained('sales_orders')->nullOnDelete();
             $table->string('customer_name')->nullable();
-            $table->foreignId('location_id')->constrained('locations')->restrictOnDelete();
+            $table->foreignUuid('location_id')->constrained('locations')->restrictOnDelete();
             $table->string('status', 30)->default('DRAFT');
             $table->date('invoice_date');
             $table->date('due_date')->nullable();

@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('stock_revaluations', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->string('revaluation_no', 50)->unique();
-            $table->foreignId('location_id')->constrained('locations')->restrictOnDelete();
+            $table->foreignUuid('location_id')->constrained('locations')->restrictOnDelete();
             $table->string('status', 30)->default('DRAFT');
             $table->text('notes')->nullable();
             $table->string('created_by', 100);
