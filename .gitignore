@@ -26,3 +26,6 @@ Thumbs.db
 
 # Database Dumps
 cilupbah.sql
+
+# Sample data referensi (jangan di-commit)
+Modules/Product/channel-product.json
