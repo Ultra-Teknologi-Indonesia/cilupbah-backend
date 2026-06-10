@@ -66,7 +66,15 @@ class CategoryService
     {
         $category = $this->getCategoryById($categoryId);
         $category->channelCategories()->sync($channelCategoryIds);
-        
+
         return $category->load('channelCategories');
+    }
+
+    /**
+     * Jubelio: ambil pemetaan kategori lokal -> kategori channel/marketplace.
+     */
+    public function getChannelMapping(int $categoryId): Category
+    {
+        return $this->getCategoryById($categoryId)->load('channelCategories.channel');
     }
 }

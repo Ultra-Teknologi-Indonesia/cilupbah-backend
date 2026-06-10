@@ -103,6 +103,12 @@ class Product extends Model
         return $this->hasMany(ProductVariationType::class);
     }
 
+    /** Komponen-komponen di dalam bundle ini (hanya relevan bila is_bundle = true). */
+    public function bundleItems(): HasMany
+    {
+        return $this->hasMany(ProductBundleItem::class, 'bundle_product_id');
+    }
+
     public function channelMappings(): HasMany
     {
         return $this->hasMany(ProductChannelMapping::class);

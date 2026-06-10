@@ -19,6 +19,15 @@ class CategoryResource extends JsonResource
             'children' => CategoryResource::collection($this->whenLoaded('children')),
             'parent' => new CategoryResource($this->whenLoaded('parent')),
             'attributes' => AttributeResource::collection($this->whenLoaded('attributes')),
+            'channel_categories' => $this->whenLoaded('channelCategories', function () {
+                return $this->channelCategories->map(fn ($cc) => [
+                    'id' => $cc->id,
+                    'channel_id' => $cc->channel_id,
+                    'channel_name' => $cc->relationLoaded('channel') && $cc->channel ? $cc->channel->name : null,
+                    'external_id' => $cc->external_id,
+                    'name' => $cc->name,
+                ]);
+            }),
         ];
     }
 }

@@ -97,4 +97,17 @@ class CategoryController extends Controller
             return $this->errorResponse($e->getMessage(), 500);
         }
     }
+
+    /**
+     * Jubelio: GET /inventory/categories/category-map/{id} — Ambil pemetaan kategori ke marketplace.
+     */
+    public function channelMap(int $id): JsonResponse
+    {
+        try {
+            $category = $this->categoryService->getChannelMapping($id);
+            return $this->successResponse(new CategoryResource($category), 'Berhasil mengambil pemetaan kategori ke channel');
+        } catch (\Throwable $e) {
+            return $this->errorResponse('Kategori tidak ditemukan', 404);
+        }
+    }
 }
