@@ -30,5 +30,10 @@ class DatabaseSeeder extends Seeder
         $this->call(\Modules\Region\Database\Seeders\RegionDatabaseSeeder::class);
         $this->call(\Modules\Channel\Database\Seeders\ChannelDatabaseSeeder::class);
         $this->call(\Modules\Warehouse\Database\Seeders\WarehouseDatabaseSeeder::class);
+
+        // Dev Tracker — hanya di local & staging (idempotent, aman dijalankan ulang).
+        if (app()->environment(['local', 'staging'])) {
+            $this->call(TrackingItemsSeeder::class);
+        }
     }
 }
