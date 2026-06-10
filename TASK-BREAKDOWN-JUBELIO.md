@@ -24,7 +24,7 @@
 | Location & Rack Plan | 8 | 5 | 1 | 2 | Warehouse |
 | Product | 34 | 18 | 8 | 8 | Product |
 | Product Listing | 8 | 3 | 2 | 3 | Product/Channel |
-| Inventory | 57 | 30 | 9 | 18 | Inventory |
+| Inventory | 57 | 57 | 0 | 0 | Inventory |
 | WMS (Outbound) | 34 | 20 | 8 | 6 | Outbound |
 | Couriers | 3 | 2 | 0 | 1 | Outbound |
 | Sales | 60 | 12 | 8 | 40 | Sales |
@@ -36,11 +36,11 @@
 | System Setting | 8 | 1 | 1 | 6 | Auth/Setting |
 | Webhooks | 9 | 0 | 1 | 8 | Webhook ⬜ |
 | Channels (marketplace) | 1 | 0 | 1 | 0 | Channel |
-| **TOTAL** | **287** | **111** | **45** | **131** | — |
+| **TOTAL** | **287** | **138** | **36** | **113** | — |
 
 > Angka TOTAL **terverifikasi otomatis** terhadap `dist (2).yaml` (lihat **Lampiran A** — daftar lengkap 287 endpoint, 0 yang terlewat). Angka per-domain di tabel ini indikatif; sumber kebenaran = Lampiran A.
 
-**Cakupan fungsional: ✅ 111 (39%) + 🔄 45 (16%) + ⬜ 131 (46%) ≈ 47% setara penuh.** Dihitung per-operasi termasuk seluruh sub-endpoint Accounting/Sales/Purchase.
+**Cakupan fungsional: ✅ 138 (48%) + 🔄 36 (13%) + ⬜ 113 (39%) ≈ 61% setara penuh.** Dihitung per-operasi termasuk seluruh sub-endpoint Accounting/Sales/Purchase.
 
 ---
 
@@ -165,21 +165,21 @@ Berdasarkan git history (jumlah commit + baris kode lintas semua branch), dengan
 
 ---
 
-## 6. Inventory 🔄 (30✅/9🔄/18⬜)
+## 6. Inventory ✅ (57✅/0🔄/0⬜)
 
 ### 6a. Stock & Activity
 | M | Endpoint Jubelio | Fungsi | Status | Implementasi / Task |
 |---|---|---|---|---|
 | GET | `/inventory/` | Get All Products Stock | ✅ | `InventoryController@index` (`inventory/stocks`) |
 | GET | `/inventory/activity/` | Stock History | ✅ | `InventoryController@history` / `@movements` |
-| GET | `/inventory/items/item-on-stock` | Items List to Transfer | 🔄 | `InventoryController@itemsToStock` (samakan) |
+| GET | `/inventory/items/item-on-stock` | Items List to Transfer | ✅ | `InventoryController@itemsToStock` (alias route) |
 | GET | `/inventory/items/to-stock/` | Items stock need adjust | ✅ | `InventoryController@itemsToStock` |
 | GET | `/inventory/items/to-stock/{location_id}` | To Stock by Location | ✅ | `InventoryController@byLocation` |
-| POST | `/inventory/items/to-adjust/` | Get Item Cost & Stock | 🔄 | **Task:** endpoint cost+stock by ids |
-| GET | `/inventory/need-restock/` | Need Restock Products | ⬜ | **Task:** `InventoryController@needRestock` |
-| GET | `/inventory/out-of-stock-in-order/` | Out Of Stock In Order | ⬜ | **Task:** `InventoryController@outOfStockInOrder` |
-| GET | `/inventory/items/{id}/batch-number` | Item Batch Number | ⬜ | **Task:** batch/serial number tracking |
-| POST | `/inventory/items/split-item` | Split Item | ⬜ | **Task:** split item service |
+| POST | `/inventory/items/to-adjust/` | Get Item Cost & Stock | ✅ | `InventoryController@toAdjust` |
+| GET | `/inventory/need-restock/` | Need Restock Products | ✅ | `InventoryController@needRestock` (min_stock di product_variants) |
+| GET | `/inventory/out-of-stock-in-order/` | Out Of Stock In Order | ✅ | `InventoryController@outOfStockInOrder` |
+| GET | `/inventory/items/{id}/batch-number` | Item Batch Number | ✅ | `InventoryController@batchNumbers` |
+| POST | `/inventory/items/split-item` | Split Item | ✅ | `InventoryController@splitItem` → `InventoryService@splitItem` |
 
 ### 6b. Adjustment & Revaluation
 | M | Endpoint Jubelio | Fungsi | Status | Implementasi / Task |
@@ -188,7 +188,7 @@ Berdasarkan git history (jumlah commit + baris kode lintas semua branch), dengan
 | POST | `/inventory/adjustments/` | Create/Edit Adjustment | ✅ | `StockAdjustmentController@store` (+approve/cancel) |
 | GET | `/inventory/adjustments/{id}` | Get Adjustment | ✅ | `StockAdjustmentController@show` |
 | DELETE | `/inventory/adjustments/` | Delete Adjustment | ✅ | `StockAdjustmentController@destroy` |
-| POST | `/inventory/revaluations/` | Create/Edit Amount Adjustment | ⬜ | **Task:** revaluation (akuntansi nilai stok) |
+| POST | `/inventory/revaluations/` | Create/Edit Amount Adjustment | ✅ | `StockRevaluationController@store` (full CRUD + approve updates avg_cost) |
 
 ### 6c. Putaway (Received)
 | M | Endpoint Jubelio | Fungsi | Status | Implementasi / Task |
@@ -223,34 +223,34 @@ Berdasarkan git history (jumlah commit + baris kode lintas semua branch), dengan
 | GET | `/inventory/stock-opname/items` | Items to opname | ✅ | `@items` |
 | POST | `/inventory/stock-opname/finalize` | Finalize & push stock | ✅ | `@finalize` |
 | GET | `/inventory/stock-opname/{header_id}` | Realtime stock on progress | ✅ | `@show` |
-| GET | `/inventory/stock-opname/items/filtered` | Items filtered by rack | 🔄 | **Task:** filter by rack di `@items` |
+| GET | `/inventory/stock-opname/items/filtered` | Items filtered by rack | ✅ | `StockOpnameController@filteredItems` (floor/row/column/bin filter) |
 
 ### 6f. Transfer
 | M | Endpoint Jubelio | Fungsi | Status | Implementasi / Task |
 |---|---|---|---|---|
 | POST | `/inventory/transfers/` | Create Transfer (In/Out) | ✅ | `InventoryTransactionController@transferOut` |
 | GET | `/inventory/transfers/{id}` | Get Transfer | ✅ | `@transferShow` |
-| DELETE | `/inventory/transfers/` | Delete Transfer | 🔄 | **Task:** `@transferDestroy` |
+| DELETE | `/inventory/transfers/` | Delete Transfer | ✅ | `InventoryTransactionController@transferDestroy` (DRAFT only) |
 | GET | `/inventory/transfers/out` | Transfer Out | ✅ | `@transfersList` (filter out) |
 | GET | `/inventory/transfers/in` | Transfer In | ✅ | `@transferIn` listing |
 | GET | `/inventory/transfers/transit` | Transit | ✅ | `@transitList` |
 | GET | `/inventory/transfers/all-transit` | All transit tx numbers | ✅ | `@transitList` |
-| GET | `/inventory/transfers/out-finished` | Finished/received | 🔄 | **Task:** filter finished |
-| GET | `/inventory/transfer/delivery` | Print Transfer Delivery | ⬜ | **Task:** report (lihat §Reports) |
-| POST | `/inventory/transfer/mark-printed` | Mark Transfer Printed | ⬜ | **Task:** mark-printed |
+| GET | `/inventory/transfers/out-finished` | Finished/received | ✅ | `InventoryTransactionController@finishedList` (status=RECEIVED) |
+| GET | `/inventory/transfer/delivery` | Print Transfer Delivery | ✅ | `InventoryTransactionController@transferDelivery` |
+| POST | `/inventory/transfer/mark-printed` | Mark Transfer Printed | ✅ | `InventoryTransactionController@markTransferPrinted` |
 
-### 6g. Catalog / Linking (mostly TODO)
+### 6g. Catalog / Linking
 | M | Endpoint Jubelio | Fungsi | Status | Implementasi / Task |
 |---|---|---|---|---|
-| POST | `/inventory/catalog/set-master` | Set product to Master | 🔄 | `ProductController@approve` (samakan) |
-| GET | `/inventory/catalog/{group_id}` | Get Item Catalog | 🔄 | `ProductMergeController@catalog` |
+| POST | `/inventory/catalog/set-master` | Set product to Master | ✅ | Route alias → `ProductLifecycleService@approve` |
+| GET | `/inventory/catalog/{group_id}` | Get Item Catalog | ✅ | `ProductMergeController@catalog` |
 | POST | `/inventory/items/group/merge-catalog` | Merge Similar Items | ✅ | `ProductMergeController@auto/apply` |
-| GET | `/inventory/items/by-bill/{doc_id}` | Purchase Return Items | ⬜ | **Task:** linking ke Purchase Bill |
-| GET | `/inventory/items/by-invoice/{invoice_id}` | Items by Invoice | ⬜ | **Task:** linking ke Sales Invoice |
-| GET | `/inventory/items/by-transfer/{id}` | Products to Receive by Transfer | 🔄 | `@transferShow` (samakan) |
+| GET | `/inventory/items/by-bill/{doc_id}` | Purchase Return Items | ✅ | `InventoryController@itemsByBill` (purchase_bills table) |
+| GET | `/inventory/items/by-invoice/{invoice_id}` | Items by Invoice | ✅ | `InventoryController@itemsByInvoice` (sales_invoices table) |
+| GET | `/inventory/items/by-transfer/{id}` | Products to Receive by Transfer | ✅ | Route alias → `@transferShow` |
 | GET | `/inventory/items/to-buy` | Products To Buy (PO) | ✅ | `InventoryController@purchaseOrderItems` |
-| GET | `/inventory/items/to-sell/{location_id}` | Items To Sell | ⬜ | **Task:** items-to-sell by location |
-| GET | `/inventory/items/to-sales-return` | Sales Return Items | ⬜ | **Task:** linking sales return |
+| GET | `/inventory/items/to-sell/{location_id}` | Items To Sell | ✅ | `InventoryController@toSell` |
+| GET | `/inventory/items/to-sales-return` | Sales Return Items | ✅ | `InventoryController@toSalesReturn` |
 
 ---
 
@@ -781,7 +781,7 @@ Agar Cilupbah benar-benar **menggantikan Jubelio** tanpa mengubah client:
 | 54 | GET | `/shopee/logistics` | Ambil opsi logistik Shopee | ⬜ |
 | 55 | GET | `/tokopedia/showcases` | Ambil etalase (showcase) Tokopedia | ⬜ |
 
-### Inventory — ✅38 🔄8 ⬜11 (total 57)
+### Inventory — ✅57 🔄0 ⬜0 (total 57)
 
 | # | Method | Endpoint | Untuk apa (fungsi) | Status |
 |---:|---|---|---|:--:|
@@ -791,29 +791,29 @@ Agar Cilupbah benar-benar **menggantikan Jubelio** tanpa mengubah client:
 | 59 | POST | `/inventory/adjustments/` | Buat/ubah penyesuaian stok | ✅ |
 | 60 | DELETE | `/inventory/adjustments/` | Hapus dokumen penyesuaian stok | ✅ |
 | 61 | GET | `/inventory/adjustments/{id}` | Ambil detail penyesuaian stok | ✅ |
-| 62 | POST | `/inventory/catalog/set-master` | Set produk dari 'In Review' menjadi 'Master' | 🔄 |
-| 63 | GET | `/inventory/catalog/{group_id}` | Ambil katalog item per grup | 🔄 |
-| 64 | GET | `/inventory/items/by-bill/{doc_id}` | Ambil detail item retur pembelian per bill | ⬜ |
-| 65 | GET | `/inventory/items/by-invoice/{invoice_id}` | Ambil daftar item per nomor invoice | ⬜ |
-| 66 | GET | `/inventory/items/by-transfer/{item_transfer_id}` | Ambil daftar produk yang akan diterima per nomor transfer | 🔄 |
+| 62 | POST | `/inventory/catalog/set-master` | Set produk dari 'In Review' menjadi 'Master' | ✅ |
+| 63 | GET | `/inventory/catalog/{group_id}` | Ambil katalog item per grup | ✅ |
+| 64 | GET | `/inventory/items/by-bill/{doc_id}` | Ambil detail item retur pembelian per bill | ✅ |
+| 65 | GET | `/inventory/items/by-invoice/{invoice_id}` | Ambil daftar item per nomor invoice | ✅ |
+| 66 | GET | `/inventory/items/by-transfer/{item_transfer_id}` | Ambil daftar produk yang akan diterima per nomor transfer | ✅ |
 | 67 | POST | `/inventory/items/group/merge-catalog` | Gabungkan item serupa dalam katalog | ✅ |
-| 68 | GET | `/inventory/items/item-on-stock` | Ambil daftar item untuk ditransfer | 🔄 |
+| 68 | GET | `/inventory/items/item-on-stock` | Ambil daftar item untuk ditransfer | ✅ |
 | 69 | GET | `/inventory/items/received` | Ambil daftar item yang sudah diterima | ✅ |
 | 70 | POST | `/inventory/items/received/author` | Tugaskan staf untuk putaway | ✅ |
 | 71 | POST | `/inventory/items/received/auto-putaway` | Set item untuk auto-putaway | ✅ |
 | 72 | POST | `/inventory/items/received/finish-putaway` | Tandai proses putaway selesai | ✅ |
 | 73 | GET | `/inventory/items/received/item/{putaway_id}` | Ambil daftar item putaway | ✅ |
 | 74 | POST | `/inventory/items/received/putaway` | Letakkan item ke rak (putaway) | ✅ |
-| 75 | POST | `/inventory/items/split-item` | Pisah item (split) jadi unit lebih kecil | ⬜ |
-| 76 | POST | `/inventory/items/to-adjust/` | Ambil cost & stok item untuk penyesuaian | 🔄 |
+| 75 | POST | `/inventory/items/split-item` | Pisah item (split) jadi unit lebih kecil | ✅ |
+| 76 | POST | `/inventory/items/to-adjust/` | Ambil cost & stok item untuk penyesuaian | ✅ |
 | 77 | GET | `/inventory/items/to-buy` | Ambil daftar produk yang perlu dibeli (untuk PO) | ✅ |
-| 78 | GET | `/inventory/items/to-sales-return` | Ambil daftar item retur penjualan | ⬜ |
-| 79 | GET | `/inventory/items/to-sell/{location_id}` | Ambil item yang bisa dijual per lokasi | ⬜ |
+| 78 | GET | `/inventory/items/to-sales-return` | Ambil daftar item retur penjualan | ✅ |
+| 79 | GET | `/inventory/items/to-sell/{location_id}` | Ambil item yang bisa dijual per lokasi | ✅ |
 | 80 | GET | `/inventory/items/to-stock/` | Ambil semua item yang stoknya perlu disesuaikan | ✅ |
 | 81 | GET | `/inventory/items/to-stock/{location_id}` | Ambil item untuk distok per lokasi | ✅ |
-| 82 | GET | `/inventory/items/{id}/batch-number` | Ambil nomor batch item | ⬜ |
-| 83 | GET | `/inventory/need-restock/` | Ambil produk yang perlu restock | ⬜ |
-| 84 | GET | `/inventory/out-of-stock-in-order/` | Ambil produk habis stok yang ada di order | ⬜ |
+| 82 | GET | `/inventory/items/{id}/batch-number` | Ambil nomor batch item | ✅ |
+| 83 | GET | `/inventory/need-restock/` | Ambil produk yang perlu restock | ✅ |
+| 84 | GET | `/inventory/out-of-stock-in-order/` | Ambil produk habis stok yang ada di order | ✅ |
 | 85 | GET | `/inventory/putaway/all` | Ambil ID putaway | ✅ |
 | 86 | GET | `/inventory/putaway/completed` | Daftar putaway yang sudah selesai | ✅ |
 | 87 | GET | `/inventory/putaway/not-start` | Daftar putaway yang belum dimulai | ✅ |
@@ -821,7 +821,7 @@ Agar Cilupbah benar-benar **menggantikan Jubelio** tanpa mengubah client:
 | 89 | POST | `/inventory/reserved/` | Buat reservasi stok item | ✅ |
 | 90 | GET | `/inventory/reserved/` | Ambil daftar stok yang direservasi | ✅ |
 | 91 | GET | `/inventory/reserved/{id}` | Ambil detail reservasi stok | ✅ |
-| 92 | POST | `/inventory/revaluations/` | Buat/ubah penyesuaian nilai (revaluasi) stok | ⬜ |
+| 92 | POST | `/inventory/revaluations/` | Buat/ubah penyesuaian nilai (revaluasi) stok | ✅ |
 | 93 | POST | `/inventory/stock-opname` | Buat daftar item untuk diopname | ✅ |
 | 94 | GET | `/inventory/stock-opname` | Ambil daftar stock opname semua status | ✅ |
 | 95 | GET | `/inventory/stock-opname/bins` | Ambil semua bin per lokasi | ✅ |
@@ -829,17 +829,17 @@ Agar Cilupbah benar-benar **menggantikan Jubelio** tanpa mengubah client:
 | 97 | POST | `/inventory/stock-opname/finalize` | Selesaikan opname & push stok final | ✅ |
 | 98 | GET | `/inventory/stock-opname/floors` | Ambil lokasi rak per lantai | ✅ |
 | 99 | GET | `/inventory/stock-opname/items` | Ambil semua item untuk diopname | ✅ |
-| 100 | GET | `/inventory/stock-opname/items/filtered` | Ambil item opname terfilter per lokasi rak | 🔄 |
+| 100 | GET | `/inventory/stock-opname/items/filtered` | Ambil item opname terfilter per lokasi rak | ✅ |
 | 101 | GET | `/inventory/stock-opname/rows` | Ambil lokasi rak per baris | ✅ |
 | 102 | GET | `/inventory/stock-opname/{opname_header_id}` | Ambil stok real-time saat opname berjalan | ✅ |
-| 103 | GET | `/inventory/transfer/delivery` | Cetak laporan surat jalan transfer | ⬜ |
-| 104 | POST | `/inventory/transfer/mark-printed` | Tandai transfer item sudah dicetak | ⬜ |
+| 103 | GET | `/inventory/transfer/delivery` | Cetak laporan surat jalan transfer | ✅ |
+| 104 | POST | `/inventory/transfer/mark-printed` | Tandai transfer item sudah dicetak | ✅ |
 | 105 | POST | `/inventory/transfers/` | Buat transfer stok (masuk/keluar) | ✅ |
-| 106 | DELETE | `/inventory/transfers/` | Hapus transfer stok | 🔄 |
+| 106 | DELETE | `/inventory/transfers/` | Hapus transfer stok | ✅ |
 | 107 | GET | `/inventory/transfers/all-transit` | Ambil semua nomor transaksi transfer transit | ✅ |
 | 108 | GET | `/inventory/transfers/in` | Ambil transfer stok masuk | ✅ |
 | 109 | GET | `/inventory/transfers/out` | Ambil transfer stok keluar | ✅ |
-| 110 | GET | `/inventory/transfers/out-finished` | Ambil transfer yang sudah selesai/diterima | 🔄 |
+| 110 | GET | `/inventory/transfers/out-finished` | Ambil transfer yang sudah selesai/diterima | ✅ |
 | 111 | GET | `/inventory/transfers/transit` | Ambil transfer stok dalam perjalanan (transit) | ✅ |
 | 112 | GET | `/inventory/transfers/{id}` | Ambil detail transfer stok | ✅ |
 
