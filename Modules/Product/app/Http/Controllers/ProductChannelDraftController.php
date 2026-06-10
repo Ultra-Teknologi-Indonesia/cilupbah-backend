@@ -7,6 +7,7 @@ use DomainException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Modules\Product\Http\Requests\StoreCatalogListingRequest;
 use Modules\Product\Http\Requests\StoreChannelDraftRequest;
 use Modules\Product\Http\Resources\ProductChannelDraftResource;
 use Modules\Product\Models\ProductChannelDraft;
@@ -195,6 +196,32 @@ class ProductChannelDraftController extends Controller
         $this->draftService->deleteDraft($draft);
 
         return $this->successResponse(['success' => true], 'Draft berhasil dihapus');
+    }
+
+    /**
+     * Jubelio: POST /inventory/catalog/listing — Buat/ubah listing produk (upsert per product+shop).
+     * product_id & shop_id dikirim di body (berbeda dengan endpoint Cilupbah yang memakai path id).
+     */
+    public function catalogListing(StoreCatalogListingRequest $request): JsonResponse
+    {
+        $validated = $request->validated();
+
+        try {
+            $draft = $this->draftService->upsertDraft(
+                $validated['product_id'],
+                $validated['shop_id'],
+                $validated,
+                $request->user()?->id
+            );
+        } catch (\RuntimeException $e) {
+            return $this->errorResponse($e->getMessage(), $e->getCode() ?: 422);
+        }
+
+        return $this->successResponse(
+            new ProductChannelDraftResource($draft->load('channelShop')),
+            'Listing produk berhasil disimpan',
+            201
+        );
     }
 
     private function productExists($id): bool
