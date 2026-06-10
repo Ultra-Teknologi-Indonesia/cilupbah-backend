@@ -16,6 +16,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     // Inventory enhancements
     Route::get('inventory/items/to-stock', [InventoryController::class, 'itemsToStock'])->name('inventory.items.toStock');
     Route::get('inventory/items/item-on-stock', [InventoryController::class, 'itemsToStock'])->name('inventory.items.itemOnStock');
+    Route::get('inventory/items/to-sell/{locationId}', [InventoryController::class, 'toSell'])->name('inventory.items.toSell');
+    Route::get('inventory/items/to-sales-return', [InventoryController::class, 'toSalesReturn'])->name('inventory.items.toSalesReturn');
+    Route::get('inventory/items/{id}/batch-number', [InventoryController::class, 'batchNumbers'])->name('inventory.items.batchNumber');
+    Route::post('inventory/items/to-adjust', [InventoryController::class, 'toAdjust'])->name('inventory.items.toAdjust');
+    Route::get('inventory/out-of-stock-in-order', [InventoryController::class, 'outOfStockInOrder'])->name('inventory.outOfStockInOrder');
     Route::get('inventory/stock-products', [InventoryController::class, 'stockProducts'])->name('inventory.stockProducts');
     Route::get('inventory/history', [InventoryController::class, 'history'])->name('inventory.history');
     Route::get('inventory/items/by-location/{locationId}', [InventoryController::class, 'byLocation'])->name('inventory.items.byLocation');

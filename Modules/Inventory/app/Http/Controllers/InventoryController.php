@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Inventory\Services\InventoryService;
+use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -34,7 +35,8 @@ use OpenApi\Attributes as OA;
 class InventoryController extends Controller
 {
     public function __construct(
-        protected InventoryService $inventoryService
+        protected InventoryService $inventoryService,
+        protected InventoryRepository $inventoryRepository,
     ) {}
 
     #[OA\Get(
@@ -256,5 +258,127 @@ class InventoryController extends Controller
             ->paginate($limit);
 
         return $this->successPaginatedResponse($items, 'Daftar item PO berhasil diambil.');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/inventory/items/to-adjust',
+        summary: 'Get cost and stock by item IDs for adjustment',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['item_ids'],
+            properties: [
+                new OA\Property(property: 'item_ids', type: 'array', items: new OA\Items(type: 'string')),
+            ]
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'Data stok untuk penyesuaian berhasil diambil.'),
+        ]
+    )]
+    public function toAdjust(Request $request): JsonResponse
+    {
+        $request->validate(['item_ids' => 'required|array', 'item_ids.*' => 'string']);
+
+        $stocks = $this->inventoryRepository->getStockByItemIds($request->input('item_ids'));
+
+        return $this->successResponse($stocks, 'Data stok untuk penyesuaian berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inventory/out-of-stock-in-order',
+        summary: 'Get products that are out of stock but have pending orders',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar produk habis stok dalam order berhasil diambil.'),
+        ]
+    )]
+    public function outOfStockInOrder(Request $request): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+        $items = $this->inventoryRepository->getOutOfStockInOrder($limit);
+
+        return $this->successPaginatedResponse($items, 'Daftar produk habis stok dalam order berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inventory/items/{id}/batch-number',
+        summary: 'Get batch and serial numbers for an item',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar batch number berhasil diambil.'),
+        ]
+    )]
+    public function batchNumbers(string $id): JsonResponse
+    {
+        $batches = $this->inventoryRepository->getBatchNumbers($id);
+
+        return $this->successResponse($batches, 'Daftar batch number berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inventory/items/to-sell/{locationId}',
+        summary: 'Get items available to sell at a location',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        parameters: [
+            new OA\Parameter(name: 'locationId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar item yang bisa dijual berhasil diambil.'),
+        ]
+    )]
+    public function toSell(Request $request, string $locationId): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+        $items = $this->inventoryRepository->getAvailableToSell($locationId, $limit);
+
+        return $this->successPaginatedResponse($items, 'Daftar item yang bisa dijual berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inventory/items/to-sales-return',
+        summary: 'Get items eligible for sales return',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar item retur penjualan berhasil diambil.'),
+        ]
+    )]
+    public function toSalesReturn(Request $request): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+
+        $items = DB::table('sales_return_items')
+            ->join('sales_returns', 'sales_returns.id', '=', 'sales_return_items.sales_return_id')
+            ->join('product_variants', 'product_variants.id', '=', 'sales_return_items.item_id')
+            ->join('products', 'products.id', '=', 'product_variants.product_id')
+            ->whereIn('sales_returns.status', ['PENDING', 'APPROVED'])
+            ->select(
+                'sales_return_items.id',
+                'sales_return_items.item_id',
+                'sales_return_items.qty',
+                'sales_return_items.condition',
+                'sales_returns.return_number',
+                'sales_returns.status as return_status',
+                'sales_returns.order_id',
+                'product_variants.sku',
+                'products.name as product_name',
+            )
+            ->orderByDesc('sales_returns.created_at')
+            ->paginate($limit);
+
+        return $this->successPaginatedResponse($items, 'Daftar item retur penjualan berhasil diambil.');
     }
 }
