@@ -22,7 +22,8 @@ class ChannelAttributeRepository
                 'external_id'
             )
             ->defaultSort('name')
-            ->paginate($perPage);
+            ->paginate(request('per_page', $perPage))
+            ->appends(request()->query());
     }
 
     public function getAll(string $channelCategoryId): Collection

@@ -3,6 +3,7 @@
 namespace Modules\Product\Repositories;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
 use Modules\Product\Models\ProductChannelDraft;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\AllowedSort;
@@ -42,5 +43,29 @@ class ProductChannelDraftRepository
     public function findDraft(string $id): ProductChannelDraft
     {
         return ProductChannelDraft::query()->findOrFail($id);
+    }
+
+    public function forProduct(string $productId): Collection
+    {
+        return QueryBuilder::for(ProductChannelDraft::class)
+            ->where('product_id', $productId)
+            ->allowedFilters(
+                AllowedFilter::callback('status', fn ($query, $value) => $query->where('product_channel_drafts.status', $value)),
+            )
+            ->allowedSorts(
+                AllowedSort::field('created_at', 'product_channel_drafts.created_at'),
+                AllowedSort::field('updated_at', 'product_channel_drafts.updated_at'),
+            )
+            ->defaultSort('-created_at')
+            ->with(self::RELATIONS)
+            ->get();
+    }
+
+    public function findForProduct(string $productId, string $draftId): ?ProductChannelDraft
+    {
+        return ProductChannelDraft::query()
+            ->where('id', $draftId)
+            ->where('product_id', $productId)
+            ->first();
     }
 }
