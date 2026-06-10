@@ -47,4 +47,9 @@ class ProductVariant extends Model
     {
         return $this->hasMany(VariantOption::class, 'variant_id');
     }
+
+    public function wholesalePrices(): HasMany
+    {
+        return $this->hasMany(WholesalePrice::class, 'variant_id');
+    }
 }
