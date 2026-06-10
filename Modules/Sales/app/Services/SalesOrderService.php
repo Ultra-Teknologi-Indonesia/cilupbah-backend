@@ -42,6 +42,94 @@ class SalesOrderService
         return $this->orderRepository->getOrderById($id);
     }
 
+    public function getCancelledOrders(int $limit = 10)
+    {
+        return $this->orderRepository->getCancelledOrders($limit);
+    }
+
+    public function getCompletedOrders(int $limit = 10)
+    {
+        return $this->orderRepository->getCompletedOrders($limit);
+    }
+
+    public function getFailedOrders(int $limit = 10)
+    {
+        return $this->orderRepository->getFailedOrders($limit);
+    }
+
+    public function getReturnedOrders(int $limit = 10)
+    {
+        return $this->orderRepository->getReturnedOrders($limit);
+    }
+
+    public function getUnfulfilledOrders(int $limit = 10)
+    {
+        return $this->orderRepository->getUnfulfilledOrders($limit);
+    }
+
+    public function bulkDeleteCancelled(array $ids): int
+    {
+        return $this->orderRepository->bulkDeleteCancelled($ids);
+    }
+
+    public function markAsComplete(array $orderIds): int
+    {
+        return DB::transaction(function () use ($orderIds) {
+            $count = 0;
+            $orders = SalesOrder::with('items')
+                ->whereIn('id', $orderIds)
+                ->where('status', 'packed')
+                ->get();
+
+            foreach ($orders as $order) {
+                $this->applyStockTransition($order, 'shipped');
+                $order->update(['status' => 'shipped']);
+                SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
+                $count++;
+            }
+
+            return $count;
+        });
+    }
+
+    public function saveAirwaybill(array $data): SalesOrder
+    {
+        $order = SalesOrder::findOrFail($data['order_id']);
+        $order->update([
+            'tracking_number'   => $data['tracking_number'],
+            'shipping_provider' => $data['shipping_provider'] ?? $order->shipping_provider,
+        ]);
+
+        return $order->fresh();
+    }
+
+    public function saveReceivedDate(array $data): SalesOrder
+    {
+        $order = SalesOrder::findOrFail($data['order_id']);
+        $order->update(['received_date' => $data['received_date'] ?? now()]);
+
+        return $order->fresh();
+    }
+
+    public function setAsPaid(array $data): SalesOrder
+    {
+        $order = SalesOrder::findOrFail($data['order_id']);
+        $order->update([
+            'is_paid'        => true,
+            'paid_time'      => $data['paid_time'] ?? now(),
+            'payment_method' => $data['payment_method'] ?? $order->payment_method,
+        ]);
+
+        return $order->fresh();
+    }
+
+    public function requestAwb(array $data): array
+    {
+        $order = SalesOrder::findOrFail($data['order_id']);
+
+        return ['order_id' => $order->id, 'status' => 'requested'];
+    }
+
     public function createOrder(array $validated): SalesOrder
     {
         $marketplace = $validated['source'] ?? 'manual';
@@ -298,7 +386,7 @@ class SalesOrderService
         }
     }
 
-    private function applyStockTransition(SalesOrder $order, string $newStatus): void
+    protected function applyStockTransition(SalesOrder $order, string $newStatus): void
     {
         $order->load('items');
 

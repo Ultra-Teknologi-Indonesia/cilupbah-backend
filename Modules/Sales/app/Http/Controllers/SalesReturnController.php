@@ -217,4 +217,77 @@ class SalesReturnController extends Controller
             return $this->errorResponse($e->getMessage(), 500);
         }
     }
+
+    #[OA\Get(
+        path: '/api/v1/sales/sales-returns/unpaid',
+        summary: 'Get outstanding (unpaid) returns',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Returns'],
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [new OA\Response(response: 200, description: 'Successful operation')]
+    )]
+    public function unpaid(Request $request): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+        $returns = $this->returnService->getUnpaidReturns($limit);
+
+        return $this->successPaginatedResponse($returns, 'Daftar return belum dibayar');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/sales/returns/items',
+        summary: 'Get all return items',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Returns'],
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'filter[condition]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [new OA\Response(response: 200, description: 'Successful operation')]
+    )]
+    public function allItems(Request $request): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+        $items = $this->returnService->getAllReturnItems($limit);
+
+        return $this->successPaginatedResponse($items, 'Daftar item return');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/sales/returns/items/rejected',
+        summary: 'Get rejected return items',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Returns'],
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [new OA\Response(response: 200, description: 'Successful operation')]
+    )]
+    public function rejectedItems(Request $request): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+        $items = $this->returnService->getRejectedReturnItems($limit);
+
+        return $this->successPaginatedResponse($items, 'Daftar item return yang ditolak');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/sales/returns/items/resolved',
+        summary: 'Get resolved return items',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Returns'],
+        parameters: [
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [new OA\Response(response: 200, description: 'Successful operation')]
+    )]
+    public function resolvedItems(Request $request): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+        $items = $this->returnService->getResolvedReturnItems($limit);
+
+        return $this->successPaginatedResponse($items, 'Daftar item return yang resolved');
+    }
 }
