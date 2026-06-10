@@ -20,21 +20,26 @@ class SyncStockJob implements ShouldQueue
     public array $backoff = [5, 15, 30];
 
     public function __construct(
-        public readonly string $orderId,
+        public readonly ?string $orderId,
+        public readonly array $skuList = [],
     ) {
         $this->onQueue(config('queue.names.stock_sync'));
     }
 
     public function handle(TikTokProductService $tikTokProductService): void
     {
-        $order = SalesOrder::with('items')->find($this->orderId);
+        $skus = collect($this->skuList)->filter()->unique()->values();
 
-        if (! $order) {
-            Log::warning('SyncStockJob: order not found', ['order_id' => $this->orderId]);
-            return;
+        if ($skus->isEmpty() && $this->orderId) {
+            $order = SalesOrder::with('items')->find($this->orderId);
+
+            if (! $order) {
+                Log::warning('SyncStockJob: order not found', ['order_id' => $this->orderId]);
+                return;
+            }
+
+            $skus = $order->items->pluck('sku')->filter()->unique()->values();
         }
-
-        $skus = $order->items->pluck('sku')->filter()->unique()->values();
 
         if ($skus->isEmpty()) {
             return;

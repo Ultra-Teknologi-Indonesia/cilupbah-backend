@@ -39,7 +39,7 @@ class TikTokWebhookController extends Controller
 
         \Modules\Channel\Jobs\ProcessTikTokWebhook::dispatch($payload)
             ->onConnection('redis')
-            ->onQueue('tiktok_webhooks');
+            ->onQueue(config('queue.names.tiktok_webhooks'));
 
         return $this->successResponse(['code' => 0], 'Success');
     }

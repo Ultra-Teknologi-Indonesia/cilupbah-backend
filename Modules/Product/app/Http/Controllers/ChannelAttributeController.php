@@ -25,7 +25,7 @@ class ChannelAttributeController extends Controller
         try {
             if ($request->query('sync')) {
                 \Modules\Product\Jobs\SyncChannelAttributesJob::dispatch($channelId, $categoryId)
-                    ->onQueue('channel_sync');
+                    ->onQueue(config('queue.names.channel_sync'));
                 
                 return $this->successResponse(null, 'Proses sinkronisasi atribut sedang berjalan di latar belakang', 202);
             }

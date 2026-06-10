@@ -23,7 +23,7 @@ class SyncStockToChannelsJob implements ShouldQueue
     {
         $this->variantId = $variantId;
         $this->onConnection('redis');
-        $this->onQueue('channel_sync');
+        $this->onQueue(config('queue.names.channel_sync'));
     }
 
     /**

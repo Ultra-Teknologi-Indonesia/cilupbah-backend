@@ -119,6 +119,9 @@ class SalesOrderService
 
     public function deleteOrder(SalesOrder $order): void
     {
+        $order->load('items');
+        $skus = $order->items->pluck('sku')->filter()->unique()->values()->all();
+
         if (! in_array($order->status, ['pending', 'cancelled'])) {
             if ($order->status === 'reserved') {
                 DB::transaction(function () use ($order) {
@@ -136,7 +139,9 @@ class SalesOrderService
         $idempotencyKey = "order:done:{$marketplace}:{$order->salesorder_no}";
         Cache::forget($idempotencyKey);
 
-        SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
+        if (! empty($skus)) {
+            SyncStockJob::dispatch(null, $skus)->onQueue(config('queue.names.stock_sync'));
+        }
     }
 
     public function relocateOrder(SalesOrder $order, string $newLocationId): SalesOrder
@@ -404,7 +409,7 @@ class SalesOrderService
 
         if ($order->channel_shop_id) {
             $mapping = DB::table('channel_warehouses')
-                ->where('channel_shop_id', $order->channel_shop_id)
+                ->where('store_id', $order->channel_shop_id)
                 ->first();
 
             if ($mapping) {
