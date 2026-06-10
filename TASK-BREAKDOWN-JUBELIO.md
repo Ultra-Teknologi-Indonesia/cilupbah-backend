@@ -27,8 +27,8 @@
 | Inventory | 57 | 57 | 0 | 0 | Inventory |
 | WMS (Outbound) | 34 | 34 | 0 | 0 | Outbound |
 | Couriers | 3 | 3 | 0 | 0 | Outbound |
-| Sales | 60 | 12 | 8 | 40 | Sales |
-| Purchasing | 30 | 6 | 2 | 22 | Purchase |
+| Sales | 60 | 60 | 0 | 0 | Sales |
+| Purchasing | 30 | 30 | 0 | 0 | Purchase |
 | Contact | 8 | 0 | 2 | 6 | (Supplier→Contact) |
 | Journal | 5 | 0 | 0 | 5 | Finance ⬜ |
 | Cash & Bank | 4 | 0 | 0 | 4 | Finance ⬜ |
@@ -36,11 +36,11 @@
 | System Setting | 8 | 1 | 1 | 6 | Auth/Setting |
 | Webhooks | 9 | 0 | 1 | 8 | Webhook ⬜ |
 | Channels (marketplace) | 1 | 0 | 1 | 0 | Channel |
-| **TOTAL** | **287** | **153** | **28** | **106** | — |
+| **TOTAL** | **287** | **225** | **18** | **44** | — |
 
 > Angka TOTAL **terverifikasi otomatis** terhadap `dist (2).yaml` (lihat **Lampiran A** — daftar lengkap 287 endpoint, 0 yang terlewat). Angka per-domain di tabel ini indikatif; sumber kebenaran = Lampiran A.
 
-**Cakupan fungsional: ✅ 153 (53%) + 🔄 28 (10%) + ⬜ 106 (37%) ≈ 63% setara penuh.** Dihitung per-operasi termasuk seluruh sub-endpoint Accounting/Sales/Purchase.
+**Cakupan fungsional: ✅ 225 (78%) + 🔄 18 (6%) + ⬜ 44 (15%) ≈ 85% setara penuh.** Dihitung per-operasi termasuk seluruh sub-endpoint Accounting/Sales/Purchase.
 
 ---
 
@@ -322,143 +322,143 @@ Berdasarkan git history (jumlah commit + baris kode lintas semua branch), dengan
 
 ---
 
-## 9. Sales 🔄 (12✅/8🔄/40⬜) — GAP TERBESAR
+## 9. Sales ✅ (60✅/0🔄/0⬜)
 
-### 9a. Sales Order (sebagian)
+### 9a. Sales Order ✅
 | M | Endpoint Jubelio | Fungsi | Status | Implementasi / Task |
 |---|---|---|---|---|
 | GET | `/sales/` | Get All Sales | ✅ | `SalesOrderController@index` |
 | POST | `/sales/orders/` | Create/Edit Sales Order | ✅ | `SalesOrderController@store` |
 | GET | `/sales/orders/{id}` | Get Sales Order | ✅ | `SalesOrderController@show` |
 | DELETE | `/sales/orders/` | Delete Sales Order | ✅ | `SalesOrderController@destroy` |
-| GET | `/sales/orders/cancel/` | Cancelled orders | ⬜ | **Task:** filter cancelled |
-| GET | `/sales/orders/completed/` | Completed orders | ⬜ | **Task:** filter completed |
-| GET | `/sales/orders/failed/` | Failed orders | ⬜ | **Task:** filter failed |
-| GET | `/sales/orders/returned-list/` | Returned orders | ⬜ | **Task:** filter returned |
-| POST | `/sales/orders/delete-canceled` | Delete cancelled items | ⬜ | **Task:** bulk delete cancelled |
-| POST | `/sales/orders/mark-as-complete` | Mark complete | ⬜ | **Task:** action |
-| POST | `/sales/orders/save-airwaybill/` | Update AWB | ⬜ | **Task:** action (ada di shipment, perlu di order) |
-| POST | `/sales/orders/save-received-date` | Update received date | ⬜ | **Task:** action |
-| POST | `/sales/orders/set-as-paid` | Set as paid | ⬜ | **Task:** action |
-| POST | `/sales/request-awb-order/` | Request AWB | ⬜ | **Task:** request AWB ke courier |
-| GET | `/sales/unfullfilled/` | Unfulfilled packlist | ⬜ | **Task:** listing |
+| GET | `/sales/orders/cancel/` | Cancelled orders | ✅ | `SalesOrderController@cancelled` |
+| GET | `/sales/orders/completed/` | Completed orders | ✅ | `SalesOrderController@completed` |
+| GET | `/sales/orders/failed/` | Failed orders | ✅ | `SalesOrderController@failed` |
+| GET | `/sales/orders/returned-list/` | Returned orders | ✅ | `SalesOrderController@returnedList` |
+| POST | `/sales/orders/delete-canceled` | Delete cancelled items | ✅ | `SalesOrderController@deleteCanceled` |
+| POST | `/sales/orders/mark-as-complete` | Mark complete | ✅ | `SalesOrderController@markAsComplete` |
+| POST | `/sales/orders/save-airwaybill/` | Update AWB | ✅ | `SalesOrderController@saveAirwaybill` |
+| POST | `/sales/orders/save-received-date` | Update received date | ✅ | `SalesOrderController@saveReceivedDate` |
+| POST | `/sales/orders/set-as-paid` | Set as paid | ✅ | `SalesOrderController@setAsPaid` |
+| POST | `/sales/request-awb-order/` | Request AWB | ✅ | `SalesOrderController@requestAwb` |
+| GET | `/sales/unfullfilled/` | Unfulfilled packlist | ✅ | `SalesOrderController@unfulfilled` |
 
-### 9b. Invoice ⬜ (semua TODO — modul baru)
-| M | Endpoint Jubelio | Fungsi | Status | Task |
+### 9b. Invoice ✅
+| M | Endpoint Jubelio | Fungsi | Status | Implementasi |
 |---|---|---|---|---|
-| GET | `/sales/invoices/` | Get All Invoices | ⬜ | **`SalesInvoiceController@index`** |
-| POST | `/sales/invoices/` | Create/Edit Invoice | ⬜ | `@store` |
-| GET | `/sales/invoices/{id}` | Get Invoice | ⬜ | `@show` |
-| GET | `/sales/invoices/unpaid/` | Outstanding Invoices | ⬜ | `@unpaid` |
-| GET | `/sales/invoices/overdue/` | Due Invoices | ⬜ | `@overdue` |
-| GET | `/sales/invoices/summary/` | Invoices by Store | ⬜ | `@summary` |
-| GET | `/sales/invoices/for-return-wms/{contact_id}` | Invoice ID for Sales Return | ⬜ | `@forReturn` |
-| POST | `/sales/packlists/create-invoice` | SO → Invoice | ⬜ | `@createFromOrder` |
-| POST | `/sales/packlists/create-invoice-payment` | SO → Invoice + Payment | ⬜ | `@createWithPayment` |
+| GET | `/sales/invoices/` | Get All Invoices | ✅ | `SalesInvoiceController@index` |
+| POST | `/sales/invoices/` | Create/Edit Invoice | ✅ | `SalesInvoiceController@store` |
+| GET | `/sales/invoices/{id}` | Get Invoice | ✅ | `SalesInvoiceController@show` |
+| GET | `/sales/invoices/unpaid/` | Outstanding Invoices | ✅ | `SalesInvoiceController@unpaid` |
+| GET | `/sales/invoices/overdue/` | Due Invoices | ✅ | `SalesInvoiceController@overdue` |
+| GET | `/sales/invoices/summary/` | Invoices by Store | ✅ | `SalesInvoiceController@summary` |
+| GET | `/sales/invoices/for-return-wms/{contact_id}` | Invoice ID for Sales Return | ✅ | `SalesInvoiceController@forReturnWms` |
+| POST | `/sales/packlists/create-invoice` | SO → Invoice | ✅ | `SalesInvoiceController@createFromOrder` |
+| POST | `/sales/packlists/create-invoice-payment` | SO → Invoice + Payment | ✅ | `SalesInvoiceController@createFromOrderWithPayment` |
 
-### 9c. Payment ⬜ (modul baru)
-| M | Endpoint Jubelio | Fungsi | Status | Task |
+### 9c. Payment ✅
+| M | Endpoint Jubelio | Fungsi | Status | Implementasi |
 |---|---|---|---|---|
-| GET | `/sales/payments/` | Get All Invoice Payments | ⬜ | **`SalesPaymentController@index`** |
-| POST | `/sales/payments/` | Create/Edit Payment | ⬜ | `@store` |
-| GET | `/sales/payments/{id}` | Get Payment | ⬜ | `@show` |
-| DELETE | `/sales/payments/` | Delete Payment | ⬜ | `@destroy` |
+| GET | `/sales/payments/` | Get All Invoice Payments | ✅ | `SalesPaymentController@index` |
+| POST | `/sales/payments/` | Create/Edit Payment | ✅ | `SalesPaymentController@store` |
+| GET | `/sales/payments/{id}` | Get Payment | ✅ | `SalesPaymentController@show` |
+| DELETE | `/sales/payments/` | Delete Payment | ✅ | `SalesPaymentController@destroy` |
 
-### 9d. Settlement & Return Settlement ⬜
-| M | Endpoint Jubelio | Fungsi | Status | Task |
+### 9d. Settlement & Return Settlement ✅
+| M | Endpoint Jubelio | Fungsi | Status | Implementasi |
 |---|---|---|---|---|
-| GET | `/sales/settlements/` | All Settlements | ⬜ | **`SalesSettlementController@index`** |
-| GET | `/sales/settlements/{id}` | Get Settlement | ⬜ | `@show` |
-| GET | `/sales/return-settlements/` | All Return Settlements | ⬜ | **`SalesReturnSettlementController@index`** |
-| GET/POST | `/sales/return-settlements/invoices/` | Settlement Invoice (list/CRUD) | ⬜ | `@invoices*` |
-| GET | `/sales/return-settlements/invoices/{id}` | Get Settlement Invoice | ⬜ | `@invoiceShow` |
-| GET/POST | `/sales/return-settlements/refunds/` | Settlement Refund (list/CRUD) | ⬜ | `@refunds*` |
-| GET | `/sales/return-settlements/refunds/{id}` | Get Refund | ⬜ | `@refundShow` |
-| DELETE | `/sales/return-settlements/` | Delete Return Settlement | ⬜ | `@destroy` |
+| GET | `/sales/settlements/` | All Settlements | ✅ | `SalesSettlementController@index` |
+| GET | `/sales/settlements/{id}` | Get Settlement | ✅ | `SalesSettlementController@show` |
+| GET | `/sales/return-settlements/` | All Return Settlements | ✅ | `SalesReturnSettlementController@index` |
+| GET/POST | `/sales/return-settlements/invoices/` | Settlement Invoice (list/CRUD) | ✅ | `SalesReturnSettlementController@invoiceIndex/invoiceStore` |
+| GET | `/sales/return-settlements/invoices/{id}` | Get Settlement Invoice | ✅ | `SalesReturnSettlementController@invoiceShow` |
+| GET/POST | `/sales/return-settlements/refunds/` | Settlement Refund (list/CRUD) | ✅ | `SalesReturnSettlementController@refundIndex/refundStore` |
+| GET | `/sales/return-settlements/refunds/{id}` | Get Refund | ✅ | `SalesReturnSettlementController@refundShow` |
+| DELETE | `/sales/return-settlements/` | Delete Return Settlement | ✅ | `SalesReturnSettlementController@destroy` |
 
-### 9e. Sales Return (sebagian ada)
-| M | Endpoint Jubelio | Fungsi | Status | Implementasi / Task |
+### 9e. Sales Return ✅
+| M | Endpoint Jubelio | Fungsi | Status | Implementasi |
 |---|---|---|---|---|
 | GET | `/sales/sales-returns/` | Get All Sales Returns | ✅ | `SalesReturnController@index` |
 | POST | `/sales/sales-returns/` | Receive Sales Return | ✅ | `SalesReturnController@store` |
 | GET | `/sales/sales-returns/{id}` | Get Sales Return | ✅ | `SalesReturnController@show` |
-| GET | `/sales/sales-returns/unpaid/` | Outstanding Returns | ⬜ | **Task:** `@unpaid` |
+| GET | `/sales/sales-returns/unpaid/` | Outstanding Returns | ✅ | `SalesReturnController@unpaid` |
 | GET | `/sales/returns/items/unprocessed/wms` | Unprocessed returns | ✅ | `SalesReturnController@unprocessed` |
-| GET | `/sales/returns/items/` | All Item Returns | 🔄 | **Task:** listing item returns |
-| GET | `/sales/returns/items/rejected/` | Rejected returns | 🔄 | `@reject` ada (action); **Task:** listing |
-| GET | `/sales/returns/items/resolved/` | Resolved returns | 🔄 | `@complete` ada; **Task:** listing |
+| GET | `/sales/returns/items/` | All Item Returns | ✅ | `SalesReturnController@allItems` |
+| GET | `/sales/returns/items/rejected/` | Rejected returns | ✅ | `SalesReturnController@rejectedItems` |
+| GET | `/sales/returns/items/resolved/` | Resolved returns | ✅ | `SalesReturnController@resolvedItems` |
 | POST | `/inventory/items/to-return/` | Accept Sales Return | ✅ | `SalesReturnController@accept` |
 | POST | `/inventory/items/complete-return/` | Set Not Return | ✅ | `SalesReturnController@complete` |
 | POST | `/inventory/items/reject-return/` | Reject Return | ✅ | `SalesReturnController@reject` |
 
-### 9f. Packlist / Picklist / Shipment (Sales-side) 🔄
-| M | Endpoint Jubelio | Fungsi | Status | Implementasi / Task |
+### 9f. Packlist / Picklist / Shipment (Sales-side) ✅
+| M | Endpoint Jubelio | Fungsi | Status | Implementasi |
 |---|---|---|---|---|
-| GET | `/sales/packlists/` | Get All Packlist | 🔄 | `PacklistController@index` (Outbound) |
-| GET | `/sales/packlists/{id}` | Get Packlist | 🔄 | `PacklistController@show` |
-| GET | `/sales/packlists/shipped/` | Shipped orders | 🔄 | `@ordersByStage('shipped')` |
-| POST | `/sales/picklists/items-to-pick` | Items to Pick | 🔄 | `PicklistController@items` |
-| GET | `/sales/picklists/{picklist_id}` | Items Picklist | 🔄 | `PicklistController@items` |
-| DELETE | `/sales/picklists/to-ship/` | Delete Picklist | 🔄 | `PicklistController@destroy` |
-| POST | `/sales/shipments/` | Items complete/received by courier | 🔄 | `ShipmentController@handOver` |
-| POST | `/sales/shipments/orders/` | Shipment Orders | 🔄 | `ShipmentController@addOrders` |
-| GET | `/sales/shipments/{shipment_header_id}` | Ready to ship by schedule | 🔄 | `ShipmentController@show` |
+| GET | `/sales/packlists/` | Get All Packlist | ✅ | Route alias → `PacklistController@index` (Outbound) |
+| GET | `/sales/packlists/{id}` | Get Packlist | ✅ | Route alias → `PacklistController@show` |
+| GET | `/sales/packlists/shipped/` | Shipped orders | ✅ | Route alias → `OutboundFulfillmentController@ordersByStage('shipped')` |
+| POST | `/sales/picklists/items-to-pick` | Items to Pick | ✅ | Route alias → `PicklistController@items` |
+| GET | `/sales/picklists/{picklist_id}` | Items Picklist | ✅ | Route alias → `PicklistController@items` |
+| DELETE | `/sales/picklists/to-ship/` | Delete Picklist | ✅ | Route alias → `PicklistController@destroy` |
+| POST | `/sales/shipments/` | Items complete/received by courier | ✅ | Route alias → `ShipmentController@handOver` |
+| POST | `/sales/shipments/orders/` | Shipment Orders | ✅ | Route alias → `ShipmentController@addOrders` |
+| GET | `/sales/shipments/{shipment_header_id}` | Ready to ship by schedule | ✅ | Route alias → `ShipmentController@show` |
 
 ---
 
-## 10. Purchasing 🔄 (6✅/2🔄/22⬜) — GAP BESAR
+## 10. Purchasing ✅ (30✅/0🔄/0⬜)
 
-### 10a. Purchase Order (ada)
-| M | Endpoint Jubelio | Fungsi | Status | Implementasi / Task |
+### 10a. Purchase Order ✅
+| M | Endpoint Jubelio | Fungsi | Status | Implementasi |
 |---|---|---|---|---|
 | GET | `/purchase/orders/` | Get All PO | ✅ | `PurchaseOrderController@index` |
-| POST | `/purchase/orders/` | Create/Edit PO | ✅ | `@store` |
-| GET | `/purchase/orders/{id}` | Get PO | ✅ | `@show` |
-| DELETE | `/purchase/orders/` | Delete PO | ✅ | `@destroy` |
-| GET | `/purchase/orders/progress` | PO receive progress | 🔄 | `@receivable` (samakan) |
+| POST | `/purchase/orders/` | Create/Edit PO | ✅ | `PurchaseOrderController@store` |
+| GET | `/purchase/orders/{id}` | Get PO | ✅ | `PurchaseOrderController@show` |
+| DELETE | `/purchase/orders/` | Delete PO | ✅ | `PurchaseOrderController@destroy` |
+| GET | `/purchase/orders/progress` | PO receive progress | ✅ | Route alias → `PurchaseOrderController@receivable` |
 | GET | `/inventory/items/to-buy` | Items to buy | ✅ | `InventoryController@purchaseOrderItems` |
 
 *(action approve/receive/cancel sudah ada di Cilupbah, di luar list Jubelio — bonus ✅)*
 
-### 10b. Bill ⬜ (modul baru)
-| M | Endpoint Jubelio | Fungsi | Status | Task |
+### 10b. Bill ✅
+| M | Endpoint Jubelio | Fungsi | Status | Implementasi |
 |---|---|---|---|---|
-| GET | `/purchase/bills/` | Get All Bills | ⬜ | **`PurchaseBillController@index`** |
-| POST | `/purchase/bills/` | Create/Edit Bill | ⬜ | `@store` |
-| GET | `/purchase/bills/{id}` | Get Bill | ⬜ | `@show` |
-| DELETE | `/purchase/bills/` | Delete Bill | ⬜ | `@destroy` |
-| GET | `/purchase/bills/unpaid/` | Outstanding Bills | ⬜ | `@unpaid` |
-| GET | `/purchase/bills/overdue/` | Due Bills | ⬜ | `@overdue` |
-| GET | `/purchase/bills/for-return` | Bill no. to return | ⬜ | `@forReturn` |
-| GET | `/inventory/items/by-bill/{doc_id}` | Bill return items | ⬜ | linking (lihat §6g) |
+| GET | `/purchase/bills/` | Get All Bills | ✅ | `PurchaseBillController@index` |
+| POST | `/purchase/bills/` | Create/Edit Bill | ✅ | `PurchaseBillController@store` |
+| GET | `/purchase/bills/{id}` | Get Bill | ✅ | `PurchaseBillController@show` |
+| DELETE | `/purchase/bills/` | Delete Bill | ✅ | `PurchaseBillController@destroy` |
+| GET | `/purchase/bills/unpaid/` | Outstanding Bills | ✅ | `PurchaseBillController@unpaid` |
+| GET | `/purchase/bills/overdue/` | Due Bills | ✅ | `PurchaseBillController@overdue` |
+| GET | `/purchase/bills/for-return` | Bill no. to return | ✅ | `PurchaseBillController@forReturn` |
+| GET | `/inventory/items/by-bill/{doc_id}` | Bill return items | ✅ | `InventoryController@itemsByBill` (§6g) |
 
-### 10c. Bill Payment ⬜
-| M | Endpoint Jubelio | Fungsi | Status | Task |
+### 10c. Bill Payment ✅
+| M | Endpoint Jubelio | Fungsi | Status | Implementasi |
 |---|---|---|---|---|
-| GET | `/purchase/payments/` | Get All Bill Payments | ⬜ | **`PurchasePaymentController@index`** |
-| POST | `/purchase/payments/` | Create/Edit Payment | ⬜ | `@store` |
-| GET | `/purchase/payments/{id}` | Get Payment | ⬜ | `@show` |
-| DELETE | `/purchase/payments/` | Delete Payment | ⬜ | `@destroy` |
+| GET | `/purchase/payments/` | Get All Bill Payments | ✅ | `PurchasePaymentController@index` |
+| POST | `/purchase/payments/` | Create/Edit Payment | ✅ | `PurchasePaymentController@store` |
+| GET | `/purchase/payments/{id}` | Get Payment | ✅ | `PurchasePaymentController@show` |
+| DELETE | `/purchase/payments/` | Delete Payment | ✅ | `PurchasePaymentController@destroy` |
 
-### 10d. Purchase Return + Settlement ⬜
-| M | Endpoint Jubelio | Fungsi | Status | Task |
+### 10d. Purchase Return + Settlement ✅
+| M | Endpoint Jubelio | Fungsi | Status | Implementasi |
 |---|---|---|---|---|
-| GET | `/purchase/purchase-returns/` | All Purchase Returns | ⬜ | **`PurchaseReturnController@index`** |
-| POST | `/purchase/purchase-returns/` | Create/Edit Return | ⬜ | `@store` |
-| GET | `/purchase/purchase-returns/{id}` | Get Return | ⬜ | `@show` |
-| GET | `/purchase/purchase-returns/unpaid/` | Outstanding Returns | ⬜ | `@unpaid` |
-| DELETE | `/purchase/` | Delete Purchase Return | ⬜ | `@destroy` |
-| GET/POST | `/purchase/return-settlements/bills/` | Settlement Bills | ⬜ | **`PurchaseReturnSettlementController@bills*`** |
-| GET | `/purchase/return-settlements/bills/{id}` | Get Settlement Bill | ⬜ | `@billShow` |
-| GET/POST | `/purchase/return-settlements/refunds/` | Settlement Refunds | ⬜ | `@refunds*` |
-| GET | `/purchase/return-settlements/refunds/{id}` | Get Refund | ⬜ | `@refundShow` |
-| DELETE | `/purchase/return-settlements/` | Delete Settlement | ⬜ | `@destroy` |
+| GET | `/purchase/purchase-returns/` | All Purchase Returns | ✅ | `PurchaseReturnController@index` |
+| POST | `/purchase/purchase-returns/` | Create/Edit Return | ✅ | `PurchaseReturnController@store` |
+| GET | `/purchase/purchase-returns/{id}` | Get Return | ✅ | `PurchaseReturnController@show` |
+| GET | `/purchase/purchase-returns/unpaid/` | Outstanding Returns | ✅ | `PurchaseReturnController@unpaid` |
+| DELETE | `/purchase/` | Delete Purchase Return | ✅ | `PurchaseReturnController@destroy` |
+| GET/POST | `/purchase/return-settlements/bills/` | Settlement Bills | ✅ | `PurchaseReturnSettlementController@billIndex/billStore` |
+| GET | `/purchase/return-settlements/bills/{id}` | Get Settlement Bill | ✅ | `PurchaseReturnSettlementController@billShow` |
+| GET/POST | `/purchase/return-settlements/refunds/` | Settlement Refunds | ✅ | `PurchaseReturnSettlementController@refundIndex/refundStore` |
+| GET | `/purchase/return-settlements/refunds/{id}` | Get Refund | ✅ | `PurchaseReturnSettlementController@refundShow` |
+| DELETE | `/purchase/return-settlements/` | Delete Settlement | ✅ | `PurchaseReturnSettlementController@destroy` |
 
-### 10e. Serial Number ⬜
-| M | Endpoint Jubelio | Fungsi | Status | Task |
+### 10e. Serial Number ✅
+| M | Endpoint Jubelio | Fungsi | Status | Implementasi |
 |---|---|---|---|---|
-| GET | `/purchase/serial-number/wms/{bill_detail_id}` | Get Serial/Batch | ⬜ | **Task:** serial/batch tracking |
-| POST | `/purchase/serial-number/mark-printed` | Print Barcodes | ⬜ | **Task:** mark-printed barcode |
+| GET | `/purchase/serial-number/wms/{bill_detail_id}` | Get Serial/Batch | ✅ | `PurchaseSerialNumberController@wmsByBillDetail` |
+| POST | `/purchase/serial-number/mark-printed` | Print Barcodes | ✅ | `PurchaseSerialNumberController@markPrinted` |
 
 ---
 
@@ -566,8 +566,8 @@ Webhook **outbound** Jubelio = endpoint untuk **menerima** event dari sistem int
 
 | Epic | Modul Cilupbah | PIC | Endpoint baru | Est. | Prioritas |
 |---|---|---|---:|---|---|
-| **E1. Sales Invoice + Payment + Settlement** | Sales | 🟢 Rasyid | ~22 | L | 🥇 P0 |
-| **E2. Purchase Bill + Payment + Return + Settlement** | Purchase | 🟢 Rasyid | ~20 | L | 🥇 P0 |
+| ~~**E1. Sales Invoice + Payment + Settlement**~~ | Sales | 🟢 Rasyid | ~~22~~ ✅ | — | ✅ DONE |
+| ~~**E2. Purchase Bill + Payment + Return + Settlement**~~ | Purchase | 🟢 Rasyid | ~~20~~ ✅ | — | ✅ DONE |
 | **E3. Contact terpadu** (customers/suppliers) | Contact (baru) | 🟢 Rasyid | 8 | M | 🥇 P0 (dependency E1/E2) |
 | **E4. Finance: Journal + Accounts (CoA)** | Finance | 🔵 Darriel | 5 | L | 🥈 P1 |
 | **E5. Cash & Bank** | Finance | 🔵 Darriel | 4 | M | 🥈 P1 |
@@ -690,7 +690,7 @@ Agar Cilupbah benar-benar **menggantikan Jubelio** tanpa mengubah client:
 3. **Contract testing** — validasi response tiap endpoint terhadap schema `dist (2).yaml` (mis. `spectator`/`openapi-httpfoundation-testing`).
 4. **Urutan eksekusi:** E3 (Contact) → E1 (Sales Invoice/Payment) → E2 (Purchase Bill/Payment) → E4/E5 (Finance) → E7 (Reports) → E8 (Webhooks) → E9 (Marketplace) → E10/E11 (polish).
 
-**Total endpoint yang masih harus dibuat: ± 142 operasi (⬜) + 43 penyempurnaan (🔄).**
+**Total endpoint yang masih harus dibuat: ± 44 operasi (⬜) + 18 penyempurnaan (🔄).** *(Sales & Purchase selesai 2026-06-10)*
 
 ---
 
@@ -698,7 +698,7 @@ Agar Cilupbah benar-benar **menggantikan Jubelio** tanpa mengubah client:
 
 > Dibangkitkan otomatis dari `dist (2).yaml` (superset; mencakup `dist (3).yaml`). Validasi: **287 operasi**, semua punya fungsi & status.
 
-> Rekap: ✅ 111 · 🔄 45 · ⬜ 131
+> Rekap: ✅ 185 · 🔄 31 · ⬜ 71
 
 
 ### Authentication — ✅1 🔄0 ⬜0 (total 1)
@@ -890,7 +890,7 @@ Agar Cilupbah benar-benar **menggantikan Jubelio** tanpa mengubah client:
 | 148 | GET | `/couriers/tenant/{id}` | Ambil kurir milik tenant tertentu | ✅ |
 | 149 | GET | `/couriers/{id}` | Ambil detail satu kurir | ✅ |
 
-### Sales — ✅12 🔄13 ⬜35 (total 60)
+### Sales — ✅60 🔄0 ⬜0 (total 60)
 
 | # | Method | Endpoint | Untuk apa (fungsi) | Status |
 |---:|---|---|---|:--:|
@@ -899,96 +899,96 @@ Agar Cilupbah benar-benar **menggantikan Jubelio** tanpa mengubah client:
 | 152 | POST | `/inventory/items/to-return/` | Terima retur penjualan | ✅ |
 | 153 | GET | `/sales/` | Ambil semua data penjualan | ✅ |
 | 154 | DELETE | `/sales/` | Hapus retur/invoice penjualan | ✅ |
-| 155 | GET | `/sales/invoices/` | Ambil semua invoice penjualan | ⬜ |
-| 156 | POST | `/sales/invoices/` | Buat/ubah invoice penjualan | ⬜ |
-| 157 | GET | `/sales/invoices/for-return-wms/{contact_id}` | Ambil ID invoice untuk retur penjualan | ⬜ |
-| 158 | GET | `/sales/invoices/overdue/` | Ambil invoice yang jatuh tempo | ⬜ |
-| 159 | GET | `/sales/invoices/summary/` | Ambil ringkasan invoice per toko | ⬜ |
-| 160 | GET | `/sales/invoices/unpaid/` | Ambil invoice yang belum lunas | ⬜ |
-| 161 | GET | `/sales/invoices/{id}` | Ambil detail invoice | ⬜ |
+| 155 | GET | `/sales/invoices/` | Ambil semua invoice penjualan | ✅ |
+| 156 | POST | `/sales/invoices/` | Buat/ubah invoice penjualan | ✅ |
+| 157 | GET | `/sales/invoices/for-return-wms/{contact_id}` | Ambil ID invoice untuk retur penjualan | ✅ |
+| 158 | GET | `/sales/invoices/overdue/` | Ambil invoice yang jatuh tempo | ✅ |
+| 159 | GET | `/sales/invoices/summary/` | Ambil ringkasan invoice per toko | ✅ |
+| 160 | GET | `/sales/invoices/unpaid/` | Ambil invoice yang belum lunas | ✅ |
+| 161 | GET | `/sales/invoices/{id}` | Ambil detail invoice | ✅ |
 | 162 | POST | `/sales/orders/` | Buat/ubah sales order | ✅ |
 | 163 | DELETE | `/sales/orders/` | Hapus sales order | ✅ |
-| 164 | GET | `/sales/orders/cancel/` | Ambil sales order yang dibatalkan | ⬜ |
-| 165 | GET | `/sales/orders/completed/` | Ambil order selesai dari semua channel | ⬜ |
-| 166 | POST | `/sales/orders/delete-canceled` | Hapus item order yang dibatalkan | ⬜ |
-| 167 | GET | `/sales/orders/failed/` | Ambil sales order yang gagal | ⬜ |
-| 168 | POST | `/sales/orders/mark-as-complete` | Tandai sales order selesai | ⬜ |
-| 169 | GET | `/sales/orders/returned-list/` | Ambil sales order yang diretur | ⬜ |
-| 170 | POST | `/sales/orders/save-airwaybill/` | Perbarui AWB sales order | ⬜ |
-| 171 | POST | `/sales/orders/save-received-date` | Perbarui tanggal terima sales order | ⬜ |
-| 172 | POST | `/sales/orders/set-as-paid` | Set sales order menjadi lunas | ⬜ |
+| 164 | GET | `/sales/orders/cancel/` | Ambil sales order yang dibatalkan | ✅ |
+| 165 | GET | `/sales/orders/completed/` | Ambil order selesai dari semua channel | ✅ |
+| 166 | POST | `/sales/orders/delete-canceled` | Hapus item order yang dibatalkan | ✅ |
+| 167 | GET | `/sales/orders/failed/` | Ambil sales order yang gagal | ✅ |
+| 168 | POST | `/sales/orders/mark-as-complete` | Tandai sales order selesai | ✅ |
+| 169 | GET | `/sales/orders/returned-list/` | Ambil sales order yang diretur | ✅ |
+| 170 | POST | `/sales/orders/save-airwaybill/` | Perbarui AWB sales order | ✅ |
+| 171 | POST | `/sales/orders/save-received-date` | Perbarui tanggal terima sales order | ✅ |
+| 172 | POST | `/sales/orders/set-as-paid` | Set sales order menjadi lunas | ✅ |
 | 173 | GET | `/sales/orders/{id}` | Ambil detail sales order | ✅ |
-| 174 | GET | `/sales/packlists/` | Ambil semua packlist | 🔄 |
-| 175 | POST | `/sales/packlists/create-invoice` | Konversi sales order menjadi invoice | ⬜ |
-| 176 | POST | `/sales/packlists/create-invoice-payment` | Konversi sales order jadi invoice + pembayaran | ⬜ |
-| 177 | GET | `/sales/packlists/shipped/` | Ambil sales order yang sudah dikirim | 🔄 |
-| 178 | GET | `/sales/packlists/{id}` | Ambil detail packlist | 🔄 |
-| 179 | GET | `/sales/payments/` | Ambil semua pembayaran invoice | ⬜ |
-| 180 | POST | `/sales/payments/` | Buat/ubah pembayaran invoice | ⬜ |
-| 181 | DELETE | `/sales/payments/` | Hapus pembayaran invoice | ⬜ |
-| 182 | GET | `/sales/payments/{id}` | Ambil detail pembayaran invoice | ⬜ |
-| 183 | POST | `/sales/picklists/items-to-pick` | Ambil daftar item untuk dipick | 🔄 |
-| 184 | POST | `/sales/picklists/items-to-pick/` | Ambil daftar item untuk dipick (varian) | 🔄 |
-| 185 | DELETE | `/sales/picklists/to-ship/` | Hapus picklist | 🔄 |
-| 186 | GET | `/sales/picklists/{picklist_id}` | Ambil item dalam picklist | 🔄 |
-| 187 | POST | `/sales/request-awb-order/` | Minta AWB untuk order | ⬜ |
-| 188 | GET | `/sales/return-settlements/` | Ambil semua settlement retur penjualan | ⬜ |
-| 189 | DELETE | `/sales/return-settlements/` | Hapus settlement retur penjualan | ⬜ |
-| 190 | GET | `/sales/return-settlements/invoices/` | Ambil semua invoice settlement retur | ⬜ |
-| 191 | POST | `/sales/return-settlements/invoices/` | Buat/ubah invoice settlement retur | ⬜ |
-| 192 | GET | `/sales/return-settlements/invoices/{id}` | Ambil detail invoice settlement retur | ⬜ |
-| 193 | GET | `/sales/return-settlements/refunds/` | Ambil semua refund settlement retur | ⬜ |
-| 194 | POST | `/sales/return-settlements/refunds/` | Buat/ubah refund settlement retur | ⬜ |
-| 195 | GET | `/sales/return-settlements/refunds/{id}` | Ambil detail refund settlement retur | ⬜ |
-| 196 | GET | `/sales/returns/items/` | Ambil semua item retur | 🔄 |
-| 197 | GET | `/sales/returns/items/rejected/` | Ambil order retur yang ditolak | 🔄 |
-| 198 | GET | `/sales/returns/items/resolved/` | Ambil order retur yang disetujui/selesai | 🔄 |
+| 174 | GET | `/sales/packlists/` | Ambil semua packlist | ✅ |
+| 175 | POST | `/sales/packlists/create-invoice` | Konversi sales order menjadi invoice | ✅ |
+| 176 | POST | `/sales/packlists/create-invoice-payment` | Konversi sales order jadi invoice + pembayaran | ✅ |
+| 177 | GET | `/sales/packlists/shipped/` | Ambil sales order yang sudah dikirim | ✅ |
+| 178 | GET | `/sales/packlists/{id}` | Ambil detail packlist | ✅ |
+| 179 | GET | `/sales/payments/` | Ambil semua pembayaran invoice | ✅ |
+| 180 | POST | `/sales/payments/` | Buat/ubah pembayaran invoice | ✅ |
+| 181 | DELETE | `/sales/payments/` | Hapus pembayaran invoice | ✅ |
+| 182 | GET | `/sales/payments/{id}` | Ambil detail pembayaran invoice | ✅ |
+| 183 | POST | `/sales/picklists/items-to-pick` | Ambil daftar item untuk dipick | ✅ |
+| 184 | POST | `/sales/picklists/items-to-pick/` | Ambil daftar item untuk dipick (varian) | ✅ |
+| 185 | DELETE | `/sales/picklists/to-ship/` | Hapus picklist | ✅ |
+| 186 | GET | `/sales/picklists/{picklist_id}` | Ambil item dalam picklist | ✅ |
+| 187 | POST | `/sales/request-awb-order/` | Minta AWB untuk order | ✅ |
+| 188 | GET | `/sales/return-settlements/` | Ambil semua settlement retur penjualan | ✅ |
+| 189 | DELETE | `/sales/return-settlements/` | Hapus settlement retur penjualan | ✅ |
+| 190 | GET | `/sales/return-settlements/invoices/` | Ambil semua invoice settlement retur | ✅ |
+| 191 | POST | `/sales/return-settlements/invoices/` | Buat/ubah invoice settlement retur | ✅ |
+| 192 | GET | `/sales/return-settlements/invoices/{id}` | Ambil detail invoice settlement retur | ✅ |
+| 193 | GET | `/sales/return-settlements/refunds/` | Ambil semua refund settlement retur | ✅ |
+| 194 | POST | `/sales/return-settlements/refunds/` | Buat/ubah refund settlement retur | ✅ |
+| 195 | GET | `/sales/return-settlements/refunds/{id}` | Ambil detail refund settlement retur | ✅ |
+| 196 | GET | `/sales/returns/items/` | Ambil semua item retur | ✅ |
+| 197 | GET | `/sales/returns/items/rejected/` | Ambil order retur yang ditolak | ✅ |
+| 198 | GET | `/sales/returns/items/resolved/` | Ambil order retur yang disetujui/selesai | ✅ |
 | 199 | GET | `/sales/returns/items/unprocessed/wms` | Ambil retur penjualan yang belum diproses | ✅ |
 | 200 | GET | `/sales/sales-returns/` | Ambil semua retur penjualan | ✅ |
 | 201 | POST | `/sales/sales-returns/` | Terima retur penjualan | ✅ |
-| 202 | GET | `/sales/sales-returns/unpaid/` | Ambil retur penjualan yang belum lunas | ⬜ |
+| 202 | GET | `/sales/sales-returns/unpaid/` | Ambil retur penjualan yang belum lunas | ✅ |
 | 203 | GET | `/sales/sales-returns/{id}` | Ambil detail retur penjualan | ✅ |
-| 204 | GET | `/sales/settlements/` | Ambil semua settlement penjualan | ⬜ |
-| 205 | GET | `/sales/settlements/{id}` | Ambil detail settlement penjualan | ⬜ |
-| 206 | POST | `/sales/shipments/` | Set item sudah diterima kurir | 🔄 |
-| 207 | POST | `/sales/shipments/orders/` | Buat order pengiriman (shipment) | 🔄 |
-| 208 | GET | `/sales/shipments/{shipment_header_id}` | Ambil item siap kirim per jadwal shipment | 🔄 |
-| 209 | GET | `/sales/unfullfilled/` | Ambil packlist yang belum terpenuhi | ⬜ |
+| 204 | GET | `/sales/settlements/` | Ambil semua settlement penjualan | ✅ |
+| 205 | GET | `/sales/settlements/{id}` | Ambil detail settlement penjualan | ✅ |
+| 206 | POST | `/sales/shipments/` | Set item sudah diterima kurir | ✅ |
+| 207 | POST | `/sales/shipments/orders/` | Buat order pengiriman (shipment) | ✅ |
+| 208 | GET | `/sales/shipments/{shipment_header_id}` | Ambil item siap kirim per jadwal shipment | ✅ |
+| 209 | GET | `/sales/unfullfilled/` | Ambil packlist yang belum terpenuhi | ✅ |
 
-### Purchasing — ✅4 🔄1 ⬜25 (total 30)
+### Purchasing — ✅30 🔄0 ⬜0 (total 30)
 
 | # | Method | Endpoint | Untuk apa (fungsi) | Status |
 |---:|---|---|---|:--:|
-| 210 | DELETE | `/purchase/` | Hapus retur pembelian | ⬜ |
-| 211 | GET | `/purchase/bills/` | Ambil semua bill | ⬜ |
-| 212 | POST | `/purchase/bills/` | Buat/ubah bill | ⬜ |
-| 213 | DELETE | `/purchase/bills/` | Hapus bill (tagihan pembelian) | ⬜ |
-| 214 | GET | `/purchase/bills/for-return` | Ambil nomor bill untuk diretur | ⬜ |
-| 215 | GET | `/purchase/bills/overdue/` | Ambil bill yang jatuh tempo | ⬜ |
-| 216 | GET | `/purchase/bills/unpaid/` | Ambil bill yang belum lunas | ⬜ |
-| 217 | GET | `/purchase/bills/{id}` | Ambil detail bill | ⬜ |
+| 210 | DELETE | `/purchase/` | Hapus retur pembelian | ✅ |
+| 211 | GET | `/purchase/bills/` | Ambil semua bill | ✅ |
+| 212 | POST | `/purchase/bills/` | Buat/ubah bill | ✅ |
+| 213 | DELETE | `/purchase/bills/` | Hapus bill (tagihan pembelian) | ✅ |
+| 214 | GET | `/purchase/bills/for-return` | Ambil nomor bill untuk diretur | ✅ |
+| 215 | GET | `/purchase/bills/overdue/` | Ambil bill yang jatuh tempo | ✅ |
+| 216 | GET | `/purchase/bills/unpaid/` | Ambil bill yang belum lunas | ✅ |
+| 217 | GET | `/purchase/bills/{id}` | Ambil detail bill | ✅ |
 | 218 | GET | `/purchase/orders/` | Ambil semua purchase order | ✅ |
 | 219 | POST | `/purchase/orders/` | Buat/ubah purchase order | ✅ |
 | 220 | DELETE | `/purchase/orders/` | Hapus purchase order | ✅ |
-| 221 | GET | `/purchase/orders/progress` | Ambil progres penerimaan semua PO | 🔄 |
+| 221 | GET | `/purchase/orders/progress` | Ambil progres penerimaan semua PO | ✅ |
 | 222 | GET | `/purchase/orders/{id}` | Ambil detail purchase order | ✅ |
-| 223 | GET | `/purchase/payments/` | Ambil semua pembayaran bill | ⬜ |
-| 224 | POST | `/purchase/payments/` | Buat/ubah pembayaran bill | ⬜ |
-| 225 | DELETE | `/purchase/payments/` | Hapus pembayaran bill | ⬜ |
-| 226 | GET | `/purchase/payments/{id}` | Ambil detail pembayaran bill | ⬜ |
-| 227 | GET | `/purchase/purchase-returns/` | Ambil semua retur pembelian | ⬜ |
-| 228 | POST | `/purchase/purchase-returns/` | Buat/ubah retur pembelian | ⬜ |
-| 229 | GET | `/purchase/purchase-returns/unpaid/` | Ambil retur pembelian yang belum lunas | ⬜ |
-| 230 | GET | `/purchase/purchase-returns/{id}` | Ambil detail retur pembelian | ⬜ |
-| 231 | DELETE | `/purchase/return-settlements/` | Hapus settlement retur pembelian | ⬜ |
-| 232 | GET | `/purchase/return-settlements/bills/` | Ambil semua settlement bill retur | ⬜ |
-| 233 | POST | `/purchase/return-settlements/bills/` | Buat/ubah settlement bill retur | ⬜ |
-| 234 | GET | `/purchase/return-settlements/bills/{id}` | Ambil detail settlement bill retur | ⬜ |
-| 235 | GET | `/purchase/return-settlements/refunds/` | Ambil semua refund settlement retur | ⬜ |
-| 236 | POST | `/purchase/return-settlements/refunds/` | Buat/ubah refund settlement retur | ⬜ |
-| 237 | GET | `/purchase/return-settlements/refunds/{id}` | Ambil detail refund settlement retur | ⬜ |
-| 238 | POST | `/purchase/serial-number/mark-printed` | Cetak barcode produk untuk putaway | ⬜ |
-| 239 | GET | `/purchase/serial-number/wms/{bill_detail_id}` | Ambil nomor seri/batch item per bill detail | ⬜ |
+| 223 | GET | `/purchase/payments/` | Ambil semua pembayaran bill | ✅ |
+| 224 | POST | `/purchase/payments/` | Buat/ubah pembayaran bill | ✅ |
+| 225 | DELETE | `/purchase/payments/` | Hapus pembayaran bill | ✅ |
+| 226 | GET | `/purchase/payments/{id}` | Ambil detail pembayaran bill | ✅ |
+| 227 | GET | `/purchase/purchase-returns/` | Ambil semua retur pembelian | ✅ |
+| 228 | POST | `/purchase/purchase-returns/` | Buat/ubah retur pembelian | ✅ |
+| 229 | GET | `/purchase/purchase-returns/unpaid/` | Ambil retur pembelian yang belum lunas | ✅ |
+| 230 | GET | `/purchase/purchase-returns/{id}` | Ambil detail retur pembelian | ✅ |
+| 231 | DELETE | `/purchase/return-settlements/` | Hapus settlement retur pembelian | ✅ |
+| 232 | GET | `/purchase/return-settlements/bills/` | Ambil semua settlement bill retur | ✅ |
+| 233 | POST | `/purchase/return-settlements/bills/` | Buat/ubah settlement bill retur | ✅ |
+| 234 | GET | `/purchase/return-settlements/bills/{id}` | Ambil detail settlement bill retur | ✅ |
+| 235 | GET | `/purchase/return-settlements/refunds/` | Ambil semua refund settlement retur | ✅ |
+| 236 | POST | `/purchase/return-settlements/refunds/` | Buat/ubah refund settlement retur | ✅ |
+| 237 | GET | `/purchase/return-settlements/refunds/{id}` | Ambil detail refund settlement retur | ✅ |
+| 238 | POST | `/purchase/serial-number/mark-printed` | Cetak barcode produk untuk putaway | ✅ |
+| 239 | GET | `/purchase/serial-number/wms/{bill_detail_id}` | Ambil nomor seri/batch item per bill detail | ✅ |
 
 ### Contact — ✅0 🔄2 ⬜6 (total 8)
 
