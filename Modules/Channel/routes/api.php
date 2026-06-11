@@ -38,6 +38,12 @@ Route::prefix('v1/tiktok')->group(function () {
     Route::post('sync/products/bulk-push', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'bulkPush']);
 });
 
+// Lazada OAuth. Callback dipanggil lewat redirect browser seller (tanpa auth:sanctum).
+Route::prefix('v1/lazada')->group(function () {
+    Route::get('auth', [\Modules\Channel\Http\Controllers\LazadaAuthController::class, 'redirect'])->name('lazada.auth');
+    Route::get('callback', [\Modules\Channel\Http\Controllers\LazadaAuthController::class, 'callback'])->name('lazada.callback');
+});
+
 // Generic per-channel download (generalisasi pull, tidak terikat TikTok)
 Route::middleware(['auth:sanctum'])->prefix('v1/{channel}')->group(function () {
     Route::post('download', [\Modules\Channel\Http\Controllers\ChannelDownloadController::class, 'download']);
