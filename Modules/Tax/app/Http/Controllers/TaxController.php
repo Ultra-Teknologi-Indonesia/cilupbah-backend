@@ -3,54 +3,68 @@
 namespace Modules\Tax\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
+use App\Traits\ApiResponse;
+use Illuminate\Http\JsonResponse;
+use Modules\Tax\Http\Requests\StoreTaxRequest;
+use Modules\Tax\Http\Resources\TaxResource;
+use Modules\Tax\Services\TaxService;
 
 class TaxController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
-    {
-        return view('tax::index');
+    use ApiResponse;
+
+    public function __construct(
+        private readonly TaxService $service,
+    ) {
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
+    /** Jubelio: GET /taxes — Ambil daftar pajak. */
+    public function index(): JsonResponse
     {
-        return view('tax::create');
+        return $this->successPaginatedResponse(
+            TaxResource::collection($this->service->list()),
+            'Daftar pajak berhasil diambil'
+        );
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request) {}
-
-    /**
-     * Show the specified resource.
-     */
-    public function show($id)
+    public function store(StoreTaxRequest $request): JsonResponse
     {
-        return view('tax::show');
+        $tax = $this->service->create($request->validated());
+
+        return $this->successResponse(new TaxResource($tax), 'Pajak berhasil dibuat', 201);
     }
 
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit($id)
+    public function show(int $id): JsonResponse
     {
-        return view('tax::edit');
+        $tax = $this->service->find($id);
+        if (! $tax) {
+            return $this->errorResponse('Pajak tidak ditemukan', 404);
+        }
+
+        return $this->successResponse(new TaxResource($tax), 'Detail pajak berhasil diambil');
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, $id) {}
+    public function update(StoreTaxRequest $request, int $id): JsonResponse
+    {
+        $tax = $this->service->find($id);
+        if (! $tax) {
+            return $this->errorResponse('Pajak tidak ditemukan', 404);
+        }
 
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy($id) {}
+        $tax = $this->service->update($tax, $request->validated());
+
+        return $this->successResponse(new TaxResource($tax), 'Pajak berhasil diperbarui');
+    }
+
+    public function destroy(int $id): JsonResponse
+    {
+        $tax = $this->service->find($id);
+        if (! $tax) {
+            return $this->errorResponse('Pajak tidak ditemukan', 404);
+        }
+
+        $this->service->delete($tax);
+
+        return $this->successResponse(null, 'Pajak berhasil dihapus');
+    }
 }

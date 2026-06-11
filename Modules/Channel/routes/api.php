@@ -4,6 +4,9 @@ use Illuminate\Support\Facades\Route;
 use Modules\Channel\Http\Controllers\ChannelController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
+    // Jubelio: daftar toko marketplace yang terhubung
+    Route::get('marketplace/store', [ChannelController::class, 'stores']);
+
     Route::apiResource('channels', ChannelController::class)->names('channel');
 
     Route::get('download-transactions', [\Modules\Channel\Http\Controllers\DownloadTransactionController::class, 'index']);
