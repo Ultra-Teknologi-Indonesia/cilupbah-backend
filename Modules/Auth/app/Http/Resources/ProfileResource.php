@@ -27,6 +27,8 @@ class ProfileResource extends JsonResource
             'permissions' => $permissions,
             'nik' => $this->nik,
             'warehouse_id' => $this->warehouse_id,
+            'avatar_media_id' => $this->avatar_media_id,
+            'avatar_url' => $this->avatar_url,
             'last_login_at' => $this->last_login_at?->toIso8601String(),
         ];
     }

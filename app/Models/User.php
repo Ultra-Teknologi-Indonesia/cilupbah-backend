@@ -9,22 +9,13 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
-use Spatie\MediaLibrary\HasMedia;
-use App\Concerns\HasUploadableMedia;
+use App\Services\UploadService;
 use App\Traits\HasUuid7;
 
-class User extends Authenticatable implements HasMedia
+class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable, HasRoles, HasUuid7, HasUploadableMedia;
-
-    /**
-     * Koleksi media: avatar (single file — upload baru otomatis mengganti yang lama).
-     */
-    public function registerMediaCollections(): void
-    {
-        $this->addMediaCollection('avatar')->singleFile();
-    }
+    use HasApiTokens, HasFactory, Notifiable, HasRoles, HasUuid7;
 
     protected $keyType = 'string';
     public $incrementing = false;
@@ -40,6 +31,7 @@ class User extends Authenticatable implements HasMedia
         'nik',
         'phone',
         'warehouse_id',
+        'avatar_media_id',
         'last_login_at',
     ];
 
@@ -65,5 +57,18 @@ class User extends Authenticatable implements HasMedia
             'password' => 'hashed',
             'last_login_at' => 'datetime',
         ];
+    }
+
+    /**
+     * URL avatar di-resolve dinamis dari media terpusat (avatar_media_id = media.uuid).
+     * Null bila belum diset atau media-nya sudah dihapus.
+     */
+    public function getAvatarUrlAttribute(): ?string
+    {
+        if (! $this->avatar_media_id) {
+            return null;
+        }
+
+        return app(UploadService::class)->findByUuid($this->avatar_media_id)?->getUrl();
     }
 }

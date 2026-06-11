@@ -55,6 +55,7 @@ class UpdateUserRequest extends FormRequest
             // bail+uuid agar warehouse_id non-UUID gagal di format (422), tidak lanjut ke
             // query exists yang akan memicu error cast uuid Postgres (500).
             'warehouse_id' => ['nullable', 'bail', 'uuid', 'exists:locations,id'],
+            'avatar_media_id' => ['nullable', 'bail', 'uuid', 'exists:media,uuid'],
         ];
     }
 

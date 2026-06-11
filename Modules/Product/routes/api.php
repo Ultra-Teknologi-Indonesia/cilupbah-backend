@@ -117,8 +117,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('attributes/{attribute}/map-channel', [AttributeController::class, 'mapChannel']);
     Route::post('attributes/options/{option}/map-channel', [AttributeController::class, 'mapOptionChannel']);
 
-    // General Media Upload Endpoint
-    Route::post('media/upload', [MediaController::class, 'upload']);
+    // Media terpusat (semua tipe file → R2). Upload/Replace/Delete/Lihat.
+    Route::post('media/upload', [MediaController::class, 'upload'])->name('media.upload');
+    Route::get('media/upload/{uuid}', [MediaController::class, 'show'])->whereUuid('uuid')->name('media.show');
+    Route::put('media/upload/{uuid}', [MediaController::class, 'replace'])->whereUuid('uuid')->name('media.replace');
+    Route::delete('media/upload/{uuid}', [MediaController::class, 'destroy'])->whereUuid('uuid')->name('media.destroy');
 
     // Import Endpoints
     Route::get('products/import/template/single', [\Modules\Product\Http\Controllers\ProductImportController::class, 'downloadSingleTemplate']);
