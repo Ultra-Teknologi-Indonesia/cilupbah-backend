@@ -199,7 +199,9 @@ return [
     'defaults' => [
         'supervisor-default' => [
             'connection' => 'redis',
-            'queue' => ['default', env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks'), env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'), env('QUEUE_NAME_PRODUCT', 'product')],
+            // 'webhooks' = outbound webhook internal (Modules/Webhook) — sebelumnya tidak
+            // dilayani supervisor mana pun sehingga job webhook tidak pernah terkirim.
+            'queue' => ['default', env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks'), env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'), env('QUEUE_NAME_PRODUCT', 'product'), env('WEBHOOK_QUEUE', 'webhooks')],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 1,

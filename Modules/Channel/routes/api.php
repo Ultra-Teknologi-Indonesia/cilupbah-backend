@@ -43,6 +43,9 @@ Route::prefix('v1/lazada')->group(function () {
     Route::get('auth', [\Modules\Channel\Http\Controllers\LazadaAuthController::class, 'redirect'])->name('lazada.auth');
     Route::get('callback', [\Modules\Channel\Http\Controllers\LazadaAuthController::class, 'callback'])->name('lazada.callback');
 
+    // Push message Lazada (publik — diverifikasi via signature HMAC, bukan sanctum).
+    Route::post('webhook', [\Modules\Channel\Http\Controllers\LazadaWebhookController::class, 'handle'])->name('lazada.webhook');
+
     // Manajemen toko Lazada (internal — wajib login).
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('stores', [\Modules\Channel\Http\Controllers\LazadaStoreController::class, 'index'])->name('lazada.stores.index');
