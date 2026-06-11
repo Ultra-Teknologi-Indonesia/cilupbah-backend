@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Modules\Warehouse\Services\LocationBinService;
 use Modules\Warehouse\Http\Requests\GenerateLocationBinRequest;
+use Modules\Warehouse\Http\Requests\StoreLocationBinRequest;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Location Bins', description: 'API Endpoints for Warehouse Location Bins')]
@@ -142,12 +143,45 @@ class LocationBinController extends Controller
             $preview = $this->binService->previewMassGenerate($request->validated());
 
             return $this->successResponse(
-                $preview, 
-                "Preview berhasil di-generate.", 
+                $preview,
+                "Preview berhasil di-generate.",
                 200
             );
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 500);
         }
+    }
+
+    /** Buat satu bin. */
+    public function store(StoreLocationBinRequest $request): JsonResponse
+    {
+        $bin = $this->binService->create($request->validated());
+
+        return $this->successResponse($bin, 'Bin berhasil dibuat', 201);
+    }
+
+    /** Hapus bin (bin inbound/default tidak boleh dihapus). */
+    public function destroy(string $id): JsonResponse
+    {
+        $bin = $this->binService->getById($id);
+        if (! $bin) {
+            return $this->errorResponse('Bin tidak ditemukan.', 404);
+        }
+
+        try {
+            $this->binService->delete($id);
+        } catch (\DomainException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
+        return $this->successResponse(null, 'Bin berhasil dihapus');
+    }
+
+    /** Generate massal bin untuk satu lokasi. */
+    public function generate(GenerateLocationBinRequest $request, string $locationId): JsonResponse
+    {
+        $result = $this->binService->massGenerate($locationId, $request->validated());
+
+        return $this->successResponse($result, 'Bin berhasil di-generate', 201);
     }
 }

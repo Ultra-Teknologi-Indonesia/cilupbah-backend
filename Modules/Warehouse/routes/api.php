@@ -17,7 +17,12 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::get('locations/{locationId}/bins', [LocationBinController::class, 'index'])->name('warehouse.bins.index');
     Route::post('locations/{locationId}/bins/preview', [LocationBinController::class, 'preview'])->name('warehouse.bins.preview');
+    Route::post('locations/{locationId}/bins/generate', [LocationBinController::class, 'generate'])->name('warehouse.bins.generate');
     Route::get('locations/{locationId}/default-bin', [LocationBinController::class, 'defaultBin'])->name('warehouse.bins.default');
+
+    // Bin CRUD (path /bins)
+    Route::post('bins', [LocationBinController::class, 'store'])->name('warehouse.bins.store');
+    Route::delete('bins/{id}', [LocationBinController::class, 'destroy'])->whereUuid('id')->name('warehouse.bins.destroy');
 
     Route::get('channel-warehouses', [ChannelWarehouseController::class, 'index'])->name('warehouse.channel.index');
     Route::post('channel-warehouses', [ChannelWarehouseController::class, 'store'])->name('warehouse.channel.store');

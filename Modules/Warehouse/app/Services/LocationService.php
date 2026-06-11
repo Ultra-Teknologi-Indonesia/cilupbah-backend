@@ -24,7 +24,19 @@ class LocationService
 
     public function getById(string $id): ?Location
     {
+        if (! $this->isValidUuid($id)) {
+            return null;
+        }
+
         return $this->locationRepository->findById($id);
+    }
+
+    /** Guard format UUID agar id non-UUID tidak memicu error cast Postgres (return null/false -> 404). */
+    protected function isValidUuid(string $id): bool
+    {
+        $normalized = str_replace('-', '', $id);
+
+        return strlen($normalized) === 32 && ctype_xdigit($normalized);
     }
 
     public function create(array $data): Location
@@ -49,6 +61,10 @@ class LocationService
 
     public function update(string $id, array $data): bool
     {
+        if (! $this->isValidUuid($id)) {
+            return false;
+        }
+
         return DB::transaction(function () use ($id, $data) {
             $updated = $this->locationRepository->update($id, $data);
 
@@ -128,6 +144,10 @@ class LocationService
 
     public function delete(string $id): bool
     {
+        if (! $this->isValidUuid($id)) {
+            return false;
+        }
+
         return DB::transaction(function () use ($id) {
             $location = $this->locationRepository->findById($id);
             if (!$location) {

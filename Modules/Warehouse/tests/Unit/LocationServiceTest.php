@@ -88,23 +88,25 @@ class LocationServiceTest extends TestCase
         $this->expectExceptionMessage('Lokasi tidak dapat dihapus karena masih memiliki data stok.');
 
         $location = Location::factory()->create();
-        
-        $categoryId = \Illuminate\Support\Facades\DB::table('categories')->insertGetId([
-            'name' => 'Test Category',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        
-        $productId = \Illuminate\Support\Facades\DB::table('products')->insertGetId([
-            'category_id' => $categoryId,
+
+        $category = \Modules\Product\Models\Category::create(['name' => 'Test Category', 'is_active' => true]);
+        $product = \Modules\Product\Models\Product::create([
+            'category_id' => $category->id,
             'name' => 'Test Product',
-            'created_at' => now(),
-            'updated_at' => now(),
+            'status' => 'master',
+            'is_active' => true,
+        ]);
+        $variant = \Modules\Product\Models\ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'TEST-SKU-SVC',
+            'sell_price' => 1000,
+            'is_active' => true,
         ]);
 
         \Illuminate\Support\Facades\DB::table('inventories')->insert([
+            'id' => \Illuminate\Support\Str::orderedUuid()->toString(),
             'location_id' => $location->id,
-            'item_id' => $productId,
+            'item_id' => $variant->id,
             'bin_id' => null,
             'batch_no' => 'B001',
             'serial_no' => 'S001',
