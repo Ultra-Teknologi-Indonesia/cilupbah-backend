@@ -83,7 +83,7 @@ class ChannelDownloadService
 
     protected function assertSupported(string $channel): void
     {
-        if (! in_array(strtolower($channel), ['tiktok'], true)) {
+        if (! in_array(strtolower($channel), ['tiktok', 'lazada'], true)) {
             throw new \RuntimeException("Channel '{$channel}' belum didukung untuk download", 422);
         }
     }
@@ -106,6 +106,7 @@ class ChannelDownloadService
     {
         return match (strtolower($channel)) {
             'tiktok' => fn (string $shopId) => app(TikTokProductService::class)->pullProducts($shopId),
+            'lazada' => fn (string $shopId) => app(LazadaProductService::class)->pullProducts($shopId),
             default => throw new \RuntimeException("Channel '{$channel}' belum didukung untuk download", 422),
         };
     }
