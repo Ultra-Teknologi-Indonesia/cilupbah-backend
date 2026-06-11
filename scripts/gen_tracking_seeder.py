@@ -323,7 +323,7 @@ ST = {
 "DELETE /purchase/return-settlements/":"todo","GET /purchase/return-settlements/bills/":"todo","POST /purchase/return-settlements/bills/":"todo","GET /purchase/return-settlements/bills/{id}":"todo","GET /purchase/return-settlements/refunds/":"todo","POST /purchase/return-settlements/refunds/":"todo","GET /purchase/return-settlements/refunds/{id}":"todo",
 "POST /purchase/serial-number/mark-printed":"todo","GET /purchase/serial-number/wms/{bill_detail_id}":"todo",
 "GET /region/cities/?province_id={province_id}":"done","GET /region/districts/?city_id={city_id}":"done","GET /region/provinces":"done","GET /region/subdistricts/?district_id={district_id}":"done",
-"GET /lazada/get-document/":"todo","GET /reports/adjustment":"todo","GET /reports/consign":"todo","GET /reports/invoice":"todo","GET /reports/item-receive-notplace":"todo","GET /reports/lable/print/":"todo","GET /reports/purchaseorder/":"todo","GET /reports/putaway":"todo","GET /reports/receive":"todo","GET /reports/stock-opname":"todo","GET /reports/wms/pick-list":"todo","GET /reports/wms/shipping-manifest":"todo","GET /reports/shipping-label/":"todo",
+"GET /lazada/get-document/":"done","GET /reports/adjustment":"todo","GET /reports/consign":"todo","GET /reports/invoice":"todo","GET /reports/item-receive-notplace":"todo","GET /reports/lable/print/":"todo","GET /reports/purchaseorder/":"todo","GET /reports/putaway":"todo","GET /reports/receive":"todo","GET /reports/stock-opname":"todo","GET /reports/wms/pick-list":"todo","GET /reports/wms/shipping-manifest":"todo","GET /reports/shipping-label/":"todo",
 "POST /inventory/items/complete-return/":"done","POST /inventory/items/reject-return/":"done","POST /inventory/items/to-return/":"done",
 "DELETE /sales/":"done","GET /sales/":"done","GET /sales/invoices/":"todo","POST /sales/invoices/":"todo","GET /sales/invoices/for-return-wms/{contact_id}":"todo","GET /sales/invoices/overdue/":"todo","GET /sales/invoices/summary/":"todo","GET /sales/invoices/unpaid/":"todo","GET /sales/invoices/{id}":"todo",
 "DELETE /sales/orders/":"done","POST /sales/orders/":"done","GET /sales/orders/cancel/":"todo","GET /sales/orders/completed/":"todo","POST /sales/orders/delete-canceled":"todo","GET /sales/orders/failed/":"todo","POST /sales/orders/mark-as-complete":"todo","GET /sales/orders/returned-list/":"todo","POST /sales/orders/save-airwaybill/":"todo","POST /sales/orders/save-received-date":"todo","POST /sales/orders/set-as-paid":"todo","GET /sales/orders/{id}":"done",
@@ -407,7 +407,8 @@ FEATURES=[
 # Fitur omnichannel yang sudah selesai per channel.
 OMNI_DONE={
  "Lazada": {"OAuth / Auth toko","Manajemen toko (list/refresh token)","Tarik order (pull)",
-  "Push produk (create listing)","Sync produk (update)","Sync stok (push balik)","Sync harga"},
+  "Push produk (create listing)","Sync produk (update)","Sync stok (push balik)","Sync harga",
+  "Terima/tolak order","Cancel order","Logistik / kurir channel"},
 }
 for ch in CHANNELS:
     for f in FEATURES:

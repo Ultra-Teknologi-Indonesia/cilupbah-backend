@@ -86,6 +86,142 @@ class LazadaOrderService
     }
 
     /**
+     * "Terima order" Lazada: pack lalu Ready-to-Ship.
+     * (Lazada tidak punya accept/reject eksplisit — semantiknya pack → RTS.)
+     */
+    public function packOrder(string $shopId, string $orderId, ?string $shippingProvider = null): array
+    {
+        $shop = $this->requireShop($shopId);
+
+        $itemIds = $this->orderItemIds($shop, $orderId);
+        if (empty($itemIds)) {
+            throw new \Exception("Order {$orderId} tidak punya item untuk diproses.");
+        }
+
+        $packParams = [
+            'delivery_type' => 'dropship',
+            'order_item_ids' => json_encode($itemIds),
+        ];
+        if ($shippingProvider) {
+            $packParams['shipping_provider'] = $shippingProvider;
+        }
+
+        $packRes = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/order/pack', $packParams, $token));
+
+        // Tracking number biasanya di-generate Lazada saat pack.
+        $trackingNumber = $packRes['data']['order_items'][0]['tracking_number'] ?? '';
+
+        $rtsParams = [
+            'delivery_type' => 'dropship',
+            'order_item_ids' => json_encode($itemIds),
+            'shipment_provider' => $shippingProvider ?? ($packRes['data']['order_items'][0]['shipment_provider'] ?? ''),
+            'tracking_number' => $trackingNumber,
+        ];
+
+        $rtsRes = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/order/rts', $rtsParams, $token));
+
+        $this->resyncLocalOrder($shopId, $orderId);
+
+        return [
+            'order_id' => $orderId,
+            'order_item_ids' => $itemIds,
+            'tracking_number' => $trackingNumber,
+            'rts' => $rtsRes['data'] ?? [],
+        ];
+    }
+
+    /**
+     * Batalkan order ("tolak"): /order/cancel per order_item_id, lalu sinkron ulang lokal
+     * (status cancelled → pelepasan stok lewat jalur resmi SalesOrderService).
+     */
+    public function cancelOrder(string $shopId, string $orderId, int|string $reasonId, ?string $reasonDetail = null): array
+    {
+        $shop = $this->requireShop($shopId);
+
+        $itemIds = $this->orderItemIds($shop, $orderId);
+        if (empty($itemIds)) {
+            throw new \Exception("Order {$orderId} tidak punya item untuk dibatalkan.");
+        }
+
+        $cancelled = [];
+        foreach ($itemIds as $itemId) {
+            $params = [
+                'reason_id' => (string) $reasonId,
+                'order_item_id' => (string) $itemId,
+            ];
+            if ($reasonDetail) {
+                $params['reason_detail'] = $reasonDetail;
+            }
+
+            $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/order/cancel', $params, $token));
+            $cancelled[] = $itemId;
+        }
+
+        $this->resyncLocalOrder($shopId, $orderId);
+
+        return ['order_id' => $orderId, 'cancelled_item_ids' => $cancelled];
+    }
+
+    /** Daftar alasan pembatalan dari Lazada (/order/failure_reason/get). */
+    public function getCancelReasons(string $shopId): array
+    {
+        $shop = $this->requireShop($shopId);
+
+        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/order/failure_reason/get', [], $token));
+
+        return $res['data'] ?? [];
+    }
+
+    /** Daftar kurir/logistik channel (/shipment/providers/get) — item tracker #11. */
+    public function getShipmentProviders(string $shopId): array
+    {
+        $shop = $this->requireShop($shopId);
+
+        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/shipment/providers/get', [], $token));
+
+        return $res['data']['shipment_providers'] ?? ($res['data'] ?? []);
+    }
+
+    /** Dokumen order (invoice/shippingLabel/carrierManifest) via /order/document/get. */
+    public function getDocument(string $shopId, string $orderId, string $docType = 'shippingLabel'): array
+    {
+        $shop = $this->requireShop($shopId);
+
+        $itemIds = $this->orderItemIds($shop, $orderId);
+        if (empty($itemIds)) {
+            throw new \Exception("Order {$orderId} tidak punya item.");
+        }
+
+        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/order/document/get', [
+            'doc_type' => $docType,
+            'order_item_ids' => json_encode($itemIds),
+        ], $token));
+
+        return $res['data']['document'] ?? ($res['data'] ?? []);
+    }
+
+    /** order_item_id semua baris item sebuah order. */
+    protected function orderItemIds(object $shop, string $orderId): array
+    {
+        $items = $this->fetchItemsForOrders($shop, [$orderId])[$orderId] ?? [];
+
+        return array_values(array_filter(array_map(
+            fn (array $row) => isset($row['order_item_id']) ? (string) $row['order_item_id'] : null,
+            $items
+        )));
+    }
+
+    /** Sinkron ulang order lokal pasca aksi (non-fatal bila gagal). */
+    protected function resyncLocalOrder(string $shopId, string $orderId): void
+    {
+        try {
+            $this->pullOrderById($shopId, $orderId);
+        } catch (\Throwable $e) {
+            Log::warning("Lazada: resync order {$orderId} gagal pasca aksi: " . $e->getMessage());
+        }
+    }
+
+    /**
      * Ambil baris item untuk banyak order sekaligus (batch /orders/items/get, chunk 50).
      *
      * @return array<string, array> keyed by order_id
