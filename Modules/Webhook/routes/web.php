@@ -1,8 +1,4 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use Modules\Webhook\Http\Controllers\WebhookController;
-
-Route::middleware(['auth', 'verified'])->group(function () {
-    Route::resource('webhooks', WebhookController::class)->names('webhook');
-});
+// Modul Webhook bersifat API-only (lihat routes/api.php). Tidak ada route web.
+// Resource blade lama dihapus karena controller sudah berbentuk API (tanpa create/edit view).
