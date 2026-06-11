@@ -49,6 +49,10 @@ Route::prefix('v1/lazada')->group(function () {
         Route::get('stores/{id}', [\Modules\Channel\Http\Controllers\LazadaStoreController::class, 'show'])->whereUuid('id')->name('lazada.stores.show');
         Route::delete('stores/{id}', [\Modules\Channel\Http\Controllers\LazadaStoreController::class, 'destroy'])->whereUuid('id')->name('lazada.stores.destroy');
         Route::post('stores/{id}/refresh-token', [\Modules\Channel\Http\Controllers\LazadaStoreController::class, 'refreshToken'])->whereUuid('id')->name('lazada.stores.refresh');
+
+        // Tarik order → SalesOrder internal.
+        Route::post('sync/pull', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'pullOrders'])->name('lazada.sync.pull');
+        Route::post('auto-sync/pull-orders', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'pullOrdersAll'])->name('lazada.sync.pull-all');
     });
 });
 

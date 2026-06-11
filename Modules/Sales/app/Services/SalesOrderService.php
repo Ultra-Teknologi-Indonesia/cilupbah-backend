@@ -279,7 +279,9 @@ class SalesOrderService
         });
     }
 
-    public function upsertFromChannel(array $orderData): ?int
+    // Return id order (uuid string) — sebelumnya ?int, sisa migrasi UUID yang membuat
+    // TypeError di setiap pull order channel (order tersimpan tapi dihitung gagal).
+    public function upsertFromChannel(array $orderData): ?string
     {
         $channelStatus = $orderData['channel_status'] ?? 'UNKNOWN';
         $mappedStatus = $this->mapChannelStatusToInternal($channelStatus);
