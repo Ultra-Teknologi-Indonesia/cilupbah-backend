@@ -95,4 +95,135 @@ class LazadaSyncApiController extends Controller
             "Selesai: {$totalCount} pesanan ditarik dari " . count($results) . ' toko.'
         );
     }
+
+    #[OA\Post(
+        path: '/api/v1/lazada/sync/pack',
+        summary: 'Terima order: pack + Ready-to-Ship',
+        security: [['bearerAuth' => []]],
+        tags: ['Lazada'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['shop_id', 'order_id'],
+                properties: [
+                    new OA\Property(property: 'shop_id', type: 'string'),
+                    new OA\Property(property: 'order_id', type: 'string'),
+                    new OA\Property(property: 'shipping_provider', type: 'string', nullable: true),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Order diproses (pack + RTS)'),
+            new OA\Response(response: 422, description: 'Gagal'),
+        ]
+    )]
+    public function packOrder(Request $request)
+    {
+        $validated = $request->validate([
+            'shop_id' => 'required|string',
+            'order_id' => 'required|string',
+            'shipping_provider' => 'nullable|string',
+        ]);
+
+        try {
+            $result = $this->orderService->packOrder(
+                $validated['shop_id'],
+                $validated['order_id'],
+                $validated['shipping_provider'] ?? null
+            );
+
+            return $this->successResponse($result, 'Order berhasil diproses (pack + ready-to-ship).');
+        } catch (\Exception $e) {
+            return $this->errorResponse('Gagal memproses order: ' . $e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Post(
+        path: '/api/v1/lazada/sync/cancel',
+        summary: 'Batalkan order Lazada',
+        security: [['bearerAuth' => []]],
+        tags: ['Lazada'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['shop_id', 'order_id', 'reason_id'],
+                properties: [
+                    new OA\Property(property: 'shop_id', type: 'string'),
+                    new OA\Property(property: 'order_id', type: 'string'),
+                    new OA\Property(property: 'reason_id', type: 'string', description: 'Dari GET /lazada/cancel-reasons'),
+                    new OA\Property(property: 'reason_detail', type: 'string', nullable: true),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Order dibatalkan'),
+            new OA\Response(response: 422, description: 'Gagal'),
+        ]
+    )]
+    public function cancelOrder(Request $request)
+    {
+        $validated = $request->validate([
+            'shop_id' => 'required|string',
+            'order_id' => 'required|string',
+            'reason_id' => 'required|string',
+            'reason_detail' => 'nullable|string',
+        ]);
+
+        try {
+            $result = $this->orderService->cancelOrder(
+                $validated['shop_id'],
+                $validated['order_id'],
+                $validated['reason_id'],
+                $validated['reason_detail'] ?? null
+            );
+
+            return $this->successResponse($result, 'Order berhasil dibatalkan.');
+        } catch (\Exception $e) {
+            return $this->errorResponse('Gagal membatalkan order: ' . $e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Get(
+        path: '/api/v1/lazada/cancel-reasons',
+        summary: 'Daftar alasan pembatalan Lazada',
+        security: [['bearerAuth' => []]],
+        tags: ['Lazada'],
+        parameters: [new OA\Parameter(name: 'shop_id', in: 'query', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [new OA\Response(response: 200, description: 'OK')]
+    )]
+    public function cancelReasons(Request $request)
+    {
+        $validated = $request->validate(['shop_id' => 'required|string']);
+
+        try {
+            return $this->successResponse(
+                $this->orderService->getCancelReasons($validated['shop_id']),
+                'Daftar alasan pembatalan berhasil diambil.'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Get(
+        path: '/api/v1/lazada/logistics',
+        summary: 'Daftar kurir/logistik channel Lazada',
+        security: [['bearerAuth' => []]],
+        tags: ['Lazada'],
+        parameters: [new OA\Parameter(name: 'shop_id', in: 'query', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [new OA\Response(response: 200, description: 'OK')]
+    )]
+    public function logistics(Request $request)
+    {
+        $validated = $request->validate(['shop_id' => 'required|string']);
+
+        try {
+            return $this->successResponse(
+                $this->orderService->getShipmentProviders($validated['shop_id']),
+                'Daftar kurir Lazada berhasil diambil.'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
 }

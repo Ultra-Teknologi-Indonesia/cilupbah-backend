@@ -287,19 +287,41 @@ class ReportController extends Controller
 
     #[OA\Get(
         path: '/api/v1/lazada/get-document',
-        summary: 'Print Lazada invoice/label (placeholder)',
+        summary: 'Ambil dokumen order Lazada (invoice/shippingLabel/carrierManifest)',
         security: [['bearerAuth' => []]],
         tags: ['Reports'],
         parameters: [
-            new OA\Parameter(name: 'order_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'order_id', in: 'query', required: false, description: 'Dengan shop_id: nomor order Lazada. Tanpa shop_id: id SalesOrder lokal.', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'shop_id', in: 'query', required: false, description: 'Seller ID Lazada — bila diisi, dokumen diambil langsung dari API Lazada', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'doc_type', in: 'query', required: false, schema: new OA\Schema(type: 'string', enum: ['invoice', 'shippingLabel', 'carrierManifest'], default: 'shippingLabel')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Lazada document data'),
+            new OA\Response(response: 422, description: 'Gagal mengambil dari Lazada'),
         ]
     )]
     public function lazadaGetDocument(Request $request): JsonResponse
     {
         $orderId = $request->query('order_id');
+
+        // Mode API nyata: dokumen langsung dari Lazada (label/invoice/manifest).
+        if ($request->filled('shop_id') && $orderId) {
+            try {
+                $document = app(\Modules\Channel\Services\LazadaOrderService::class)->getDocument(
+                    (string) $request->query('shop_id'),
+                    (string) $orderId,
+                    (string) $request->query('doc_type', 'shippingLabel')
+                );
+
+                return $this->successResponse([
+                    'report_type' => 'lazada_document',
+                    'generated_at' => now()->toIso8601String(),
+                    'data' => $document,
+                ], 'Dokumen Lazada berhasil diambil.');
+            } catch (\Exception $e) {
+                return $this->errorResponse('Gagal mengambil dokumen Lazada: ' . $e->getMessage(), 422);
+            }
+        }
 
         if ($orderId) {
             $order = \Modules\Sales\Models\SalesOrder::select([
