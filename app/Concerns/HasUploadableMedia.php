@@ -10,22 +10,25 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 /**
  * Trait convenience untuk model yang ingin punya media (avatar, foto, lampiran, dll).
  *
- * Pemakaian pada model:
- *   class User extends Authenticatable implements \Spatie\MediaLibrary\HasMedia
+ * Pemakaian pada model yang MENEMPELKAN media langsung (mis. App\Models\Upload):
+ *   class Upload extends Model implements \Spatie\MediaLibrary\HasMedia
  *   {
  *       use \App\Concerns\HasUploadableMedia;
  *
  *       public function registerMediaCollections(): void
  *       {
- *           $this->addMediaCollection('avatar')->singleFile();
+ *           $this->addMediaCollection('file')->singleFile();
  *       }
  *   }
  *
  * Lalu di Service/Controller cukup:
- *   $user->uploadMedia($request->file('avatar'), 'avatar');
- *   $user->replaceMediaItem($file, 'avatar');
- *   $user->deleteMedia('avatar');
- *   $user->mediaUrl('avatar');
+ *   $model->uploadMedia($request->file('file'), 'file');
+ *   $model->replaceMediaItem($file, 'file');
+ *   $model->deleteMedia('file');
+ *   $model->mediaUrl('file');
+ *
+ * Catatan: untuk avatar user / foto produk, pola yang dipakai adalah REFERENSI ke
+ * media terpusat (simpan media UUID di kolom), bukan trait ini. Lihat User::avatar_url.
  */
 trait HasUploadableMedia
 {

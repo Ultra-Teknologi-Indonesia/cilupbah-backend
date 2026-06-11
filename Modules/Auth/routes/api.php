@@ -13,6 +13,7 @@ Route::prefix('v1/auth')->group(function () {
 
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/profile', [AuthController::class, 'profile']);
+    Route::put('/profile/avatar', [AuthController::class, 'updateAvatar']);
     Route::get('/roles', [\Modules\Auth\Http\Controllers\RoleController::class, 'index']);
     
     Route::middleware('role_or_permission:owner|create-role')->post('/roles', [\Modules\Auth\Http\Controllers\RoleController::class, 'store']);

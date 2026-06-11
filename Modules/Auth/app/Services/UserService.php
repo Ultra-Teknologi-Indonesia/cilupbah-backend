@@ -46,6 +46,7 @@ class UserService
                 'password' => Hash::make($data['password']),
                 'nik' => $data['nik'] ?? null,
                 'warehouse_id' => $data['warehouse_id'] ?? null,
+                'avatar_media_id' => $data['avatar_media_id'] ?? null,
             ]);
 
             $user->assignRole($data['roles']);
@@ -75,6 +76,11 @@ class UserService
                 'warehouse_id' => $data['warehouse_id'] ?? null,
             ];
 
+            // Hanya ubah avatar bila field dikirim (agar update tanpa field tidak menghapus avatar).
+            if (array_key_exists('avatar_media_id', $data)) {
+                $updateData['avatar_media_id'] = $data['avatar_media_id'];
+            }
+
             if (isset($data['password']) && !empty($data['password'])) {
                 $updateData['password'] = Hash::make($data['password']);
             }
@@ -91,6 +97,16 @@ class UserService
 
             return $user;
         });
+    }
+
+    /**
+     * Set atau lepas avatar user (referensi ke media terpusat). $mediaUuid null = lepas.
+     */
+    public function setAvatar(User $user, ?string $mediaUuid): User
+    {
+        $this->userRepository->update($user, ['avatar_media_id' => $mediaUuid]);
+
+        return $user->refresh();
     }
 
     /**
