@@ -404,11 +404,16 @@ FEATURES=[
  "Terima/tolak order","Push produk (create listing)","Sync produk (update)",
  "Sync stok (push balik)","Sync harga","Webhook masuk","Cancel order","Logistik / kurir channel",
 ]
+# Fitur omnichannel yang sudah selesai per channel.
+OMNI_DONE={
+ "Lazada": {"OAuth / Auth toko","Manajemen toko (list/refresh token)","Tarik order (pull)"},
+}
 for ch in CHANNELS:
     for f in FEATURES:
+        st = "done" if f in OMNI_DONE.get(ch, set()) else "todo"
         items.append({"domain":"Omnichannel","method":None,
             "endpoint":f"{ch} — {f}","function_id":f"Integrasi {f} untuk {ch} (pola TikTok)",
-            "status":"todo","baseline_status":"todo","pic":"Darriel","priority":"P2",
+            "status":st,"baseline_status":"todo","pic":"Darriel","priority":"P2",
             "source":"omnichannel","cilupbah_impl":None})
 
 def norm(s): return "in_progress" if s=="partial" else s
