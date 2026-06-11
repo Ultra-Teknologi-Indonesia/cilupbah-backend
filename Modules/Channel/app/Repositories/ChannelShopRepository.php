@@ -50,6 +50,25 @@ class ChannelShopRepository
         return ChannelShop::where('channel_id', $channelId)->orderBy('id', 'desc')->get();
     }
 
+    /** Semua toko milik satu channel (generalisasi getAllTikTokShops). */
+    public function getShopsByChannelCode(string $code)
+    {
+        $channelId = \Modules\Channel\Models\Channel::where('code', $code)->value('id');
+
+        return ChannelShop::where('channel_id', $channelId)->orderBy('created_at', 'desc')->get();
+    }
+
+    /** Cari toko by primary key UUID (findById lama bertipe int untuk kompat TikTok). */
+    public function findByUuid(string $id): ?ChannelShop
+    {
+        return ChannelShop::find($id);
+    }
+
+    public function updateShop(ChannelShop $shop, array $data): bool
+    {
+        return $shop->update($data);
+    }
+
     public function findById(int $id)
     {
         return ChannelShop::find($id);
