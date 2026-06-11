@@ -9,12 +9,22 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
+use Spatie\MediaLibrary\HasMedia;
+use App\Concerns\HasUploadableMedia;
 use App\Traits\HasUuid7;
 
-class User extends Authenticatable
+class User extends Authenticatable implements HasMedia
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable, HasRoles, HasUuid7;
+    use HasApiTokens, HasFactory, Notifiable, HasRoles, HasUuid7, HasUploadableMedia;
+
+    /**
+     * Koleksi media: avatar (single file — upload baru otomatis mengganti yang lama).
+     */
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection('avatar')->singleFile();
+    }
 
     protected $keyType = 'string';
     public $incrementing = false;

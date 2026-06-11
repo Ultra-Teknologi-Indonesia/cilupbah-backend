@@ -52,7 +52,9 @@ class UpdateUserRequest extends FormRequest
                 }
             ],
             'nik' => ['nullable', 'string', 'max:255'],
-            'warehouse_id' => ['nullable', 'string', 'exists:locations,id'],
+            // bail+uuid agar warehouse_id non-UUID gagal di format (422), tidak lanjut ke
+            // query exists yang akan memicu error cast uuid Postgres (500).
+            'warehouse_id' => ['nullable', 'bail', 'uuid', 'exists:locations,id'],
         ];
     }
 

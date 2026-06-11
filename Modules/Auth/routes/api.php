@@ -32,15 +32,15 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     });
     
     Route::middleware('role_or_permission:owner|edit-user')->group(function () {
-        Route::put('/users/{id}', [\Modules\Auth\Http\Controllers\UserController::class, 'update']);
+        Route::put('/users/{id}', [\Modules\Auth\Http\Controllers\UserController::class, 'update'])->whereUuid('id');
     });
 
     Route::middleware('role_or_permission:owner|view-user-history')->group(function () {
-        Route::get('/users/{id}/histories', [\Modules\Auth\Http\Controllers\UserController::class, 'histories']);
+        Route::get('/users/{id}/histories', [\Modules\Auth\Http\Controllers\UserController::class, 'histories'])->whereUuid('id');
     });
 
     Route::middleware('role_or_permission:owner|force-logout-user')->group(function () {
-        Route::post('/users/{id}/force-logout', [\Modules\Auth\Http\Controllers\UserController::class, 'forceLogout']);
+        Route::post('/users/{id}/force-logout', [\Modules\Auth\Http\Controllers\UserController::class, 'forceLogout'])->whereUuid('id');
         Route::post('/users/bulk-force-logout', [\Modules\Auth\Http\Controllers\UserController::class, 'bulkForceLogout']);
     });
 
