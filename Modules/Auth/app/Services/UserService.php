@@ -50,6 +50,12 @@ class UserService
 
             $user->assignRole($data['roles']);
 
+            $this->historyRepository->createHistory([
+                'actor_id' => Auth::id(),
+                'target_user_id' => $user->id,
+                'action' => 'created',
+            ]);
+
             return $user;
         });
     }
@@ -76,6 +82,12 @@ class UserService
             $this->userRepository->update($user, $updateData);
 
             $user->syncRoles($data['roles']);
+
+            $this->historyRepository->createHistory([
+                'actor_id' => Auth::id(),
+                'target_user_id' => $user->id,
+                'action' => 'updated',
+            ]);
 
             return $user;
         });
