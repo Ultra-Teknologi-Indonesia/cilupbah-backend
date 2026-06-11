@@ -28,7 +28,13 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
     protected function gate(): void
     {
         Gate::define('viewHorizon', function ($user = null) {
-            return true;
+            // Local & staging: terbuka untuk monitoring tim (API-only app, tanpa web login).
+            // Produksi: hanya user ber-role owner.
+            if (app()->environment(['local', 'staging'])) {
+                return true;
+            }
+
+            return $user !== null && method_exists($user, 'hasRole') && $user->hasRole('owner');
         });
     }
 
