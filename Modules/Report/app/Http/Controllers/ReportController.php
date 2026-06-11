@@ -3,163 +3,324 @@
 namespace Modules\Report\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Report\Services\ReportService;
 use OpenApi\Attributes as OA;
 
-#[OA\Tag(name: 'Reports', description: 'API Endpoints for Reports')]
-#[OA\Schema(
-    schema: 'Report',
-    title: 'Report Schema',
-    type: 'object',
-    properties: [
-        new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
-        new OA\Property(property: 'title', type: 'string', example: 'Monthly Sales Report'),
-        new OA\Property(property: 'type', type: 'string', example: 'SALES'),
-        new OA\Property(property: 'content', type: 'string', example: 'Detailed sales data...'),
-        new OA\Property(property: 'created_by', type: 'string', example: 'admin'),
-        new OA\Property(property: 'created_at', type: 'string', format: 'date-time', example: '2026-06-04T12:00:00Z'),
-        new OA\Property(property: 'updated_at', type: 'string', format: 'date-time', example: '2026-06-04T12:00:00Z'),
-    ]
-)]
-#[OA\Schema(
-    schema: 'StoreReportRequest',
-    required: ['title', 'type', 'content'],
-    type: 'object',
-    properties: [
-        new OA\Property(property: 'title', type: 'string', example: 'Monthly Sales Report'),
-        new OA\Property(property: 'type', type: 'string', example: 'SALES'),
-        new OA\Property(property: 'content', type: 'string', example: 'Detailed sales data...')
-    ]
-)]
+#[OA\Tag(name: 'Reports', description: 'API Endpoints for printable Reports')]
 class ReportController extends Controller
 {
-    #[OA\Get(
-        path: '/api/v1/reports',
-        summary: 'Get list of reports',
-        security: [['bearerAuth' => []]],
-        tags: ['Reports'],
-        responses: [
-            new OA\Response(
-                response: 200,
-                description: 'Successful operation',
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/Report'))
-                    ]
-                )
-            ),
-            new OA\Response(response: 401, description: 'Unauthenticated')
-        ]
-    )]
-    public function index()
-    {
-        return view('report::index');
-    }
-
-    public function create()
-    {
-        return view('report::create');
-    }
-
-    #[OA\Post(
-        path: '/api/v1/reports',
-        summary: 'Create a new report',
-        security: [['bearerAuth' => []]],
-        tags: ['Reports'],
-        requestBody: new OA\RequestBody(
-            required: true,
-            content: new OA\JsonContent(ref: '#/components/schemas/StoreReportRequest')
-        ),
-        responses: [
-            new OA\Response(
-                response: 201,
-                description: 'Report created successfully',
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: 'data', ref: '#/components/schemas/Report')
-                    ]
-                )
-            ),
-            new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 422, description: 'Validation Error')
-        ]
-    )]
-    public function store(Request $request) {}
+    public function __construct(
+        protected ReportService $reportService
+    ) {}
 
     #[OA\Get(
-        path: '/api/v1/reports/{report}',
-        summary: 'Get report details',
+        path: '/api/v1/reports/putaway',
+        summary: 'Putaway report',
         security: [['bearerAuth' => []]],
         tags: ['Reports'],
         parameters: [
-            new OA\Parameter(name: 'report', in: 'path', required: true, description: 'ID of the report', schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'location_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'status', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'date_from', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'date_to', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
         ],
         responses: [
-            new OA\Response(
-                response: 200,
-                description: 'Successful operation',
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: 'data', ref: '#/components/schemas/Report')
-                    ]
-                )
-            ),
-            new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 404, description: 'Report not found')
+            new OA\Response(response: 200, description: 'Putaway report data'),
         ]
     )]
-    public function show($id)
+    public function putaway(Request $request): JsonResponse
     {
-        return view('report::show');
+        $data = $this->reportService->putawayReport($request->all());
+        return $this->successResponse($data, 'Putaway report berhasil diambil.');
     }
 
-    public function edit($id)
+    #[OA\Get(
+        path: '/api/v1/reports/receive',
+        summary: 'Receive bill (PO) report',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'location_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'status', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'date_from', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'date_to', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Receive bill report data'),
+        ]
+    )]
+    public function receive(Request $request): JsonResponse
     {
-        return view('report::edit');
+        $data = $this->reportService->receiveBillReport($request->all());
+        return $this->successResponse($data, 'Receive bill report berhasil diambil.');
     }
 
-    #[OA\Put(
-        path: '/api/v1/reports/{report}',
-        summary: 'Update an existing report',
+    #[OA\Get(
+        path: '/api/v1/reports/adjustment',
+        summary: 'Stock adjustment report',
         security: [['bearerAuth' => []]],
         tags: ['Reports'],
         parameters: [
-            new OA\Parameter(name: 'report', in: 'path', required: true, description: 'ID of the report to update', schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'location_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'status', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'date_from', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'date_to', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
         ],
-        requestBody: new OA\RequestBody(
-            required: true,
-            content: new OA\JsonContent(ref: '#/components/schemas/StoreReportRequest')
-        ),
         responses: [
-            new OA\Response(
-                response: 200,
-                description: 'Report updated successfully',
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: 'data', ref: '#/components/schemas/Report')
-                    ]
-                )
-            ),
-            new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 404, description: 'Report not found'),
-            new OA\Response(response: 422, description: 'Validation Error')
+            new OA\Response(response: 200, description: 'Stock adjustment report data'),
         ]
     )]
-    public function update(Request $request, $id) {}
+    public function adjustment(Request $request): JsonResponse
+    {
+        $data = $this->reportService->adjustmentReport($request->all());
+        return $this->successResponse($data, 'Stock adjustment report berhasil diambil.');
+    }
 
-    #[OA\Delete(
-        path: '/api/v1/reports/{report}',
-        summary: 'Delete a report',
+    #[OA\Get(
+        path: '/api/v1/reports/stock-opname',
+        summary: 'Stock opname report',
         security: [['bearerAuth' => []]],
         tags: ['Reports'],
         parameters: [
-            new OA\Parameter(name: 'report', in: 'path', required: true, description: 'ID of the report to delete', schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'location_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'status', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'date_from', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'date_to', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
         ],
         responses: [
-            new OA\Response(response: 200, description: 'Report deleted successfully'),
-            new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 404, description: 'Report not found')
+            new OA\Response(response: 200, description: 'Stock opname report data'),
         ]
     )]
-    public function destroy($id) {}
+    public function stockOpname(Request $request): JsonResponse
+    {
+        $data = $this->reportService->stockOpnameReport($request->all());
+        return $this->successResponse($data, 'Stock opname report berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/purchaseorder',
+        summary: 'Purchase order detail report',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'supplier_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'location_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'status', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'date_from', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'date_to', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Purchase order report data'),
+        ]
+    )]
+    public function purchaseOrder(Request $request): JsonResponse
+    {
+        $data = $this->reportService->purchaseOrderReport($request->all());
+        return $this->successResponse($data, 'Purchase order report berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/invoice',
+        summary: 'Print invoice report',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'status', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'date_from', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'date_to', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Invoice report data'),
+        ]
+    )]
+    public function invoice(Request $request): JsonResponse
+    {
+        $data = $this->reportService->invoiceReport($request->all());
+        return $this->successResponse($data, 'Invoice report berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/consign',
+        summary: 'Receive bill consignment report',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'location_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'status', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'date_from', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'date_to', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Consignment bill report data'),
+        ]
+    )]
+    public function consign(Request $request): JsonResponse
+    {
+        $data = $this->reportService->consignReport($request->all());
+        return $this->successResponse($data, 'Consignment bill report berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/item-receive-notplace',
+        summary: 'Received but not placed items report',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        parameters: [
+            new OA\Parameter(name: 'location_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'date_from', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'date_to', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Item receive not placed report data'),
+        ]
+    )]
+    public function itemReceiveNotPlace(Request $request): JsonResponse
+    {
+        $data = $this->reportService->itemReceiveNotPlaceReport($request->all());
+        return $this->successResponse($data, 'Item receive not placed report berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/wms/pick-list',
+        summary: 'Print picklist report',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'location_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'status', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'date_from', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'date_to', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Picklist report data'),
+        ]
+    )]
+    public function pickList(Request $request): JsonResponse
+    {
+        $data = $this->reportService->pickListReport($request->all());
+        return $this->successResponse($data, 'Picklist report berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/wms/shipping-manifest',
+        summary: 'Shipping manifest / proof of delivery report',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'location_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'status', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'courier_code', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'date_from', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'date_to', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Shipping manifest report data'),
+        ]
+    )]
+    public function shippingManifest(Request $request): JsonResponse
+    {
+        $data = $this->reportService->shippingManifestReport($request->all());
+        return $this->successResponse($data, 'Shipping manifest report berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/shipping-label',
+        summary: 'Print shipping label',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'query', required: false, description: 'Single order ID', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'order_ids', in: 'query', required: false, description: 'Comma-separated order IDs', schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Shipping label data'),
+        ]
+    )]
+    public function shippingLabel(Request $request): JsonResponse
+    {
+        $filters = $request->all();
+        if (is_string($filters['order_ids'] ?? null)) {
+            $filters['order_ids'] = array_filter(explode(',', $filters['order_ids']));
+        }
+        $data = $this->reportService->shippingLabelReport($filters);
+        return $this->successResponse($data, 'Shipping label berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/lable/print',
+        summary: 'Print shipping label (alternate route)',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'order_ids', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Shipping label data'),
+        ]
+    )]
+    public function labelPrint(Request $request): JsonResponse
+    {
+        return $this->shippingLabel($request);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/lazada/get-document',
+        summary: 'Print Lazada invoice/label (placeholder)',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        parameters: [
+            new OA\Parameter(name: 'order_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Lazada document data'),
+        ]
+    )]
+    public function lazadaGetDocument(Request $request): JsonResponse
+    {
+        $orderId = $request->query('order_id');
+
+        if ($orderId) {
+            $order = \Modules\Sales\Models\SalesOrder::select([
+                'id', 'salesorder_no', 'customer_name', 'source',
+                'shipping_full_name', 'shipping_address', 'shipping_city',
+                'tracking_number', 'shipping_provider',
+            ])->with('items:id,order_id,sku,description,qty_in_base,price,amount')
+              ->findOrFail($orderId);
+
+            return $this->successResponse([
+                'report_type' => 'lazada_document',
+                'generated_at' => now()->toIso8601String(),
+                'data' => $order,
+            ], 'Lazada document berhasil diambil.');
+        }
+
+        return $this->successResponse([
+            'report_type' => 'lazada_document',
+            'generated_at' => now()->toIso8601String(),
+            'data' => null,
+            'message' => 'Integrasi Lazada belum tersedia. Gunakan parameter order_id untuk mengambil data order.',
+        ], 'Lazada document placeholder.');
+    }
 }
