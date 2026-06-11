@@ -27,6 +27,7 @@ class StoreLocationRequest extends FormRequest
             'is_fbl' => 'nullable|boolean',
             'is_tcb' => 'nullable|boolean',
             'is_fbs' => 'nullable|boolean',
+            'is_pos' => 'nullable|boolean',
             'layout' => 'nullable|array',
             'layout.*.zone_code' => 'required_with:layout|string|max:20',
             'layout.*.zone_name' => 'nullable|string|max:100',

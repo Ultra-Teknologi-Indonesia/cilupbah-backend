@@ -34,6 +34,7 @@ class Location extends Model
         'is_fbl',
         'is_tcb',
         'is_fbs',
+        'is_pos',
     ];
 
     protected $casts = [
@@ -43,6 +44,7 @@ class Location extends Model
         'is_fbl' => 'boolean',
         'is_tcb' => 'boolean',
         'is_fbs' => 'boolean',
+        'is_pos' => 'boolean',
     ];
 
     public function village(): BelongsTo
