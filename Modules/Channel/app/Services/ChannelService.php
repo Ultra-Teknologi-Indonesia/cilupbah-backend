@@ -3,14 +3,20 @@
 namespace Modules\Channel\Services;
 
 use Modules\Channel\Repositories\ChannelRepository;
+use Modules\Channel\Repositories\ChannelShopRepository;
 
 class ChannelService
 {
     protected ChannelRepository $channelRepository;
 
-    public function __construct(ChannelRepository $channelRepository)
-    {
+    protected ChannelShopRepository $channelShopRepository;
+
+    public function __construct(
+        ChannelRepository $channelRepository,
+        ChannelShopRepository $channelShopRepository,
+    ) {
         $this->channelRepository = $channelRepository;
+        $this->channelShopRepository = $channelShopRepository;
     }
 
     /**
@@ -19,5 +25,13 @@ class ChannelService
     public function getPaginatedChannels()
     {
         return $this->channelRepository->getPaginatedChannels();
+    }
+
+    /**
+     * Jubelio: /marketplace/store — daftar toko marketplace yang terhubung.
+     */
+    public function getConnectedStores()
+    {
+        return $this->channelShopRepository->getPaginatedShops();
     }
 }

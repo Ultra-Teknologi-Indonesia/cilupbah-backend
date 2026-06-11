@@ -4,7 +4,9 @@ namespace Modules\Channel\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Channel\Http\Resources\ChannelShopResource;
 use Modules\Channel\Services\ChannelService;
 use Modules\Channel\Services\TikTokAuthService;
 
@@ -19,6 +21,17 @@ class ChannelController extends Controller
     {
         $this->channelService = $channelService;
         $this->authService = $authService;
+    }
+
+    /**
+     * Jubelio: GET /marketplace/store — Ambil semua toko marketplace yang terhubung.
+     */
+    public function stores(): JsonResponse
+    {
+        return $this->successPaginatedResponse(
+            ChannelShopResource::collection($this->channelService->getConnectedStores()),
+            'Daftar toko marketplace berhasil diambil'
+        );
     }
 
     /**

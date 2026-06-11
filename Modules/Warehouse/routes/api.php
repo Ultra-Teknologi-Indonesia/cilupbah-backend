@@ -7,6 +7,10 @@ use Modules\Warehouse\Http\Controllers\LocationBinController;
 use Modules\Warehouse\Http\Controllers\ChannelWarehouseController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
+    // Jubelio: pemetaan lokasi ke toko (alias dari channel-warehouses).
+    // Harus didefinisikan sebelum apiResource agar tidak tertangkap locations/{location}.
+    Route::get('locations/store', [ChannelWarehouseController::class, 'index'])->name('warehouse.location.store');
+
     Route::apiResource('locations', LocationController::class)->names('warehouse.location');
 
     Route::get('locations/{locationId}/zones', [LocationZoneController::class, 'index'])->name('warehouse.zones.index');
