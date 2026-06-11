@@ -212,7 +212,7 @@ class TrackingItemsSeeder extends Seeder
             ['domain'=>'Location & The Rack Plan','method'=>'DELETE','endpoint'=>'/locations/','function_id'=>'Hapus lokasi','status'=>'done','pic'=>'Darriel','priority'=>null,'source'=>'jubelio'],
             ['domain'=>'Location & The Rack Plan','method'=>'GET','endpoint'=>'/locations/{id}','function_id'=>'Ambil detail lokasi','status'=>'done','pic'=>'Darriel','priority'=>null,'source'=>'jubelio'],
             ['domain'=>'Location & The Rack Plan','method'=>'GET','endpoint'=>'/locations/bin/{location_id}','function_id'=>'Ambil bin per lokasi','status'=>'done','pic'=>'Darriel','priority'=>null,'source'=>'jubelio'],
-            ['domain'=>'Location & The Rack Plan','method'=>'GET','endpoint'=>'/locations/pos','function_id'=>'Ambil lokasi yang punya outlet POS','status'=>'todo','pic'=>'Darriel','priority'=>null,'source'=>'jubelio'],
+            ['domain'=>'Location & The Rack Plan','method'=>'GET','endpoint'=>'/locations/pos','function_id'=>'Ambil lokasi yang punya outlet POS','status'=>'done','pic'=>'Darriel','priority'=>null,'source'=>'jubelio'],
             ['domain'=>'Location & The Rack Plan','method'=>'GET','endpoint'=>'/locations/store/','function_id'=>'Ambil pemetaan lokasi ke toko','status'=>'done','pic'=>'Darriel','priority'=>null,'source'=>'jubelio'],
             ['domain'=>'Authentication','method'=>'POST','endpoint'=>'/login','function_id'=>'Login & dapatkan token akses (Sanctum)','status'=>'done','pic'=>'Darriel','priority'=>null,'source'=>'jubelio'],
             ['domain'=>'Channels','method'=>'GET','endpoint'=>'/marketplace/store/','function_id'=>'Ambil semua toko marketplace yang terhubung','status'=>'done','pic'=>'Darriel','priority'=>null,'source'=>'jubelio'],

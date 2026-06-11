@@ -11,6 +11,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     // Harus didefinisikan sebelum apiResource agar tidak tertangkap locations/{location}.
     Route::get('locations/store', [ChannelWarehouseController::class, 'index'])->name('warehouse.location.store-mapping');
 
+    // Jubelio getLocationsPos: lokasi yang punya outlet POS. Statik, harus sebelum apiResource.
+    Route::get('locations/pos', [LocationController::class, 'pos'])->name('warehouse.location.pos');
+
     Route::apiResource('locations', LocationController::class)->names('warehouse.location');
 
     Route::get('locations/{locationId}/zones', [LocationZoneController::class, 'index'])->name('warehouse.zones.index');

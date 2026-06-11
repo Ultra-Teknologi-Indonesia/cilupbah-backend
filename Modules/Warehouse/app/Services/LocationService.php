@@ -173,4 +173,10 @@ class LocationService
     {
         return $this->locationRepository->getFulfillmentLocations();
     }
+
+    /** Daftar lokasi outlet POS (paginated). */
+    public function getPosLocations()
+    {
+        return $this->locationRepository->getPosPaginated();
+    }
 }

@@ -20,6 +20,7 @@ class LocationRepository
                 AllowedFilter::exact('is_fbl'),
                 AllowedFilter::exact('is_tcb'),
                 AllowedFilter::exact('is_fbs'),
+                AllowedFilter::exact('is_pos'),
                 'location_type',
                 AllowedFilter::exact('village_id'),
                 AllowedFilter::exact('village.district.city_id'),
@@ -61,6 +62,23 @@ class LocationRepository
             ->where('is_warehouse', true)
             ->orderBy('location_name')
             ->get();
+    }
+
+    /**
+     * Daftar lokasi yang berfungsi sebagai outlet POS (Jubelio: getLocationsPos).
+     * Hanya lokasi aktif & ber-flag is_pos. Mendukung ?search=, sort=, dan per_page.
+     */
+    public function getPosPaginated()
+    {
+        return QueryBuilder::for(Location::class)
+            ->with('village.district.city.province')
+            ->where('is_active', true)
+            ->where('is_pos', true)
+            ->allowedSearch('location_name')
+            ->allowedSorts('location_name', 'created_at', 'location_code')
+            ->defaultSort('location_name')
+            ->paginate(request('per_page', 10))
+            ->appends(request()->query());
     }
 
     public function getFulfillmentLocations(): Collection
