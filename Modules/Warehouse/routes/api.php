@@ -9,7 +9,7 @@ use Modules\Warehouse\Http\Controllers\ChannelWarehouseController;
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     // Jubelio: pemetaan lokasi ke toko (alias dari channel-warehouses).
     // Harus didefinisikan sebelum apiResource agar tidak tertangkap locations/{location}.
-    Route::get('locations/store', [ChannelWarehouseController::class, 'index'])->name('warehouse.location.store');
+    Route::get('locations/store', [ChannelWarehouseController::class, 'index'])->name('warehouse.location.store-mapping');
 
     Route::apiResource('locations', LocationController::class)->names('warehouse.location');
 
