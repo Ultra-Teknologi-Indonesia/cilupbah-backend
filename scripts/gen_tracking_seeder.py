@@ -340,7 +340,7 @@ ST = {
 "POST /wms/sales/picklists/":"done","POST /wms/sales/picklists/change-picker/":"done","GET /wms/sales/picklists/confirm-pick/":"partial","POST /wms/sales/ready-to-pick":"partial","POST /wms/sales/ready-to-process":"partial",
 "GET /wms/sales/shipments/all":"done","GET /wms/sales/shipments/completed/{shipment_type}/{courierIds}":"todo","GET /wms/sales/shipments/instant/all":"todo","POST /wms/sales/shipments/orders/":"done","GET /wms/sales/shipments/{courier_new_id}":"partial","GET /wms/sales/shipped/":"done",
 "POST /wms/scan-shipment":"done","POST /wms/shipment-detail/":"done","POST /wms/shipments/":"done","POST /wms/shipments/get-order/":"todo","POST /wms/shipments/instant-courier/":"todo",
-"POST /webhooks/invoice":"todo","POST /webhooks/payment":"todo","POST /webhooks/price":"done","POST /webhooks/product":"done","POST /webhooks/purchaseorder":"todo","POST /webhooks/salesorder":"done","POST /webhooks/salesreturn":"todo","POST /webhooks/stock":"done","POST /webhooks/stocktransfer":"todo",
+"POST /webhooks/invoice":"done","POST /webhooks/payment":"done","POST /webhooks/price":"done","POST /webhooks/product":"done","POST /webhooks/purchaseorder":"done","POST /webhooks/salesorder":"done","POST /webhooks/salesreturn":"done","POST /webhooks/stock":"done","POST /webhooks/stocktransfer":"done",
 }
 
 

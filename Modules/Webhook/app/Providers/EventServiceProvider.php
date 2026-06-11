@@ -28,10 +28,18 @@ class EventServiceProvider extends ServiceProvider
     {
         parent::boot();
 
+        // Fase 1 — event TikTok-driven
         \Modules\Product\Models\Product::observe(\Modules\Webhook\Observers\ProductWebhookObserver::class);
         \Modules\Product\Models\ProductVariant::observe(\Modules\Webhook\Observers\VariantWebhookObserver::class);
         \Modules\Inventory\Models\Inventory::observe(\Modules\Webhook\Observers\InventoryWebhookObserver::class);
         \Modules\Sales\Models\SalesOrder::observe(\Modules\Webhook\Observers\SalesOrderWebhookObserver::class);
+
+        // Fase 2 — event akuntansi/ops
+        \Modules\Sales\Models\SalesInvoice::observe(\Modules\Webhook\Observers\InvoiceWebhookObserver::class);
+        \Modules\Sales\Models\SalesPayment::observe(\Modules\Webhook\Observers\PaymentWebhookObserver::class);
+        \Modules\Purchase\Models\PurchaseOrder::observe(\Modules\Webhook\Observers\PurchaseOrderWebhookObserver::class);
+        \Modules\Sales\Models\SalesReturn::observe(\Modules\Webhook\Observers\SalesReturnWebhookObserver::class);
+        \Modules\Inventory\Models\InventoryTransfer::observe(\Modules\Webhook\Observers\StockTransferWebhookObserver::class);
     }
 
     /**
