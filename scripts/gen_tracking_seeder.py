@@ -368,13 +368,19 @@ PIC_BY_TAG = {
     "Sales":"Rasyid","Purchasing":"Rasyid","Contact":"Rasyid","Reports":"Rasyid",
 }
 
+# Override PIC per-endpoint (menang atas PIC_BY_TAG). Semua integrasi Lazada = Darriel.
+PIC_BY_ENDPOINT = {
+    "/lazada/get-document/":"Darriel",
+    "/lazada/get-shipment-providers/{storeId}/":"Darriel",
+}
+
 import json
 items=[]
 for tag,m,p,key in rows:
     items.append({
         "domain":tag, "method":m, "endpoint":p,
         "function_id":ID[key], "status":ST[key],
-        "baseline_status":ST[key], "pic":PIC_BY_TAG.get(tag),
+        "baseline_status":ST[key], "pic":PIC_BY_ENDPOINT.get(p, PIC_BY_TAG.get(tag)),
         "priority":None, "source":"jubelio", "cilupbah_impl":None,
     })
 
@@ -408,7 +414,7 @@ FEATURES=[
 OMNI_DONE={
  "Lazada": {"OAuth / Auth toko","Manajemen toko (list/refresh token)","Tarik order (pull)",
   "Push produk (create listing)","Sync produk (update)","Sync stok (push balik)","Sync harga",
-  "Terima/tolak order","Cancel order","Logistik / kurir channel"},
+  "Terima/tolak order","Cancel order","Logistik / kurir channel","Webhook masuk"},
 }
 for ch in CHANNELS:
     for f in FEATURES:
