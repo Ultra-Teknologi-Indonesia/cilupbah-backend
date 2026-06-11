@@ -32,15 +32,15 @@
 | Contact | 8 | 8 | 0 | 0 | Supplier (Contact) |
 | Journal | 5 | 0 | 0 | 5 | Finance ⬜ |
 | Cash & Bank | 4 | 0 | 0 | 4 | Finance ⬜ |
-| Reports | 13 | 0 | 0 | 13 | Report ⬜ |
+| Reports | 13 | 13 | 0 | 0 | Report ✅ |
 | System Setting | 8 | 1 | 1 | 6 | Auth/Setting |
 | Webhooks | 9 | 0 | 1 | 8 | Webhook ⬜ |
 | Channels (marketplace) | 1 | 0 | 1 | 0 | Channel |
-| **TOTAL** | **287** | **233** | **16** | **38** | — |
+| **TOTAL** | **287** | **246** | **16** | **25** | — |
 
 > Angka TOTAL **terverifikasi otomatis** terhadap `dist (2).yaml` (lihat **Lampiran A** — daftar lengkap 287 endpoint, 0 yang terlewat). Angka per-domain di tabel ini indikatif; sumber kebenaran = Lampiran A.
 
-**Cakupan fungsional: ✅ 233 (81%) + 🔄 16 (6%) + ⬜ 38 (13%) ≈ 87% setara penuh.** Dihitung per-operasi termasuk seluruh sub-endpoint Accounting/Sales/Purchase.
+**Cakupan fungsional: ✅ 246 (86%) + 🔄 16 (6%) + ⬜ 25 (9%) ≈ 91% setara penuh.** Dihitung per-operasi termasuk seluruh sub-endpoint Accounting/Sales/Purchase.
 
 ---
 
@@ -500,23 +500,23 @@ Berdasarkan git history (jumlah commit + baris kode lintas semua branch), dengan
 
 ---
 
-## 14. Reports ⬜ (0/13) — modul Report perlu dibangun (PDF/print)
+## 14. Reports ✅ (13/13)
 
-| M | Endpoint Jubelio | Fungsi | Status | Task |
+| M | Endpoint Jubelio | Fungsi | Status | Implementasi |
 |---|---|---|---|---|
-| GET | `/reports/putaway` | Putaway Reports | ⬜ | `ReportController@putaway` |
-| GET | `/reports/receive` | Receive Bill (PO) | ⬜ | `@receive` |
-| GET | `/reports/adjustment` | Stock Adjustment Report | ⬜ | `@adjustment` |
-| GET | `/reports/stock-opname` | Items To Opname | ⬜ | `@stockOpname` |
-| GET | `/reports/purchaseorder/` | PO Details | ⬜ | `@purchaseOrder` |
-| GET | `/reports/invoice` | Print Invoice | ⬜ | `@invoice` |
-| GET | `/reports/consign` | Receive Bill Consignment | ⬜ | `@consign` |
-| GET | `/reports/item-receive-notplace` | Received not placed | ⬜ | `@itemReceiveNotPlace` |
-| GET | `/reports/wms/pick-list` | Print Picklist | ⬜ | `@pickList` |
-| GET | `/reports/wms/shipping-manifest` | Proof of Delivery | ⬜ | `@shippingManifest` |
-| GET | `/reports/shipping-label/` | Print Shipping Label | ⬜ | `@shippingLabel` |
-| GET | `/reports/lable/print/` | Print Shipping Label (alt) | ⬜ | `@labelPrint` |
-| GET | `/lazada/get-document/` | Print Lazada Invoice/Label | ⬜ | integrasi Lazada |
+| GET | `/reports/putaway` | Putaway Reports | ✅ | `ReportController@putaway` |
+| GET | `/reports/receive` | Receive Bill (PO) | ✅ | `ReportController@receive` |
+| GET | `/reports/adjustment` | Stock Adjustment Report | ✅ | `ReportController@adjustment` |
+| GET | `/reports/stock-opname` | Items To Opname | ✅ | `ReportController@stockOpname` |
+| GET | `/reports/purchaseorder/` | PO Details | ✅ | `ReportController@purchaseOrder` |
+| GET | `/reports/invoice` | Print Invoice | ✅ | `ReportController@invoice` |
+| GET | `/reports/consign` | Receive Bill Consignment | ✅ | `ReportController@consign` |
+| GET | `/reports/item-receive-notplace` | Received not placed | ✅ | `ReportController@itemReceiveNotPlace` |
+| GET | `/reports/wms/pick-list` | Print Picklist | ✅ | `ReportController@pickList` |
+| GET | `/reports/wms/shipping-manifest` | Proof of Delivery | ✅ | `ReportController@shippingManifest` |
+| GET | `/reports/shipping-label/` | Print Shipping Label | ✅ | `ReportController@shippingLabel` |
+| GET | `/reports/lable/print/` | Print Shipping Label (alt) | ✅ | `ReportController@labelPrint` |
+| GET | `/lazada/get-document/` | Print Lazada Invoice/Label | ✅ | `ReportController@lazadaGetDocument` |
 
 ---
 
@@ -572,7 +572,7 @@ Webhook **outbound** Jubelio = endpoint untuk **menerima** event dari sistem int
 | **E4. Finance: Journal + Accounts (CoA)** | Finance | 🔵 Darriel | 5 | L | 🥈 P1 |
 | **E5. Cash & Bank** | Finance | 🔵 Darriel | 4 | M | 🥈 P1 |
 | **E6. Tax lengkap** | Tax | 🔵 Darriel | 1+ | S | 🥈 P1 |
-| **E7. Reports (PDF/print)** | Report | 🟢 Rasyid | 13 | L | 🥈 P1 |
+| ~~**E7. Reports (PDF/print)**~~ | Report | 🟢 Rasyid | ~~13~~ ✅ | — | ✅ DONE |
 | **E8. Webhooks outbound** | Webhook | 🔵 Darriel | 9 | M | 🥉 P2 |
 | **E9. Marketplace: Shopee, Tokopedia, Lazada, Blibli** | Channel | 🔵 Darriel | 6+ | XL | 🥉 P2 |
 | **E10. Inventory extended** (promotions, price-list, bundles, revaluations, split, batch) | Inventory/Product | 🟢 Rasyid (Inventory) + 🔵 Darriel (Product) | ~14 | L | 🥉 P3 |
@@ -690,7 +690,7 @@ Agar Cilupbah benar-benar **menggantikan Jubelio** tanpa mengubah client:
 3. **Contract testing** — validasi response tiap endpoint terhadap schema `dist (2).yaml` (mis. `spectator`/`openapi-httpfoundation-testing`).
 4. **Urutan eksekusi:** E3 (Contact) → E1 (Sales Invoice/Payment) → E2 (Purchase Bill/Payment) → E4/E5 (Finance) → E7 (Reports) → E8 (Webhooks) → E9 (Marketplace) → E10/E11 (polish).
 
-**Total endpoint yang masih harus dibuat: ± 38 operasi (⬜) + 16 penyempurnaan (🔄).** *(Sales, Purchase & Contact selesai 2026-06-10)*
+**Total endpoint yang masih harus dibuat: ± 25 operasi (⬜) + 16 penyempurnaan (🔄).** *(Sales, Purchase, Contact & Report selesai 2026-06-10)*
 
 ---
 
@@ -698,7 +698,7 @@ Agar Cilupbah benar-benar **menggantikan Jubelio** tanpa mengubah client:
 
 > Dibangkitkan otomatis dari `dist (2).yaml` (superset; mencakup `dist (3).yaml`). Validasi: **287 operasi**, semua punya fungsi & status.
 
-> Rekap: ✅ 193 · 🔄 29 · ⬜ 65
+> Rekap: ✅ 238 · 🔄 13 · ⬜ 36
 
 
 ### Authentication — ✅1 🔄0 ⬜0 (total 1)
@@ -1022,23 +1022,23 @@ Agar Cilupbah benar-benar **menggantikan Jubelio** tanpa mengubah client:
 | 255 | GET | `/cashbank/receives` | Ambil daftar penerimaan kas/bank (uang masuk) | ⬜ |
 | 256 | GET | `/cashbank/receives/id` | Ambil detail satu penerimaan kas/bank | ⬜ |
 
-### Reports — ✅0 🔄0 ⬜13 (total 13)
+### Reports — ✅13 🔄0 ⬜0 (total 13)
 
 | # | Method | Endpoint | Untuk apa (fungsi) | Status |
 |---:|---|---|---|:--:|
-| 257 | GET | `/lazada/get-document/` | Cetak invoice/label Lazada | ⬜ |
-| 258 | GET | `/reports/adjustment` | Cetak laporan penyesuaian stok | ⬜ |
-| 259 | GET | `/reports/consign` | Cetak bill terima produk konsinyasi | ⬜ |
-| 260 | GET | `/reports/invoice` | Cetak invoice | ⬜ |
-| 261 | GET | `/reports/item-receive-notplace` | Cetak daftar item diterima yang belum diletakkan | ⬜ |
-| 262 | GET | `/reports/lable/print/` | Cetak label pengiriman | ⬜ |
-| 263 | GET | `/reports/purchaseorder/` | Cetak detail purchase order | ⬜ |
-| 264 | GET | `/reports/putaway` | Cetak laporan putaway | ⬜ |
-| 265 | GET | `/reports/receive` | Cetak bill terima untuk purchase order | ⬜ |
-| 266 | GET | `/reports/shipping-label/` | Cetak label pengiriman | ⬜ |
-| 267 | GET | `/reports/stock-opname` | Cetak daftar item untuk opname | ⬜ |
-| 268 | GET | `/reports/wms/pick-list` | Cetak picklist item | ⬜ |
-| 269 | GET | `/reports/wms/shipping-manifest` | Cetak bukti pengiriman (shipping manifest) | ⬜ |
+| 257 | GET | `/lazada/get-document/` | Cetak invoice/label Lazada | ✅ |
+| 258 | GET | `/reports/adjustment` | Cetak laporan penyesuaian stok | ✅ |
+| 259 | GET | `/reports/consign` | Cetak bill terima produk konsinyasi | ✅ |
+| 260 | GET | `/reports/invoice` | Cetak invoice | ✅ |
+| 261 | GET | `/reports/item-receive-notplace` | Cetak daftar item diterima yang belum diletakkan | ✅ |
+| 262 | GET | `/reports/lable/print/` | Cetak label pengiriman | ✅ |
+| 263 | GET | `/reports/purchaseorder/` | Cetak detail purchase order | ✅ |
+| 264 | GET | `/reports/putaway` | Cetak laporan putaway | ✅ |
+| 265 | GET | `/reports/receive` | Cetak bill terima untuk purchase order | ✅ |
+| 266 | GET | `/reports/shipping-label/` | Cetak label pengiriman | ✅ |
+| 267 | GET | `/reports/stock-opname` | Cetak daftar item untuk opname | ✅ |
+| 268 | GET | `/reports/wms/pick-list` | Cetak picklist item | ✅ |
+| 269 | GET | `/reports/wms/shipping-manifest` | Cetak bukti pengiriman (shipping manifest) | ✅ |
 
 ### System Setting — ✅1 🔄1 ⬜6 (total 8)
 
