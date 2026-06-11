@@ -22,7 +22,7 @@
 | Authentication | 1 | 1 | 0 | 0 | Auth |
 | Region | 4 | 4 | 0 | 0 | Region |
 | Location & Rack Plan | 8 | 5 | 1 | 2 | Warehouse |
-| Product | 34 | 18 | 8 | 8 | Product |
+| Product | 34 | 34 | 0 | 0 | Product ✅ |
 | Product Listing | 8 | 3 | 2 | 3 | Product/Channel |
 | Inventory | 57 | 57 | 0 | 0 | Inventory |
 | WMS (Outbound) | 34 | 34 | 0 | 0 | Outbound |
@@ -36,11 +36,11 @@
 | System Setting | 8 | 1 | 1 | 6 | Auth/Setting |
 | Webhooks | 9 | 0 | 1 | 8 | Webhook ⬜ |
 | Channels (marketplace) | 1 | 0 | 1 | 0 | Channel |
-| **TOTAL** | **287** | **246** | **16** | **25** | — |
+| **TOTAL** | **287** | **253** | **6** | **28** | — |
 
 > Angka TOTAL **terverifikasi otomatis** terhadap `dist (2).yaml` (lihat **Lampiran A** — daftar lengkap 287 endpoint, 0 yang terlewat). Angka per-domain di tabel ini indikatif; sumber kebenaran = Lampiran A.
 
-**Cakupan fungsional: ✅ 246 (86%) + 🔄 16 (6%) + ⬜ 25 (9%) ≈ 91% setara penuh.** Dihitung per-operasi termasuk seluruh sub-endpoint Accounting/Sales/Purchase.
+**Cakupan fungsional: ✅ 253 (88%) + 🔄 6 (2%) + ⬜ 28 (10%) ≈ 90% setara penuh.** Dihitung per-operasi termasuk seluruh sub-endpoint Accounting/Sales/Purchase.
 
 ---
 
@@ -109,7 +109,7 @@ Berdasarkan git history (jumlah commit + baris kode lintas semua branch), dengan
 
 ---
 
-## 4. Product 🔄 (18✅/8🔄/8⬜)
+## 4. Product ✅ (34✅/0🔄/0⬜)
 
 | M | Endpoint Jubelio | Fungsi | Status | Implementasi / Task |
 |---|---|---|---|---|
@@ -131,22 +131,22 @@ Berdasarkan git history (jumlah commit + baris kode lintas semua branch), dengan
 | GET | `/inventory/categories/{id}/attributes-value/` | Attributes Values | ✅ | `AttributeController` (options) |
 | GET | `/inventory/categories/{id}/variations/` | Category Variants | ✅ | `ChannelProductController@categories`/variations |
 | GET | `/inventory/items/channel-category-tree/` | Channel Category Tree | ✅ | `ChannelCategoryController@index` |
-| GET | `/inventory/categories/category-map/{id}` | Category Mapping to Marketplace | 🔄 | `CategoryController@mapChannel` (arah sebaliknya) — **Task:** endpoint get-mapping |
-| GET | `/inventory/categories/{channel_id}/store-categories/{store_id}` | Store Categories | 🔄 | `ChannelCategoryController` — **Task:** filter per store |
-| GET | `/inventory/items/channel-category-attributes/` | All Channel Attributes | 🔄 | `ChannelAttributeController` — perlu listing global |
-| GET | `/inventory/items/by-sku/{sku}` | Get Product by SKU | 🔄 | **Task:** `ProductController@showBySku` |
-| POST | `/inventory/items/all-stocks/` | Product Stocks by Ids | 🔄 | `InventoryController@stockProducts` — perlu by-ids POST |
-| POST | `/inventory/items/prices/` | Product Prices by Ids | 🔄 | **Task:** price service belum ada |
-| GET | `/inventory/item-bundles/` | Get All Bundles | 🔄 | import bundle ada, **Task:** list bundle |
-| POST | `/inventory/items/` | Create/Edit Product Bundle | 🔄 | **Task:** bundle store/update |
-| GET | `/inventory/internal-price-list/` | Get All Product Prices | ⬜ | **Task:** modul Price List |
-| POST | `/inventory/price-list/` | Edit Product Prices | ⬜ | **Task:** Price List edit |
-| GET | `/inventory/promotions/` | Get All Promotions | ⬜ | **Task:** modul Promotion (CRUD) |
-| POST | `/inventory/promotions/` | Create Promotion | ⬜ | **Task:** Promotion store |
-| GET | `/inventory/promotions/{id}` | Get Promotion | ⬜ | **Task:** Promotion show |
-| DELETE | `/inventory/promotions/` | Delete Promotion | ⬜ | **Task:** Promotion destroy |
-| DELETE | `/inventory/items/item-variant/` | Delete Item Variant | ⬜ | **Task:** `ProductController@deleteVariant` |
-| GET | `/variations` | Get All Variations | ⬜ | **Task:** `VariationController@index` global |
+| GET | `/inventory/categories/category-map/{id}` | Category Mapping to Marketplace | ✅ | `CategoryController@getCategoryMap` |
+| GET | `/inventory/categories/{channel_id}/store-categories/{store_id}` | Store Categories | ✅ | `ChannelCategoryController@storeCategories` |
+| GET | `/inventory/items/channel-category-attributes/` | All Channel Attributes | ✅ | `ChannelAttributeController@globalIndex` |
+| GET | `/inventory/items/by-sku/{sku}` | Get Product by SKU | ✅ | `InventoryController@bySku` |
+| POST | `/inventory/items/all-stocks/` | Product Stocks by Ids | ✅ | `InventoryController@allStocksByIds` |
+| POST | `/inventory/items/prices/` | Product Prices by Ids | ✅ | `PriceListController@pricesByIds` |
+| GET | `/inventory/item-bundles/` | Get All Bundles | ✅ | `BundleController@index` |
+| POST | `/inventory/items/` | Create/Edit Product Bundle | ✅ | `BundleController@store` |
+| GET | `/inventory/internal-price-list/` | Get All Product Prices | ✅ | `PriceListController@index` |
+| POST | `/inventory/price-list/` | Edit Product Prices | ✅ | `PriceListController@update` |
+| GET | `/inventory/promotions/` | Get All Promotions | ✅ | `PromotionController@index` |
+| POST | `/inventory/promotions/` | Create Promotion | ✅ | `PromotionController@store` |
+| GET | `/inventory/promotions/{id}` | Get Promotion | ✅ | `PromotionController@show` |
+| DELETE | `/inventory/promotions/` | Delete Promotion | ✅ | `PromotionController@destroy` |
+| DELETE | `/inventory/items/item-variant/` | Delete Item Variant | ✅ | `InventoryController@deleteVariant` |
+| GET | `/variations` | Get All Variations | ✅ | Route closure → `ProductVariationType` grouped by attribute |
 
 ---
 
@@ -575,7 +575,7 @@ Webhook **outbound** Jubelio = endpoint untuk **menerima** event dari sistem int
 | ~~**E7. Reports (PDF/print)**~~ | Report | 🟢 Rasyid | ~~13~~ ✅ | — | ✅ DONE |
 | **E8. Webhooks outbound** | Webhook | 🔵 Darriel | 9 | M | 🥉 P2 |
 | **E9. Marketplace: Shopee, Tokopedia, Lazada, Blibli** | Channel | 🔵 Darriel | 6+ | XL | 🥉 P2 |
-| **E10. Inventory extended** (promotions, price-list, bundles, revaluations, split, batch) | Inventory/Product | 🟢 Rasyid (Inventory) + 🔵 Darriel (Product) | ~14 | L | 🥉 P3 |
+| ~~**E10. Inventory extended**~~ (promotions, price-list, bundles, revaluations, split, batch) | Inventory/Product | 🟢 Rasyid | ~~16~~ ✅ | — | ✅ DONE |
 | **E11. System Setting** (account-mapping, return-setting, webhook reg, store-locations) | Setting | 🔵 Darriel | 6 | M | 🥉 P3 |
 
 > Est: S=≤2 hari, M=3–5 hari, L=1–2 minggu, XL=>2 minggu.
@@ -698,7 +698,7 @@ Agar Cilupbah benar-benar **menggantikan Jubelio** tanpa mengubah client:
 
 > Dibangkitkan otomatis dari `dist (2).yaml` (superset; mencakup `dist (3).yaml`). Validasi: **287 operasi**, semua punya fungsi & status.
 
-> Rekap: ✅ 238 · 🔄 13 · ⬜ 36
+> Rekap: ✅ 254 · 🔄 5 · ⬜ 28
 
 
 ### Authentication — ✅1 🔄0 ⬜0 (total 1)
@@ -729,44 +729,44 @@ Agar Cilupbah benar-benar **menggantikan Jubelio** tanpa mengubah client:
 | 12 | GET | `/locations/{id}` | Ambil detail lokasi | ✅ |
 | 13 | GET | `/wms/default-bin/{location_id}` | Ambil bin default per lokasi | ✅ |
 
-### Product — ✅18 🔄8 ⬜8 (total 34)
+### Product — ✅34 🔄0 ⬜0 (total 34)
 
 | # | Method | Endpoint | Untuk apa (fungsi) | Status |
 |---:|---|---|---|:--:|
 | 14 | POST | `/inventory/catalog/` | Buat/ubah produk | ✅ |
-| 15 | GET | `/inventory/categories/category-map/{id}` | Ambil pemetaan kategori ke marketplace | 🔄 |
+| 15 | GET | `/inventory/categories/category-map/{id}` | Ambil pemetaan kategori ke marketplace | ✅ |
 | 16 | GET | `/inventory/categories/item-categories/` | Ambil semua kategori | ✅ |
 | 17 | GET | `/inventory/categories/item-categories/information/{id}/` | Ambil informasi kategori | ✅ |
-| 18 | GET | `/inventory/categories/{channel_id}/store-categories/{store_id}` | Ambil kategori toko per channel | 🔄 |
+| 18 | GET | `/inventory/categories/{channel_id}/store-categories/{store_id}` | Ambil kategori toko per channel | ✅ |
 | 19 | GET | `/inventory/categories/{id}/attributes-value/` | Ambil nilai atribut kategori | ✅ |
 | 20 | GET | `/inventory/categories/{id}/attributes/` | Ambil atribut kategori | ✅ |
 | 21 | GET | `/inventory/categories/{id}/variations/` | Ambil varian kategori | ✅ |
-| 22 | GET | `/inventory/internal-price-list/` | Ambil semua harga produk (price list internal) | ⬜ |
-| 23 | GET | `/inventory/item-bundles/` | Ambil semua bundle produk | 🔄 |
+| 22 | GET | `/inventory/internal-price-list/` | Ambil semua harga produk (price list internal) | ✅ |
+| 23 | GET | `/inventory/item-bundles/` | Ambil semua bundle produk | ✅ |
 | 24 | GET | `/inventory/items/` | Ambil semua grup produk | ✅ |
 | 25 | DELETE | `/inventory/items/` | Hapus produk | ✅ |
-| 26 | POST | `/inventory/items/` | Buat/ubah bundle produk | 🔄 |
-| 27 | POST | `/inventory/items/all-stocks/` | Ambil stok produk per banyak ID | 🔄 |
+| 26 | POST | `/inventory/items/` | Buat/ubah bundle produk | ✅ |
+| 27 | POST | `/inventory/items/all-stocks/` | Ambil stok produk per banyak ID | ✅ |
 | 28 | POST | `/inventory/items/archive/` | Arsipkan produk | ✅ |
 | 29 | GET | `/inventory/items/archived/` | Ambil semua produk terarsip | ✅ |
-| 30 | GET | `/inventory/items/by-sku/{sku}` | Ambil produk per SKU | 🔄 |
-| 31 | GET | `/inventory/items/channel-category-attributes/` | Ambil semua atribut kategori channel | 🔄 |
+| 30 | GET | `/inventory/items/by-sku/{sku}` | Ambil produk per SKU | ✅ |
+| 31 | GET | `/inventory/items/channel-category-attributes/` | Ambil semua atribut kategori channel | ✅ |
 | 32 | GET | `/inventory/items/channel-category-tree/` | Ambil pohon kategori channel | ✅ |
 | 33 | GET | `/inventory/items/group/{id}` | Ambil grup produk | ✅ |
-| 34 | DELETE | `/inventory/items/item-variant/` | Hapus varian item | ⬜ |
+| 34 | DELETE | `/inventory/items/item-variant/` | Hapus varian item | ✅ |
 | 35 | GET | `/inventory/items/masters` | Ambil semua produk master | ✅ |
-| 36 | POST | `/inventory/items/prices/` | Ambil harga produk per banyak ID | 🔄 |
+| 36 | POST | `/inventory/items/prices/` | Ambil harga produk per banyak ID | ✅ |
 | 37 | POST | `/inventory/items/restore/` | Pulihkan produk dari arsip | ✅ |
 | 38 | GET | `/inventory/items/reviews/` | Ambil semua produk dalam status review | ✅ |
 | 39 | GET | `/inventory/items/{id}` | Ambil detail produk | ✅ |
-| 40 | POST | `/inventory/price-list/` | Ubah harga produk | ⬜ |
-| 41 | GET | `/inventory/promotions/` | Ambil semua promosi | ⬜ |
-| 42 | POST | `/inventory/promotions/` | Buat promosi | ⬜ |
-| 43 | DELETE | `/inventory/promotions/` | Hapus promosi | ⬜ |
-| 44 | GET | `/inventory/promotions/{id}` | Ambil detail promosi | ⬜ |
+| 40 | POST | `/inventory/price-list/` | Ubah harga produk | ✅ |
+| 41 | GET | `/inventory/promotions/` | Ambil semua promosi | ✅ |
+| 42 | POST | `/inventory/promotions/` | Buat promosi | ✅ |
+| 43 | DELETE | `/inventory/promotions/` | Hapus promosi | ✅ |
+| 44 | GET | `/inventory/promotions/{id}` | Ambil detail promosi | ✅ |
 | 45 | GET | `/inventory/search-brands/` | Ambil semua merek (brand) | ✅ |
 | 46 | POST | `/inventory/upload-image` | Unggah gambar produk | ✅ |
-| 47 | GET | `/variations` | Ambil semua variasi (variant) produk | ⬜ |
+| 47 | GET | `/variations` | Ambil semua variasi (variant) produk | ✅ |
 
 ### Product Listing — ✅3 🔄2 ⬜3 (total 8)
 

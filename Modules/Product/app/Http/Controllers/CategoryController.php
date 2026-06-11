@@ -97,4 +97,21 @@ class CategoryController extends Controller
             return $this->errorResponse($e->getMessage(), 500);
         }
     }
+
+    public function getCategoryMap(int $id): JsonResponse
+    {
+        try {
+            $category = $this->categoryService->getCategoryById($id);
+            $mappings = \Modules\Product\Models\ChannelCategory::whereHas('localCategories', fn ($q) => $q->where('categories.id', $id))
+                ->with('channel:id,name')
+                ->get();
+
+            return $this->successResponse([
+                'category' => new CategoryResource($category),
+                'channel_mappings' => $mappings,
+            ], 'Berhasil mengambil pemetaan kategori.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 404);
+        }
+    }
 }

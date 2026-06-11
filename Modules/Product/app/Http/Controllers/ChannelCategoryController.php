@@ -30,4 +30,21 @@ class ChannelCategoryController extends Controller
         $categories = $this->service->getPaginated($channelId);
         return $this->successPaginatedResponse(ChannelCategoryResource::collection($categories), 'Berhasil mengambil daftar kategori channel');
     }
+
+    public function storeCategories(Request $request, string $channelId, string $storeId): JsonResponse
+    {
+        $categories = \Modules\Product\Models\ChannelCategory::where('channel_id', $channelId)
+            ->whereHas('localCategories', function ($q) use ($storeId) {
+                $q->whereHas('products', function ($pq) use ($storeId) {
+                    $pq->whereHas('channelMappings', fn ($cm) => $cm->where('channel_shop_id', $storeId));
+                });
+            })
+            ->with('localCategories:id,name')
+            ->get();
+
+        return $this->successResponse(
+            ChannelCategoryResource::collection($categories),
+            'Berhasil mengambil kategori toko.'
+        );
+    }
 }

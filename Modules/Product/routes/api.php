@@ -106,6 +106,28 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
 
     // Master Data
+    // Variations (global)
+    Route::get('variations', function (\Illuminate\Http\Request $request) {
+        $types = \Modules\Product\Models\ProductVariationType::with('attribute:id,name')
+            ->select('attribute_id', \Illuminate\Support\Facades\DB::raw('count(*) as usage_count'))
+            ->groupBy('attribute_id')
+            ->orderByDesc('usage_count')
+            ->paginate($request->input('limit', 50));
+        return response()->json(['success' => true, 'data' => $types->items(), 'pagination' => [
+            'current_page' => $types->currentPage(), 'last_page' => $types->lastPage(),
+            'per_page' => $types->perPage(), 'total' => $types->total(),
+        ]]);
+    })->name('variations.index');
+
+    // Channel category attributes (global listing)
+    Route::get('inventory/items/channel-category-attributes', [\Modules\Product\Http\Controllers\ChannelAttributeController::class, 'globalIndex'])->name('channelAttributes.global');
+
+    // Category map GET
+    Route::get('inventory/categories/category-map/{id}', [CategoryController::class, 'getCategoryMap'])->name('category.getMap');
+
+    // Store categories per channel
+    Route::get('inventory/categories/{channelId}/store-categories/{storeId}', [ChannelCategoryController::class, 'storeCategories'])->name('channelCategory.storeCategories');
+
     Route::apiResource('categories', CategoryController::class)->names('category');
     Route::post('categories/{category}/map-channel', [CategoryController::class, 'mapChannel']);
     
