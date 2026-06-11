@@ -406,7 +406,8 @@ FEATURES=[
 ]
 # Fitur omnichannel yang sudah selesai per channel.
 OMNI_DONE={
- "Lazada": {"OAuth / Auth toko","Manajemen toko (list/refresh token)","Tarik order (pull)"},
+ "Lazada": {"OAuth / Auth toko","Manajemen toko (list/refresh token)","Tarik order (pull)",
+  "Push produk (create listing)","Sync produk (update)","Sync stok (push balik)","Sync harga"},
 }
 for ch in CHANNELS:
     for f in FEATURES:

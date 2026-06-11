@@ -210,15 +210,21 @@ class LazadaStoreApiTest extends TestCase
         $this->assertEquals('lazada', $adapter->getChannelCode());
     }
 
-    public function test_adapter_unimplemented_operations_fail_gracefully(): void
+    public function test_adapter_api_error_fails_gracefully_without_throwing(): void
     {
+        Http::fake([
+            'api.lazada.co.id/*' => Http::response(['code' => 'ApiCallLimit', 'message' => 'too many requests'], 200),
+        ]);
+
         $adapter = app(LazadaAdapter::class);
         $shop = $this->makeShop();
         $product = new \Modules\Product\Models\Product();
+        $product->setRelation('variants', collect());
+        $product->setRelation('media', collect());
 
         $result = $adapter->pushProduct($product, $shop);
 
         $this->assertFalse($result['success']);
-        $this->assertStringContainsString('belum diimplementasikan', $result['message']);
+        $this->assertStringContainsString('too many requests', $result['message']);
     }
 }
