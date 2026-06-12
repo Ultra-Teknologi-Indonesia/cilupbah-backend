@@ -202,8 +202,8 @@ class SalesInvoiceController extends Controller
     public function createFromOrder(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'order_id'   => 'required|string|exists:sales_orders,id',
-            'location_id' => 'nullable|string|exists:locations,id',
+            'order_id'   => 'required|bail|uuid|exists:sales_orders,id',
+            'location_id' => 'nullable|bail|uuid|exists:locations,id',
             'due_date'   => 'nullable|date',
             'created_by' => 'required|string|max:100',
         ]);
@@ -240,8 +240,8 @@ class SalesInvoiceController extends Controller
     public function createFromOrderWithPayment(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'order_id'       => 'required|string|exists:sales_orders,id',
-            'location_id'    => 'nullable|string|exists:locations,id',
+            'order_id'       => 'required|bail|uuid|exists:sales_orders,id',
+            'location_id'    => 'nullable|bail|uuid|exists:locations,id',
             'due_date'       => 'nullable|date',
             'payment_method' => 'nullable|string|max:100',
             'reference_no'   => 'nullable|string',

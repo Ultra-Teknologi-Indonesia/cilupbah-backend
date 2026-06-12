@@ -374,7 +374,7 @@ class SalesOrderController extends Controller
     {
         $validated = $request->validate([
             'ids'   => 'required|array|min:1',
-            'ids.*' => 'required|string|exists:sales_orders,id',
+            'ids.*' => 'required|bail|uuid|exists:sales_orders,id',
         ]);
 
         $count = $this->orderService->bulkDeleteCancelled($validated['ids']);
@@ -399,7 +399,7 @@ class SalesOrderController extends Controller
     {
         $validated = $request->validate([
             'order_ids'   => 'required|array|min:1',
-            'order_ids.*' => 'required|string|exists:sales_orders,id',
+            'order_ids.*' => 'required|bail|uuid|exists:sales_orders,id',
         ]);
 
         $count = $this->orderService->markAsComplete($validated['order_ids']);
@@ -425,7 +425,7 @@ class SalesOrderController extends Controller
     public function saveAirwaybill(Request $request)
     {
         $validated = $request->validate([
-            'order_id'         => 'required|string|exists:sales_orders,id',
+            'order_id'         => 'required|bail|uuid|exists:sales_orders,id',
             'tracking_number'  => 'required|string|max:255',
             'shipping_provider' => 'nullable|string|max:255',
         ]);
@@ -452,7 +452,7 @@ class SalesOrderController extends Controller
     public function saveReceivedDate(Request $request)
     {
         $validated = $request->validate([
-            'order_id'      => 'required|string|exists:sales_orders,id',
+            'order_id'      => 'required|bail|uuid|exists:sales_orders,id',
             'received_date' => 'nullable|date',
         ]);
 
@@ -479,7 +479,7 @@ class SalesOrderController extends Controller
     public function setAsPaid(Request $request)
     {
         $validated = $request->validate([
-            'order_id'       => 'required|string|exists:sales_orders,id',
+            'order_id'       => 'required|bail|uuid|exists:sales_orders,id',
             'payment_method' => 'nullable|string|max:100',
             'paid_time'      => 'nullable|date',
         ]);
@@ -506,7 +506,7 @@ class SalesOrderController extends Controller
     public function requestAwb(Request $request)
     {
         $validated = $request->validate([
-            'order_id'     => 'required|string|exists:sales_orders,id',
+            'order_id'     => 'required|bail|uuid|exists:sales_orders,id',
             'courier_code' => 'nullable|string|max:50',
         ]);
 

@@ -14,8 +14,8 @@ class StoreSalesReturnRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'order_id'           => ['nullable', 'string', 'exists:sales_orders,id'],
-            'location_id'        => ['required', 'string', 'exists:locations,id'],
+            'order_id'           => ['nullable', 'bail', 'uuid', 'exists:sales_orders,id'],
+            'location_id'        => ['required', 'bail', 'uuid', 'exists:locations,id'],
             'source'             => ['nullable', 'string', 'in:manual,marketplace'],
             'customer_name'      => ['nullable', 'string', 'max:255'],
             'customer_contact'   => ['nullable', 'string', 'max:255'],
@@ -23,7 +23,7 @@ class StoreSalesReturnRequest extends FormRequest
             'notes'              => ['nullable', 'string'],
             'created_by'         => ['required', 'string', 'max:100'],
             'items'              => ['required', 'array', 'min:1'],
-            'items.*.item_id'    => ['required', 'string', 'uuid', 'exists:product_variants,id'],
+            'items.*.item_id'    => ['required', 'bail', 'uuid', 'exists:product_variants,id'],
             'items.*.qty'        => ['required', 'integer', 'min:1'],
             'items.*.condition'  => ['nullable', 'string', 'in:GOOD,DAMAGE'],
             'items.*.notes'      => ['nullable', 'string'],

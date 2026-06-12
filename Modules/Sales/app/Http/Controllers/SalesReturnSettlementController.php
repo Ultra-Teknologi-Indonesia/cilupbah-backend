@@ -53,7 +53,7 @@ class SalesReturnSettlementController extends Controller
     )]
     public function destroy(Request $request): JsonResponse
     {
-        $request->validate(['id' => 'required|string|exists:sales_return_settlements,id']);
+        $request->validate(['id' => 'required|bail|uuid|exists:sales_return_settlements,id']);
 
         $this->service->delete($request->input('id'));
 
@@ -101,8 +101,8 @@ class SalesReturnSettlementController extends Controller
     public function invoiceStore(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'settlement_id' => 'required|string|exists:sales_return_settlements,id',
-            'invoice_id'    => 'required|string|exists:sales_invoices,id',
+            'settlement_id' => 'required|bail|uuid|exists:sales_return_settlements,id',
+            'invoice_id'    => 'required|bail|uuid|exists:sales_invoices,id',
             'amount'        => 'required|numeric|min:0.01',
         ]);
 
@@ -182,7 +182,7 @@ class SalesReturnSettlementController extends Controller
     public function refundStore(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'settlement_id' => 'required|string|exists:sales_return_settlements,id',
+            'settlement_id' => 'required|bail|uuid|exists:sales_return_settlements,id',
             'refund_number'  => 'required|string|max:50',
             'amount'         => 'required|numeric|min:0.01',
             'refund_method'  => 'required|string|max:100',
