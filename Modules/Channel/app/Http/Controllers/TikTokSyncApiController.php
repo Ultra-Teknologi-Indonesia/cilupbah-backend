@@ -23,7 +23,8 @@ class TikTokSyncApiController extends Controller
     public function pullOrdersAll(TikTokOrderService $orderService)
     {
         try {
-            $shops = $this->shopRepository->getActiveShops();
+            $shops = $this->shopRepository->getShopsByChannelCode('tiktok')
+                ->filter(fn ($shop) => $shop->is_active && $shop->access_token);
             $totalCount = 0;
             $results = [];
 
@@ -59,7 +60,8 @@ class TikTokSyncApiController extends Controller
     public function pullProductsAll(TikTokProductService $productService)
     {
         try {
-            $shops = $this->shopRepository->getActiveShops();
+            $shops = $this->shopRepository->getShopsByChannelCode('tiktok')
+                ->filter(fn ($shop) => $shop->is_active && $shop->access_token);
             $results = [];
 
             foreach ($shops as $shop) {
@@ -165,10 +167,11 @@ class TikTokSyncApiController extends Controller
         $request->validate(['shop_id' => 'required|string']);
         try {
             $failCount = $productService->bulkPushProducts($request->shop_id);
-            if ($failCount > 0) {
-                return $this->errorResponse("Bulk Push selesai dengan {$failCount} kegagalan.", 500);
-            }
-            return $this->successResponse(null, "Semua produk berhasil di-push secara massal.");
+            $message = $failCount > 0
+                ? "Bulk push selesai dengan {$failCount} kegagalan."
+                : "Semua produk berhasil di-push secara massal.";
+
+            return $this->successResponse(['fail_count' => $failCount], $message);
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 500);
         }

@@ -13,24 +13,21 @@ class TikTokWebhookController extends Controller
     public function handle(Request $request)
     {
         $rawBody = $request->getContent();
-        
-        $headers = $request->headers->all();
-        
+
         Log::info('TikTok Webhook Received', [
-            'headers' => $headers,
-            'body'    => $request->all(),
+            'type' => $request->input('type'),
+            'shop_id' => $request->input('shop_id'),
         ]);
 
         $appKey = config('services.tiktok.app_key');
         $appSecret = config('services.tiktok.app_secret');
-        $signature = $request->header('authorization') ?? $request->header('x-tts-webhook-signature'); 
-        
+        $signature = $request->header('authorization') ?? $request->header('x-tts-webhook-signature');
+
         $calculatedSignature = \Modules\Channel\Helpers\TikTokSignature::generateWebhookSignature($appKey, $rawBody, $appSecret);
-        
-        if ($signature !== $calculatedSignature) {
+
+        if (! hash_equals($calculatedSignature, (string) $signature)) {
             Log::warning('TikTok Webhook Signature Mismatch', [
-                'expected' => $calculatedSignature,
-                'received' => $signature
+                'shop_id' => $request->input('shop_id'),
             ]);
             return $this->errorResponse('Unauthorized', 401);
         }

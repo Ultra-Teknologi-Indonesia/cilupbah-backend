@@ -5,6 +5,7 @@ namespace Modules\Channel\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
+use Modules\Channel\Http\Resources\ChannelShopResource;
 use Modules\Channel\Services\TikTokAuthService;
 use Modules\Channel\Repositories\ChannelShopRepository;
 
@@ -24,14 +25,16 @@ class TikTokStoreController extends Controller
     public function index()
     {
         try {
-            $stores = $this->shopRepository->getPaginatedShops();
-            return $this->successResponse($stores, 'Daftar toko berhasil diambil');
+            return $this->successPaginatedResponse(
+                ChannelShopResource::collection($this->shopRepository->getPaginatedShops()),
+                'Daftar toko berhasil diambil'
+            );
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 500);
         }
     }
 
-    public function show(int $id)
+    public function show(string $id)
     {
         try {
             $store = $this->authService->getStoreDetail($id);
@@ -41,7 +44,7 @@ class TikTokStoreController extends Controller
         }
     }
 
-    public function destroy(int $id)
+    public function destroy(string $id)
     {
         try {
             $this->authService->disconnectStore($id);
@@ -51,7 +54,7 @@ class TikTokStoreController extends Controller
         }
     }
 
-    public function refreshToken(int $id)
+    public function refreshToken(string $id)
     {
         try {
             $result = $this->authService->refreshStoreToken($id);

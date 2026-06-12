@@ -53,7 +53,7 @@ class DownloadTransactionRepository
             ->allowedSearch('name', 'sku')
             ->defaultSort('-updated_at')
             ->allowedSorts('name', 'updated_at')
-            ->paginate(request('per_page', 25))
+            ->paginate(request('per_page', 10))
             ->appends(request()->query());
     }
 }

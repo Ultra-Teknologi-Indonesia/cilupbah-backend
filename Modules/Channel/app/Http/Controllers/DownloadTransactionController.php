@@ -37,6 +37,11 @@ class DownloadTransactionController extends Controller
 
     public function show(Request $request, string $id): JsonResponse
     {
+        $request->validate([
+            'per_page' => 'nullable|integer|min:1|max:500',
+            'page' => 'nullable|integer|min:1',
+        ]);
+
         try {
             $transaction = $this->repository->find($id);
         } catch (ModelNotFoundException) {

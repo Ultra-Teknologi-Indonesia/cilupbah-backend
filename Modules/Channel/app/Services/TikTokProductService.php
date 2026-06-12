@@ -3,7 +3,6 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
 use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Repositories\ChannelProductRepository;
@@ -17,17 +16,20 @@ class TikTokProductService
     protected TikTokProductMapper $mapper;
     protected ChannelShopRepository $shopRepository;
     protected ChannelProductRepository $productRepository;
+    protected TikTokImageUploader $imageUploader;
 
     public function __construct(
-        TikTokClient $client, 
+        TikTokClient $client,
         TikTokProductMapper $mapper,
         ChannelShopRepository $shopRepository,
-        ChannelProductRepository $productRepository
+        ChannelProductRepository $productRepository,
+        TikTokImageUploader $imageUploader
     ) {
         $this->client = $client;
         $this->mapper = $mapper;
         $this->shopRepository = $shopRepository;
         $this->productRepository = $productRepository;
+        $this->imageUploader = $imageUploader;
     }
 
     public function pushProduct(string $productId, string $shopId)
@@ -48,49 +50,12 @@ class TikTokProductService
         $variants = $this->productRepository->getVariantsByProductId($productId);
         $media = $this->productRepository->getMediaByProductId($productId);
 
-        $uploadedImageIds = [];
-        foreach ($media as $m) {
-            if ($m->media_type === 'image') {
-                $base64 = null;
-                try {
-                    $content = @file_get_contents($m->url);
-                    if ($content) {
-                        $base64 = base64_encode($content);
-                    }
-                } catch (\Exception $e) {}
+        $imageUrls = collect($media)
+            ->filter(fn ($m) => $m->media_type === 'image')
+            ->pluck('url')
+            ->all();
 
-                if (!$base64) {
-                    $base64 = '/9j/4AAQSkZJRgABAQEAYABgAAD//gA+Q1JFQVRPUjogZ2QtanBlZyB2MS4wICh1c2luZyBJSkcgSlBFRyB2ODApLCBkZWZhdWx0IHF1YWxpdHkK/9sAQwAIBgYHBgUIBwcHCQkICgwUDQwLCwwZEhMPFB0aHx4dGhwcICQuJyAiLCMcHCg3KSwwMTQ0NB8nOT04MjwuMzQy/9sAQwEJCQkMCwwYDQ0YMiEcITIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIy/8AAEQgBLAEsAwEiAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/EAB8BAAMBAQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEXGBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp6vLz9PX29/j5+v/aAAwDAQACEQMRAD8A+f6KKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAP/9k=';
-                }
-
-                try {
-                    $fileContent = base64_decode($base64);
-                    
-                    $res = $this->client->request(
-                        'POST', 
-                        '/product/202309/images/upload', 
-                        [], 
-                        [], 
-                        $accessToken,
-                        [
-                            'data' => [
-                                'contents' => $fileContent,
-                                'filename' => 'product_image_' . rand(100, 999) . '.jpg'
-                            ]
-                        ]
-                    );
-                    
-                    if (isset($res['data']['uri'])) {
-                        $uploadedImageIds[] = $res['data']['uri'];
-                    } else {
-                        Log::warning("TikTok Image Upload unexpected response: " . json_encode($res));
-                    }
-                } catch (\Exception $e) {
-                    Log::error("TikTok Image Upload failed: " . $e->getMessage());
-                    throw new \Exception("Failed to upload image to TikTok: " . $e->getMessage());
-                }
-            }
-        }
+        $uploadedImageIds = $this->imageUploader->uploadFromUrls($imageUrls, $accessToken);
 
         $internalProduct = (array)$product;
         $internalProduct['variants'] = $variants->map(function ($v) {
@@ -103,13 +68,7 @@ class TikTokProductService
         // Get mapped TikTok Category
         $tiktokCategoryId = null;
         if (!empty($product->category_id)) {
-            $mappedCategory = \Modules\Product\Models\Category::with(['channelCategories' => function ($q) use ($shop) {
-                $q->where('channel_id', $shop->channel_id);
-            }])->find($product->category_id);
-
-            if ($mappedCategory && $mappedCategory->channelCategories->isNotEmpty()) {
-                $tiktokCategoryId = $mappedCategory->channelCategories->first()->external_id;
-            }
+            $tiktokCategoryId = $this->productRepository->getChannelCategoryExternalId($product->category_id, $shop->channel_id);
         }
 
         $config = [];
@@ -118,35 +77,25 @@ class TikTokProductService
         }
 
         // Get product specifications and map them
-        $specs = DB::table('product_specifications')
-            ->where('product_id', $productId)
-            ->get();
+        $specs = $this->productRepository->getProductSpecifications($productId);
 
         $mappedAttributes = [];
         foreach ($specs as $spec) {
             // Find mapped attribute
-            $mapping = DB::table('attribute_channel_mappings')
-                ->where('attribute_id', $spec->attribute_id)
-                ->first();
+            $mapping = $this->productRepository->getAttributeChannelMapping($spec->attribute_id);
 
             if ($mapping) {
-                $channelAttr = DB::table('channel_attributes')
-                    ->where('id', $mapping->channel_attribute_id)
-                    ->first();
+                $channelAttr = $this->productRepository->getChannelAttribute($mapping->channel_attribute_id);
 
                 if ($channelAttr) {
                     $attrData = ['id' => $channelAttr->external_id, 'values' => []];
 
                     if ($spec->attribute_option_id) {
                         // Find mapped option
-                        $optMapping = DB::table('attribute_option_channel_mappings')
-                            ->where('attribute_option_id', $spec->attribute_option_id)
-                            ->first();
+                        $optMapping = $this->productRepository->getAttributeOptionChannelMapping($spec->attribute_option_id);
 
                         if ($optMapping) {
-                            $channelOpt = DB::table('channel_attribute_options')
-                                ->where('id', $optMapping->channel_attribute_option_id)
-                                ->first();
+                            $channelOpt = $this->productRepository->getChannelAttributeOption($optMapping->channel_attribute_option_id);
 
                             if ($channelOpt) {
                                 $attrData['values'][] = ['id' => $channelOpt->external_id, 'name' => $channelOpt->name];
@@ -232,10 +181,7 @@ class TikTokProductService
                                 ? $skuData['seller_sku']
                                 : ('TK-' . $skuData['id']);
 
-                            $variant = DB::table('product_variants')
-                                ->where('product_id', $insertedId)
-                                ->where('sku', $sku)
-                                ->first();
+                            $variant = $this->productRepository->getVariantByProductIdAndSku((string) $insertedId, $sku);
 
                             if ($variant) {
                                 $this->productRepository->upsertVariantChannelMapping(
@@ -302,7 +248,7 @@ class TikTokProductService
             $update['token_expires_at'] = now()->addSeconds($tokenData['data']['access_token_expire_in']);
         }
 
-        DB::table('channel_shops')->where('id', $shop->id)->update($update);
+        $this->shopRepository->updateTokens($shop->id, $update);
 
         Log::info("TikTok token refreshed for shop: {$shop->shop_id}");
 
@@ -328,9 +274,7 @@ class TikTokProductService
 
         $variants = $this->productRepository->getVariantsByProductId($productId);
 
-        $channelWarehouse = DB::table('channel_warehouses')
-            ->where('store_id', $shopId)
-            ->first();
+        $channelWarehouse = $this->productRepository->getChannelWarehouseByStore($shopId);
 
         $skus = [];
         $inventorySkus = [];
@@ -346,10 +290,7 @@ class TikTokProductService
 
             $availableQty = 0;
             if ($channelWarehouse) {
-                $availableQty = (int) DB::table('inventories')
-                    ->where('item_id', $v->id)
-                    ->where('location_id', $channelWarehouse->location_id)
-                    ->sum('available');
+                $availableQty = $this->productRepository->getAvailableQty($v->id, $channelWarehouse->location_id);
             }
 
             $inventorySkus[] = [
@@ -399,12 +340,12 @@ class TikTokProductService
 
     public function pushUpdate(string $productId, string $shopId)
     {
-        $shop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
+        $shop = $this->shopRepository->findByShopId($shopId);
         if (!$shop || !$shop->access_token) {
             throw new \Exception("No access token found for shop: {$shopId}");
         }
 
-        $product = DB::table('products')->where('id', $productId)->first();
+        $product = $this->productRepository->findById($productId);
         if (!$product) {
             throw new \Exception("Product not found");
         }
@@ -414,18 +355,18 @@ class TikTokProductService
             throw new \Exception("Product not synced to TikTok yet");
         }
 
-        $variants = DB::table('product_variants')->where('product_id', $productId)->get();
-        $media = DB::table('product_media')->where('product_id', $productId)->get();
+        $variants = $this->productRepository->getVariantsByProductId($productId);
+        $media = $this->productRepository->getMediaByProductId($productId);
 
         $uploadedImageIds = [];
         foreach ($media as $m) {
-            $uploadedImageIds[] = $m->url; 
+            $uploadedImageIds[] = $m->url;
         }
 
         $internalProduct = (array)$product;
         $internalProduct['variants'] = $variants->map(function ($v) {
             $variantArr = (array)$v;
-            $options = DB::table('variant_options')->where('variant_id', $v->id)->get()->toArray();
+            $options = $this->productRepository->getRawVariantOptions($v->id);
             $variantArr['options'] = array_map(fn($opt) => (array)$opt, $options);
             return $variantArr;
         })->toArray();
@@ -437,7 +378,7 @@ class TikTokProductService
 
     public function deleteProduct(string $productId, string $shopId)
     {
-        $shop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
+        $shop = $this->shopRepository->findByShopId($shopId);
         if (!$shop || !$shop->access_token) {
             throw new \Exception("No access token found for shop: {$shopId}");
         }
@@ -452,7 +393,7 @@ class TikTokProductService
 
     public function activateProduct(string $productId, string $shopId)
     {
-        $shop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
+        $shop = $this->shopRepository->findByShopId($shopId);
         if (!$shop || !$shop->access_token) {
             throw new \Exception("No access token found for shop: {$shopId}");
         }
@@ -467,7 +408,7 @@ class TikTokProductService
 
     public function deactivateProduct(string $productId, string $shopId)
     {
-        $shop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
+        $shop = $this->shopRepository->findByShopId($shopId);
         if (!$shop || !$shop->access_token) {
             throw new \Exception("No access token found for shop: {$shopId}");
         }
