@@ -101,8 +101,34 @@ class CashbankService
             'note' => $payment->notes ?? '',
             'reference_no' => $payment->reference_no,
             'transaction_date' => $payment->payment_date?->toIso8601String(),
-            'accounts' => $this->synthesizeJournalLines($payment, $account),
+            'accounts' => $this->journalLinesFor($payment, $account),
         ];
+    }
+
+    /**
+     * Baris jurnal untuk detail cashbank (PLAN-CASHBANK §7 / PLAN-JOURNAL §1e):
+     * pakai JURNAL NYATA bila sudah ada (journal_detail_id terisi); data lama
+     * pra-domain-Journal → fallback sintesis. Kontrak response tidak berubah.
+     */
+    protected function journalLinesFor(Model $payment, array $cashAccount): array
+    {
+        $sourceType = $payment instanceof SalesPayment ? 'sales_payment' : 'purchase_payment';
+
+        $journal = app(\Modules\Finance\Repositories\JournalRepository::class)
+            ->findBySourceDoc($sourceType, $payment->id);
+
+        if ($journal) {
+            return $journal->details->map(fn ($d) => [
+                'account_id' => $d->account?->account_code ?? $d->account_id,
+                'account_name' => $d->account?->display_name,
+                'debit' => (string) $d->debit,
+                'credit' => (string) $d->credit,
+                'description' => $d->description,
+                'journal_detail_id' => $d->id,
+            ])->all();
+        }
+
+        return $this->synthesizeJournalLines($payment, $cashAccount);
     }
 
     /**
