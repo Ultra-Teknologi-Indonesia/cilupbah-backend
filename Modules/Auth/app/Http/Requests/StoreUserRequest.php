@@ -6,17 +6,11 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class StoreUserRequest extends FormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
     public function authorize(): bool
     {
         return true;
     }
 
-    /**
-     * Get the validation rules that apply to the request.
-     */
     public function rules(): array
     {
         return [
@@ -36,16 +30,11 @@ class StoreUserRequest extends FormRequest
             'roles' => ['required', 'array', 'min:1'],
             'roles.*' => ['required', 'string', 'exists:roles,name', 'not_in:owner'],
             'nik' => ['nullable', 'string', 'max:255'],
-            // bail+uuid agar warehouse_id non-UUID gagal di format (422), tidak lanjut ke
-            // query exists yang akan memicu error cast uuid Postgres (500).
             'warehouse_id' => ['nullable', 'bail', 'uuid', 'exists:locations,id'],
             'avatar_media_id' => ['nullable', 'bail', 'uuid', 'exists:media,uuid'],
         ];
     }
 
-    /**
-     * Custom error messages
-     */
     public function messages(): array
     {
         return [

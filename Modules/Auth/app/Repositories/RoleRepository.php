@@ -3,8 +3,8 @@
 namespace Modules\Auth\Repositories;
 
 use App\Models\Role;
-use Spatie\QueryBuilder\QueryBuilder;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class RoleRepository
 {
@@ -12,6 +12,7 @@ class RoleRepository
     {
         return QueryBuilder::for(Role::class)
             ->with('permissions:id,name')
+            ->withCount('users')
             ->allowedSearch('name')
             ->allowedSorts('name', 'created_at')
             ->defaultSort('name')
@@ -22,6 +23,16 @@ class RoleRepository
     public function findById(string $id): Role
     {
         return Role::findOrFail($id);
+    }
+
+    public function findByIdWithRelations(string $id): Role
+    {
+        return Role::with('permissions:id,name')->withCount('users')->findOrFail($id);
+    }
+
+    public function countUsers(Role $role): int
+    {
+        return $role->users()->count();
     }
 
     public function create(array $data): Role

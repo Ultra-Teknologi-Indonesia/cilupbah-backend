@@ -11,6 +11,13 @@ class StoreRoleRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        if (is_string($this->input('name'))) {
+            $this->merge(['name' => strtolower(trim($this->input('name')))]);
+        }
+    }
+
     public function rules(): array
     {
         return [

@@ -2,16 +2,12 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
-use Illuminate\Database\Seeder;
-
+use App\Models\Permission;
 use App\Models\Role;
+use Illuminate\Database\Seeder;
 
 class RoleSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
         $roles = [
@@ -38,6 +34,9 @@ class RoleSeeder extends Seeder
         $permissions = [
             'view-user-history',
             'view-user',
+            'create-user',
+            'edit-user',
+            'delete-user',
             'export-user',
             'view-dashboard',
             'force-logout-user',
@@ -49,7 +48,7 @@ class RoleSeeder extends Seeder
         ];
 
         foreach ($permissions as $permission) {
-            \App\Models\Permission::firstOrCreate(['name' => $permission, 'guard_name' => 'web']);
+            Permission::firstOrCreate(['name' => $permission, 'guard_name' => 'web']);
         }
     }
 }
