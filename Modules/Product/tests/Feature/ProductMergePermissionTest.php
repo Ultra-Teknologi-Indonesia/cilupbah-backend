@@ -39,7 +39,7 @@ class ProductMergePermissionTest extends TestCase
         $this->postJson('/api/v1/products/merge/hide', [])->assertStatus(401);
         $this->postJson('/api/v1/products/merge/unhide', [])->assertStatus(401);
         $this->deleteJson('/api/v1/products/merge/master', [])->assertStatus(401);
-        $this->deleteJson('/api/v1/products/merge/some-id')->assertStatus(401);
+        $this->deleteJson('/api/v1/products/merge/019ea2af-ad1d-733e-afb9-05816d10590e')->assertStatus(401);
     }
 
     public function test_authenticated_without_permission_is_forbidden(): void

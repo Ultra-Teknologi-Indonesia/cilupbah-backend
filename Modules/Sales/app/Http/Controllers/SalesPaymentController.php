@@ -112,7 +112,7 @@ class SalesPaymentController extends Controller
     )]
     public function destroy(Request $request): JsonResponse
     {
-        $request->validate(['id' => 'required|string|exists:sales_payments,id']);
+        $request->validate(['id' => 'required|bail|uuid|exists:sales_payments,id']);
 
         try {
             $this->paymentService->delete($request->input('id'));
