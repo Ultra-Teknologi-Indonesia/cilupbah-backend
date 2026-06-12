@@ -369,6 +369,20 @@ class SalesOrderService
             return true;
         }
 
+        if (in_array($previousStatus, ['reserved', 'picked', 'packed']) && $finalStatus === 'shipped') {
+            // Order channel bisa terkirim tanpa melewati picklist WMS (mis. dipenuhi
+            // langsung oleh marketplace). Dari status 'reserved', on_hand belum
+            // berkurang dan reserved masih tertahan — lakukan pengurangan fisik di
+            // sini agar stok tidak bocor permanen. Dari 'picked'/'packed', picklist
+            // WMS sudah mengurangi on_hand+reserved, cukup catat movement SHIP.
+            if ($previousStatus === 'reserved') {
+                $this->pickStockForOrder($order);
+            }
+
+            $this->shipStockForOrder($order);
+            return true;
+        }
+
         if (in_array($previousStatus, ['reserved', 'picked', 'packed']) && $finalStatus === 'cancelled') {
             $order->status = $previousStatus;
             $this->releaseStockForOrder($order);
