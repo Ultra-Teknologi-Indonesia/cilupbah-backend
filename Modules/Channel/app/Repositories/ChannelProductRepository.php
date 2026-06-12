@@ -12,11 +12,6 @@ class ChannelProductRepository
         return DB::table('products')->where('is_active', true)->get();
     }
 
-    public function getAllProducts()
-    {
-        return DB::table('products')->orderBy('id', 'desc')->get();
-    }
-
     /**
      * Produk yang BELUM punya mapping ke toko/channel tertentu ("Belum Upload").
      * Menggantikan query lama `whereNull('channel_product_id')` yang kolomnya sudah di-drop.
@@ -39,6 +34,14 @@ class ChannelProductRepository
     public function getVariantBySku(string $sku)
     {
         return DB::table('product_variants')->where('sku', $sku)->first();
+    }
+
+    public function getVariantByProductIdAndSku(string $productId, string $sku)
+    {
+        return DB::table('product_variants')
+            ->where('product_id', $productId)
+            ->where('sku', $sku)
+            ->first();
     }
 
     public function findById(string $id)
@@ -64,6 +67,62 @@ class ChannelProductRepository
             ->select('variant_options.*', 'attributes.name as attribute_name')
             ->get()
             ->toArray();
+    }
+
+    public function getRawVariantOptions(string $variantId)
+    {
+        return DB::table('variant_options')->where('variant_id', $variantId)->get()->toArray();
+    }
+
+    public function getChannelCategoryExternalId(string $categoryId, string $channelId): ?string
+    {
+        $category = \Modules\Product\Models\Category::with([
+            'channelCategories' => fn ($q) => $q->where('channel_id', $channelId),
+        ])->find($categoryId);
+
+        if ($category && $category->channelCategories->isNotEmpty()) {
+            return $category->channelCategories->first()->external_id;
+        }
+
+        return null;
+    }
+
+    public function getProductSpecifications(string $productId)
+    {
+        return DB::table('product_specifications')->where('product_id', $productId)->get();
+    }
+
+    public function getAttributeChannelMapping(string $attributeId)
+    {
+        return DB::table('attribute_channel_mappings')->where('attribute_id', $attributeId)->first();
+    }
+
+    public function getChannelAttribute(string $id)
+    {
+        return DB::table('channel_attributes')->where('id', $id)->first();
+    }
+
+    public function getAttributeOptionChannelMapping(string $attributeOptionId)
+    {
+        return DB::table('attribute_option_channel_mappings')->where('attribute_option_id', $attributeOptionId)->first();
+    }
+
+    public function getChannelAttributeOption(string $id)
+    {
+        return DB::table('channel_attribute_options')->where('id', $id)->first();
+    }
+
+    public function getChannelWarehouseByStore(string $shopId)
+    {
+        return DB::table('channel_warehouses')->where('store_id', $shopId)->first();
+    }
+
+    public function getAvailableQty(string $variantId, $locationId): int
+    {
+        return (int) DB::table('inventories')
+            ->where('item_id', $variantId)
+            ->where('location_id', $locationId)
+            ->sum('available');
     }
 
     /**

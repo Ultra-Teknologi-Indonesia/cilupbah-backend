@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Channel\Http\Resources\ChannelResource;
 use Modules\Channel\Http\Resources\ChannelShopResource;
 use Modules\Channel\Services\ChannelService;
 use Modules\Channel\Services\TikTokAuthService;
@@ -43,9 +44,12 @@ class ChannelController extends Controller
             $channels = $this->channelService->getPaginatedChannels();
             
             if ($request->is('api/*') || $request->wantsJson()) {
-                return $this->successResponse($channels, 'Daftar channel berhasil diambil.');
+                return $this->successPaginatedResponse(
+                    ChannelResource::collection($channels),
+                    'Daftar channel berhasil diambil.'
+                );
             }
-            
+
             return view('channel::index', compact('channels'));
         } catch (\Exception $e) {
             if ($request->is('api/*') || $request->wantsJson()) {
@@ -56,9 +60,9 @@ class ChannelController extends Controller
     }
 
     /**
-     * Disconnect (soft-delete) a shop from its channel.
+     * Disconnect (deactivate + clear tokens) a shop from its channel.
      */
-    public function disconnectShop(Request $request, int $id)
+    public function disconnectShop(Request $request, string $id)
     {
         try {
             $this->authService->disconnectStore($id);
@@ -77,7 +81,7 @@ class ChannelController extends Controller
     /**
      * Refresh the access token for a shop.
      */
-    public function refreshShopToken(Request $request, int $id)
+    public function refreshShopToken(Request $request, string $id)
     {
         try {
             $result = $this->authService->refreshStoreToken($id);

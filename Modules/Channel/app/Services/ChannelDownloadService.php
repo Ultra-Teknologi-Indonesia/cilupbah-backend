@@ -2,9 +2,10 @@
 
 namespace Modules\Channel\Services;
 
+use Illuminate\Support\Facades\Log;
 use Modules\Channel\Jobs\DownloadProductsJob;
-use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Models\DownloadTransaction;
+use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Product\Models\ProductSyncLog;
 
 /**
@@ -13,6 +14,10 @@ use Modules\Product\Models\ProductSyncLog;
  */
 class ChannelDownloadService
 {
+    public function __construct(
+        protected ChannelShopRepository $channelShopRepository,
+    ) {}
+
     /**
      * Mulai download satu toko: buat transaksi (queued) + antre job. Asinkron.
      */
@@ -44,7 +49,11 @@ class ChannelDownloadService
 
         $transactions = [];
         foreach ($shopIds as $shopId) {
-            $transactions[] = $this->download($channel, $shopId, $executedBy);
+            try {
+                $transactions[] = $this->download($channel, $shopId, $executedBy);
+            } catch (\Throwable $e) {
+                Log::warning("Download massal: lewati toko {$shopId} — {$e->getMessage()}");
+            }
         }
 
         return $transactions;
@@ -56,7 +65,7 @@ class ChannelDownloadService
      */
     public function pull(string $channel, string $shopId): int
     {
-        $channelShopId = ChannelShop::where('shop_id', $shopId)->value('id');
+        $channelShopId = $this->channelShopRepository->getIdByShopId($shopId);
 
         try {
             $count = ($this->pullerFor($channel))($shopId);
@@ -90,7 +99,7 @@ class ChannelDownloadService
 
     protected function requireChannelShopId(string $shopId): string
     {
-        $channelShopId = ChannelShop::where('shop_id', $shopId)->value('id');
+        $channelShopId = $this->channelShopRepository->getIdByShopId($shopId);
 
         if (! $channelShopId) {
             throw new \RuntimeException('Toko tidak ditemukan', 422);

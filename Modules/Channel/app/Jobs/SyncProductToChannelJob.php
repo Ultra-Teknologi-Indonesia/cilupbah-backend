@@ -65,24 +65,22 @@ class SyncProductToChannelJob implements ShouldQueue
         $product = Product::with(['variants.channelMappings.channelMapping'])->find($this->productId);
         $shop = ChannelShop::with('channel')->find($this->channelShopId);
 
-        if ($product) {
-            foreach ($product->variants as $variant) {
-                $mapping = $variant->channelMappings->first(function ($map) use ($shop) {
-                    return $map->channelMapping && $map->channelMapping->channel_shop_id === $shop->id;
-                });
-
-                if ($mapping && $mapping->override_price !== null) {
-                    $variant->sell_price = $mapping->override_price;
-                }
-            }
-        }
-
         if (!$product || !$shop) {
             Log::warning("SyncProductToChannelJob skipped: Product or Shop not found.", [
                 'product_id' => $this->productId,
                 'channel_shop_id' => $this->channelShopId
             ]);
             return;
+        }
+
+        foreach ($product->variants as $variant) {
+            $mapping = $variant->channelMappings->first(function ($map) use ($shop) {
+                return $map->channelMapping && $map->channelMapping->channel_shop_id === $shop->id;
+            });
+
+            if ($mapping && $mapping->override_price !== null) {
+                $variant->sell_price = $mapping->override_price;
+            }
         }
 
         $channelCode = $shop->channel->code ?? 'tiktok';
