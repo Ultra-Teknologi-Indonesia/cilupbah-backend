@@ -295,7 +295,7 @@ ID = {
 
 # Status per "METHOD path": done/partial/todo
 ST = {
-"POST /login":"done","GET /cashbank/payments/":"todo","GET /cashbank/payments/id":"todo","GET /cashbank/receives":"todo","GET /cashbank/receives/id":"todo",
+"POST /login":"done","GET /cashbank/payments/":"done","GET /cashbank/payments/id":"done","GET /cashbank/receives":"done","GET /cashbank/receives/id":"done",
 "GET /marketplace/store/":"done",
 "GET /contact/category/":"todo","DELETE /contacts/":"todo","GET /contacts/":"todo","POST /contacts/":"todo","GET /contacts/customers-suppliers/":"todo","GET /contacts/customers/":"todo","GET /contacts/suppliers/":"partial","GET /contacts/{id}":"partial",
 "GET /couriers":"done","GET /couriers/tenant/{id}":"todo","GET /couriers/{id}":"done",
