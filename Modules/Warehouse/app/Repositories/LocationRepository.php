@@ -9,7 +9,15 @@ use Spatie\QueryBuilder\AllowedFilter;
 
 class LocationRepository
 {
-    public function getAllPaginated(int $limit = 10)
+    /** per_page yang aman: non-numerik/<=0 jatuh ke default 10 (cegah TypeError paginate). */
+    protected function perPage(): int
+    {
+        $perPage = (int) request('per_page', 10);
+
+        return $perPage > 0 ? $perPage : 10;
+    }
+
+    public function getAllPaginated()
     {
         return QueryBuilder::for(Location::class)
             ->with('village.district.city.province')
@@ -20,6 +28,7 @@ class LocationRepository
                 AllowedFilter::exact('is_fbl'),
                 AllowedFilter::exact('is_tcb'),
                 AllowedFilter::exact('is_fbs'),
+                AllowedFilter::exact('is_pos'),
                 'location_type',
                 AllowedFilter::exact('village_id'),
                 AllowedFilter::exact('village.district.city_id'),
@@ -27,12 +36,18 @@ class LocationRepository
             )
             ->allowedSorts('location_name', 'created_at', 'location_code')
             ->defaultSort('location_name')
-            ->paginate($limit);
+            ->paginate($this->perPage())
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?Location
     {
-        return Location::with(['bins', 'channelWarehouses', 'village.district.city.province'])->find($id);
+        return Location::with(['bins', 'zones.bins', 'channelWarehouses', 'village.district.city.province'])->find($id);
+    }
+
+    public function exists(string $id): bool
+    {
+        return Location::whereKey($id)->exists();
     }
 
     public function findByCode(string $code): ?Location
@@ -61,6 +76,23 @@ class LocationRepository
             ->where('is_warehouse', true)
             ->orderBy('location_name')
             ->get();
+    }
+
+    /**
+     * Daftar lokasi yang berfungsi sebagai outlet POS (Jubelio: getLocationsPos).
+     * Hanya lokasi aktif & ber-flag is_pos. Mendukung ?search=, sort=, dan per_page.
+     */
+    public function getPosPaginated()
+    {
+        return QueryBuilder::for(Location::class)
+            ->with('village.district.city.province')
+            ->where('is_active', true)
+            ->where('is_pos', true)
+            ->allowedSearch('location_name')
+            ->allowedSorts('location_name', 'created_at', 'location_code')
+            ->defaultSort('location_name')
+            ->paginate($this->perPage())
+            ->appends(request()->query());
     }
 
     public function getFulfillmentLocations(): Collection

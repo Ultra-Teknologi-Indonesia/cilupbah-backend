@@ -3,164 +3,83 @@
 namespace Modules\Webhook\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use OpenApi\Attributes as OA;
+use App\Traits\ApiResponse;
+use Illuminate\Http\JsonResponse;
+use Modules\Webhook\Http\Requests\StoreWebhookSubscriptionRequest;
+use Modules\Webhook\Http\Resources\WebhookSubscriptionResource;
+use Modules\Webhook\Services\WebhookSubscriptionService;
 
-#[OA\Tag(name: 'Webhooks', description: 'API Endpoints for Webhooks')]
-#[OA\Schema(
-    schema: 'Webhook',
-    title: 'Webhook Schema',
-    type: 'object',
-    properties: [
-        new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
-        new OA\Property(property: 'name', type: 'string', example: 'Order Status Update'),
-        new OA\Property(property: 'url', type: 'string', example: 'https://example.com/webhook'),
-        new OA\Property(property: 'secret', type: 'string', example: 'super_secret_key', nullable: true),
-        new OA\Property(property: 'is_active', type: 'boolean', example: true),
-        new OA\Property(property: 'created_at', type: 'string', format: 'date-time', example: '2026-06-04T12:00:00Z'),
-        new OA\Property(property: 'updated_at', type: 'string', format: 'date-time', example: '2026-06-04T12:00:00Z'),
-    ]
-)]
-#[OA\Schema(
-    schema: 'StoreWebhookRequest',
-    required: ['name', 'url'],
-    type: 'object',
-    properties: [
-        new OA\Property(property: 'name', type: 'string', example: 'Order Status Update'),
-        new OA\Property(property: 'url', type: 'string', example: 'https://example.com/webhook'),
-        new OA\Property(property: 'secret', type: 'string', example: 'super_secret_key', nullable: true),
-        new OA\Property(property: 'is_active', type: 'boolean', example: true)
-    ]
-)]
 class WebhookController extends Controller
 {
-    #[OA\Get(
-        path: '/api/v1/webhooks',
-        summary: 'Get list of webhooks',
-        security: [['bearerAuth' => []]],
-        tags: ['Webhooks'],
-        responses: [
-            new OA\Response(
-                response: 200,
-                description: 'Successful operation',
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/Webhook'))
-                    ]
-                )
-            ),
-            new OA\Response(response: 401, description: 'Unauthenticated')
-        ]
-    )]
-    public function index()
-    {
-        return view('webhook::index');
+    use ApiResponse;
+
+    public function __construct(
+        private readonly WebhookSubscriptionService $service,
+    ) {
     }
 
-    public function create()
+    public function index(): JsonResponse
     {
-        return view('webhook::create');
+        return $this->successPaginatedResponse(
+            WebhookSubscriptionResource::collection($this->service->list()),
+            'Daftar webhook subscription berhasil diambil'
+        );
     }
 
-    #[OA\Post(
-        path: '/api/v1/webhooks',
-        summary: 'Create a new webhook',
-        security: [['bearerAuth' => []]],
-        tags: ['Webhooks'],
-        requestBody: new OA\RequestBody(
-            required: true,
-            content: new OA\JsonContent(ref: '#/components/schemas/StoreWebhookRequest')
-        ),
-        responses: [
-            new OA\Response(
-                response: 201,
-                description: 'Webhook created successfully',
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: 'data', ref: '#/components/schemas/Webhook')
-                    ]
-                )
-            ),
-            new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 422, description: 'Validation Error')
-        ]
-    )]
-    public function store(Request $request) {}
-
-    #[OA\Get(
-        path: '/api/v1/webhooks/{webhook}',
-        summary: 'Get webhook details',
-        security: [['bearerAuth' => []]],
-        tags: ['Webhooks'],
-        parameters: [
-            new OA\Parameter(name: 'webhook', in: 'path', required: true, description: 'ID of the webhook', schema: new OA\Schema(type: 'string'))
-        ],
-        responses: [
-            new OA\Response(
-                response: 200,
-                description: 'Successful operation',
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: 'data', ref: '#/components/schemas/Webhook')
-                    ]
-                )
-            ),
-            new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 404, description: 'Webhook not found')
-        ]
-    )]
-    public function show($id)
+    /** Jubelio: POST /systemsetting/webhook + POST /webhooks — Create/Edit Webhook subscription. */
+    public function store(StoreWebhookSubscriptionRequest $request): JsonResponse
     {
-        return view('webhook::show');
+        $subscription = $this->service->create($request->validated());
+
+        // Secret hanya ditampilkan SEKALI saat pembuatan (untuk verifikasi signature).
+        return $this->successResponse([
+            'subscription' => new WebhookSubscriptionResource($subscription),
+            'secret' => $subscription->secret,
+        ], 'Webhook subscription berhasil dibuat', 201);
     }
 
-    public function edit($id)
+    public function show(string $id): JsonResponse
     {
-        return view('webhook::edit');
+        $subscription = $this->resolve($id);
+        if (! $subscription) {
+            return $this->errorResponse('Webhook subscription tidak ditemukan', 404);
+        }
+
+        return $this->successResponse(new WebhookSubscriptionResource($subscription), 'Detail webhook subscription');
     }
 
-    #[OA\Put(
-        path: '/api/v1/webhooks/{webhook}',
-        summary: 'Update an existing webhook',
-        security: [['bearerAuth' => []]],
-        tags: ['Webhooks'],
-        parameters: [
-            new OA\Parameter(name: 'webhook', in: 'path', required: true, description: 'ID of the webhook to update', schema: new OA\Schema(type: 'string'))
-        ],
-        requestBody: new OA\RequestBody(
-            required: true,
-            content: new OA\JsonContent(ref: '#/components/schemas/StoreWebhookRequest')
-        ),
-        responses: [
-            new OA\Response(
-                response: 200,
-                description: 'Webhook updated successfully',
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: 'data', ref: '#/components/schemas/Webhook')
-                    ]
-                )
-            ),
-            new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 404, description: 'Webhook not found'),
-            new OA\Response(response: 422, description: 'Validation Error')
-        ]
-    )]
-    public function update(Request $request, $id) {}
+    public function update(StoreWebhookSubscriptionRequest $request, string $id): JsonResponse
+    {
+        $subscription = $this->resolve($id);
+        if (! $subscription) {
+            return $this->errorResponse('Webhook subscription tidak ditemukan', 404);
+        }
 
-    #[OA\Delete(
-        path: '/api/v1/webhooks/{webhook}',
-        summary: 'Delete a webhook',
-        security: [['bearerAuth' => []]],
-        tags: ['Webhooks'],
-        parameters: [
-            new OA\Parameter(name: 'webhook', in: 'path', required: true, description: 'ID of the webhook to delete', schema: new OA\Schema(type: 'string'))
-        ],
-        responses: [
-            new OA\Response(response: 200, description: 'Webhook deleted successfully'),
-            new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 404, description: 'Webhook not found')
-        ]
-    )]
-    public function destroy($id) {}
+        $subscription = $this->service->update($subscription, $request->validated());
+
+        return $this->successResponse(new WebhookSubscriptionResource($subscription), 'Webhook subscription berhasil diperbarui');
+    }
+
+    public function destroy(string $id): JsonResponse
+    {
+        $subscription = $this->resolve($id);
+        if (! $subscription) {
+            return $this->errorResponse('Webhook subscription tidak ditemukan', 404);
+        }
+
+        $this->service->delete($subscription);
+
+        return $this->successResponse(null, 'Webhook subscription berhasil dihapus');
+    }
+
+    /** Guard format UUID agar id non-UUID -> 404 (bukan 500 cast Postgres). */
+    private function resolve(string $id)
+    {
+        $normalized = str_replace('-', '', $id);
+        if (strlen($normalized) !== 32 || ! ctype_xdigit($normalized)) {
+            return null;
+        }
+
+        return $this->service->find($id);
+    }
 }

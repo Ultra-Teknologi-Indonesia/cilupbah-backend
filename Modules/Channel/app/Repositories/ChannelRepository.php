@@ -9,6 +9,11 @@ use Spatie\QueryBuilder\AllowedFilter;
 
 class ChannelRepository
 {
+    public function getIdByCode(string $code): ?string
+    {
+        return Channel::where('code', $code)->value('id');
+    }
+
     public function getPaginatedChannels()
     {
         return QueryBuilder::for(Channel::class)

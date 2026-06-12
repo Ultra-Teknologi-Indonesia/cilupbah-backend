@@ -3,17 +3,20 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Repositories\ChannelRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
 
 class TikTokAuthService
 {
     protected TikTokClient $client;
     protected ChannelShopRepository $shopRepository;
+    protected ChannelRepository $channelRepository;
 
-    public function __construct(TikTokClient $client, ChannelShopRepository $shopRepository)
+    public function __construct(TikTokClient $client, ChannelShopRepository $shopRepository, ChannelRepository $channelRepository)
     {
         $this->client = $client;
         $this->shopRepository = $shopRepository;
+        $this->channelRepository = $channelRepository;
     }
 
     public function handleCallback(string $code, string $redirectUri): array
@@ -47,7 +50,7 @@ class TikTokAuthService
             $this->shopRepository->updateOrCreateShop(
                 $shopId,
                 [
-                    'channel_id' => \Modules\Channel\Models\Channel::where('code', 'tiktok')->value('id'),
+                    'channel_id' => $this->channelRepository->getIdByCode('tiktok'),
                     'shop_name' => $shopName,
                     'shop_cipher' => $shopCipher,
                     'access_token' => $accessToken,
@@ -83,7 +86,7 @@ class TikTokAuthService
         })->toArray();
     }
 
-    public function getStoreDetail(int $id): array
+    public function getStoreDetail(string $id): array
     {
         $shop = $this->shopRepository->findById($id);
         if (!$shop) {
@@ -104,7 +107,7 @@ class TikTokAuthService
         ];
     }
 
-    public function disconnectStore(int $id): void
+    public function disconnectStore(string $id): void
     {
         $shop = $this->shopRepository->findById($id);
         if (!$shop) {
@@ -114,7 +117,7 @@ class TikTokAuthService
         $this->shopRepository->disconnectShop($id);
     }
 
-    public function refreshStoreToken(int $id): array
+    public function refreshStoreToken(string $id): array
     {
         $shop = $this->shopRepository->findById($id);
         if (!$shop) {

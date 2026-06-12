@@ -14,8 +14,8 @@ class CreateProductRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'brand_id' => 'nullable|exists:brands,id',
-            'category_id' => 'required|exists:categories,id',
+            'brand_id' => 'nullable|bail|integer|exists:brands,id',
+            'category_id' => 'required|bail|integer|exists:categories,id',
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'weight' => 'nullable|numeric|min:0',
@@ -27,8 +27,8 @@ class CreateProductRequest extends FormRequest
             'is_consignment' => 'nullable|boolean',
             
             'specifications' => 'nullable|array',
-            'specifications.*.attribute_id' => 'required|exists:attributes,id',
-            'specifications.*.attribute_option_id' => 'nullable|exists:attribute_options,id',
+            'specifications.*.attribute_id' => 'required|bail|integer|exists:attributes,id',
+            'specifications.*.attribute_option_id' => 'nullable|bail|integer|exists:attribute_options,id',
             'specifications.*.text_value' => 'nullable|string',
             
             'media' => 'nullable|array',
@@ -38,7 +38,7 @@ class CreateProductRequest extends FormRequest
             'media.*.sort_order' => 'nullable|integer',
             
             'variation_types' => 'nullable|array',
-            'variation_types.*.attribute_id' => 'required|exists:attributes,id',
+            'variation_types.*.attribute_id' => 'required|bail|integer|exists:attributes,id',
             'variation_types.*.sort_order' => 'nullable|integer',
             
             'variants' => 'required|array|min:1',
@@ -50,7 +50,7 @@ class CreateProductRequest extends FormRequest
             'variants.*.channel_prices.*.price' => 'required|numeric|min:0',
             
             'variants.*.options' => 'nullable|array',
-            'variants.*.options.*.attribute_id' => 'required|exists:attributes,id',
+            'variants.*.options.*.attribute_id' => 'required|bail|integer|exists:attributes,id',
             'variants.*.options.*.value' => 'required|string',
             
             'variants.*.media' => 'nullable|array',

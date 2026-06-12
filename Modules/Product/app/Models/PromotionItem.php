@@ -12,12 +12,7 @@ class PromotionItem extends Model
 
     protected $fillable = [
         'promotion_id',
-        'variant_id',
-        'promo_price',
-    ];
-
-    protected $casts = [
-        'promo_price' => 'decimal:2',
+        'product_id',
     ];
 
     public function promotion(): BelongsTo
@@ -25,8 +20,8 @@ class PromotionItem extends Model
         return $this->belongsTo(Promotion::class);
     }
 
-    public function variant(): BelongsTo
+    public function product(): BelongsTo
     {
-        return $this->belongsTo(ProductVariant::class, 'variant_id');
+        return $this->belongsTo(Product::class);
     }
 }

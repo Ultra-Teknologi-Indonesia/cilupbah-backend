@@ -42,4 +42,14 @@ return [
         'base_url' => env('TIKTOK_BASE_URL', 'https://open-api.tiktokglobalshop.com'),
     ],
 
+    'lazada' => [
+        'app_key' => env('LAZADA_APP_KEY'),
+        'app_secret' => env('LAZADA_APP_SECRET'),
+        'redirect_uri' => env('LAZADA_REDIRECT_URI'),
+        // Endpoint OAuth (token create/refresh) Lazada.
+        'auth_url' => env('LAZADA_AUTH_URL', 'https://auth.lazada.com'),
+        // Base API region (mis. Indonesia). Token tetap lewat auth_url di atas.
+        'base_url' => env('LAZADA_BASE_URL', 'https://api.lazada.co.id/rest'),
+    ],
+
 ];

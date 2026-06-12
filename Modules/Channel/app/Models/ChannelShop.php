@@ -28,6 +28,12 @@ class ChannelShop extends Model
         'is_active' => 'boolean',
     ];
 
+    protected $hidden = [
+        'access_token',
+        'refresh_token',
+        'shop_cipher',
+    ];
+
     public function channel(): BelongsTo
     {
         return $this->belongsTo(Channel::class);

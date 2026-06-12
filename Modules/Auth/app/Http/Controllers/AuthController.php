@@ -3,11 +3,14 @@
 namespace Modules\Auth\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Modules\Auth\Services\AuthService;
+use Modules\Auth\Http\Requests\LoginRequest;
+use Modules\Auth\Http\Requests\UpdateAvatarRequest;
 use Modules\Auth\Http\Resources\ProfileResource;
-use App\Traits\ApiResponse;
+use Modules\Auth\Services\AuthService;
+use Modules\Auth\Services\UserService;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Auth', description: 'Authentication API Endpoints')]
@@ -16,7 +19,8 @@ class AuthController extends Controller
     use ApiResponse;
 
     public function __construct(
-        protected AuthService $authService
+        protected AuthService $authService,
+        protected UserService $userService
     ) {}
 
     #[OA\Post(
@@ -58,14 +62,9 @@ class AuthController extends Controller
             new OA\Response(response: 401, description: 'Email atau kata sandi yang Anda masukkan salah.')
         ]
     )]
-    public function login(Request $request): JsonResponse
+    public function login(LoginRequest $request): JsonResponse
     {
-        $credentials = $request->validate([
-            'email' => 'required|email',
-            'password' => 'required',
-        ]);
-
-        $data = $this->authService->login($credentials);
+        $data = $this->authService->login($request->validated());
 
         if (! $data) {
             return $this->errorResponse('Email atau kata sandi yang Anda masukkan salah.', 401);
@@ -111,6 +110,33 @@ class AuthController extends Controller
         $profile = $this->authService->getProfile($request->user());
 
         return $this->successResponse(new ProfileResource($profile), 'Profil berhasil dimuat.');
+    }
+
+    #[OA\Put(
+        path: '/api/v1/profile/avatar',
+        summary: 'Set or remove current user avatar (referensi media terpusat)',
+        security: [['bearerAuth' => []]],
+        tags: ['Auth'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['media_uuid'],
+                properties: [
+                    new OA\Property(property: 'media_uuid', type: 'string', nullable: true, description: 'UUID media dari POST /media/upload; null untuk melepas avatar', example: '9f8c1e2a-...')
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Avatar diperbarui'),
+            new OA\Response(response: 422, description: 'Validasi gagal'),
+            new OA\Response(response: 401, description: 'Unauthenticated'),
+        ]
+    )]
+    public function updateAvatar(UpdateAvatarRequest $request): JsonResponse
+    {
+        $user = $this->userService->setAvatar($request->user(), $request->input('media_uuid'));
+
+        return $this->successResponse(new ProfileResource($user), 'Avatar berhasil diperbarui.');
     }
 
     #[OA\Post(

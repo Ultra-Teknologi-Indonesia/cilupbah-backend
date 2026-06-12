@@ -4,6 +4,9 @@ use Illuminate\Support\Facades\Route;
 use Modules\Channel\Http\Controllers\ChannelController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
+    // Jubelio: daftar toko marketplace yang terhubung
+    Route::get('marketplace/store', [ChannelController::class, 'stores']);
+
     Route::apiResource('channels', ChannelController::class)->names('channel');
 
     Route::get('download-transactions', [\Modules\Channel\Http\Controllers\DownloadTransactionController::class, 'index']);
@@ -11,28 +14,58 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 });
 
 Route::prefix('v1/tiktok')->group(function () {
+    // Publik: webhook & OAuth (diverifikasi via signature / redirect browser seller).
     Route::post('webhook', [\Modules\Channel\Http\Controllers\TikTokWebhookController::class, 'handle']);
-    
     Route::get('auth', [\Modules\Channel\Http\Controllers\TikTokAuthController::class, 'redirect']);
     Route::get('callback', [\Modules\Channel\Http\Controllers\TikTokAuthController::class, 'callback']);
-    Route::get('callback-debug', [\Modules\Channel\Http\Controllers\TikTokAuthController::class, 'callbackDebug']);
-    Route::get('cancel-reasons', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'getCancelReasons']);
-    Route::post('cancel-product', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'cancelProduct']);
 
-    Route::get('stores', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'index']);
-    Route::get('stores/{id}', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'show']);
-    Route::delete('stores/{id}', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'destroy']);
-    Route::post('stores/{id}/refresh-token', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'refreshToken']);
-    
-    Route::post('auto-sync/pull-orders', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pullOrdersAll']);
-    Route::post('auto-sync/pull-products', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pullProductsAll']);
-    
-    Route::post('sync/pull', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pullOrders']);
-    Route::post('sync/accept', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'acceptOrder']);
-    Route::post('sync/decline', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'declineOrder']);
-    Route::post('sync/products/push', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pushProduct']);
-    Route::post('sync/products/sync', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'syncProduct']);
-    Route::post('sync/products/bulk-push', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'bulkPush']);
+    // Internal: wajib login (manajemen toko + sinkronisasi order/produk).
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('cancel-reasons', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'getCancelReasons']);
+        Route::post('cancel-product', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'cancelProduct']);
+
+        Route::get('stores', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'index']);
+        Route::get('stores/{id}', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'show'])->whereUuid('id');
+        Route::delete('stores/{id}', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'destroy'])->whereUuid('id');
+        Route::post('stores/{id}/refresh-token', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'refreshToken'])->whereUuid('id');
+
+        Route::post('auto-sync/pull-orders', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pullOrdersAll']);
+        Route::post('auto-sync/pull-products', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pullProductsAll']);
+
+        Route::post('sync/pull', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pullOrders']);
+        Route::post('sync/accept', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'acceptOrder']);
+        Route::post('sync/decline', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'declineOrder']);
+        Route::post('sync/products/push', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pushProduct']);
+        Route::post('sync/products/sync', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'syncProduct']);
+        Route::post('sync/products/bulk-push', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'bulkPush']);
+    });
+});
+
+// Lazada OAuth. Callback dipanggil lewat redirect browser seller (tanpa auth:sanctum).
+Route::prefix('v1/lazada')->group(function () {
+    Route::get('auth', [\Modules\Channel\Http\Controllers\LazadaAuthController::class, 'redirect'])->name('lazada.auth');
+    Route::get('callback', [\Modules\Channel\Http\Controllers\LazadaAuthController::class, 'callback'])->name('lazada.callback');
+
+    // Push message Lazada (publik — diverifikasi via signature HMAC, bukan sanctum).
+    Route::post('webhook', [\Modules\Channel\Http\Controllers\LazadaWebhookController::class, 'handle'])->name('lazada.webhook');
+
+    // Manajemen toko Lazada (internal — wajib login).
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('stores', [\Modules\Channel\Http\Controllers\LazadaStoreController::class, 'index'])->name('lazada.stores.index');
+        Route::get('stores/{id}', [\Modules\Channel\Http\Controllers\LazadaStoreController::class, 'show'])->whereUuid('id')->name('lazada.stores.show');
+        Route::delete('stores/{id}', [\Modules\Channel\Http\Controllers\LazadaStoreController::class, 'destroy'])->whereUuid('id')->name('lazada.stores.destroy');
+        Route::post('stores/{id}/refresh-token', [\Modules\Channel\Http\Controllers\LazadaStoreController::class, 'refreshToken'])->whereUuid('id')->name('lazada.stores.refresh');
+
+        // Tarik order → SalesOrder internal.
+        Route::post('sync/pull', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'pullOrders'])->name('lazada.sync.pull');
+        Route::post('auto-sync/pull-orders', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'pullOrdersAll'])->name('lazada.sync.pull-all');
+
+        // Operasi order: terima (pack+RTS), batalkan, alasan batal, kurir channel.
+        Route::post('sync/pack', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'packOrder'])->name('lazada.sync.pack');
+        Route::post('sync/cancel', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'cancelOrder'])->name('lazada.sync.cancel');
+        Route::get('cancel-reasons', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'cancelReasons'])->name('lazada.cancel-reasons');
+        Route::get('logistics', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'logistics'])->name('lazada.logistics');
+    });
 });
 
 // Generic per-channel download (generalisasi pull, tidak terikat TikTok)

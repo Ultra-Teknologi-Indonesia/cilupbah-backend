@@ -17,6 +17,10 @@
         <testsuite name="Inventory">
             <directory>tests/Feature/Inventory</directory>
         </testsuite>
+        <testsuite name="Modules">
+            <directory>Modules/*/tests/Feature</directory>
+            <directory>Modules/*/tests/Unit</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>
@@ -24,6 +28,7 @@
         </include>
     </source>
     <php>
+        <ini name="memory_limit" value="1G"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>

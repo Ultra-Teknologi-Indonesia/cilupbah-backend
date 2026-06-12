@@ -10,33 +10,23 @@ class Promotion extends Model
 {
     use HasUuid7;
 
-    public const TYPE_DISCOUNT_PERCENTAGE = 'DISCOUNT_PERCENTAGE';
-    public const TYPE_DISCOUNT_AMOUNT = 'DISCOUNT_AMOUNT';
-    public const TYPE_BUY_X_GET_Y = 'BUY_X_GET_Y';
-
-    public const TYPES = [
-        self::TYPE_DISCOUNT_PERCENTAGE,
-        self::TYPE_DISCOUNT_AMOUNT,
-        self::TYPE_BUY_X_GET_Y,
-    ];
+    public const TYPE_PERCENT = 'percent';
+    public const TYPE_FIXED = 'fixed';
+    public const TYPES = [self::TYPE_PERCENT, self::TYPE_FIXED];
 
     protected $fillable = [
         'name',
         'type',
         'value',
-        'min_qty',
-        'start_date',
-        'end_date',
+        'start_at',
+        'end_at',
         'is_active',
-        'notes',
-        'created_by',
     ];
 
     protected $casts = [
         'value' => 'decimal:2',
-        'min_qty' => 'integer',
-        'start_date' => 'date',
-        'end_date' => 'date',
+        'start_at' => 'datetime',
+        'end_at' => 'datetime',
         'is_active' => 'boolean',
     ];
 

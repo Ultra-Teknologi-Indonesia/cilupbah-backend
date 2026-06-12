@@ -295,8 +295,8 @@ ID = {
 
 # Status per "METHOD path": done/partial/todo
 ST = {
-"POST /login":"done","GET /cashbank/payments/":"todo","GET /cashbank/payments/id":"todo","GET /cashbank/receives":"todo","GET /cashbank/receives/id":"todo",
-"GET /marketplace/store/":"partial",
+"POST /login":"done","GET /cashbank/payments/":"done","GET /cashbank/payments/id":"done","GET /cashbank/receives":"done","GET /cashbank/receives/id":"done",
+"GET /marketplace/store/":"done",
 "GET /contact/category/":"todo","DELETE /contacts/":"todo","GET /contacts/":"todo","POST /contacts/":"todo","GET /contacts/customers-suppliers/":"todo","GET /contacts/customers/":"todo","GET /contacts/suppliers/":"partial","GET /contacts/{id}":"partial",
 "GET /couriers":"done","GET /couriers/tenant/{id}":"todo","GET /couriers/{id}":"done",
 "GET /inventory/":"done","GET /inventory/activity/":"done","DELETE /inventory/adjustments/":"done","GET /inventory/adjustments/":"done","POST /inventory/adjustments/":"done","GET /inventory/adjustments/{id}":"done",
@@ -310,12 +310,12 @@ ST = {
 "GET /inventory/reserved/":"done","POST /inventory/reserved/":"done","GET /inventory/reserved/{id}":"done","POST /inventory/revaluations/":"todo",
 "GET /inventory/stock-opname":"done","POST /inventory/stock-opname":"done","GET /inventory/stock-opname/bins":"done","GET /inventory/stock-opname/columns":"done","POST /inventory/stock-opname/finalize":"done","GET /inventory/stock-opname/floors":"done","GET /inventory/stock-opname/items":"done","GET /inventory/stock-opname/items/filtered":"partial","GET /inventory/stock-opname/rows":"done","GET /inventory/stock-opname/{opname_header_id}":"done",
 "GET /inventory/transfer/delivery":"todo","POST /inventory/transfer/mark-printed":"todo","DELETE /inventory/transfers/":"partial","POST /inventory/transfers/":"done","GET /inventory/transfers/all-transit":"done","GET /inventory/transfers/in":"done","GET /inventory/transfers/out":"done","GET /inventory/transfers/out-finished":"partial","GET /inventory/transfers/transit":"done","GET /inventory/transfers/{id}":"done",
-"GET /accounts/lookup/all":"todo","GET /journal/":"todo","GET /journal/manual-journal/":"todo","POST /journal/manual-journal/":"todo","GET /journal/{id}":"todo",
-"DELETE /locations/":"done","GET /locations/":"done","POST /locations/":"done","GET /locations/bin/{location_id}":"done","GET /locations/pos":"todo","GET /locations/store/":"partial","GET /locations/{id}":"done","GET /wms/default-bin/{location_id}":"done",
-"POST /inventory/catalog/":"done","GET /inventory/categories/category-map/{id}":"partial","GET /inventory/categories/item-categories/":"done","GET /inventory/categories/item-categories/information/{id}/":"done","GET /inventory/categories/{channel_id}/store-categories/{store_id}":"partial","GET /inventory/categories/{id}/attributes-value/":"done","GET /inventory/categories/{id}/attributes/":"done","GET /inventory/categories/{id}/variations/":"done",
-"GET /inventory/internal-price-list/":"todo","GET /inventory/item-bundles/":"partial","DELETE /inventory/items/":"done","GET /inventory/items/":"done","POST /inventory/items/":"partial","POST /inventory/items/all-stocks/":"partial","POST /inventory/items/archive/":"done","GET /inventory/items/archived/":"done","GET /inventory/items/by-sku/{sku}":"partial","GET /inventory/items/channel-category-attributes/":"partial","GET /inventory/items/channel-category-tree/":"done","GET /inventory/items/group/{id}":"done","DELETE /inventory/items/item-variant/":"todo","GET /inventory/items/masters":"done","POST /inventory/items/prices/":"partial","POST /inventory/items/restore/":"done","GET /inventory/items/reviews/":"done","GET /inventory/items/{id}":"done",
-"POST /inventory/price-list/":"todo","DELETE /inventory/promotions/":"todo","GET /inventory/promotions/":"todo","POST /inventory/promotions/":"todo","GET /inventory/promotions/{id}":"todo","GET /inventory/search-brands/":"done","POST /inventory/upload-image":"done","GET /variations":"todo",
-"GET /blibli/pickupPoints":"todo","GET /inventory/catalog/for-listing/{id}":"done","POST /inventory/catalog/listing":"partial","POST /inventory/catalog/upload":"done","GET /inventory/categories/channel-categories/{parent_id}":"done","GET /inventory/items/errors/":"partial","GET /shopee/logistics":"todo","GET /tokopedia/showcases":"todo",
+"GET /accounts/lookup/all":"done","GET /journal/":"done","GET /journal/manual-journal/":"done","POST /journal/manual-journal/":"done","GET /journal/{id}":"done",
+"DELETE /locations/":"done","GET /locations/":"done","POST /locations/":"done","GET /locations/bin/{location_id}":"done","GET /locations/pos":"done","GET /locations/store/":"done","GET /locations/{id}":"done","GET /wms/default-bin/{location_id}":"done",
+"POST /inventory/catalog/":"done","GET /inventory/categories/category-map/{id}":"done","GET /inventory/categories/item-categories/":"done","GET /inventory/categories/item-categories/information/{id}/":"done","GET /inventory/categories/{channel_id}/store-categories/{store_id}":"done","GET /inventory/categories/{id}/attributes-value/":"done","GET /inventory/categories/{id}/attributes/":"done","GET /inventory/categories/{id}/variations/":"done",
+"GET /inventory/internal-price-list/":"done","GET /inventory/item-bundles/":"done","DELETE /inventory/items/":"done","GET /inventory/items/":"done","POST /inventory/items/":"done","POST /inventory/items/all-stocks/":"done","POST /inventory/items/archive/":"done","GET /inventory/items/archived/":"done","GET /inventory/items/by-sku/{sku}":"done","GET /inventory/items/channel-category-attributes/":"done","GET /inventory/items/channel-category-tree/":"done","GET /inventory/items/group/{id}":"done","DELETE /inventory/items/item-variant/":"done","GET /inventory/items/masters":"done","POST /inventory/items/prices/":"done","POST /inventory/items/restore/":"done","GET /inventory/items/reviews/":"done","GET /inventory/items/{id}":"done",
+"POST /inventory/price-list/":"done","DELETE /inventory/promotions/":"done","GET /inventory/promotions/":"done","POST /inventory/promotions/":"done","GET /inventory/promotions/{id}":"done","GET /inventory/search-brands/":"done","POST /inventory/upload-image":"done","GET /variations":"done",
+"GET /blibli/pickupPoints":"todo","GET /inventory/catalog/for-listing/{id}":"done","POST /inventory/catalog/listing":"done","POST /inventory/catalog/upload":"done","GET /inventory/categories/channel-categories/{parent_id}":"done","GET /inventory/items/errors/":"done","GET /shopee/logistics":"todo","GET /tokopedia/showcases":"todo",
 "DELETE /purchase/":"todo","DELETE /purchase/bills/":"todo","GET /purchase/bills/":"todo","POST /purchase/bills/":"todo","GET /purchase/bills/for-return":"todo","GET /purchase/bills/overdue/":"todo","GET /purchase/bills/unpaid/":"todo","GET /purchase/bills/{id}":"todo",
 "DELETE /purchase/orders/":"done","GET /purchase/orders/":"done","POST /purchase/orders/":"done","GET /purchase/orders/progress":"partial","GET /purchase/orders/{id}":"done",
 "DELETE /purchase/payments/":"todo","GET /purchase/payments/":"todo","POST /purchase/payments/":"todo","GET /purchase/payments/{id}":"todo",
@@ -323,7 +323,7 @@ ST = {
 "DELETE /purchase/return-settlements/":"todo","GET /purchase/return-settlements/bills/":"todo","POST /purchase/return-settlements/bills/":"todo","GET /purchase/return-settlements/bills/{id}":"todo","GET /purchase/return-settlements/refunds/":"todo","POST /purchase/return-settlements/refunds/":"todo","GET /purchase/return-settlements/refunds/{id}":"todo",
 "POST /purchase/serial-number/mark-printed":"todo","GET /purchase/serial-number/wms/{bill_detail_id}":"todo",
 "GET /region/cities/?province_id={province_id}":"done","GET /region/districts/?city_id={city_id}":"done","GET /region/provinces":"done","GET /region/subdistricts/?district_id={district_id}":"done",
-"GET /lazada/get-document/":"todo","GET /reports/adjustment":"todo","GET /reports/consign":"todo","GET /reports/invoice":"todo","GET /reports/item-receive-notplace":"todo","GET /reports/lable/print/":"todo","GET /reports/purchaseorder/":"todo","GET /reports/putaway":"todo","GET /reports/receive":"todo","GET /reports/stock-opname":"todo","GET /reports/wms/pick-list":"todo","GET /reports/wms/shipping-manifest":"todo","GET /reports/shipping-label/":"todo",
+"GET /lazada/get-document/":"done","GET /reports/adjustment":"todo","GET /reports/consign":"todo","GET /reports/invoice":"todo","GET /reports/item-receive-notplace":"todo","GET /reports/lable/print/":"todo","GET /reports/purchaseorder/":"todo","GET /reports/putaway":"todo","GET /reports/receive":"todo","GET /reports/stock-opname":"todo","GET /reports/wms/pick-list":"todo","GET /reports/wms/shipping-manifest":"todo","GET /reports/shipping-label/":"todo",
 "POST /inventory/items/complete-return/":"done","POST /inventory/items/reject-return/":"done","POST /inventory/items/to-return/":"done",
 "DELETE /sales/":"done","GET /sales/":"done","GET /sales/invoices/":"todo","POST /sales/invoices/":"todo","GET /sales/invoices/for-return-wms/{contact_id}":"todo","GET /sales/invoices/overdue/":"todo","GET /sales/invoices/summary/":"todo","GET /sales/invoices/unpaid/":"todo","GET /sales/invoices/{id}":"todo",
 "DELETE /sales/orders/":"done","POST /sales/orders/":"done","GET /sales/orders/cancel/":"todo","GET /sales/orders/completed/":"todo","POST /sales/orders/delete-canceled":"todo","GET /sales/orders/failed/":"todo","POST /sales/orders/mark-as-complete":"todo","GET /sales/orders/returned-list/":"todo","POST /sales/orders/save-airwaybill/":"todo","POST /sales/orders/save-received-date":"todo","POST /sales/orders/set-as-paid":"todo","GET /sales/orders/{id}":"done",
@@ -334,13 +334,13 @@ ST = {
 "GET /sales/returns/items/":"partial","GET /sales/returns/items/rejected/":"partial","GET /sales/returns/items/resolved/":"partial","GET /sales/returns/items/unprocessed/wms":"done",
 "GET /sales/sales-returns/":"done","POST /sales/sales-returns/":"done","GET /sales/sales-returns/unpaid/":"todo","GET /sales/sales-returns/{id}":"done",
 "GET /sales/settlements/":"todo","GET /sales/settlements/{id}":"todo","POST /sales/shipments/":"partial","POST /sales/shipments/orders/":"partial","GET /sales/shipments/{shipment_header_id}":"partial","GET /sales/unfullfilled/":"todo",
-"GET /lazada/get-shipment-providers/{storeId}/":"todo","GET /store-locations/":"todo","GET /systemsetting/account-mapping":"todo","GET /systemsetting/sales-return-setting":"todo","POST /systemsetting/sales-return-setting":"todo","GET /systemsetting/users/":"done","POST /systemsetting/webhook":"todo","GET /taxes/":"partial",
+"GET /lazada/get-shipment-providers/{storeId}/":"todo","GET /store-locations/":"todo","GET /systemsetting/account-mapping":"todo","GET /systemsetting/sales-return-setting":"todo","POST /systemsetting/sales-return-setting":"todo","GET /systemsetting/users/":"done","POST /systemsetting/webhook":"done","GET /taxes/":"done",
 "GET /wms/couriers":"done","GET /wms/employee/{NIKorEmail}":"done","POST /wms/order/getOrderByNo/":"partial","GET /wms/sales/order/ready-to-ship":"done","POST /wms/sales/orders/change-location/":"done","GET /wms/sales/orders/empty-stock/":"done","GET /wms/sales/orders/failed-pick":"done","GET /wms/sales/orders/finish-pick/":"done","GET /wms/sales/orders/ready-to-pick/":"done","GET /wms/sales/orders/ready-to-process/":"done","GET /wms/sales/orders/request-cancel/":"done",
 "POST /wms/sales/packlist":"done","POST /wms/sales/packlist/mark-as-complete/":"done","GET /wms/sales/packlist/scan-order":"partial","POST /wms/sales/packlist/update-qty-packed":"done","POST /wms/sales/packlist/verify-barcode/":"done","GET /wms/sales/packlists/finish-pack/":"partial","GET /wms/sales/packlists/process/":"partial",
 "POST /wms/sales/picklists/":"done","POST /wms/sales/picklists/change-picker/":"done","GET /wms/sales/picklists/confirm-pick/":"partial","POST /wms/sales/ready-to-pick":"partial","POST /wms/sales/ready-to-process":"partial",
 "GET /wms/sales/shipments/all":"done","GET /wms/sales/shipments/completed/{shipment_type}/{courierIds}":"todo","GET /wms/sales/shipments/instant/all":"todo","POST /wms/sales/shipments/orders/":"done","GET /wms/sales/shipments/{courier_new_id}":"partial","GET /wms/sales/shipped/":"done",
 "POST /wms/scan-shipment":"done","POST /wms/shipment-detail/":"done","POST /wms/shipments/":"done","POST /wms/shipments/get-order/":"todo","POST /wms/shipments/instant-courier/":"todo",
-"POST /webhooks/invoice":"todo","POST /webhooks/payment":"todo","POST /webhooks/price":"todo","POST /webhooks/product":"todo","POST /webhooks/purchaseorder":"todo","POST /webhooks/salesorder":"todo","POST /webhooks/salesreturn":"todo","POST /webhooks/stock":"todo","POST /webhooks/stocktransfer":"todo",
+"POST /webhooks/invoice":"done","POST /webhooks/payment":"done","POST /webhooks/price":"done","POST /webhooks/product":"done","POST /webhooks/purchaseorder":"done","POST /webhooks/salesorder":"done","POST /webhooks/salesreturn":"done","POST /webhooks/stock":"done","POST /webhooks/stocktransfer":"done",
 }
 
 
@@ -368,13 +368,19 @@ PIC_BY_TAG = {
     "Sales":"Rasyid","Purchasing":"Rasyid","Contact":"Rasyid","Reports":"Rasyid",
 }
 
+# Override PIC per-endpoint (menang atas PIC_BY_TAG). Semua integrasi Lazada = Darriel.
+PIC_BY_ENDPOINT = {
+    "/lazada/get-document/":"Darriel",
+    "/lazada/get-shipment-providers/{storeId}/":"Darriel",
+}
+
 import json
 items=[]
 for tag,m,p,key in rows:
     items.append({
         "domain":tag, "method":m, "endpoint":p,
         "function_id":ID[key], "status":ST[key],
-        "baseline_status":ST[key], "pic":PIC_BY_TAG.get(tag),
+        "baseline_status":ST[key], "pic":PIC_BY_ENDPOINT.get(p, PIC_BY_TAG.get(tag)),
         "priority":None, "source":"jubelio", "cilupbah_impl":None,
     })
 
@@ -404,11 +410,18 @@ FEATURES=[
  "Terima/tolak order","Push produk (create listing)","Sync produk (update)",
  "Sync stok (push balik)","Sync harga","Webhook masuk","Cancel order","Logistik / kurir channel",
 ]
+# Fitur omnichannel yang sudah selesai per channel.
+OMNI_DONE={
+ "Lazada": {"OAuth / Auth toko","Manajemen toko (list/refresh token)","Tarik order (pull)",
+  "Push produk (create listing)","Sync produk (update)","Sync stok (push balik)","Sync harga",
+  "Terima/tolak order","Cancel order","Logistik / kurir channel","Webhook masuk"},
+}
 for ch in CHANNELS:
     for f in FEATURES:
+        st = "done" if f in OMNI_DONE.get(ch, set()) else "todo"
         items.append({"domain":"Omnichannel","method":None,
             "endpoint":f"{ch} — {f}","function_id":f"Integrasi {f} untuk {ch} (pola TikTok)",
-            "status":"todo","baseline_status":"todo","pic":"Darriel","priority":"P2",
+            "status":st,"baseline_status":"todo","pic":"Darriel","priority":"P2",
             "source":"omnichannel","cilupbah_impl":None})
 
 def norm(s): return "in_progress" if s=="partial" else s

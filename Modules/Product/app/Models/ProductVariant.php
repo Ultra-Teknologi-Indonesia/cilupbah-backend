@@ -51,7 +51,7 @@ class ProductVariant extends Model
 
     public function wholesalePrices(): HasMany
     {
-        return $this->hasMany(ProductWholesalePrice::class, 'variant_id');
+        return $this->hasMany(WholesalePrice::class, 'variant_id');
     }
 
     public function bundleComponents(): HasMany

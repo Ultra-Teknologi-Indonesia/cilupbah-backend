@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Modules\Warehouse\Services\LocationService;
 use Modules\Warehouse\Http\Requests\StoreLocationRequest;
 use Modules\Warehouse\Http\Requests\UpdateLocationRequest;
+use Modules\Warehouse\Http\Resources\LocationResource;
 use Modules\Warehouse\Models\Location;
 
 use OpenApi\Attributes as OA;
@@ -32,6 +33,7 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'is_fbl', type: 'boolean', example: false, nullable: true),
         new OA\Property(property: 'is_tcb', type: 'boolean', example: false, nullable: true),
         new OA\Property(property: 'is_fbs', type: 'boolean', example: false, nullable: true),
+        new OA\Property(property: 'is_pos', type: 'boolean', example: false, nullable: true),
         new OA\Property(property: 'created_at', type: 'string', format: 'date-time'),
         new OA\Property(property: 'updated_at', type: 'string', format: 'date-time'),
         new OA\Property(property: 'village', type: 'object', nullable: true, description: 'Relasi kelurahan beserta kecamatan, kota, dan provinsi (village.district.city.province)'),
@@ -79,6 +81,7 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'is_fbl', type: 'boolean', example: false, nullable: true),
         new OA\Property(property: 'is_tcb', type: 'boolean', example: false, nullable: true),
         new OA\Property(property: 'is_fbs', type: 'boolean', example: false, nullable: true),
+        new OA\Property(property: 'is_pos', type: 'boolean', example: false, nullable: true),
         new OA\Property(property: 'layout', type: 'array', items: new OA\Items(ref: '#/components/schemas/LocationLayoutZone'), nullable: true),
     ]
 )]
@@ -99,6 +102,7 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'is_fbl', type: 'boolean', example: false, nullable: true),
         new OA\Property(property: 'is_tcb', type: 'boolean', example: false, nullable: true),
         new OA\Property(property: 'is_fbs', type: 'boolean', example: false, nullable: true),
+        new OA\Property(property: 'is_pos', type: 'boolean', example: false, nullable: true),
         new OA\Property(property: 'layout', type: 'array', items: new OA\Items(ref: '#/components/schemas/LocationLayoutZone'), nullable: true),
     ]
 )]
@@ -132,10 +136,42 @@ class LocationController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
-        $locations = $this->locationService->getAllPaginated($limit);
+        $locations = $this->locationService->getAllPaginated();
+        $locations->through(fn (Location $location) => new LocationResource($location));
 
         return $this->successPaginatedResponse($locations, 'Daftar lokasi berhasil diambil');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/locations/pos',
+        summary: 'Get all locations that have POS outlets',
+        security: [['bearerAuth' => []]],
+        tags: ['Locations'],
+        parameters: [
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, description: 'Number of items per page', schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'search', in: 'query', required: false, description: 'Full-text search by location name', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'Sort by location_name | created_at | location_code', schema: new OA\Schema(type: 'string'))
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Successful operation',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/Location')),
+                        new OA\Property(property: 'message', type: 'string', example: 'Daftar lokasi POS berhasil diambil')
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: 'Unauthenticated')
+        ]
+    )]
+    public function pos(Request $request): JsonResponse
+    {
+        $locations = $this->locationService->getPosLocations();
+        $locations->through(fn (Location $location) => new LocationResource($location));
+
+        return $this->successPaginatedResponse($locations, 'Daftar lokasi POS berhasil diambil');
     }
 
     #[OA\Post(
@@ -167,9 +203,9 @@ class LocationController extends Controller
         try {
             $location = $this->locationService->create($request->validated());
 
-            return $this->successResponse($location, 'Lokasi berhasil dibuat.', 201);
-        } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            return $this->successResponse(new LocationResource($location), 'Lokasi berhasil dibuat.', 201);
+        } catch (\DomainException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
         }
     }
 
@@ -204,7 +240,7 @@ class LocationController extends Controller
             return $this->errorResponse('Lokasi tidak ditemukan.', 404);
         }
 
-        return $this->successResponse($location, 'Detail lokasi berhasil diambil');
+        return $this->successResponse(new LocationResource($location), 'Detail lokasi berhasil diambil');
     }
 
     #[OA\Put(
@@ -237,13 +273,17 @@ class LocationController extends Controller
     )]
     public function update(UpdateLocationRequest $request, string $id): JsonResponse
     {
-        $updated = $this->locationService->update($id, $request->validated());
+        try {
+            $location = $this->locationService->update($id, $request->validated());
+        } catch (\DomainException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
 
-        if (!$updated) {
+        if (!$location) {
             return $this->errorResponse('Lokasi tidak ditemukan.', 404);
         }
 
-        return $this->successResponse(null, 'Lokasi berhasil diperbarui.');
+        return $this->successResponse(new LocationResource($location), 'Lokasi berhasil diperbarui.');
     }
 
     #[OA\Delete(
@@ -279,7 +319,7 @@ class LocationController extends Controller
             }
 
             return $this->successResponse(null, 'Lokasi berhasil dihapus.');
-        } catch (\Exception $e) {
+        } catch (\DomainException $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
     }

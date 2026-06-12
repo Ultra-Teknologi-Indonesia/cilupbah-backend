@@ -3,7 +3,9 @@
 namespace Modules\Warehouse\Repositories;
 
 use Modules\Warehouse\Models\LocationBin;
+use Modules\Inventory\Models\Inventory;
 use Illuminate\Database\Eloquent\Collection;
+use Ramsey\Uuid\Uuid;
 
 class LocationBinRepository
 {
@@ -36,6 +38,63 @@ class LocationBinRepository
     public function create(array $data): LocationBin
     {
         return LocationBin::create($data);
+    }
+
+    /**
+     * Buat bin bila belum ada (idempoten per location_id + bin_final_code).
+     * Mengembalikan [bin, baruDibuat].
+     */
+    public function firstOrCreateByFinalCode(string $locationId, string $finalCode, array $attributes): array
+    {
+        $bin = LocationBin::firstOrCreate(
+            ['location_id' => $locationId, 'bin_final_code' => $finalCode],
+            $attributes
+        );
+
+        return [$bin, $bin->wasRecentlyCreated];
+    }
+
+    /** Sisipkan banyak bin sekaligus; mengisi id UUID & timestamps manual karena pakai insert(). */
+    public function insertMany(array $rows): void
+    {
+        if (empty($rows)) {
+            return;
+        }
+
+        $now = now();
+        foreach ($rows as &$row) {
+            $row['id'] = Uuid::uuid7()->toString();
+            $row['created_at'] = $now;
+            $row['updated_at'] = $now;
+        }
+        unset($row);
+
+        LocationBin::insert($rows);
+    }
+
+    public function deleteByZone(string $zoneId): void
+    {
+        LocationBin::where('zone_id', $zoneId)->delete();
+    }
+
+    /** Apakah ada stok aktif (on_hand/reserved > 0) yang masih menempel pada bin ini. */
+    public function hasActiveStock(string $binId): bool
+    {
+        return Inventory::where('bin_id', $binId)
+            ->where(function ($q) {
+                $q->where('on_hand', '>', 0)->orWhere('reserved', '>', 0);
+            })
+            ->exists();
+    }
+
+    /** Apakah ada stok aktif pada salah satu bin di zona ini. */
+    public function zoneHasActiveStock(string $zoneId): bool
+    {
+        return Inventory::whereIn('bin_id', LocationBin::where('zone_id', $zoneId)->select('id'))
+            ->where(function ($q) {
+                $q->where('on_hand', '>', 0)->orWhere('reserved', '>', 0);
+            })
+            ->exists();
     }
 
     public function update(string $id, array $data): bool

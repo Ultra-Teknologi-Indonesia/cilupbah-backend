@@ -3,18 +3,74 @@
 namespace Modules\Product\Services;
 
 use DomainException;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Inventory\Models\Inventory;
 use Modules\Product\Models\Product;
+use Modules\Product\Repositories\ProductRepository;
 
 class ProductService
 {
+    /** Relasi detail untuk pengambilan satu produk. */
+    private const DETAIL_RELATIONS = [
+        'variants.channelMappings.channelMapping',
+        'variants.inventories',
+        'media',
+        'category',
+        'brand',
+        'channelMappings.channelShop.channel',
+    ];
+
+    public function __construct(
+        private readonly ProductRepository $repository,
+    ) {
+    }
+
     public function resolveChannelShopId(string $shopId): ?string
     {
         return ChannelShop::where('shop_id', $shopId)->value('id');
+    }
+
+    /** Jubelio: ambil produk per SKU (produk/varian). */
+    public function getProductBySku(string $sku): ?Product
+    {
+        return $this->repository->findBySku($sku, self::DETAIL_RELATIONS);
+    }
+
+    /** Jubelio: daftar produk bundle. */
+    public function getBundles(): LengthAwarePaginator
+    {
+        return $this->repository->paginateBundles();
+    }
+
+    /** Jubelio: stok produk per kumpulan id. */
+    public function getStocksByIds(array $ids): Collection
+    {
+        return $this->repository->getByIdsWithStock($ids);
+    }
+
+    /** Jubelio: harga produk per kumpulan id. */
+    public function getPricesByIds(array $ids): Collection
+    {
+        return $this->repository->getByIdsWithVariants($ids);
+    }
+
+    /** Jubelio: buat/ubah produk bundle beserta komponennya. */
+    public function createOrUpdateBundle(array $data): Product
+    {
+        $attributes = [
+            'name' => $data['name'],
+            'sku' => $data['sku'] ?? null,
+            'category_id' => $data['category_id'],
+            'brand_id' => $data['brand_id'] ?? null,
+            'is_bundle' => true,
+        ];
+
+        return $this->repository->saveBundle($data['id'] ?? null, $attributes, $data['components']);
     }
 
     public function deleteProduct(Product $product): void

@@ -6,8 +6,12 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Modules\Product\Http\Requests\CreateProductRequest;
+use Modules\Product\Http\Requests\ItemIdsRequest;
+use Modules\Product\Http\Requests\StoreBundleRequest;
 use Modules\Product\Http\Requests\UpdateProductRequest;
+use Modules\Product\Http\Resources\ProductPriceResource;
 use Modules\Product\Http\Resources\ProductResource;
+use Modules\Product\Http\Resources\ProductStockResource;
 use Modules\Product\Models\Product;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Product\Services\ProductService;
@@ -337,6 +341,67 @@ class ProductController extends Controller
         return $this->successResponse(
             new ProductResource($product->fresh(self::DETAIL_RELATIONS)),
             $message
+        );
+    }
+
+    /**
+     * Jubelio: GET /inventory/items/by-sku/{sku} — Ambil produk per SKU.
+     */
+    public function showBySku(string $sku): JsonResponse
+    {
+        $product = $this->productService->getProductBySku($sku);
+
+        if (! $product) {
+            return $this->errorResponse('Produk dengan SKU tersebut tidak ditemukan', 404);
+        }
+
+        return $this->successResponse(new ProductResource($product), 'Get product by SKU success');
+    }
+
+    /**
+     * Jubelio: GET /inventory/item-bundles/ — Ambil semua bundle produk (is_bundle = true).
+     */
+    public function bundles(): JsonResponse
+    {
+        return $this->successPaginatedResponse(
+            ProductResource::collection($this->productService->getBundles()),
+            'Get product bundles success'
+        );
+    }
+
+    /**
+     * Jubelio: POST /inventory/items/all-stocks/ — Ambil stok produk per banyak ID.
+     */
+    public function allStocks(ItemIdsRequest $request): JsonResponse
+    {
+        $products = $this->productService->getStocksByIds($request->validated()['item_ids']);
+
+        return $this->successResponse(ProductStockResource::collection($products), 'Get product stocks success');
+    }
+
+    /**
+     * Jubelio: POST /inventory/items/prices/ — Ambil harga produk per banyak ID.
+     */
+    public function prices(ItemIdsRequest $request): JsonResponse
+    {
+        $products = $this->productService->getPricesByIds($request->validated()['item_ids']);
+
+        return $this->successResponse(ProductPriceResource::collection($products), 'Get product prices success');
+    }
+
+    /**
+     * Jubelio: POST /inventory/items/ — Buat/ubah bundle produk (kirim {id} untuk edit).
+     */
+    public function storeBundle(StoreBundleRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+        $product = $this->productService->createOrUpdateBundle($data);
+        $isUpdate = isset($data['id']);
+
+        return $this->successResponse(
+            ['product_id' => $product->id],
+            $isUpdate ? 'Bundle produk berhasil diperbarui' : 'Bundle produk berhasil dibuat',
+            $isUpdate ? 200 : 201,
         );
     }
 

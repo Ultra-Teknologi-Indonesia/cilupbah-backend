@@ -66,8 +66,8 @@ class WebhookProductHandler
                     
                     if ($newStock !== $variantMapping->synced_stock) {
                         $variantMapping->update(['synced_stock' => $newStock]);
-                        
-                        SyncStockToChannelsJob::dispatch($variantMapping->variant_id);
+
+                        SyncStockToChannelsJob::dispatch($variantMapping->variant_id, $mapping->channel_shop_id);
                     }
                 }
             }

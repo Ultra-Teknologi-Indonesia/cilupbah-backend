@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Contracts\MarketplaceAdapterInterface;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\TikTokClient;
+use Modules\Channel\Services\TikTokImageUploader;
 use Modules\Channel\Services\TikTokProductMapper;
 use Modules\Channel\Services\TikTokToInternalProductMapper;
 use Modules\Product\Models\Product;
@@ -16,15 +17,18 @@ class TikTokAdapter implements MarketplaceAdapterInterface
     protected TikTokClient $client;
     protected TikTokProductMapper $outboundMapper;
     protected TikTokToInternalProductMapper $inboundMapper;
+    protected TikTokImageUploader $imageUploader;
 
     public function __construct(
         TikTokClient $client,
         TikTokProductMapper $outboundMapper,
-        TikTokToInternalProductMapper $inboundMapper
+        TikTokToInternalProductMapper $inboundMapper,
+        TikTokImageUploader $imageUploader
     ) {
         $this->client = $client;
         $this->outboundMapper = $outboundMapper;
         $this->inboundMapper = $inboundMapper;
+        $this->imageUploader = $imageUploader;
     }
 
     public function getChannelCode(): string
@@ -34,9 +38,8 @@ class TikTokAdapter implements MarketplaceAdapterInterface
 
     public function pushProduct(Product $product, ChannelShop $shop): array
     {
-        $imageUris = [];
-        foreach ($product->variants as $variant) {
-        }
+        $imageUrls = $product->media->where('media_type', 'image')->pluck('url')->all();
+        $imageUris = empty($imageUrls) ? [] : $this->imageUploader->uploadFromUrls($imageUrls, $shop->access_token);
 
         $internalProductArray = $product->toArray();
         $internalProductArray['variants'] = $product->variants->toArray();

@@ -30,6 +30,11 @@ class ChannelShopRepository
         return DB::table('channel_shops')->where('shop_id', $shopId)->first();
     }
 
+    public function getIdByShopId(string $shopId): ?string
+    {
+        return ChannelShop::where('shop_id', $shopId)->value('id');
+    }
+
     public function getActiveShops()
     {
         return DB::table('channel_shops')->where('is_active', true)->get();
@@ -50,12 +55,31 @@ class ChannelShopRepository
         return ChannelShop::where('channel_id', $channelId)->orderBy('id', 'desc')->get();
     }
 
-    public function findById(int $id)
+    /** Semua toko milik satu channel (generalisasi getAllTikTokShops). */
+    public function getShopsByChannelCode(string $code)
+    {
+        $channelId = \Modules\Channel\Models\Channel::where('code', $code)->value('id');
+
+        return ChannelShop::where('channel_id', $channelId)->orderBy('created_at', 'desc')->get();
+    }
+
+    /** Cari toko by primary key UUID (findById lama bertipe int untuk kompat TikTok). */
+    public function findByUuid(string $id): ?ChannelShop
     {
         return ChannelShop::find($id);
     }
 
-    public function disconnectShop(int $id): bool
+    public function updateShop(ChannelShop $shop, array $data): bool
+    {
+        return $shop->update($data);
+    }
+
+    public function findById(string $id)
+    {
+        return ChannelShop::find($id);
+    }
+
+    public function disconnectShop(string $id): bool
     {
         return ChannelShop::where('id', $id)->update([
             'is_active' => false,
@@ -66,7 +90,7 @@ class ChannelShopRepository
         ]) > 0;
     }
 
-    public function updateTokens(int $id, array $tokenData): bool
+    public function updateTokens(string $id, array $tokenData): bool
     {
         return ChannelShop::where('id', $id)->update($tokenData) > 0;
     }

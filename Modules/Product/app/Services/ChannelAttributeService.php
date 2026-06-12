@@ -110,4 +110,13 @@ class ChannelAttributeService
     {
         return $this->attributeRepository->getPaginated($channelCategoryId, $perPage);
     }
+
+    /**
+     * Jubelio: GET /inventory/items/channel-category-attributes/ — daftar seluruh atribut channel.
+     * Filter/sort/pagination ditangani Spatie Query Builder di repository.
+     */
+    public function getAllAttributes(): LengthAwarePaginator
+    {
+        return $this->attributeRepository->getAllPaginated();
+    }
 }

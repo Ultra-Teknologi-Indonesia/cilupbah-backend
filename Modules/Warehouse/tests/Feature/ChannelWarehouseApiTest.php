@@ -31,10 +31,11 @@ class ChannelWarehouseApiTest extends TestCase
     public function test_can_create_channel_warehouse(): void
     {
         $location = Location::factory()->create();
-        
+        $channel = \Modules\Channel\Models\Channel::create(['code' => 'tiktok', 'name' => 'TikTok Shop']);
+
         $payload = [
             'location_id' => $location->id,
-            'channel_id' => 1,
+            'channel_id' => $channel->id,
             'store_id' => 'STORE-001',
             'channel_location_id' => 'CH-LOC-001',
             'channel_location_type' => 'warehouse',
@@ -52,10 +53,11 @@ class ChannelWarehouseApiTest extends TestCase
     public function test_can_delete_channel_warehouse(): void
     {
         $location = Location::factory()->create();
-        
+        $channel = \Modules\Channel\Models\Channel::create(['code' => 'shopee', 'name' => 'Shopee']);
+
         $cwId = \Illuminate\Support\Facades\DB::table('channel_warehouses')->insertGetId([
             'location_id' => $location->id,
-            'channel_id' => 1,
+            'channel_id' => $channel->id,
             'store_id' => 'STORE-002',
             'channel_location_id' => 'CH-LOC-002',
             'channel_location_type' => 'warehouse',

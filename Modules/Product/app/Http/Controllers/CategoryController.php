@@ -35,7 +35,7 @@ class CategoryController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'parent_id' => 'nullable|exists:categories,id',
+            'parent_id' => 'nullable|bail|integer|exists:categories,id',
             'is_active' => 'nullable|boolean',
         ]);
 
@@ -61,7 +61,7 @@ class CategoryController extends Controller
     {
         $validated = $request->validate([
             'name' => 'sometimes|required|string|max:255',
-            'parent_id' => 'nullable|exists:categories,id',
+            'parent_id' => 'nullable|bail|integer|exists:categories,id',
             'is_active' => 'nullable|boolean',
         ]);
 
@@ -98,20 +98,13 @@ class CategoryController extends Controller
         }
     }
 
-    public function getCategoryMap(int $id): JsonResponse
+    public function channelMap(int $id): JsonResponse
     {
         try {
-            $category = $this->categoryService->getCategoryById($id);
-            $mappings = \Modules\Product\Models\ChannelCategory::whereHas('localCategories', fn ($q) => $q->where('categories.id', $id))
-                ->with('channel:id,name')
-                ->get();
-
-            return $this->successResponse([
-                'category' => new CategoryResource($category),
-                'channel_mappings' => $mappings,
-            ], 'Berhasil mengambil pemetaan kategori.');
-        } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 404);
+            $category = $this->categoryService->getChannelMapping($id);
+            return $this->successResponse(new CategoryResource($category), 'Berhasil mengambil pemetaan kategori ke channel');
+        } catch (\Throwable $e) {
+            return $this->errorResponse('Kategori tidak ditemukan', 404);
         }
     }
 }

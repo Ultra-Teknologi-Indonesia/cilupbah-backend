@@ -4,12 +4,9 @@ namespace Modules\Warehouse\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Modules\Warehouse\Services\ChannelWarehouseService;
 use Modules\Warehouse\Http\Requests\StoreChannelWarehouseRequest;
-use Modules\Warehouse\Models\ChannelWarehouse;
-use Spatie\QueryBuilder\QueryBuilder;
-use Spatie\QueryBuilder\AllowedFilter;
+use Modules\Warehouse\Http\Resources\ChannelWarehouseResource;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Channel Warehouses', description: 'API Endpoints for Channel Warehouse Mapping')]
@@ -18,7 +15,7 @@ use OpenApi\Attributes as OA;
     title: 'Channel Warehouse Schema',
     type: 'object',
     properties: [
-        new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
+        new OA\Property(property: 'id', type: 'integer', example: 12, description: 'PK auto-increment (bigint), bukan UUID.'),
         new OA\Property(property: 'location_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
         new OA\Property(property: 'channel_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
         new OA\Property(property: 'store_id', type: 'string', example: 'STORE-123'),
@@ -68,10 +65,10 @@ class ChannelWarehouseController extends Controller
             new OA\Response(response: 401, description: 'Unauthenticated')
         ]
     )]
-    public function index(Request $request): JsonResponse
+    public function index(): JsonResponse
     {
-        $limit = $request->query('limit', 10);
-        $mappings = $this->channelWarehouseService->getAllPaginated($limit);
+        $mappings = $this->channelWarehouseService->getAllPaginated();
+        $mappings->through(fn ($mapping) => new ChannelWarehouseResource($mapping));
 
         return $this->successPaginatedResponse($mappings, 'Daftar mapping warehouse berhasil diambil');
     }
@@ -105,8 +102,8 @@ class ChannelWarehouseController extends Controller
         try {
             $mapping = $this->channelWarehouseService->create($request->validated());
 
-            return $this->successResponse($mapping, 'Channel warehouse mapping berhasil dibuat.', 201);
-        } catch (\Exception $e) {
+            return $this->successResponse(new ChannelWarehouseResource($mapping), 'Channel warehouse mapping berhasil dibuat.', 201);
+        } catch (\DomainException $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
     }

@@ -37,16 +37,10 @@ class ChannelAttributeController extends Controller
         }
     }
 
-    public function globalIndex(Request $request): JsonResponse
+    public function all(): JsonResponse
     {
-        $query = \Modules\Product\Models\ChannelAttribute::with(['options', 'channelCategory:id,name,channel_id'])
-            ->when($request->channel_id, fn ($q, $v) => $q->whereHas('channelCategory', fn ($cq) => $cq->where('channel_id', $v)))
-            ->when($request->search, fn ($q, $v) => $q->where('name', 'ilike', "%{$v}%"))
-            ->orderBy('name');
+        $attributes = $this->service->getAllAttributes();
 
-        return $this->successPaginatedResponse(
-            ChannelAttributeResource::collection($query->paginate($request->input('limit', 20))),
-            'Berhasil mengambil semua atribut channel.'
-        );
+        return $this->successPaginatedResponse(ChannelAttributeResource::collection($attributes), 'Berhasil mengambil semua atribut kategori channel');
     }
 }

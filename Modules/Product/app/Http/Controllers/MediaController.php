@@ -3,75 +3,130 @@
 namespace Modules\Product\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
-use OpenApi\Attributes as OA;
+use App\Http\Requests\StoreMediaRequest;
+use App\Http\Resources\MediaResource;
+use App\Services\UploadService;
 use App\Traits\ApiResponse;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
+use OpenApi\Attributes as OA;
 
+/**
+ * Endpoint media terpusat untuk SEMUA tipe file (disimpan ke Cloudflare R2 via Spatie).
+ * Upload (POST), Replace (PUT, UUID stabil), Delete (DELETE), Lihat (GET).
+ * Tabel lain cukup menyimpan media UUID / URL yang dikembalikan.
+ */
+#[OA\Tag(name: 'Media', description: 'Manajemen file terpusat (R2)')]
 class MediaController extends Controller
 {
     use ApiResponse;
+
+    public function __construct(
+        protected UploadService $uploadService,
+    ) {}
+
     #[OA\Post(
-        path: "/api/v1/media/upload",
-        summary: "Upload media",
-        description: "Endpoint khusus upload media yang kemudian diambil nama/id untuk dimasukan ke json.",
-        tags: ["Media"]
-    )]
-    #[OA\RequestBody(
-        required: true,
-        content: new OA\MediaType(
-            mediaType: "multipart/form-data",
-            schema: new OA\Schema(
-                properties: [
-                    new OA\Property(property: "file", description: "File media (jpeg, png, jpg, gif, mp4, mov) max 20MB", type: "string", format: "binary")
-                ]
+        path: '/api/v1/media/upload',
+        summary: 'Upload file (semua tipe)',
+        description: 'Mengunggah file apa pun ke R2 dan mengembalikan uuid + url untuk direferensikan tabel lain.',
+        security: [['bearerAuth' => []]],
+        tags: ['Media'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\MediaType(
+                mediaType: 'multipart/form-data',
+                schema: new OA\Schema(
+                    required: ['file'],
+                    properties: [new OA\Property(property: 'file', type: 'string', format: 'binary')]
+                )
             )
-        )
+        ),
+        responses: [
+            new OA\Response(response: 201, description: 'File berhasil diunggah'),
+            new OA\Response(response: 422, description: 'Validasi gagal'),
+        ]
     )]
-    #[OA\Response(
-        response: 201,
-        description: "Media uploaded successfully",
-        content: new OA\JsonContent(
-            properties: [
-                new OA\Property(property: "status", type: "string", example: "success"),
-                new OA\Property(property: "message", type: "string", example: "Media uploaded successfully"),
-                new OA\Property(property: "data", type: "object", properties: [
-                    new OA\Property(property: "media_id", type: "string", example: "id-media_123.jpg"),
-                    new OA\Property(property: "name", type: "string", example: "media_123.jpg"),
-                    new OA\Property(property: "url", type: "string", example: "http://localhost/storage/media/media_123.jpg")
-                ])
-            ]
-        )
-    )]
-    #[OA\Response(response: 400, description: "Bad Request")]
-    public function upload(Request $request): JsonResponse
+    public function upload(StoreMediaRequest $request): JsonResponse
     {
-        // Validasi input media
-        $request->validate([
-            'file' => 'required|file|mimes:jpeg,png,jpg,gif,mp4,mov|max:20480', // Contoh max 20MB
-        ]);
+        $media = $this->uploadService->store($request->file('file'), Auth::id());
 
-        if ($request->hasFile('file')) {
-            $file = $request->file('file');
-            
-            // TODO: Implement actual upload logic to storage (e.g., S3, local, or directly to marketplace)
-            // Contoh sederhana menyimpan secara lokal dan men-generate ID/URL
-            
-            $extension = $file->getClientOriginalExtension();
-            $filename = uniqid('media_') . '.' . $extension;
-            
-            // Storage::disk('public')->putFileAs('media', $file, $filename);
-            
-            $mediaId = 'id-' . $filename; // Simulasi Media ID
-            $mediaUrl = url('storage/media/' . $filename); // Simulasi URL
+        return $this->successResponse(new MediaResource($media), 'File berhasil diunggah.', 201);
+    }
 
-            return $this->successResponse([
-                'media_id' => $mediaId,
-                'name' => $filename,
-                'url' => $mediaUrl,
-            ], 'Media uploaded successfully', 201);
+    #[OA\Get(
+        path: '/api/v1/media/upload/{uuid}',
+        summary: 'Ambil metadata + URL terkini berdasarkan UUID',
+        security: [['bearerAuth' => []]],
+        tags: ['Media'],
+        parameters: [new OA\Parameter(name: 'uuid', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [
+            new OA\Response(response: 200, description: 'OK'),
+            new OA\Response(response: 404, description: 'Tidak ditemukan'),
+        ]
+    )]
+    public function show(string $uuid): JsonResponse
+    {
+        $media = $this->uploadService->findByUuid($uuid);
+
+        if (! $media) {
+            return $this->errorResponse('File tidak ditemukan.', 404);
         }
 
-        return $this->errorResponse('No file provided', 400);
+        return $this->successResponse(new MediaResource($media), 'Detail file berhasil diambil.');
+    }
+
+    #[OA\Put(
+        path: '/api/v1/media/upload/{uuid}',
+        summary: 'Ganti file (UUID tetap sama)',
+        security: [['bearerAuth' => []]],
+        tags: ['Media'],
+        parameters: [new OA\Parameter(name: 'uuid', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\MediaType(
+                mediaType: 'multipart/form-data',
+                schema: new OA\Schema(
+                    required: ['file'],
+                    properties: [new OA\Property(property: 'file', type: 'string', format: 'binary')]
+                )
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'File berhasil diganti'),
+            new OA\Response(response: 404, description: 'Tidak ditemukan'),
+            new OA\Response(response: 422, description: 'Validasi gagal'),
+        ]
+    )]
+    public function replace(StoreMediaRequest $request, string $uuid): JsonResponse
+    {
+        $media = $this->uploadService->replace($uuid, $request->file('file'));
+
+        if (! $media) {
+            return $this->errorResponse('File tidak ditemukan.', 404);
+        }
+
+        return $this->successResponse(new MediaResource($media), 'File berhasil diganti.');
+    }
+
+    #[OA\Delete(
+        path: '/api/v1/media/upload/{uuid}',
+        summary: 'Hapus file',
+        security: [['bearerAuth' => []]],
+        tags: ['Media'],
+        parameters: [new OA\Parameter(name: 'uuid', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [
+            new OA\Response(response: 200, description: 'File berhasil dihapus'),
+            new OA\Response(response: 404, description: 'Tidak ditemukan'),
+        ]
+    )]
+    public function destroy(string $uuid): JsonResponse
+    {
+        $deleted = $this->uploadService->delete($uuid);
+
+        if (! $deleted) {
+            return $this->errorResponse('File tidak ditemukan.', 404);
+        }
+
+        return $this->successResponse(null, 'File berhasil dihapus.');
     }
 }

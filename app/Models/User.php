@@ -9,6 +9,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
+use App\Services\UploadService;
 use App\Traits\HasUuid7;
 
 class User extends Authenticatable
@@ -30,6 +31,7 @@ class User extends Authenticatable
         'nik',
         'phone',
         'warehouse_id',
+        'avatar_media_id',
         'last_login_at',
     ];
 
@@ -55,5 +57,18 @@ class User extends Authenticatable
             'password' => 'hashed',
             'last_login_at' => 'datetime',
         ];
+    }
+
+    /**
+     * URL avatar di-resolve dinamis dari media terpusat (avatar_media_id = media.uuid).
+     * Null bila belum diset atau media-nya sudah dihapus.
+     */
+    public function getAvatarUrlAttribute(): ?string
+    {
+        if (! $this->avatar_media_id) {
+            return null;
+        }
+
+        return app(UploadService::class)->findByUuid($this->avatar_media_id)?->getUrl();
     }
 }

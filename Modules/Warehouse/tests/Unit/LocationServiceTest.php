@@ -18,7 +18,11 @@ class LocationServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new LocationService(new LocationRepository(), new \Modules\Warehouse\Repositories\LocationBinRepository());
+        $this->service = new LocationService(
+            new LocationRepository(),
+            new \Modules\Warehouse\Repositories\LocationBinRepository(),
+            new \Modules\Warehouse\Repositories\LocationZoneRepository()
+        );
     }
 
     public function test_create_location_generates_default_bin(): void
@@ -67,8 +71,9 @@ class LocationServiceTest extends TestCase
         $location = Location::factory()->create();
         
         $result = $this->service->update($location->id, ['location_name' => 'Updated Name']);
-        
-        $this->assertTrue($result);
+
+        $this->assertInstanceOf(Location::class, $result);
+        $this->assertEquals('Updated Name', $result->location_name);
         $this->assertDatabaseHas('locations', ['id' => $location->id, 'location_name' => 'Updated Name']);
     }
 
@@ -88,23 +93,25 @@ class LocationServiceTest extends TestCase
         $this->expectExceptionMessage('Lokasi tidak dapat dihapus karena masih memiliki data stok.');
 
         $location = Location::factory()->create();
-        
-        $categoryId = \Illuminate\Support\Facades\DB::table('categories')->insertGetId([
-            'name' => 'Test Category',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        
-        $productId = \Illuminate\Support\Facades\DB::table('products')->insertGetId([
-            'category_id' => $categoryId,
+
+        $category = \Modules\Product\Models\Category::create(['name' => 'Test Category', 'is_active' => true]);
+        $product = \Modules\Product\Models\Product::create([
+            'category_id' => $category->id,
             'name' => 'Test Product',
-            'created_at' => now(),
-            'updated_at' => now(),
+            'status' => 'master',
+            'is_active' => true,
+        ]);
+        $variant = \Modules\Product\Models\ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'TEST-SKU-SVC',
+            'sell_price' => 1000,
+            'is_active' => true,
         ]);
 
         \Illuminate\Support\Facades\DB::table('inventories')->insert([
+            'id' => \Illuminate\Support\Str::orderedUuid()->toString(),
             'location_id' => $location->id,
-            'item_id' => $productId,
+            'item_id' => $variant->id,
             'bin_id' => null,
             'batch_no' => 'B001',
             'serial_no' => 'S001',

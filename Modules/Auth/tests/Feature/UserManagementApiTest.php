@@ -1,0 +1,172 @@
+<?php
+
+namespace Modules\Auth\Tests\Feature;
+
+use App\Models\User;
+use Database\Seeders\RoleSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
+use Tests\TestCase;
+
+class UserManagementApiTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected User $owner;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(RoleSeeder::class);
+
+        $this->owner = User::factory()->create();
+        $this->owner->assignRole('owner');
+    }
+
+    public function test_filter_by_unknown_role_returns_empty_200_not_500(): void
+    {
+        $this->actingAs($this->owner, 'sanctum')
+            ->getJson('/api/v1/users?filter[role]=ghost-role')
+            ->assertStatus(200)
+            ->assertJsonCount(0, 'data');
+    }
+
+    public function test_filter_by_role_returns_matching_users(): void
+    {
+        $picker = User::factory()->create();
+        $picker->assignRole('picker');
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->getJson('/api/v1/users?filter[role]=picker')
+            ->assertStatus(200)
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $picker->id);
+    }
+
+    public function test_show_returns_user_detail(): void
+    {
+        $target = User::factory()->create();
+        $target->assignRole('picker');
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->getJson("/api/v1/users/{$target->id}")
+            ->assertStatus(200)
+            ->assertJsonPath('data.id', $target->id)
+            ->assertJsonPath('data.email', $target->email)
+            ->assertJsonPath('data.roles.0', 'picker');
+    }
+
+    public function test_show_with_non_uuid_id_returns_404_not_500(): void
+    {
+        $this->actingAs($this->owner, 'sanctum')
+            ->getJson('/api/v1/users/not-a-uuid')
+            ->assertStatus(404);
+    }
+
+    public function test_show_with_unknown_uuid_returns_404(): void
+    {
+        $this->actingAs($this->owner, 'sanctum')
+            ->getJson('/api/v1/users/' . Str::uuid())
+            ->assertStatus(404);
+    }
+
+    public function test_update_without_nik_and_warehouse_preserves_existing_values(): void
+    {
+        $target = User::factory()->create(['nik' => '3201019999']);
+        $target->assignRole('picker');
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->putJson("/api/v1/users/{$target->id}", [
+                'name' => 'Updated Name',
+                'email' => $target->email,
+                'roles' => ['picker'],
+            ])
+            ->assertStatus(200);
+
+        $this->assertSame('3201019999', $target->fresh()->nik);
+    }
+
+    public function test_update_with_explicit_null_nik_clears_it(): void
+    {
+        $target = User::factory()->create(['nik' => '3201019999']);
+        $target->assignRole('picker');
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->putJson("/api/v1/users/{$target->id}", [
+                'name' => 'Updated Name',
+                'email' => $target->email,
+                'roles' => ['picker'],
+                'nik' => null,
+            ])
+            ->assertStatus(200);
+
+        $this->assertNull($target->fresh()->nik);
+    }
+
+    public function test_owner_can_delete_user(): void
+    {
+        $target = User::factory()->create();
+        $target->assignRole('picker');
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->deleteJson("/api/v1/users/{$target->id}")
+            ->assertStatus(200);
+
+        $this->assertDatabaseMissing('users', ['id' => $target->id]);
+    }
+
+    public function test_cannot_delete_own_account_returns_422(): void
+    {
+        $this->actingAs($this->owner, 'sanctum')
+            ->deleteJson("/api/v1/users/{$this->owner->id}")
+            ->assertStatus(422);
+
+        $this->assertDatabaseHas('users', ['id' => $this->owner->id]);
+    }
+
+    public function test_cannot_delete_owner_account_returns_403(): void
+    {
+        $admin = User::factory()->create();
+        $admin->assignRole('admin');
+        $admin->givePermissionTo('delete-user');
+
+        $otherOwner = User::factory()->create();
+        $otherOwner->assignRole('owner');
+
+        $this->actingAs($admin, 'sanctum')
+            ->deleteJson("/api/v1/users/{$otherOwner->id}")
+            ->assertStatus(403);
+
+        $this->assertDatabaseHas('users', ['id' => $otherOwner->id]);
+    }
+
+    public function test_delete_with_non_uuid_id_returns_404_not_500(): void
+    {
+        $this->actingAs($this->owner, 'sanctum')
+            ->deleteJson('/api/v1/users/not-a-uuid')
+            ->assertStatus(404);
+    }
+
+    public function test_unauthorized_user_cannot_delete(): void
+    {
+        $plain = User::factory()->create();
+        $plain->assignRole('picker');
+
+        $target = User::factory()->create();
+        $target->assignRole('checker');
+
+        $this->actingAs($plain, 'sanctum')
+            ->deleteJson("/api/v1/users/{$target->id}")
+            ->assertStatus(403);
+
+        $this->assertDatabaseHas('users', ['id' => $target->id]);
+    }
+
+    public function test_export_returns_xlsx_download(): void
+    {
+        $this->actingAs($this->owner, 'sanctum')
+            ->get('/api/v1/users/export')
+            ->assertStatus(200)
+            ->assertHeader('content-disposition');
+    }
+}

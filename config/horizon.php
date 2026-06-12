@@ -199,7 +199,9 @@ return [
     'defaults' => [
         'supervisor-default' => [
             'connection' => 'redis',
-            'queue' => ['default', env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks'), env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'), env('QUEUE_NAME_PRODUCT', 'product')],
+            // 'webhooks' = outbound webhook internal (Modules/Webhook) — sebelumnya tidak
+            // dilayani supervisor mana pun sehingga job webhook tidak pernah terkirim.
+            'queue' => ['default', env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks'), env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'), env('QUEUE_NAME_PRODUCT', 'product'), env('WEBHOOK_QUEUE', 'webhooks')],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 1,
@@ -316,35 +318,38 @@ return [
             ],
         ],
 
+        // Staging = box 4GB RAM (baseline ~75% terpakai). Total worker dibatasi ~9 (dari 38)
+        // agar Horizon tidak scale-up sampai RAM habis → swap thrashing → load meledak.
+        // ~9 worker x ~60MB ≈ 540MB, muat di headroom ~1GB. Setiap worker bootstrap Laravel penuh.
         'staging' => [
             'supervisor-default' => [
-                'maxProcesses' => 10,
+                'maxProcesses' => 2,
                 'balanceMaxShift' => 1,
-                'balanceCooldown' => 3,
+                'balanceCooldown' => 5,
             ],
             'supervisor-orders' => [
-                'minProcesses' => 2,
-                'maxProcesses' => 10,
-            ],
-            'supervisor-fulfillment' => [
-                'minProcesses' => 1,
-                'maxProcesses' => 5,
-            ],
-            'supervisor-stock-sync' => [
-                'minProcesses' => 1,
-                'maxProcesses' => 5,
-            ],
-            'supervisor-failed-jobs' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 2,
             ],
+            'supervisor-fulfillment' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 1,
+            ],
+            'supervisor-stock-sync' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 1,
+            ],
+            'supervisor-failed-jobs' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 1,
+            ],
             'supervisor-stock' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 3,
+                'maxProcesses' => 1,
             ],
             'supervisor-downloads' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 3,
+                'maxProcesses' => 1,
             ],
         ],
 

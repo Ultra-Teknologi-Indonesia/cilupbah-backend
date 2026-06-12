@@ -3,6 +3,7 @@
 namespace Modules\Sales\Repositories;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Modules\Sales\Models\SalesOrder;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
@@ -173,26 +174,35 @@ class SalesOrderRepository
         return SalesOrder::find($orderId);
     }
 
+    /**
+     * Upsert item order per kunci (sku + price) — BUKAN delete-insert.
+     * Baris lama yang masih direferensikan picklist/packlist (FK restrictOnDelete)
+     * tidak boleh dihapus; menghapusnya membuat seluruh upsert order gagal dan
+     * order yang sedang dipenuhi berhenti tersinkron dari channel.
+     */
     public function syncOrderItems(string $orderId, array $items): void
     {
-        DB::table('sales_order_items')->where('order_id', $orderId)->delete();
+        $variantIdsBySku = $this->resolveVariantIdsBySku($items);
+
+        $pools = [];
+        $existingRows = DB::table('sales_order_items')
+            ->where('order_id', $orderId)
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get();
+
+        foreach ($existingRows as $row) {
+            $pools[$this->itemKey($row->sku, $row->price)][] = $row;
+        }
 
         $itemsToInsert = [];
-        foreach ($items as $item) {
-            $itemId = null;
-            if (!empty($item['sku'])) {
-                $variant = DB::table('product_variants')->where('sku', $item['sku'])->first();
-                if ($variant) {
-                    $itemId = $variant->id;
-                }
-            }
 
-            $itemsToInsert[] = [
-                'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
-                'order_id' => $orderId,
-                'item_id' => $itemId,
+        foreach ($items as $item) {
+            $sku = $item['sku'] ?? null;
+            $resolvedItemId = $sku ? ($variantIdsBySku[$sku] ?? null) : null;
+
+            $values = [
                 'channel_product_id' => $item['channel_product_id'] ?? null,
-                'sku' => $item['sku'] ?? null,
                 'description' => $item['description'] ?? null,
                 'qty_in_base' => $item['qty_in_base'] ?? 1,
                 'price' => $item['price'] ?? 0,
@@ -200,13 +210,90 @@ class SalesOrderRepository
                 'disc_amount' => $item['disc_amount'] ?? 0,
                 'tax_amount' => $item['tax_amount'] ?? 0,
                 'amount' => $item['amount'] ?? 0,
-                'created_at' => now(),
                 'updated_at' => now(),
             ];
+
+            $key = $this->itemKey($sku, $item['price'] ?? 0);
+            $existing = !empty($pools[$key]) ? array_shift($pools[$key]) : null;
+
+            if ($existing) {
+                if ($resolvedItemId !== null) {
+                    $values['item_id'] = $resolvedItemId;
+                }
+
+                DB::table('sales_order_items')->where('id', $existing->id)->update($values);
+                continue;
+            }
+
+            $itemsToInsert[] = array_merge($values, [
+                'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
+                'order_id' => $orderId,
+                'item_id' => $resolvedItemId,
+                'sku' => $sku,
+                'created_at' => now(),
+            ]);
         }
 
         if (!empty($itemsToInsert)) {
             DB::table('sales_order_items')->insert($itemsToInsert);
+        }
+
+        $this->deleteUnreferencedLeftovers($orderId, $pools);
+    }
+
+    protected function itemKey(?string $sku, mixed $price): string
+    {
+        return ($sku ?? '') . '|' . number_format((float) $price, 2, '.', '');
+    }
+
+    /** @return array<string,string> peta sku → product_variants.id */
+    protected function resolveVariantIdsBySku(array $items): array
+    {
+        $skus = collect($items)->pluck('sku')->filter()->unique()->values();
+
+        if ($skus->isEmpty()) {
+            return [];
+        }
+
+        return DB::table('product_variants')
+            ->whereIn('sku', $skus)
+            ->pluck('id', 'sku')
+            ->all();
+    }
+
+    /**
+     * Hapus baris lama yang tidak lagi ada di payload channel, KECUALI yang masih
+     * direferensikan picklist/packlist — baris itu dipertahankan agar FK tidak meledak.
+     */
+    protected function deleteUnreferencedLeftovers(string $orderId, array $pools): void
+    {
+        $leftoverIds = collect($pools)->flatten(1)->pluck('id');
+
+        if ($leftoverIds->isEmpty()) {
+            return;
+        }
+
+        $referencedIds = DB::table('picklist_items')
+            ->whereIn('order_item_id', $leftoverIds)
+            ->pluck('order_item_id')
+            ->merge(
+                DB::table('packlist_items')
+                    ->whereIn('order_item_id', $leftoverIds)
+                    ->pluck('order_item_id')
+            )
+            ->unique();
+
+        $deletableIds = $leftoverIds->diff($referencedIds);
+
+        if ($deletableIds->isNotEmpty()) {
+            DB::table('sales_order_items')->whereIn('id', $deletableIds)->delete();
+        }
+
+        if ($referencedIds->isNotEmpty()) {
+            Log::warning('syncOrderItems: item lama dipertahankan karena masih direferensikan picklist/packlist', [
+                'order_id' => $orderId,
+                'order_item_ids' => $referencedIds->values()->all(),
+            ]);
         }
     }
 }

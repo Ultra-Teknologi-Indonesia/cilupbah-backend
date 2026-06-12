@@ -3,40 +3,49 @@
 namespace Modules\Auth\Repositories;
 
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class UserRepository
 {
-    public function getPaginatedUsers(): \Illuminate\Pagination\LengthAwarePaginator
+    public function getPaginatedUsers(): LengthAwarePaginator
     {
-        return \Spatie\QueryBuilder\QueryBuilder::for(User::class)
-            ->with(['roles', 'permissions']) // Eager load roles & permissions
-            ->allowedSearch('name', 'email')
-            ->allowedFilters([
-                \Spatie\QueryBuilder\AllowedFilter::scope('role'),
-                \Spatie\QueryBuilder\AllowedFilter::exact('warehouse_id')
-            ])
-            ->allowedSorts('name', 'created_at')
-            ->defaultSort('-created_at')
+        return $this->baseQuery()
             ->paginate(request('per_page', 10))
             ->appends(request()->query());
     }
 
-    public function getExportUsersQuery(): \Illuminate\Database\Eloquent\Builder
+    public function getExportUsersQuery(): Builder
     {
-        return \Spatie\QueryBuilder\QueryBuilder::for(User::class)
-            ->with(['roles', 'permissions']) // Eager load roles & permissions
+        return $this->baseQuery()->getEloquentBuilder();
+    }
+
+    protected function baseQuery(): QueryBuilder
+    {
+        return QueryBuilder::for(User::class)
+            ->with(['roles', 'permissions'])
             ->allowedSearch('name', 'email')
-            ->allowedFilters([
-                \Spatie\QueryBuilder\AllowedFilter::scope('role'),
-                \Spatie\QueryBuilder\AllowedFilter::exact('warehouse_id')
-            ])
+            ->allowedFilters(
+                AllowedFilter::callback('role', function (Builder $query, $value) {
+                    $query->whereHas('roles', fn (Builder $q) => $q->whereIn('name', (array) $value));
+                }),
+                AllowedFilter::exact('warehouse_id'),
+            )
             ->allowedSorts('name', 'created_at')
             ->defaultSort('-created_at');
     }
+
     public function findById(string $id): User
     {
         return User::findOrFail($id);
+    }
+
+    public function findByIdWithRelations(string $id): User
+    {
+        return User::with(['roles', 'permissions'])->findOrFail($id);
     }
 
     public function findByIds(array $ids): Collection
@@ -57,6 +66,11 @@ class UserRepository
     public function update(User $user, array $data): bool
     {
         return $user->update($data);
+    }
+
+    public function delete(User $user): bool
+    {
+        return $user->delete();
     }
 
     public function deleteTokens(User $user): void
