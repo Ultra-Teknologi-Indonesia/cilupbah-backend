@@ -5,6 +5,7 @@ namespace Modules\Auth\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use App\Traits\ApiResponse;
+use Modules\Auth\Http\Resources\PermissionResource;
 use Modules\Auth\Services\PermissionService;
 use OpenApi\Attributes as OA;
 
@@ -50,6 +51,6 @@ class PermissionController extends Controller
     {
         $permissions = $this->permissionService->getAllPermissions();
 
-        return $this->successResponse($permissions, 'Daftar hak akses berhasil dimuat.');
+        return $this->successResponse(PermissionResource::collection($permissions), 'Daftar hak akses berhasil dimuat.');
     }
 }

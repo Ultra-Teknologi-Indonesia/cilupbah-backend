@@ -3,12 +3,14 @@
 namespace Modules\Auth\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Auth\Http\Requests\LoginRequest;
+use Modules\Auth\Http\Requests\UpdateAvatarRequest;
+use Modules\Auth\Http\Resources\ProfileResource;
 use Modules\Auth\Services\AuthService;
 use Modules\Auth\Services\UserService;
-use Modules\Auth\Http\Resources\ProfileResource;
-use App\Traits\ApiResponse;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Auth', description: 'Authentication API Endpoints')]
@@ -60,14 +62,9 @@ class AuthController extends Controller
             new OA\Response(response: 401, description: 'Email atau kata sandi yang Anda masukkan salah.')
         ]
     )]
-    public function login(Request $request): JsonResponse
+    public function login(LoginRequest $request): JsonResponse
     {
-        $credentials = $request->validate([
-            'email' => 'required|email',
-            'password' => 'required',
-        ]);
-
-        $data = $this->authService->login($credentials);
+        $data = $this->authService->login($request->validated());
 
         if (! $data) {
             return $this->errorResponse('Email atau kata sandi yang Anda masukkan salah.', 401);
@@ -135,7 +132,7 @@ class AuthController extends Controller
             new OA\Response(response: 401, description: 'Unauthenticated'),
         ]
     )]
-    public function updateAvatar(\Modules\Auth\Http\Requests\UpdateAvatarRequest $request): JsonResponse
+    public function updateAvatar(UpdateAvatarRequest $request): JsonResponse
     {
         $user = $this->userService->setAvatar($request->user(), $request->input('media_uuid'));
 

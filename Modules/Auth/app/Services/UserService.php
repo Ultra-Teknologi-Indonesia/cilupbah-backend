@@ -2,14 +2,19 @@
 
 namespace Modules\Auth\Services;
 
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\DB;
-use Modules\Auth\Repositories\UserRepository;
-use Modules\Auth\Repositories\UserHistoryRepository;
 use App\Models\User;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Maatwebsite\Excel\Facades\Excel;
+use Modules\Auth\Exports\UsersExport;
+use Modules\Auth\Repositories\UserHistoryRepository;
+use Modules\Auth\Repositories\UserRepository;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class UserService
 {
@@ -18,25 +23,24 @@ class UserService
         protected UserHistoryRepository $historyRepository
     ) {}
 
-    /**
-     * Get paginated users.
-     */
     public function getPaginatedUsers(): LengthAwarePaginator
     {
         return $this->userRepository->getPaginatedUsers();
     }
 
-    /**
-     * Get query for user export.
-     */
-    public function getExportUsersQuery(): \Illuminate\Database\Eloquent\Builder
+    public function getUserDetail(string $id): User
     {
-        return $this->userRepository->getExportUsersQuery();
+        return $this->userRepository->findByIdWithRelations($id);
     }
 
-    /**
-     * Create a new user with assigned role.
-     */
+    public function downloadUsersExport(): BinaryFileResponse
+    {
+        return Excel::download(
+            new UsersExport($this->userRepository->getExportUsersQuery()),
+            'users_export_' . now()->format('Ymd_His') . '.xlsx'
+        );
+    }
+
     public function createUser(array $data): User
     {
         return DB::transaction(function () use ($data) {
@@ -61,9 +65,6 @@ class UserService
         });
     }
 
-    /**
-     * Update an existing user.
-     */
     public function updateUser(string $id, array $data): User
     {
         return DB::transaction(function () use ($id, $data) {
@@ -72,16 +73,15 @@ class UserService
             $updateData = [
                 'name' => $data['name'],
                 'email' => $data['email'],
-                'nik' => $data['nik'] ?? null,
-                'warehouse_id' => $data['warehouse_id'] ?? null,
             ];
 
-            // Hanya ubah avatar bila field dikirim (agar update tanpa field tidak menghapus avatar).
-            if (array_key_exists('avatar_media_id', $data)) {
-                $updateData['avatar_media_id'] = $data['avatar_media_id'];
+            foreach (['nik', 'warehouse_id', 'avatar_media_id'] as $optionalField) {
+                if (array_key_exists($optionalField, $data)) {
+                    $updateData[$optionalField] = $data[$optionalField];
+                }
             }
 
-            if (isset($data['password']) && !empty($data['password'])) {
+            if (! empty($data['password'])) {
                 $updateData['password'] = Hash::make($data['password']);
             }
 
@@ -99,9 +99,30 @@ class UserService
         });
     }
 
-    /**
-     * Set atau lepas avatar user (referensi ke media terpusat). $mediaUuid null = lepas.
-     */
+    public function deleteUser(string $id): void
+    {
+        DB::transaction(function () use ($id) {
+            $user = $this->userRepository->findById($id);
+
+            if ($user->id === Auth::id()) {
+                throw new HttpException(422, 'Anda tidak dapat menghapus akun sendiri.');
+            }
+
+            if ($user->hasRole('owner')) {
+                throw new HttpException(403, 'Akun owner tidak dapat dihapus.');
+            }
+
+            $this->userRepository->deleteTokens($user);
+            $this->userRepository->delete($user);
+
+            Log::info('Pengguna dihapus', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'actor_id' => Auth::id(),
+            ]);
+        });
+    }
+
     public function setAvatar(User $user, ?string $mediaUuid): User
     {
         $this->userRepository->update($user, ['avatar_media_id' => $mediaUuid]);
@@ -109,13 +130,10 @@ class UserService
         return $user->refresh();
     }
 
-    /**
-     * Force logout a specific user.
-     */
     public function forceLogout(string $id): void
     {
         $user = $this->userRepository->findById($id);
-        
+
         $this->userRepository->deleteTokens($user);
 
         $this->historyRepository->createHistory([
@@ -125,9 +143,6 @@ class UserService
         ]);
     }
 
-    /**
-     * Bulk force logout multiple users.
-     */
     public function bulkForceLogout(array $userIds): void
     {
         $actorId = Auth::id();
@@ -144,12 +159,10 @@ class UserService
         }
     }
 
-    /**
-     * Get paginated user histories.
-     */
     public function getUserHistories(string $userId): LengthAwarePaginator|Collection
     {
         $user = $this->userRepository->findById($userId);
+
         return $this->historyRepository->getHistoriesByUserId($user->id);
     }
 }

@@ -5,18 +5,16 @@ namespace Modules\Auth\Http\Resources;
 use App\Models\Permission;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Collection;
 
 class ProfileResource extends JsonResource
 {
-    /**
-     * Transform the resource into an array.
-     *
-     * @return array<string, mixed>
-     */
+    protected static ?Collection $allPermissionNames = null;
+
     public function toArray(Request $request): array
     {
         $permissions = $this->hasRole('owner')
-            ? Permission::pluck('name')
+            ? static::$allPermissionNames ??= Permission::pluck('name')
             : $this->getAllPermissions()->pluck('name');
 
         return [

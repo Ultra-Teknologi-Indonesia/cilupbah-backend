@@ -3,12 +3,16 @@
 namespace Modules\Auth\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\JsonResponse;
-use Modules\Auth\Services\UserService;
-use Modules\Auth\Http\Requests\StoreUserRequest;
-use Modules\Auth\Http\Resources\ProfileResource;
+use App\Http\Resources\UserHistoryResource;
 use App\Traits\ApiResponse;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Modules\Auth\Http\Requests\StoreUserRequest;
+use Modules\Auth\Http\Requests\UpdateUserRequest;
+use Modules\Auth\Http\Resources\ProfileResource;
+use Modules\Auth\Services\UserService;
 use OpenApi\Attributes as OA;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 #[OA\Tag(name: 'Users', description: 'User Management Endpoints')]
 class UserController extends Controller
@@ -58,14 +62,36 @@ class UserController extends Controller
             new OA\Response(response: 401, description: 'Unauthenticated')
         ]
     )]
-    public function export()
+    public function export(): BinaryFileResponse
     {
-        $query = $this->userService->getExportUsersQuery();
-        
-        return \Maatwebsite\Excel\Facades\Excel::download(
-            new \Modules\Auth\Exports\UsersExport($query),
-            'users_export_' . now()->format('Ymd_His') . '.xlsx'
-        );
+        return $this->userService->downloadUsersExport();
+    }
+
+    #[OA\Get(
+        path: '/api/v1/users/{id}',
+        summary: 'Get user detail',
+        security: [['bearerAuth' => []]],
+        tags: ['Users'],
+        parameters: [
+            new OA\Parameter(
+                name: 'id',
+                in: 'path',
+                required: true,
+                description: 'User ID',
+                schema: new OA\Schema(type: 'string', example: '019ea2afad1d733eafb905816d10590e')
+            )
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'User detail retrieved successfully'),
+            new OA\Response(response: 404, description: 'User not found'),
+            new OA\Response(response: 403, description: 'Forbidden access')
+        ]
+    )]
+    public function show(string $id): JsonResponse
+    {
+        $user = $this->userService->getUserDetail($id);
+
+        return $this->successResponse(new ProfileResource($user), 'Detail pengguna berhasil dimuat.');
     }
 
     #[OA\Post(
@@ -169,11 +195,39 @@ class UserController extends Controller
             new OA\Response(response: 403, description: 'Forbidden access')
         ]
     )]
-    public function update(\Modules\Auth\Http\Requests\UpdateUserRequest $request, string $id): JsonResponse
+    public function update(UpdateUserRequest $request, string $id): JsonResponse
     {
         $user = $this->userService->updateUser($id, $request->validated());
 
         return $this->successResponse(new ProfileResource($user), 'Pengguna berhasil diperbarui.');
+    }
+
+    #[OA\Delete(
+        path: '/api/v1/users/{id}',
+        summary: 'Delete a user',
+        security: [['bearerAuth' => []]],
+        tags: ['Users'],
+        parameters: [
+            new OA\Parameter(
+                name: 'id',
+                in: 'path',
+                required: true,
+                description: 'User ID',
+                schema: new OA\Schema(type: 'string', example: '019ea2afad1d733eafb905816d10590e')
+            )
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'User deleted successfully'),
+            new OA\Response(response: 404, description: 'User not found'),
+            new OA\Response(response: 422, description: 'Cannot delete own account'),
+            new OA\Response(response: 403, description: 'Forbidden access')
+        ]
+    )]
+    public function destroy(string $id): JsonResponse
+    {
+        $this->userService->deleteUser($id);
+
+        return $this->successResponse(null, 'Pengguna berhasil dihapus.');
     }
 
     #[OA\Get(
@@ -227,7 +281,7 @@ class UserController extends Controller
         $histories = $this->userService->getUserHistories($id);
 
         return $this->successPaginatedResponse(
-            \App\Http\Resources\UserHistoryResource::collection($histories)
+            UserHistoryResource::collection($histories)
         );
     }
 
@@ -296,7 +350,7 @@ class UserController extends Controller
             new OA\Response(response: 403, description: 'Forbidden access')
         ]
     )]
-    public function bulkForceLogout(\Illuminate\Http\Request $request): JsonResponse
+    public function bulkForceLogout(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'user_ids' => ['required', 'array', 'min:1'],

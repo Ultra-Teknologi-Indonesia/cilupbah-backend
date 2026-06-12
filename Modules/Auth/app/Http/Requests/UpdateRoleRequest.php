@@ -12,16 +12,21 @@ class UpdateRoleRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        if (is_string($this->input('name'))) {
+            $this->merge(['name' => strtolower(trim($this->input('name')))]);
+        }
+    }
+
     public function rules(): array
     {
-        $roleId = $this->route('id');
-
         return [
             'name' => [
-                'required', 
-                'string', 
-                'max:255', 
-                Rule::unique('roles', 'name')->ignore($roleId)
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('roles', 'name')->ignore($this->route('id')),
             ],
             'description' => ['nullable', 'string'],
         ];
