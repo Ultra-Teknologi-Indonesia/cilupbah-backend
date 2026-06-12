@@ -9,7 +9,15 @@ use Spatie\QueryBuilder\AllowedFilter;
 
 class LocationRepository
 {
-    public function getAllPaginated(int $limit = 10)
+    /** per_page yang aman: non-numerik/<=0 jatuh ke default 10 (cegah TypeError paginate). */
+    protected function perPage(): int
+    {
+        $perPage = (int) request('per_page', 10);
+
+        return $perPage > 0 ? $perPage : 10;
+    }
+
+    public function getAllPaginated()
     {
         return QueryBuilder::for(Location::class)
             ->with('village.district.city.province')
@@ -28,12 +36,18 @@ class LocationRepository
             )
             ->allowedSorts('location_name', 'created_at', 'location_code')
             ->defaultSort('location_name')
-            ->paginate($limit);
+            ->paginate($this->perPage())
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?Location
     {
-        return Location::with(['bins', 'channelWarehouses', 'village.district.city.province'])->find($id);
+        return Location::with(['bins', 'zones.bins', 'channelWarehouses', 'village.district.city.province'])->find($id);
+    }
+
+    public function exists(string $id): bool
+    {
+        return Location::whereKey($id)->exists();
     }
 
     public function findByCode(string $code): ?Location
@@ -77,7 +91,7 @@ class LocationRepository
             ->allowedSearch('location_name')
             ->allowedSorts('location_name', 'created_at', 'location_code')
             ->defaultSort('location_name')
-            ->paginate(request('per_page', 10))
+            ->paginate($this->perPage())
             ->appends(request()->query());
     }
 

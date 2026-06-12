@@ -18,7 +18,11 @@ class LocationServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new LocationService(new LocationRepository(), new \Modules\Warehouse\Repositories\LocationBinRepository());
+        $this->service = new LocationService(
+            new LocationRepository(),
+            new \Modules\Warehouse\Repositories\LocationBinRepository(),
+            new \Modules\Warehouse\Repositories\LocationZoneRepository()
+        );
     }
 
     public function test_create_location_generates_default_bin(): void
@@ -67,8 +71,9 @@ class LocationServiceTest extends TestCase
         $location = Location::factory()->create();
         
         $result = $this->service->update($location->id, ['location_name' => 'Updated Name']);
-        
-        $this->assertTrue($result);
+
+        $this->assertInstanceOf(Location::class, $result);
+        $this->assertEquals('Updated Name', $result->location_name);
         $this->assertDatabaseHas('locations', ['id' => $location->id, 'location_name' => 'Updated Name']);
     }
 

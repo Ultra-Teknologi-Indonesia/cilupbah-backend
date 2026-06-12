@@ -3,15 +3,13 @@
 namespace Modules\Warehouse\Services;
 
 use Modules\Warehouse\Repositories\ChannelWarehouseRepository;
-use Modules\Warehouse\Repositories\LocationRepository;
 use Modules\Warehouse\Models\ChannelWarehouse;
 use Illuminate\Database\Eloquent\Collection;
 
 class ChannelWarehouseService
 {
     public function __construct(
-        protected ChannelWarehouseRepository $channelWarehouseRepository,
-        protected LocationRepository $locationRepository
+        protected ChannelWarehouseRepository $channelWarehouseRepository
     ) {}
 
     public function getByLocation(string $locationId): Collection
@@ -19,9 +17,9 @@ class ChannelWarehouseService
         return $this->channelWarehouseRepository->findByLocation($locationId);
     }
 
-    public function getAllPaginated(int $limit = 10)
+    public function getAllPaginated()
     {
-        return $this->channelWarehouseRepository->getAllPaginated($limit);
+        return $this->channelWarehouseRepository->getAllPaginated();
     }
 
     public function getByChannel(string $channelId, string $storeId): Collection
@@ -31,12 +29,8 @@ class ChannelWarehouseService
 
     public function create(array $data): ChannelWarehouse
     {
+        // location_id & channel_id sudah dijamin ada oleh validasi (exists). Di sini cukup jaga duplikasi.
         return \Illuminate\Support\Facades\DB::transaction(function () use ($data) {
-            $location = $this->locationRepository->findById($data['location_id']);
-            if (!$location) {
-                throw new \Exception('Lokasi gudang tidak ditemukan.');
-            }
-
             $existing = $this->channelWarehouseRepository->findByChannelLocationId(
                 $data['channel_id'],
                 $data['store_id'],
@@ -44,7 +38,7 @@ class ChannelWarehouseService
             );
 
             if ($existing) {
-                throw new \Exception('Mapping channel warehouse sudah ada.');
+                throw new \DomainException('Mapping channel warehouse untuk lokasi channel ini sudah ada.');
             }
 
             return $this->channelWarehouseRepository->create($data);

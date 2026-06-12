@@ -7,6 +7,7 @@ use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Modules\Warehouse\Services\LocationBinService;
 use Modules\Warehouse\Repositories\LocationBinRepository;
+use Modules\Warehouse\Repositories\LocationRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 class LocationBinServiceTest extends TestCase
@@ -18,7 +19,7 @@ class LocationBinServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new LocationBinService(new LocationBinRepository());
+        $this->service = new LocationBinService(new LocationBinRepository(), new LocationRepository());
     }
 
     public function test_create_generates_final_code(): void

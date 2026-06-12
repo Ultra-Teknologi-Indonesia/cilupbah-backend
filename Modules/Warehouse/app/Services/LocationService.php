@@ -4,22 +4,23 @@ namespace Modules\Warehouse\Services;
 
 use Modules\Warehouse\Repositories\LocationRepository;
 use Modules\Warehouse\Repositories\LocationBinRepository;
+use Modules\Warehouse\Repositories\LocationZoneRepository;
 use Modules\Warehouse\Models\Location;
-use Modules\Warehouse\Models\LocationZone;
-use Modules\Warehouse\Models\LocationBin;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 class LocationService
 {
     public function __construct(
         protected LocationRepository $locationRepository,
-        protected LocationBinRepository $binRepository
+        protected LocationBinRepository $binRepository,
+        protected LocationZoneRepository $zoneRepository
     ) {}
 
-    public function getAllPaginated(int $limit = 10)
+    public function getAllPaginated()
     {
-        return $this->locationRepository->getAllPaginated($limit);
+        return $this->locationRepository->getAllPaginated();
     }
 
     public function getById(string $id): ?Location
@@ -41,7 +42,10 @@ class LocationService
 
     public function create(array $data): Location
     {
-        return DB::transaction(function () use ($data) {
+        $layout = $data['layout'] ?? null;
+        unset($data['layout']);
+
+        return DB::transaction(function () use ($data, $layout) {
             $location = $this->locationRepository->create($data);
 
             $this->binRepository->create([
@@ -51,93 +55,93 @@ class LocationService
                 'is_inbound' => true,
             ]);
 
-            if (!empty($data['layout']) && is_array($data['layout'])) {
-                $this->syncLayout($location->id, $data['layout']);
+            if (! empty($layout) && is_array($layout)) {
+                $this->syncLayout($location->id, $layout);
             }
 
             return $location->load(['bins', 'zones.bins', 'village.district.city.province']);
         });
     }
 
-    public function update(string $id, array $data): bool
+    public function update(string $id, array $data): ?Location
     {
         if (! $this->isValidUuid($id)) {
-            return false;
+            return null;
         }
 
-        return DB::transaction(function () use ($id, $data) {
-            $updated = $this->locationRepository->update($id, $data);
+        // Key `layout` bukan kolom tabel locations — wajib dipisah sebelum update repository,
+        // jika ikut terkirim akan memicu "column layout does not exist" (500).
+        $layout = $data['layout'] ?? null;
+        unset($data['layout']);
 
-            if (isset($data['layout']) && is_array($data['layout'])) {
-                $this->syncLayout($id, $data['layout']);
+        return DB::transaction(function () use ($id, $data, $layout) {
+            $location = $this->locationRepository->findById($id);
+            if (! $location) {
+                return null;
             }
 
-            return $updated;
+            if (! empty($data)) {
+                $this->locationRepository->update($id, $data);
+            }
+
+            if (is_array($layout)) {
+                $this->syncLayout($id, $layout);
+            }
+
+            return $this->locationRepository->findById($id);
         });
     }
 
+    /**
+     * Sinkronkan layout zona+rak. Zona yang tidak ada di payload dihapus (cascade ke bin),
+     * tetapi DITOLAK bila zona masih menyimpan stok aktif agar stok tidak ter-detach diam-diam.
+     * Rak di dalam zona yang sudah ada tidak diubah (aturan bisnis).
+     */
     protected function syncLayout(string $locationId, array $layout): void
     {
-        $incomingZoneCodes = array_column($layout, 'zone_code');
+        $incomingZoneCodes = array_values(array_filter(array_column($layout, 'zone_code')));
 
-        // Delete zones that are not in the layout
-        $zonesToDelete = LocationZone::where('location_id', $locationId)
-            ->whereNotIn('zone_code', $incomingZoneCodes)
-            ->get();
-            
+        $zonesToDelete = $this->zoneRepository->getByLocationExcludingCodes($locationId, $incomingZoneCodes);
+
         foreach ($zonesToDelete as $zone) {
-            $zone->delete(); // this will cascade delete bins if DB cascade is set, or we can manually delete
-            LocationBin::where('zone_id', $zone->id)->delete();
-        }
+            if ($this->binRepository->zoneHasActiveStock($zone->id)) {
+                throw new \DomainException("Zona {$zone->zone_code} tidak dapat dihapus karena masih memiliki stok.");
+            }
 
-        $now = now();
+            $this->binRepository->deleteByZone($zone->id);
+            $this->zoneRepository->delete($zone->id);
+        }
 
         foreach ($layout as $zoneData) {
             $zoneCode = $zoneData['zone_code'];
-            
-            // Check if zone exists
-            $existingZone = LocationZone::where('location_id', $locationId)
-                ->where('zone_code', $zoneCode)
-                ->first();
+            $existingZone = $this->zoneRepository->findByLocationAndCode($locationId, $zoneCode);
 
-            if (!$existingZone) {
-                // Create new zone
-                $newZone = LocationZone::create([
+            if (! $existingZone) {
+                $newZone = $this->zoneRepository->create([
                     'location_id' => $locationId,
                     'zone_code' => $zoneCode,
                     'zone_name' => $zoneData['zone_name'] ?? null,
                 ]);
 
-                // Insert racks
-                if (!empty($zoneData['racks']) && is_array($zoneData['racks'])) {
-                    $insertData = [];
-                    foreach ($zoneData['racks'] as $rack) {
-                        $insertData[] = [
-                            'location_id' => $locationId,
-                            'zone_id' => $newZone->id,
-                            'floor_code' => $rack['floor_code'],
-                            'row_code' => $rack['row_code'],
-                            'column_code' => $rack['column_code'],
-                            'bin_code' => $rack['bin_code'],
-                            'bin_final_code' => $rack['bin_final_code'],
-                            'max_qty' => $rack['max_qty'] ?? 0,
-                            'is_inbound' => false,
-                            'created_at' => $now,
-                            'updated_at' => $now,
-                        ];
-                    }
+                $rows = [];
+                foreach ($zoneData['racks'] ?? [] as $rack) {
+                    $rows[] = [
+                        'location_id' => $locationId,
+                        'zone_id' => $newZone->id,
+                        'floor_code' => $rack['floor_code'],
+                        'row_code' => $rack['row_code'],
+                        'column_code' => $rack['column_code'],
+                        'bin_code' => $rack['bin_code'],
+                        'bin_final_code' => $rack['bin_final_code'],
+                        'max_qty' => $rack['max_qty'] ?? 0,
+                        'is_inbound' => false,
+                    ];
+                }
 
-                    if (!empty($insertData)) {
-                        LocationBin::insert($insertData);
-                    }
-                }
+                $this->binRepository->insertMany($rows);
             } else {
-                // If zone exists, update its name if changed
-                if (isset($zoneData['zone_name']) && $existingZone->zone_name !== $zoneData['zone_name']) {
-                    $existingZone->update(['zone_name' => $zoneData['zone_name']]);
-                }
-                
-                // Note: Racks inside existing zones are strictly untouched per business rules.
+                // Zona sudah ada: hanya perbarui nama. Rak di dalamnya tidak disentuh (aturan bisnis).
+                $this->zoneRepository->updateName($existingZone, $zoneData['zone_name'] ?? null);
             }
         }
     }
@@ -150,17 +154,22 @@ class LocationService
 
         return DB::transaction(function () use ($id) {
             $location = $this->locationRepository->findById($id);
-            if (!$location) {
+            if (! $location) {
                 return false;
             }
 
             $hasInventory = \Modules\Inventory\Models\Inventory::where('location_id', $id)->exists();
 
             if ($hasInventory) {
-                throw new \Exception('Lokasi tidak dapat dihapus karena masih memiliki data stok.');
+                throw new \DomainException('Lokasi tidak dapat dihapus karena masih memiliki data stok.');
             }
 
-            return $this->locationRepository->delete($id);
+            try {
+                return $this->locationRepository->delete($id);
+            } catch (QueryException $e) {
+                // FK restrict lain (inbound, purchase order, sales return, transfer) -> tolak dengan pesan ramah.
+                throw new \DomainException('Lokasi tidak dapat dihapus karena masih dipakai oleh transaksi lain (inbound/pembelian/retur/transfer).');
+            }
         });
     }
 

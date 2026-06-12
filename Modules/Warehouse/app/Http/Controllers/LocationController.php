@@ -136,8 +136,8 @@ class LocationController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
-        $locations = $this->locationService->getAllPaginated($limit);
+        $locations = $this->locationService->getAllPaginated();
+        $locations->through(fn (Location $location) => new LocationResource($location));
 
         return $this->successPaginatedResponse($locations, 'Daftar lokasi berhasil diambil');
     }
@@ -203,9 +203,9 @@ class LocationController extends Controller
         try {
             $location = $this->locationService->create($request->validated());
 
-            return $this->successResponse($location, 'Lokasi berhasil dibuat.', 201);
-        } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            return $this->successResponse(new LocationResource($location), 'Lokasi berhasil dibuat.', 201);
+        } catch (\DomainException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
         }
     }
 
@@ -240,7 +240,7 @@ class LocationController extends Controller
             return $this->errorResponse('Lokasi tidak ditemukan.', 404);
         }
 
-        return $this->successResponse($location, 'Detail lokasi berhasil diambil');
+        return $this->successResponse(new LocationResource($location), 'Detail lokasi berhasil diambil');
     }
 
     #[OA\Put(
@@ -273,13 +273,17 @@ class LocationController extends Controller
     )]
     public function update(UpdateLocationRequest $request, string $id): JsonResponse
     {
-        $updated = $this->locationService->update($id, $request->validated());
+        try {
+            $location = $this->locationService->update($id, $request->validated());
+        } catch (\DomainException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
 
-        if (!$updated) {
+        if (!$location) {
             return $this->errorResponse('Lokasi tidak ditemukan.', 404);
         }
 
-        return $this->successResponse(null, 'Lokasi berhasil diperbarui.');
+        return $this->successResponse(new LocationResource($location), 'Lokasi berhasil diperbarui.');
     }
 
     #[OA\Delete(
@@ -315,7 +319,7 @@ class LocationController extends Controller
             }
 
             return $this->successResponse(null, 'Lokasi berhasil dihapus.');
-        } catch (\Exception $e) {
+        } catch (\DomainException $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
     }

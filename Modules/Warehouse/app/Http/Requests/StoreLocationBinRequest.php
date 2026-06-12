@@ -14,13 +14,13 @@ class StoreLocationBinRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'location_id' => 'required|exists:locations,id',
-            'zone_id' => 'nullable|exists:location_zones,id',
+            'location_id' => 'required|bail|uuid|exists:locations,id',
+            'zone_id' => 'nullable|bail|uuid|exists:location_zones,id',
             'floor_code' => 'required|string|max:10',
             'row_code' => 'required|string|max:10',
             'column_code' => 'required|string|max:10',
             'bin_code' => 'required|string|max:10',
-            'max_qty' => 'nullable|numeric|min:0',
+            'max_qty' => 'nullable|integer|min:0',
             'is_inbound' => 'nullable|boolean',
         ];
     }
