@@ -25,6 +25,9 @@ class LocationResource extends JsonResource
             'is_fbs' => $this->is_fbs,
             'is_pos' => $this->is_pos,
             'village' => $this->whenLoaded('village'),
+            'zones' => $this->whenLoaded('zones'),
+            'bins' => $this->whenLoaded('bins'),
+            'channel_warehouses' => $this->whenLoaded('channelWarehouses'),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

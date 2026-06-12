@@ -155,7 +155,11 @@ class LocationBinController extends Controller
     /** Buat satu bin. */
     public function store(StoreLocationBinRequest $request): JsonResponse
     {
-        $bin = $this->binService->create($request->validated());
+        try {
+            $bin = $this->binService->create($request->validated());
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+            return $this->errorResponse('Bin dengan kode tersebut sudah ada pada lokasi ini.', 422);
+        }
 
         return $this->successResponse($bin, 'Bin berhasil dibuat', 201);
     }
@@ -180,7 +184,11 @@ class LocationBinController extends Controller
     /** Generate massal bin untuk satu lokasi. */
     public function generate(GenerateLocationBinRequest $request, string $locationId): JsonResponse
     {
-        $result = $this->binService->massGenerate($locationId, $request->validated());
+        try {
+            $result = $this->binService->massGenerate($locationId, $request->validated());
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return $this->errorResponse('Lokasi tidak ditemukan.', 404);
+        }
 
         return $this->successResponse($result, 'Bin berhasil di-generate', 201);
     }

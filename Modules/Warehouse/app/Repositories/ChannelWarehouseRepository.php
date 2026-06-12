@@ -7,12 +7,20 @@ use Illuminate\Database\Eloquent\Collection;
 
 class ChannelWarehouseRepository
 {
+    /** per_page yang aman: non-numerik/<=0 jatuh ke default 10 (cegah TypeError paginate). */
+    protected function perPage(): int
+    {
+        $perPage = (int) request('per_page', 10);
+
+        return $perPage > 0 ? $perPage : 10;
+    }
+
     public function findByLocation(string $locationId): Collection
     {
         return ChannelWarehouse::where('location_id', $locationId)->get();
     }
 
-    public function getAllPaginated(int $limit = 10)
+    public function getAllPaginated()
     {
         return \Spatie\QueryBuilder\QueryBuilder::for(ChannelWarehouse::class)
             ->with(['location:id,location_name,location_code'])
@@ -24,7 +32,8 @@ class ChannelWarehouseRepository
             )
             ->allowedSorts('created_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($this->perPage())
+            ->appends(request()->query());
     }
 
     public function findByChannel(string $channelId, string $storeId): Collection
