@@ -34,6 +34,7 @@ class DatabaseSeeder extends Seeder
         // Dev Tracker — hanya di local & staging (idempotent, aman dijalankan ulang).
         if (app()->environment(['local', 'staging'])) {
             $this->call(TrackingItemsSeeder::class);
+            $this->call(TrackingItemsCilupbahSeeder::class);
         }
     }
 }
