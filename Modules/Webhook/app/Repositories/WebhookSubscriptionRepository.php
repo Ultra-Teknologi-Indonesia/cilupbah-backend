@@ -12,7 +12,7 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class WebhookSubscriptionRepository
 {
-    /** Listing subscription — Spatie Query Builder. */
+
     public function paginate(): LengthAwarePaginator
     {
         return QueryBuilder::for(WebhookSubscription::class)
@@ -48,7 +48,6 @@ class WebhookSubscriptionRepository
         $subscription->delete();
     }
 
-    /** Subscriber aktif untuk satu event (termasuk wildcard '*'). */
     public function activeForEvent(string $event): Collection
     {
         return WebhookSubscription::query()
@@ -57,7 +56,6 @@ class WebhookSubscriptionRepository
             ->get();
     }
 
-    /** Daftar nama event yang punya subscriber aktif (untuk cache di hot-path). */
     public function activeEventNames(): array
     {
         return WebhookSubscription::query()
@@ -67,7 +65,6 @@ class WebhookSubscriptionRepository
             ->all();
     }
 
-    /** Reset penghitung kegagalan beruntun setelah pengiriman sukses. */
     public function resetFailures(WebhookSubscription $subscription): void
     {
         if ((int) $subscription->consecutive_failures !== 0) {
@@ -75,10 +72,6 @@ class WebhookSubscriptionRepository
         }
     }
 
-    /**
-     * Catat satu kegagalan keras; nonaktifkan subscription bila mencapai ambang
-     * kegagalan beruntun (endpoint mati → berhenti membanjiri).
-     */
     public function registerFailureAndMaybeDisable(string $subscriptionId, int $threshold): void
     {
         $subscription = WebhookSubscription::find($subscriptionId);

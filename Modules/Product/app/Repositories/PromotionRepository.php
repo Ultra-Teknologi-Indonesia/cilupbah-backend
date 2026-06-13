@@ -10,7 +10,7 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class PromotionRepository
 {
-    /** Listing promosi — Spatie Query Builder. */
+
     public function paginate(): LengthAwarePaginator
     {
         return QueryBuilder::for(Promotion::class)
@@ -26,18 +26,11 @@ class PromotionRepository
             ->appends(request()->query());
     }
 
-    /** Lookup tunggal by id (Eloquent biasa). */
     public function findById(string $id): ?Promotion
     {
         return Promotion::with('items.product:id,name,sku')->find($id);
     }
 
-    /**
-     * Buat promosi + item target dalam satu transaksi.
-     *
-     * @param  array<string,mixed>  $attributes
-     * @param  array<int,string>  $productIds
-     */
     public function create(array $attributes, array $productIds): Promotion
     {
         return DB::transaction(function () use ($attributes, $productIds) {

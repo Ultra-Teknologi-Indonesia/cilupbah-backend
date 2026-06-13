@@ -9,7 +9,7 @@ class SalesOrderWebhookObserver extends AbstractWebhookObserver
 {
     public function created(SalesOrder $order): void
     {
-        // Menangkap juga order yang berasal dari TikTok/Lazada (pull → SalesOrder).
+
         $this->emit(WebhookEvent::SALES_ORDER, $this->payload($order, 'created'));
     }
 

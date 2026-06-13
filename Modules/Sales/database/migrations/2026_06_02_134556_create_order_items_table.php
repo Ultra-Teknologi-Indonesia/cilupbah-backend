@@ -21,10 +21,10 @@ return new class extends Migration
             $table->decimal('disc_amount', 12, 2)->default(0);
             $table->decimal('tax_amount', 12, 2)->default(0);
             $table->decimal('amount', 12, 2)->default(0);
-            
+
             $table->string('shipper')->nullable();
             $table->string('tracking_no')->nullable();
-            
+
             $table->timestamps();
         });
     }

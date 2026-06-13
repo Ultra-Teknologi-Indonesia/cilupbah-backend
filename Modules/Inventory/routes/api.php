@@ -14,7 +14,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inventory/stocks/{itemId}', [InventoryController::class, 'show'])->name('inventory.stocks.show');
     Route::get('inventory/movements', [InventoryController::class, 'movements'])->name('inventory.movements.index');
 
-    // Inventory enhancements
+    Route::get('inventory/activity', [InventoryController::class, 'movements'])->name('inventory.activity.index');
+
     Route::get('inventory/items/to-stock', [InventoryController::class, 'itemsToStock'])->name('inventory.items.toStock');
     Route::get('inventory/items/item-on-stock', [InventoryController::class, 'itemsToStock'])->name('inventory.items.itemOnStock');
     Route::get('inventory/items/to-sell/{locationId}', [InventoryController::class, 'toSell'])->name('inventory.items.toSell');
@@ -31,11 +32,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inventory/items/by-location/{locationId}', [InventoryController::class, 'byLocation'])->name('inventory.items.byLocation');
     Route::get('inventory/purchase-order/items', [InventoryController::class, 'purchaseOrderItems'])->name('inventory.purchaseOrder.items');
 
-    // Direct adjustment (legacy)
     Route::post('inventory/adjustments', [InventoryTransactionController::class, 'adjust'])->name('inventory.adjust');
     Route::post('inventory/putaway', [InventoryTransactionController::class, 'putaway'])->name('inventory.putaway');
 
-    // Document-based Stock Adjustment
     Route::prefix('inventory/adjustments/documents')->group(function () {
         Route::get('/', [StockAdjustmentController::class, 'index'])->name('inventory.adjustments.documents.index');
         Route::post('/', [StockAdjustmentController::class, 'store'])->name('inventory.adjustments.documents.store');
@@ -45,7 +44,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::delete('/{id}', [StockAdjustmentController::class, 'destroy'])->name('inventory.adjustments.documents.destroy');
     });
 
-    // Document-based Reserved Stock
     Route::prefix('inventory/reserved-stocks')->group(function () {
         Route::get('/', [ReservedStockController::class, 'index'])->name('inventory.reservedStocks.index');
         Route::post('/', [ReservedStockController::class, 'store'])->name('inventory.reservedStocks.store');
@@ -53,8 +51,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('/{id}/cancel', [ReservedStockController::class, 'cancel'])->name('inventory.reservedStocks.cancel');
     });
 
-    // Document-based transfers
     Route::get('inventory/transfers/transit', [InventoryTransactionController::class, 'transitList'])->name('inventory.transfers.transit');
+    Route::get('inventory/transfers/all-transit', [InventoryTransactionController::class, 'transitList'])->name('inventory.transfers.allTransit');
+    Route::get('inventory/transfers/in', [InventoryTransactionController::class, 'transfersIn'])->name('inventory.transfers.in');
+    Route::get('inventory/transfers/out', [InventoryTransactionController::class, 'transfersOut'])->name('inventory.transfers.out');
     Route::get('inventory/transfers/out-finished', [InventoryTransactionController::class, 'finishedList'])->name('inventory.transfers.outFinished');
     Route::get('inventory/transfers', [InventoryTransactionController::class, 'transfersList'])->name('inventory.transfers.index');
     Route::post('inventory/transfers', [InventoryTransactionController::class, 'transferOut'])->name('inventory.transferOut');
@@ -62,14 +62,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::delete('inventory/transfers/{id}', [InventoryTransactionController::class, 'transferDestroy'])->name('inventory.transfers.destroy');
     Route::post('inventory/transfers/{id}/receive', [InventoryTransactionController::class, 'transferIn'])->name('inventory.transferIn');
 
-    // Transfer print & delivery
     Route::post('inventory/transfer/mark-printed', [InventoryTransactionController::class, 'markTransferPrinted'])->name('inventory.transfer.markPrinted');
     Route::get('inventory/transfer/delivery', [InventoryTransactionController::class, 'transferDelivery'])->name('inventory.transfer.delivery');
 
-    // Alias: items by transfer (same as transfer show)
     Route::get('inventory/items/by-transfer/{id}', [InventoryTransactionController::class, 'transferShow'])->name('inventory.items.byTransfer');
 
-    // Catalog / set-master alias
     Route::post('inventory/catalog/set-master', function (\Illuminate\Http\Request $request) {
         $product = \Modules\Product\Models\Product::findOrFail($request->input('product_id'));
         $userId = $request->user()->name ?? $request->user()->email;
@@ -77,7 +74,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         return response()->json(['success' => true, 'data' => $result, 'message' => 'Product berhasil di-set sebagai master.']);
     })->name('inventory.catalog.setMaster');
 
-    // Stock Revaluations
     Route::prefix('inventory/revaluations')->group(function () {
         Route::get('/', [StockRevaluationController::class, 'index'])->name('inventory.revaluations.index');
         Route::post('/', [StockRevaluationController::class, 'store'])->name('inventory.revaluations.store');
@@ -86,7 +82,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('/{id}/cancel', [StockRevaluationController::class, 'cancel'])->name('inventory.revaluations.cancel');
     });
 
-    // Stock Opname
     Route::prefix('inventory/stock-opname')->group(function () {
         Route::get('/bins', [StockOpnameController::class, 'bins'])->name('inventory.stockOpname.bins');
         Route::get('/floors', [StockOpnameController::class, 'floors'])->name('inventory.stockOpname.floors');
@@ -105,7 +100,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::delete('/{id}', [StockOpnameController::class, 'destroy'])->name('inventory.stockOpname.destroy');
     });
 
-    // Standalone Putaway
     Route::prefix('putaway')->group(function () {
         Route::get('/', [PutawayController::class, 'index'])->name('putaway.index');
         Route::get('/not-started', [PutawayController::class, 'notStarted'])->name('putaway.notStarted');

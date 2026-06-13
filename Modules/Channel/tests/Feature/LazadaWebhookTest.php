@@ -14,10 +14,6 @@ use Modules\Product\Models\ProductChannelMapping;
 use Modules\Sales\Models\SalesOrder;
 use Tests\TestCase;
 
-/**
- * Fase 6 Lazada Omnichannel: webhook masuk (signature, dedup, job async)
- * + queue 'webhooks' (outbound internal) kini dilayani Horizon.
- */
 class LazadaWebhookTest extends TestCase
 {
     use RefreshDatabase;
@@ -73,8 +69,6 @@ class LazadaWebhookTest extends TestCase
         ], $body);
     }
 
-    // ── Controller ──
-
     public function test_valid_signature_enqueues_job(): void
     {
         Queue::fake();
@@ -115,8 +109,6 @@ class LazadaWebhookTest extends TestCase
 
         Queue::assertNothingPushed();
     }
-
-    // ── Job ──
 
     public function test_order_event_pulls_single_order_into_sales_order(): void
     {
@@ -176,10 +168,8 @@ class LazadaWebhookTest extends TestCase
 
         (new ProcessLazadaWebhook($payload))->handle(app(\Modules\Channel\Services\LazadaOrderService::class));
 
-        $this->assertTrue(true); // tidak melempar
+        $this->assertTrue(true); 
     }
-
-    // ── Outbound webhook queue fix ──
 
     public function test_horizon_default_supervisor_serves_webhooks_queue(): void
     {

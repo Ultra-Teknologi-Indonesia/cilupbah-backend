@@ -9,10 +9,6 @@ use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Tests\TestCase;
 
-/**
- * Regresi manajemen toko TikTok: wajib auth, id UUID tidak 500,
- * dan tidak membocorkan access_token/refresh_token.
- */
 class TikTokStoreApiTest extends TestCase
 {
     use RefreshDatabase;

@@ -8,19 +8,12 @@ use Modules\Channel\Models\DownloadTransaction;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Product\Models\ProductSyncLog;
 
-/**
- * Generalisasi proses download (pull) produk dari marketplace per shop.
- * Download bersifat asinkron: membuat DownloadTransaction lalu mengantre job.
- */
 class ChannelDownloadService
 {
     public function __construct(
         protected ChannelShopRepository $channelShopRepository,
     ) {}
 
-    /**
-     * Mulai download satu toko: buat transaksi (queued) + antre job. Asinkron.
-     */
     public function download(string $channel, string $shopId, ?string $executedBy = null): DownloadTransaction
     {
         $this->assertSupported($channel);
@@ -37,12 +30,6 @@ class ChannelDownloadService
         return $transaction;
     }
 
-    /**
-     * Mulai download banyak toko. Mengembalikan daftar transaksi yang dibuat.
-     *
-     * @param  array<int, string>  $shopIds
-     * @return array<int, DownloadTransaction>
-     */
     public function downloadBulk(string $channel, array $shopIds, ?string $executedBy = null): array
     {
         $this->assertSupported($channel);
@@ -59,10 +46,6 @@ class ChannelDownloadService
         return $transactions;
     }
 
-    /**
-     * Eksekusi pull aktual (dipanggil oleh job). Mengembalikan jumlah produk +
-     * mencatat ke product_sync_logs (action=download).
-     */
     public function pull(string $channel, string $shopId): int
     {
         $channelShopId = $this->channelShopRepository->getIdByShopId($shopId);
@@ -108,9 +91,6 @@ class ChannelDownloadService
         return $channelShopId;
     }
 
-    /**
-     * @return callable(string):int
-     */
     protected function pullerFor(string $channel): callable
     {
         return match (strtolower($channel)) {

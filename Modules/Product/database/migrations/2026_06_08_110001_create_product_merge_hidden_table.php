@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('product_merge_hidden', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            // master_name = nama efektif yang disembunyikan (master untuk merged, nama produk untuk solo)
+
             $table->string('master_name')->unique();
             $table->timestamps();
         });

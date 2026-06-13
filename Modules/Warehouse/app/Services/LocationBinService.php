@@ -32,7 +32,6 @@ class LocationBinService
         return $this->binRepository->getDefaultBin($locationId);
     }
 
-    /** Buat satu bin; bin_final_code dihitung dari kode floor/row/column/bin. */
     public function create(array $data): LocationBin
     {
         $data['bin_final_code'] = $this->generateFinalCode($data);
@@ -40,7 +39,6 @@ class LocationBinService
         return $this->binRepository->create($data);
     }
 
-    /** Update bin; bin_final_code dihitung ulang dari hasil merge. */
     public function update(string $id, array $data): bool
     {
         $bin = $this->binRepository->findById($id);
@@ -57,10 +55,6 @@ class LocationBinService
         return $this->binRepository->update($id, $data);
     }
 
-    /**
-     * Hapus bin. Ditolak bila: bin inbound (default), masih menyimpan stok aktif,
-     * atau masih direferensikan transaksi (mis. inbound receipt — FK restrict).
-     */
     public function delete(string $id): bool
     {
         $bin = $this->binRepository->findById($id);
@@ -83,10 +77,6 @@ class LocationBinService
         }
     }
 
-    /**
-     * Generate massal bin untuk satu lokasi. Idempoten (firstOrCreate per bin_final_code),
-     * dibungkus transaksi. Mengembalikan jumlah bin yang BARU dibuat.
-     */
     public function massGenerate(string $locationId, array $data): array
     {
         if (! $this->locationRepository->exists($locationId)) {

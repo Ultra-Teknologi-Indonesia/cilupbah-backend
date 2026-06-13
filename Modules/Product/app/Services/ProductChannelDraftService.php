@@ -11,9 +11,7 @@ use Modules\Product\Models\ProductSyncLog;
 
 class ProductChannelDraftService
 {
-    /**
-     * Buat/perbarui draft listing untuk satu produk pada satu toko (unik per product+shop).
-     */
+
     public function upsertDraft(string $productId, string $shopId, array $data, ?string $userId = null): ProductChannelDraft
     {
         $channelShopId = $this->requireChannelShopId($shopId);

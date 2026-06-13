@@ -2,13 +2,6 @@
 
 namespace Modules\Webhook\Support;
 
-/**
- * Guard anti-SSRF untuk URL target webhook.
- *
- * Menolak skema di luar allowlist (default: https) dan host yang menunjuk ke
- * alamat internal (loopback, link-local/metadata 169.254.x, dan rentang privat).
- * Dipakai dua lapis: saat validasi pendaftaran DAN saat pengiriman (anti DNS rebinding).
- */
 class WebhookUrlGuard
 {
     public function isSafe(string $url): bool
@@ -34,9 +27,6 @@ class WebhookUrlGuard
         return true;
     }
 
-    /**
-     * @return array<int, string>
-     */
     protected function resolveIps(string $host): array
     {
         if (filter_var($host, FILTER_VALIDATE_IP)) {
@@ -51,7 +41,6 @@ class WebhookUrlGuard
             }
         }
 
-        // Host tidak resolve → tidak bisa di-fetch sekarang; pengiriman akan cek ulang.
         return $ips;
     }
 
@@ -64,9 +53,6 @@ class WebhookUrlGuard
         ) !== false;
     }
 
-    /**
-     * @return array<int, string>
-     */
     protected function allowedSchemes(): array
     {
         $schemes = (array) config('webhook.allowed_schemes', ['https']);

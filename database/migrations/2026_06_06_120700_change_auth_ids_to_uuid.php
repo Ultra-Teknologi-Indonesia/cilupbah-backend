@@ -14,7 +14,6 @@ return new class extends Migration
         $pivotRole = $columnNames['role_pivot_key'] ?? 'role_id';
         $pivotPermission = $columnNames['permission_pivot_key'] ?? 'permission_id';
 
-        // 1. Drop Primary Keys and Foreign Keys in Spatie pivot tables
         Schema::table($tableNames['role_has_permissions'], function (Blueprint $table) use ($pivotRole, $pivotPermission, $tableNames) {
             $table->dropForeign([$pivotPermission]);
             $table->dropForeign([$pivotRole]);
@@ -23,7 +22,7 @@ return new class extends Migration
 
         Schema::table($tableNames['model_has_permissions'], function (Blueprint $table) use ($pivotPermission, $tableNames) {
             $table->dropForeign([$pivotPermission]);
-            // Dropping primary key (depending on teams, but we use the default name)
+
             $table->dropPrimary('model_has_permissions_permission_model_type_primary');
         });
 
@@ -32,7 +31,6 @@ return new class extends Migration
             $table->dropPrimary('model_has_roles_role_model_type_primary');
         });
 
-        // 2. Drop FKs that reference users.id before type change
         if (DB::getDriverName() !== 'sqlite') {
             if (Schema::hasTable('putaways')) {
                 Schema::table('putaways', function (Blueprint $table) {
@@ -47,7 +45,6 @@ return new class extends Migration
             }
         }
 
-        // 3. Alter column types to UUID
         $tables = [
             'users' => ['id'],
             'sessions' => ['user_id'],
@@ -61,7 +58,7 @@ return new class extends Migration
         foreach ($tables as $table => $columns) {
             foreach ($columns as $column) {
                 if (DB::getDriverName() !== 'sqlite') {
-                    // Drop default for primary key 'id'
+
                     if ($column === 'id') {
                         DB::statement("ALTER TABLE {$table} ALTER COLUMN id DROP DEFAULT");
                     }
@@ -70,7 +67,6 @@ return new class extends Migration
             }
         }
 
-        // 4. Convert referencing columns to UUID and re-add FKs
         if (DB::getDriverName() !== 'sqlite') {
             if (Schema::hasTable('putaways')) {
                 DB::statement("ALTER TABLE putaways ALTER COLUMN assigned_to TYPE UUID USING LPAD(assigned_to::text, 32, '0')::uuid");
@@ -88,7 +84,6 @@ return new class extends Migration
             }
         }
 
-        // 5. Re-add Primary Keys and Foreign Keys
         Schema::table($tableNames['role_has_permissions'], function (Blueprint $table) use ($pivotRole, $pivotPermission, $tableNames) {
             $table->foreign($pivotPermission)->references('id')->on($tableNames['permissions'])->cascadeOnDelete();
             $table->foreign($pivotRole)->references('id')->on($tableNames['roles'])->cascadeOnDelete();
@@ -108,6 +103,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        // Reverting not supported
+
     }
 };

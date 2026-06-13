@@ -27,9 +27,6 @@ class ProductChannelDraftController extends Controller
         protected ProductRepository $productRepository,
     ) {}
 
-    /**
-     * Daftar semua draft (sub-tab Draft di tab Naikkan Produk), filter ?status=.
-     */
     #[OA\Get(
         path: '/api/v1/products/channel-drafts',
         summary: 'List semua draft listing',
@@ -78,9 +75,6 @@ class ProductChannelDraftController extends Controller
         return $this->successResponse($result, "{$result['uploaded']} draft diantrekan untuk upload");
     }
 
-    /**
-     * Daftar draft untuk satu produk.
-     */
     #[OA\Get(
         path: '/api/v1/products/{id}/channel-drafts',
         summary: 'List draft listing per produk',
@@ -102,9 +96,6 @@ class ProductChannelDraftController extends Controller
         );
     }
 
-    /**
-     * Buat / perbarui draft untuk satu produk + toko.
-     */
     #[OA\Post(
         path: '/api/v1/products/{id}/channel-drafts',
         summary: 'Simpan draft listing (upsert per product+shop)',
@@ -140,9 +131,6 @@ class ProductChannelDraftController extends Controller
         );
     }
 
-    /**
-     * Perbarui field draft tertentu.
-     */
     #[OA\Put(
         path: '/api/v1/products/{id}/channel-drafts/{draft}',
         summary: 'Update draft listing',
@@ -173,9 +161,6 @@ class ProductChannelDraftController extends Controller
         );
     }
 
-    /**
-     * Hapus draft.
-     */
     #[OA\Delete(
         path: '/api/v1/products/{id}/channel-drafts/{draft}',
         summary: 'Hapus draft listing',
@@ -198,10 +183,6 @@ class ProductChannelDraftController extends Controller
         return $this->successResponse(['success' => true], 'Draft berhasil dihapus');
     }
 
-    /**
-     * Jubelio: POST /inventory/catalog/listing — Buat/ubah listing produk (upsert per product+shop).
-     * product_id & shop_id dikirim di body (berbeda dengan endpoint Cilupbah yang memakai path id).
-     */
     public function catalogListing(StoreCatalogListingRequest $request): JsonResponse
     {
         $validated = $request->validated();

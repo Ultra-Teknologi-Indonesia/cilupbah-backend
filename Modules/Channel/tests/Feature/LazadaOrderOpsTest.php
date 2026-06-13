@@ -10,10 +10,6 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Sales\Models\SalesOrder;
 use Tests\TestCase;
 
-/**
- * Fase 5 Lazada Omnichannel: terima order (pack+RTS), cancel, alasan batal,
- * logistik channel, dan get-document. Http::fake penuh, no-500.
- */
 class LazadaOrderOpsTest extends TestCase
 {
     use RefreshDatabase;
@@ -45,7 +41,6 @@ class LazadaOrderOpsTest extends TestCase
         ]);
     }
 
-    /** Fake item list (2 baris item) + order detail untuk resync. */
     private function fakeOrderApis(string $statusAfter = 'ready_to_ship', array $extra = []): void
     {
         Http::fake(array_merge([
@@ -72,8 +67,6 @@ class LazadaOrderOpsTest extends TestCase
         ], $extra));
     }
 
-    // ── Pack + RTS (terima order) ──
-
     public function test_pack_order_calls_pack_then_rts(): void
     {
         $this->fakeOrderApis('ready_to_ship', [
@@ -97,8 +90,6 @@ class LazadaOrderOpsTest extends TestCase
         Http::assertSent(fn ($r) => str_contains($r->url(), '/order/rts') && ($r['tracking_number'] ?? null) === 'LZDTRK-9');
     }
 
-    // ── Cancel ──
-
     public function test_cancel_order_cancels_each_item_and_syncs_local_status(): void
     {
         $this->fakeOrderApis('canceled', [
@@ -115,18 +106,14 @@ class LazadaOrderOpsTest extends TestCase
         $response->assertStatus(200)
             ->assertJsonPath('data.cancelled_item_ids', ['111', '112']);
 
-        // /order/cancel dipanggil per item.
-        Http::assertSentCount(5); // items + cancel x2 + order/get + items (resync)
+        Http::assertSentCount(5); 
         Http::assertSent(fn ($r) => str_contains($r->url(), '/order/cancel') && ($r['order_item_id'] ?? null) === '111');
         Http::assertSent(fn ($r) => str_contains($r->url(), '/order/cancel') && ($r['order_item_id'] ?? null) === '112');
 
-        // Resync lokal: order ter-upsert dengan status cancelled.
         $order = SalesOrder::where('salesorder_no', '900123')->first();
         $this->assertNotNull($order);
         $this->assertEquals('cancelled', $order->status);
     }
-
-    // ── Lookups ──
 
     public function test_cancel_reasons_returns_list(): void
     {
@@ -159,8 +146,6 @@ class LazadaOrderOpsTest extends TestCase
             ->assertJsonCount(2, 'data');
     }
 
-    // ── Get document (endpoint Reports) ──
-
     public function test_get_document_fetches_label_from_lazada(): void
     {
         Http::fake([
@@ -181,8 +166,6 @@ class LazadaOrderOpsTest extends TestCase
 
         Http::assertSent(fn ($r) => str_contains($r->url(), '/order/document/get') && str_contains($r->url(), 'doc_type=shippingLabel'));
     }
-
-    // ── Guard no-500 ──
 
     public function test_pack_unknown_shop_returns_422(): void
     {

@@ -5,11 +5,6 @@ namespace Modules\Finance\Database\Seeders;
 use Illuminate\Database\Seeder;
 use Modules\Finance\Models\Account;
 
-/**
- * COA standar. Kode 1-1000/1-1001/1-1002/1-1100/2-2000 SELARAS dengan
- * config/finance.php (cashbank_accounts & counter_accounts) — jangan diubah sepihak.
- * Idempoten: firstOrCreate by account_code.
- */
 class ChartOfAccountsSeeder extends Seeder
 {
     public function run(): void
@@ -24,6 +19,7 @@ class ChartOfAccountsSeeder extends Seeder
             ['account_code' => '3-3000', 'account_name' => 'Modal', 'account_type' => 'equity'],
             ['account_code' => '4-4000', 'account_name' => 'Pendapatan Penjualan', 'account_type' => 'revenue'],
             ['account_code' => '4-4100', 'account_name' => 'Diskon Penjualan', 'account_type' => 'revenue'],
+            ['account_code' => '4-4200', 'account_name' => 'Retur Penjualan', 'account_type' => 'revenue'],
             ['account_code' => '5-5000', 'account_name' => 'Harga Pokok Penjualan', 'account_type' => 'expense'],
             ['account_code' => '6-6000', 'account_name' => 'Beban Operasional', 'account_type' => 'expense'],
             ['account_code' => '6-6100', 'account_name' => 'Beban Penyesuaian Persediaan', 'account_type' => 'expense'],

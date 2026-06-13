@@ -6,10 +6,7 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Tabel pemilik (owner) generik untuk semua file yang diunggah lewat endpoint media.
-     * File fisik dikelola Spatie Media Library; tabel lain cukup menyimpan media UUID/URL.
-     */
+
     public function up(): void
     {
         Schema::create('uploads', function (Blueprint $table) {

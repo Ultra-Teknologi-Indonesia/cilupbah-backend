@@ -53,7 +53,6 @@ class WarehouseBusinessFlowTest extends TestCase
         ]);
     }
 
-    /** W-1: PUT /locations/{id} dengan layout dulu rusak total (500). Sekarang harus sukses & membuat zona+bin. */
     public function test_update_location_with_layout_succeeds(): void
     {
         $loc = Location::factory()->create();
@@ -73,7 +72,6 @@ class WarehouseBusinessFlowTest extends TestCase
         $this->assertDatabaseHas('location_bins', ['location_id' => $loc->id, 'bin_final_code' => 'F1-R1-C1-B1']);
     }
 
-    /** W-1: update hanya layout (tanpa kolom scalar) tetap 200, bukan false-404. */
     public function test_update_layout_only_does_not_false_404(): void
     {
         $loc = Location::factory()->create();
@@ -87,7 +85,6 @@ class WarehouseBusinessFlowTest extends TestCase
         ])->assertStatus(200);
     }
 
-    /** W-11: generate dua kali harus idempoten (tidak ada bin dobel). */
     public function test_generate_is_idempotent(): void
     {
         $loc = Location::factory()->create();
@@ -105,7 +102,6 @@ class WarehouseBusinessFlowTest extends TestCase
         $this->assertEquals(1, LocationBin::where('location_id', $loc->id)->where('bin_final_code', 'F1-R1-C1-B1')->count());
     }
 
-    /** W-12: hapus bin yang masih menyimpan stok harus ditolak (422), bukan men-detach stok diam-diam. */
     public function test_cannot_delete_bin_with_stock(): void
     {
         $loc = Location::factory()->create();
@@ -117,7 +113,6 @@ class WarehouseBusinessFlowTest extends TestCase
         $this->assertDatabaseHas('inventories', ['bin_id' => $bin->id, 'on_hand' => 7]);
     }
 
-    /** W-12: bin kosong tetap boleh dihapus. */
     public function test_can_delete_empty_bin(): void
     {
         $loc = Location::factory()->create();
@@ -127,11 +122,10 @@ class WarehouseBusinessFlowTest extends TestCase
         $this->assertDatabaseMissing('location_bins', ['id' => $bin->id]);
     }
 
-    /** W-13: hapus zona via layout yang masih punya stok harus ditolak (422), zona & bin tetap utuh. */
     public function test_cannot_remove_zone_with_stock_via_layout(): void
     {
         $loc = Location::factory()->create();
-        // buat zona + bin lewat layout
+
         $this->auth()->putJson("/api/v1/locations/{$loc->id}", [
             'location_name' => $loc->location_name,
             'layout' => [
@@ -144,7 +138,6 @@ class WarehouseBusinessFlowTest extends TestCase
         $bin = LocationBin::where('location_id', $loc->id)->where('bin_final_code', 'F1-R1-C1-B1')->firstOrFail();
         $this->stockInBin($loc, $bin, 5);
 
-        // update layout TANPA Z-A -> harus ditolak karena Z-A masih ber-stok
         $this->auth()->putJson("/api/v1/locations/{$loc->id}", [
             'location_name' => $loc->location_name,
             'layout' => [
@@ -159,7 +152,6 @@ class WarehouseBusinessFlowTest extends TestCase
         $this->assertDatabaseMissing('location_zones', ['location_id' => $loc->id, 'zone_code' => 'Z-B']);
     }
 
-    /** W-13: zona kosong boleh dihapus via layout. */
     public function test_can_remove_empty_zone_via_layout(): void
     {
         $loc = Location::factory()->create();
@@ -185,7 +177,6 @@ class WarehouseBusinessFlowTest extends TestCase
         $this->assertDatabaseHas('location_zones', ['location_id' => $loc->id, 'zone_code' => 'Z-B']);
     }
 
-    /** W-14: hapus lokasi yang masih dipakai transaksi (inbound restrict) -> 422 pesan ramah, bukan 500/SQL mentah. */
     public function test_cannot_delete_location_referenced_by_inbound(): void
     {
         $loc = Location::factory()->create();

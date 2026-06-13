@@ -180,7 +180,7 @@ class ChannelProductController extends Controller
 
         try {
             $res = $this->channelProductService->createAndPushProduct($request->validated(), $shopId);
-            
+
             return $this->successResponse($res, 'Produk berhasil dibuat dan dikirim ke channel', 201);
         } catch (\Exception $e) {
             return $this->errorResponse('Gagal membuat dan mengirim produk', 500, ['error' => $e->getMessage()]);
@@ -209,7 +209,7 @@ class ChannelProductController extends Controller
         unset($data['shop_id']);
 
         $res = $this->channelProductService->updateAndPushProduct($id, $shopId, $data);
-        
+
         return $this->successResponse($res, 'Produk berhasil diperbarui');
     }
 
@@ -297,7 +297,7 @@ class ChannelProductController extends Controller
         if (!$shopId) {
             return $this->errorResponse('shop_id wajib diisi', 400);
         }
-        
+
         $this->channelProductService->updateStock($id, $shopId);
 
         return $this->successResponse(['success' => true], 'Stok produk berhasil diperbarui');
@@ -324,7 +324,7 @@ class ChannelProductController extends Controller
         if (!$shopId) {
             return $this->errorResponse('shop_id wajib diisi', 400);
         }
-        
+
         $this->channelProductService->updatePrice($id, $shopId);
 
         return $this->successResponse(['success' => true], 'Harga produk berhasil diperbarui');

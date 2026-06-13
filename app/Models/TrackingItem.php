@@ -14,7 +14,6 @@ class TrackingItem extends Model
     public const STATUSES = ['done', 'in_progress', 'todo', 'blocked'];
     public const PICS = ['Darriel', 'Rasyid'];
 
-    /** Normalisasi nilai status dari dokumen (partial => in_progress). */
     public static function normalizeStatus(?string $status): string
     {
         $status = $status === 'partial' ? 'in_progress' : (string) $status;

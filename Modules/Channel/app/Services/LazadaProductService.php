@@ -9,11 +9,6 @@ use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Product\Models\ProductSyncLog;
 
-/**
- * Tarik (download) produk Lazada → draft produk internal status 'download'
- * + product_channel_mappings & product_variant_channel_mappings
- * (pola TikTokProductService::pullProducts, paginasi offset Lazada).
- */
 class LazadaProductService
 {
     public function __construct(
@@ -63,7 +58,6 @@ class LazadaProductService
                             'synced'
                         );
 
-                        // Mapping per-SKU agar sync stok/harga balik bisa bekerja.
                         foreach ($item['skus'] ?? [] as $skuData) {
                             $sku = ! empty($skuData['SellerSku'])
                                 ? $skuData['SellerSku']

@@ -10,12 +10,6 @@ use Illuminate\Queue\SerializesModels;
 use Modules\Webhook\Repositories\WebhookDeliveryRepository;
 use Modules\Webhook\Repositories\WebhookSubscriptionRepository;
 
-/**
- * Berjalan SETELAH commit (lihat dispatcher ->afterCommit()).
- * Fan-out: cari subscriber aktif untuk event → buat delivery (pending) → antrekan SendWebhookJob per subscriber.
- * event_id stabil (dibawa dari dispatcher) → retry job idempoten via firstOrCreate (subscription_id, event_id).
- * Semua query di sini terjadi di LUAR transaksi/lock domain.
- */
 class DispatchWebhookEventJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -44,7 +38,6 @@ class DispatchWebhookEventJob implements ShouldQueue
                 $this->payload,
             );
 
-            // Hanya kirim untuk delivery yang baru dibuat → retry tidak menggandakan pengiriman.
             if ($delivery->wasRecentlyCreated) {
                 SendWebhookJob::dispatch($delivery->id)
                     ->onQueue(config('webhook.queue', 'webhooks'));

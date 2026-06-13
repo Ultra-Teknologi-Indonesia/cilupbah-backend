@@ -50,7 +50,7 @@ class ChannelAttributeService
 
         $client = app(TikTokClient::class);
         $queries = ['category_version' => 'v2'];
-        
+
         try {
             $res = $client->request(
                 'GET', 
@@ -111,10 +111,6 @@ class ChannelAttributeService
         return $this->attributeRepository->getPaginated($channelCategoryId, $perPage);
     }
 
-    /**
-     * Jubelio: GET /inventory/items/channel-category-attributes/ — daftar seluruh atribut channel.
-     * Filter/sort/pagination ditangani Spatie Query Builder di repository.
-     */
     public function getAllAttributes(): LengthAwarePaginator
     {
         return $this->attributeRepository->getAllPaginated();

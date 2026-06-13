@@ -24,7 +24,6 @@ class ProductCatalogTest extends TestCase
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Kamera']);
         DB::table('brands')->insertOrIgnore(['id' => 1, 'name' => 'Sony']);
 
-        // Produk master + 2 varian (rentang harga) + gambar utama.
         $this->masterProduct = Product::create([
             'name' => 'Master Camera',
             'category_id' => 1,
@@ -55,7 +54,6 @@ class ProductCatalogTest extends TestCase
             'sort_order' => 1,
         ]);
 
-        // Produk dengan status lain (tidak boleh muncul di filter master).
         Product::create([
             'name' => 'Pending Review Item',
             'category_id' => 1,

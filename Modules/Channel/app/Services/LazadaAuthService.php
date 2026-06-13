@@ -14,10 +14,6 @@ class LazadaAuthService
         protected ChannelShopRepository $shopRepository,
     ) {}
 
-    /**
-     * Tukar authorization code → token → simpan akun seller Lazada ke channel_shops.
-     * Mengembalikan daftar toko yang berhasil disimpan.
-     */
     public function handleCallback(string $code): array
     {
         $token = $this->client->getAccessToken($code);
@@ -36,11 +32,10 @@ class LazadaAuthService
         $tokenExpiresAt = isset($token['expires_in']) ? now()->addSeconds((int) $token['expires_in']) : null;
         $refreshExpiresAt = isset($token['refresh_expires_in']) ? now()->addSeconds((int) $token['refresh_expires_in']) : null;
 
-        // Lazada bisa mengembalikan banyak toko per negara (country_user_info).
         $sellers = $token['country_user_info'] ?? [];
 
         if (empty($sellers)) {
-            // Fallback: satu akun tanpa rincian per-negara.
+
             $sellers = [[
                 'seller_id' => $token['account_id'] ?? $account ?? 'unknown',
                 'short_code' => null,
@@ -74,7 +69,6 @@ class LazadaAuthService
         return $savedShops;
     }
 
-    /** Daftar toko Lazada (ringkas, untuk UI manajemen toko). */
     public function getStores(): array
     {
         return $this->shopRepository->getShopsByChannelCode('lazada')
@@ -119,9 +113,6 @@ class LazadaAuthService
         ]);
     }
 
-    /**
-     * Refresh access token satu toko. Respons Lazada flat (access_token/expires_in di top-level).
-     */
     public function refreshStoreToken(string $id): array
     {
         $shop = $this->requireLazadaShop($id);
@@ -154,12 +145,6 @@ class LazadaAuthService
         ];
     }
 
-    /**
-     * Refresh semua toko Lazada aktif yang token-nya akan kedaluwarsa dalam $hours jam.
-     * Per-toko di-try/catch agar satu kegagalan tidak menghentikan sisanya (dipakai scheduler).
-     *
-     * @return array{refreshed: int, failed: int, skipped: int}
-     */
     public function refreshExpiringTokens(int $hours = 48): array
     {
         $summary = ['refreshed' => 0, 'failed' => 0, 'skipped' => 0];
@@ -213,7 +198,6 @@ class LazadaAuthService
             return 'expired';
         }
 
-        // Perbandingan eksplisit (Carbon 3: diffInHours bertanda negatif utk tanggal depan).
         if ($shop->token_expires_at->lt(now()->addHours(24))) {
             return 'expiring_soon';
         }

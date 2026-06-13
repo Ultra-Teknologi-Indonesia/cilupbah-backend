@@ -123,10 +123,19 @@ class InventoryController extends Controller
     )]
     public function movements(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $request->validate([
+            'per_page' => 'nullable|integer|min:1|max:500',
+            'limit' => 'nullable|integer|min:1|max:500',
+            'page' => 'nullable|integer|min:1',
+        ]);
+
+        $limit = (int) $request->query('limit', 10);
         $movements = $this->inventoryService->getHistoryPaginated($limit);
 
-        return $this->successPaginatedResponse($movements, 'Riwayat pergerakan stok berhasil diambil');
+        return $this->successPaginatedResponse(
+            \Modules\Inventory\Http\Resources\InventoryMovementResource::collection($movements),
+            'Riwayat pergerakan stok berhasil diambil'
+        );
     }
 
     #[OA\Get(

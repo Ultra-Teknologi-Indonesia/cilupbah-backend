@@ -6,9 +6,7 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
+
     public function up(): void
     {
         Schema::create('category_attributes', function (Blueprint $table) {
@@ -18,14 +16,10 @@ return new class extends Migration
             $table->boolean('is_required')->default(false);
             $table->timestamps();
 
-            // Prevent duplicate attributes per category
             $table->unique(['category_id', 'attribute_id']);
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('category_attributes');

@@ -19,12 +19,12 @@ class BundleImport implements WithMultipleSheets, SkipsUnknownSheets
     {
         return [
             'Pengisian Data' => new BundleDataSheetImport($this->service),
-            2 => new BundleDataSheetImport($this->service), // Fallback if sheet is renamed
+            2 => new BundleDataSheetImport($this->service), 
         ];
     }
 
     public function onUnknownSheet($sheetName)
     {
-        // Skip
+
     }
 }

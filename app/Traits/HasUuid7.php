@@ -6,9 +6,7 @@ use Ramsey\Uuid\Uuid;
 
 trait HasUuid7
 {
-    /**
-     * Boot the trait.
-     */
+
     protected static function bootHasUuid7()
     {
         static::creating(function ($model) {
@@ -18,17 +16,11 @@ trait HasUuid7
         });
     }
 
-    /**
-     * Get the auto-incrementing key type.
-     */
     public function getIncrementing()
     {
         return false;
     }
 
-    /**
-     * Get the data type for the primary key.
-     */
     public function getKeyType()
     {
         return 'string';

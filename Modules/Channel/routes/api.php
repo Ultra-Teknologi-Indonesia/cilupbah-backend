@@ -4,7 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\Channel\Http\Controllers\ChannelController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
-    // Jubelio: daftar toko marketplace yang terhubung
+
     Route::get('marketplace/store', [ChannelController::class, 'stores']);
 
     Route::apiResource('channels', ChannelController::class)->names('channel');
@@ -14,12 +14,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 });
 
 Route::prefix('v1/tiktok')->group(function () {
-    // Publik: webhook & OAuth (diverifikasi via signature / redirect browser seller).
+
     Route::post('webhook', [\Modules\Channel\Http\Controllers\TikTokWebhookController::class, 'handle']);
     Route::get('auth', [\Modules\Channel\Http\Controllers\TikTokAuthController::class, 'redirect']);
     Route::get('callback', [\Modules\Channel\Http\Controllers\TikTokAuthController::class, 'callback']);
 
-    // Internal: wajib login (manajemen toko + sinkronisasi order/produk).
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('cancel-reasons', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'getCancelReasons']);
         Route::post('cancel-product', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'cancelProduct']);
@@ -41,26 +40,21 @@ Route::prefix('v1/tiktok')->group(function () {
     });
 });
 
-// Lazada OAuth. Callback dipanggil lewat redirect browser seller (tanpa auth:sanctum).
 Route::prefix('v1/lazada')->group(function () {
     Route::get('auth', [\Modules\Channel\Http\Controllers\LazadaAuthController::class, 'redirect'])->name('lazada.auth');
     Route::get('callback', [\Modules\Channel\Http\Controllers\LazadaAuthController::class, 'callback'])->name('lazada.callback');
 
-    // Push message Lazada (publik — diverifikasi via signature HMAC, bukan sanctum).
     Route::post('webhook', [\Modules\Channel\Http\Controllers\LazadaWebhookController::class, 'handle'])->name('lazada.webhook');
 
-    // Manajemen toko Lazada (internal — wajib login).
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('stores', [\Modules\Channel\Http\Controllers\LazadaStoreController::class, 'index'])->name('lazada.stores.index');
         Route::get('stores/{id}', [\Modules\Channel\Http\Controllers\LazadaStoreController::class, 'show'])->whereUuid('id')->name('lazada.stores.show');
         Route::delete('stores/{id}', [\Modules\Channel\Http\Controllers\LazadaStoreController::class, 'destroy'])->whereUuid('id')->name('lazada.stores.destroy');
         Route::post('stores/{id}/refresh-token', [\Modules\Channel\Http\Controllers\LazadaStoreController::class, 'refreshToken'])->whereUuid('id')->name('lazada.stores.refresh');
 
-        // Tarik order → SalesOrder internal.
         Route::post('sync/pull', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'pullOrders'])->name('lazada.sync.pull');
         Route::post('auto-sync/pull-orders', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'pullOrdersAll'])->name('lazada.sync.pull-all');
 
-        // Operasi order: terima (pack+RTS), batalkan, alasan batal, kurir channel.
         Route::post('sync/pack', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'packOrder'])->name('lazada.sync.pack');
         Route::post('sync/cancel', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'cancelOrder'])->name('lazada.sync.cancel');
         Route::get('cancel-reasons', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'cancelReasons'])->name('lazada.cancel-reasons');
@@ -68,7 +62,6 @@ Route::prefix('v1/lazada')->group(function () {
     });
 });
 
-// Generic per-channel download (generalisasi pull, tidak terikat TikTok)
 Route::middleware(['auth:sanctum'])->prefix('v1/{channel}')->group(function () {
     Route::post('download', [\Modules\Channel\Http\Controllers\ChannelDownloadController::class, 'download']);
     Route::post('download/bulk', [\Modules\Channel\Http\Controllers\ChannelDownloadController::class, 'downloadBulk']);

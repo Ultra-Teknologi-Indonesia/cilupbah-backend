@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Collection;
 
 class ChannelWarehouseRepository
 {
-    /** per_page yang aman: non-numerik/<=0 jatuh ke default 10 (cegah TypeError paginate). */
+
     protected function perPage(): int
     {
         $perPage = (int) request('per_page', 10);

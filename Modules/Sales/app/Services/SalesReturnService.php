@@ -6,13 +6,15 @@ use Modules\Sales\Repositories\SalesReturnRepository;
 use Modules\Sales\Models\SalesReturn;
 use Modules\Inbound\Services\InboundService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class SalesReturnService
 {
     public function __construct(
         protected SalesReturnRepository $returnRepository,
-        protected InboundService $inboundService
+        protected InboundService $inboundService,
+        protected SalesReturnSettingService $settings
     ) {}
 
     public function getAllPaginated(int $limit = 10)
@@ -50,7 +52,6 @@ class SalesReturnService
         return $this->returnRepository->getResolvedReturnItems($limit);
     }
 
-    /** Flow [D] — return with invoice/order, or [E] — return without invoice */
     public function create(array $data): SalesReturn
     {
         return DB::transaction(function () use ($data) {
@@ -65,11 +66,22 @@ class SalesReturnService
                 $this->returnRepository->createItem($itemData);
             }
 
-            return $return->load('items.product:id,sku,product_id', 'items.product.product:id,name');
+            $return->load('items');
+
+            // Auto-accept (best-effort): kegagalan inbound tidak menggagalkan pembuatan retur.
+            if ($this->settings->autoAccept()) {
+                try {
+                    $this->accept($return->id, ['processed_by' => $data['created_by']]);
+                } catch (\Throwable $e) {
+                    Log::warning("Auto-accept retur {$return->return_number} gagal: {$e->getMessage()}");
+                }
+            }
+
+            return $this->getById($return->id)
+                ?? $return->load('items.product:id,sku,product_id', 'items.product.product:id,name');
         });
     }
 
-    /** Flow [F] accept — marketplace return accepted, stock masuk */
     public function accept(string $id, array $data): SalesReturn
     {
         return DB::transaction(function () use ($id, $data) {
@@ -91,7 +103,7 @@ class SalesReturnService
             ])->toArray();
 
             $inbound = $this->inboundService->receiveFromSalesReturn([
-                'location_id'      => $return->location_id,
+                'location_id'      => $this->settings->restockLocationId() ?? $return->location_id,
                 'reference_number' => $return->return_number,
                 'source_id'        => $return->id,
                 'expected_date'    => now()->toDateString(),
@@ -103,7 +115,6 @@ class SalesReturnService
         });
     }
 
-    /** Flow [F] reject — marketplace return rejected, stock tidak berubah */
     public function reject(string $id, array $data): SalesReturn
     {
         return DB::transaction(function () use ($id, $data) {
@@ -124,7 +135,6 @@ class SalesReturnService
         });
     }
 
-    /** Flow [F] complete — mark as complete (not a return) */
     public function complete(string $id, array $data): SalesReturn
     {
         return DB::transaction(function () use ($id, $data) {

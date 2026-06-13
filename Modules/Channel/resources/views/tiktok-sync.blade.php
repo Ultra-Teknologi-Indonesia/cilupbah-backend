@@ -50,7 +50,7 @@
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <!-- LEFT COLUMN: Products -->
             <div class="lg:col-span-2 space-y-8">
-                
+
                 <!-- Product List Card -->
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                     <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">

@@ -20,18 +20,16 @@ class ChannelProductTest extends TestCase
     private string $channel = 'tiktok';
 
     private Product $testProduct;
-    private ChannelShop $shop;           // toko tempat produk sudah ter-mapping
-    private ChannelShop $secondaryShop;  // toko untuk skenario create baru
+    private ChannelShop $shop;           
+    private ChannelShop $secondaryShop;  
     private string $externalId = 'EXT-PRODUCT-123';
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        // Channel routes kini dilindungi auth:sanctum; bypass untuk test.
         $this->withoutMiddleware();
 
-        // Jangan benar-benar mengeksekusi job (hindari koneksi redis + call API marketplace).
         Queue::fake();
 
         Http::fake([
@@ -41,11 +39,9 @@ class ChannelProductTest extends TestCase
             ),
         ]);
 
-        // Master data minimum (category_id & brand_id tetap bigint).
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Test Cat']);
         DB::table('brands')->insertOrIgnore(['id' => 1, 'name' => 'Test Brand']);
 
-        // channel_shops.id adalah UUID — buat lewat Eloquent agar id ter-generate otomatis.
         $this->shop = ChannelShop::create([
             'shop_id' => '12345',
             'access_token' => 'fake_access_token',
@@ -70,7 +66,6 @@ class ChannelProductTest extends TestCase
             'is_active' => true,
         ]);
 
-        // Hubungkan produk ke toko via tabel pivot dengan external_product_id yang diketahui.
         ProductChannelMapping::create([
             'product_id' => $this->testProduct->id,
             'channel_shop_id' => $this->shop->id,
@@ -140,13 +135,11 @@ class ChannelProductTest extends TestCase
             'name' => $payload['name'],
         ]);
 
-        // Job sinkronisasi di-antrekan dengan channel_shops.id (UUID), bukan shop_id marketplace.
         Queue::assertPushed(SyncProductToChannelJob::class, function ($job) {
             return $job->action === 'push'
                 && $job->channelShopId === $this->secondaryShop->id;
         });
 
-        // Riwayat upload tercatat sebagai pending.
         $this->assertDatabaseHas('product_sync_logs', [
             'product_id' => $productId,
             'channel_shop_id' => $this->secondaryShop->id,
@@ -250,8 +243,6 @@ class ChannelProductTest extends TestCase
         $response->assertJsonStructure(['status', 'message', 'data']);
     }
 
-    // ==================== UNLINK ====================
-
     public function test_can_unlink_product_from_channel()
     {
         $response = $this->deleteJson(
@@ -261,7 +252,6 @@ class ChannelProductTest extends TestCase
 
         $response->assertStatus(200);
 
-        // Mapping dihapus, produk lokal tetap ada.
         $this->assertDatabaseMissing('product_channel_mappings', [
             'external_product_id' => $this->externalId,
         ]);

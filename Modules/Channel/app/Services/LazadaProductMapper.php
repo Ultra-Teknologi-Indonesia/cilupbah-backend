@@ -4,16 +4,9 @@ namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\DB;
 
-/**
- * Pemetaan produk internal → payload Lazada /product/create dan /product/update.
- * Bentuk payload Lazada: { Request: { Product: { PrimaryCategory, Images, Attributes, Skus } } }.
- */
 class LazadaProductMapper
 {
-    /**
-     * @param  array  $product   product internal (toArray + variants)
-     * @param  array  $imageUrls daftar URL gambar publik
-     */
+
     public function map(array $product, array $imageUrls = [], array $config = []): array
     {
         $skus = [];
@@ -25,7 +18,7 @@ class LazadaProductMapper
 
             $skus[] = array_filter([
                 'SellerSku' => $variant['sku'],
-                'quantity' => 0, // stok dikirim terpisah via price_quantity/update
+                'quantity' => 0, 
                 'price' => (float) ($variant['sell_price'] ?? 0),
                 'package_weight' => (float) ($variant['weight'] ?? $product['weight'] ?? 0.1) ?: 0.1,
                 'package_length' => (float) ($product['length'] ?? 0) ?: null,
@@ -50,10 +43,6 @@ class LazadaProductMapper
         ];
     }
 
-    /**
-     * Kategori internal → external_id kategori Lazada (via category_channel_mappings).
-     * Fallback ke config lazada_defaults.primary_category.
-     */
     protected function resolveChannelCategoryId($categoryId, array $config): ?string
     {
         if ($categoryId) {

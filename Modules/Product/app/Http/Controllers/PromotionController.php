@@ -18,7 +18,6 @@ class PromotionController extends Controller
     ) {
     }
 
-    /** Jubelio: GET /inventory/promotions — Ambil semua promosi. */
     public function index(): JsonResponse
     {
         return $this->successPaginatedResponse(
@@ -27,7 +26,6 @@ class PromotionController extends Controller
         );
     }
 
-    /** Jubelio: POST /inventory/promotions — Buat promosi. */
     public function store(StorePromotionRequest $request): JsonResponse
     {
         $promotion = $this->service->create($request->validated());
@@ -35,7 +33,6 @@ class PromotionController extends Controller
         return $this->successResponse(new PromotionResource($promotion), 'Promosi berhasil dibuat', 201);
     }
 
-    /** Jubelio: GET /inventory/promotions/{id} — Ambil detail promosi. */
     public function show(string $id): JsonResponse
     {
         $promotion = $this->service->find($id);
@@ -46,7 +43,6 @@ class PromotionController extends Controller
         return $this->successResponse(new PromotionResource($promotion), 'Get promotion detail success');
     }
 
-    /** Jubelio: DELETE /inventory/promotions/{id} — Hapus promosi. */
     public function destroy(string $id): JsonResponse
     {
         $promotion = $this->service->find($id);

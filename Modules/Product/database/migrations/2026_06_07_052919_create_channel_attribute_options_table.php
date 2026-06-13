@@ -6,16 +6,14 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
+
     public function up(): void
     {
         Schema::create('channel_attribute_options', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->uuid('channel_attribute_id');
             $table->foreign('channel_attribute_id')->references('id')->on('channel_attributes')->cascadeOnDelete();
-            $table->string('external_id')->index(); // TikTok Value ID e.g., "1001182"
+            $table->string('external_id')->index(); 
             $table->string('name');
             $table->timestamps();
 
@@ -23,9 +21,6 @@ return new class extends Migration
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('channel_attribute_options');

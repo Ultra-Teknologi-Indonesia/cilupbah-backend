@@ -10,16 +10,14 @@ class ProductImportService
     public function processSingleProductRow(array $row)
     {
         DB::transaction(function () use ($row) {
-            // 1. Resolve Category
+
             $categoryId = $this->resolveCategory($row['item_category_id'] ?? null, $row['category'] ?? '');
 
-            // 2. Resolve Brand
             $brandId = $this->resolveBrand($row['brand'] ?? '');
 
-            // 3. Upsert Product
             $productName = $row['item_group_name'] ?? 'Unnamed Product';
             $product = DB::table('products')->where('name', $productName)->first();
-            
+
             $productId = null;
             $productData = [
                 'category_id' => $categoryId,
@@ -43,7 +41,6 @@ class ProductImportService
                 $productId = $productData['id'];
             }
 
-            // 4. Upsert Variant
             $sku = $row['item_code'];
             $variant = DB::table('product_variants')->where('sku', $sku)->first();
             $variantData = [
@@ -65,7 +62,6 @@ class ProductImportService
                 $variantId = $variantData['id'];
             }
 
-            // 5. Media
             $this->processMedia($productId, $row);
         });
     }
@@ -87,7 +83,6 @@ class ProductImportService
                 throw new \Exception("Component SKU {$componentSku} not found.");
             }
 
-            // Upsert product bundles
             $existing = DB::table('product_bundles')
                 ->where('bundle_variant_id', $bundleVariant->id)
                 ->where('component_variant_id', $componentVariant->id)
@@ -164,12 +159,10 @@ class ProductImportService
             $row['default_images'] ?? null,
         ];
 
-        $imageUrls = array_filter($imageUrls); // Remove empty values
+        $imageUrls = array_filter($imageUrls); 
 
-        // Simple approach: if they provided images, we append them (or clear and insert)
-        // For import, usually we don't want to duplicate, so we skip if we already have media
         $hasMedia = DB::table('product_media')->where('product_id', $productId)->exists();
-        
+
         if (!$hasMedia && count($imageUrls) > 0) {
             $insertData = [];
             foreach ($imageUrls as $index => $url) {

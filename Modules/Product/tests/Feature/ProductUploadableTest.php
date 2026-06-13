@@ -51,7 +51,6 @@ class ProductUploadableTest extends TestCase
             'sync_status' => 'synced',
         ]);
 
-        // Bukan master -> tidak boleh muncul.
         $this->makeProduct('Download Item', Product::STATUS_DOWNLOAD);
 
         $response = $this->getJson("/api/v1/products/uploadable?channel=tiktok&shop_id={$this->shop->shop_id}");

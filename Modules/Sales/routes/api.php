@@ -15,12 +15,14 @@ use Modules\Outbound\Http\Controllers\OutboundFulfillmentController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
-    // ─── Sales Return Items (literal routes FIRST) ───
+    // Pengaturan retur penjualan (Jubelio: /systemsetting/sales-return-setting).
+    Route::get('systemsetting/sales-return-setting', [\Modules\Sales\Http\Controllers\SalesReturnSettingController::class, 'index'])->name('sales.returnSetting.index');
+    Route::post('systemsetting/sales-return-setting', [\Modules\Sales\Http\Controllers\SalesReturnSettingController::class, 'store'])->name('sales.returnSetting.store');
+
     Route::get('sales/returns/items/rejected', [SalesReturnController::class, 'rejectedItems'])->name('sales.returns.items.rejected');
     Route::get('sales/returns/items/resolved', [SalesReturnController::class, 'resolvedItems'])->name('sales.returns.items.resolved');
     Route::get('sales/returns/items', [SalesReturnController::class, 'allItems'])->name('sales.returns.items.index');
 
-    // ─── Sales Returns ───
     Route::get('sales/sales-returns/unpaid', [SalesReturnController::class, 'unpaid'])->name('sales.returns.unpaid');
     Route::get('sales/returns/unprocessed', [SalesReturnController::class, 'unprocessed'])->name('sales.returns.unprocessed');
     Route::get('sales/returns', [SalesReturnController::class, 'index'])->name('sales.returns.index');
@@ -30,7 +32,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('sales/returns/{id}/reject', [SalesReturnController::class, 'reject'])->whereUuid('id')->name('sales.returns.reject');
     Route::post('sales/returns/{id}/complete', [SalesReturnController::class, 'complete'])->whereUuid('id')->name('sales.returns.complete');
 
-    // ─── Sales Invoices (literal routes FIRST) ───
     Route::get('sales/invoices/unpaid', [SalesInvoiceController::class, 'unpaid'])->name('sales.invoices.unpaid');
     Route::get('sales/invoices/overdue', [SalesInvoiceController::class, 'overdue'])->name('sales.invoices.overdue');
     Route::get('sales/invoices/summary', [SalesInvoiceController::class, 'summary'])->name('sales.invoices.summary');
@@ -39,17 +40,14 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('sales/invoices', [SalesInvoiceController::class, 'store'])->name('sales.invoices.store');
     Route::get('sales/invoices/{id}', [SalesInvoiceController::class, 'show'])->whereUuid('id')->name('sales.invoices.show');
 
-    // ─── Sales Payments ───
     Route::get('sales/payments', [SalesPaymentController::class, 'index'])->name('sales.payments.index');
     Route::post('sales/payments', [SalesPaymentController::class, 'store'])->name('sales.payments.store');
     Route::get('sales/payments/{id}', [SalesPaymentController::class, 'show'])->whereUuid('id')->name('sales.payments.show');
     Route::delete('sales/payments', [SalesPaymentController::class, 'destroy'])->name('sales.payments.destroy');
 
-    // ─── Sales Settlements ───
     Route::get('sales/settlements', [SalesSettlementController::class, 'index'])->name('sales.settlements.index');
     Route::get('sales/settlements/{id}', [SalesSettlementController::class, 'show'])->whereUuid('id')->name('sales.settlements.show');
 
-    // ─── Sales Return Settlements (sub-resources first) ───
     Route::get('sales/return-settlements/invoices', [SalesReturnSettlementController::class, 'invoiceIndex'])->name('sales.return-settlements.invoices.index');
     Route::post('sales/return-settlements/invoices', [SalesReturnSettlementController::class, 'invoiceStore'])->name('sales.return-settlements.invoices.store');
     Route::get('sales/return-settlements/invoices/{id}', [SalesReturnSettlementController::class, 'invoiceShow'])->whereUuid('id')->name('sales.return-settlements.invoices.show');
@@ -59,7 +57,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('sales/return-settlements', [SalesReturnSettlementController::class, 'index'])->name('sales.return-settlements.index');
     Route::delete('sales/return-settlements', [SalesReturnSettlementController::class, 'destroy'])->name('sales.return-settlements.destroy');
 
-    // ─── Packlist / Picklist / Shipment aliases (§9f — Outbound delegation) ───
     Route::get('sales/packlists/shipped', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('shipped', $request))->name('sales.packlists.shipped');
     Route::post('sales/packlists/create-invoice', [SalesInvoiceController::class, 'createFromOrder'])->name('sales.packlists.create-invoice');
     Route::post('sales/packlists/create-invoice-payment', [SalesInvoiceController::class, 'createFromOrderWithPayment'])->name('sales.packlists.create-invoice-payment');
@@ -74,7 +71,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('sales/shipments', fn (Request $request) => app(ShipmentController::class)->handOver($request->input('shipment_id')))->name('sales.shipments.handover');
     Route::get('sales/shipments/{shipment_header_id}', fn (Request $request, string $shipment_header_id) => app(ShipmentController::class)->show($shipment_header_id))->whereUuid('shipment_header_id')->name('sales.shipments.show');
 
-    // ─── Sales Orders (literal action routes FIRST, then CRUD wildcard last) ───
     Route::get('sales/orders/cancel', [SalesOrderController::class, 'cancelled'])->name('sales.orders.cancelled');
     Route::get('sales/orders/completed', [SalesOrderController::class, 'completed'])->name('sales.orders.completed');
     Route::get('sales/orders/failed', [SalesOrderController::class, 'failed'])->name('sales.orders.failed');
@@ -87,7 +83,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('sales/request-awb-order', [SalesOrderController::class, 'requestAwb'])->name('sales.request-awb-order');
     Route::get('sales/unfullfilled', [SalesOrderController::class, 'unfulfilled'])->name('sales.unfulfilled');
 
-    // Sales Orders CRUD (wildcard {id} routes — must be LAST)
     Route::get('sales', [SalesOrderController::class, 'index'])->name('sales.index');
     Route::post('sales', [SalesOrderController::class, 'store'])->name('sales.store');
     Route::get('sales/{id}', [SalesOrderController::class, 'show'])->whereUuid('id')->name('sales.show');

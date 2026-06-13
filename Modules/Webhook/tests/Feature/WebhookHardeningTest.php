@@ -60,18 +60,16 @@ class WebhookHardeningTest extends TestCase
         ], $override));
     }
 
-    // ── M-1: SSRF guard ──
-
     public function test_url_guard_blocks_internal_and_non_https(): void
     {
         $guard = new WebhookUrlGuard();
 
-        $this->assertFalse($guard->isSafe('http://example.test/hook'));     // skema
-        $this->assertFalse($guard->isSafe('https://127.0.0.1/hook'));        // loopback
-        $this->assertFalse($guard->isSafe('https://localhost/hook'));        // resolve loopback
-        $this->assertFalse($guard->isSafe('https://169.254.169.254/'));      // metadata
-        $this->assertFalse($guard->isSafe('https://10.0.0.5/hook'));         // privat
-        $this->assertTrue($guard->isSafe('https://example.test/hook'));      // publik (tak resolve)
+        $this->assertFalse($guard->isSafe('http://example.test/hook'));     
+        $this->assertFalse($guard->isSafe('https://127.0.0.1/hook'));        
+        $this->assertFalse($guard->isSafe('https://localhost/hook'));        
+        $this->assertFalse($guard->isSafe('https://169.254.169.254/'));      
+        $this->assertFalse($guard->isSafe('https://10.0.0.5/hook'));         
+        $this->assertTrue($guard->isSafe('https://example.test/hook'));      
     }
 
     public function test_register_rejects_internal_target_url(): void
@@ -106,8 +104,6 @@ class WebhookHardeningTest extends TestCase
         $this->assertStringContainsString('diblokir', $delivery->last_error);
         Http::assertNothingSent();
     }
-
-    // ── M-3: deliveries list + redeliver + auto-disable ──
 
     public function test_lists_deliveries_for_subscription(): void
     {
@@ -165,8 +161,6 @@ class WebhookHardeningTest extends TestCase
         $this->assertSame(2, $sub->fresh()->consecutive_failures);
     }
 
-    // ── M-2 / L-6: send success path + 3xx + reset failures ──
-
     public function test_send_success_marks_delivered_and_resets_failures(): void
     {
         Http::fake(['example.test/*' => Http::response('ok', 200)]);
@@ -198,8 +192,6 @@ class WebhookHardeningTest extends TestCase
         $this->assertSame(WebhookDelivery::STATUS_SUCCESS, $delivery->fresh()->status);
     }
 
-    // ── L-5: idempotency per (subscription, event_id) ──
-
     public function test_dispatch_job_idempotent_per_event_id(): void
     {
         Queue::fake();
@@ -217,8 +209,6 @@ class WebhookHardeningTest extends TestCase
         $this->assertSame(1, WebhookDelivery::where('subscription_id', $sub->id)->where('event_id', $eventId)->count());
         Queue::assertPushed(SendWebhookJob::class, 1);
     }
-
-    // ── L-1: payload salesorder kaya konteks channel ──
 
     public function test_salesorder_payload_includes_channel_context(): void
     {

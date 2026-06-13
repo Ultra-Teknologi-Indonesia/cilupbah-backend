@@ -4,10 +4,6 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-/**
- * Validasi upload/replace media. Menerima SEMUA tipe file, dibatasi ukuran.
- * Batas default 50MB; atur via config('media-library.max_file_size') bila perlu.
- */
 class StoreMediaRequest extends FormRequest
 {
     public function authorize(): bool
@@ -18,7 +14,7 @@ class StoreMediaRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'file' => ['required', 'file', 'max:51200'], // 50 MB (KB)
+            'file' => ['required', 'file', 'max:51200'], 
         ];
     }
 

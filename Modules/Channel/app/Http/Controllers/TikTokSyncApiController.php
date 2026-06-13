@@ -176,7 +176,7 @@ class TikTokSyncApiController extends Controller
             return $this->errorResponse($e->getMessage(), 500);
         }
     }
-    
+
     public function getCancelReasons(Request $request, TikTokOrderService $orderService)
     {
         try {

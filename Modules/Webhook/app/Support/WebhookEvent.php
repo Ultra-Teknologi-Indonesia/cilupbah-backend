@@ -2,9 +2,6 @@
 
 namespace Modules\Webhook\Support;
 
-/**
- * Daftar 9 event webhook Jubelio yang didukung Cilupbah.
- */
 final class WebhookEvent
 {
     public const INVOICE = 'invoice';
@@ -29,7 +26,6 @@ final class WebhookEvent
         self::STOCK_TRANSFER,
     ];
 
-    /** Nilai valid untuk kolom `event` subscription (termasuk wildcard). */
     public static function subscriptionValues(): array
     {
         return array_merge(self::ALL, ['*']);

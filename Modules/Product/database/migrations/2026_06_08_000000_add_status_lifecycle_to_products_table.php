@@ -9,17 +9,15 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('products', function (Blueprint $table) {
-            // State machine produk: download -> in_review -> master -> archived
+
             $table->enum('status', ['download', 'in_review', 'master', 'archived'])
                 ->default('master')
                 ->after('is_active')
                 ->index();
 
-            // Audit trail verifikasi (diisi saat approve ke master)
             $table->timestamp('verified_at')->nullable()->after('status');
             $table->uuid('verified_by')->nullable()->after('verified_at');
 
-            // Audit trail arsip
             $table->timestamp('archived_at')->nullable()->after('verified_by');
             $table->uuid('archived_by')->nullable()->after('archived_at');
             $table->string('archive_reason')->nullable()->after('archived_by');

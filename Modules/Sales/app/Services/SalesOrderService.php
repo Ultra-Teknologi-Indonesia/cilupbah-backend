@@ -25,7 +25,7 @@ class SalesOrderService
         'cancelled' => [],
     ];
 
-    private const IDEMPOTENCY_TTL = 172800; // 48 hours
+    private const IDEMPOTENCY_TTL = 172800; 
 
     public function __construct(
         protected SalesOrderRepository $orderRepository,
@@ -279,8 +279,6 @@ class SalesOrderService
         });
     }
 
-    // Return id order (uuid string) — sebelumnya ?int, sisa migrasi UUID yang membuat
-    // TypeError di setiap pull order channel (order tersimpan tapi dihitung gagal).
     public function upsertFromChannel(array $orderData): ?string
     {
         $channelStatus = $orderData['channel_status'] ?? 'UNKNOWN';
@@ -370,11 +368,7 @@ class SalesOrderService
         }
 
         if (in_array($previousStatus, ['reserved', 'picked', 'packed']) && $finalStatus === 'shipped') {
-            // Order channel bisa terkirim tanpa melewati picklist WMS (mis. dipenuhi
-            // langsung oleh marketplace). Dari status 'reserved', on_hand belum
-            // berkurang dan reserved masih tertahan — lakukan pengurangan fisik di
-            // sini agar stok tidak bocor permanen. Dari 'picked'/'packed', picklist
-            // WMS sudah mengurangi on_hand+reserved, cukup catat movement SHIP.
+
             if ($previousStatus === 'reserved') {
                 $this->pickStockForOrder($order);
             }

@@ -30,10 +30,6 @@ class LazadaAuthController extends Controller
         return $this->successResponse(['auth_url' => $url], 'URL otorisasi Lazada berhasil dibuat.');
     }
 
-    /**
-     * Callback URL untuk diisikan ke pengaturan APP Lazada.
-     * Lazada mengarahkan seller ke sini dengan query ?code=<authorization_code>.
-     */
     #[OA\Get(
         path: '/api/v1/lazada/callback',
         summary: 'Callback OAuth Lazada (menerima authorization code)',

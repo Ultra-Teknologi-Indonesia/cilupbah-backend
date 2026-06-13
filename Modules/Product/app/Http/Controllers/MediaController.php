@@ -11,11 +11,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use OpenApi\Attributes as OA;
 
-/**
- * Endpoint media terpusat untuk SEMUA tipe file (disimpan ke Cloudflare R2 via Spatie).
- * Upload (POST), Replace (PUT, UUID stabil), Delete (DELETE), Lihat (GET).
- * Tabel lain cukup menyimpan media UUID / URL yang dikembalikan.
- */
 #[OA\Tag(name: 'Media', description: 'Manajemen file terpusat (R2)')]
 class MediaController extends Controller
 {

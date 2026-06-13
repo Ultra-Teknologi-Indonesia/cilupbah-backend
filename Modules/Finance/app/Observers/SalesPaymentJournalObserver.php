@@ -6,7 +6,6 @@ use Illuminate\Support\Facades\Log;
 use Modules\Finance\Services\AutoJournalService;
 use Modules\Sales\Models\SalesPayment;
 
-/** Jurnal otomatis uang masuk: Dr Kas/Bank — Cr Piutang. Fail-open. */
 class SalesPaymentJournalObserver
 {
     public function created(SalesPayment $payment): void

@@ -26,7 +26,7 @@ class ChannelAttributeController extends Controller
             if ($request->query('sync')) {
                 \Modules\Product\Jobs\SyncChannelAttributesJob::dispatch($channelId, $categoryId)
                     ->onQueue(config('queue.names.channel_sync'));
-                
+
                 return $this->successResponse(null, 'Proses sinkronisasi atribut sedang berjalan di latar belakang', 202);
             }
 
@@ -37,10 +37,6 @@ class ChannelAttributeController extends Controller
         }
     }
 
-    /**
-     * Jubelio: GET /inventory/items/channel-category-attributes/ — Ambil semua atribut kategori channel.
-     * Filter via query-string: filter[channel_id], filter[channel_category_id], ?search=, sort, per_page.
-     */
     public function all(): JsonResponse
     {
         $attributes = $this->service->getAllAttributes();

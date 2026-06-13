@@ -9,23 +9,11 @@ use Modules\Channel\Helpers\TikTokSignature;
 
 class ProductPullAgentCommand extends Command
 {
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
+
     protected $signature = 'agent:product-pull {--shop= : ID Channel Shop} {--external_id= : ID Produk TikTok}';
 
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
     protected $description = 'AI Agent untuk mensimulasikan Pull Webhook dari TikTok Shop';
 
-    /**
-     * Execute the console command.
-     */
     public function handle()
     {
         $this->info('🤖 Memulai Agen AI: Pull Produk (Webhook) dari TikTok...');
@@ -48,21 +36,20 @@ class ProductPullAgentCommand extends Command
 
         $externalId = $this->option('external_id');
         if (!$externalId) {
-            // Generate dummy ID if not provided
+
             $externalId = '1729581958' . rand(100, 999);
             $this->warn("⚠️  Parameter --external_id tidak diisi, menggunakan ID Dummy TikTok: {$externalId}");
         }
 
         $this->info("\n📥 [PULL] Mengkonstruksi Payload Webhook Palsu (Simulasi)...");
-        
-        // Simulating a webhook payload from TikTok containing inventory and status updates
+
         $dummyPayload = [
-            'type' => 3, // Product Status Change type in TikTok Webhook
+            'type' => 3, 
             'shop_id' => $shop->channel_shop_id ?? '74958123985',
             'timestamp' => time(),
             'data' => [
                 'product_id' => $externalId,
-                'status' => 4, // 4 could mean Active/Live
+                'status' => 4, 
                 'skus' => [
                     [
                         'id' => $externalId . '_SKU1',
@@ -82,8 +69,7 @@ class ProductPullAgentCommand extends Command
 
         try {
             $rawBody = json_encode($dummyPayload);
-            
-            // Construct Signature exactly like TikTok
+
             $appKey = config('services.tiktok.app_key');
             $appSecret = config('services.tiktok.app_secret');
             $signature = TikTokSignature::generateWebhookSignature($appKey, $rawBody, $appSecret);
@@ -97,7 +83,7 @@ class ProductPullAgentCommand extends Command
                 $this->error("❌ Gagal hit Webhook API: " . $response->body());
                 return;
             }
-            
+
             $this->info("✅ Webhook API berhasil di-hit!");
             $this->line("======================================");
             $this->info("Response: " . json_encode($response->json(), JSON_PRETTY_PRINT));

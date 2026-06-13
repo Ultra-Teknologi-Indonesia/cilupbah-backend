@@ -18,9 +18,6 @@ class SyncStockToChannelsJob implements ShouldQueue
 
     public ?string $excludeChannelShopId;
 
-    /**
-     * Create a new job instance.
-     */
     public function __construct(string $variantId, ?string $excludeChannelShopId = null)
     {
         $this->variantId = $variantId;
@@ -28,9 +25,6 @@ class SyncStockToChannelsJob implements ShouldQueue
         $this->onQueue(config('queue.names.channel_sync'));
     }
 
-    /**
-     * Execute the job.
-     */
     public function handle(): void
     {
         $variant = ProductVariant::with('product.channelMappings')->find($this->variantId);
@@ -41,7 +35,6 @@ class SyncStockToChannelsJob implements ShouldQueue
 
         $product = $variant->product;
 
-        // Dispatch sync job for each active channel mapping
         foreach ($product->channelMappings as $mapping) {
             if ($this->excludeChannelShopId !== null && $mapping->channel_shop_id === $this->excludeChannelShopId) {
                 continue;

@@ -11,17 +11,9 @@ use Modules\Product\Repositories\ProductMergeRepository;
 use Modules\Product\Support\SkuGrouping;
 use Ramsey\Uuid\Uuid;
 
-/**
- * Port fitur Merge & Auto-Merge produk dari cilupbah-ops
- * (apps/api/src/trpc/routers/product.router.ts) ke cilupbah-be.
- *
- * Overlay non-destruktif: produk & varian sumber tidak diubah, hanya 2 tabel
- * kecil (product_merges, product_merge_hidden). Merge bekerja lintas store &
- * channel — produk dari toko/marketplace berbeda bisa digabung ke 1 master.
- */
 class ProductMergeService
 {
-    /** Default pattern grup by-nama (selain grup by kode SKU). */
+
     private const DEFAULT_NAME_PATTERN_GROUPS = [
         ['premium full cover', 'premium silikon full', 'premium silicone full'],
         ['matte soft case'],
@@ -29,22 +21,12 @@ class ProductMergeService
 
     public function __construct(private ProductMergeRepository $repo) {}
 
-    // ──────────────────────────────────────────────────────────────
-    // Katalog
-    // ──────────────────────────────────────────────────────────────
-
-    /**
-     * Katalog produk ter-group (master + solo) — lintas store/channel.
-     *
-     * @return array{rows:array,total:int,counts:array{all:int,merged:int,unmerged:int,hidden:int},page:int,limit:int}
-     */
     public function catalog(string $filter = 'all', string $q = '', int $page = 1, int $limit = 50): array
     {
         $products = $this->repo->masterProducts();
         $mergeMap = $this->repo->mergeMap();
         $hiddenSet = array_flip($this->repo->hiddenNames());
 
-        /** @var array<string,array> $groups */
         $groups = [];
         foreach ($products as $p) {
             $master = $mergeMap[$p->id] ?? null;
@@ -63,8 +45,8 @@ class ProductMergeService
                     'product_count' => 0,
                     'sku_count' => 0,
                     'products' => [],
-                    'skus' => [],      // set: sku => true
-                    'channels' => [],  // set: channel_shop_id => detail
+                    'skus' => [],      
+                    'channels' => [],  
                 ];
             }
 
@@ -100,7 +82,6 @@ class ProductMergeService
                 'merged' => $master !== null,
             ];
 
-            // Cakupan multi-store / multi-channel
             foreach ($p->channelMappings as $cm) {
                 $shop = $cm->channelShop;
                 if (! $shop) {
@@ -116,7 +97,6 @@ class ProductMergeService
             unset($g);
         }
 
-        // Counts (independen dari search supaya badge tidak loncat saat user ngetik)
         $counts = [
             'all' => 0,
             'merged' => 0,
@@ -136,7 +116,6 @@ class ProductMergeService
             }
         }
 
-        // Finalize set -> list
         $out = [];
         foreach ($groups as $g) {
             $g['skus'] = array_keys($g['skus']);
@@ -145,7 +124,6 @@ class ProductMergeService
             $out[] = $g;
         }
 
-        // Filter
         $out = array_values(array_filter($out, function ($g) use ($filter) {
             return match ($filter) {
                 'hidden' => $g['hidden'],
@@ -155,7 +133,6 @@ class ProductMergeService
             };
         }));
 
-        // Search (case/diakritik-insensitive; termasuk SKU anggota)
         $needle = SkuGrouping::normalizeName($q);
         if ($needle !== '') {
             $out = array_values(array_filter($out, function ($g) use ($needle) {
@@ -178,7 +155,6 @@ class ProductMergeService
             }));
         }
 
-        // Sort: merged dulu (by sku_count desc, lalu nama), baru solo (alfabet)
         usort($out, function ($a, $b) {
             if ($a['merged'] !== $b['merged']) {
                 return $a['merged'] ? -1 : 1;
@@ -201,10 +177,6 @@ class ProductMergeService
             'limit' => $limit,
         ];
     }
-
-    // ──────────────────────────────────────────────────────────────
-    // Rekomendasi
-    // ──────────────────────────────────────────────────────────────
 
     public function suggestions(string $q = ''): array
     {
@@ -250,7 +222,7 @@ class ProductMergeService
             }
             $rawSet = array_unique(array_map(fn ($p) => $p['name'], $group));
             if (! $existing && count($rawSet) === 1) {
-                continue; // sudah natural grouped
+                continue; 
             }
 
             $master = $existing ?? $this->pickMasterName($group);
@@ -301,10 +273,6 @@ class ProductMergeService
         return $out;
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // Daftar merge (tab "Sudah Di-merge")
-    // ──────────────────────────────────────────────────────────────
-
     public function listMerges(string $q = ''): array
     {
         $merges = $this->repo->mergesWithProducts();
@@ -321,7 +289,7 @@ class ProductMergeService
                     'master_name' => $name,
                     'product_count' => 0,
                     'products' => [],
-                    'channels' => [], // set
+                    'channels' => [], 
                 ];
             }
             $grouped[$name]['product_count']++;
@@ -377,14 +345,6 @@ class ProductMergeService
         return $out;
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // Auto-merge (inti: by kode awal SKU sampai "-" pertama)
-    // ──────────────────────────────────────────────────────────────
-
-    /**
-     * @param  array<int,array<int,string>>|null  $namePatternGroups
-     * @return array{merged:int,groups_affected:int}
-     */
     public function autoMergeAll(?array $namePatternGroups = null): array
     {
         $patternGroups = array_map(
@@ -426,7 +386,7 @@ class ProductMergeService
             }
             $groupAllSize[$key] = ($groupAllSize[$key] ?? 0) + 1;
             if (isset($mergeMap[$p['id']])) {
-                continue; // sudah merged → master existing tidak ditimpa
+                continue; 
             }
             $byKey[$key][] = $p;
         }
@@ -457,20 +417,11 @@ class ProductMergeService
             'updated_at' => $now,
         ], $toApply);
 
-        // product_id unique → insertOrIgnore skip duplikat (idempoten)
         $merged = ProductMerge::query()->insertOrIgnore($insertRows);
 
         return ['merged' => $merged, 'groups_affected' => count($byKey)];
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // Apply / bulk merge
-    // ──────────────────────────────────────────────────────────────
-
-    /**
-     * @param  array<int,string>  $productIds
-     * @return array{merged:int,master_name:string}
-     */
     public function applyMerge(string $masterName, array $productIds): array
     {
         $masterName = trim($masterName);
@@ -492,13 +443,6 @@ class ProductMergeService
         return ['merged' => count($productIds), 'master_name' => $masterName];
     }
 
-    /**
-     * Merge berdasarkan nama produk (case/diakritik-insensitive) → 1 master.
-     * Mengumpulkan produk yang sudah ter-merge ke nama itu + produk solo yang namanya cocok.
-     *
-     * @param  array<int,string>  $productNames
-     * @return array{merged:int,master_name:string}
-     */
     public function bulkMergeProducts(string $masterName, array $productNames): array
     {
         $masterName = trim($masterName);
@@ -533,10 +477,6 @@ class ProductMergeService
         return ['merged' => count($allIds), 'master_name' => $masterName];
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // Unmerge
-    // ──────────────────────────────────────────────────────────────
-
     public function unmerge(string $productId): array
     {
         ProductMerge::query()->where('product_id', $productId)->delete();
@@ -554,7 +494,6 @@ class ProductMergeService
         });
     }
 
-    /** @param array<int,string> $masterNames */
     public function bulkUnmergeMasters(array $masterNames): array
     {
         return DB::transaction(function () use ($masterNames) {
@@ -565,11 +504,6 @@ class ProductMergeService
         });
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // Hide / Unhide
-    // ──────────────────────────────────────────────────────────────
-
-    /** @param array<int,string> $masterNames */
     public function bulkHide(array $masterNames): array
     {
         $now = now();
@@ -585,7 +519,6 @@ class ProductMergeService
         return ['hidden' => $hidden, 'total' => count($masterNames)];
     }
 
-    /** @param array<int,string> $masterNames */
     public function bulkUnhide(array $masterNames): array
     {
         $unhidden = ProductMergeHidden::query()->whereIn('master_name', $masterNames)->delete();
@@ -593,16 +526,6 @@ class ProductMergeService
         return ['unhidden' => $unhidden];
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // Internal
-    // ──────────────────────────────────────────────────────────────
-
-    /**
-     * Apply merge atomik + cascade hidden flag.
-     * Snapshot nama efektif lama → kalau ada yang hidden, master baru inherit.
-     *
-     * @param  array<int,string>  $productIds
-     */
     private function applyMergeToProducts(array $productIds, string $masterName): void
     {
         $currentMerges = ProductMerge::query()
@@ -626,7 +549,6 @@ class ProductMergeService
         $wasHidden = ! empty($oldEffNames)
             && ProductMergeHidden::query()->whereIn('master_name', $oldEffNames)->exists();
 
-        // Pindahkan SKU: hapus baris lama, insert baru
         ProductMerge::query()->whereIn('product_id', $productIds)->delete();
         $now = now();
         ProductMerge::query()->insert(array_map(fn ($id) => [
@@ -637,7 +559,6 @@ class ProductMergeService
             'updated_at' => $now,
         ], $productIds));
 
-        // Cascade: bersihkan hidden lama (kecuali master baru), set hidden master baru kalau perlu
         if (! empty($oldEffNames)) {
             ProductMergeHidden::query()
                 ->whereIn('master_name', $oldEffNames)
@@ -649,12 +570,6 @@ class ProductMergeService
         }
     }
 
-    /**
-     * Saat master di-unmerge: kalau master hidden, turunkan flag ke nama produk
-     * asli tiap anggota, lalu hapus baris hidden master.
-     *
-     * @param  array<int,string>  $masterNames
-     */
     private function cascadeHiddenOnUnmerge(array $masterNames): void
     {
         if (empty($masterNames)) {
@@ -690,7 +605,6 @@ class ProductMergeService
         ProductMergeHidden::query()->whereIn('master_name', array_keys($hiddenSet))->delete();
     }
 
-    /** SKU representatif: varian pertama ber-SKU (item_code), fallback ke products.sku. */
     private function representativeSku(Product $p): ?string
     {
         if ($p->relationLoaded('variants')) {
@@ -713,7 +627,6 @@ class ProductMergeService
         return $primary->url ?? null;
     }
 
-    /** Master = nama paling sering; tie-break panjang desc. */
     private function pickMasterName(array $group): string
     {
         $counts = [];
@@ -732,7 +645,6 @@ class ProductMergeService
         return (string) $best;
     }
 
-    /** Master = nama unik terpanjang dalam grup. */
     private function pickLongestName(array $group): string
     {
         $uniq = array_values(array_unique(array_map(fn ($p) => $p['name'], $group)));

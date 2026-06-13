@@ -31,11 +31,6 @@ class ChannelCategoryController extends Controller
         return $this->successPaginatedResponse(ChannelCategoryResource::collection($categories), 'Berhasil mengambil daftar kategori channel');
     }
 
-    /**
-     * Jubelio: GET /inventory/categories/{channel_id}/store-categories/{store_id} — Ambil kategori toko per channel.
-     * Catatan: kategori bersifat channel-global (tidak per-store di data Cilupbah), sehingga store_id
-     * dipakai sebagai konteks; data yang dikembalikan = kategori milik channel terkait.
-     */
     public function storeCategories(Request $request, string $channelId, string $storeId): JsonResponse
     {
         if ($request->query('paginate')) {

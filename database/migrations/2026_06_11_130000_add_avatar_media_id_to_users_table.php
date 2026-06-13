@@ -6,10 +6,7 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Referensi avatar user ke media terpusat (Spatie media.uuid). Nullable, tanpa FK keras
-     * karena media bisa dihapus terpisah; URL di-resolve dinamis lewat UploadService.
-     */
+
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {

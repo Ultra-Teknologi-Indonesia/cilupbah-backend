@@ -13,10 +13,6 @@ use Modules\Channel\Services\TikTokClient;
 use Modules\Channel\Services\TikTokImageUploader;
 use Tests\TestCase;
 
-/**
- * Integrasi upload gambar TikTok via Spatie Media Library (disk R2/S3):
- * byte dibaca dari UUID media terpusat (pola /media/upload) atau dari disk/URL.
- */
 class TikTokImageUploadTest extends TestCase
 {
     use RefreshDatabase;

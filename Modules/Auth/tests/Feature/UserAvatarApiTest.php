@@ -10,10 +10,6 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
-/**
- * Integrasi User Avatar via endpoint media terpusat (/media/upload) + referensi avatar_media_id.
- * Fokus: set/replace/remove avatar, link stabil saat file di-replace, dan no-500.
- */
 class UserAvatarApiTest extends TestCase
 {
     use RefreshDatabase;
@@ -36,7 +32,6 @@ class UserAvatarApiTest extends TestCase
         return UploadedFile::fake()->create($name, 50, $mime);
     }
 
-    /** Upload ke endpoint media terpusat, balikan media uuid. */
     private function uploadMedia(string $name = 'avatar.png'): string
     {
         return $this->actingAs($this->user, 'sanctum')
@@ -59,7 +54,6 @@ class UserAvatarApiTest extends TestCase
             'avatar_media_id' => $uuid,
         ]);
 
-        // Muncul juga di GET /profile.
         $this->actingAs($this->user, 'sanctum')
             ->getJson('/api/v1/profile')
             ->assertStatus(200)
@@ -76,7 +70,6 @@ class UserAvatarApiTest extends TestCase
 
         $urlBefore = $this->user->refresh()->avatar_url;
 
-        // Ganti file pada uuid yang sama lewat endpoint media.
         $this->actingAs($this->user, 'sanctum')
             ->putJson("/api/v1/media/upload/{$uuid}", ['file' => $this->file('baru.png')])
             ->assertStatus(200)
@@ -84,7 +77,6 @@ class UserAvatarApiTest extends TestCase
 
         $this->user->refresh();
 
-        // Link tetap (uuid sama), URL berubah ke file baru.
         $this->assertEquals($uuid, $this->user->avatar_media_id);
         $this->assertIsString($this->user->avatar_url);
         $this->assertNotEquals($urlBefore, $this->user->avatar_url);
@@ -136,7 +128,6 @@ class UserAvatarApiTest extends TestCase
         $target = User::factory()->create();
         $target->assignRole('picker');
 
-        // Upload sebagai owner.
         $uuid = $this->actingAs($owner, 'sanctum')
             ->postJson('/api/v1/media/upload', ['file' => $this->file()])
             ->json('data.uuid');

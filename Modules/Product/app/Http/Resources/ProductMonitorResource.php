@@ -5,10 +5,6 @@ namespace Modules\Product\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/**
- * Resource untuk satu produk di tab Pantauan.
- * Menyertakan data channel (PCM) dan SKU tersinkron (PVCM) per channel.
- */
 class ProductMonitorResource extends JsonResource
 {
     public function toArray(Request $request): array

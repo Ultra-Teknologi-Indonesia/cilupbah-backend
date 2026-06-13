@@ -12,9 +12,9 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->uuid('subscription_id');
             $table->string('event');
-            $table->string('event_id');              // id unik per kejadian (idempotency subscriber)
+            $table->string('event_id');              
             $table->jsonb('payload');
-            $table->string('status', 16)->default('pending'); // pending|success|failed
+            $table->string('status', 16)->default('pending'); 
             $table->integer('status_code')->nullable();
             $table->integer('attempts')->default(0);
             $table->text('last_error')->nullable();

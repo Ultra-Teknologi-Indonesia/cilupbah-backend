@@ -9,7 +9,7 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class TaxRepository
 {
-    /** Listing pajak — Spatie Query Builder. */
+
     public function paginate(): LengthAwarePaginator
     {
         return QueryBuilder::for(Tax::class)

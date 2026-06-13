@@ -4,10 +4,6 @@ namespace Modules\Finance\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-/**
- * Validasi listing cashbank. Param tanggal mengikuti nama Jubelio
- * (transactionDateFrom/transactionDateTo) — format salah → 422, bukan 500.
- */
 class CashbankIndexRequest extends FormRequest
 {
     public function authorize(): bool

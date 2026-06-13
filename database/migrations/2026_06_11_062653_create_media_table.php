@@ -11,7 +11,6 @@ return new class extends Migration
         Schema::create('media', function (Blueprint $table) {
             $table->id();
 
-            // Semua model di proyek ini ber-id UUID (HasUuid7) → wajib uuidMorphs, bukan morphs (bigint).
             $table->uuidMorphs('model');
             $table->uuid()->nullable()->unique();
             $table->string('collection_name');

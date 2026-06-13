@@ -14,7 +14,7 @@ class ProductWebhookObserver extends AbstractWebhookObserver
 
     public function updated(Product $product): void
     {
-        // Hanya saat status produk berubah (mis. download → in_review → master).
+
         if (! $product->wasChanged('status')) {
             return;
         }

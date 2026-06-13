@@ -9,12 +9,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // 1. Drop foreign keys
+
         Schema::table('purchase_order_items', function (Blueprint $table) {
             $table->dropForeign(['purchase_order_id']);
         });
 
-        // 2. Alter column types to VARCHAR(32)
         $tables = [
             'purchase_orders' => ['id'],
             'purchase_order_items' => ['id', 'purchase_order_id'],
@@ -31,7 +30,6 @@ return new class extends Migration
             }
         }
 
-        // 3. Re-add foreign keys
         Schema::table('purchase_order_items', function (Blueprint $table) {
             $table->foreign('purchase_order_id')->references('id')->on('purchase_orders')->cascadeOnDelete();
         });

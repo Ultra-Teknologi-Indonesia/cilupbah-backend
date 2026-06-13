@@ -21,7 +21,6 @@ class Account extends Model
         'is_active' => 'boolean',
     ];
 
-    /** Format tampilan Jubelio: "1-1000 - Kas". */
     public function getDisplayNameAttribute(): string
     {
         return $this->account_code . ' - ' . $this->account_name;

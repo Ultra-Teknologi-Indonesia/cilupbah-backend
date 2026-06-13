@@ -98,9 +98,6 @@ class CategoryController extends Controller
         }
     }
 
-    /**
-     * Jubelio: GET /inventory/categories/category-map/{id} — Ambil pemetaan kategori ke marketplace.
-     */
     public function channelMap(int $id): JsonResponse
     {
         try {

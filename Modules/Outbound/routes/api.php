@@ -11,7 +11,6 @@ use Modules\Outbound\Http\Controllers\WmsController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
 
-    // Fulfillment Queue Views
     Route::post('orders/get-by-no', [OutboundFulfillmentController::class, 'getOrderByNo'])->name('outbound.orders.get-by-no');
     Route::post('orders/move-to-ready-to-pick', [OutboundFulfillmentController::class, 'moveToReadyToPick'])->name('outbound.orders.move-to-ready-to-pick');
     Route::post('orders/move-to-ready-to-process', [OutboundFulfillmentController::class, 'moveToReadyToProcess'])->name('outbound.orders.move-to-ready-to-process');
@@ -19,12 +18,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('orders/request-cancel', [OutboundFulfillmentController::class, 'requestCancelOrder'])->name('outbound.orders.request-cancel');
     Route::get('orders/{stage}', [OutboundFulfillmentController::class, 'ordersByStage'])->name('outbound.orders.stage');
 
-    // Stage aliases (Jubelio compat)
     Route::get('picklists/on-picking', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('on-picking', $request))->name('outbound.picklists.on-picking');
     Route::get('packlists/on-packing', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('on-packing', $request))->name('outbound.packlists.on-packing');
     Route::get('packlists/finish-pack', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('finish-pack', $request))->name('outbound.packlists.finish-pack');
 
-    // Picklists
     Route::get('picklists', [PicklistController::class, 'index'])->name('outbound.picklists.index');
     Route::post('picklists', [PicklistController::class, 'store'])->name('outbound.picklists.store');
     Route::get('picklists/{id}', [PicklistController::class, 'show'])->name('outbound.picklists.show');
@@ -37,7 +34,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('picklists/{id}/cancel', [PicklistController::class, 'cancel'])->name('outbound.picklists.cancel');
     Route::delete('picklists/{id}', [PicklistController::class, 'destroy'])->name('outbound.picklists.destroy');
 
-    // Packlists
     Route::get('packlists/scan-order', [PacklistController::class, 'scanOrder'])->name('outbound.packlists.scan-order');
     Route::get('packlists', [PacklistController::class, 'index'])->name('outbound.packlists.index');
     Route::post('packlists', [PacklistController::class, 'store'])->name('outbound.packlists.store');
@@ -51,7 +47,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('packlists/{id}/cancel', [PacklistController::class, 'cancel'])->name('outbound.packlists.cancel');
     Route::delete('packlists/{id}', [PacklistController::class, 'destroy'])->name('outbound.packlists.destroy');
 
-    // Shipments
     Route::get('shipments', [ShipmentController::class, 'index'])->name('outbound.shipments.index');
     Route::post('shipments', [ShipmentController::class, 'store'])->name('outbound.shipments.store');
     Route::post('shipments/scan', [ShipmentController::class, 'scan'])->name('outbound.shipments.scan');
@@ -68,7 +63,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('shipments/{id}/cancel', [ShipmentController::class, 'cancel'])->name('outbound.shipments.cancel');
     Route::delete('shipments/{id}', [ShipmentController::class, 'destroy'])->name('outbound.shipments.destroy');
 
-    // Couriers
     Route::get('couriers', [CourierController::class, 'index'])->name('outbound.couriers.index');
     Route::get('couriers/all', [CourierController::class, 'all'])->name('outbound.couriers.all');
     Route::get('couriers/tenant/{tenantId}', [CourierController::class, 'byTenant'])->name('outbound.couriers.by-tenant');
@@ -77,7 +71,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::put('couriers/{id}', [CourierController::class, 'update'])->name('outbound.couriers.update');
     Route::delete('couriers/{id}', [CourierController::class, 'destroy'])->name('outbound.couriers.destroy');
 
-    // WMS Utilities
     Route::get('wms/employee/{identifier}', [WmsController::class, 'employee'])->name('outbound.wms.employee');
     Route::get('wms/default-bin/{locationId}', [WmsController::class, 'defaultBin'])->name('outbound.wms.default-bin');
     Route::put('wms/default-bin/{locationId}', [WmsController::class, 'setDefaultBin'])->name('outbound.wms.set-default-bin');

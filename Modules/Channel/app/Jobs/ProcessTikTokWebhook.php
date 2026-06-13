@@ -40,9 +40,9 @@ class ProcessTikTokWebhook implements ShouldQueue
         }
 
         $idempotencyKey = "tiktok_webhook_processed:{$shopId}:" . md5(json_encode($this->payload));
-        
+
         $alreadyProcessed = !Redis::set($idempotencyKey, true, ['NX', 'EX' => 600]);
-        
+
         if ($alreadyProcessed) {
             Log::info("TikTok Webhook already processed (Idempotency Key: {$idempotencyKey})");
             return;

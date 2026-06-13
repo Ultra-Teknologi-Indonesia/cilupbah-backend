@@ -6,10 +6,6 @@ use Illuminate\Support\Facades\Log;
 use Modules\Finance\Services\AutoJournalService;
 use Modules\Sales\Models\SalesInvoice;
 
-/**
- * Jurnal otomatis saat invoice terbit: Dr Piutang — Cr Pendapatan.
- * Fail-open: error jurnal TIDAK menggagalkan transaksi bisnis (log saja).
- */
 class SalesInvoiceJournalObserver
 {
     public function created(SalesInvoice $invoice): void

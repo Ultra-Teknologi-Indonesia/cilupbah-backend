@@ -16,7 +16,6 @@ class ProductUploadTest extends TestCase
 
         $this->withoutMiddleware();
 
-        // Master data minimum yang dibutuhkan payload (self-seeded, tidak bergantung seeder dev).
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Kamera']);
         DB::table('brands')->insertOrIgnore(['id' => 1, 'name' => 'Sony']);
         DB::table('attributes')->insertOrIgnore([

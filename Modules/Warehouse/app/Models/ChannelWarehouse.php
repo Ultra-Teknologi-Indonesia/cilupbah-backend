@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ChannelWarehouse extends Model
 {
-    // PK `id` bertipe bigint auto-increment (bukan UUID). channel_id/location_id adalah kolom UUID biasa.
 
     protected $fillable = [
         'location_id',

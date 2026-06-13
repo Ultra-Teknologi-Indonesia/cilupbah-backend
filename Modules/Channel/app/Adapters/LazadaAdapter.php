@@ -11,10 +11,6 @@ use Modules\Channel\Services\LazadaProductMapper;
 use Modules\Channel\Services\LazadaToInternalProductMapper;
 use Modules\Product\Models\Product;
 
-/**
- * Adapter Lazada untuk job sync generik (SyncProductToChannelJob dkk).
- * Payload produk Lazada dikirim sebagai param 'payload' (JSON) pada endpoint /product/*.
- */
 class LazadaAdapter implements MarketplaceAdapterInterface
 {
     public function __construct(
@@ -27,8 +23,6 @@ class LazadaAdapter implements MarketplaceAdapterInterface
     {
         return 'lazada';
     }
-
-    // ==================== Product Sync ====================
 
     public function pushProduct(Product $product, ChannelShop $shop): array
     {
@@ -82,7 +76,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
 
     public function deleteProduct(ChannelShop $shop, string $externalProductId): array
     {
-        // /product/remove butuh seller_sku_list — ambil SKU dari mapping internal.
+
         $skus = $this->sellerSkusForExternalProduct($shop, $externalProductId);
 
         if (empty($skus)) {
@@ -104,7 +98,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
 
     public function activateProduct(ChannelShop $shop, string $externalProductId): array
     {
-        // Lazada Open Platform tidak menyediakan API activate/deactivate produk.
+
         return ['success' => false, 'message' => 'Aktivasi produk tidak didukung API Lazada'];
     }
 
@@ -112,8 +106,6 @@ class LazadaAdapter implements MarketplaceAdapterInterface
     {
         return ['success' => false, 'message' => 'Deaktivasi produk tidak didukung API Lazada'];
     }
-
-    // ==================== Stock & Price Sync ====================
 
     public function syncPriceAndStock(Product $product, ChannelShop $shop, string $externalProductId): array
     {
@@ -166,14 +158,10 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         }
     }
 
-    // ==================== Inbound Mapping ====================
-
     public function mapInboundProduct(array $channelData, string $shopId): array
     {
         return $this->inboundMapper->map($channelData, $shopId);
     }
-
-    // ==================== Helpers ====================
 
     protected function buildProductPayload(Product $product): array
     {
@@ -190,7 +178,6 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         return $this->outboundMapper->map($internal, $imageUrls, config('channel.lazada_defaults', []));
     }
 
-    /** Normalisasi sku_list Lazada ke bentuk yang dipahami SyncProductToChannelJob. */
     protected function normalizeSkus(array $skuList): array
     {
         return array_values(array_filter(array_map(function ($sku) {
@@ -205,7 +192,6 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         }, $skuList)));
     }
 
-    /** SKU internal yang terpetakan ke external product id ini (untuk /product/remove). */
     protected function sellerSkusForExternalProduct(ChannelShop $shop, string $externalProductId): array
     {
         return DB::table('product_channel_mappings as pcm')

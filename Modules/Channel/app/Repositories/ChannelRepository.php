@@ -6,7 +6,6 @@ use Modules\Channel\Models\Channel;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 
-
 class ChannelRepository
 {
     public function getIdByCode(string $code): ?string

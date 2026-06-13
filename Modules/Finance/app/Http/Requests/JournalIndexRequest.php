@@ -4,7 +4,6 @@ namespace Modules\Finance\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-/** Validasi listing jurnal — param Jubelio q & createdSince (invalid → 422). */
 class JournalIndexRequest extends FormRequest
 {
     public function authorize(): bool

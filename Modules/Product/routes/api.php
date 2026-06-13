@@ -20,9 +20,10 @@ use Modules\Product\Http\Controllers\RaiseProductController;
 use Modules\Product\Http\Controllers\VariantController;
 use Modules\Product\Http\Controllers\PriceListController;
 use Modules\Product\Http\Controllers\PromotionController;
+use Modules\Product\Http\Controllers\CatalogController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
-    // Harus didefinisikan sebelum apiResource agar tidak tertangkap products/{id}
+
     Route::get('products/uploadable', [ProductController::class, 'uploadable']);
     Route::get('products/channel-drafts', [ProductChannelDraftController::class, 'list']);
     Route::post('products/channel-drafts/bulk-upload', [ProductChannelDraftController::class, 'bulkUpload']);
@@ -48,10 +49,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::delete('raise-products/{id}/products/{detailId}', [RaiseProductController::class, 'removeProduct'])->whereUuid('id')->whereUuid('detailId');
     Route::delete('raise-products/{id}', [RaiseProductController::class, 'destroy'])->whereUuid('id');
 
-    // ── Merge & Auto-Merge produk (lintas store & channel) ──
-    // Akses berbasis Spatie Permission: selama user punya permission-nya, boleh.
-    // Role `owner` otomatis lolos via Gate::before (AppServiceProvider).
-    // Permission di-seed oleh ProductPermissionSeeder.
     Route::middleware('permission:view-product-merge')->group(function () {
         Route::get('products/merge/catalog', [ProductMergeController::class, 'catalog']);
         Route::get('products/merge/suggestions', [ProductMergeController::class, 'suggestions']);
@@ -69,7 +66,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::middleware('permission:unmerge-product')->group(function () {
         Route::post('products/merge/bulk-unmerge', [ProductMergeController::class, 'bulkUnmerge']);
-        // "master" harus didefinisikan sebelum "{product}" agar tidak tertangkap param
+
         Route::delete('products/merge/master', [ProductMergeController::class, 'unmergeMaster']);
         Route::delete('products/merge/{product}', [ProductMergeController::class, 'unmerge'])->whereUuid('product');
     });
@@ -82,34 +79,28 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::apiResource('products', ProductController::class)->names('product')
         ->where(['product' => '[\da-fA-F]{8}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{12}']);
 
-    // Product lifecycle transitions
     Route::post('products/{id}/submit-review', [ProductController::class, 'submitForReview'])->whereUuid('id');
     Route::post('products/{id}/approve', [ProductController::class, 'approve'])->whereUuid('id');
     Route::post('products/{id}/reject', [ProductController::class, 'reject'])->whereUuid('id');
     Route::post('products/{id}/archive', [ProductController::class, 'archive'])->whereUuid('id');
     Route::post('products/{id}/restore', [ProductController::class, 'restore'])->whereUuid('id');
 
-    // Channel listing drafts (sub-tab Draft)
     Route::get('products/{id}/channel-drafts', [ProductChannelDraftController::class, 'index'])->whereUuid('id');
     Route::post('products/{id}/channel-drafts', [ProductChannelDraftController::class, 'store'])->whereUuid('id');
     Route::put('products/{id}/channel-drafts/{draft}', [ProductChannelDraftController::class, 'update'])->whereUuid('id')->whereUuid('draft');
     Route::delete('products/{id}/channel-drafts/{draft}', [ProductChannelDraftController::class, 'destroy'])->whereUuid('id')->whereUuid('draft');
 
-    // Riwayat upload & download
     Route::get('upload-histories', [ProductSyncLogController::class, 'uploadHistories']);
     Route::post('upload-histories/bulk-delete', [ProductSyncLogController::class, 'bulkDestroy']);
     Route::post('upload-histories/{id}/re-upload', [ProductSyncLogController::class, 'reupload'])->whereUuid('id');
     Route::delete('upload-histories/{id}', [ProductSyncLogController::class, 'destroy'])->whereUuid('id');
     Route::get('download-histories', [ProductSyncLogController::class, 'downloadHistories']);
 
-    // Pantauan — monitoring status sync produk di channel
     Route::get('channel-monitor', [ChannelMonitorController::class, 'index']);
     Route::get('channel-monitor/summary', [ChannelMonitorController::class, 'summary']);
     Route::get('channel-monitor/{shop_id}', [ChannelMonitorController::class, 'detail']);
     Route::get('channel-monitor/{shop_id}/products', [ChannelMonitorController::class, 'products']);
 
-
-    // Master Data
     Route::apiResource('categories', CategoryController::class)->names('category')->where(['category' => '[0-9]+']);
     Route::post('categories/{category}/map-channel', [CategoryController::class, 'mapChannel'])->whereNumber('category');
 
@@ -118,66 +109,59 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('attributes/{attribute}/map-channel', [AttributeController::class, 'mapChannel'])->whereNumber('attribute');
     Route::post('attributes/options/{option}/map-channel', [AttributeController::class, 'mapOptionChannel'])->whereNumber('option');
 
-    // Media terpusat (semua tipe file → R2). Upload/Replace/Delete/Lihat.
     Route::post('media/upload', [MediaController::class, 'upload'])->name('media.upload');
     Route::get('media/upload/{uuid}', [MediaController::class, 'show'])->whereUuid('uuid')->name('media.show');
     Route::put('media/upload/{uuid}', [MediaController::class, 'replace'])->whereUuid('uuid')->name('media.replace');
     Route::delete('media/upload/{uuid}', [MediaController::class, 'destroy'])->whereUuid('uuid')->name('media.destroy');
 
-    // Import Endpoints
     Route::get('products/import/template/single', [\Modules\Product\Http\Controllers\ProductImportController::class, 'downloadSingleTemplate']);
     Route::get('products/import/template/bundle', [\Modules\Product\Http\Controllers\ProductImportController::class, 'downloadBundleTemplate']);
     Route::post('products/import/single', [\Modules\Product\Http\Controllers\ProductImportController::class, 'importSingle']);
     Route::post('products/import/bundle', [\Modules\Product\Http\Controllers\ProductImportController::class, 'importBundle']);
 
-    // ── Jubelio compatibility (Product/Inventory items & categories) ──
-    // Item & bundle
     Route::get('inventory/items/by-sku/{sku}', [ProductController::class, 'showBySku']);
     Route::get('inventory/item-bundles', [ProductController::class, 'bundles']);
     Route::post('inventory/items/all-stocks', [ProductController::class, 'allStocks']);
     Route::post('inventory/items/prices', [ProductController::class, 'prices']);
     Route::post('inventory/items', [ProductController::class, 'storeBundle']);
-    // Channel attributes (global)
+
     Route::get('inventory/items/channel-category-attributes', [\Modules\Product\Http\Controllers\ChannelAttributeController::class, 'all']);
-    // Kategori → channel mapping & store categories
+
     Route::get('inventory/categories/category-map/{id}', [CategoryController::class, 'channelMap'])->whereNumber('id');
     Route::get('inventory/categories/{channel_id}/store-categories/{store_id}', [ChannelCategoryController::class, 'storeCategories']);
 
-    // Variations (varian produk)
     Route::get('variations', [VariantController::class, 'index']);
     Route::delete('inventory/items/item-variant', [VariantController::class, 'destroy']);
 
-    // Price List (harga produk)
     Route::get('inventory/internal-price-list', [PriceListController::class, 'index']);
     Route::post('inventory/price-list', [PriceListController::class, 'update']);
 
-    // Product Listing (catalog listing & upload errors)
     Route::post('inventory/catalog/listing', [ProductChannelDraftController::class, 'catalogListing']);
+    // Catalog reads (paritas Jubelio) + alias upload massal.
+    Route::get('inventory/catalog/for-listing/{id}', [CatalogController::class, 'forListing'])->whereUuid('id');
+    Route::get('inventory/items/group/{id}', [CatalogController::class, 'forListing'])->whereUuid('id');
+    Route::get('inventory/catalog/{group_id}', [CatalogController::class, 'group']);
+    Route::post('inventory/catalog/upload', [ProductChannelDraftController::class, 'bulkUpload']);
     Route::get('inventory/items/errors', [ProductSyncLogController::class, 'errors']);
 
-    // Promotions (promosi)
     Route::get('inventory/promotions', [PromotionController::class, 'index']);
     Route::post('inventory/promotions', [PromotionController::class, 'store']);
     Route::get('inventory/promotions/{id}', [PromotionController::class, 'show'])->whereUuid('id');
     Route::delete('inventory/promotions/{id}', [PromotionController::class, 'destroy'])->whereUuid('id');
 });
 
-// Channel specific routes
 Route::middleware(['auth:sanctum'])->prefix('v1/{channel}')->group(function () {
-    // Channel Categories
+
     Route::get('categories', [ChannelCategoryController::class, 'index']);
     Route::get('categories/{categoryId}/attributes', [\Modules\Product\Http\Controllers\ChannelAttributeController::class, 'index']);
 
-    // Channel Products
     Route::get('products/categories', [ChannelProductController::class, 'categories']);
     Route::put('products/{id}/activate', [ChannelProductController::class, 'activate']);
     Route::put('products/{id}/deactivate', [ChannelProductController::class, 'deactivate']);
     Route::put('products/{id}/stock', [ChannelProductController::class, 'updateStock']);
     Route::put('products/{id}/price', [ChannelProductController::class, 'updatePrice']);
 
-    // Putus koneksi produk dari 1 channel (tanpa menghapus produk lokal)
     Route::delete('products/{id}/link', [ChannelProductController::class, 'unlink']);
 
-    // Channel unified products resource
     Route::apiResource('products', ChannelProductController::class)->names('channel.product');
 });

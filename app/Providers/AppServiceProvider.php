@@ -6,17 +6,12 @@ use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
-    /**
-     * Register any application services.
-     */
+
     public function register(): void
     {
-        //
+
     }
 
-    /**
-     * Bootstrap any application services.
-     */
     public function boot(): void
     {
         \Illuminate\Support\Facades\Gate::before(function ($user, $ability) {
@@ -34,14 +29,13 @@ class AppServiceProvider extends ServiceProvider
         });
 
         \Illuminate\Support\Facades\RateLimiter::for('channel_api', function (object $job) {
-            // TikTok rate limit: ~10 req/sec per shop (set to 8 for safety)
-            // Need to check if the job has channelShopId property
+
             $shopId = property_exists($job, 'channelShopId') ? $job->channelShopId : 'default';
             return \Illuminate\Cache\RateLimiting\Limit::perSecond(8)->by($shopId);
         });
 
         \Illuminate\Database\Eloquent\Builder::macro('allowedSearch', function (...$columns) {
-            /** @var \Illuminate\Database\Eloquent\Builder $this */
+
             $search = request()->query('search');
 
             if (empty($search)) {

@@ -5,13 +5,6 @@ namespace Database\Seeders;
 use App\Models\TrackingItem;
 use Illuminate\Database\Seeder;
 
-/**
- * Data Dev Tracker (Jubelio + Epik + Omnichannel) — di-embed langsung di seeder.
- * Dibangkitkan otomatis dari `dist (2).yaml` via scripts/gen_tracking_json.py.
- * JANGAN edit manual; regenerate bila spec berubah. Total: 342 item.
- *
- * Idempotent: item baru di-insert; status/notes/pic hasil edit user TIDAK ditimpa.
- */
 class TrackingItemsSeeder extends Seeder
 {
     public function run(): void
@@ -25,7 +18,6 @@ class TrackingItemsSeeder extends Seeder
                 'endpoint' => $row['endpoint'],
             ]);
 
-            // Metadata selalu disinkronkan dari sumber dokumen.
             $item->domain = $row['domain'];
             $item->function_id = $row['function_id'];
             $item->baseline_status = $row['status'];
@@ -37,7 +29,7 @@ class TrackingItemsSeeder extends Seeder
                 $item->pic = $row['pic'];
                 $created++;
             } else {
-                $updated++; // JANGAN timpa status/notes/pic yang sudah diedit.
+                $updated++; 
             }
 
             $item->save();
@@ -46,7 +38,6 @@ class TrackingItemsSeeder extends Seeder
         $this->command?->info("TrackingItems: +$created baru, $updated diperbarui (metadata).");
     }
 
-    /** @return array<int,array<string,?string>> */
     private function items(): array
     {
         return [

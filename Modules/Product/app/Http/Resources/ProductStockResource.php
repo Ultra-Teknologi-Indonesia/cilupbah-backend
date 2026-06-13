@@ -5,10 +5,6 @@ namespace Modules\Product\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/**
- * Output stok teragregasi per produk (Jubelio: all-stocks).
- * Membutuhkan relasi `variants.inventories` ter-load.
- */
 class ProductStockResource extends JsonResource
 {
     public function toArray(Request $request): array

@@ -18,7 +18,7 @@ class InboundDatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        // ─── Warehouse + Bins ───
+
         $warehouse = Location::firstOrCreate(
             ['location_code' => 'WH-MAIN'],
             [
@@ -87,7 +87,6 @@ class InboundDatabaseSeeder extends Seeder
             ]
         );
 
-        // ─── Categories + Products ───
         $categoryId = \DB::table('categories')->insertGetId([
             'name'       => 'Elektronik',
             'is_active'  => true,
@@ -131,7 +130,6 @@ class InboundDatabaseSeeder extends Seeder
             'is_active'   => true,
         ]);
 
-        // ─── Inventory di warehouse 2 (untuk transfer test) ───
         foreach ([$product1, $product2, $product3] as $product) {
             Inventory::firstOrCreate([
                 'item_id'     => $product->id,
@@ -147,7 +145,6 @@ class InboundDatabaseSeeder extends Seeder
             ]);
         }
 
-        // ─── Supplier ───
         $supplier = Supplier::firstOrCreate(['code' => 'SUP-ASUS'], [
             'name'           => 'PT ASUS Indonesia',
             'company_name'   => 'PT Asus Technology Indonesia',
@@ -172,7 +169,6 @@ class InboundDatabaseSeeder extends Seeder
             'status'         => 'active',
         ]);
 
-        // ─── PO (OPEN, ready to receive) ───
         $po = PurchaseOrder::firstOrCreate(['po_number' => 'PO-SEED-001'], [
             'supplier_id'   => $supplier->id,
             'location_id'   => $warehouse->id,
@@ -195,7 +191,6 @@ class InboundDatabaseSeeder extends Seeder
             ['qty' => 20, 'received_qty' => 0, 'unit_price' => 1299000, 'subtotal' => 25980000]
         );
 
-        // ─── Inbound DRAFT (consignment) ───
         $inbound = Inbound::firstOrCreate(['transaction_number' => 'INB-SEED-CONSIGN'], [
             'location_id'      => $warehouse->id,
             'reference_number' => 'CONSIGN-KEYCHRON-001',

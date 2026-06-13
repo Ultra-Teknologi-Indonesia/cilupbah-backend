@@ -29,12 +29,10 @@ class WebhookController extends Controller
         );
     }
 
-    /** Jubelio: POST /systemsetting/webhook + POST /webhooks — Create/Edit Webhook subscription. */
     public function store(StoreWebhookSubscriptionRequest $request): JsonResponse
     {
         $subscription = $this->service->create($request->validated());
 
-        // Secret hanya ditampilkan SEKALI saat pembuatan (untuk verifikasi signature).
         return $this->successResponse([
             'subscription' => new WebhookSubscriptionResource($subscription),
             'secret' => $subscription->secret,
@@ -75,7 +73,6 @@ class WebhookController extends Controller
         return $this->successResponse(null, 'Webhook subscription berhasil dihapus');
     }
 
-    /** Riwayat pengiriman webhook untuk satu subscription. */
     public function deliveries(string $id): JsonResponse
     {
         $subscription = $this->resolve($id);
@@ -89,7 +86,6 @@ class WebhookController extends Controller
         );
     }
 
-    /** Kirim ulang satu delivery yang gagal. */
     public function redeliver(string $delivery): JsonResponse
     {
         $record = $this->deliveries->find($delivery);
@@ -106,7 +102,6 @@ class WebhookController extends Controller
         );
     }
 
-    /** Guard format UUID agar id non-UUID -> 404 (bukan 500 cast Postgres). */
     private function resolve(string $id)
     {
         $normalized = str_replace('-', '', $id);

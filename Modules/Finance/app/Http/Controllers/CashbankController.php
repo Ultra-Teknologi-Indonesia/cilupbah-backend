@@ -9,10 +9,6 @@ use Modules\Finance\Http\Requests\CashbankIndexRequest;
 use Modules\Finance\Services\CashbankService;
 use OpenApi\Attributes as OA;
 
-/**
- * Cash & Bank (Jubelio: getPayments/getReceives + detail).
- * Read-only view di atas pembayaran Sales/Purchase — lihat PLAN-CASHBANK.md.
- */
 #[OA\Tag(name: 'Cash & Bank', description: 'Mutasi kas/bank: uang masuk (receives) & uang keluar (payments)')]
 class CashbankController extends Controller
 {

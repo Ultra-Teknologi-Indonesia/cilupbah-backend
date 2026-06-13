@@ -7,10 +7,6 @@ use App\Models\User;
 use Modules\Warehouse\Models\Location;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
-/**
- * Jubelio getLocationsPos — GET /locations/pos.
- * Hanya lokasi aktif ber-flag is_pos yang muncul.
- */
 class LocationPosApiTest extends TestCase
 {
     use RefreshDatabase;
@@ -26,9 +22,9 @@ class LocationPosApiTest extends TestCase
     public function test_pos_endpoint_returns_only_active_pos_locations(): void
     {
         $posActive = Location::factory()->create(['is_pos' => true, 'is_active' => true]);
-        Location::factory()->create(['is_pos' => false, 'is_active' => true]);   // bukan POS
-        Location::factory()->create(['is_pos' => true, 'is_active' => false]);   // POS tapi nonaktif
-        Location::factory()->create(['is_pos' => null, 'is_active' => true]);    // tanpa flag
+        Location::factory()->create(['is_pos' => false, 'is_active' => true]);   
+        Location::factory()->create(['is_pos' => true, 'is_active' => false]);   
+        Location::factory()->create(['is_pos' => null, 'is_active' => true]);    
 
         $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/v1/locations/pos');
 

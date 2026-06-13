@@ -9,8 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('locations', function (Blueprint $table) {
-            // Penanda lokasi berfungsi sebagai outlet POS (Point of Sale).
-            // Nullable agar lokasi lama tidak otomatis dianggap POS.
+
             $table->boolean('is_pos')->nullable()->after('is_fbs');
         });
     }

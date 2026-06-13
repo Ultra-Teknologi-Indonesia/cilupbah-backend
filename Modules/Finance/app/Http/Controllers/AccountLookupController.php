@@ -29,7 +29,7 @@ class AccountLookupController extends Controller
         $data = $accounts->getActiveLookup()->map(fn (Account $a) => [
             'account_id' => $a->id,
             'account_code' => $a->account_code,
-            'account_name' => $a->display_name, // format Jubelio: "1-1000 - Kas"
+            'account_name' => $a->display_name, 
         ]);
 
         return $this->successResponse($data, 'Daftar akun berhasil diambil.');

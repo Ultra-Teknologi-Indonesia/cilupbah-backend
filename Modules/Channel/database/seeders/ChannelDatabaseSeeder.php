@@ -8,9 +8,7 @@ use Modules\Channel\Models\Channel;
 
 class ChannelDatabaseSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
+
     public function run(): void
     {
         $channels = [

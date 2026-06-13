@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('taxes', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->decimal('rate', 5, 2)->default(0);   // persen, mis. 11.00
+            $table->decimal('rate', 5, 2)->default(0);   
             $table->boolean('is_active')->default(true);
             $table->timestamps();
 

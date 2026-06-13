@@ -89,10 +89,6 @@ class InboundScanFlowTest extends TestCase
         ]);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // STEP 1: CREATE INBOUND → UUID PK = QR CODE
-    // ═══════════════════════════════════════════════════════════
-
     public function test_create_inbound_generates_uuid_per_item(): void
     {
         $response = $this->postJson('/api/v1/inbounds', [
@@ -111,10 +107,6 @@ class InboundScanFlowTest extends TestCase
         $this->assertNotNull($itemId);
         $this->assertTrue(\Ramsey\Uuid\Uuid::isValid($itemId));
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // STEP 2: ADMIN ASSIGN TO WORKER
-    // ═══════════════════════════════════════════════════════════
 
     public function test_admin_assigns_inbound_to_worker(): void
     {
@@ -157,10 +149,6 @@ class InboundScanFlowTest extends TestCase
 
         $response->assertStatus(500);
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // STEP 3: WORKER SEES ASSIGNMENTS & STARTS
-    // ═══════════════════════════════════════════════════════════
 
     public function test_worker_sees_my_assignments(): void
     {
@@ -234,10 +222,6 @@ class InboundScanFlowTest extends TestCase
         $response->assertStatus(500);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // STEP 4: QR SCAN LOOKUP (UUID = PK)
-    // ═══════════════════════════════════════════════════════════
-
     public function test_scan_qr_returns_item_details(): void
     {
         $inbound = $this->createDraftInbound();
@@ -259,10 +243,6 @@ class InboundScanFlowTest extends TestCase
 
         $response->assertStatus(404);
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // STEP 5: SCAN PUTAWAY → UPDATE INVENTORY
-    // ═══════════════════════════════════════════════════════════
 
     public function test_scan_putaway_updates_inventory(): void
     {
@@ -333,13 +313,9 @@ class InboundScanFlowTest extends TestCase
         $this->assertEquals(Inbound::STATUS_COMPLETED, $inbound->status);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // FULL FLOW E2E
-    // ═══════════════════════════════════════════════════════════
-
     public function test_full_flow_create_assign_scan_putaway(): void
     {
-        // 1. Admin creates inbound
+
         $createResponse = $this->postJson('/api/v1/inbounds', [
             'location_id'   => $this->warehouse->id,
             'type'          => 'PURCHASE_ORDER',
@@ -356,7 +332,6 @@ class InboundScanFlowTest extends TestCase
         $this->assertNotNull($itemUuid);
         $this->assertTrue(\Ramsey\Uuid\Uuid::isValid($itemUuid));
 
-        // 2. Admin assigns to worker
         $assignResponse = $this->postJson("/api/v1/inbounds/{$inboundId}/assign", [
             'assigned_to' => $this->worker->id,
             'notes'       => 'Handle laptop batch',
@@ -364,20 +339,17 @@ class InboundScanFlowTest extends TestCase
         $assignResponse->assertStatus(201);
         $assignmentId = $assignResponse->json('data.id');
 
-        // 3. Worker starts assignment
         $this->actingAs($this->worker, 'sanctum');
 
         $this->postJson("/api/v1/inbounds/assignments/{$assignmentId}/start")
             ->assertOk()
             ->assertJsonPath('data.status', 'IN_PROGRESS');
 
-        // 4. Worker scans QR (UUID = PK) to see item details
         $scanResponse = $this->getJson("/api/v1/inbounds/scan/{$itemUuid}");
         $scanResponse->assertOk()
             ->assertJsonPath('data.id', $itemUuid)
             ->assertJsonPath('data.expected_qty', 10);
 
-        // 5. Admin receives the goods first (simulate dock receipt)
         $this->actingAs($this->admin, 'sanctum');
 
         $this->postJson("/api/v1/inbounds/{$inboundId}/receive", [
@@ -387,12 +359,10 @@ class InboundScanFlowTest extends TestCase
             ],
         ])->assertOk();
 
-        // 6. Close receiving
         $this->postJson("/api/v1/inbounds/{$inboundId}/close-receiving", [
             'closed_by' => 'admin',
         ])->assertOk();
 
-        // 7. Worker scans item UUID + bin UUID → putaway
         $this->actingAs($this->worker, 'sanctum');
 
         $putawayResponse = $this->postJson('/api/v1/inbounds/scan-putaway', [
@@ -402,7 +372,6 @@ class InboundScanFlowTest extends TestCase
         ]);
         $putawayResponse->assertOk();
 
-        // 8. Verify inventory updated
         $inventory = \DB::table('inventories')
             ->where('item_id', $this->variant->id)
             ->where('bin_id', $this->storageBin->id)
@@ -411,19 +380,13 @@ class InboundScanFlowTest extends TestCase
         $this->assertNotNull($inventory);
         $this->assertEquals(10, $inventory->on_hand);
 
-        // 9. Verify inbound completed
         $inbound = Inbound::find($inboundId);
         $this->assertEquals(Inbound::STATUS_COMPLETED, $inbound->status);
 
-        // 10. Verify assignment auto-completed
         $assignment = InboundAssignment::find($assignmentId);
         $this->assertEquals(InboundAssignment::STATUS_COMPLETED, $assignment->status);
         $this->assertNotNull($assignment->completed_at);
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // HELPERS
-    // ═══════════════════════════════════════════════════════════
 
     private function createDraftInbound(): Inbound
     {

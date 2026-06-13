@@ -65,7 +65,7 @@ class SalesOrder extends Model
 
     public function items(): HasMany
     {
-        // FK eksplisit 'order_id' karena kolom FK tidak ikut di-rename
+
         return $this->hasMany(SalesOrderItem::class, 'order_id');
     }
 

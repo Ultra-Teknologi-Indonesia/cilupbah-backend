@@ -8,10 +8,6 @@ use Illuminate\Support\Str;
 use Modules\Warehouse\Models\Location;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
-/**
- * Memastikan tidak ada lagi error 500 dari id non-UUID / non-numerik / input invalid.
- * Semua jalur audit W-2..W-10 harus menghasilkan 404 atau 422, bukan 500.
- */
 class WarehouseNo500GuardTest extends TestCase
 {
     use RefreshDatabase;

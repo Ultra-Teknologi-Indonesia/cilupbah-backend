@@ -86,7 +86,7 @@ class ProductMergeApiTest extends TestCase
 
     public function test_auto_merge_works_across_different_stores_and_channels(): void
     {
-        // Produk dengan prefix SKU sama tapi di toko & channel berbeda
+
         $this->makeProduct('Soft Case Edisi A', ['SLR-A'], $this->shopeeShop);
         $this->makeProduct('Soft Case Edisi B Panjang', ['SLR-B'], $this->tiktokShop);
 
@@ -94,7 +94,6 @@ class ProductMergeApiTest extends TestCase
         $auto->assertStatus(200);
         $auto->assertJsonPath('data.merged', 2);
 
-        // Master group harus mencakup KEDUA store/channel (Shopee + TikTok)
         $merged = $this->getJson('/api/v1/products/merge/catalog?filter=merged');
         $merged->assertStatus(200);
         $merged->assertJsonPath('data.0.product_count', 2);

@@ -290,6 +290,42 @@ class InventoryTransactionController extends Controller
         return $this->successPaginatedResponse($transfers, 'Daftar transfer yang sudah selesai diterima.');
     }
 
+    /** Transfer masuk (menunggu diterima) untuk satu lokasi: destination=location, IN_TRANSIT. */
+    public function transfersIn(\Illuminate\Http\Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'location_id' => 'bail|required|uuid|exists:locations,id',
+            'per_page' => 'nullable|integer|min:1|max:500',
+            'limit' => 'nullable|integer|min:1|max:500',
+            'page' => 'nullable|integer|min:1',
+        ]);
+
+        $transfers = $this->inventoryService->getTransfersPaginated([
+            'status' => 'IN_TRANSIT',
+            'destination_location_id' => $validated['location_id'],
+        ], (int) $request->query('limit', 10));
+
+        return $this->successPaginatedResponse($transfers, 'Daftar transfer masuk (menunggu diterima).');
+    }
+
+    /** Transfer keluar (masih dalam perjalanan) untuk satu lokasi: source=location, IN_TRANSIT. */
+    public function transfersOut(\Illuminate\Http\Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'location_id' => 'bail|required|uuid|exists:locations,id',
+            'per_page' => 'nullable|integer|min:1|max:500',
+            'limit' => 'nullable|integer|min:1|max:500',
+            'page' => 'nullable|integer|min:1',
+        ]);
+
+        $transfers = $this->inventoryService->getTransfersPaginated([
+            'status' => 'IN_TRANSIT',
+            'source_location_id' => $validated['location_id'],
+        ], (int) $request->query('limit', 10));
+
+        return $this->successPaginatedResponse($transfers, 'Daftar transfer keluar (dalam perjalanan).');
+    }
+
     #[OA\Post(
         path: '/api/v1/inventory/putaway',
         summary: 'Putaway inventory stock',

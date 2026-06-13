@@ -43,14 +43,14 @@ class TikTokOrderService
             'shop_cipher' => $shopCipher,
             'page_size' => 100,
         ];
-        
+
         $body = [
             'sort_by' => 'CREATE_TIME',
             'sort_type' => 'DESC'
         ];
 
         $res = $this->client->request('POST', '/order/202309/orders/search', $queries, $body, $accessToken);
-        
+
         if (!isset($res['data']['orders'])) {
             return 0; 
         }
@@ -65,7 +65,7 @@ class TikTokOrderService
                 Log::error("Failed to pull order {$item['id']}: " . $e->getMessage());
             }
         }
-        
+
         return $count;
     }
 
@@ -85,7 +85,7 @@ class TikTokOrderService
         ];
 
         $res = $this->client->request('GET', '/order/202309/orders', $queries, [], $accessToken);
-        
+
         if (!isset($res['data']['orders']) || empty($res['data']['orders'])) {
             return 0; 
         }
@@ -100,7 +100,7 @@ class TikTokOrderService
                 Log::error("Failed to pull specific order {$item['id']}: " . $e->getMessage());
             }
         }
-        
+
         return $count;
     }
 
@@ -123,7 +123,7 @@ class TikTokOrderService
                 throw $e;
             }
         }
-        
+
         $this->orderRepository->updateOrderStatusByOrderNo($orderId, 'PROCESSING');
 
         return $res;
@@ -144,7 +144,7 @@ class TikTokOrderService
         ];
 
         $res = $this->client->request('POST', "/return_refund/202309/cancellations", $queries, $body, $shop->access_token);
-        
+
         $this->orderRepository->updateOrderStatusByOrderNo($orderId, 'CANCELLED');
 
         return $res;
@@ -183,7 +183,7 @@ class TikTokOrderService
         ];
 
         $res = $this->client->request('POST', "/return_refund/202309/cancellations", $queries, $body, $shop->access_token);
-        
+
         return $res;
     }
 }

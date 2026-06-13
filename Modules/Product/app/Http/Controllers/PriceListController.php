@@ -18,7 +18,6 @@ class PriceListController extends Controller
     ) {
     }
 
-    /** Jubelio: GET /inventory/internal-price-list — Ambil semua harga produk. */
     public function index(): JsonResponse
     {
         return $this->successPaginatedResponse(
@@ -27,7 +26,6 @@ class PriceListController extends Controller
         );
     }
 
-    /** Jubelio: POST /inventory/price-list — Ubah harga produk. */
     public function update(UpdatePriceListRequest $request): JsonResponse
     {
         $this->service->updatePrices($request->validated()['items']);

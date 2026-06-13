@@ -65,10 +65,6 @@ class TikTokSignature
         );
     }
 
-    /**
-     * Generate signature for incoming Webhooks from TikTok Shop.
-     * For webhooks, the signature is HMAC-SHA256(AppKey + RawBody, AppSecret)
-     */
     public static function generateWebhookSignature(string $appKey, string $body, string $appSecret): string
     {
         return hash_hmac('sha256', $appKey . $body, $appSecret);

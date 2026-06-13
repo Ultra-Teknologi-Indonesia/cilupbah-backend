@@ -9,7 +9,7 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class WebhookDeliveryRepository
 {
-    /** Listing delivery milik satu subscription — Spatie Query Builder. */
+
     public function paginateForSubscription(string $subscriptionId): LengthAwarePaginator
     {
         return QueryBuilder::for(WebhookDelivery::class)
@@ -34,7 +34,6 @@ class WebhookDeliveryRepository
         return WebhookDelivery::with('subscription')->find($id);
     }
 
-    /** Idempoten per (subscription, event_id): retry job tidak menggandakan delivery. */
     public function firstOrCreateForEvent(string $subscriptionId, string $event, string $eventId, array $payload): WebhookDelivery
     {
         return WebhookDelivery::firstOrCreate(

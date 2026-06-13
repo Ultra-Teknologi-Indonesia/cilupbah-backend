@@ -4,15 +4,9 @@ namespace Modules\Product\Services;
 
 use Modules\Product\Models\Product;
 
-/**
- * Transisi state machine produk: download -> in_review -> master -> archived.
- * Melempar \DomainException untuk pelanggaran aturan transisi (dipetakan ke HTTP 422).
- */
 class ProductLifecycleService
 {
-    /**
-     * download -> in_review
-     */
+
     public function submitForReview(Product $product): Product
     {
         if ($product->status !== Product::STATUS_DOWNLOAD) {
@@ -24,9 +18,6 @@ class ProductLifecycleService
         return $product;
     }
 
-    /**
-     * in_review -> master
-     */
     public function approve(Product $product, ?string $userId = null): Product
     {
         if ($product->status !== Product::STATUS_IN_REVIEW) {
@@ -44,9 +35,6 @@ class ProductLifecycleService
         return $product;
     }
 
-    /**
-     * in_review -> download
-     */
     public function reject(Product $product): Product
     {
         if ($product->status !== Product::STATUS_IN_REVIEW) {
@@ -58,9 +46,6 @@ class ProductLifecycleService
         return $product;
     }
 
-    /**
-     * master -> archived
-     */
     public function archive(Product $product, ?string $reason = null, ?string $userId = null): Product
     {
         if ($product->status === Product::STATUS_ARCHIVED) {
@@ -81,9 +66,6 @@ class ProductLifecycleService
         return $product;
     }
 
-    /**
-     * archived -> master
-     */
     public function restore(Product $product): Product
     {
         if ($product->status !== Product::STATUS_ARCHIVED) {
@@ -100,9 +82,6 @@ class ProductLifecycleService
         return $product;
     }
 
-    /**
-     * Validasi kelengkapan data sebelum produk boleh menjadi Master.
-     */
     protected function assertReadyForMaster(Product $product): void
     {
         $product->loadMissing(['variants', 'media']);

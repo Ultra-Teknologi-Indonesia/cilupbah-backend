@@ -6,7 +6,6 @@ use Illuminate\Support\Facades\Log;
 use Modules\Finance\Services\AutoJournalService;
 use Modules\Purchase\Models\PurchasePayment;
 
-/** Jurnal otomatis uang keluar: Dr Hutang — Cr Kas/Bank. Fail-open. */
 class PurchasePaymentJournalObserver
 {
     public function created(PurchasePayment $payment): void

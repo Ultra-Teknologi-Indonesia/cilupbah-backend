@@ -10,7 +10,7 @@ class Journal extends Model
 {
     use HasUuid7;
 
-    public const TYPE_MANUAL = 'Manual Jurnal'; // nilai persis kontrak Jubelio
+    public const TYPE_MANUAL = 'Manual Jurnal'; 
 
     protected $fillable = [
         'journal_no',

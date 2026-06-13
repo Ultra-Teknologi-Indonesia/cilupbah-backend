@@ -2,19 +2,9 @@
 
 namespace Modules\Channel\Services;
 
-/**
- * Pemetaan order Lazada → skema internal SalesOrderService::upsertFromChannel.
- *
- * Catatan penting:
- * - channel_status diterjemahkan ke KOSAKATA yang sudah dipahami
- *   SalesOrderService::mapChannelStatusToInternal (UNPAID/AWAITING_SHIPMENT/
- *   AWAITING_COLLECTION/IN_TRANSIT/DELIVERED/CANCELLED) — non-invasif terhadap modul Sales.
- * - Item Lazada (orders/items/get) berupa SATU BARIS PER UNIT (tanpa qty) →
- *   digabung per SKU+harga menjadi qty agregat.
- */
 class LazadaToInternalOrderMapper
 {
-    /** Lazada status → kosakata channel_status internal. */
+
     protected const STATUS_MAP = [
         'unpaid' => 'UNPAID',
         'pending' => 'AWAITING_SHIPMENT',
@@ -30,10 +20,6 @@ class LazadaToInternalOrderMapper
         'failed' => 'CANCELLED',
     ];
 
-    /**
-     * @param  array  $lazadaOrder  satu entri dari /orders/get → data.orders[]
-     * @param  array  $orderItems   baris item dari /orders/items/get untuk order ini
-     */
     public function map(array $lazadaOrder, array $orderItems, string $shopId): array
     {
         $items = $this->groupItems($orderItems);
@@ -91,9 +77,6 @@ class LazadaToInternalOrderMapper
         ];
     }
 
-    /**
-     * Gabungkan baris item per-unit Lazada menjadi item ber-qty (kunci: sku + harga).
-     */
     protected function groupItems(array $orderItems): array
     {
         $grouped = [];
@@ -132,7 +115,6 @@ class LazadaToInternalOrderMapper
             return (string) now();
         }
 
-        // Format Lazada: "2024-02-18 16:03:04 +0800"
         $ts = strtotime($value);
 
         return $ts ? date('Y-m-d H:i:s', $ts) : (string) now();

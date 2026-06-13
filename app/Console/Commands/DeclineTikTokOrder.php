@@ -16,7 +16,7 @@ class DeclineTikTokOrder extends Command
         $shopId = $this->argument('shop_id');
         $orderId = $this->argument('order_id');
         $reason = $this->option('reason');
-        
+
         $this->info("Declining order ID: {$orderId} for Shop ID: {$shopId} (Reason: {$reason})...");
 
         try {

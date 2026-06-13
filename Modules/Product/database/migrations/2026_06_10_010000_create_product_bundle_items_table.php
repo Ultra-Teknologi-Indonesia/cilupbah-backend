@@ -10,8 +10,8 @@ return new class extends Migration
     {
         Schema::create('product_bundle_items', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->uuid('bundle_product_id');     // produk bundle (products.id, is_bundle=true)
-            $table->uuid('component_variant_id');  // komponen (product_variants.id)
+            $table->uuid('bundle_product_id');     
+            $table->uuid('component_variant_id');  
             $table->integer('qty')->default(1);
             $table->timestamps();
 

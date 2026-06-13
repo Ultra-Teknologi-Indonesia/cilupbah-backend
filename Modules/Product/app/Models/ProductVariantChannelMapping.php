@@ -25,8 +25,6 @@ class ProductVariantChannelMapping extends Model
         'override_price' => 'decimal:2',
     ];
 
-    // ==================== Relasi ====================
-
     public function channelMapping(): BelongsTo
     {
         return $this->belongsTo(ProductChannelMapping::class, 'product_channel_mapping_id');

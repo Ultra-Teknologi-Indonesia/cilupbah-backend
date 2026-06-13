@@ -23,7 +23,7 @@ class AdminAlertJob implements ShouldQueue
 
     public function handle(): void
     {
-        // TODO: integrate Slack/email notification channel
+
         Log::critical("[ADMIN ALERT] {$this->subject}", [
             'error'   => $this->errorMessage,
             'context' => $this->context,

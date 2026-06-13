@@ -20,7 +20,6 @@ class InventoryService
         protected InventoryTransferRepository $transferRepository,
     ) {}
 
-
     public function getStockByItem(string $itemId): Collection
     {
         return $this->inventoryRepository->getByItem($itemId);
@@ -201,8 +200,6 @@ class InventoryService
     {
         return $this->movementRepository->getHistoryPaginated($limit);
     }
-
-    // ─── DOCUMENT-BASED TRANSFER (OUT → IN_TRANSIT → IN) ───
 
     public function transferOut(array $data): InventoryTransfer
     {

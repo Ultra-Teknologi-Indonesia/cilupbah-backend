@@ -9,10 +9,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
-/**
- * POST /users (create) & PUT /users/{id} (update) — modul Auth.
- * Fokus: berhasil, mencatat history, dan TIDAK PERNAH error 500.
- */
 class UserStoreApiTest extends TestCase
 {
     use RefreshDatabase;
@@ -104,8 +100,6 @@ class UserStoreApiTest extends TestCase
             ->assertJsonPath('data.0.actor.id', $this->owner->id);
     }
 
-    // ── Guard no-500: input invalid → 422, akses tak sah → 403 ──
-
     public function test_missing_fields_returns_422_not_500(): void
     {
         $this->actingAs($this->owner, 'sanctum')
@@ -196,7 +190,7 @@ class UserStoreApiTest extends TestCase
     public function test_unauthorized_user_is_forbidden(): void
     {
         $plain = User::factory()->create();
-        $plain->assignRole('picker'); // tidak punya create-user
+        $plain->assignRole('picker'); 
 
         $this->actingAs($plain, 'sanctum')
             ->postJson('/api/v1/users', $this->validPayload())

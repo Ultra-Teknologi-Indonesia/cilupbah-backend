@@ -29,7 +29,7 @@ class ChannelWarehouseService
 
     public function create(array $data): ChannelWarehouse
     {
-        // location_id & channel_id sudah dijamin ada oleh validasi (exists). Di sini cukup jaga duplikasi.
+
         return \Illuminate\Support\Facades\DB::transaction(function () use ($data) {
             $existing = $this->channelWarehouseRepository->findByChannelLocationId(
                 $data['channel_id'],

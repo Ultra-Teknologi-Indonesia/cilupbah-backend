@@ -37,4 +37,25 @@ class MasterFeedRepository
             ->with(self::RELATIONS)
             ->findOrFail($id);
     }
+
+    /** Satu produk untuk persiapan listing (tanpa batasan status). Null bila tidak ada. */
+    public function findForListing(string $id): ?Product
+    {
+        return Product::query()->with(self::RELATIONS)->find($id);
+    }
+
+    /** Produk-produk dalam satu grup katalog (ProductMerge.master_name). */
+    public function paginateByMasterName(string $masterName): LengthAwarePaginator
+    {
+        $productIds = \Modules\Product\Models\ProductMerge::where('master_name', $masterName)->pluck('product_id');
+
+        return QueryBuilder::for(Product::class)
+            ->whereIn('id', $productIds)
+            ->with(self::RELATIONS)
+            ->allowedSearch('name', 'sku')
+            ->allowedSorts('name', 'created_at', 'updated_at')
+            ->defaultSort('-updated_at')
+            ->paginate(request('per_page', 10))
+            ->appends(request()->query());
+    }
 }

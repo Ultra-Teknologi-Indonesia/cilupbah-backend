@@ -91,22 +91,12 @@ class WebhookTest extends TestCase
         Queue::assertNotPushed(DispatchWebhookEventJob::class);
     }
 
-    /**
-     * Dispatcher WAJIB memakai ->afterCommit() agar webhook tidak terkirim saat transaksi
-     * stok rollback. Catatan: Queue::fake() MENGABAIKAN deferral afterCommit (job dicatat saat
-     * dipanggil), sehingga rollback tidak bisa diuji via fake. Maka di sini kita verifikasi:
-     *  (1) operasi domain TIDAK pernah 500 walau dispatch webhook bermasalah, dan
-     *  (2) dispatcher memang memanggil DispatchWebhookEventJob (yang kita konfigurasi ->afterCommit()).
-     * Properti rollback afterCommit dijamin Laravel & sudah dipakai modul lain (ProductChannelDraftService).
-     */
     public function test_domain_operation_never_500_even_if_webhook_layer_throws(): void
     {
         $this->subscribe(WebhookEvent::PRODUCT);
 
-        // Paksa lapisan queue gagal saat enqueue.
         Queue::shouldReceive('connection')->andThrow(new \RuntimeException('queue down'));
 
-        // Observer dibungkus try/catch → pembuatan produk HARUS tetap sukses (tidak 500).
         $product = $this->makeProduct();
 
         $this->assertNotNull($product->id);

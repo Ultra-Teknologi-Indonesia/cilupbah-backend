@@ -24,7 +24,6 @@ class WebhookDeliveryService
         return $this->repository->find($id);
     }
 
-    /** Kirim ulang satu delivery: reset ke pending lalu antrekan ulang SendWebhookJob. */
     public function redeliver(WebhookDelivery $delivery): void
     {
         $this->repository->resetForRedelivery($delivery);

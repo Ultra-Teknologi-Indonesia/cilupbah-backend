@@ -7,15 +7,6 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
-/**
- * Mengambil byte file media produk untuk dikirim ke marketplace.
- *
- * Urutan resolusi referensi media:
- *   1. UUID media terpusat (hasil POST /api/v1/media/upload) → baca byte langsung
- *      dari disk Spatie Media Library (Cloudflare R2 / S3). Ini jalur kanonik.
- *   2. URL yang menunjuk ke disk media → baca dari disk.
- *   3. Fallback HTTP (timeout) untuk URL eksternal (mis. gambar hasil download marketplace).
- */
 class ChannelMediaResolver
 {
     public function __construct(

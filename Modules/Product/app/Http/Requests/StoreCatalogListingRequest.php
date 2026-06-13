@@ -4,9 +4,6 @@ namespace Modules\Product\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-/**
- * Jubelio: POST /inventory/catalog/listing — buat/ubah listing produk (channel draft).
- */
 class StoreCatalogListingRequest extends FormRequest
 {
     public function authorize(): bool

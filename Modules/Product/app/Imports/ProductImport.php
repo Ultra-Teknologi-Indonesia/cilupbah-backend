@@ -19,13 +19,13 @@ class ProductImport implements WithMultipleSheets, SkipsUnknownSheets
     {
         return [
             'Pengisian Import Produk' => new ProductDataSheetImport($this->service),
-            // Fallback for generic name if sheet is renamed
+
             2 => new ProductDataSheetImport($this->service),
         ];
     }
 
     public function onUnknownSheet($sheetName)
     {
-        // Skip
+
     }
 }

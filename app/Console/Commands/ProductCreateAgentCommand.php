@@ -12,23 +12,11 @@ use App\Models\User;
 
 class ProductCreateAgentCommand extends Command
 {
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
+
     protected $signature = 'agent:product-create';
 
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
     protected $description = 'AI Agent untuk mensimulasikan Create Produk Lokal Realistis (Internal)';
 
-    /**
-     * Execute the console command.
-     */
     public function handle()
     {
         $this->info('🤖 Memulai Agen AI: Create Produk Lokal Realistis...');
@@ -53,7 +41,7 @@ class ProductCreateAgentCommand extends Command
             'category_id' => $category->id,
             'brand_id' => $brand->id,
             'order_type' => 'REGULER',
-            'weight' => 0.23, // 232 gram
+            'weight' => 0.23, 
             'length' => 16.2,
             'width' => 7.9,
             'height' => 0.86,
@@ -62,7 +50,7 @@ class ProductCreateAgentCommand extends Command
             'danger_level' => 0,
             'is_draft' => false,
             'is_active' => true,
-            
+
             'variants' => [
                 [
                     'sku' => 'S24U-512-TB-VAR',
@@ -100,7 +88,7 @@ class ProductCreateAgentCommand extends Command
             }
 
             $productId = $response->json('data.product_id') ?? $response->json('data.id');
-            
+
             $this->info("✅ Sukses Membuat Produk via API!");
             $this->line("======================================");
             $this->info("PRODUCT ID (UUID) : " . $productId);

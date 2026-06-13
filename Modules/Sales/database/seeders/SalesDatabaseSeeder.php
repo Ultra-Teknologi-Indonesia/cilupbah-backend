@@ -8,6 +8,6 @@ class SalesDatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        //
+
     }
 }

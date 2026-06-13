@@ -65,7 +65,6 @@ class TikTokProductService
             return $variantArr;
         })->toArray();
 
-        // Get mapped TikTok Category
         $tiktokCategoryId = null;
         if (!empty($product->category_id)) {
             $tiktokCategoryId = $this->productRepository->getChannelCategoryExternalId($product->category_id, $shop->channel_id);
@@ -76,12 +75,11 @@ class TikTokProductService
             $config['category_id'] = $tiktokCategoryId;
         }
 
-        // Get product specifications and map them
         $specs = $this->productRepository->getProductSpecifications($productId);
 
         $mappedAttributes = [];
         foreach ($specs as $spec) {
-            // Find mapped attribute
+
             $mapping = $this->productRepository->getAttributeChannelMapping($spec->attribute_id);
 
             if ($mapping) {
@@ -91,7 +89,7 @@ class TikTokProductService
                     $attrData = ['id' => $channelAttr->external_id, 'values' => []];
 
                     if ($spec->attribute_option_id) {
-                        // Find mapped option
+
                         $optMapping = $this->productRepository->getAttributeOptionChannelMapping($spec->attribute_option_id);
 
                         if ($optMapping) {
@@ -119,7 +117,7 @@ class TikTokProductService
         $payload = $this->mapper->map($internalProduct, $uploadedImageIds, $config);
 
         $res = $this->client->request('POST', '/product/202309/products', ['shop_cipher' => $shopCipher], $payload, $accessToken);
-        
+
         if (isset($res['data']['product_id'])) {
             $this->productRepository->updateChannelProductId($productId, $res['data']['product_id'], $shopId);
         }
@@ -153,7 +151,7 @@ class TikTokProductService
             try {
                 $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
             } catch (TokenExpiredException $e) {
-                // Token expired — coba refresh sekali, lalu retry halaman yang sama.
+
                 $accessToken = $this->refreshShopToken($shop);
                 $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
             }
@@ -175,7 +173,6 @@ class TikTokProductService
                             'synced'
                         );
 
-                        // Isi product_variant_channel_mappings per SKU agar webhook stock-sync bekerja.
                         foreach ($item['skus'] ?? [] as $skuData) {
                             $sku = !empty($skuData['seller_sku'])
                                 ? $skuData['seller_sku']
@@ -217,9 +214,6 @@ class TikTokProductService
         return $count;
     }
 
-    /**
-     * Refresh access token untuk shop, simpan ke DB, dan kembalikan token baru.
-     */
     protected function refreshShopToken(object $shop): string
     {
         if (empty($shop->refresh_token)) {

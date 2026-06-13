@@ -51,7 +51,6 @@ class ProductSyncLogController extends Controller
         return $this->successPaginatedResponse($paginator, 'Get upload histories success');
     }
 
-    /** Jubelio: GET /inventory/items/errors — Ambil daftar listing yang gagal upload. */
     public function errors(Request $request): JsonResponse
     {
         $paginator = $this->uploadHistoryService->paginateErrors();

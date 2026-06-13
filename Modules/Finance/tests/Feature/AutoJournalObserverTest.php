@@ -14,10 +14,6 @@ use Modules\Sales\Models\SalesPayment;
 use Modules\Supplier\Models\Supplier;
 use Tests\TestCase;
 
-/**
- * Jurnal otomatis via observer (PLAN-JOURNAL.md U2–U7, U21):
- * 4 dokumen sumber → jurnal seimbang, idempoten, fail-open tanpa COA.
- */
 class AutoJournalObserverTest extends TestCase
 {
     use RefreshDatabase;
@@ -60,7 +56,6 @@ class AutoJournalObserverTest extends TestCase
         ]);
     }
 
-    /** Assert jurnal satu dokumen: 2 baris, seimbang, akun sesuai. */
     private function assertJournal(string $sourceType, string $sourceId, string $drCode, string $crCode, string $amount): Journal
     {
         $journal = Journal::with('details.account')
@@ -69,7 +64,7 @@ class AutoJournalObserverTest extends TestCase
             ->first();
 
         $this->assertNotNull($journal, "Jurnal {$sourceType} tidak terbentuk.");
-        $this->assertNull($journal->journal_type); // otomatis = null (kontrak Jubelio)
+        $this->assertNull($journal->journal_type); 
         $this->assertCount(2, $journal->details);
 
         $dr = $journal->details->firstWhere('debit', '>', 0);
@@ -81,8 +76,6 @@ class AutoJournalObserverTest extends TestCase
 
         return $journal;
     }
-
-    // ── U2–U5: empat aliran uang ──
 
     public function test_sales_invoice_creates_receivable_revenue_journal(): void
     {
@@ -134,25 +127,20 @@ class AutoJournalObserverTest extends TestCase
         $this->assertJournal('purchase_payment', $payment->id, '2-2000', '1-1000', '750000.0000');
     }
 
-    // ── U6: idempoten ──
-
     public function test_same_source_document_never_creates_duplicate_journal(): void
     {
         $this->seed(ChartOfAccountsSeeder::class);
         $invoice = $this->makeInvoice();
 
-        // Panggil ulang manual (simulasi retry/observer dobel).
         app(AutoJournalService::class)->forSalesInvoice($invoice);
         app(AutoJournalService::class)->forSalesInvoice($invoice);
 
         $this->assertEquals(1, Journal::where('source_doc_id', $invoice->id)->count());
     }
 
-    // ── U7: fail-open tanpa COA ──
-
     public function test_business_transaction_succeeds_even_without_coa(): void
     {
-        // COA TIDAK di-seed → jurnal di-skip, transaksi bisnis tetap sukses.
+
         $invoice = $this->makeInvoice();
 
         $this->assertDatabaseHas('sales_invoices', ['id' => $invoice->id]);
@@ -166,8 +154,6 @@ class AutoJournalObserverTest extends TestCase
 
         $this->assertEquals(0, Journal::count());
     }
-
-    // ── U21: penomoran berurutan lintas sumber ──
 
     public function test_journal_numbering_sequential_across_sources(): void
     {

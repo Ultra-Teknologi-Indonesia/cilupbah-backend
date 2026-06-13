@@ -12,10 +12,6 @@ use Modules\Webhook\Repositories\WebhookDeliveryRepository;
 use Modules\Webhook\Repositories\WebhookSubscriptionRepository;
 use Modules\Webhook\Support\WebhookUrlGuard;
 
-/**
- * Mengirim satu webhook ke URL subscriber (HMAC-SHA256), mencatat hasil ke webhook_deliveries.
- * Retry + backoff; kegagalan TIDAK pernah mengganggu operasi domain (sudah di luar request pemicu).
- */
 class SendWebhookJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -27,7 +23,6 @@ class SendWebhookJob implements ShouldQueue
     ) {
     }
 
-    /** Backoff bertingkat (detik). */
     public function backoff(): array
     {
         return [10, 60, 300];
@@ -47,7 +42,6 @@ class SendWebhookJob implements ShouldQueue
             return;
         }
 
-        // Anti DNS-rebinding: cek ulang target saat kirim. URL internal → gagal permanen (tanpa retry).
         if (! (new WebhookUrlGuard())->isSafe($subscription->target_url)) {
             $deliveries->markFailed($delivery, null, 'Target URL diblokir (privat/non-https).');
 
@@ -75,7 +69,6 @@ class SendWebhookJob implements ShouldQueue
             ])
             ->post($subscription->target_url);
 
-        // 2xx & 3xx (redirect) dianggap terkirim.
         if ($response->successful() || $response->redirect()) {
             $deliveries->markSuccess($delivery, $response->status());
             $subscriptions->resetFailures($subscription);
@@ -85,11 +78,9 @@ class SendWebhookJob implements ShouldQueue
 
         $deliveries->markFailed($delivery, $response->status(), 'HTTP '.$response->status().': '.mb_substr($response->body(), 0, 500));
 
-        // Lempar agar Laravel melakukan retry (sampai $tries) — tetap di luar jalur domain.
         throw new \RuntimeException("Webhook delivery {$delivery->id} gagal (HTTP {$response->status()}).");
     }
 
-    /** Dipanggil setelah retry habis. */
     public function failed(\Throwable $e): void
     {
         $deliveries = app(WebhookDeliveryRepository::class);
