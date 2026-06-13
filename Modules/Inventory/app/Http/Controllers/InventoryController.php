@@ -520,4 +520,86 @@ class InventoryController extends Controller
 
         return $this->successResponse($items, 'Daftar item sales invoice berhasil diambil.');
     }
+
+    #[OA\Post(
+        path: '/api/v1/inventory/items/all-stocks',
+        summary: 'Get product stocks by multiple variant IDs',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['ids'],
+            properties: [new OA\Property(property: 'ids', type: 'array', items: new OA\Items(type: 'string'))],
+        )),
+        responses: [new OA\Response(response: 200, description: 'Stok produk berhasil diambil.')]
+    )]
+    public function allStocksByIds(Request $request): JsonResponse
+    {
+        $request->validate(['ids' => 'required|array|min:1', 'ids.*' => 'string']);
+
+        $stocks = Inventory::select('item_id', 'location_id',
+                DB::raw('SUM(on_hand) as total_on_hand'),
+                DB::raw('SUM(reserved) as total_reserved'),
+                DB::raw('SUM(available) as total_available'))
+            ->whereIn('item_id', $request->input('ids'))
+            ->groupBy('item_id', 'location_id')
+            ->with(['product:id,sku,product_id', 'location:id,location_name,location_code'])
+            ->get();
+
+        return $this->successResponse($stocks, 'Stok produk berhasil diambil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inventory/items/by-sku/{sku}',
+        summary: 'Get product by SKU',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        parameters: [new OA\Parameter(name: 'sku', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [
+            new OA\Response(response: 200, description: 'Produk ditemukan.'),
+            new OA\Response(response: 404, description: 'SKU tidak ditemukan.'),
+        ]
+    )]
+    public function bySku(string $sku): JsonResponse
+    {
+        $variant = \Modules\Product\Models\ProductVariant::where('sku', $sku)
+            ->with(['product:id,name,sku,category_id,brand_id,status,is_bundle', 'product.category:id,name', 'product.brand:id,name', 'inventories'])
+            ->first();
+
+        if (! $variant) {
+            return $this->errorResponse('SKU tidak ditemukan.', 404);
+        }
+
+        return $this->successResponse($variant, 'Produk ditemukan.');
+    }
+
+    #[OA\Delete(
+        path: '/api/v1/inventory/items/item-variant',
+        summary: 'Delete item variant',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            properties: [new OA\Property(property: 'id', type: 'string'), new OA\Property(property: 'ids', type: 'array', items: new OA\Items(type: 'string'))],
+        )),
+        responses: [new OA\Response(response: 200, description: 'Varian berhasil dihapus.')]
+    )]
+    public function deleteVariant(Request $request): JsonResponse
+    {
+        $ids = (array) ($request->input('id') ?? $request->input('ids', []));
+
+        if (empty($ids)) {
+            return $this->errorResponse('id or ids required.', 422);
+        }
+
+        $hasStock = Inventory::whereIn('item_id', $ids)
+            ->where('on_hand', '>', 0)
+            ->exists();
+
+        if ($hasStock) {
+            return $this->errorResponse('Tidak bisa menghapus varian yang masih punya stok.', 422);
+        }
+
+        $deleted = \Modules\Product\Models\ProductVariant::whereIn('id', $ids)->delete();
+
+        return $this->successResponse(['deleted' => $deleted], 'Varian berhasil dihapus.');
+    }
 }

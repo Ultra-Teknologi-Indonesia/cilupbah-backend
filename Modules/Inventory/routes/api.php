@@ -8,6 +8,9 @@ use Modules\Inventory\Http\Controllers\ReservedStockController;
 use Modules\Inventory\Http\Controllers\PutawayController;
 use Modules\Inventory\Http\Controllers\StockOpnameController;
 use Modules\Inventory\Http\Controllers\StockRevaluationController;
+use Modules\Inventory\Http\Controllers\PromotionController;
+use Modules\Inventory\Http\Controllers\PriceListController;
+use Modules\Inventory\Http\Controllers\BundleController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inventory/stocks', [InventoryController::class, 'index'])->name('inventory.stocks.index');
@@ -32,6 +35,27 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inventory/items/by-location/{locationId}', [InventoryController::class, 'byLocation'])->name('inventory.items.byLocation');
     Route::get('inventory/purchase-order/items', [InventoryController::class, 'purchaseOrderItems'])->name('inventory.purchaseOrder.items');
 
+    // E10: Inventory Extended — by-sku, all-stocks POST, delete variant
+    Route::get('inventory/items/by-sku/{sku}', [InventoryController::class, 'bySku'])->name('inventory.items.bySku');
+    Route::post('inventory/items/all-stocks', [InventoryController::class, 'allStocksByIds'])->name('inventory.items.allStocks');
+    Route::delete('inventory/items/item-variant', [InventoryController::class, 'deleteVariant'])->name('inventory.items.deleteVariant');
+
+    // Price List
+    Route::get('inventory/internal-price-list', [PriceListController::class, 'index'])->name('inventory.priceList.index');
+    Route::post('inventory/price-list', [PriceListController::class, 'update'])->name('inventory.priceList.update');
+    Route::post('inventory/items/prices', [PriceListController::class, 'pricesByIds'])->name('inventory.items.prices');
+
+    // Promotions
+    Route::get('inventory/promotions', [PromotionController::class, 'index'])->name('inventory.promotions.index');
+    Route::post('inventory/promotions', [PromotionController::class, 'store'])->name('inventory.promotions.store');
+    Route::get('inventory/promotions/{id}', [PromotionController::class, 'show'])->name('inventory.promotions.show');
+    Route::delete('inventory/promotions', [PromotionController::class, 'destroy'])->name('inventory.promotions.destroy');
+
+    // Bundles
+    Route::get('inventory/item-bundles', [BundleController::class, 'index'])->name('inventory.bundles.index');
+    Route::post('inventory/items/bundle', [BundleController::class, 'store'])->name('inventory.bundles.store');
+
+    // Direct adjustment (legacy)
     Route::post('inventory/adjustments', [InventoryTransactionController::class, 'adjust'])->name('inventory.adjust');
     Route::post('inventory/putaway', [InventoryTransactionController::class, 'putaway'])->name('inventory.putaway');
 
