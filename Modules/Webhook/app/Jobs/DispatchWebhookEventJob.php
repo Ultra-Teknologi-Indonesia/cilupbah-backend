@@ -7,13 +7,13 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Str;
-use Modules\Webhook\Models\WebhookDelivery;
+use Modules\Webhook\Repositories\WebhookDeliveryRepository;
 use Modules\Webhook\Repositories\WebhookSubscriptionRepository;
 
 /**
  * Berjalan SETELAH commit (lihat dispatcher ->afterCommit()).
  * Fan-out: cari subscriber aktif untuk event → buat delivery (pending) → antrekan SendWebhookJob per subscriber.
+ * event_id stabil (dibawa dari dispatcher) → retry job idempoten via firstOrCreate (subscription_id, event_id).
  * Semua query di sini terjadi di LUAR transaksi/lock domain.
  */
 class DispatchWebhookEventJob implements ShouldQueue
@@ -23,29 +23,32 @@ class DispatchWebhookEventJob implements ShouldQueue
     public function __construct(
         public string $event,
         public array $payload,
+        public string $eventId,
     ) {
     }
 
-    public function handle(WebhookSubscriptionRepository $repository): void
-    {
-        $subscriptions = $repository->activeForEvent($this->event);
-        if ($subscriptions->isEmpty()) {
+    public function handle(
+        WebhookSubscriptionRepository $subscriptions,
+        WebhookDeliveryRepository $deliveries,
+    ): void {
+        $activeSubscriptions = $subscriptions->activeForEvent($this->event);
+        if ($activeSubscriptions->isEmpty()) {
             return;
         }
 
-        $eventId = (string) Str::uuid7();
+        foreach ($activeSubscriptions as $subscription) {
+            $delivery = $deliveries->firstOrCreateForEvent(
+                $subscription->id,
+                $this->event,
+                $this->eventId,
+                $this->payload,
+            );
 
-        foreach ($subscriptions as $subscription) {
-            $delivery = WebhookDelivery::create([
-                'subscription_id' => $subscription->id,
-                'event' => $this->event,
-                'event_id' => $eventId,
-                'payload' => $this->payload,
-                'status' => WebhookDelivery::STATUS_PENDING,
-            ]);
-
-            SendWebhookJob::dispatch($delivery->id)
-                ->onQueue(config('webhook.queue', 'webhooks'));
+            // Hanya kirim untuk delivery yang baru dibuat → retry tidak menggandakan pengiriman.
+            if ($delivery->wasRecentlyCreated) {
+                SendWebhookJob::dispatch($delivery->id)
+                    ->onQueue(config('webhook.queue', 'webhooks'));
+            }
         }
     }
 }
