@@ -36,12 +36,11 @@ class StoreSalesReturnRequest extends FormRequest
         ];
     }
 
-    /** Tolak retur yang melewati batas hari sejak transaksi order (bila diatur). */
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator) {
             if ($validator->errors()->isNotEmpty()) {
-                return; // input belum valid (mis. order_id bukan uuid) → jangan query
+                return; 
             }
 
             $days = app(SalesReturnSettingService::class)->returnValidityDays();

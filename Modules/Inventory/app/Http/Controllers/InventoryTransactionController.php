@@ -290,7 +290,6 @@ class InventoryTransactionController extends Controller
         return $this->successPaginatedResponse($transfers, 'Daftar transfer yang sudah selesai diterima.');
     }
 
-    /** Transfer masuk (menunggu diterima) untuk satu lokasi: destination=location, IN_TRANSIT. */
     public function transfersIn(\Illuminate\Http\Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -308,7 +307,6 @@ class InventoryTransactionController extends Controller
         return $this->successPaginatedResponse($transfers, 'Daftar transfer masuk (menunggu diterima).');
     }
 
-    /** Transfer keluar (masih dalam perjalanan) untuk satu lokasi: source=location, IN_TRANSIT. */
     public function transfersOut(\Illuminate\Http\Request $request): JsonResponse
     {
         $validated = $request->validate([

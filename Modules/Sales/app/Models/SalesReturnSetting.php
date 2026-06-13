@@ -9,7 +9,6 @@ class SalesReturnSetting extends Model
 {
     use HasUuid7;
 
-    /** Default bawaan bila kolom belum di-set (dipakai accessor service). */
     public const DEFAULT_CONDITIONS = ['GOOD', 'DAMAGE'];
     public const DEFAULT_REFUND_METHODS = ['cash', 'tunai', 'transfer', 'bank', 'bank_transfer', 'giro', 'store_credit'];
 

@@ -6,9 +6,6 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Modules\Product\Models\Product;
 use Modules\Product\Repositories\MasterFeedRepository;
 
-/**
- * Pembacaan katalog: item per grup (master_name) & detail produk untuk persiapan listing.
- */
 class CatalogService
 {
     public function __construct(
