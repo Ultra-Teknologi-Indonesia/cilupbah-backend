@@ -23,7 +23,6 @@ class ProductController extends Controller
 {
     use ApiResponse;
 
-    /** Relasi yang dimuat saat mengembalikan detail produk. */
     private const DETAIL_RELATIONS = [
         'variants.channelMappings.channelMapping',
         'media',
@@ -47,9 +46,6 @@ class ProductController extends Controller
         $this->productRepository = $productRepository;
     }
 
-    /**
-     * Display a listing of the resource.
-     */
     #[OA\Get(
         path: '/api/v1/products',
         summary: 'List all products',
@@ -90,9 +86,6 @@ class ProductController extends Controller
         return $this->successPaginatedResponse(ProductResource::collection($products), 'Get products success');
     }
 
-    /**
-     * Daftar produk Master yang BELUM ter-upload ke toko/channel tertentu ("Belum Upload").
-     */
     #[OA\Get(
         path: '/api/v1/products/uploadable',
         summary: 'List uploadable products (belum ter-mapping ke shop)',
@@ -125,9 +118,6 @@ class ProductController extends Controller
         return $this->successPaginatedResponse(ProductResource::collection($products), 'Get uploadable products success');
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(CreateProductRequest $request): JsonResponse
     {
         try {
@@ -140,9 +130,6 @@ class ProductController extends Controller
         }
     }
 
-    /**
-     * Show the specified resource.
-     */
     #[OA\Get(
         path: '/api/v1/products/{id}',
         summary: 'Get product detail',
@@ -165,9 +152,6 @@ class ProductController extends Controller
         return $this->successResponse(new ProductResource($product), 'Get product detail success');
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
     #[OA\Put(
         path: '/api/v1/products/{id}',
         summary: 'Update product',
@@ -195,9 +179,6 @@ class ProductController extends Controller
         );
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
     public function destroy($id): JsonResponse
     {
         $product = $this->findProduct($id);
@@ -214,9 +195,6 @@ class ProductController extends Controller
         return $this->successResponse(null, 'Produk berhasil dihapus');
     }
 
-    /**
-     * Ajukan produk Download ke In Review.
-     */
     #[OA\Post(
         path: '/api/v1/products/{id}/submit-review',
         summary: 'Submit product for review (download → in_review)',
@@ -237,9 +215,6 @@ class ProductController extends Controller
         );
     }
 
-    /**
-     * Approve produk In Review menjadi Master.
-     */
     #[OA\Post(
         path: '/api/v1/products/{id}/approve',
         summary: 'Approve product to Master',
@@ -256,9 +231,6 @@ class ProductController extends Controller
         return $this->runLifecycle($id, fn (Product $product) => $this->lifecycleService->approve($product, $request->user()?->id), 'Produk berhasil disetujui menjadi Master');
     }
 
-    /**
-     * Reject produk In Review kembali ke Download.
-     */
     #[OA\Post(
         path: '/api/v1/products/{id}/reject',
         summary: 'Reject product back to Download',
@@ -275,9 +247,6 @@ class ProductController extends Controller
         return $this->runLifecycle($id, fn (Product $product) => $this->lifecycleService->reject($product), 'Produk dikembalikan ke Download');
     }
 
-    /**
-     * Arsipkan produk Master.
-     */
     #[OA\Post(
         path: '/api/v1/products/{id}/archive',
         summary: 'Archive product',
@@ -303,9 +272,6 @@ class ProductController extends Controller
         );
     }
 
-    /**
-     * Pulihkan produk dari Arsip ke Master.
-     */
     #[OA\Post(
         path: '/api/v1/products/{id}/restore',
         summary: 'Restore product from archive',
@@ -322,9 +288,6 @@ class ProductController extends Controller
         return $this->runLifecycle($id, fn (Product $product) => $this->lifecycleService->restore($product), 'Produk berhasil dipulihkan ke Master');
     }
 
-    /**
-     * Jalankan satu transisi lifecycle dengan penanganan not-found (404) & pelanggaran aturan (422).
-     */
     private function runLifecycle($id, callable $action, string $message): JsonResponse
     {
         $product = $this->findProduct($id);
@@ -344,9 +307,6 @@ class ProductController extends Controller
         );
     }
 
-    /**
-     * Jubelio: GET /inventory/items/by-sku/{sku} — Ambil produk per SKU.
-     */
     public function showBySku(string $sku): JsonResponse
     {
         $product = $this->productService->getProductBySku($sku);
@@ -358,9 +318,6 @@ class ProductController extends Controller
         return $this->successResponse(new ProductResource($product), 'Get product by SKU success');
     }
 
-    /**
-     * Jubelio: GET /inventory/item-bundles/ — Ambil semua bundle produk (is_bundle = true).
-     */
     public function bundles(): JsonResponse
     {
         return $this->successPaginatedResponse(
@@ -369,9 +326,6 @@ class ProductController extends Controller
         );
     }
 
-    /**
-     * Jubelio: POST /inventory/items/all-stocks/ — Ambil stok produk per banyak ID.
-     */
     public function allStocks(ItemIdsRequest $request): JsonResponse
     {
         $products = $this->productService->getStocksByIds($request->validated()['item_ids']);
@@ -379,9 +333,6 @@ class ProductController extends Controller
         return $this->successResponse(ProductStockResource::collection($products), 'Get product stocks success');
     }
 
-    /**
-     * Jubelio: POST /inventory/items/prices/ — Ambil harga produk per banyak ID.
-     */
     public function prices(ItemIdsRequest $request): JsonResponse
     {
         $products = $this->productService->getPricesByIds($request->validated()['item_ids']);
@@ -389,9 +340,6 @@ class ProductController extends Controller
         return $this->successResponse(ProductPriceResource::collection($products), 'Get product prices success');
     }
 
-    /**
-     * Jubelio: POST /inventory/items/ — Buat/ubah bundle produk (kirim {id} untuk edit).
-     */
     public function storeBundle(StoreBundleRequest $request): JsonResponse
     {
         $data = $request->validated();
@@ -405,10 +353,6 @@ class ProductController extends Controller
         );
     }
 
-    /**
-     * Cari produk by id dengan guard format UUID (id non-UUID -> null, dipetakan ke 404
-     * agar tidak memicu error cast UUID di Postgres).
-     */
     private function findProduct($id, array $with = []): ?Product
     {
         $normalizedId = str_replace('-', '', (string) $id);

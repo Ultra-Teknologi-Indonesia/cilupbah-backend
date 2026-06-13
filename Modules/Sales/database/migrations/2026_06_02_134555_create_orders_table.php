@@ -14,7 +14,7 @@ return new class extends Migration
             $table->string('channel_shop_id')->nullable();
             $table->string('customer_name')->nullable();
             $table->timestamp('transaction_date')->nullable();
-            
+
             $table->decimal('sub_total', 12, 2)->default(0);
             $table->decimal('total_disc', 12, 2)->default(0);
             $table->decimal('total_tax', 12, 2)->default(0);

@@ -45,14 +45,14 @@ class LocationServiceTest extends TestCase
             'bin_final_code' => 'DEFAULT',
             'is_inbound' => true
         ]);
-        
+
         $this->assertEquals(1, LocationBin::where('location_id', $location->id)->count());
     }
     public function test_can_get_paginated_locations(): void
     {
         Location::factory()->count(15)->create();
         $paginator = $this->service->getAllPaginated(10);
-        
+
         $this->assertEquals(15, $paginator->total());
         $this->assertCount(10, $paginator->items());
     }
@@ -61,7 +61,7 @@ class LocationServiceTest extends TestCase
     {
         $location = Location::factory()->create();
         $found = $this->service->getById($location->id);
-        
+
         $this->assertNotNull($found);
         $this->assertEquals($location->id, $found->id);
     }
@@ -69,7 +69,7 @@ class LocationServiceTest extends TestCase
     public function test_can_update_location(): void
     {
         $location = Location::factory()->create();
-        
+
         $result = $this->service->update($location->id, ['location_name' => 'Updated Name']);
 
         $this->assertInstanceOf(Location::class, $result);
@@ -80,9 +80,9 @@ class LocationServiceTest extends TestCase
     public function test_can_delete_location(): void
     {
         $location = Location::factory()->create();
-        
+
         $result = $this->service->delete($location->id);
-        
+
         $this->assertTrue($result);
         $this->assertDatabaseMissing('locations', ['id' => $location->id]);
     }

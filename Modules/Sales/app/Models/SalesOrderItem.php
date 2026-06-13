@@ -33,7 +33,7 @@ class SalesOrderItem extends Model
 
     public function order(): BelongsTo
     {
-        // FK eksplisit 'order_id' karena kolom FK tidak ikut di-rename
+
         return $this->belongsTo(SalesOrder::class, 'order_id');
     }
 

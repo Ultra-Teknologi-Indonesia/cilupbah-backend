@@ -26,10 +26,6 @@ class ChannelAttributeRepository
             ->appends(request()->query());
     }
 
-    /**
-     * Jubelio: seluruh atribut channel (lintas kategori), digerakkan query-string.
-     * Filter: filter[channel_category_id], filter[channel_id], filter[name]; search & sort by name.
-     */
     public function getAllPaginated(): LengthAwarePaginator
     {
         return QueryBuilder::for(ChannelAttribute::class)

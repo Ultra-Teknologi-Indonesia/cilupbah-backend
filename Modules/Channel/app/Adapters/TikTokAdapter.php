@@ -43,9 +43,9 @@ class TikTokAdapter implements MarketplaceAdapterInterface
 
         $internalProductArray = $product->toArray();
         $internalProductArray['variants'] = $product->variants->toArray();
-        
+
         $config = config('channel.tiktok_defaults', []);
-        
+
         $payload = $this->outboundMapper->map($internalProductArray, $imageUris, $config);
 
         try {
@@ -78,7 +78,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
     {
         $internalProductArray = $product->toArray();
         $internalProductArray['variants'] = $product->variants->toArray();
-        
+
         $config = config('channel.tiktok_defaults', []);
         $payload = $this->outboundMapper->map($internalProductArray, [], $config);
         $payload['product_id'] = $externalProductId;
@@ -210,7 +210,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
 
         try {
             $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
-            
+
             $invPayload = ['product_id' => $externalProductId, 'skus' => $inventorySkus];
             $this->client->request('POST', "/product/202309/products/{$externalProductId}/inventory/update", $queries, $invPayload, $shop->access_token);
 

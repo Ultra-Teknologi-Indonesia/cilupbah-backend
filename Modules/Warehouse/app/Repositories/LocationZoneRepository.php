@@ -19,7 +19,6 @@ class LocationZoneRepository
         return LocationZone::with('bins')->find($id);
     }
 
-    /** Zona pada lokasi yang zone_code-nya TIDAK ada di daftar (kandidat dihapus saat sync layout). */
     public function getByLocationExcludingCodes(string $locationId, array $keepCodes): Collection
     {
         return LocationZone::where('location_id', $locationId)

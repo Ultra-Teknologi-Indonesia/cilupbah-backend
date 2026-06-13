@@ -9,7 +9,7 @@ use Spatie\QueryBuilder\AllowedFilter;
 
 class LocationRepository
 {
-    /** per_page yang aman: non-numerik/<=0 jatuh ke default 10 (cegah TypeError paginate). */
+
     protected function perPage(): int
     {
         $perPage = (int) request('per_page', 10);
@@ -78,10 +78,6 @@ class LocationRepository
             ->get();
     }
 
-    /**
-     * Daftar lokasi yang berfungsi sebagai outlet POS (Jubelio: getLocationsPos).
-     * Hanya lokasi aktif & ber-flag is_pos. Mendukung ?search=, sort=, dan per_page.
-     */
     public function getPosPaginated()
     {
         return QueryBuilder::for(Location::class)

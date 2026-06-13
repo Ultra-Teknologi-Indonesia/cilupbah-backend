@@ -60,7 +60,7 @@ class LocationBinApiTest extends TestCase
     public function test_can_create_new_bin(): void
     {
         $location = Location::factory()->create();
-        
+
         $payload = [
             'location_id' => $location->id,
             'floor_code' => 'L1',
@@ -108,7 +108,7 @@ class LocationBinApiTest extends TestCase
 
         $response->assertStatus(422)
                  ->assertJsonPath('message', 'Bin inbound (default) tidak dapat dihapus.');
-        
+
         $this->assertDatabaseHas('location_bins', ['id' => $bin->id]);
     }
 
@@ -137,7 +137,7 @@ class LocationBinApiTest extends TestCase
             'location_id' => $location->id,
             'bin_final_code' => 'L2-B2-K2-R2',
         ]);
-        
+
         $this->assertEquals(16, \Modules\Warehouse\Models\LocationBin::where('location_id', $location->id)->count());
     }
 
@@ -153,7 +153,7 @@ class LocationBinApiTest extends TestCase
             'column_code' => 'K',
             'qty_column' => 10,
             'bin_code' => 'R',
-            'qty_bin' => 3, // 10 * 10 * 10 * 3 = 3000
+            'qty_bin' => 3, 
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')

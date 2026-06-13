@@ -28,13 +28,6 @@ class SyncProductToChannelJob implements ShouldQueue
     public string $channelShopId;
     public string $action;
 
-    /**
-     * Create a new job instance.
-     *
-     * @param string $productId
-     * @param string $channelShopId
-     * @param string $action 'push', 'update', 'delete', 'activate', 'deactivate', 'sync_price_stock'
-     */
     public function __construct(string $productId, string $channelShopId, string $action)
     {
         $this->productId = $productId;
@@ -44,11 +37,6 @@ class SyncProductToChannelJob implements ShouldQueue
         $this->onQueue(config('queue.names.channel_sync'));
     }
 
-    /**
-     * Get the middleware the job should pass through.
-     *
-     * @return array<int, object>
-     */
     public function middleware(): array
     {
         return [
@@ -57,9 +45,6 @@ class SyncProductToChannelJob implements ShouldQueue
         ];
     }
 
-    /**
-     * Execute the job.
-     */
     public function handle(AdapterFactory $factory): void
     {
         $product = Product::with(['variants.channelMappings.channelMapping'])->find($this->productId);
@@ -84,7 +69,7 @@ class SyncProductToChannelJob implements ShouldQueue
         }
 
         $channelCode = $shop->channel->code ?? 'tiktok';
-        
+
         $circuitKey = "circuit_breaker:{$channelCode}";
         if (Cache::has($circuitKey)) {
             Log::warning("Circuit breaker is open for {$channelCode}. Re-queuing job.", [
@@ -214,7 +199,7 @@ class SyncProductToChannelJob implements ShouldQueue
     {
         $failKey = "circuit_fail_count:{$channelCode}";
         $threshold = config('channel.circuit_breaker_threshold', 10);
-        
+
         $count = (int) Cache::get($failKey, 0) + 1;
         Cache::put($failKey, $count, 300);
 
@@ -243,15 +228,12 @@ class SyncProductToChannelJob implements ShouldQueue
         }
     }
 
-    /**
-     * Handle a job failure.
-     */
     public function failed(\Throwable $exception): void
     {
         $mapping = ProductChannelMapping::where('product_id', $this->productId)
             ->where('channel_shop_id', $this->channelShopId)
             ->first();
-            
+
         if ($mapping) {
             $mapping->markAsFailed($exception->getMessage());
         }

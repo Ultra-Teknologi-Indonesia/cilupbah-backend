@@ -14,7 +14,6 @@ class ProductVariantService
     ) {
     }
 
-    /** Jubelio: GET /variations. */
     public function list(): LengthAwarePaginator
     {
         return $this->repository->paginate();
@@ -25,10 +24,6 @@ class ProductVariantService
         return $this->repository->findById($id);
     }
 
-    /**
-     * Jubelio: DELETE /inventory/items/item-variant.
-     * Guard: tolak hapus bila varian masih memiliki stok.
-     */
     public function deleteVariant(ProductVariant $variant): void
     {
         $onHand = (int) $variant->inventories()->sum('on_hand');

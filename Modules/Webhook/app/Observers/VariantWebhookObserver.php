@@ -9,7 +9,7 @@ class VariantWebhookObserver extends AbstractWebhookObserver
 {
     public function updated(ProductVariant $variant): void
     {
-        // Hanya saat harga jual berubah (cek in-memory, tanpa query).
+
         if (! $variant->wasChanged('sell_price')) {
             return;
         }

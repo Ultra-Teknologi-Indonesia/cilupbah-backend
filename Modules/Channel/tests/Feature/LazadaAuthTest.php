@@ -9,10 +9,6 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\LazadaClient;
 use Tests\TestCase;
 
-/**
- * OAuth callback Lazada: tukar code → token → simpan toko ke channel_shops.
- * Memakai Http::fake (tanpa memanggil Lazada sungguhan), pastikan tidak error 500.
- */
 class LazadaAuthTest extends TestCase
 {
     use RefreshDatabase;
@@ -79,7 +75,7 @@ class LazadaAuthTest extends TestCase
 
     public function test_callback_with_error_response_returns_422_not_500(): void
     {
-        // Respons Lazada tanpa access_token (mis. code invalid).
+
         Http::fake([
             'auth.lazada.com/rest/auth/token/create*' => Http::response([
                 'type' => 'ISP',

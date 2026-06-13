@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Modules\Webhook\Http\Requests\StoreWebhookSubscriptionRequest;
+use Modules\Webhook\Http\Resources\WebhookDeliveryResource;
 use Modules\Webhook\Http\Resources\WebhookSubscriptionResource;
+use Modules\Webhook\Services\WebhookDeliveryService;
 use Modules\Webhook\Services\WebhookSubscriptionService;
 
 class WebhookController extends Controller
@@ -15,6 +17,7 @@ class WebhookController extends Controller
 
     public function __construct(
         private readonly WebhookSubscriptionService $service,
+        private readonly WebhookDeliveryService $deliveries,
     ) {
     }
 
@@ -26,12 +29,10 @@ class WebhookController extends Controller
         );
     }
 
-    /** Jubelio: POST /systemsetting/webhook + POST /webhooks — Create/Edit Webhook subscription. */
     public function store(StoreWebhookSubscriptionRequest $request): JsonResponse
     {
         $subscription = $this->service->create($request->validated());
 
-        // Secret hanya ditampilkan SEKALI saat pembuatan (untuk verifikasi signature).
         return $this->successResponse([
             'subscription' => new WebhookSubscriptionResource($subscription),
             'secret' => $subscription->secret,
@@ -72,7 +73,35 @@ class WebhookController extends Controller
         return $this->successResponse(null, 'Webhook subscription berhasil dihapus');
     }
 
-    /** Guard format UUID agar id non-UUID -> 404 (bukan 500 cast Postgres). */
+    public function deliveries(string $id): JsonResponse
+    {
+        $subscription = $this->resolve($id);
+        if (! $subscription) {
+            return $this->errorResponse('Webhook subscription tidak ditemukan', 404);
+        }
+
+        return $this->successPaginatedResponse(
+            WebhookDeliveryResource::collection($this->deliveries->listForSubscription($subscription->id)),
+            'Daftar pengiriman webhook'
+        );
+    }
+
+    public function redeliver(string $delivery): JsonResponse
+    {
+        $record = $this->deliveries->find($delivery);
+        if (! $record) {
+            return $this->errorResponse('Pengiriman webhook tidak ditemukan', 404);
+        }
+
+        $this->deliveries->redeliver($record);
+
+        return $this->successResponse(
+            new WebhookDeliveryResource($record->fresh()),
+            'Pengiriman ulang webhook diantrekan',
+            202
+        );
+    }
+
     private function resolve(string $id)
     {
         $normalized = str_replace('-', '', $id);

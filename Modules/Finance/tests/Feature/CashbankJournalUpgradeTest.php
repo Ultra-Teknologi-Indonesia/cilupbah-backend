@@ -9,10 +9,6 @@ use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesPayment;
 use Tests\TestCase;
 
-/**
- * Upgrade cashbank (PLAN-JOURNAL.md §1e, U19–U20): detail memakai jurnal NYATA
- * bila ada (journal_detail_id terisi), fallback sintesis untuk data pra-Journal.
- */
 class CashbankJournalUpgradeTest extends TestCase
 {
     use RefreshDatabase;
@@ -50,7 +46,7 @@ class CashbankJournalUpgradeTest extends TestCase
 
     public function test_cashbank_detail_uses_real_journal_when_available(): void
     {
-        $this->seed(ChartOfAccountsSeeder::class); // COA ada → observer membuat jurnal nyata
+        $this->seed(ChartOfAccountsSeeder::class); 
         $receive = $this->makeReceive();
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -59,7 +55,6 @@ class CashbankJournalUpgradeTest extends TestCase
             ->assertJsonCount(2, 'data.accounts')
             ->assertJsonPath('data.accounts.0.account_name', '1-1001 - Bank');
 
-        // Penanda jurnal NYATA: journal_detail_id terisi (sintesis = null).
         foreach ($response->json('data.accounts') as $line) {
             $this->assertNotNull($line['journal_detail_id']);
         }
@@ -67,7 +62,7 @@ class CashbankJournalUpgradeTest extends TestCase
 
     public function test_cashbank_detail_falls_back_to_synthesis_without_journal(): void
     {
-        // COA TIDAK di-seed → tidak ada jurnal nyata → fallback sintesis (data lama).
+
         $receive = $this->makeReceive();
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -78,7 +73,7 @@ class CashbankJournalUpgradeTest extends TestCase
             ->assertJsonPath('data.accounts.1.account_name', '1-1100 - Piutang Usaha');
 
         foreach ($response->json('data.accounts') as $line) {
-            $this->assertNull($line['journal_detail_id']); // sintesis
+            $this->assertNull($line['journal_detail_id']); 
         }
     }
 }

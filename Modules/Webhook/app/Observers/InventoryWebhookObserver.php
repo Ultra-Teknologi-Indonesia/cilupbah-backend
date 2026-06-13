@@ -9,7 +9,7 @@ class InventoryWebhookObserver extends AbstractWebhookObserver
 {
     public function updated(Inventory $inventory): void
     {
-        // Hanya saat stok bermakna berubah (on_hand/available), cek in-memory tanpa query.
+
         if (! $inventory->wasChanged('on_hand') && ! $inventory->wasChanged('available')) {
             return;
         }

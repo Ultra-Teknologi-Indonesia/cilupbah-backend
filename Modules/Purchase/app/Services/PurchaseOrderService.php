@@ -83,7 +83,6 @@ class PurchaseOrderService
         });
     }
 
-    /** Receive items from PO → creates Inbound GRN + links back to PO */
     public function receive(string $poId, array $data): array
     {
         return DB::transaction(function () use ($poId, $data) {

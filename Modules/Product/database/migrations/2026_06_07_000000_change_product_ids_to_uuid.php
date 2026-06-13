@@ -9,7 +9,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // 1. Drop foreign keys referencing products or product_variants
+
         $tablesWithFkToProducts = [
             'product_specifications' => 'product_id',
             'product_variants' => 'product_id',
@@ -48,7 +48,6 @@ return new class extends Migration
             }
         }
 
-        // 2. Alter column types to VARCHAR(32)
         $tablesToAlter = [
             'products' => ['id'],
             'product_variants' => ['id', 'product_id'],
@@ -80,7 +79,6 @@ return new class extends Migration
             }
         }
 
-        // 3. Re-add foreign keys
         Schema::table('product_variants', function (Blueprint $table) {
             $table->foreign('product_id')->references('id')->on('products')->cascadeOnDelete();
         });
@@ -105,7 +103,6 @@ return new class extends Migration
             $table->foreign('component_variant_id')->references('id')->on('product_variants')->cascadeOnDelete();
         });
 
-        // Other modules
         Schema::table('inventories', function (Blueprint $table) {
             $table->foreign('item_id')->references('id')->on('product_variants');
         });

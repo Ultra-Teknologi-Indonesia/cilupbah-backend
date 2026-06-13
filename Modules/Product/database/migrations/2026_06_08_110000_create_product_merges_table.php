@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('product_merges', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            // 1 produk hanya boleh menempel ke 1 master (paritas local_product_merge.sku di cilupbah-ops)
+
             $table->uuid('product_id')->unique();
             $table->string('master_name')->index();
             $table->timestamps();

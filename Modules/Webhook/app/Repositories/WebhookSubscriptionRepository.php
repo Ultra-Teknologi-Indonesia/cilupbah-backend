@@ -4,13 +4,15 @@ namespace Modules\Webhook\Repositories;
 
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Log;
 use Modules\Webhook\Models\WebhookSubscription;
+use Modules\Webhook\Services\WebhookDispatcherService;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
 class WebhookSubscriptionRepository
 {
-    /** Listing subscription — Spatie Query Builder. */
+
     public function paginate(): LengthAwarePaginator
     {
         return QueryBuilder::for(WebhookSubscription::class)
@@ -46,7 +48,6 @@ class WebhookSubscriptionRepository
         $subscription->delete();
     }
 
-    /** Subscriber aktif untuk satu event (termasuk wildcard '*'). */
     public function activeForEvent(string $event): Collection
     {
         return WebhookSubscription::query()
@@ -55,7 +56,6 @@ class WebhookSubscriptionRepository
             ->get();
     }
 
-    /** Daftar nama event yang punya subscriber aktif (untuk cache di hot-path). */
     public function activeEventNames(): array
     {
         return WebhookSubscription::query()
@@ -63,5 +63,28 @@ class WebhookSubscriptionRepository
             ->distinct()
             ->pluck('event')
             ->all();
+    }
+
+    public function resetFailures(WebhookSubscription $subscription): void
+    {
+        if ((int) $subscription->consecutive_failures !== 0) {
+            $subscription->update(['consecutive_failures' => 0]);
+        }
+    }
+
+    public function registerFailureAndMaybeDisable(string $subscriptionId, int $threshold): void
+    {
+        $subscription = WebhookSubscription::find($subscriptionId);
+        if (! $subscription) {
+            return;
+        }
+
+        $subscription->increment('consecutive_failures');
+
+        if ($subscription->is_active && $subscription->consecutive_failures >= $threshold) {
+            $subscription->update(['is_active' => false]);
+            WebhookDispatcherService::flushCache();
+            Log::warning("Webhook subscription {$subscriptionId} dinonaktifkan otomatis setelah {$subscription->consecutive_failures} kegagalan beruntun.");
+        }
     }
 }

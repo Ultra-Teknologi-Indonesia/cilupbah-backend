@@ -12,10 +12,6 @@ use Modules\Sales\Models\SalesPayment;
 use Modules\Supplier\Models\Supplier;
 use Tests\TestCase;
 
-/**
- * Cash & Bank (tracker 45-48): view read-only setara Jubelio getPayments/getReceives.
- * receives = SalesPayment (uang masuk), payments = PurchasePayment (uang keluar).
- */
 class CashbankApiTest extends TestCase
 {
     use RefreshDatabase;
@@ -27,8 +23,6 @@ class CashbankApiTest extends TestCase
         parent::setUp();
         $this->user = User::factory()->create();
     }
-
-    // ==================== Helpers ====================
 
     private function makeReceive(array $override = []): SalesPayment
     {
@@ -78,8 +72,6 @@ class CashbankApiTest extends TestCase
         ], $override));
     }
 
-    // ==================== Listing ====================
-
     public function test_receives_lists_sales_payments_with_jubelio_shape(): void
     {
         $receive = $this->makeReceive();
@@ -92,7 +84,7 @@ class CashbankApiTest extends TestCase
             ->assertJsonPath('data.0.doc_type', 'Penerimaan')
             ->assertJsonPath('data.0.payment_no', $receive->payment_number)
             ->assertJsonPath('data.0.contact_name', 'PT Pelanggan Jaya')
-            ->assertJsonPath('data.0.account_name', '1-1001 - Bank') // transfer → Bank
+            ->assertJsonPath('data.0.account_name', '1-1001 - Bank') 
             ->assertJsonPath('data.0.amount', '500000.00');
     }
 
@@ -106,7 +98,7 @@ class CashbankApiTest extends TestCase
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.doc_type', 'Pembayaran')
             ->assertJsonPath('data.0.contact_name', 'CV Supplier Makmur')
-            ->assertJsonPath('data.0.account_name', '1-1000 - Kas'); // cash → Kas
+            ->assertJsonPath('data.0.account_name', '1-1000 - Kas'); 
     }
 
     public function test_receives_paginates_ten_per_page(): void
@@ -142,8 +134,6 @@ class CashbankApiTest extends TestCase
             ->assertJsonValidationErrors(['transactionDateFrom']);
     }
 
-    // ==================== Detail + jurnal sintetis ====================
-
     public function test_receive_detail_has_balanced_synthesized_journal(): void
     {
         $receive = $this->makeReceive();
@@ -155,7 +145,7 @@ class CashbankApiTest extends TestCase
             ->assertJsonPath('data.payment_type', 'Penerimaan')
             ->assertJsonPath('data.cashbank_account_name', '1-1001 - Bank')
             ->assertJsonCount(2, 'data.accounts')
-            // Dr Kas/Bank — Cr Piutang, seimbang.
+
             ->assertJsonPath('data.accounts.0.account_name', '1-1001 - Bank')
             ->assertJsonPath('data.accounts.0.debit', '500000.0000')
             ->assertJsonPath('data.accounts.0.credit', '0.0000')
@@ -184,8 +174,6 @@ class CashbankApiTest extends TestCase
             ->assertJsonPath('data.accounts.1.credit', '750000.0000');
     }
 
-    // ==================== Use case edge ====================
-
     public function test_unknown_payment_method_falls_back_to_kas(): void
     {
         $receive = $this->makeReceive(['payment_method' => 'qris-aneh']);
@@ -198,8 +186,7 @@ class CashbankApiTest extends TestCase
 
     public function test_null_relations_are_handled_without_error(): void
     {
-        // Defense-in-depth: relasi tak termuat/null tidak boleh meledak
-        // (FK restrictOnDelete mencegah orphan nyata, ini jaring pengaman).
+
         $payment = new PurchasePayment([
             'payment_number' => 'PAY-X',
             'amount' => 1000,
@@ -212,8 +199,6 @@ class CashbankApiTest extends TestCase
         $this->assertNull($item['contact_name']);
         $this->assertEquals('Pembayaran', $item['doc_type']);
     }
-
-    // ==================== Guard no-500 ====================
 
     public function test_non_uuid_id_returns_404(): void
     {
@@ -241,7 +226,7 @@ class CashbankApiTest extends TestCase
 
     public function test_wrong_type_id_returns_404_not_cross_leak(): void
     {
-        // id PurchasePayment dipakai di endpoint receives → 404 (tidak bocor lintas tipe).
+
         $payment = $this->makePayment();
 
         $this->actingAs($this->user, 'sanctum')

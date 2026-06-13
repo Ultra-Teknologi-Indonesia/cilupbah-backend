@@ -50,7 +50,7 @@ class AttributeService
     public function deleteAttribute(int $id): bool
     {
         $attribute = $this->getAttributeById($id);
-        // Additional validation can be added here if attributes are linked to specifications
+
         return $this->repository->delete($attribute);
     }
 
@@ -58,21 +58,21 @@ class AttributeService
     {
         $attribute = $this->getAttributeById($attributeId);
         $attribute->channelAttributes()->sync($channelAttributeIds);
-        
+
         return $attribute->load('channelAttributes');
     }
 
     public function mapOptionToChannel(int $optionId, array $channelAttributeOptionIds): \Modules\Product\Models\AttributeOption
     {
-        /** @var \Modules\Product\Models\AttributeOption|null $option */
+
         $option = \Modules\Product\Models\AttributeOption::find($optionId);
-        
+
         if (!$option) {
             throw new Exception("Attribute Option not found");
         }
-        
+
         $option->channelAttributeOptions()->sync($channelAttributeOptionIds);
-        
+
         return $option->load('channelAttributeOptions');
     }
 }

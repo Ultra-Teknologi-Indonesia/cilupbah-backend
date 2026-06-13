@@ -23,9 +23,6 @@ class ProductLifecycleTest extends TestCase
         DB::table('brands')->insertOrIgnore(['id' => 1, 'name' => 'Brand']);
     }
 
-    /**
-     * Buat produk lengkap (variant + media) pada status tertentu.
-     */
     private function makeProduct(string $status, bool $withVariant = true, bool $withMedia = true): Product
     {
         $product = Product::create([
@@ -56,8 +53,6 @@ class ProductLifecycleTest extends TestCase
 
         return $product;
     }
-
-    // ==================== APPROVE ====================
 
     public function test_approve_in_review_to_master()
     {
@@ -108,8 +103,6 @@ class ProductLifecycleTest extends TestCase
         $response->assertStatus(404);
     }
 
-    // ==================== REJECT ====================
-
     public function test_reject_in_review_to_download()
     {
         $product = $this->makeProduct(Product::STATUS_IN_REVIEW);
@@ -129,8 +122,6 @@ class ProductLifecycleTest extends TestCase
 
         $response->assertStatus(422);
     }
-
-    // ==================== ARCHIVE ====================
 
     public function test_archive_master()
     {
@@ -166,8 +157,6 @@ class ProductLifecycleTest extends TestCase
         $response->assertJsonPath('message', 'Produk sudah dalam status Arsip');
     }
 
-    // ==================== RESTORE ====================
-
     public function test_restore_archived_to_master()
     {
         $product = $this->makeProduct(Product::STATUS_ARCHIVED);
@@ -192,8 +181,6 @@ class ProductLifecycleTest extends TestCase
 
         $response->assertStatus(422);
     }
-
-    // ==================== UPDATE ====================
 
     public function test_update_product()
     {

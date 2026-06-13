@@ -12,7 +12,7 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->string('name');
             $table->string('code')->unique();
-            $table->string('type')->default('REGULAR'); // REGULAR, EXPRESS, SAME_DAY, CARGO, INSTANT
+            $table->string('type')->default('REGULAR'); 
             $table->string('tracking_url')->nullable();
             $table->string('logo_url')->nullable();
             $table->boolean('is_active')->default(true);

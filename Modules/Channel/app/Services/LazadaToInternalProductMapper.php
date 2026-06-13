@@ -4,10 +4,6 @@ namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\DB;
 
-/**
- * Pemetaan produk Lazada (/products/get) → skema internal (pola TikTokToInternalProductMapper).
- * Produk hasil download masuk berstatus 'download' (belum Master).
- */
 class LazadaToInternalProductMapper
 {
     public function map(array $lazadaProduct, string $shopId): array
@@ -67,10 +63,6 @@ class LazadaToInternalProductMapper
         return $internal;
     }
 
-    /**
-     * Kategori Lazada → category_id internal via category_channel_mappings.
-     * Fallback ke kategori root pertama (pola TikTok).
-     */
     protected function resolveCategoryId(string $shopId, $lazadaCategoryId)
     {
         $fallback = fn () => DB::table('categories')

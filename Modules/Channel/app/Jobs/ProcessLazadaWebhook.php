@@ -11,11 +11,6 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Product\Models\ProductChannelMapping;
 
-/**
- * Proses event push Lazada secara asinkron (controller hanya verifikasi + antre).
- * message_type: 0 = order status changed, 1 = product QC/audit, 2 = product item changed.
- * Event tak dikenal di-log lalu diabaikan — tidak pernah melempar ke retry-loop.
- */
 class ProcessLazadaWebhook implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -26,7 +21,7 @@ class ProcessLazadaWebhook implements ShouldQueue
     public function __construct(
         public array $payload,
     ) {
-        // Queue 'default' sudah dilayani supervisor-default (pola tiktok-webhooks).
+
         $this->onQueue('default');
     }
 
@@ -49,7 +44,6 @@ class ProcessLazadaWebhook implements ShouldQueue
         };
     }
 
-    /** Order status berubah → tarik ulang order tunggal (upsert + transisi stok resmi). */
     protected function handleOrderEvent(LazadaOrderService $orderService, string $sellerId, array $data): void
     {
         $orderId = (string) ($data['trade_order_id'] ?? $data['order_id'] ?? '');
@@ -63,7 +57,6 @@ class ProcessLazadaWebhook implements ShouldQueue
         $orderService->pullOrderById($sellerId, $orderId);
     }
 
-    /** Hasil QC / perubahan item produk → perbarui sync_status mapping. */
     protected function handleProductEvent(string $sellerId, array $data): void
     {
         $itemId = (string) ($data['item_id'] ?? '');

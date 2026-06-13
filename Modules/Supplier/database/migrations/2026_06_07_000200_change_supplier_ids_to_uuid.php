@@ -9,12 +9,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // 1. Drop foreign keys
+
         Schema::table('purchase_orders', function (Blueprint $table) {
             $table->dropForeign(['supplier_id']);
         });
 
-        // 2. Alter column types to VARCHAR(32)
         $tables = [
             'suppliers' => ['id'],
             'purchase_orders' => ['supplier_id'],
@@ -31,7 +30,6 @@ return new class extends Migration
             }
         }
 
-        // 3. Re-add foreign keys
         Schema::table('purchase_orders', function (Blueprint $table) {
             $table->foreign('supplier_id')->references('id')->on('suppliers')->restrictOnDelete();
         });

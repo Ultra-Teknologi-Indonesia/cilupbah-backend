@@ -18,7 +18,7 @@ class TikTokToInternalProductMapper
             'condition' => 'NEW',
             'is_draft' => ($tiktokProduct['status'] ?? null) !== 'ACTIVATE',
             'is_active' => true,
-            // Produk hasil download masuk sebagai 'download' (belum jadi Master).
+
             'status' => 'download',
         ];
 
@@ -83,10 +83,6 @@ class TikTokToInternalProductMapper
         return $internal;
     }
 
-    /**
-     * Resolve kategori TikTok ke category_id internal via category_channel_mappings.
-     * Fallback ke 1 (kategori root) jika belum ada mapping.
-     */
     protected function resolveCategoryId(string $shopId, ?string $tiktokCategoryId): int
     {
         $fallback = fn () => (int) DB::table('categories')
@@ -106,7 +102,6 @@ class TikTokToInternalProductMapper
             return $fallback();
         }
 
-        // Lookup via channel_categories → category_channel_mappings
         $categoryId = DB::table('category_channel_mappings')
             ->join('channel_categories', 'channel_categories.id', '=', 'category_channel_mappings.channel_category_id')
             ->where('channel_categories.channel_id', $channelId)

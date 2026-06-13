@@ -13,17 +13,12 @@ use Modules\Product\Http\Requests\BulkMasterNamesRequest;
 use Modules\Product\Http\Requests\BulkMergeProductsRequest;
 use Modules\Product\Services\ProductMergeService;
 
-/**
- * Merge & Auto-Merge produk (port dari cilupbah-ops).
- * Merge bersifat lintas store & channel.
- */
 class ProductMergeController extends Controller
 {
     use ApiResponse;
 
     public function __construct(private ProductMergeService $service) {}
 
-    /** Katalog produk ter-group (master + solo). */
     public function catalog(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -49,7 +44,6 @@ class ProductMergeController extends Controller
         ]);
     }
 
-    /** Rekomendasi grup by signature nama + kode SKU. */
     public function suggestions(Request $request): JsonResponse
     {
         $data = $this->service->suggestions((string) $request->query('q', ''));
@@ -57,7 +51,6 @@ class ProductMergeController extends Controller
         return $this->successResponse($data, 'Get merge suggestions success');
     }
 
-    /** Daftar merge aktif per master (lintas store/channel). */
     public function applied(Request $request): JsonResponse
     {
         $data = $this->service->listMerges((string) $request->query('q', ''));
@@ -65,7 +58,6 @@ class ProductMergeController extends Controller
         return $this->successResponse($data, 'Get applied merges success');
     }
 
-    /** Auto-merge semua produk solo by kode awal SKU (sampai "-" pertama). */
     public function auto(AutoMergeRequest $request): JsonResponse
     {
         $result = $this->service->autoMergeAll($request->validated()['name_pattern_groups'] ?? null);
@@ -73,7 +65,6 @@ class ProductMergeController extends Controller
         return $this->successResponse($result, "Auto-merge {$result['merged']} produk ke {$result['groups_affected']} master group");
     }
 
-    /** Merge daftar produk eksplisit → 1 master. */
     public function apply(ApplyMergeRequest $request): JsonResponse
     {
         $data = $request->validated();
@@ -85,7 +76,6 @@ class ProductMergeController extends Controller
         });
     }
 
-    /** Merge berdasarkan nama produk (≥2) → 1 master. */
     public function bulk(BulkMergeProductsRequest $request): JsonResponse
     {
         $data = $request->validated();
@@ -97,7 +87,6 @@ class ProductMergeController extends Controller
         });
     }
 
-    /** Lepas 1 produk dari master-nya. */
     public function unmerge(string $product): JsonResponse
     {
         $result = $this->service->unmerge($product);
@@ -105,7 +94,6 @@ class ProductMergeController extends Controller
         return $this->successResponse($result, 'Produk dilepas dari master');
     }
 
-    /** Hapus 1 master (semua produk kembali ke nama asli). */
     public function unmergeMaster(Request $request): JsonResponse
     {
         $validated = $request->validate(['master_name' => 'required|string']);
@@ -114,7 +102,6 @@ class ProductMergeController extends Controller
         return $this->successResponse($result, "{$result['removed']} produk di-unmerge");
     }
 
-    /** Hapus banyak master sekaligus. */
     public function bulkUnmerge(BulkMasterNamesRequest $request): JsonResponse
     {
         $result = $this->service->bulkUnmergeMasters($request->validated()['master_names']);
@@ -122,7 +109,6 @@ class ProductMergeController extends Controller
         return $this->successResponse($result, "{$result['masters']} master di-unmerge ({$result['removed']} produk kembali ke nama asli)");
     }
 
-    /** Hide master dari katalog non-hidden. */
     public function hide(BulkMasterNamesRequest $request): JsonResponse
     {
         $result = $this->service->bulkHide($request->validated()['master_names']);
@@ -130,7 +116,6 @@ class ProductMergeController extends Controller
         return $this->successResponse($result, "{$result['hidden']} produk di-hide");
     }
 
-    /** Tampilkan kembali master hidden. */
     public function unhide(BulkMasterNamesRequest $request): JsonResponse
     {
         $result = $this->service->bulkUnhide($request->validated()['master_names']);
@@ -138,7 +123,6 @@ class ProductMergeController extends Controller
         return $this->successResponse($result, "{$result['unhidden']} produk di-unhide");
     }
 
-    /** Bungkus pelanggaran aturan bisnis (DomainException) menjadi 422. */
     private function guard(callable $action): JsonResponse
     {
         try {

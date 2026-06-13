@@ -143,8 +143,6 @@ class ChannelMonitorController extends Controller
         );
     }
 
-    // ==================== Internal ====================
-
     private function mapShopProduct(object $m): array
     {
         $product      = $m->product;

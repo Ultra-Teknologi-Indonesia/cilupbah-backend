@@ -122,10 +122,6 @@ class InventoryTest extends TestCase
         ]);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // §1 — STOCK LISTING & READ ENDPOINTS
-    // ═══════════════════════════════════════════════════════════
-
     public function test_list_stocks_returns_paginated(): void
     {
         $response = $this->getJson('/api/v1/inventory/stocks');
@@ -179,10 +175,6 @@ class InventoryTest extends TestCase
 
         $response->assertOk();
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // §2 — DIRECT STOCK ADJUSTMENT (legacy endpoint)
-    // ═══════════════════════════════════════════════════════════
 
     public function test_adjust_stock_positive(): void
     {
@@ -294,10 +286,6 @@ class InventoryTest extends TestCase
         $this->assertEquals(20, $this->inventory->reserved);
         $this->assertEquals(90, $this->inventory->available);
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // §3 — DOCUMENT-BASED TRANSFER (OUT → IN_TRANSIT → IN)
-    // ═══════════════════════════════════════════════════════════
 
     public function test_transfer_out_deducts_source_stock(): void
     {
@@ -489,10 +477,6 @@ class InventoryTest extends TestCase
             ->assertStatus(422);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // §4 — PUTAWAY (bin-to-bin within same location)
-    // ═══════════════════════════════════════════════════════════
-
     public function test_putaway_moves_stock_between_bins(): void
     {
         Inventory::create([
@@ -568,10 +552,6 @@ class InventoryTest extends TestCase
         $response->assertStatus(422);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // §5 — SPLIT ITEM
-    // ═══════════════════════════════════════════════════════════
-
     public function test_split_item_deducts_source_adds_target(): void
     {
         $response = $this->postJson('/api/v1/inventory/items/split-item', [
@@ -632,10 +612,6 @@ class InventoryTest extends TestCase
 
         $response->assertStatus(422);
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // §6 — DOCUMENT-BASED STOCK ADJUSTMENT
-    // ═══════════════════════════════════════════════════════════
 
     public function test_create_stock_adjustment_document(): void
     {
@@ -823,10 +799,6 @@ class InventoryTest extends TestCase
             ->assertStatus(404);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // §7 — RESERVED STOCK
-    // ═══════════════════════════════════════════════════════════
-
     public function test_create_reserved_stock(): void
     {
         $response = $this->postJson('/api/v1/inventory/reserved-stocks', [
@@ -910,10 +882,6 @@ class InventoryTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.id', $id);
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // §8 — STOCK REVALUATION
-    // ═══════════════════════════════════════════════════════════
 
     public function test_create_stock_revaluation(): void
     {
@@ -1026,10 +994,6 @@ class InventoryTest extends TestCase
         $this->assertEquals(75000, $item->old_cost);
         $this->assertEquals(90000, $item->new_cost);
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // §9 — STOCK OPNAME
-    // ═══════════════════════════════════════════════════════════
 
     public function test_create_stock_opname(): void
     {
@@ -1306,10 +1270,6 @@ class InventoryTest extends TestCase
             ->assertOk();
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // §10 — QUERY ENDPOINTS (to-adjust, to-sell, batch-number, etc.)
-    // ═══════════════════════════════════════════════════════════
-
     public function test_to_adjust_returns_stock_for_item_ids(): void
     {
         $response = $this->postJson('/api/v1/inventory/items/to-adjust', [
@@ -1360,10 +1320,6 @@ class InventoryTest extends TestCase
             ->assertOk();
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // §11 — RECALCULATE AVAILABLE (model unit test)
-    // ═══════════════════════════════════════════════════════════
-
     public function test_recalculate_available_formula(): void
     {
         $inv = new Inventory();
@@ -1387,10 +1343,6 @@ class InventoryTest extends TestCase
 
         $this->assertEquals(-40, $inv->available);
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // §12 — AUTH GUARD
-    // ═══════════════════════════════════════════════════════════
 
     public function test_unauthenticated_request_returns_401(): void
     {

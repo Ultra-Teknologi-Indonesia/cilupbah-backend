@@ -46,6 +46,7 @@ class InventoryMovementRepository
             )
             ->allowedSorts('transaction_date', 'created_at')
             ->defaultSort('-transaction_date')
-            ->paginate($limit);
+            ->paginate(request('per_page', $limit))
+            ->appends(request()->query());
     }
 }

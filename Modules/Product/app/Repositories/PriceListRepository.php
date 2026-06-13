@@ -10,7 +10,7 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class PriceListRepository
 {
-    /** Listing harga produk (per varian) — Spatie Query Builder. */
+
     public function paginate(): LengthAwarePaginator
     {
         return QueryBuilder::for(ProductVariant::class)
@@ -25,11 +25,6 @@ class PriceListRepository
             ->appends(request()->query());
     }
 
-    /**
-     * Update massal harga jual (& pajak) per varian dalam satu transaksi.
-     *
-     * @param  array<int,array{variant_id:string,sell_price:float|int,tax_rate?:float|int|null}>  $items
-     */
     public function updatePrices(array $items): void
     {
         DB::transaction(function () use ($items) {

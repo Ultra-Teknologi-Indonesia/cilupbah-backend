@@ -8,9 +8,7 @@ use Modules\Channel\Jobs\SyncStockToChannelsJob;
 
 class WebhookProductHandler
 {
-    /**
-     * Handle type 2: Product Status Change
-     */
+
     public function handleProductStatusChange(array $data, string $shopId): void
     {
         $externalProductId = $data['product_id'] ?? null;
@@ -38,9 +36,6 @@ class WebhookProductHandler
         }
     }
 
-    /**
-     * Handle type 3: Product Update (often includes stock change)
-     */
     public function handleProductUpdate(array $data, string $shopId): void
     {
         $externalProductId = $data['product_id'] ?? null;
@@ -63,7 +58,7 @@ class WebhookProductHandler
                 $variantMapping = $mapping->variantMappings()->where('external_sku_id', $skuData['id'])->first();
                 if ($variantMapping) {
                     $newStock = (int) ($skuData['inventory'][0]['quantity'] ?? 0);
-                    
+
                     if ($newStock !== $variantMapping->synced_stock) {
                         $variantMapping->update(['synced_stock' => $newStock]);
 

@@ -15,8 +15,6 @@ class Product extends Model
     use HasUuid7;
     use SoftDeletes;
 
-    // ==================== State Machine ====================
-
     public const STATUS_DOWNLOAD = 'download';
     public const STATUS_IN_REVIEW = 'in_review';
     public const STATUS_MASTER = 'master';
@@ -29,11 +27,6 @@ class Product extends Model
         self::STATUS_ARCHIVED,
     ];
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var array<int, string>
-     */
     protected $fillable = [
         'category_id',
         'brand_id',
@@ -62,11 +55,6 @@ class Product extends Model
         'is_consignment',
     ];
 
-    /**
-     * The attributes that should be cast.
-     *
-     * @var array<string, string>
-     */
     protected $casts = [
         'is_active' => 'boolean',
         'is_draft' => 'boolean',
@@ -80,8 +68,6 @@ class Product extends Model
         'is_bundle' => 'boolean',
         'is_consignment' => 'boolean',
     ];
-
-    // ==================== Relasi ====================
 
     public function variants(): HasMany
     {
@@ -103,7 +89,6 @@ class Product extends Model
         return $this->hasMany(ProductVariationType::class);
     }
 
-    /** Komponen-komponen di dalam bundle ini (hanya relevan bila is_bundle = true). */
     public function bundleItems(): HasMany
     {
         return $this->hasMany(ProductBundleItem::class, 'bundle_product_id');
@@ -134,18 +119,11 @@ class Product extends Model
         return $this->belongsTo(\App\Models\User::class, 'archived_by');
     }
 
-    /** Overlay merge: menempelkan produk ini ke satu master_name. */
     public function merge(): HasOne
     {
         return $this->hasOne(ProductMerge::class);
     }
 
-    // ==================== Scopes ====================
-
-    /**
-     * Scope: Filter produk berdasarkan role name.
-     * Digunakan oleh Spatie Query Builder → AllowedFilter::scope('channel')
-     */
     public function scopeChannel($query, string $channelShopId)
     {
         return $query->whereHas('channelMappings', function ($q) use ($channelShopId) {
@@ -153,9 +131,6 @@ class Product extends Model
         });
     }
 
-    /**
-     * Scope: Filter produk berdasarkan status lifecycle.
-     */
     public function scopeStatus($query, string $status)
     {
         return $query->where('status', $status);

@@ -20,11 +20,11 @@ class BundleDataSheetImport implements ToCollection, WithHeadingRow
     public function collection(Collection $rows)
     {
         foreach ($rows as $row) {
-            // Check if essential columns are present
+
             if (empty($row['item_code']) || empty($row['sku_composition'])) {
                 continue;
             }
-            
+
             try {
                 $this->service->processBundleRow($row->toArray());
             } catch (\Exception $e) {

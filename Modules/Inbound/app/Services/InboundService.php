@@ -31,8 +31,6 @@ class InboundService
         return $this->inboundRepository->findById($id);
     }
 
-    // ─── TAHAP 1: CREATE DRAFT (GRN) ───
-
     public function createDraft(array $data): Inbound
     {
         return DB::transaction(function () use ($data) {
@@ -50,7 +48,6 @@ class InboundService
         });
     }
 
-    /** Create GRN from Purchase Order */
     public function receiveFromPO(array $data): Inbound
     {
         $data['type'] = Inbound::TYPE_PURCHASE_ORDER;
@@ -58,7 +55,6 @@ class InboundService
         return $this->createDraft($data);
     }
 
-    /** Create GRN from inter-warehouse transfer */
     public function receiveFromTransfer(array $data): Inbound
     {
         $data['type'] = Inbound::TYPE_TRANSIT_IN;
@@ -66,7 +62,6 @@ class InboundService
         return $this->createDraft($data);
     }
 
-    /** Create GRN from sales return */
     public function receiveFromSalesReturn(array $data): Inbound
     {
         $data['type'] = Inbound::TYPE_SALES_RETURN;
@@ -74,15 +69,12 @@ class InboundService
         return $this->createDraft($data);
     }
 
-    /** Create GRN from consignment */
     public function receiveFromConsignment(array $data): Inbound
     {
         $data['type'] = Inbound::TYPE_CONSIGNMENT;
         $data['source_type'] = 'consignment';
         return $this->createDraft($data);
     }
-
-    // ─── TAHAP 1: RECEIVE ITEMS ───
 
     public function receive(string $inboundId, array $data): Inbound
     {
@@ -164,7 +156,6 @@ class InboundService
         });
     }
 
-    /** Mark discrepancy and close receiving even if partial */
     public function closeReceiving(string $inboundId, string $closedBy): Inbound
     {
         return DB::transaction(function () use ($inboundId, $closedBy) {
@@ -201,9 +192,6 @@ class InboundService
         });
     }
 
-    // ─── TAHAP 2: PUTAWAY ───
-
-    /** Manual putaway — user specifies destination bins */
     public function processPutaway(string $inboundId, array $data): Inbound
     {
         return DB::transaction(function () use ($inboundId, $data) {
@@ -256,7 +244,6 @@ class InboundService
         });
     }
 
-    /** Auto putaway — system assigns bins based on available capacity */
     public function autoPutaway(string $inboundId, string $createdBy): Inbound
     {
         return DB::transaction(function () use ($inboundId, $createdBy) {
@@ -326,8 +313,6 @@ class InboundService
         return $this->inboundRepository->getItemsPendingPutaway($inboundId);
     }
 
-    // ─── ASSIGNMENT ───
-
     public function assignWorker(string $inboundId, string $assignedTo, string $assignedBy, ?string $notes = null): InboundAssignment
     {
         $inbound = $this->inboundRepository->findById($inboundId);
@@ -378,8 +363,6 @@ class InboundService
 
         return $assignment->fresh()->load('inbound.items', 'worker:id,name');
     }
-
-    // ─── QR SCAN ───
 
     public function lookupByQr(string $uuid): InboundItem
     {

@@ -304,7 +304,6 @@ class ReportController extends Controller
     {
         $orderId = $request->query('order_id');
 
-        // Mode API nyata: dokumen langsung dari Lazada (label/invoice/manifest).
         if ($request->filled('shop_id') && $orderId) {
             try {
                 $document = app(\Modules\Channel\Services\LazadaOrderService::class)->getDocument(

@@ -27,11 +27,6 @@ use Modules\Webhook\Services\WebhookDispatcherService;
 use Modules\Webhook\Support\WebhookEvent;
 use Tests\TestCase;
 
-/**
- * Membuktikan tiap observer memancarkan event webhook yang BENAR.
- * - Observer 'created' diuji via pemanggilan langsung + model in-memory.
- * - Observer 'updated' (price/stock) diuji via update model nyata agar wasChanged() valid.
- */
 class WebhookObserverTest extends TestCase
 {
     use RefreshDatabase;
@@ -59,8 +54,6 @@ class WebhookObserverTest extends TestCase
     {
         return (string) Str::uuid7();
     }
-
-    // ── created observers (pemanggilan langsung) ──
 
     public function test_invoice_observer_emits_invoice(): void
     {
@@ -115,8 +108,6 @@ class WebhookObserverTest extends TestCase
             (new SalesOrderWebhookObserver())->created($m);
         });
     }
-
-    // ── updated observers (model nyata agar wasChanged valid) ──
 
     public function test_price_observer_emits_on_sell_price_change(): void
     {

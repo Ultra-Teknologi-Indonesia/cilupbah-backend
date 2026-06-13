@@ -5,9 +5,6 @@ namespace Modules\Product\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/**
- * Output harga per produk (Jubelio: prices). Membutuhkan relasi `variants` ter-load.
- */
 class ProductPriceResource extends JsonResource
 {
     public function toArray(Request $request): array

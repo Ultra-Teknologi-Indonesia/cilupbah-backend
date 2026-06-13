@@ -64,7 +64,7 @@ class CancelChannelOrderJob implements ShouldQueue
 
     private function cancelOnShopee(SalesOrder $order): void
     {
-        // TODO: implement Shopee cancel
+
         Log::info("CancelChannelOrderJob: Shopee cancel not implemented yet", [
             'salesorder_no' => $order->salesorder_no,
         ]);
@@ -72,7 +72,7 @@ class CancelChannelOrderJob implements ShouldQueue
 
     private function cancelOnTokopedia(SalesOrder $order): void
     {
-        // TODO: implement Tokopedia cancel
+
         Log::info("CancelChannelOrderJob: Tokopedia cancel not implemented yet", [
             'salesorder_no' => $order->salesorder_no,
         ]);

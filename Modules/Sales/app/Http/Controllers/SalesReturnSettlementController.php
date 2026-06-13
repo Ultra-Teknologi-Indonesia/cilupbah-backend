@@ -185,7 +185,9 @@ class SalesReturnSettlementController extends Controller
             'settlement_id' => 'required|bail|uuid|exists:sales_return_settlements,id',
             'refund_number'  => 'required|string|max:50',
             'amount'         => 'required|numeric|min:0.01',
-            'refund_method'  => 'required|string|max:100',
+            'refund_method'  => ['required', 'string', 'max:100', \Illuminate\Validation\Rule::in(
+                app(\Modules\Sales\Services\SalesReturnSettingService::class)->allowedRefundMethods()
+            )],
             'refund_date'    => 'required|date',
             'notes'          => 'nullable|string',
         ]);

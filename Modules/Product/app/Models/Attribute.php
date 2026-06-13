@@ -9,7 +9,7 @@ class Attribute extends Model
 {
     protected $fillable = [
         'name',
-        'type', // 'sales' or 'spec'
+        'type', 
     ];
 
     public function categories(): BelongsToMany

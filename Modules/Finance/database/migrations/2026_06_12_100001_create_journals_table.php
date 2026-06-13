@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /** Jurnal umum (Jubelio: /journal/). journal_type null = otomatis, 'Manual Jurnal' = manual. */
+
     public function up(): void
     {
         Schema::create('journals', function (Blueprint $table) {
@@ -23,7 +23,6 @@ return new class extends Migration
             $table->uuid('created_by')->nullable();
             $table->timestamps();
 
-            // Idempoten: satu dokumen sumber = satu jurnal.
             $table->unique(['source_doc_type', 'source_doc_id']);
             $table->index('transaction_date');
             $table->index('journal_type');

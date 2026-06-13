@@ -9,7 +9,7 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class ProductVariantRepository
 {
-    /** Listing varian produk — Spatie Query Builder. */
+
     public function paginate(): LengthAwarePaginator
     {
         return QueryBuilder::for(ProductVariant::class)
@@ -25,7 +25,6 @@ class ProductVariantRepository
             ->appends(request()->query());
     }
 
-    /** Lookup tunggal by id (Eloquent biasa). */
     public function findById(string $id): ?ProductVariant
     {
         return ProductVariant::find($id);

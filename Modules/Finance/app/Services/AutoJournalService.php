@@ -3,31 +3,22 @@
 namespace Modules\Finance\Services;
 
 use Illuminate\Support\Facades\Log;
-use Modules\Finance\Models\Account;
 use Modules\Finance\Repositories\AccountRepository;
 use Modules\Finance\Repositories\JournalRepository;
+use Modules\Finance\Support\AccountMappingKey;
 use Modules\Purchase\Models\PurchaseBill;
 use Modules\Purchase\Models\PurchasePayment;
 use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesPayment;
 
-/**
- * Jurnal otomatis dari dokumen sumber (dipanggil observer, PLAN-JOURNAL.md §1c).
- *
- * Sifat:
- * - Berjalan di dalam transaksi DB dokumen sumber → atomik.
- * - Idempoten: unique (source_doc_type, source_doc_id) + cek exists.
- * - FAIL-OPEN: COA belum di-seed / amount ≤ 0 → skip + log, TIDAK melempar
- *   (kegagalan jurnal tidak boleh menggagalkan transaksi bisnis Rasyid).
- */
 class AutoJournalService
 {
     public function __construct(
         protected JournalRepository $journalRepository,
         protected AccountRepository $accountRepository,
+        protected AccountMappingService $accountMapping,
     ) {}
 
-    /** SalesInvoice: Dr Piutang Usaha — Cr Pendapatan Penjualan. */
     public function forSalesInvoice(SalesInvoice $invoice): void
     {
         $this->record(
@@ -36,13 +27,12 @@ class AutoJournalService
             sourceNo: $invoice->invoice_number,
             date: $invoice->invoice_date ?? now(),
             amount: (float) $invoice->total_amount,
-            debitCode: '1-1100',
-            creditCode: '4-4000',
+            debitAccountId: $this->mappedAccountId(AccountMappingKey::ACCOUNTS_RECEIVABLE),
+            creditAccountId: $this->mappedAccountId(AccountMappingKey::SALES_REVENUE),
             description: 'Penjualan ' . $invoice->invoice_number . ' — ' . ($invoice->customer_name ?? '-'),
         );
     }
 
-    /** SalesPayment: Dr Kas/Bank (map payment_method) — Cr Piutang Usaha. */
     public function forSalesPayment(SalesPayment $payment): void
     {
         $this->record(
@@ -51,13 +41,12 @@ class AutoJournalService
             sourceNo: $payment->payment_number,
             date: $payment->payment_date ?? now(),
             amount: (float) $payment->amount,
-            debitCode: $this->cashAccountCode($payment->payment_method),
-            creditCode: '1-1100',
+            debitAccountId: $this->cashAccountId($payment->payment_method),
+            creditAccountId: $this->mappedAccountId(AccountMappingKey::ACCOUNTS_RECEIVABLE),
             description: 'Penerimaan ' . $payment->payment_number,
         );
     }
 
-    /** PurchaseBill: Dr Persediaan Barang — Cr Hutang Usaha. */
     public function forPurchaseBill(PurchaseBill $bill): void
     {
         $this->record(
@@ -66,13 +55,12 @@ class AutoJournalService
             sourceNo: $bill->bill_number,
             date: $bill->bill_date ?? now(),
             amount: (float) $bill->total_amount,
-            debitCode: '1-1200',
-            creditCode: '2-2000',
+            debitAccountId: $this->mappedAccountId(AccountMappingKey::INVENTORY),
+            creditAccountId: $this->mappedAccountId(AccountMappingKey::ACCOUNTS_PAYABLE),
             description: 'Tagihan pembelian ' . $bill->bill_number,
         );
     }
 
-    /** PurchasePayment: Dr Hutang Usaha — Cr Kas/Bank. */
     public function forPurchasePayment(PurchasePayment $payment): void
     {
         $this->record(
@@ -81,13 +69,26 @@ class AutoJournalService
             sourceNo: $payment->payment_number,
             date: $payment->payment_date ?? now(),
             amount: (float) $payment->amount,
-            debitCode: '2-2000',
-            creditCode: $this->cashAccountCode($payment->payment_method),
+            debitAccountId: $this->mappedAccountId(AccountMappingKey::ACCOUNTS_PAYABLE),
+            creditAccountId: $this->cashAccountId($payment->payment_method),
             description: 'Pembayaran ' . $payment->payment_number,
         );
     }
 
-    // ==================== Inti ====================
+    /** Refund retur penjualan: Dr Retur Penjualan — Cr Kas/Bank (map refund_method). */
+    public function forSalesReturnRefund(\Modules\Sales\Models\SalesReturnSettlementRefund $refund): void
+    {
+        $this->record(
+            sourceType: 'sales_return_refund',
+            sourceId: $refund->id,
+            sourceNo: $refund->refund_number,
+            date: $refund->refund_date ?? now(),
+            amount: (float) $refund->amount,
+            debitAccountId: $this->mappedAccountId(AccountMappingKey::SALES_RETURN),
+            creditAccountId: $this->cashAccountId($refund->refund_method),
+            description: 'Refund retur ' . $refund->refund_number,
+        );
+    }
 
     protected function record(
         string $sourceType,
@@ -95,24 +96,20 @@ class AutoJournalService
         ?string $sourceNo,
         $date,
         float $amount,
-        string $debitCode,
-        string $creditCode,
+        ?string $debitAccountId,
+        ?string $creditAccountId,
         string $description,
     ): void {
         if ($amount <= 0) {
-            return; // tidak ada nilai uang — tidak ada jurnal
+            return; 
         }
 
-        // Idempoten (lapisan pertama; unique index = lapisan kedua).
         if ($this->journalRepository->existsForSourceDoc($sourceType, $sourceId)) {
             return;
         }
 
-        $debitAccount = $this->accountRepository->findByCode($debitCode);
-        $creditAccount = $this->accountRepository->findByCode($creditCode);
-
-        if (! $debitAccount || ! $creditAccount) {
-            Log::warning("AutoJournal dilewati: akun {$debitCode}/{$creditCode} belum di-seed.", [
+        if (! $debitAccountId || ! $creditAccountId) {
+            Log::warning('AutoJournal dilewati: akun debit/kredit belum tersedia.', [
                 'source' => "{$sourceType}:{$sourceNo}",
             ]);
 
@@ -124,23 +121,28 @@ class AutoJournalService
         $this->journalRepository->createWithLines([
             'journal_no' => $this->journalRepository->nextJournalNo(),
             'transaction_date' => $date,
-            'journal_type' => null, // jurnal otomatis (kontrak Jubelio: null)
+            'journal_type' => null, 
             'source_doc_type' => $sourceType,
             'source_doc_id' => $sourceId,
             'source_doc_no' => $sourceNo,
             'notes' => $description,
         ], [
-            ['account_id' => $debitAccount->id, 'debit' => $amountStr, 'credit' => 0, 'description' => $description],
-            ['account_id' => $creditAccount->id, 'debit' => 0, 'credit' => $amountStr, 'description' => $description],
+            ['account_id' => $debitAccountId, 'debit' => $amountStr, 'credit' => 0, 'description' => $description],
+            ['account_id' => $creditAccountId, 'debit' => 0, 'credit' => $amountStr, 'description' => $description],
         ]);
     }
 
-    /** payment_method → kode akun kas/bank (reuse map cashbank; fallback Kas). */
-    protected function cashAccountCode(?string $paymentMethod): string
+    protected function mappedAccountId(string $key): ?string
+    {
+        return $this->accountMapping->resolveAccountId($key, (string) AccountMappingKey::defaultCode($key));
+    }
+
+    protected function cashAccountId(?string $paymentMethod): ?string
     {
         $map = config('finance.cashbank_accounts', []);
         $key = strtolower(trim((string) $paymentMethod));
+        $code = $map[$key]['id'] ?? config('finance.cashbank_default_account.id', '1-1000');
 
-        return $map[$key]['id'] ?? config('finance.cashbank_default_account.id', '1-1000');
+        return $this->accountRepository->findByCode($code)?->id;
     }
 }

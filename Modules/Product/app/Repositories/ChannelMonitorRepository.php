@@ -12,10 +12,7 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class ChannelMonitorRepository
 {
-    /**
-     * Produk yang terhubung ke setidaknya satu channel, beserta data sync-nya.
-     * Mendukung filter: shop_id, channel (code), sync_status, search.
-     */
+
     public function getMonitoredProducts(?string $channelShopId, ?string $syncStatus): LengthAwarePaginator
     {
         return QueryBuilder::for(Product::class)
@@ -52,9 +49,6 @@ class ChannelMonitorRepository
             ->appends(request()->query());
     }
 
-    /**
-     * Ringkasan statistik per toko aktif.
-     */
     public function getShopsSummary(?string $channelCode): \Illuminate\Support\Collection
     {
         return ChannelShop::with('channel')
@@ -63,9 +57,6 @@ class ChannelMonitorRepository
             ->get();
     }
 
-    /**
-     * Detail satu toko: stats grouped by sync_status.
-     */
     public function getShopStats(string $channelShopId): array
     {
         return ProductChannelMapping::where('channel_shop_id', $channelShopId)
@@ -90,9 +81,6 @@ class ChannelMonitorRepository
             ->count();
     }
 
-    /**
-     * Produk yang gagal sync (20 terbaru) untuk satu toko.
-     */
     public function getRecentFailures(string $channelShopId): \Illuminate\Support\Collection
     {
         return ProductChannelMapping::with('product:id,name,sku')
@@ -103,9 +91,6 @@ class ChannelMonitorRepository
             ->get();
     }
 
-    /**
-     * Produk pending (20 terbaru) untuk satu toko.
-     */
     public function getPendingProducts(string $channelShopId): \Illuminate\Support\Collection
     {
         return ProductChannelMapping::with('product:id,name,sku')
@@ -116,9 +101,6 @@ class ChannelMonitorRepository
             ->get();
     }
 
-    /**
-     * Produk di satu toko (paginated) dengan filter sync_status & search.
-     */
     public function getShopProducts(string $channelShopId, ?string $syncStatus): LengthAwarePaginator
     {
         return QueryBuilder::for(ProductChannelMapping::class)

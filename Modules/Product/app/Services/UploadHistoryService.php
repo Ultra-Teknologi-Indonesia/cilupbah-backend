@@ -17,7 +17,6 @@ class UploadHistoryService
         return $this->repository->paginate();
     }
 
-    /** Jubelio: GET /inventory/items/errors — listing yang gagal upload. */
     public function paginateErrors(): LengthAwarePaginator
     {
         return $this->repository->paginateErrors();

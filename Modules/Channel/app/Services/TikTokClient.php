@@ -27,7 +27,7 @@ class TikTokClient
     public function generateSignature(string $path, array $queries, $body = null, bool $isMultipart = false, string $method = 'POST'): string
     {
         $contentType = $isMultipart ? 'multipart/form-data' : 'application/json';
-        
+
         if (!$isMultipart && empty($body) && strtoupper($method) !== 'GET') {
             $body = '{}';
         }
@@ -90,7 +90,6 @@ class TikTokClient
                 'response' => $data,
             ]);
 
-            // Token expired / unauthorized — caller harus refresh dan retry.
             if (in_array((int) $data['code'], [40100, 40102, 40103], true)) {
                 $shopId = $queries['shop_cipher'] ?? 'unknown';
                 throw new TokenExpiredException($shopId, $data['message'] ?? 'Access token expired');
@@ -102,10 +101,6 @@ class TikTokClient
         return $data;
     }
 
-    /**
-     * Throttle sesuai CHANNEL_API_RATE_LIMIT_PER_SECOND.
-     * Blokir (busy-wait) jika sudah melebihi kuota per detik.
-     */
     protected function throttle(): void
     {
         $limit = config('channel.api_rate_limit_per_second', 8);

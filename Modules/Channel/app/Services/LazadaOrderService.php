@@ -7,11 +7,6 @@ use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Sales\Services\SalesOrderService;
 
-/**
- * Tarik order Lazada → SalesOrder internal (via SalesOrderService::upsertFromChannel —
- * idempoten by salesorder_no + lockForUpdate + transisi stok resmi, pola TikTokOrderService).
- * Token kedaluwarsa di tengah panggilan → refresh sekali lalu ulang.
- */
 class LazadaOrderService
 {
     public function __construct(
@@ -22,10 +17,6 @@ class LazadaOrderService
         protected LazadaAuthService $authService,
     ) {}
 
-    /**
-     * Tarik order terbaru satu toko (default: yang berubah 7 hari terakhir, max 100).
-     * Return jumlah order yang berhasil di-upsert.
-     */
     public function pullOrders(string $shopId, ?string $updatedAfter = null): int
     {
         $shop = $this->requireShop($shopId);
@@ -63,9 +54,6 @@ class LazadaOrderService
         return $count;
     }
 
-    /**
-     * Tarik satu order spesifik (dipakai handler webhook order-status-changed).
-     */
     public function pullOrderById(string $shopId, string $orderId): int
     {
         $shop = $this->requireShop($shopId);
@@ -85,10 +73,6 @@ class LazadaOrderService
         return 1;
     }
 
-    /**
-     * "Terima order" Lazada: pack lalu Ready-to-Ship.
-     * (Lazada tidak punya accept/reject eksplisit — semantiknya pack → RTS.)
-     */
     public function packOrder(string $shopId, string $orderId, ?string $shippingProvider = null): array
     {
         $shop = $this->requireShop($shopId);
@@ -108,7 +92,6 @@ class LazadaOrderService
 
         $packRes = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/order/pack', $packParams, $token));
 
-        // Tracking number biasanya di-generate Lazada saat pack.
         $trackingNumber = $packRes['data']['order_items'][0]['tracking_number'] ?? '';
 
         $rtsParams = [
@@ -130,10 +113,6 @@ class LazadaOrderService
         ];
     }
 
-    /**
-     * Batalkan order ("tolak"): /order/cancel per order_item_id, lalu sinkron ulang lokal
-     * (status cancelled → pelepasan stok lewat jalur resmi SalesOrderService).
-     */
     public function cancelOrder(string $shopId, string $orderId, int|string $reasonId, ?string $reasonDetail = null): array
     {
         $shop = $this->requireShop($shopId);
@@ -162,7 +141,6 @@ class LazadaOrderService
         return ['order_id' => $orderId, 'cancelled_item_ids' => $cancelled];
     }
 
-    /** Daftar alasan pembatalan dari Lazada (/order/failure_reason/get). */
     public function getCancelReasons(string $shopId): array
     {
         $shop = $this->requireShop($shopId);
@@ -172,7 +150,6 @@ class LazadaOrderService
         return $res['data'] ?? [];
     }
 
-    /** Daftar kurir/logistik channel (/shipment/providers/get) — item tracker #11. */
     public function getShipmentProviders(string $shopId): array
     {
         $shop = $this->requireShop($shopId);
@@ -182,7 +159,6 @@ class LazadaOrderService
         return $res['data']['shipment_providers'] ?? ($res['data'] ?? []);
     }
 
-    /** Dokumen order (invoice/shippingLabel/carrierManifest) via /order/document/get. */
     public function getDocument(string $shopId, string $orderId, string $docType = 'shippingLabel'): array
     {
         $shop = $this->requireShop($shopId);
@@ -200,7 +176,6 @@ class LazadaOrderService
         return $res['data']['document'] ?? ($res['data'] ?? []);
     }
 
-    /** order_item_id semua baris item sebuah order. */
     protected function orderItemIds(object $shop, string $orderId): array
     {
         $items = $this->fetchItemsForOrders($shop, [$orderId])[$orderId] ?? [];
@@ -211,7 +186,6 @@ class LazadaOrderService
         )));
     }
 
-    /** Sinkron ulang order lokal pasca aksi (non-fatal bila gagal). */
     protected function resyncLocalOrder(string $shopId, string $orderId): void
     {
         try {
@@ -221,11 +195,6 @@ class LazadaOrderService
         }
     }
 
-    /**
-     * Ambil baris item untuk banyak order sekaligus (batch /orders/items/get, chunk 50).
-     *
-     * @return array<string, array> keyed by order_id
-     */
     protected function fetchItemsForOrders(object $shop, array $orderIds): array
     {
         $itemsByOrder = [];
@@ -243,9 +212,6 @@ class LazadaOrderService
         return $itemsByOrder;
     }
 
-    /**
-     * Jalankan panggilan API; bila token kedaluwarsa → refresh token toko lalu ulang SEKALI.
-     */
     protected function callWithRefresh(object $shop, callable $fn): array
     {
         try {

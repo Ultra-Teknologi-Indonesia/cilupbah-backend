@@ -10,17 +10,17 @@ return new class extends Migration
     {
         Schema::create('tracking_items', function (Blueprint $table) {
             $table->id();
-            $table->string('domain')->index();              // tag Jubelio / Epic / Omnichannel
-            $table->string('method', 10)->nullable();        // GET/POST/... (null untuk epic/omnichannel)
-            $table->string('endpoint');                      // path Jubelio atau judul task
-            $table->text('function_id');                     // "untuk apa" (Bahasa Indonesia)
-            $table->text('cilupbah_impl')->nullable();       // controller@method target
-            $table->string('status', 12)->default('todo')->index();   // done|in_progress|todo|blocked
-            $table->string('baseline_status', 12)->default('todo');   // status awal dari dokumen
-            $table->string('pic')->nullable()->index();      // Darriel|Rasyid
-            $table->text('notes')->nullable();               // catatan bebas (editable)
-            $table->string('priority', 8)->nullable();       // P0..P3
-            $table->string('source', 16)->default('jubelio');// jubelio|omnichannel|epic
+            $table->string('domain')->index();              
+            $table->string('method', 10)->nullable();        
+            $table->string('endpoint');                      
+            $table->text('function_id');                     
+            $table->text('cilupbah_impl')->nullable();       
+            $table->string('status', 12)->default('todo')->index();   
+            $table->string('baseline_status', 12)->default('todo');   
+            $table->string('pic')->nullable()->index();      
+            $table->text('notes')->nullable();               
+            $table->string('priority', 8)->nullable();       
+            $table->string('source', 16)->default('jubelio');
             $table->string('updated_by')->nullable();
             $table->timestamps();
 

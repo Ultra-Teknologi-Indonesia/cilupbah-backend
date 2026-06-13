@@ -8,9 +8,7 @@ use Illuminate\Support\Facades\File;
 
 class RegionDatabaseSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
+
     public function run(): void
     {
         $path = base_path('database/data/wilayah_indonesia.sql');
@@ -20,7 +18,7 @@ class RegionDatabaseSeeder extends Seeder
         }
 
         \Illuminate\Support\Facades\Schema::disableForeignKeyConstraints();
-        
+
         DB::table('villages')->delete();
         DB::table('districts')->delete();
         DB::table('cities')->delete();
@@ -51,7 +49,7 @@ class RegionDatabaseSeeder extends Seeder
                     $nama = trim($row[1]);
                     $lat = floatval(trim($row[2]));
                     $long = floatval(trim($row[3]));
-                    
+
                     $len = strlen($id);
                     if ($len === 2) {
                         $buffer['provinces'][] = [
@@ -94,15 +92,11 @@ class RegionDatabaseSeeder extends Seeder
                         ];
                     }
 
-                    // We removed the eager batch inserts here to avoid foreign key errors.
-                    // The SQL file is grouped alphabetically (kecamatan, kelurahan, kota, provinsi).
-                    // Thus, we must parse the entire file first, then insert in the correct parent-to-child order.
                 }
             }
         }
         fclose($handle);
 
-        // Insert in correct order: Provinces -> Cities -> Districts -> Villages
         foreach (['provinces', 'cities', 'districts', 'villages'] as $table) {
             if (!empty($buffer[$table])) {
                 $chunks = array_chunk($buffer[$table], 2000);

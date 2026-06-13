@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /** Baris debit/kredit jurnal. Akun ber-restrict: akun yang terpakai tidak bisa dihapus. */
+
     public function up(): void
     {
         Schema::create('journal_details', function (Blueprint $table) {

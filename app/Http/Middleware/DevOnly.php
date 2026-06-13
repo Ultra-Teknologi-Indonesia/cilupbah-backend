@@ -8,10 +8,7 @@ use Symfony\Component\HttpFoundation\Response;
 
 class DevOnly
 {
-    /**
-     * Izinkan akses hanya di environment local & staging (atau saat di-override).
-     * Diblokir (404) di production. Opsional dilindungi Basic Auth.
-     */
+
     public function handle(Request $request, Closure $next): Response
     {
         $allowed = config('devtracker.allowed_envs', ['local', 'staging']);
@@ -20,7 +17,6 @@ class DevOnly
             abort(404);
         }
 
-        // Proteksi Basic Auth opsional (mis. di staging).
         $user = config('devtracker.basic_auth.user');
         $pass = config('devtracker.basic_auth.pass');
         if ($user && $pass) {

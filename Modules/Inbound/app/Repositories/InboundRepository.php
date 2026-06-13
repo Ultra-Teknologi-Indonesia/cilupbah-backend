@@ -114,8 +114,6 @@ class InboundRepository
             ->get();
     }
 
-    // ─── QR (UUID = Primary Key) ───
-
     public function findItemByUuid(string $uuid): ?InboundItem
     {
         return InboundItem::with(['inbound.location', 'variant:id,sku,product_id'])
@@ -129,8 +127,6 @@ class InboundRepository
             ->with('inbound.items')
             ->first();
     }
-
-    // ─── ASSIGNMENTS ───
 
     public function createAssignment(array $data): InboundAssignment
     {

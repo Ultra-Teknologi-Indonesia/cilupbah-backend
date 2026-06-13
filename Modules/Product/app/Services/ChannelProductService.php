@@ -124,10 +124,6 @@ class ChannelProductService
         SyncProductToChannelJob::dispatch($product->id, $channelShopId, 'sync_price_stock');
     }
 
-    /**
-     * Putus koneksi produk dari 1 channel: hapus baris mapping tanpa menghapus produk lokal.
-     * Throw \RuntimeException (code = HTTP status) untuk kasus tidak terhubung (404) / sedang sync (409).
-     */
     public function unlinkProduct(string $externalId, string $shopId): void
     {
         $channelShopId = $this->requireChannelShopId($shopId);
@@ -146,7 +142,6 @@ class ChannelProductService
 
         $productId = $mapping->product_id;
 
-        // variant mappings ikut terhapus via FK cascade.
         $mapping->delete();
 
         ProductSyncLog::record([
@@ -157,10 +152,6 @@ class ChannelProductService
         ]);
     }
 
-    /**
-     * Konversi shop_id marketplace → channel_shops.id (UUID) yang dipakai tabel pivot & Job.
-     * Mengembalikan null jika shop_id kosong.
-     */
     protected function resolveChannelShopId(string $shopId): ?string
     {
         if ($shopId === '') {
@@ -170,9 +161,6 @@ class ChannelProductService
         return ChannelShop::where('shop_id', $shopId)->value('id');
     }
 
-    /**
-     * Sama seperti resolveChannelShopId() tapi melempar error bila toko tidak ditemukan.
-     */
     protected function requireChannelShopId(string $shopId): string
     {
         $channelShopId = $this->resolveChannelShopId($shopId);

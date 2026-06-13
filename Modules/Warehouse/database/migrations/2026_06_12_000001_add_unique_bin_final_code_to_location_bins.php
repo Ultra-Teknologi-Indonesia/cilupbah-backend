@@ -9,9 +9,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Bersihkan duplikat (location_id, bin_final_code) yang sempat tercipta sebelum guard idempoten.
-        // Survivor = id terkecil per grup (UUID v7 -> id terkecil = paling awal dibuat).
-        // Referensi pada bin duplikat dipindahkan ke survivor agar tidak ada stok/transaksi yang putus.
+
         if (DB::getDriverName() === 'pgsql') {
             $referencing = [
                 'inventories' => ['bin_id'],
@@ -26,7 +24,7 @@ return new class extends Migration
                 }
 
                 foreach ($columns as $column) {
-                    // Postgres tidak punya MIN(uuid); pakai MIN(id::text) (urutan leksikal hex = urutan UUID v7).
+
                     DB::statement("
                         UPDATE {$table} t
                         SET {$column} = m.keep_id::uuid

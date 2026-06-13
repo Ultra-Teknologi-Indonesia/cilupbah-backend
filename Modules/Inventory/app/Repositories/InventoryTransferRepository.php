@@ -29,7 +29,15 @@ class InventoryTransferRepository
             $query->where('status', $filters['status']);
         }
 
-        return $query->paginate($limit);
+        if (isset($filters['source_location_id'])) {
+            $query->where('source_location_id', $filters['source_location_id']);
+        }
+
+        if (isset($filters['destination_location_id'])) {
+            $query->where('destination_location_id', $filters['destination_location_id']);
+        }
+
+        return $query->paginate(request('per_page', $limit))->appends(request()->query());
     }
 
     public function findById(string $id): ?InventoryTransfer

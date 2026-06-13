@@ -9,23 +9,11 @@ use Modules\Channel\Services\TikTokProductMapper;
 
 class PushTikTokProduct extends Command
 {
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
+
     protected $signature = 'tiktok:push-product {product_id} {shop_id}';
 
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
     protected $description = 'Push an internal product to TikTok Shop API';
 
-    /**
-     * Execute the console command.
-     */
     public function handle(TikTokClient $client, TikTokProductMapper $mapper)
     {
         $productId = $this->argument('product_id');
@@ -41,7 +29,7 @@ class PushTikTokProduct extends Command
             $this->line(json_encode($response, JSON_PRETTY_PRINT));
         } catch (\Exception $e) {
             $this->error("Failed to push product: " . $e->getMessage());
-            // Output trace for debug
+
             $this->line($e->getTraceAsString());
         }
     }

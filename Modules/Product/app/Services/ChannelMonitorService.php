@@ -12,10 +12,6 @@ class ChannelMonitorService
         protected ChannelMonitorRepository $repo,
     ) {}
 
-    /**
-     * Daftar produk yang ter-link ke channel, beserta data sync per channel.
-     * Digunakan oleh GET /channel-monitor (tab Pantauan utama).
-     */
     public function getMonitoredProducts(
         ?string $shopId,
         ?string $channelCode,
@@ -25,23 +21,17 @@ class ChannelMonitorService
 
         if ($shopId) {
             $channelShopId = $this->repo->resolveChannelShopId($shopId);
-            // shop_id diberikan tapi tidak ditemukan → paksa hasil kosong
+
             if (!$channelShopId) {
                 return new LengthAwarePaginator([], 0, 10);
             }
         } elseif ($channelCode) {
-            // Filter by channel code: ambil semua shop aktif di channel tsb, lalu filter PCM
-            // Tidak diimplementasi per-shop, filter langsung di whereHas via null channelShopId
-            // (channelCode sudah di-handle sebagai allowedFilter di query builder nanti)
+
         }
 
         return $this->repo->getMonitoredProducts($channelShopId, $syncStatus);
     }
 
-    /**
-     * Ringkasan statistik semua toko aktif.
-     * Digunakan oleh GET /channel-monitor/summary.
-     */
     public function getShopsSummary(?string $channelCode): Collection
     {
         $shops = $this->repo->getShopsSummary($channelCode);
@@ -49,9 +39,6 @@ class ChannelMonitorService
         return $shops->map(fn ($shop) => $this->buildShopSummary($shop));
     }
 
-    /**
-     * Detail monitoring satu toko: stats + failures + pending.
-     */
     public function getShopDetail(string $shopId): array
     {
         $shop = $this->repo->findShopByShopId($shopId);
@@ -85,9 +72,6 @@ class ChannelMonitorService
         ]);
     }
 
-    /**
-     * Produk di satu toko (paginated) dengan filter sync_status & search.
-     */
     public function getShopProducts(string $shopId, ?string $syncStatus): LengthAwarePaginator
     {
         $shop = $this->repo->findShopByShopId($shopId);
@@ -97,8 +81,6 @@ class ChannelMonitorService
 
         return $this->repo->getShopProducts($shop->id, $syncStatus);
     }
-
-    // ==================== Internal ====================
 
     private function buildShopSummary(object $shop): array
     {

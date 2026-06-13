@@ -18,7 +18,6 @@ class TaxController extends Controller
     ) {
     }
 
-    /** Jubelio: GET /taxes — Ambil daftar pajak. */
     public function index(): JsonResponse
     {
         return $this->successPaginatedResponse(

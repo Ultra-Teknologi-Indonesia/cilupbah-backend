@@ -15,7 +15,7 @@ class AcceptTikTokOrder extends Command
     {
         $shopId = $this->argument('shop_id');
         $orderId = $this->argument('order_id');
-        
+
         $this->info("Accepting order ID: {$orderId} for Shop ID: {$shopId}...");
 
         try {

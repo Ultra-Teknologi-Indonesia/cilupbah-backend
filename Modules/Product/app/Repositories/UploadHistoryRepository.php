@@ -46,9 +46,6 @@ class UploadHistoryRepository
             ->appends(request()->query());
     }
 
-    /**
-     * Jubelio: GET /inventory/items/errors — hanya listing upload yang GAGAL.
-     */
     public function paginateErrors(): LengthAwarePaginator
     {
         return QueryBuilder::for(ProductSyncLog::class)

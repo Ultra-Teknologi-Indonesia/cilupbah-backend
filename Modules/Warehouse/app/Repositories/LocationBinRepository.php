@@ -40,10 +40,6 @@ class LocationBinRepository
         return LocationBin::create($data);
     }
 
-    /**
-     * Buat bin bila belum ada (idempoten per location_id + bin_final_code).
-     * Mengembalikan [bin, baruDibuat].
-     */
     public function firstOrCreateByFinalCode(string $locationId, string $finalCode, array $attributes): array
     {
         $bin = LocationBin::firstOrCreate(
@@ -54,7 +50,6 @@ class LocationBinRepository
         return [$bin, $bin->wasRecentlyCreated];
     }
 
-    /** Sisipkan banyak bin sekaligus; mengisi id UUID & timestamps manual karena pakai insert(). */
     public function insertMany(array $rows): void
     {
         if (empty($rows)) {
@@ -77,7 +72,6 @@ class LocationBinRepository
         LocationBin::where('zone_id', $zoneId)->delete();
     }
 
-    /** Apakah ada stok aktif (on_hand/reserved > 0) yang masih menempel pada bin ini. */
     public function hasActiveStock(string $binId): bool
     {
         return Inventory::where('bin_id', $binId)
@@ -87,7 +81,6 @@ class LocationBinRepository
             ->exists();
     }
 
-    /** Apakah ada stok aktif pada salah satu bin di zona ini. */
     public function zoneHasActiveStock(string $zoneId): bool
     {
         return Inventory::whereIn('bin_id', LocationBin::where('zone_id', $zoneId)->select('id'))

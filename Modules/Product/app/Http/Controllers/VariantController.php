@@ -19,7 +19,6 @@ class VariantController extends Controller
     ) {
     }
 
-    /** Jubelio: GET /variations — Ambil semua varian produk. */
     public function index(): JsonResponse
     {
         return $this->successPaginatedResponse(
@@ -28,7 +27,6 @@ class VariantController extends Controller
         );
     }
 
-    /** Jubelio: DELETE /inventory/items/item-variant — Hapus varian item (id via variant_id). */
     public function destroy(DeleteVariantRequest $request): JsonResponse
     {
         $variant = $this->service->find($request->validated()['variant_id']);

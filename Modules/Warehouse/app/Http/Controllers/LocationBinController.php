@@ -152,7 +152,6 @@ class LocationBinController extends Controller
         }
     }
 
-    /** Buat satu bin. */
     public function store(StoreLocationBinRequest $request): JsonResponse
     {
         try {
@@ -164,7 +163,6 @@ class LocationBinController extends Controller
         return $this->successResponse($bin, 'Bin berhasil dibuat', 201);
     }
 
-    /** Hapus bin (bin inbound/default tidak boleh dihapus). */
     public function destroy(string $id): JsonResponse
     {
         $bin = $this->binService->getById($id);
@@ -181,7 +179,6 @@ class LocationBinController extends Controller
         return $this->successResponse(null, 'Bin berhasil dihapus');
     }
 
-    /** Generate massal bin untuk satu lokasi. */
     public function generate(GenerateLocationBinRequest $request, string $locationId): JsonResponse
     {
         try {

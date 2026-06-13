@@ -415,8 +415,6 @@ class InboundController extends Controller
         return $this->successResponse($items, 'Items pending putaway');
     }
 
-    // ─── ASSIGNMENT ───
-
     #[OA\Post(
         path: '/api/v1/inbounds/{id}/assign',
         summary: 'Assign inbound to a worker',
@@ -548,8 +546,6 @@ class InboundController extends Controller
             return $this->errorResponse($e->getMessage(), 500);
         }
     }
-
-    // ─── QR SCAN ───
 
     #[OA\Get(
         path: '/api/v1/inbounds/scan/{qrCode}',

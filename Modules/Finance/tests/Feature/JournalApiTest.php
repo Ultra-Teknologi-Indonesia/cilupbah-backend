@@ -10,10 +10,6 @@ use Modules\Finance\Models\Account;
 use Modules\Finance\Models\Journal;
 use Tests\TestCase;
 
-/**
- * Endpoint Journal (PLAN-JOURNAL.md U1, U8–U18, U22):
- * lookup COA, list (+q/createdSince), detail, POST manual create/edit + semua guard.
- */
 class JournalApiTest extends TestCase
 {
     use RefreshDatabase;
@@ -45,19 +41,15 @@ class JournalApiTest extends TestCase
         ], $override);
     }
 
-    // ── U1: lookup COA ──
-
     public function test_account_lookup_returns_seeded_accounts_in_jubelio_format(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/v1/accounts/lookup/all');
 
         $response->assertStatus(200)
-            ->assertJsonCount(12, 'data')
+            ->assertJsonCount(13, 'data')
             ->assertJsonPath('data.0.account_code', '1-1000')
-            ->assertJsonPath('data.0.account_name', '1-1000 - Kas'); // urut code, format Jubelio
+            ->assertJsonPath('data.0.account_name', '1-1000 - Kas'); 
     }
-
-    // ── U11: create manual journal ──
 
     public function test_create_manual_journal_balanced(): void
     {
@@ -82,12 +74,10 @@ class JournalApiTest extends TestCase
         $second->assertJsonPath('data.journal_no', 'GJ-0000002');
     }
 
-    // ── U12–U14: guard validasi ──
-
     public function test_unbalanced_journal_returns_422(): void
     {
         $body = $this->validBody();
-        $body['accounts'][1]['credit'] = 100000; // ≠ 150000
+        $body['accounts'][1]['credit'] = 100000; 
 
         $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/journal/manual-journal', $body)
@@ -109,7 +99,7 @@ class JournalApiTest extends TestCase
     public function test_line_with_both_sides_or_neither_returns_422(): void
     {
         $both = $this->validBody();
-        $both['accounts'][0]['credit'] = 150000; // dua sisi terisi
+        $both['accounts'][0]['credit'] = 150000; 
 
         $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/journal/manual-journal', $both)
@@ -117,7 +107,7 @@ class JournalApiTest extends TestCase
             ->assertJsonValidationErrors(['accounts.0']);
 
         $neither = $this->validBody();
-        $neither['accounts'][0]['debit'] = 0; // dua sisi nol
+        $neither['accounts'][0]['debit'] = 0; 
 
         $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/journal/manual-journal', $neither)
@@ -142,8 +132,6 @@ class JournalApiTest extends TestCase
             ->assertStatus(422);
     }
 
-    // ── U15–U17: edit ──
-
     public function test_edit_manual_journal_replaces_lines(): void
     {
         $created = $this->actingAs($this->user, 'sanctum')
@@ -160,12 +148,12 @@ class JournalApiTest extends TestCase
         $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/journal/manual-journal', $edit)
             ->assertStatus(200)
-            ->assertJsonPath('data.journal_no', $created['journal_no']) // nomor tetap
+            ->assertJsonPath('data.journal_no', $created['journal_no']) 
             ->assertJsonPath('data.debit', '200000.0000')
             ->assertJsonPath('data.notes', 'Direvisi')
             ->assertJsonCount(2, 'data.accounts');
 
-        $this->assertEquals(1, Journal::count()); // edit, bukan duplikat
+        $this->assertEquals(1, Journal::count()); 
     }
 
     public function test_edit_automatic_journal_rejected_422(): void
@@ -173,7 +161,7 @@ class JournalApiTest extends TestCase
         $auto = Journal::create([
             'journal_no' => 'GJ-0000001',
             'transaction_date' => now(),
-            'journal_type' => null, // otomatis
+            'journal_type' => null, 
             'notes' => 'auto',
         ]);
 
@@ -189,8 +177,6 @@ class JournalApiTest extends TestCase
             ->assertStatus(404);
     }
 
-    // ── U8–U10, U18: listing & detail ──
-
     public function test_journal_list_paginates_and_searches(): void
     {
         for ($i = 0; $i < 12; $i++) {
@@ -202,7 +188,6 @@ class JournalApiTest extends TestCase
             ->assertJsonCount(10, 'data')
             ->assertJsonPath('meta.total', 12);
 
-        // q mencari journal_no.
         $this->actingAs($this->user, 'sanctum')->getJson('/api/v1/journal?q=GJ-0000003')
             ->assertStatus(200)
             ->assertJsonCount(1, 'data')
@@ -227,7 +212,6 @@ class JournalApiTest extends TestCase
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.journal_type', 'Manual Jurnal');
 
-        // /journal berisi keduanya.
         $this->actingAs($this->user, 'sanctum')->getJson('/api/v1/journal')
             ->assertJsonPath('meta.total', 2);
     }
@@ -247,8 +231,6 @@ class JournalApiTest extends TestCase
         $this->actingAs($this->user, 'sanctum')->getJson('/api/v1/journal/bukan-uuid')->assertStatus(404);
         $this->actingAs($this->user, 'sanctum')->getJson('/api/v1/journal/' . Str::uuid())->assertStatus(404);
     }
-
-    // ── U22: auth ──
 
     public function test_all_endpoints_require_auth(): void
     {

@@ -6,14 +6,9 @@ use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvi
 
 class EventServiceProvider extends ServiceProvider
 {
-    /**
-     * @var array<string, array<int, string>>
-     */
+
     protected $listen = [];
 
-    /**
-     * @var bool
-     */
     protected static $shouldDiscoverEvents = true;
 
     protected function configureEmailVerification(): void {}

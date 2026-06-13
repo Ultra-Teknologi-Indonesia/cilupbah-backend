@@ -17,9 +17,6 @@ class SyncChannelAttributesJob implements ShouldQueue
     protected string $channelId;
     protected string $categoryId;
 
-    /**
-     * Create a new job instance.
-     */
     public function __construct(string $channelId, string $categoryId)
     {
         $this->channelId = $channelId;
@@ -33,9 +30,6 @@ class SyncChannelAttributesJob implements ShouldQueue
         return ['product', 'channel-attributes', "channel:{$this->channelId}", "category:{$this->categoryId}"];
     }
 
-    /**
-     * Execute the job.
-     */
     public function handle(ChannelAttributeService $service): void
     {
         try {

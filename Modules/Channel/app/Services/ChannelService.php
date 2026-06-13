@@ -19,17 +19,11 @@ class ChannelService
         $this->channelShopRepository = $channelShopRepository;
     }
 
-    /**
-     * Get paginated channels with shops.
-     */
     public function getPaginatedChannels()
     {
         return $this->channelRepository->getPaginatedChannels();
     }
 
-    /**
-     * Jubelio: /marketplace/store — daftar toko marketplace yang terhubung.
-     */
     public function getConnectedStores()
     {
         return $this->channelShopRepository->getPaginatedShops();

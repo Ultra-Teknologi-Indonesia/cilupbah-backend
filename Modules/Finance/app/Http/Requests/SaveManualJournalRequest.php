@@ -5,15 +5,6 @@ namespace Modules\Finance\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
-/**
- * Validasi postManualJournal (kontrak Jubelio saveManualJournalRequest — properti
- * sebenarnya; field 'required' di dokumen Jubelio salah tempel picklist).
- *
- * Aturan bisnis di lapisan validasi (→422, bukan 500):
- * - accounts min 2 baris; account_id bail|uuid|exists (non-uuid tidak menyentuh query cast).
- * - Per baris TEPAT SATU sisi terisi (debit>0 xor credit>0).
- * - Total seimbang: Σdebit = Σcredit (presisi 4 desimal).
- */
 class SaveManualJournalRequest extends FormRequest
 {
     public function authorize(): bool
@@ -24,7 +15,7 @@ class SaveManualJournalRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'journal_id' => ['nullable'], // 0 = buat, uuid = ubah (diproses service)
+            'journal_id' => ['nullable'], 
             'notes' => ['nullable', 'string', 'max:1000'],
             'source_doc_no' => ['nullable', 'string', 'max:100'],
             'transaction_date' => ['nullable', 'date'],

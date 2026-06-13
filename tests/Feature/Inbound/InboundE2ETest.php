@@ -136,7 +136,6 @@ class InboundE2ETest extends TestCase
             'code' => 'SUP-01', 'name' => 'Test Supplier', 'status' => 'active',
         ]);
 
-        // Stock in warehouse2 for transfer tests
         foreach ([$this->variant1, $this->variant2] as $v) {
             Inventory::create([
                 'item_id' => $v->id, 'location_id' => $this->warehouse2->id,
@@ -145,10 +144,6 @@ class InboundE2ETest extends TestCase
             ]);
         }
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // [A] CREATE PO
-    // ═══════════════════════════════════════════════════════════
 
     public function test_a_create_po_returns_201(): void
     {
@@ -205,10 +200,6 @@ class InboundE2ETest extends TestCase
 
         $this->deleteJson("/api/v1/purchase/orders/{$po->id}")->assertStatus(500);
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // [B] RECEIVE FROM PO → INBOUND GRN
-    // ═══════════════════════════════════════════════════════════
 
     public function test_b_receive_from_po_creates_inbound(): void
     {
@@ -269,10 +260,6 @@ class InboundE2ETest extends TestCase
         ])->assertStatus(500);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // [C] RECEIVE TRANSFER
-    // ═══════════════════════════════════════════════════════════
-
     public function test_c_transfer_out_deducts_source_stock(): void
     {
         $response = $this->postJson('/api/v1/inventory/transfers', [
@@ -325,10 +312,6 @@ class InboundE2ETest extends TestCase
         $this->assertGreaterThanOrEqual(1, $response->json('meta.total'));
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // [D] SALES RETURN WITH ORDER
-    // ═══════════════════════════════════════════════════════════
-
     public function test_d_create_sales_return_with_order(): void
     {
         $order = SalesOrder::create([
@@ -356,10 +339,6 @@ class InboundE2ETest extends TestCase
             ->assertJsonPath('data.order_id', $order->id);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // [E] SALES RETURN WITHOUT ORDER
-    // ═══════════════════════════════════════════════════════════
-
     public function test_e_create_sales_return_without_order(): void
     {
         $response = $this->postJson('/api/v1/sales/returns', [
@@ -375,10 +354,6 @@ class InboundE2ETest extends TestCase
         $response->assertStatus(201)
             ->assertJsonPath('data.order_id', null);
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // [F] MARKETPLACE RETURN — ACCEPT / REJECT / COMPLETE
-    // ═══════════════════════════════════════════════════════════
 
     public function test_f_accept_marketplace_return_creates_inbound(): void
     {
@@ -436,10 +411,6 @@ class InboundE2ETest extends TestCase
         $this->assertEquals(2, $response->json('meta.total'));
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // [G] CONSIGNMENT
-    // ═══════════════════════════════════════════════════════════
-
     public function test_g_create_consignment_inbound(): void
     {
         $response = $this->postJson('/api/v1/inbounds', [
@@ -457,10 +428,6 @@ class InboundE2ETest extends TestCase
             ->assertJsonPath('data.type', 'CONSIGNMENT')
             ->assertJsonPath('data.status', 'DRAFT');
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // [H] AUTO PUTAWAY
-    // ═══════════════════════════════════════════════════════════
 
     public function test_h_auto_putaway_full_flow(): void
     {
@@ -484,10 +451,6 @@ class InboundE2ETest extends TestCase
             'source' => 'PUTAWAY_IN',
         ]);
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // [I] + [J] MANUAL PUTAWAY
-    // ═══════════════════════════════════════════════════════════
 
     public function test_ij_manual_putaway_to_specific_bin(): void
     {
@@ -566,13 +529,9 @@ class InboundE2ETest extends TestCase
         $this->assertNotEmpty($response->json('data'));
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // FULL E2E: PO → RECEIVE → PUTAWAY → STOCK CHECK
-    // ═══════════════════════════════════════════════════════════
-
     public function test_full_e2e_po_to_putaway(): void
     {
-        // 1. Create PO
+
         $poResponse = $this->postJson('/api/v1/purchase/orders', [
             'supplier_id' => $this->supplier->id,
             'location_id' => $this->warehouse->id,
@@ -584,10 +543,8 @@ class InboundE2ETest extends TestCase
         ]);
         $poId = $poResponse->json('data.id');
 
-        // 2. Approve PO
         $this->postJson("/api/v1/purchase/orders/{$poId}/approve")->assertOk();
 
-        // 3. Receive from PO
         $poItemId = PurchaseOrderItem::where('purchase_order_id', $poId)->first()->id;
         $receiveResponse = $this->postJson("/api/v1/purchase/orders/{$poId}/receive", [
             'received_by' => 'staff',
@@ -597,15 +554,12 @@ class InboundE2ETest extends TestCase
         ]);
         $receiveResponse->assertOk();
 
-        // PO fully received
         $this->assertDatabaseHas('purchase_orders', ['id' => $poId, 'status' => 'FULLY_RECEIVED']);
 
-        // Inbound created (DRAFT because it needs receive step)
         $inbound = Inbound::where('reference_number', PurchaseOrder::find($poId)->po_number)->first();
         $this->assertNotNull($inbound);
         $this->assertEquals('DRAFT', $inbound->status);
 
-        // 4. Receive on inbound
         $inboundItemId = \DB::table('inbound_items')->where('inbound_id', $inbound->id)->first()->id;
         $this->postJson("/api/v1/inbounds/{$inbound->id}/receive", [
             'received_by' => 'staff',
@@ -614,18 +568,15 @@ class InboundE2ETest extends TestCase
             ],
         ])->assertOk();
 
-        // Stock at inbound bin
         $inboundStock = Inventory::where('item_id', $this->variant1->id)
             ->where('bin_id', $this->inboundBin->id)->first();
         $this->assertEquals(20, $inboundStock->on_hand);
 
-        // 5. Auto-putaway
         $this->postJson("/api/v1/inbounds/{$inbound->id}/auto-putaway", [
             'created_by' => 'auto_system',
         ])->assertOk()
             ->assertJsonPath('data.status', 'COMPLETED');
 
-        // Stock moved from inbound bin to storage bin
         $inboundStock->refresh();
         $this->assertEquals(0, $inboundStock->on_hand);
 
@@ -633,15 +584,10 @@ class InboundE2ETest extends TestCase
             ->where('bin_id', $this->storageBin1->id)->first();
         $this->assertEquals(20, $storageStock->on_hand);
 
-        // Movements audit trail
         $this->assertDatabaseHas('inventory_movements', ['source' => 'ADJUSTMENT']);
         $this->assertDatabaseHas('inventory_movements', ['source' => 'PUTAWAY_OUT']);
         $this->assertDatabaseHas('inventory_movements', ['source' => 'PUTAWAY_IN']);
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // INBOUND CRUD & STATUS
-    // ═══════════════════════════════════════════════════════════
 
     public function test_inbound_list(): void
     {
@@ -682,13 +628,11 @@ class InboundE2ETest extends TestCase
 
         $inboundItemId = \DB::table('inbound_items')->where('inbound_id', $inbound->id)->first()->id;
 
-        // Receive only 80 of 100
         $this->postJson("/api/v1/inbounds/{$inbound->id}/receive", [
             'received_by' => 'staff',
             'items'       => [['inbound_item_id' => $inboundItemId, 'qty' => 80]],
         ])->assertOk();
 
-        // Close receiving
         $this->postJson("/api/v1/inbounds/{$inbound->id}/close-receiving", [
             'closed_by' => 'admin',
         ])->assertOk();
@@ -700,13 +644,9 @@ class InboundE2ETest extends TestCase
         ]);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // SUPPLIER CRUD
-    // ═══════════════════════════════════════════════════════════
-
     public function test_supplier_crud(): void
     {
-        // Create
+
         $create = $this->postJson('/api/v1/suppliers', [
             'name'  => 'Supplier Baru',
             'email' => 'baru@supplier.com',
@@ -715,28 +655,20 @@ class InboundE2ETest extends TestCase
         $create->assertStatus(201);
         $id = $create->json('data.id');
 
-        // Read
         $this->getJson("/api/v1/suppliers/{$id}")
             ->assertOk()
             ->assertJsonPath('data.name', 'Supplier Baru');
 
-        // Update
         $this->putJson("/api/v1/suppliers/{$id}", ['name' => 'Supplier Updated'])
             ->assertOk()
             ->assertJsonPath('data.name', 'Supplier Updated');
 
-        // List
         $this->getJson('/api/v1/suppliers')
             ->assertOk();
 
-        // Delete
         $this->deleteJson("/api/v1/suppliers/{$id}")->assertOk();
         $this->assertDatabaseMissing('suppliers', ['id' => $id]);
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // HELPERS
-    // ═══════════════════════════════════════════════════════════
 
     private function createPO(): PurchaseOrder
     {

@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('promotions', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->string('name');
-            $table->string('type', 16);              // percent | fixed
+            $table->string('type', 16);              
             $table->decimal('value', 15, 2)->default(0);
             $table->timestamp('start_at')->nullable();
             $table->timestamp('end_at')->nullable();

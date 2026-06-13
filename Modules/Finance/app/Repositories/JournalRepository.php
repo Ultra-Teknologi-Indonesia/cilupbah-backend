@@ -8,11 +8,7 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class JournalRepository
 {
-    /**
-     * Daftar jurnal (Jubelio: /journal/ dan /journal/manual-journal/).
-     * $manualOnly=true → hanya journal_type 'Manual Jurnal'.
-     * q (Jubelio) → cari journal_no/source_doc_no/notes; createdSince → transaction_date >=.
-     */
+
     public function paginate(bool $manualOnly = false, ?string $q = null, ?string $createdSince = null)
     {
         return QueryBuilder::for(Journal::class)
@@ -44,11 +40,6 @@ class JournalRepository
             ->first();
     }
 
-    /**
-     * Nomor jurnal berikutnya (GJ-0000001). Concurrency-safe: baca nomor terakhir
-     * dengan lockForUpdate di dalam transaksi pemanggil; caller me-retry sekali
-     * bila tetap bentrok unique (dua txn paralel).
-     */
     public function nextJournalNo(): string
     {
         $last = Journal::query()
@@ -61,10 +52,6 @@ class JournalRepository
         return 'GJ-' . str_pad((string) $seq, 7, '0', STR_PAD_LEFT);
     }
 
-    /**
-     * Buat jurnal + baris dalam satu kesatuan (dipanggil di dalam DB::transaction).
-     * $lines: [['account_id','debit','credit','description'], ...]
-     */
     public function createWithLines(array $header, array $lines): Journal
     {
         $journal = Journal::create($header + [
@@ -77,7 +64,6 @@ class JournalRepository
         return $journal->load('details.account');
     }
 
-    /** Ganti seluruh baris jurnal (edit manual journal) + recalc total. */
     public function replaceLines(Journal $journal, array $header, array $lines): Journal
     {
         $journal->details()->delete();

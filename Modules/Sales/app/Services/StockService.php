@@ -27,8 +27,6 @@ class StockService
                     throw new \RuntimeException("Inventory tidak ditemukan untuk item {$itemId}.");
                 }
 
-                // Stok diizinkan menjadi negatif: order tetap di-reserve walau stok rak
-                // kurang memenuhi qty pesanan (available dapat bernilai negatif).
                 $inventory->reserved += $qty;
                 $this->inventoryRepository->updateStock($inventory);
 

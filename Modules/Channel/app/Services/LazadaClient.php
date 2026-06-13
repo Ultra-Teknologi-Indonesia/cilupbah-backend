@@ -7,15 +7,9 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Modules\Channel\Exceptions\TokenExpiredException;
 
-/**
- * Klien Lazada Open Platform: OAuth (auth.lazada.com) + business API (gateway regional).
- * Semua panggilan memakai signature HMAC-SHA256 (sha256) standar Lazada.
- *
- * Ref: https://open.lazada.com/apps/doc/doc?nodeId=10450&docId=108069
- */
 class LazadaClient
 {
-    /** Kode error Lazada yang berarti access token tidak valid/kedaluwarsa. */
+
     protected const TOKEN_ERROR_CODES = ['IllegalAccessToken', 'InvalidAccessToken', 'AppCallLimit.TokenExpired'];
 
     protected string $appKey;
@@ -35,11 +29,6 @@ class LazadaClient
         }
     }
 
-    /**
-     * Panggilan business API tertandatangani ke gateway regional (LAZADA_BASE_URL).
-     * $params = query/system params; access token disertakan sebagai param 'access_token'.
-     * Error token (IllegalAccessToken dsb) → TokenExpiredException agar caller bisa refresh+retry.
-     */
     public function request(string $method, string $apiPath, array $params = [], ?string $accessToken = null): array
     {
         $params = array_merge($params, [
@@ -63,7 +52,6 @@ class LazadaClient
 
         $data = $response->json() ?? [];
 
-        // Sukses Lazada: code === '0'. Selain itu = error.
         if (($data['code'] ?? '0') !== '0') {
             Log::error('Lazada API Error', [
                 'path' => $apiPath,
@@ -81,9 +69,6 @@ class LazadaClient
         return $data;
     }
 
-    /**
-     * Throttle sesuai CHANNEL_API_RATE_LIMIT_PER_SECOND (pola TikTokClient).
-     */
     protected function throttle(): void
     {
         $limit = config('channel.api_rate_limit_per_second', 8);
@@ -94,10 +79,6 @@ class LazadaClient
         }
     }
 
-    /**
-     * URL yang dibuka seller untuk memberi otorisasi. Setelah setuju, Lazada redirect
-     * ke redirect_uri dengan query ?code=<authorization_code>.
-     */
     public function getAuthUrl(string $redirectUri, string $state = ''): string
     {
         $queries = [
@@ -114,25 +95,16 @@ class LazadaClient
         return $this->authUrl . '/oauth/authorize?' . http_build_query($queries);
     }
 
-    /**
-     * Tukar authorization code menjadi access/refresh token.
-     */
     public function getAccessToken(string $code): array
     {
         return $this->signedGet('/auth/token/create', ['code' => $code]);
     }
 
-    /**
-     * Perpanjang access token memakai refresh token.
-     */
     public function refreshAccessToken(string $refreshToken): array
     {
         return $this->signedGet('/auth/token/refresh', ['refresh_token' => $refreshToken]);
     }
 
-    /**
-     * Panggilan GET tertandatangani ke endpoint sistem Lazada (/rest + apiPath).
-     */
     protected function signedGet(string $apiPath, array $params): array
     {
         $params = array_merge($params, [
@@ -148,10 +120,6 @@ class LazadaClient
         return $response->json() ?? [];
     }
 
-    /**
-     * Signature Lazada: HMAC-SHA256 atas (apiPath + gabungan key+value terurut),
-     * key = app_secret, hasil hex uppercase. Param 'sign' tidak ikut ditandatangani.
-     */
     public function generateSign(string $apiPath, array $params): string
     {
         unset($params['sign']);

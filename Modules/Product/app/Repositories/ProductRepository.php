@@ -11,10 +11,7 @@ use Spatie\QueryBuilder\AllowedFilter;
 
 class ProductRepository
 {
-    /**
-     * Cari produk berdasarkan SKU (lookup tunggal): cocokkan SKU produk,
-     * fallback ke SKU varian. Eloquent biasa (bukan Spatie) — bukan listing.
-     */
+
     public function findBySku(string $sku, array $with = []): ?Product
     {
         $product = Product::with($with)->where('sku', $sku)->first();
@@ -27,9 +24,6 @@ class ProductRepository
         return $variant ? Product::with($with)->find($variant->product_id) : null;
     }
 
-    /**
-     * Listing produk bundle (is_bundle = true) — Spatie Query Builder.
-     */
     public function paginateBundles(): LengthAwarePaginator
     {
         return QueryBuilder::for(Product::class)
@@ -42,17 +36,11 @@ class ProductRepository
             ->appends(request()->query());
     }
 
-    /**
-     * Ambil produk + stok varian per kumpulan id (derived list by ids → Eloquent biasa).
-     */
     public function getByIdsWithStock(array $ids): Collection
     {
         return Product::with('variants.inventories')->whereIn('id', $ids)->get();
     }
 
-    /**
-     * Ambil produk + varian (harga) per kumpulan id (derived list by ids → Eloquent biasa).
-     */
     public function getByIdsWithVariants(array $ids): Collection
     {
         return Product::with('variants:id,product_id,sku,sell_price')
@@ -60,11 +48,6 @@ class ProductRepository
             ->get(['id', 'sku', 'name']);
     }
 
-    /**
-     * Simpan/ubah produk bundle beserta komponennya dalam satu transaksi.
-     *
-     * @param  array<int,array{variant_id:string,qty:int}>  $components
-     */
     public function saveBundle(?string $id, array $attributes, array $components): Product
     {
         return DB::transaction(function () use ($id, $attributes, $components) {

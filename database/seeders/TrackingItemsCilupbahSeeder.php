@@ -5,19 +5,6 @@ namespace Database\Seeders;
 use App\Models\TrackingItem;
 use Illuminate\Database\Seeder;
 
-/**
- * Endpoint NATIVE cilupbah-be yang sudah terimplementasi tetapi belum terdata
- * di Dev Tracker (tracker awal hanya memuat spec Jubelio + Epik + Omnichannel).
- * Contoh: domain Authentication hanya punya 1 item (POST /login) padahal
- * implementasinya mencakup logout, profile, roles, permissions, users, dst.
- *
- * Endpoint yang merupakan IMPLEMENTASI dari item Jubelio yang sudah terdata
- * (mis. /products/master ↔ /inventory/items/masters) TIDAK dimasukkan lagi
- * agar tidak dobel hitung.
- *
- * Idempotent: kunci unik (method, endpoint); status/notes/pic hasil edit user
- * TIDAK ditimpa. Source: "cilupbah".
- */
 class TrackingItemsCilupbahSeeder extends Seeder
 {
     public function run(): void
@@ -51,14 +38,13 @@ class TrackingItemsCilupbahSeeder extends Seeder
         $this->command?->info("TrackingItems (cilupbah): +$created baru, $updated diperbarui (metadata).");
     }
 
-    /** @return array<int,array<string,string>> */
     private function items(): array
     {
         $d = 'Darriel';
         $r = 'Rasyid';
 
         return [
-            // ── Authentication ──────────────────────────────────────────────
+
             ['domain' => 'Authentication', 'method' => 'POST', 'endpoint' => '/auth/logout', 'function_id' => 'Logout & cabut token akses', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Authentication', 'method' => 'GET', 'endpoint' => '/profile', 'function_id' => 'Ambil profil user terautentikasi (roles + permissions)', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Authentication', 'method' => 'PUT', 'endpoint' => '/profile/avatar', 'function_id' => 'Set/lepas avatar user (referensi media terpusat)', 'status' => 'done', 'pic' => $d],
@@ -79,13 +65,11 @@ class TrackingItemsCilupbahSeeder extends Seeder
             ['domain' => 'Authentication', 'method' => 'POST', 'endpoint' => '/users/{id}/force-logout', 'function_id' => 'Putus paksa sesi satu pengguna', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Authentication', 'method' => 'POST', 'endpoint' => '/users/bulk-force-logout', 'function_id' => 'Putus paksa sesi banyak pengguna sekaligus', 'status' => 'done', 'pic' => $d],
 
-            // ── Media (file terpusat → Cloudflare R2) ───────────────────────
             ['domain' => 'Media', 'method' => 'POST', 'endpoint' => '/media/upload', 'function_id' => 'Unggah file (semua tipe) ke storage terpusat R2', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Media', 'method' => 'GET', 'endpoint' => '/media/upload/{uuid}', 'function_id' => 'Ambil metadata & URL media per UUID', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Media', 'method' => 'PUT', 'endpoint' => '/media/upload/{uuid}', 'function_id' => 'Ganti file media (UUID & referensi tetap)', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Media', 'method' => 'DELETE', 'endpoint' => '/media/upload/{uuid}', 'function_id' => 'Hapus media dari storage & database', 'status' => 'done', 'pic' => $d],
 
-            // ── Channels — TikTok ───────────────────────────────────────────
             ['domain' => 'Channels', 'method' => 'GET', 'endpoint' => '/tiktok/auth', 'function_id' => 'Mulai OAuth otorisasi toko TikTok', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Channels', 'method' => 'GET', 'endpoint' => '/tiktok/callback', 'function_id' => 'Callback OAuth TikTok (tukar code → token)', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Channels', 'method' => 'GET', 'endpoint' => '/tiktok/stores', 'function_id' => 'Ambil daftar toko TikTok terhubung', 'status' => 'done', 'pic' => $d],
@@ -104,7 +88,6 @@ class TrackingItemsCilupbahSeeder extends Seeder
             ['domain' => 'Channels', 'method' => 'POST', 'endpoint' => '/tiktok/auto-sync/pull-products', 'function_id' => 'Auto-sync: tarik produk semua toko TikTok', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Channels', 'method' => 'POST', 'endpoint' => '/tiktok/webhook', 'function_id' => 'Webhook masuk TikTok (order/produk, verifikasi signature)', 'status' => 'done', 'pic' => $d],
 
-            // ── Channels — Lazada ───────────────────────────────────────────
             ['domain' => 'Channels', 'method' => 'GET', 'endpoint' => '/lazada/auth', 'function_id' => 'Mulai OAuth otorisasi toko Lazada', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Channels', 'method' => 'GET', 'endpoint' => '/lazada/callback', 'function_id' => 'Callback OAuth Lazada (tukar code → token)', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Channels', 'method' => 'GET', 'endpoint' => '/lazada/stores', 'function_id' => 'Ambil daftar toko Lazada terhubung', 'status' => 'done', 'pic' => $d],
@@ -114,7 +97,6 @@ class TrackingItemsCilupbahSeeder extends Seeder
             ['domain' => 'Channels', 'method' => 'GET', 'endpoint' => '/lazada/logistics', 'function_id' => 'Ambil opsi logistik/kurir Lazada', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Channels', 'method' => 'POST', 'endpoint' => '/lazada/webhook', 'function_id' => 'Webhook masuk Lazada (order push, verifikasi signature)', 'status' => 'done', 'pic' => $d],
 
-            // ── Channels — lintas channel ───────────────────────────────────
             ['domain' => 'Channels', 'method' => 'GET', 'endpoint' => '/channel-warehouses', 'function_id' => 'Ambil pemetaan gudang lokal ↔ gudang channel', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Channels', 'method' => 'POST', 'endpoint' => '/channel-warehouses', 'function_id' => 'Buat pemetaan gudang lokal ↔ gudang channel', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Channels', 'method' => 'DELETE', 'endpoint' => '/channel-warehouses/{id}', 'function_id' => 'Hapus pemetaan gudang channel', 'status' => 'done', 'pic' => $d],
@@ -139,7 +121,6 @@ class TrackingItemsCilupbahSeeder extends Seeder
             ['domain' => 'Channels', 'method' => 'GET', 'endpoint' => '/channel-monitor/{shop_id}', 'function_id' => 'Detail pantauan sync satu toko', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Channels', 'method' => 'GET', 'endpoint' => '/channel-monitor/{shop_id}/products', 'function_id' => 'Daftar produk + status sync satu toko', 'status' => 'done', 'pic' => $d],
 
-            // ── Product (lifecycle & CRUD native) ───────────────────────────
             ['domain' => 'Product', 'method' => 'GET', 'endpoint' => '/products', 'function_id' => 'Ambil daftar produk (filter status lifecycle, FTS search)', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Product', 'method' => 'POST', 'endpoint' => '/products', 'function_id' => 'Buat produk lengkap (varian, media, spesifikasi, harga)', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Product', 'method' => 'GET', 'endpoint' => '/products/{id}', 'function_id' => 'Ambil detail produk + relasi channel mapping', 'status' => 'done', 'pic' => $d],
@@ -155,7 +136,6 @@ class TrackingItemsCilupbahSeeder extends Seeder
             ['domain' => 'Product', 'method' => 'GET', 'endpoint' => '/products/import/template/single', 'function_id' => 'Unduh template Excel import produk satuan', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Product', 'method' => 'GET', 'endpoint' => '/products/import/template/bundle', 'function_id' => 'Unduh template Excel import produk bundle', 'status' => 'done', 'pic' => $d],
 
-            // ── Product — Merge & Auto-Merge ────────────────────────────────
             ['domain' => 'Product', 'method' => 'GET', 'endpoint' => '/products/merge/catalog', 'function_id' => 'Katalog produk lintas toko untuk merge', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Product', 'method' => 'GET', 'endpoint' => '/products/merge/suggestions', 'function_id' => 'Saran pasangan produk serupa untuk merge', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Product', 'method' => 'GET', 'endpoint' => '/products/merge/applied', 'function_id' => 'Daftar merge yang sudah diterapkan', 'status' => 'done', 'pic' => $d],
@@ -168,7 +148,6 @@ class TrackingItemsCilupbahSeeder extends Seeder
             ['domain' => 'Product', 'method' => 'POST', 'endpoint' => '/products/merge/hide', 'function_id' => 'Sembunyikan produk dari katalog merge', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Product', 'method' => 'POST', 'endpoint' => '/products/merge/unhide', 'function_id' => 'Tampilkan kembali produk di katalog merge', 'status' => 'done', 'pic' => $d],
 
-            // ── Product Listing (draft, raise, riwayat upload) ──────────────
             ['domain' => 'Product Listing', 'method' => 'GET', 'endpoint' => '/products/uploadable', 'function_id' => 'Daftar produk Master yang belum ter-upload ke toko', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Product Listing', 'method' => 'GET', 'endpoint' => '/products/channel-products', 'function_id' => 'Daftar listing produk per channel (tab Produk Channel)', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Product Listing', 'method' => 'GET', 'endpoint' => '/products/channel-products/{id}', 'function_id' => 'Detail satu listing produk channel', 'status' => 'done', 'pic' => $d],
@@ -193,23 +172,19 @@ class TrackingItemsCilupbahSeeder extends Seeder
             ['domain' => 'Product Listing', 'method' => 'DELETE', 'endpoint' => '/upload-histories/{id}', 'function_id' => 'Hapus satu riwayat upload', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Product Listing', 'method' => 'GET', 'endpoint' => '/download-histories', 'function_id' => 'Riwayat download produk dari channel', 'status' => 'done', 'pic' => $d],
 
-            // ── Webhooks (registri outbound) ────────────────────────────────
             ['domain' => 'Webhooks', 'method' => 'GET', 'endpoint' => '/webhooks', 'function_id' => 'Ambil daftar registrasi webhook outbound', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Webhooks', 'method' => 'POST', 'endpoint' => '/webhooks', 'function_id' => 'Registrasi webhook outbound baru (URL + events)', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Webhooks', 'method' => 'GET', 'endpoint' => '/webhooks/{id}', 'function_id' => 'Ambil detail satu registrasi webhook', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Webhooks', 'method' => 'PUT', 'endpoint' => '/webhooks/{id}', 'function_id' => 'Ubah registrasi webhook (URL/events/aktif)', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Webhooks', 'method' => 'DELETE', 'endpoint' => '/webhooks/{id}', 'function_id' => 'Hapus registrasi webhook', 'status' => 'done', 'pic' => $d],
 
-            // ── System Setting — Tax CRUD ───────────────────────────────────
             ['domain' => 'System Setting', 'method' => 'POST', 'endpoint' => '/taxes', 'function_id' => 'Buat pajak baru', 'status' => 'done', 'pic' => $d],
             ['domain' => 'System Setting', 'method' => 'GET', 'endpoint' => '/taxes/{id}', 'function_id' => 'Ambil detail pajak', 'status' => 'done', 'pic' => $d],
             ['domain' => 'System Setting', 'method' => 'PUT', 'endpoint' => '/taxes/{id}', 'function_id' => 'Ubah pajak', 'status' => 'done', 'pic' => $d],
             ['domain' => 'System Setting', 'method' => 'DELETE', 'endpoint' => '/taxes/{id}', 'function_id' => 'Hapus pajak', 'status' => 'done', 'pic' => $d],
 
-            // ── Location & The Rack Plan ────────────────────────────────────
             ['domain' => 'Location & The Rack Plan', 'method' => 'GET', 'endpoint' => '/locations/{locationId}/zones', 'function_id' => 'Ambil zona rak per lokasi', 'status' => 'done', 'pic' => $d],
 
-            // ── Ais ──────────────────────────────────────────────
             ['domain' => 'Ais', 'method' => 'GET', 'endpoint' => '/api/v1/ais', 'function_id' => 'Ambil daftar ais', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Ais', 'method' => 'POST', 'endpoint' => '/api/v1/ais', 'function_id' => 'Buat data ais', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Ais', 'method' => 'GET', 'endpoint' => '/api/v1/ais/{ai}', 'function_id' => 'Ambil detail ais', 'status' => 'done', 'pic' => $d],
@@ -217,14 +192,11 @@ class TrackingItemsCilupbahSeeder extends Seeder
             ['domain' => 'Ais', 'method' => 'PATCH', 'endpoint' => '/api/v1/ais/{ai}', 'function_id' => 'Ubah data ais', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Ais', 'method' => 'DELETE', 'endpoint' => '/api/v1/ais/{ai}', 'function_id' => 'Hapus data ais', 'status' => 'done', 'pic' => $d],
 
-            // ── Authentication ──────────────────────────────────────────────
             ['domain' => 'Authentication', 'method' => 'POST', 'endpoint' => '/api/v1/auth/login', 'function_id' => 'Buat data login', 'status' => 'done', 'pic' => $d],
 
-            // ── Bins ──────────────────────────────────────────────
             ['domain' => 'Bins', 'method' => 'POST', 'endpoint' => '/api/v1/bins', 'function_id' => 'Buat data bins', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Bins', 'method' => 'DELETE', 'endpoint' => '/api/v1/bins/{id}', 'function_id' => 'Hapus data bins', 'status' => 'done', 'pic' => $d],
 
-            // ── Channels Master ──────────────────────────────────────────────
             ['domain' => 'Channels Master', 'method' => 'GET', 'endpoint' => '/api/v1/channels', 'function_id' => 'Ambil daftar channels', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Channels Master', 'method' => 'POST', 'endpoint' => '/api/v1/channels', 'function_id' => 'Buat data channels', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Channels Master', 'method' => 'GET', 'endpoint' => '/api/v1/channels/{channel}', 'function_id' => 'Ambil detail channels', 'status' => 'done', 'pic' => $d],
@@ -232,7 +204,6 @@ class TrackingItemsCilupbahSeeder extends Seeder
             ['domain' => 'Channels Master', 'method' => 'PATCH', 'endpoint' => '/api/v1/channels/{channel}', 'function_id' => 'Ubah data channels', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Channels Master', 'method' => 'DELETE', 'endpoint' => '/api/v1/channels/{channel}', 'function_id' => 'Hapus data channels', 'status' => 'done', 'pic' => $d],
 
-            // ── Finance & Tax ──────────────────────────────────────────────
             ['domain' => 'Finance & Tax', 'method' => 'GET', 'endpoint' => '/api/v1/finances', 'function_id' => 'Ambil daftar finances', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Finance & Tax', 'method' => 'POST', 'endpoint' => '/api/v1/finances', 'function_id' => 'Buat data finances', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Finance & Tax', 'method' => 'GET', 'endpoint' => '/api/v1/finances/{finance}', 'function_id' => 'Ambil detail finances', 'status' => 'done', 'pic' => $d],
@@ -241,7 +212,6 @@ class TrackingItemsCilupbahSeeder extends Seeder
             ['domain' => 'Finance & Tax', 'method' => 'DELETE', 'endpoint' => '/api/v1/finances/{finance}', 'function_id' => 'Hapus data finances', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Finance & Tax', 'method' => 'PATCH', 'endpoint' => '/api/v1/taxes/{tax}', 'function_id' => 'Ubah data taxes', 'status' => 'done', 'pic' => $d],
 
-            // ── General Settings ──────────────────────────────────────────────
             ['domain' => 'General Settings', 'method' => 'GET', 'endpoint' => '/api/v1/notifications', 'function_id' => 'Ambil daftar notifications', 'status' => 'done', 'pic' => $d],
             ['domain' => 'General Settings', 'method' => 'POST', 'endpoint' => '/api/v1/notifications', 'function_id' => 'Buat data notifications', 'status' => 'done', 'pic' => $d],
             ['domain' => 'General Settings', 'method' => 'GET', 'endpoint' => '/api/v1/notifications/{notification}', 'function_id' => 'Ambil detail notifications', 'status' => 'done', 'pic' => $d],
@@ -260,7 +230,6 @@ class TrackingItemsCilupbahSeeder extends Seeder
             ['domain' => 'General Settings', 'method' => 'DELETE', 'endpoint' => '/api/v1/suppliers/{supplier}', 'function_id' => 'Hapus data suppliers', 'status' => 'done', 'pic' => $r],
             ['domain' => 'General Settings', 'method' => 'PATCH', 'endpoint' => '/api/v1/webhooks/{webhook}', 'function_id' => 'Ubah data webhooks', 'status' => 'done', 'pic' => $d],
 
-            // ── Inbound & Putaway ──────────────────────────────────────────────
             ['domain' => 'Inbound & Putaway', 'method' => 'GET', 'endpoint' => '/api/v1/inbounds', 'function_id' => 'Ambil daftar inbounds', 'status' => 'done', 'pic' => $r],
             ['domain' => 'Inbound & Putaway', 'method' => 'POST', 'endpoint' => '/api/v1/inbounds', 'function_id' => 'Buat data inbounds', 'status' => 'done', 'pic' => $r],
             ['domain' => 'Inbound & Putaway', 'method' => 'POST', 'endpoint' => '/api/v1/inbounds/assignments/{assignmentId}/start', 'function_id' => 'Endpoint POST /api/v1/inbounds/assignments/{assignmentId}/start', 'status' => 'done', 'pic' => $r],
@@ -288,7 +257,6 @@ class TrackingItemsCilupbahSeeder extends Seeder
             ['domain' => 'Inbound & Putaway', 'method' => 'POST', 'endpoint' => '/api/v1/putaway/{id}/items/{itemId}/process', 'function_id' => 'Endpoint POST /api/v1/putaway/{id}/items/{itemId}/process', 'status' => 'done', 'pic' => $r],
             ['domain' => 'Inbound & Putaway', 'method' => 'POST', 'endpoint' => '/api/v1/putaway/{id}/start', 'function_id' => 'Endpoint POST /api/v1/putaway/{id}/start', 'status' => 'done', 'pic' => $r],
 
-            // ── Inventory Lanjutan ──────────────────────────────────────────────
             ['domain' => 'Inventory Lanjutan', 'method' => 'POST', 'endpoint' => '/api/v1/inventory/adjustments/documents', 'function_id' => 'Buat data documents', 'status' => 'done', 'pic' => $r],
             ['domain' => 'Inventory Lanjutan', 'method' => 'GET', 'endpoint' => '/api/v1/inventory/adjustments/documents/{id}', 'function_id' => 'Ambil detail documents', 'status' => 'done', 'pic' => $r],
             ['domain' => 'Inventory Lanjutan', 'method' => 'DELETE', 'endpoint' => '/api/v1/inventory/adjustments/documents/{id}', 'function_id' => 'Hapus data documents', 'status' => 'done', 'pic' => $r],
@@ -323,14 +291,12 @@ class TrackingItemsCilupbahSeeder extends Seeder
             ['domain' => 'Inventory Lanjutan', 'method' => 'DELETE', 'endpoint' => '/api/v1/inventory/transfers/{id}', 'function_id' => 'Hapus data transfers', 'status' => 'done', 'pic' => $r],
             ['domain' => 'Inventory Lanjutan', 'method' => 'POST', 'endpoint' => '/api/v1/inventory/transfers/{id}/receive', 'function_id' => 'Endpoint POST /api/v1/inventory/transfers/{id}/receive', 'status' => 'done', 'pic' => $r],
 
-            // ── Lazada ──────────────────────────────────────────────
             ['domain' => 'Lazada', 'method' => 'POST', 'endpoint' => '/api/v1/lazada/auto-sync/pull-orders', 'function_id' => 'Buat data pull-orders', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Lazada', 'method' => 'POST', 'endpoint' => '/api/v1/lazada/stores/{id}/refresh-token', 'function_id' => 'Endpoint POST /api/v1/lazada/stores/{id}/refresh-token', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Lazada', 'method' => 'POST', 'endpoint' => '/api/v1/lazada/sync/cancel', 'function_id' => 'Buat data cancel', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Lazada', 'method' => 'POST', 'endpoint' => '/api/v1/lazada/sync/pack', 'function_id' => 'Buat data pack', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Lazada', 'method' => 'POST', 'endpoint' => '/api/v1/lazada/sync/pull', 'function_id' => 'Buat data pull', 'status' => 'done', 'pic' => $d],
 
-            // ── Location & The Rack Plan ──────────────────────────────────────────────
             ['domain' => 'Location & The Rack Plan', 'method' => 'GET', 'endpoint' => '/api/v1/locations/{locationId}/bins', 'function_id' => 'Ambil detail {locationId}', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Location & The Rack Plan', 'method' => 'POST', 'endpoint' => '/api/v1/locations/{locationId}/bins/generate', 'function_id' => 'Endpoint POST /api/v1/locations/{locationId}/bins/generate', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Location & The Rack Plan', 'method' => 'POST', 'endpoint' => '/api/v1/locations/{locationId}/bins/preview', 'function_id' => 'Endpoint POST /api/v1/locations/{locationId}/bins/preview', 'status' => 'done', 'pic' => $d],
@@ -339,11 +305,9 @@ class TrackingItemsCilupbahSeeder extends Seeder
             ['domain' => 'Location & The Rack Plan', 'method' => 'PATCH', 'endpoint' => '/api/v1/locations/{location}', 'function_id' => 'Ubah data locations', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Location & The Rack Plan', 'method' => 'DELETE', 'endpoint' => '/api/v1/locations/{location}', 'function_id' => 'Hapus data locations', 'status' => 'done', 'pic' => $d],
 
-            // ── Miscellaneous ──────────────────────────────────────────────
             ['domain' => 'Miscellaneous', 'method' => 'GET', 'endpoint' => '/api/documentation', 'function_id' => 'Ambil daftar documentation', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Miscellaneous', 'method' => 'GET', 'endpoint' => '/api/oauth2-callback', 'function_id' => 'Ambil daftar oauth2-callback', 'status' => 'done', 'pic' => $d],
 
-            // ── Outbound (WMS) ──────────────────────────────────────────────
             ['domain' => 'Outbound (WMS)', 'method' => 'GET', 'endpoint' => '/api/v1/outbound/couriers', 'function_id' => 'Ambil daftar couriers', 'status' => 'done', 'pic' => $r],
             ['domain' => 'Outbound (WMS)', 'method' => 'POST', 'endpoint' => '/api/v1/outbound/couriers', 'function_id' => 'Buat data couriers', 'status' => 'done', 'pic' => $r],
             ['domain' => 'Outbound (WMS)', 'method' => 'GET', 'endpoint' => '/api/v1/outbound/couriers/all', 'function_id' => 'Ambil daftar all', 'status' => 'done', 'pic' => $r],
@@ -402,7 +366,6 @@ class TrackingItemsCilupbahSeeder extends Seeder
             ['domain' => 'Outbound (WMS)', 'method' => 'PUT', 'endpoint' => '/api/v1/outbound/wms/default-bin/{locationId}', 'function_id' => 'Ubah data default-bin', 'status' => 'done', 'pic' => $r],
             ['domain' => 'Outbound (WMS)', 'method' => 'GET', 'endpoint' => '/api/v1/outbound/wms/employee/{identifier}', 'function_id' => 'Ambil detail employee', 'status' => 'done', 'pic' => $r],
 
-            // ── Product Master ──────────────────────────────────────────────
             ['domain' => 'Product Master', 'method' => 'GET', 'endpoint' => '/api/v1/attributes', 'function_id' => 'Ambil daftar attributes', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Product Master', 'method' => 'POST', 'endpoint' => '/api/v1/attributes', 'function_id' => 'Buat data attributes', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Product Master', 'method' => 'POST', 'endpoint' => '/api/v1/attributes/options/{option}/map-channel', 'function_id' => 'Endpoint POST /api/v1/attributes/options/{option}/map-channel', 'status' => 'done', 'pic' => $d],
@@ -431,19 +394,16 @@ class TrackingItemsCilupbahSeeder extends Seeder
             ['domain' => 'Product Master', 'method' => 'PATCH', 'endpoint' => '/api/v1/warranties/{warranty}', 'function_id' => 'Ubah data warranties', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Product Master', 'method' => 'DELETE', 'endpoint' => '/api/v1/warranties/{warranty}', 'function_id' => 'Hapus data warranties', 'status' => 'done', 'pic' => $d],
 
-            // ── Products ──────────────────────────────────────────────
             ['domain' => 'Products', 'method' => 'GET', 'endpoint' => '/api/v1/products/archives/{id}', 'function_id' => 'Ambil detail archives', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Products', 'method' => 'GET', 'endpoint' => '/api/v1/products/master/{id}', 'function_id' => 'Ambil detail master', 'status' => 'done', 'pic' => $d],
             ['domain' => 'Products', 'method' => 'PATCH', 'endpoint' => '/api/v1/products/{product}', 'function_id' => 'Ubah data products', 'status' => 'done', 'pic' => $d],
 
-            // ── Purchase Orders ──────────────────────────────────────────────
             ['domain' => 'Purchase Orders', 'method' => 'DELETE', 'endpoint' => '/api/v1/purchase/orders/{id}', 'function_id' => 'Hapus data orders', 'status' => 'done', 'pic' => $r],
             ['domain' => 'Purchase Orders', 'method' => 'POST', 'endpoint' => '/api/v1/purchase/orders/{id}/approve', 'function_id' => 'Endpoint POST /api/v1/purchase/orders/{id}/approve', 'status' => 'done', 'pic' => $r],
             ['domain' => 'Purchase Orders', 'method' => 'POST', 'endpoint' => '/api/v1/purchase/orders/{id}/cancel', 'function_id' => 'Endpoint POST /api/v1/purchase/orders/{id}/cancel', 'status' => 'done', 'pic' => $r],
             ['domain' => 'Purchase Orders', 'method' => 'POST', 'endpoint' => '/api/v1/purchase/orders/{id}/receive', 'function_id' => 'Endpoint POST /api/v1/purchase/orders/{id}/receive', 'status' => 'done', 'pic' => $r],
             ['domain' => 'Purchase Orders', 'method' => 'GET', 'endpoint' => '/api/v1/purchase/return-settlements', 'function_id' => 'Ambil daftar return-settlements', 'status' => 'done', 'pic' => $r],
 
-            // ── Sales & Return ──────────────────────────────────────────────
             ['domain' => 'Sales & Return', 'method' => 'POST', 'endpoint' => '/api/v1/sales', 'function_id' => 'Buat data sales', 'status' => 'done', 'pic' => $r],
             ['domain' => 'Sales & Return', 'method' => 'GET', 'endpoint' => '/api/v1/sales/returns', 'function_id' => 'Ambil daftar returns', 'status' => 'done', 'pic' => $r],
             ['domain' => 'Sales & Return', 'method' => 'POST', 'endpoint' => '/api/v1/sales/returns', 'function_id' => 'Buat data returns', 'status' => 'done', 'pic' => $r],
@@ -457,13 +417,10 @@ class TrackingItemsCilupbahSeeder extends Seeder
             ['domain' => 'Sales & Return', 'method' => 'PATCH', 'endpoint' => '/api/v1/sales/{id}', 'function_id' => 'Ubah data sales', 'status' => 'done', 'pic' => $r],
             ['domain' => 'Sales & Return', 'method' => 'DELETE', 'endpoint' => '/api/v1/sales/{id}', 'function_id' => 'Hapus data sales', 'status' => 'done', 'pic' => $r],
 
-            // ── Systemsetting ──────────────────────────────────────────────
             ['domain' => 'Systemsetting', 'method' => 'GET', 'endpoint' => '/api/v1/systemsetting/webhook', 'function_id' => 'Ambil daftar webhook', 'status' => 'done', 'pic' => $d],
 
-            // ── Tiktok ──────────────────────────────────────────────
             ['domain' => 'Tiktok', 'method' => 'GET', 'endpoint' => '/api/v1/tiktok/callback-debug', 'function_id' => 'Ambil daftar callback-debug', 'status' => 'done', 'pic' => $d],
 
-            // ── {channel} ──────────────────────────────────────────────
             ['domain' => '{channel}', 'method' => 'PATCH', 'endpoint' => '/api/v1/{channel}/products/{product}', 'function_id' => 'Ubah data products', 'status' => 'done', 'pic' => $d],
         ];
     }

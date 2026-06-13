@@ -2,7 +2,6 @@
 
 namespace Modules\Region\Repositories;
 
-
 use Modules\Region\Models\Province;
 use Modules\Region\Models\City;
 use Modules\Region\Models\District;
@@ -12,7 +11,6 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class RegionRepository
 {
-
 
     public function getProvinces()
     {

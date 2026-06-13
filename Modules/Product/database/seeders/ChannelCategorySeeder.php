@@ -12,29 +12,28 @@ class ChannelCategorySeeder extends Seeder
     public function run(): void
     {
         $tiktokChannel = Channel::where('code', 'tiktok')->first();
-        
+
         if (!$tiktokChannel) {
             $this->command->warn('TikTok channel not found. Skipping ChannelCategorySeeder.');
             return;
         }
 
         $jsonFile = base_path('tiktok_categories.json');
-        
+
         if (!file_exists($jsonFile)) {
             $this->command->warn('tiktok_categories.json file not found. Skipping ChannelCategorySeeder.');
             return;
         }
 
         $data = json_decode(file_get_contents($jsonFile), true);
-        
+
         if (!isset($data['data']['categories'])) {
             $this->command->warn('Invalid JSON structure in tiktok_categories.json. Skipping.');
             return;
         }
 
         $categories = $data['data']['categories'];
-        
-        // Chunk inserts to avoid memory exhaustion (15k rows)
+
         $chunks = array_chunk($categories, 500);
 
         $this->command->info('Importing ' . count($categories) . ' TikTok categories...');
@@ -53,10 +52,10 @@ class ChannelCategorySeeder extends Seeder
                     'updated_at' => now(),
                 ];
             }
-            
+
             DB::table('channel_categories')->insertOrIgnore($insertData);
         }
-        
+
         $this->command->info('Finished importing TikTok categories.');
     }
 }

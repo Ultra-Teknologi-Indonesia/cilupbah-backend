@@ -7,11 +7,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class ProductResource extends JsonResource
 {
-    /**
-     * Transform the resource into an array.
-     *
-     * @return array<string, mixed>
-     */
+
     public function toArray(Request $request): array
     {
         return [
@@ -92,9 +88,6 @@ class ProductResource extends JsonResource
         ];
     }
 
-    /**
-     * URL gambar utama: media is_primary, fallback ke media pertama.
-     */
     protected function primaryImageUrl(): ?string
     {
         if (!$this->resource->relationLoaded('media')) {
@@ -107,9 +100,6 @@ class ProductResource extends JsonResource
         return $primary->url ?? null;
     }
 
-    /**
-     * Rentang harga (min-max) dari sell_price seluruh varian.
-     */
     protected function priceRange(): ?array
     {
         if (!$this->resource->relationLoaded('variants')) {

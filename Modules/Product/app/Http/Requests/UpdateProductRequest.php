@@ -27,7 +27,7 @@ class UpdateProductRequest extends FormRequest
             'height' => 'sometimes|nullable|numeric|min:0',
             'is_cod_allowed' => 'sometimes|boolean',
             'is_active' => 'sometimes|boolean',
-            
+
             'variants' => 'sometimes|array|min:1',
             'variants.*.sku' => 'required_with:variants|string|max:255',
             'variants.*.sell_price' => 'sometimes|numeric|min:0',

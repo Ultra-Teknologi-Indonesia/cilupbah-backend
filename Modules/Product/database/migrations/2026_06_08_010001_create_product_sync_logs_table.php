@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('product_sync_logs', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            // product_id nullable: download level-toko bisa tanpa produk spesifik.
+
             $table->uuid('product_id')->nullable();
             $table->uuid('channel_shop_id')->nullable();
             $table->enum('action', ['upload', 'download', 'sync_price', 'sync_stock', 'unlink']);

@@ -29,7 +29,7 @@ class WebhookSubscriptionService
         $data['secret'] = $data['secret'] ?? Str::random(40);
         $data['is_active'] = $data['is_active'] ?? true;
         $subscription = $this->repository->create($data);
-        WebhookDispatcherService::flushCache();
+        app(WebhookDispatcherService::class)->refreshCache();
 
         return $subscription;
     }
@@ -37,7 +37,7 @@ class WebhookSubscriptionService
     public function update(WebhookSubscription $subscription, array $data): WebhookSubscription
     {
         $subscription = $this->repository->update($subscription, $data);
-        WebhookDispatcherService::flushCache();
+        app(WebhookDispatcherService::class)->refreshCache();
 
         return $subscription;
     }
@@ -45,6 +45,6 @@ class WebhookSubscriptionService
     public function delete(WebhookSubscription $subscription): void
     {
         $this->repository->delete($subscription);
-        WebhookDispatcherService::flushCache();
+        app(WebhookDispatcherService::class)->refreshCache();
     }
 }

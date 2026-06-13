@@ -15,7 +15,6 @@ class TrackingController extends Controller
         return view('dev.tracking');
     }
 
-    /** Data tabel + ringkasan (JSON). */
     public function data(Request $request)
     {
         $items = $this->filtered($request)
@@ -36,7 +35,6 @@ class TrackingController extends Controller
         ]);
     }
 
-    /** Update status / notes / pic satu item. */
     public function update(Request $request, TrackingItem $item)
     {
         $validated = $request->validate([
@@ -55,7 +53,6 @@ class TrackingController extends Controller
         ]);
     }
 
-    /** Export snapshot CSV / Markdown. */
     public function export(Request $request): StreamedResponse
     {
         $format = $request->query('format', 'csv');

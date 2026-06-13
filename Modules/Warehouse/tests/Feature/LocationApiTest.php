@@ -52,10 +52,8 @@ class LocationApiTest extends TestCase
             'village_id' => $villageId,
         ]);
 
-        // Cukup kirim village_id; provinsi/kota/kecamatan otomatis tersambung lewat relasi
         $response->assertJsonPath('data.village.district.city.province.id', '32');
 
-        // It should also generate default inbound bin
         $locationId = $response->json('data.id');
         $this->assertDatabaseHas('location_bins', [
             'location_id' => $locationId,
@@ -92,7 +90,7 @@ class LocationApiTest extends TestCase
     {
         $payload = [
             'location_code' => 'TEST-002',
-            // Missing location_name
+
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/locations', $payload);
@@ -140,7 +138,7 @@ class LocationApiTest extends TestCase
         $location = Location::factory()->create();
 
         $payload = [
-            'default_warehouse_user' => 'not-an-email', // Validation should fail here
+            'default_warehouse_user' => 'not-an-email', 
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')->putJson("/api/v1/locations/{$location->id}", $payload);
@@ -156,7 +154,7 @@ class LocationApiTest extends TestCase
         $response = $this->actingAs($this->user, 'sanctum')->deleteJson("/api/v1/locations/{$location->id}");
 
         $response->assertStatus(200);
-        
+
         $this->assertDatabaseMissing('locations', ['id' => $location->id]);
     }
 

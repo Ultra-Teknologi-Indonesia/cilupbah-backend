@@ -10,10 +10,6 @@ use Illuminate\Support\Facades\Storage;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Tests\TestCase;
 
-/**
- * Endpoint media terpusat: POST/PUT/DELETE/GET /api/v1/media/upload.
- * Fokus: upload-replace-delete bekerja, UUID stabil saat replace, dan TIDAK error 500.
- */
 class MediaUploadApiTest extends TestCase
 {
     use RefreshDatabase;
@@ -65,10 +61,9 @@ class MediaUploadApiTest extends TestCase
             ->putJson("/api/v1/media/upload/{$uuid}", ['file' => $this->file('baru.png', 'image/png')]);
 
         $response->assertStatus(200)
-            ->assertJsonPath('data.uuid', $uuid)              // UUID TETAP
+            ->assertJsonPath('data.uuid', $uuid)              
             ->assertJsonPath('data.original_name', 'baru.png');
 
-        // Tetap 1 media, file lama hilang, file baru ada.
         $this->assertDatabaseCount('media', 1);
         Storage::disk('media_test')->assertMissing($oldMedia->id . '/' . $oldMedia->file_name);
 
@@ -102,13 +97,10 @@ class MediaUploadApiTest extends TestCase
         $this->assertDatabaseCount('media', 0);
         $this->assertDatabaseCount('uploads', 0);
 
-        // Sudah terhapus → akses berikutnya 404, bukan 500.
         $this->actingAs($this->user, 'sanctum')
             ->getJson("/api/v1/media/upload/{$uuid}")
             ->assertStatus(404);
     }
-
-    // ── Guard no-500 ──
 
     public function test_upload_without_file_returns_422(): void
     {

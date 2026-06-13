@@ -9,11 +9,6 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
-/**
- * Membuktikan MediaService (add / replace / delete / deleteById / url) bekerja
- * di atas Spatie Media Library, memakai disk yang di-fake (disk-agnostic, tanpa R2 nyata).
- * Diuji lewat model pembawa media generik: Upload (koleksi 'file').
- */
 class MediaServiceTest extends TestCase
 {
     use RefreshDatabase;
@@ -24,7 +19,6 @@ class MediaServiceTest extends TestCase
     {
         parent::setUp();
 
-        // Arahkan media library ke disk fake agar tidak menyentuh R2 sungguhan.
         config(['filesystems.disks.media_test' => ['driver' => 'local', 'root' => storage_path('app/media_test')]]);
         config(['media-library.disk_name' => 'media_test']);
         Storage::fake('media_test');
@@ -39,7 +33,7 @@ class MediaServiceTest extends TestCase
 
     private function file(string $name = 'foto.jpg'): UploadedFile
     {
-        // create() (bukan image()) → tidak butuh ekstensi GD.
+
         return UploadedFile::fake()->create($name, 10, 'image/jpeg');
     }
 
@@ -66,7 +60,6 @@ class MediaServiceTest extends TestCase
         $this->assertCount(1, $collection);
         $this->assertEquals('baru', $collection->first()->name);
 
-        // File lama sudah dihapus dari disk.
         Storage::disk('media_test')->assertMissing($first->id . '/' . $first->file_name);
         Storage::disk('media_test')->assertExists($second->id . '/' . $second->file_name);
     }
@@ -78,7 +71,6 @@ class MediaServiceTest extends TestCase
         $this->media->add($owner, $this->file('a.jpg'), 'file');
         $this->media->add($owner, $this->file('b.jpg'), 'file');
 
-        // Koleksi 'file' dideklarasikan singleFile() → tetap 1.
         $this->assertCount(1, $owner->refresh()->getMedia('file'));
     }
 
@@ -100,11 +92,9 @@ class MediaServiceTest extends TestCase
         $mediaA = $this->media->add($ownerA, $this->file('a.jpg'), 'file');
         $mediaB = $this->media->add($ownerB, $this->file('b.jpg'), 'file');
 
-        // ownerA tidak boleh menghapus media milik ownerB.
         $this->assertFalse($this->media->deleteById($ownerA, $mediaB->id));
         $this->assertCount(1, $ownerB->refresh()->getMedia('file'));
 
-        // ownerA boleh menghapus miliknya sendiri.
         $this->assertTrue($this->media->deleteById($ownerA, $mediaA->id));
         $this->assertCount(0, $ownerA->refresh()->getMedia('file'));
     }

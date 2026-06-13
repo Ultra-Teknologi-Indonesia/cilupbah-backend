@@ -8,6 +8,6 @@ class PurchaseDatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        //
+
     }
 }

@@ -32,7 +32,6 @@ class LocationService
         return $this->locationRepository->findById($id);
     }
 
-    /** Guard format UUID agar id non-UUID tidak memicu error cast Postgres (return null/false -> 404). */
     protected function isValidUuid(string $id): bool
     {
         $normalized = str_replace('-', '', $id);
@@ -69,8 +68,6 @@ class LocationService
             return null;
         }
 
-        // Key `layout` bukan kolom tabel locations — wajib dipisah sebelum update repository,
-        // jika ikut terkirim akan memicu "column layout does not exist" (500).
         $layout = $data['layout'] ?? null;
         unset($data['layout']);
 
@@ -92,11 +89,6 @@ class LocationService
         });
     }
 
-    /**
-     * Sinkronkan layout zona+rak. Zona yang tidak ada di payload dihapus (cascade ke bin),
-     * tetapi DITOLAK bila zona masih menyimpan stok aktif agar stok tidak ter-detach diam-diam.
-     * Rak di dalam zona yang sudah ada tidak diubah (aturan bisnis).
-     */
     protected function syncLayout(string $locationId, array $layout): void
     {
         $incomingZoneCodes = array_values(array_filter(array_column($layout, 'zone_code')));
@@ -140,7 +132,7 @@ class LocationService
 
                 $this->binRepository->insertMany($rows);
             } else {
-                // Zona sudah ada: hanya perbarui nama. Rak di dalamnya tidak disentuh (aturan bisnis).
+
                 $this->zoneRepository->updateName($existingZone, $zoneData['zone_name'] ?? null);
             }
         }
@@ -167,7 +159,7 @@ class LocationService
             try {
                 return $this->locationRepository->delete($id);
             } catch (QueryException $e) {
-                // FK restrict lain (inbound, purchase order, sales return, transfer) -> tolak dengan pesan ramah.
+
                 throw new \DomainException('Lokasi tidak dapat dihapus karena masih dipakai oleh transaksi lain (inbound/pembelian/retur/transfer).');
             }
         });
@@ -183,7 +175,6 @@ class LocationService
         return $this->locationRepository->getFulfillmentLocations();
     }
 
-    /** Daftar lokasi outlet POS (paginated). */
     public function getPosLocations()
     {
         return $this->locationRepository->getPosPaginated();

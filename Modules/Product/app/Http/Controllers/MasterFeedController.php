@@ -28,7 +28,6 @@ class MasterFeedController extends Controller
             'updated_since' => 'nullable|date',
         ]);
 
-        /** @var \Illuminate\Pagination\LengthAwarePaginator $paginator */
         $paginator = $this->service->paginate(
             $request->query('status'),
             $request->query('updated_since'),

@@ -30,7 +30,6 @@ class ProductE2ETest extends TestCase
         $this->user = User::factory()->create();
         $this->actingAs($this->user);
 
-        // Siapkan master data
         $this->category = Category::create([
             'id' => Uuid::uuid7()->getHex()->toString(),
             'name' => 'Kategori E2E'
@@ -109,7 +108,7 @@ class ProductE2ETest extends TestCase
 
     public function test_can_read_product_detail()
     {
-        // 1. Buat dulu
+
         $createResponse = $this->postJson('/api/v1/products', [
             'name' => 'Produk E2E Read',
             'category_id' => $this->category->id,
@@ -133,7 +132,6 @@ class ProductE2ETest extends TestCase
 
         $productId = $createResponse->json('data.product_id');
 
-        // 2. Baca Detail
         $readResponse = $this->getJson("/api/v1/products/{$productId}");
 
          $readResponse->assertStatus(200)
@@ -146,7 +144,7 @@ class ProductE2ETest extends TestCase
 
     public function test_can_update_product_and_overrides()
     {
-        // 1. Buat
+
         $createResponse = $this->postJson('/api/v1/products', [
             'name' => 'Produk E2E Awal',
             'category_id' => $this->category->id,
@@ -166,18 +164,17 @@ class ProductE2ETest extends TestCase
 
         $productId = $createResponse->json('data.product_id');
 
-        // 2. Update
         $updateResponse = $this->putJson("/api/v1/products/{$productId}", [
             'name' => 'Produk E2E Baru',
             'category_id' => $this->category->id,
             'variants' => [
                 [
                     'sku' => 'E2E-VAR-UPDATE',
-                    'sell_price' => 20000, // Harga dasar berubah
+                    'sell_price' => 20000, 
                     'channel_prices' => [
                         [
                             'channel_shop_id' => $this->channelShop->id,
-                            'price' => 30000 // Harga khusus ikut berubah
+                            'price' => 30000 
                         ]
                     ]
                 ]
@@ -203,7 +200,7 @@ class ProductE2ETest extends TestCase
 
     public function test_can_delete_product()
     {
-        // 1. Buat
+
         $createResponse = $this->postJson('/api/v1/products', [
             'name' => 'Produk E2E Hapus',
             'category_id' => $this->category->id,
@@ -223,22 +220,17 @@ class ProductE2ETest extends TestCase
 
         $productId = $createResponse->json('data.product_id');
 
-        // 2. Hapus (dead stock: belum ada inventory, on_hand = 0)
         $deleteResponse = $this->deleteJson("/api/v1/products/{$productId}");
 
         $deleteResponse->assertStatus(200);
 
-        // Soft delete: produk tidak hilang dari DB, hanya ter-flag deleted_at,
-        // sehingga history transaksi tetap dapat menelusuri produk via withTrashed().
         $this->assertSoftDeleted('products', [
             'id' => $productId,
         ]);
 
-        // Produk tidak lagi muncul di query normal.
         $this->assertNull(Product::find($productId));
         $this->assertNotNull(Product::withTrashed()->find($productId));
 
-        // Variant tetap dipertahankan agar item_id pada order_items tetap resolvable.
         $this->assertDatabaseHas('product_variants', [
             'sku' => 'E2E-VAR-DELETE',
         ]);
@@ -246,7 +238,7 @@ class ProductE2ETest extends TestCase
 
     public function test_cannot_delete_product_that_still_has_stock_on_hand()
     {
-        // 1. Buat produk dengan satu variant
+
         $createResponse = $this->postJson('/api/v1/products', [
             'name' => 'Produk Masih Bergerak',
             'category_id' => $this->category->id,
@@ -267,7 +259,6 @@ class ProductE2ETest extends TestCase
         $productId = $createResponse->json('data.product_id');
         $variant = Product::find($productId)->variants()->firstOrFail();
 
-        // 2. Beri stok on hand pada variant tersebut
         $location = \Modules\Warehouse\Models\Location::create([
             'location_code' => 'WH-E2E-01',
             'location_name' => 'Gudang E2E',
@@ -281,7 +272,6 @@ class ProductE2ETest extends TestCase
             'available' => 10,
         ]);
 
-        // 3. Coba hapus -> harus ditolak karena masih punya stok (bukan dead stock)
         $deleteResponse = $this->deleteJson("/api/v1/products/{$productId}");
 
         $deleteResponse->assertStatus(422);
@@ -290,9 +280,9 @@ class ProductE2ETest extends TestCase
 
     public function test_cannot_create_product_with_invalid_payload()
     {
-        // 1. Missing required fields
+
         $response = $this->postJson('/api/v1/products', [
-            'name' => '', // Empty name
+            'name' => '', 
         ]);
 
         $response->assertStatus(422)
@@ -307,7 +297,7 @@ class ProductE2ETest extends TestCase
 
     public function test_can_list_products()
     {
-        // Create 2 products
+
         $this->postJson('/api/v1/products', [
             'name' => 'Produk List 1',
             'category_id' => $this->category->id,
@@ -337,33 +327,26 @@ class ProductE2ETest extends TestCase
         ]);
         $productId = $createResponse->json('data.product_id');
 
-        // Set to in_review first
         \DB::table('products')->where('id', $productId)->update(['status' => 'in_review']);
 
-        // Approve
         $approveRes = $this->postJson("/api/v1/products/{$productId}/approve");
           $approveRes->assertStatus(200);
         $this->assertDatabaseHas('products', ['id' => $productId, 'status' => 'master']);
 
-        // Set to in_review first
         \DB::table('products')->where('id', $productId)->update(['status' => 'in_review']);
 
-        // Reject (to download)
         $rejectRes = $this->postJson("/api/v1/products/{$productId}/reject");
         $rejectRes->assertStatus(200);
         $this->assertDatabaseHas('products', ['id' => $productId, 'status' => 'download']);
 
-        // Set back to master to allow archive
         \DB::table('products')->where('id', $productId)->update(['status' => 'master']);
 
-        // Archive
         $archiveRes = $this->postJson("/api/v1/products/{$productId}/archive", [
             'reason' => 'Testing archive'
         ]);
         $archiveRes->assertStatus(200);
         $this->assertDatabaseHas('products', ['id' => $productId, 'status' => 'archived']);
 
-        // Restore
         \DB::table('products')->where('id', $productId)->update(['status' => 'archived']);
         $restoreRes = $this->postJson("/api/v1/products/{$productId}/restore");
         $restoreRes->assertStatus(200);

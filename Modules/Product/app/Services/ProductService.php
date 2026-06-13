@@ -15,7 +15,7 @@ use Modules\Product\Repositories\ProductRepository;
 
 class ProductService
 {
-    /** Relasi detail untuk pengambilan satu produk. */
+
     private const DETAIL_RELATIONS = [
         'variants.channelMappings.channelMapping',
         'variants.inventories',
@@ -35,31 +35,26 @@ class ProductService
         return ChannelShop::where('shop_id', $shopId)->value('id');
     }
 
-    /** Jubelio: ambil produk per SKU (produk/varian). */
     public function getProductBySku(string $sku): ?Product
     {
         return $this->repository->findBySku($sku, self::DETAIL_RELATIONS);
     }
 
-    /** Jubelio: daftar produk bundle. */
     public function getBundles(): LengthAwarePaginator
     {
         return $this->repository->paginateBundles();
     }
 
-    /** Jubelio: stok produk per kumpulan id. */
     public function getStocksByIds(array $ids): Collection
     {
         return $this->repository->getByIdsWithStock($ids);
     }
 
-    /** Jubelio: harga produk per kumpulan id. */
     public function getPricesByIds(array $ids): Collection
     {
         return $this->repository->getByIdsWithVariants($ids);
     }
 
-    /** Jubelio: buat/ubah produk bundle beserta komponennya. */
     public function createOrUpdateBundle(array $data): Product
     {
         $attributes = [
@@ -95,19 +90,19 @@ class ProductService
         if ($sku) {
             $existingProduct = DB::table('products')->where('sku', $sku)->first();
             $productId = $existingProduct ? $existingProduct->id : null;
-            
+
             if (!$productId) {
                 $variant = DB::table('product_variants')->where('sku', $sku)->first();
                 if ($variant) {
                     $productId = $variant->product_id;
                 }
             }
-            
+
             if ($productId) {
                 return $this->updateProduct($productId, $data);
             }
         }
-        
+
         return $this->createProduct($data);
     }
 
@@ -118,7 +113,7 @@ class ProductService
                 'name', 'description', 'weight', 'length', 'width', 'height', 'is_active',
                 'is_bundle', 'is_consignment',
             ]);
-            
+
             if (!empty($productData)) {
                 $productData['updated_at'] = now();
                 DB::table('products')->where('id', $productId)->update($productData);
@@ -127,7 +122,7 @@ class ProductService
             if (!empty($data['variants'])) {
                 foreach ($data['variants'] as $variant) {
                     if (empty($variant['sku'])) continue;
-                    
+
                     $variantData = Arr::only($variant, [
                         'sell_price', 'is_active'
                     ]);
@@ -137,7 +132,7 @@ class ProductService
                         ->where('product_id', $productId)
                         ->where('sku', $variant['sku'])
                         ->first();
-                    
+
                     if ($existingVariant) {
                         DB::table('product_variants')->where('id', $existingVariant->id)->update($variantData);
                         $variantId = $existingVariant->id;
@@ -154,12 +149,12 @@ class ProductService
                     if (!empty($variant['channel_prices'])) {
                         foreach ($variant['channel_prices'] as $cp) {
                             $channelShopId = $cp['channel_shop_id'];
-                            
+
                             $pcm = DB::table('product_channel_mappings')
                                 ->where('product_id', $productId)
                                 ->where('channel_shop_id', $channelShopId)
                                 ->first();
-                                
+
                             if (!$pcm) {
                                 $pcmId = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();
                                 DB::table('product_channel_mappings')->insert([
@@ -213,7 +208,7 @@ class ProductService
                 'weight', 'length', 'width', 'height', 'is_active',
                 'status', 'is_bundle', 'is_consignment',
             ]);
-            
+
             $productId = \Ramsey\Uuid\Uuid::uuid7()->toString();
             DB::table('products')->insert(array_merge($productData, [
                 'id' => $productId,
@@ -269,7 +264,7 @@ class ProductService
                     $variantData = Arr::only($variant, [
                         'sku', 'sell_price', 'is_active'
                     ]);
-                    
+
                     $variantId = \Ramsey\Uuid\Uuid::uuid7()->toString();
                     DB::table('product_variants')->insert(array_merge($variantData, [
                         'id' => $variantId,
@@ -324,12 +319,12 @@ class ProductService
                     if (!empty($variant['channel_prices'])) {
                         foreach ($variant['channel_prices'] as $cp) {
                             $channelShopId = $cp['channel_shop_id'];
-                            
+
                             $pcm = DB::table('product_channel_mappings')
                                 ->where('product_id', $productId)
                                 ->where('channel_shop_id', $channelShopId)
                                 ->first();
-                                
+
                             if (!$pcm) {
                                 $pcmId = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();
                                 DB::table('product_channel_mappings')->insert([

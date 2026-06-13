@@ -11,10 +11,6 @@ use Laravel\Sanctum\Sanctum;
 use Modules\Product\Database\Seeders\ProductPermissionSeeder;
 use Tests\TestCase;
 
-/**
- * Verifikasi gating berbasis Spatie Permission untuk endpoint merge.
- * (Sengaja TIDAK memanggil withoutMiddleware supaya middleware permission aktif.)
- */
 class ProductMergePermissionTest extends TestCase
 {
     use RefreshDatabase;
@@ -28,7 +24,7 @@ class ProductMergePermissionTest extends TestCase
 
     public function test_all_endpoints_require_sanctum_login(): void
     {
-        // Tanpa autentikasi → 401 di SEMUA endpoint (auth:sanctum jalan sebelum permission)
+
         $this->getJson('/api/v1/products/merge/catalog')->assertStatus(401);
         $this->getJson('/api/v1/products/merge/suggestions')->assertStatus(401);
         $this->getJson('/api/v1/products/merge/applied')->assertStatus(401);
@@ -44,7 +40,7 @@ class ProductMergePermissionTest extends TestCase
 
     public function test_authenticated_without_permission_is_forbidden(): void
     {
-        Sanctum::actingAs(User::factory()->create()); // tanpa role/permission
+        Sanctum::actingAs(User::factory()->create()); 
 
         $this->getJson('/api/v1/products/merge/catalog')->assertStatus(403);
         $this->postJson('/api/v1/products/merge/auto')->assertStatus(403);
@@ -52,7 +48,7 @@ class ProductMergePermissionTest extends TestCase
 
     public function test_permission_grants_access_per_action(): void
     {
-        // Role kustom hanya dengan permission view → boleh baca, tak boleh mutasi
+
         $role = Role::create(['name' => 'merge-viewer', 'guard_name' => 'web']);
         $role->givePermissionTo('view-product-merge');
 
@@ -63,7 +59,6 @@ class ProductMergePermissionTest extends TestCase
         $this->getJson('/api/v1/products/merge/catalog')->assertStatus(200);
         $this->postJson('/api/v1/products/merge/auto')->assertStatus(403);
 
-        // Tambah permission auto-merge → endpoint auto jadi boleh
         $role->givePermissionTo('auto-merge-product');
         app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
 
@@ -83,8 +78,7 @@ class ProductMergePermissionTest extends TestCase
 
     public function test_owner_bypasses_via_gate_before(): void
     {
-        // Owner sengaja TIDAK diberi permission merge apa pun secara manual;
-        // harus tetap lolos karena Gate::before.
+
         Permission::query()->whereIn('name', ProductPermissionSeeder::PERMISSIONS)->get()
             ->each(fn ($p) => Role::findByName('owner', 'web')->revokePermissionTo($p));
         app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();

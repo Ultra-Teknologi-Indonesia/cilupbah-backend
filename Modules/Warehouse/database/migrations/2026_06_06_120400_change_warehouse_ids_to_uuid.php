@@ -9,7 +9,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // 1. Drop foreign keys
+
         Schema::table('users', function (Blueprint $table) {
             $table->dropForeign(['warehouse_id']);
         });
@@ -63,7 +63,6 @@ return new class extends Migration
             $table->dropForeign(['location_id']);
         });
 
-        // 2. Alter column types to VARCHAR(32)
         $tables = [
             'locations' => ['id'],
             'location_zones' => ['id', 'location_id'],
@@ -83,17 +82,16 @@ return new class extends Migration
         foreach ($tables as $table => $columns) {
             foreach ($columns as $column) {
                 if (DB::getDriverName() !== 'sqlite') {
-                    // Drop default sequence if it's the primary key 'id'
+
                     if ($column === 'id') {
                         DB::statement("ALTER TABLE {$table} ALTER COLUMN id DROP DEFAULT");
                     }
-                    
+
                     DB::statement("ALTER TABLE {$table} ALTER COLUMN {$column} TYPE UUID USING LPAD({$column}::text, 32, '0')::uuid");
                 }
             }
         }
 
-        // 3. Re-add foreign keys
         Schema::table('users', function (Blueprint $table) {
             $table->foreign('warehouse_id')->references('id')->on('locations')->nullOnDelete();
         });
@@ -150,7 +148,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        // Reverting this is complex and might lose UUID formats back to integers.
-        // It's not practically possible to revert UUIDv7 to serial bigint safely.
+
     }
 };

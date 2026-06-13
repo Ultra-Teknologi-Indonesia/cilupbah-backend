@@ -8,21 +8,11 @@ use Modules\Finance\Models\Journal;
 use Modules\Finance\Models\JournalDetail;
 use Modules\Finance\Repositories\JournalRepository;
 
-/**
- * Business logic Journal (Jubelio: getJournal/getJournalById/getJournalManual/postManualJournal).
- *
- * Aturan manual journal (PLAN-JOURNAL.md §2):
- * - journal_id 0/null = buat baru; uuid = ubah.
- * - Hanya jurnal ber-type 'Manual Jurnal' yang boleh diubah (jurnal otomatis immutable).
- * - Wajib seimbang (Σdebit = Σcredit) — divalidasi di FormRequest, dicek ulang di sini.
- */
 class JournalService
 {
     public function __construct(
         protected JournalRepository $repository,
     ) {}
-
-    // ==================== Read ====================
 
     public function listAll(?string $q = null, ?string $createdSince = null)
     {
@@ -47,13 +37,6 @@ class JournalService
         return $journal ? $this->mapDetail($journal) : null;
     }
 
-    // ==================== Save manual journal ====================
-
-    /**
-     * Buat/ubah jurnal manual (kontrak Jubelio postManualJournal).
-     * Return jurnal hasil; throw \DomainException untuk pelanggaran bisnis (→422),
-     * return null bila target edit tidak ditemukan (→404).
-     */
     public function saveManual(array $data, ?string $userId = null): ?array
     {
         $journalId = $data['journal_id'] ?? 0;
@@ -66,7 +49,6 @@ class JournalService
             'description' => $line['description'] ?? null,
         ], $data['accounts']);
 
-        // Pertahanan kedua (FormRequest sudah memvalidasi): jurnal wajib seimbang.
         $totalDebit = round(array_sum(array_column($lines, 'debit')), 4);
         $totalCredit = round(array_sum(array_column($lines, 'credit')), 4);
         if ($totalDebit !== $totalCredit) {
@@ -122,7 +104,6 @@ class JournalService
         });
     }
 
-    /** Retry sekali bila penomoran GJ bentrok unique (dua transaksi paralel). */
     protected function withNumberingRetry(callable $fn): Journal
     {
         try {
@@ -131,8 +112,6 @@ class JournalService
             return $fn();
         }
     }
-
-    // ==================== Mapping (bentuk Jubelio) ====================
 
     public function mapItem(Journal $journal): array
     {

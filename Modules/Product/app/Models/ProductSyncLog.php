@@ -47,9 +47,6 @@ class ProductSyncLog extends Model
         return $this->belongsTo(ChannelShop::class);
     }
 
-    /**
-     * Helper ringkas untuk mencatat satu log sinkronisasi.
-     */
     public static function record(array $attributes): self
     {
         return static::create($attributes);

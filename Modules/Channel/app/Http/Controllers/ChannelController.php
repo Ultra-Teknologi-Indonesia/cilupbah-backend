@@ -24,9 +24,6 @@ class ChannelController extends Controller
         $this->authService = $authService;
     }
 
-    /**
-     * Jubelio: GET /marketplace/store — Ambil semua toko marketplace yang terhubung.
-     */
     public function stores(): JsonResponse
     {
         return $this->successPaginatedResponse(
@@ -35,14 +32,11 @@ class ChannelController extends Controller
         );
     }
 
-    /**
-     * Display paginated channels with their bound shops.
-     */
     public function index(Request $request)
     {
         try {
             $channels = $this->channelService->getPaginatedChannels();
-            
+
             if ($request->is('api/*') || $request->wantsJson()) {
                 return $this->successPaginatedResponse(
                     ChannelResource::collection($channels),
@@ -59,9 +53,6 @@ class ChannelController extends Controller
         }
     }
 
-    /**
-     * Disconnect (deactivate + clear tokens) a shop from its channel.
-     */
     public function disconnectShop(Request $request, string $id)
     {
         try {
@@ -78,9 +69,6 @@ class ChannelController extends Controller
         }
     }
 
-    /**
-     * Refresh the access token for a shop.
-     */
     public function refreshShopToken(Request $request, string $id)
     {
         try {

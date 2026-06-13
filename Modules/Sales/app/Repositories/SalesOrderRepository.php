@@ -9,7 +9,6 @@ use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 use App\Filters\FuzzyFilter;
 
-
 class SalesOrderRepository
 {
     public function getPaginatedOrders()
@@ -174,12 +173,6 @@ class SalesOrderRepository
         return SalesOrder::find($orderId);
     }
 
-    /**
-     * Upsert item order per kunci (sku + price) — BUKAN delete-insert.
-     * Baris lama yang masih direferensikan picklist/packlist (FK restrictOnDelete)
-     * tidak boleh dihapus; menghapusnya membuat seluruh upsert order gagal dan
-     * order yang sedang dipenuhi berhenti tersinkron dari channel.
-     */
     public function syncOrderItems(string $orderId, array $items): void
     {
         $variantIdsBySku = $this->resolveVariantIdsBySku($items);
@@ -246,7 +239,6 @@ class SalesOrderRepository
         return ($sku ?? '') . '|' . number_format((float) $price, 2, '.', '');
     }
 
-    /** @return array<string,string> peta sku → product_variants.id */
     protected function resolveVariantIdsBySku(array $items): array
     {
         $skus = collect($items)->pluck('sku')->filter()->unique()->values();
@@ -261,10 +253,6 @@ class SalesOrderRepository
             ->all();
     }
 
-    /**
-     * Hapus baris lama yang tidak lagi ada di payload channel, KECUALI yang masih
-     * direferensikan picklist/packlist — baris itu dipertahankan agar FK tidak meledak.
-     */
     protected function deleteUnreferencedLeftovers(string $orderId, array $pools): void
     {
         $leftoverIds = collect($pools)->flatten(1)->pluck('id');

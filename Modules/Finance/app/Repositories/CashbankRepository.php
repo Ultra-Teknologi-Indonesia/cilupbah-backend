@@ -6,14 +6,9 @@ use Modules\Purchase\Models\PurchasePayment;
 use Modules\Sales\Models\SalesPayment;
 use Spatie\QueryBuilder\QueryBuilder;
 
-/**
- * Cash & Bank = VIEW read-only di atas pembayaran yang sudah ada (PLAN-CASHBANK.md):
- * receives = SalesPayment (uang masuk), payments = PurchasePayment (uang keluar).
- * Murni SELECT — tidak menyentuh jalur tulis modul Sales/Purchase.
- */
 class CashbankRepository
 {
-    /** Daftar uang keluar (pembayaran ke supplier). */
+
     public function paginatePayments(?string $dateFrom = null, ?string $dateTo = null)
     {
         return QueryBuilder::for(PurchasePayment::class)
@@ -26,7 +21,6 @@ class CashbankRepository
             ->appends(request()->query());
     }
 
-    /** Daftar uang masuk (pembayaran dari pelanggan). */
     public function paginateReceives(?string $dateFrom = null, ?string $dateTo = null)
     {
         return QueryBuilder::for(SalesPayment::class)

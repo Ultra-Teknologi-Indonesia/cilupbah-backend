@@ -13,10 +13,6 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\LazadaClient;
 use Tests\TestCase;
 
-/**
- * Fase 1+2 Lazada Omnichannel: manajemen toko, auto-refresh token,
- * LazadaClient::request (business API), dan registrasi adapter.
- */
 class LazadaStoreApiTest extends TestCase
 {
     use RefreshDatabase;
@@ -65,8 +61,6 @@ class LazadaStoreApiTest extends TestCase
             ], 200),
         ]);
     }
-
-    // ── Manajemen toko ──
 
     public function test_stores_requires_auth(): void
     {
@@ -118,8 +112,6 @@ class LazadaStoreApiTest extends TestCase
             ->assertStatus(404);
     }
 
-    // ── Refresh token ──
-
     public function test_refresh_token_updates_shop(): void
     {
         $this->fakeRefreshResponse();
@@ -159,8 +151,6 @@ class LazadaStoreApiTest extends TestCase
         $this->assertEquals('access-token', $healthy->refresh()->access_token);
     }
 
-    // ── LazadaClient::request (business API) ──
-
     public function test_request_success_returns_data(): void
     {
         Http::fake([
@@ -199,8 +189,6 @@ class LazadaStoreApiTest extends TestCase
 
         (new LazadaClient())->request('GET', '/seller/get');
     }
-
-    // ── Adapter ──
 
     public function test_adapter_factory_resolves_lazada(): void
     {

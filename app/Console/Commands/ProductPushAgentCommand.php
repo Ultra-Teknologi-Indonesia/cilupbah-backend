@@ -16,23 +16,11 @@ use App\Models\User;
 
 class ProductPushAgentCommand extends Command
 {
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
+
     protected $signature = 'agent:product-push {--product= : ID (UUID) Produk Lokal} {--shop= : ID Channel Shop}';
 
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
     protected $description = 'AI Agent untuk mendorong (push) Produk Lokal ke TikTok Shop';
 
-    /**
-     * Execute the console command.
-     */
     public function handle()
     {
         $this->info('🤖 Memulai Agen AI: Push Produk ke TikTok Shop...');
@@ -68,15 +56,13 @@ class ProductPushAgentCommand extends Command
 
         $this->info("🔄 Memastikan Mapping Kategori dan Atribut sudah dikonfigurasi...");
 
-        // Dummy TikTok Category Mapping (Smartphone)
         $channelCategory = ChannelCategory::firstOrCreate([
             'channel_id' => $shop->channel_id,
-            'external_id' => '839824' // Dummy TikTok ID for Electronics/Smartphones
+            'external_id' => '839824' 
         ], ['name' => 'Smartphone Dummy TikTok']);
 
         $product->category->channelCategories()->syncWithoutDetaching([$channelCategory->id]);
 
-        // Dummy TikTok Attribute Mapping (Color)
         $channelAttr = ChannelAttribute::updateOrCreate([
             'channel_category_id' => $channelCategory->id,
             'external_id' => '100393' 
@@ -87,7 +73,6 @@ class ProductPushAgentCommand extends Command
             'external_id' => '1001182' 
         ], ['name' => 'Titanium Black']);
 
-        // Find local attributes inside product specifications and map them
         foreach ($product->specifications as $spec) {
             if ($spec->attribute && $spec->attribute->name === 'Warna') {
                 $spec->attribute->channelAttributes()->syncWithoutDetaching([$channelAttr->id]);
@@ -119,7 +104,7 @@ class ProductPushAgentCommand extends Command
                 $this->error("❌ Gagal Push Produk via API: " . $response->body());
                 return;
             }
-            
+
             $this->info("✅ API Push Berhasil Di-hit!");
             $this->line("======================================");
             $this->info("Response: " . json_encode($response->json(), JSON_PRETTY_PRINT));

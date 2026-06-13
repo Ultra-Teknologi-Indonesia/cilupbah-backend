@@ -4,14 +4,9 @@ namespace Tests\Feature;
 
 use Tests\TestCase;
 
-/**
- * Guard anti-drift: SEMUA queue yang dipakai job wajib dilayani supervisor Horizon.
- * Queue tanpa supervisor = job menumpuk diam-diam di Redis tanpa pernah diproses
- * (pernah terjadi pada queue 'webhooks' — webhook outbound tidak pernah terkirim).
- */
 class HorizonQueueCoverageTest extends TestCase
 {
-    /** Semua queue yang dilayani supervisor Horizon (defaults berlaku lintas environment). */
+
     private function servedQueues(): array
     {
         $served = [];
@@ -53,9 +48,8 @@ class HorizonQueueCoverageTest extends TestCase
         foreach ($jobFiles as $file) {
             $src = file_get_contents($file);
 
-            // onQueue(config('a.b')) / onQueue(config('a.b', 'fallback')) / onQueue('literal')
             if (! preg_match("/onQueue\((?:config\('([^']+)'(?:\s*,\s*'([^']+)')?\)|'([^']+)')\)/", $src, $m)) {
-                continue; // tanpa onQueue → 'default' (sudah diuji di atas) atau di-set di dispatch site
+                continue; 
             }
 
             $queue = $m[3] ?? null;
@@ -84,6 +78,4 @@ class HorizonQueueCoverageTest extends TestCase
         }
     }
 
-    // Catatan: QUEUE_CONNECTION=redis di .env server TIDAK bisa diuji dari sini
-    // (phpunit meng-override ke sync). Diverifikasi manual: .env staging = redis.
 }

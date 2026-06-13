@@ -18,10 +18,6 @@ use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
 use Tests\TestCase;
 
-/**
- * Fase 3 Lazada Omnichannel: push/update/delete produk, sync harga+stok,
- * pull produk → draft 'download' + channel mappings. Http::fake penuh.
- */
 class LazadaProductSyncTest extends TestCase
 {
     use RefreshDatabase;
@@ -68,8 +64,6 @@ class LazadaProductSyncTest extends TestCase
 
         return $product->fresh(['variants']);
     }
-
-    // ── Push & update ──
 
     public function test_push_product_sends_lazada_payload_and_returns_external_id(): void
     {
@@ -134,14 +128,11 @@ class LazadaProductSyncTest extends TestCase
         $this->assertStringContainsString('category invalid', $result['message']);
     }
 
-    // ── Harga + stok ──
-
     public function test_sync_price_and_stock_sends_available_qty(): void
     {
         $product = $this->makeProduct('SKU-A', 75000);
         $variant = $product->variants->first();
 
-        // Mapping produk+varian ke toko, gudang channel, dan stok tersedia.
         $pcm = ProductChannelMapping::create([
             'product_id' => $product->id,
             'channel_shop_id' => $this->shop->id,
@@ -190,8 +181,6 @@ class LazadaProductSyncTest extends TestCase
         $this->assertStringContainsString('Tidak ada SKU', $result['message']);
     }
 
-    // ── Delete & activate ──
-
     public function test_delete_product_uses_mapped_seller_skus(): void
     {
         $product = $this->makeProduct('SKU-DEL');
@@ -227,8 +216,6 @@ class LazadaProductSyncTest extends TestCase
         $this->assertFalse($adapter->deactivateProduct($this->shop, '1')['success']);
     }
 
-    // ── Inbound mapper & pull ──
-
     private function sampleLazadaProduct(): array
     {
         return [
@@ -258,7 +245,7 @@ class LazadaProductSyncTest extends TestCase
         $this->assertEquals('download', $internal['status']);
         $this->assertCount(1, $internal['variants']);
         $this->assertEquals('SKU-RUN-42', $internal['variants'][0]['sku']);
-        $this->assertEquals(199000.0, $internal['variants'][0]['sell_price']); // special_price menang
+        $this->assertEquals(199000.0, $internal['variants'][0]['sell_price']); 
         $this->assertCount(2, $internal['media']);
         $this->assertTrue($internal['media'][0]['is_primary']);
     }
@@ -303,7 +290,7 @@ class LazadaProductSyncTest extends TestCase
 
         $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/lazada/download', ['shop_id' => 'LZ-100'])
-            ->assertStatus(202); // async: DownloadTransaction dibuat, job diantre
+            ->assertStatus(202); 
 
         \Illuminate\Support\Facades\Queue::assertPushed(\Modules\Channel\Jobs\DownloadProductsJob::class);
     }

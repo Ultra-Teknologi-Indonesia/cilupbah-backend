@@ -29,7 +29,7 @@ class WarrantyService
     {
         $data['id'] = \Ramsey\Uuid\Uuid::uuid7()->toString();
         $data['status'] = 'active';
-        
+
         return $this->repository->create($data);
     }
 

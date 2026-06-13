@@ -26,8 +26,6 @@ class ProductChannelMapping extends Model
         'last_synced_at' => 'datetime',
     ];
 
-    // ==================== Relasi ====================
-
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
@@ -43,8 +41,6 @@ class ProductChannelMapping extends Model
         return $this->hasMany(ProductVariantChannelMapping::class);
     }
 
-    // ==================== Scopes ====================
-
     public function scopeSynced($query)
     {
         return $query->where('sync_status', 'synced');
@@ -59,8 +55,6 @@ class ProductChannelMapping extends Model
     {
         return $query->where('sync_status', 'pending');
     }
-
-    // ==================== Helpers ====================
 
     public function markAsSyncing(): void
     {

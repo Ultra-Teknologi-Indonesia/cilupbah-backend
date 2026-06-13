@@ -15,10 +15,12 @@ class WebhookSubscription extends Model
         'target_url',
         'secret',
         'is_active',
+        'consecutive_failures',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'consecutive_failures' => 'integer',
     ];
 
     protected $hidden = [

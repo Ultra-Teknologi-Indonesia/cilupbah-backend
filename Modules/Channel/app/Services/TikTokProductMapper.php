@@ -6,13 +6,12 @@ class TikTokProductMapper
 {
     public function map(array $internalProduct, array $uploadedImageIds = [], array $config = []): array
     {
-        // 600048 = "Botol Air" V2 category with Warna (100000) SALES_PROPERTY – works in ID sandbox
+
         $categoryId = $config['category_id'] ?? '600048';
         $warehouseId = $config['warehouse_id'] ?? '7646426075561690887';
-        // Default empty; callers can pass product_attributes via $config if the category requires them
+
         $attributes = $config['attributes'] ?? [];
 
-        // Map internal attribute names to TikTok SALES_PROPERTY IDs for category 802952
         $salesAttrIdMap = [
             'warna'   => '100000',
             'color'   => '100000',
@@ -48,7 +47,7 @@ class TikTokProductMapper
         }
 
         if (!empty($internalProduct['brand_id'])) {
-            // $payload['brand_id'] = $internalProduct['brand_id'];
+
         }
 
         if (!empty($internalProduct['variants'])) {

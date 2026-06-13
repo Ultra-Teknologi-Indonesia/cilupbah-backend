@@ -15,10 +15,6 @@ use Modules\Product\Models\ProductVariant;
 use Modules\Sales\Models\SalesOrder;
 use Tests\TestCase;
 
-/**
- * Fase 4 Lazada Omnichannel: tarik order → SalesOrder via SalesOrderService
- * (idempoten, status ter-mapping, stok ter-reserve via jalur resmi). Http::fake penuh.
- */
 class LazadaOrderPullTest extends TestCase
 {
     use RefreshDatabase;
@@ -51,9 +47,6 @@ class LazadaOrderPullTest extends TestCase
         ]);
     }
 
-    /**
-     * Fake /orders/get + /orders/items/get. $status = status Lazada (mis. pending/unpaid/canceled).
-     */
     private function fakeOrdersApi(string $status = 'unpaid', string $sku = 'SKU-LZD-1', int $units = 2): void
     {
         Http::fake([
@@ -84,7 +77,7 @@ class LazadaOrderPullTest extends TestCase
                 'code' => '0',
                 'data' => [[
                     'order_id' => 900123,
-                    // Lazada: satu baris per UNIT (tanpa qty) → harus tergabung jadi qty=2.
+
                     'order_items' => array_fill(0, $units, [
                         'order_item_id' => 111,
                         'name' => 'Kaos Polos',
@@ -114,11 +107,10 @@ class LazadaOrderPullTest extends TestCase
         $order = SalesOrder::where('salesorder_no', '900123')->first();
         $this->assertNotNull($order);
         $this->assertEquals('lazada', $order->source);
-        $this->assertEquals('pending', $order->status);          // unpaid → UNPAID → pending
+        $this->assertEquals('pending', $order->status);          
         $this->assertEquals('Budi Santoso', $order->customer_name);
         $this->assertEquals(150000.0, (float) $order->grand_total);
 
-        // 2 baris per-unit Lazada tergabung jadi 1 item qty 2.
         $items = DB::table('sales_order_items')->where('order_id', $order->id)->get();
         $this->assertCount(1, $items);
         $this->assertEquals(2, $items[0]->qty_in_base);
@@ -137,7 +129,7 @@ class LazadaOrderPullTest extends TestCase
 
     public function test_paid_order_reserves_stock_via_official_path(): void
     {
-        // Variant + lokasi + mapping toko→gudang + stok tersedia.
+
         $category = Category::create(['name' => 'C', 'is_active' => true]);
         $product = Product::create(['category_id' => $category->id, 'name' => 'Kaos', 'status' => 'master', 'is_active' => true]);
         $variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'SKU-LZD-1', 'sell_price' => 70000, 'is_active' => true]);
@@ -155,7 +147,7 @@ class LazadaOrderPullTest extends TestCase
             'on_hand' => 10, 'on_order' => 0, 'reserved' => 0, 'available' => 10,
         ]);
 
-        $this->fakeOrdersApi('pending'); // paid, menunggu pack → AWAITING_SHIPMENT → reserved
+        $this->fakeOrdersApi('pending'); 
 
         $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/lazada/sync/pull', ['shop_id' => 'LZ-100'])
@@ -203,8 +195,6 @@ class LazadaOrderPullTest extends TestCase
 
         $this->assertEquals('fresh-token', $this->shop->refresh()->access_token);
     }
-
-    // ── Guard no-500 ──
 
     public function test_unknown_shop_returns_422_not_500(): void
     {

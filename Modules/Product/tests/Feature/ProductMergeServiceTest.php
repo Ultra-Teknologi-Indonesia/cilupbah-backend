@@ -49,17 +49,15 @@ class ProductMergeServiceTest extends TestCase
         return $p;
     }
 
-    // ── Helpers murni (inti: prefix sampai "-" pertama) ──
-
     public function test_sku_type_code_handles_all_cases(): void
     {
         $this->assertSame('SLR', SkuGrouping::skuTypeCode('SLR-GREEN-IP14'));
         $this->assertSame('SLR', SkuGrouping::skuTypeCode('slr-green'));
         $this->assertSame('ABCD', SkuGrouping::skuTypeCode('ABCD'));
         $this->assertSame('AB', SkuGrouping::skuTypeCode('AB'));
-        $this->assertNull(SkuGrouping::skuTypeCode('A-B'));     // prefix < 2 char
+        $this->assertNull(SkuGrouping::skuTypeCode('A-B'));     
         $this->assertNull(SkuGrouping::skuTypeCode(''));
-        $this->assertNull(SkuGrouping::skuTypeCode('-XYZ'));    // prefix kosong
+        $this->assertNull(SkuGrouping::skuTypeCode('-XYZ'));    
         $this->assertNull(SkuGrouping::skuTypeCode(null));
     }
 
@@ -71,12 +69,11 @@ class ProductMergeServiceTest extends TestCase
 
     public function test_normalize_name_preserves_non_latin_characters(): void
     {
-        // Paritas cilupbah-ops: hanya buang diakritik, JANGAN buang/transliterasi CJK dll.
-        // (kalau pakai Str::ascii, dua nama berbeda di bawah ini bisa kolaps jadi key kosong)
+
         $this->assertSame('iphone 手机壳 hitam', SkuGrouping::normalizeName('iPhone 手机壳 Hitam'));
         $this->assertSame('手机壳 a', SkuGrouping::normalizeName('手机壳 A'));
         $this->assertSame('手机膜 b', SkuGrouping::normalizeName('手机膜 B'));
-        // Dua nama CJK berbeda tidak boleh menormalisasi ke string yang sama
+
         $this->assertNotSame(
             SkuGrouping::normalizeName('手机壳 A'),
             SkuGrouping::normalizeName('手机膜 B'),
@@ -89,19 +86,17 @@ class ProductMergeServiceTest extends TestCase
         $this->assertSame('matte soft case', SkuGrouping::nameSignature('Matte Soft Case (Slim) / Bonus'));
     }
 
-    // ── Auto-merge ──
-
     public function test_auto_merge_groups_by_sku_prefix(): void
     {
         $this->makeProduct('Soft Case Merah Panjang', ['SLR-RED']);
         $this->makeProduct('Soft Case Biru', ['SLR-BLUE']);
-        $this->makeProduct('Produk Lain Sendiri', ['XYZ-1']); // singleton → skip
+        $this->makeProduct('Produk Lain Sendiri', ['XYZ-1']); 
 
         $result = $this->service()->autoMergeAll();
 
         $this->assertSame(2, $result['merged']);
         $this->assertSame(2, ProductMerge::count());
-        // Master = nama unik terpanjang dalam grup SLR
+
         $masters = ProductMerge::pluck('master_name')->unique()->values();
         $this->assertCount(1, $masters);
         $this->assertSame('Soft Case Merah Panjang', $masters[0]);
@@ -135,7 +130,7 @@ class ProductMergeServiceTest extends TestCase
     {
         $p1 = $this->makeProduct('Case Satu', ['SLR-1']);
         $p2 = $this->makeProduct('Case Dua', ['SLR-2']);
-        // p1 sudah merged manual ke master custom
+
         ProductMerge::create(['product_id' => $p1->id, 'master_name' => 'Master Custom']);
 
         $this->service()->autoMergeAll();
@@ -145,7 +140,7 @@ class ProductMergeServiceTest extends TestCase
 
     public function test_auto_merge_uses_name_pattern_group_across_different_prefixes(): void
     {
-        // Prefix SKU berbeda (AAA vs BBB) tapi nama diawali "premium full cover"
+
         $a = $this->makeProduct('Premium Full Cover Hitam', ['AAA-1']);
         $b = $this->makeProduct('Premium Full Cover Putih', ['BBB-1']);
 
@@ -154,19 +149,17 @@ class ProductMergeServiceTest extends TestCase
         $ma = ProductMerge::where('product_id', $a->id)->value('master_name');
         $mb = ProductMerge::where('product_id', $b->id)->value('master_name');
         $this->assertNotNull($ma);
-        $this->assertSame($ma, $mb); // tergabung dalam 1 master walau beda prefix SKU
+        $this->assertSame($ma, $mb); 
     }
 
     public function test_auto_merge_skips_products_without_sku(): void
     {
-        $this->makeProduct('Tanpa SKU Sama Sekali', []); // tak punya varian ber-SKU
+        $this->makeProduct('Tanpa SKU Sama Sekali', []); 
 
         $result = $this->service()->autoMergeAll();
 
         $this->assertSame(0, $result['merged']);
     }
-
-    // ── Apply / validasi ──
 
     public function test_apply_merge_rejects_missing_product(): void
     {
@@ -189,13 +182,11 @@ class ProductMergeServiceTest extends TestCase
         $this->assertSame(2, ProductMerge::count());
     }
 
-    // ── Cascade hidden ──
-
     public function test_cascade_hidden_on_merge_inherits_to_new_master(): void
     {
         $a = $this->makeProduct('Produk A Hidden', ['AAA-1']);
         $b = $this->makeProduct('Produk B', ['BBB-1']);
-        // Sembunyikan nama efektif produk A (solo)
+
         $this->service()->bulkHide(['Produk A Hidden']);
 
         $this->service()->applyMerge('Master Gabungan', [$a->id, $b->id]);
@@ -218,8 +209,6 @@ class ProductMergeServiceTest extends TestCase
         $this->assertTrue(ProductMergeHidden::where('master_name', 'Produk B')->exists());
     }
 
-    // ── Katalog ──
-
     public function test_catalog_groups_and_counts(): void
     {
         $a = $this->makeProduct('Case Satu', ['SLR-1']);
@@ -229,7 +218,6 @@ class ProductMergeServiceTest extends TestCase
 
         $catalog = $this->service()->catalog('all');
 
-        // 1 master group (Master SLR) + 1 solo = 2 visible
         $this->assertSame(2, $catalog['counts']['all']);
         $this->assertSame(1, $catalog['counts']['merged']);
         $this->assertSame(1, $catalog['counts']['unmerged']);

@@ -111,10 +111,6 @@ class StockIntegrationTest extends TestCase
         ]);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // §1 — SALES ORDER → STOCK (reserve, pick, cancel, restore)
-    // ═══════════════════════════════════════════════════════════
-
     private function createSalesOrder(int $qty = 5, array $overrides = []): array
     {
         $payload = array_merge([
@@ -295,10 +291,6 @@ class StockIntegrationTest extends TestCase
         $this->assertEquals(90, $this->inventory->available);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // §2 — PURCHASE ORDER → STOCK (on_order + inbound receive)
-    // ═══════════════════════════════════════════════════════════
-
     public function test_po_approve_increases_on_order(): void
     {
         $createResponse = $this->postJson('/api/v1/purchase/orders', [
@@ -418,10 +410,6 @@ class StockIntegrationTest extends TestCase
         $this->assertEquals('PARTIAL_RECEIVED', $po->status);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // §3 — INBOUND → STOCK (receive adds on_hand)
-    // ═══════════════════════════════════════════════════════════
-
     public function test_inbound_receive_adds_stock(): void
     {
         $createResponse = $this->postJson('/api/v1/inbounds', [
@@ -515,10 +503,6 @@ class StockIntegrationTest extends TestCase
         $response->assertStatus(500);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // §4 — TRANSFER → STOCK (source deducts, dest adds)
-    // ═══════════════════════════════════════════════════════════
-
     public function test_transfer_out_in_full_cycle(): void
     {
         $outResponse = $this->postJson('/api/v1/inventory/transfers', [
@@ -553,10 +537,6 @@ class StockIntegrationTest extends TestCase
         $totalStock = Inventory::where('item_id', $this->variant->id)->sum('on_hand');
         $this->assertEquals(100, $totalStock);
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // §5 — PURCHASE → INBOUND → STOCK (end-to-end)
-    // ═══════════════════════════════════════════════════════════
 
     public function test_purchase_to_inbound_full_flow(): void
     {
@@ -615,10 +595,6 @@ class StockIntegrationTest extends TestCase
         $this->assertEquals(150, $totalOnHand);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // §6 — SALES + PURCHASE COMBINED (stock balance)
-    // ═══════════════════════════════════════════════════════════
-
     public function test_sales_and_purchase_stock_balance(): void
     {
         $poResponse = $this->postJson('/api/v1/purchase/orders', [
@@ -640,13 +616,9 @@ class StockIntegrationTest extends TestCase
         $this->assertEquals(100, $this->inventory->on_hand);
         $this->assertEquals(30, $this->inventory->on_order);
         $this->assertEquals(20, $this->inventory->reserved);
-        // available = on_hand - on_order - reserved = 100 - 30 - 20 = 50
+
         $this->assertEquals(50, $this->inventory->available);
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // §7 — DELETE ORDER → STOCK RESTORE
-    // ═══════════════════════════════════════════════════════════
 
     public function test_delete_reserved_order_restores_stock(): void
     {
@@ -662,10 +634,6 @@ class StockIntegrationTest extends TestCase
         $this->assertEquals(0, $this->inventory->reserved);
         $this->assertEquals(100, $this->inventory->available);
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // §8 — AVAILABLE FORMULA CONSISTENCY
-    // ═══════════════════════════════════════════════════════════
 
     public function test_available_always_equals_formula_after_operations(): void
     {

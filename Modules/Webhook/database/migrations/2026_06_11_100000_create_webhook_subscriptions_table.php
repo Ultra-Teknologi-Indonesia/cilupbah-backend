@@ -10,9 +10,9 @@ return new class extends Migration
     {
         Schema::create('webhook_subscriptions', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->string('event');                 // salah satu dari 9 event, atau '*'
+            $table->string('event');                 
             $table->string('target_url');
-            $table->string('secret');                // untuk HMAC-SHA256
+            $table->string('secret');                
             $table->boolean('is_active')->default(true);
             $table->timestamps();
 
