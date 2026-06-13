@@ -15,7 +15,6 @@ use Modules\Outbound\Http\Controllers\OutboundFulfillmentController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
-    // Pengaturan retur penjualan (Jubelio: /systemsetting/sales-return-setting).
     Route::get('systemsetting/sales-return-setting', [\Modules\Sales\Http\Controllers\SalesReturnSettingController::class, 'index'])->name('sales.returnSetting.index');
     Route::post('systemsetting/sales-return-setting', [\Modules\Sales\Http\Controllers\SalesReturnSettingController::class, 'store'])->name('sales.returnSetting.store');
 

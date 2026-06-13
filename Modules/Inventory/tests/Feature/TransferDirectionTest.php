@@ -8,9 +8,6 @@ use Modules\Inventory\Models\InventoryTransfer;
 use Modules\Warehouse\Models\Location;
 use Tests\TestCase;
 
-/**
- * View transfer berarah (paritas Jubelio): in / out / all-transit.
- */
 class TransferDirectionTest extends TestCase
 {
     use RefreshDatabase;
@@ -45,9 +42,9 @@ class TransferDirectionTest extends TestCase
 
     public function test_out_returns_only_in_transit_from_location(): void
     {
-        $this->makeTransfer($this->a->id, $this->b->id, 'IN_TRANSIT');  // out dari A ✓
-        $this->makeTransfer($this->b->id, $this->a->id, 'IN_TRANSIT');  // masuk ke A
-        $this->makeTransfer($this->a->id, $this->b->id, 'RECEIVED');    // sudah selesai
+        $this->makeTransfer($this->a->id, $this->b->id, 'IN_TRANSIT');  
+        $this->makeTransfer($this->b->id, $this->a->id, 'IN_TRANSIT');  
+        $this->makeTransfer($this->a->id, $this->b->id, 'RECEIVED');    
 
         $this->actingAs($this->user, 'sanctum')
             ->getJson("/api/v1/inventory/transfers/out?location_id={$this->a->id}")
@@ -58,7 +55,7 @@ class TransferDirectionTest extends TestCase
     public function test_in_returns_only_in_transit_to_location(): void
     {
         $this->makeTransfer($this->a->id, $this->b->id, 'IN_TRANSIT');
-        $this->makeTransfer($this->b->id, $this->a->id, 'IN_TRANSIT');  // masuk ke A ✓
+        $this->makeTransfer($this->b->id, $this->a->id, 'IN_TRANSIT');  
 
         $this->actingAs($this->user, 'sanctum')
             ->getJson("/api/v1/inventory/transfers/in?location_id={$this->a->id}")

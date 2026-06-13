@@ -66,7 +66,6 @@ class SalesReturnSettingTest extends TestCase
             ->assertJsonPath('data.auto_accept', true)
             ->assertJsonPath('data.default_restock_location_id', $this->location->id);
 
-        // validasi → 422 (bukan 500)
         $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/systemsetting/sales-return-setting', ['return_validity_days' => 0])
             ->assertStatus(422);

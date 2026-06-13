@@ -16,7 +16,6 @@ class CatalogController extends Controller
         private readonly CatalogService $service,
     ) {}
 
-    /** GET /inventory/catalog/{group_id} — item dalam satu grup katalog (master_name). */
     public function group(string $groupId): JsonResponse
     {
         return $this->successPaginatedResponse(
@@ -25,7 +24,6 @@ class CatalogController extends Controller
         );
     }
 
-    /** GET /inventory/catalog/for-listing/{id} (& /inventory/items/group/{id}) — detail produk untuk listing. */
     public function forListing(string $id): JsonResponse
     {
         $product = $this->service->forListing($id);

@@ -38,13 +38,11 @@ class MasterFeedRepository
             ->findOrFail($id);
     }
 
-    /** Satu produk untuk persiapan listing (tanpa batasan status). Null bila tidak ada. */
     public function findForListing(string $id): ?Product
     {
         return Product::query()->with(self::RELATIONS)->find($id);
     }
 
-    /** Produk-produk dalam satu grup katalog (ProductMerge.master_name). */
     public function paginateByMasterName(string $masterName): LengthAwarePaginator
     {
         $productIds = \Modules\Product\Models\ProductMerge::where('master_name', $masterName)->pluck('product_id');

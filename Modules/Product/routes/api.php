@@ -137,7 +137,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('inventory/price-list', [PriceListController::class, 'update']);
 
     Route::post('inventory/catalog/listing', [ProductChannelDraftController::class, 'catalogListing']);
-    // Catalog reads (paritas Jubelio) + alias upload massal.
+
     Route::get('inventory/catalog/for-listing/{id}', [CatalogController::class, 'forListing'])->whereUuid('id');
     Route::get('inventory/items/group/{id}', [CatalogController::class, 'forListing'])->whereUuid('id');
     Route::get('inventory/catalog/{group_id}', [CatalogController::class, 'group']);

@@ -5,10 +5,6 @@ namespace Modules\Sales\Services;
 use Modules\Sales\Models\SalesReturnSetting;
 use Modules\Sales\Repositories\SalesReturnSettingRepository;
 
-/**
- * Pengaturan retur penjualan (Jubelio: /systemsetting/sales-return-setting).
- * Semua accessor mengembalikan nilai efektif dengan default aman → konsumen tak pernah error.
- */
 class SalesReturnSettingService
 {
     public function __construct(
@@ -35,7 +31,6 @@ class SalesReturnSettingService
         return $this->get()->default_restock_location_id;
     }
 
-    /** @return array<int, string> */
     public function allowedConditions(): array
     {
         $values = $this->get()->allowed_conditions;
@@ -43,7 +38,6 @@ class SalesReturnSettingService
         return ! empty($values) ? $values : SalesReturnSetting::DEFAULT_CONDITIONS;
     }
 
-    /** @return array<int, string> */
     public function allowedRefundMethods(): array
     {
         $values = $this->get()->allowed_refund_methods;

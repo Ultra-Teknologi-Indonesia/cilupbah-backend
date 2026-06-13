@@ -10,9 +10,6 @@ use Modules\Product\Models\ProductMerge;
 use Modules\Product\Models\ProductVariant;
 use Tests\TestCase;
 
-/**
- * Catalog reads (paritas Jubelio): item per grup (master_name) & detail for-listing.
- */
 class CatalogReadTest extends TestCase
 {
     use RefreshDatabase;
@@ -49,7 +46,7 @@ class CatalogReadTest extends TestCase
     {
         $p1 = $this->makeProduct('Sepatu A');
         $p2 = $this->makeProduct('Sepatu B');
-        $this->makeProduct('Lainnya'); // tidak di-merge
+        $this->makeProduct('Lainnya'); 
 
         ProductMerge::create(['product_id' => $p1->id, 'master_name' => 'GRUPA']);
         ProductMerge::create(['product_id' => $p2->id, 'master_name' => 'GRUPA']);
@@ -79,7 +76,6 @@ class CatalogReadTest extends TestCase
             ->assertJsonPath('data.item_group_id', $p->id)
             ->assertJsonPath('data.item_name', 'Tas X');
 
-        // alias items/group/{id}
         $this->actingAs($this->user, 'sanctum')
             ->getJson("/api/v1/inventory/items/group/{$p->id}")
             ->assertStatus(200)

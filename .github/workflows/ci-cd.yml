@@ -112,9 +112,21 @@ jobs:
             docker compose -f docker-compose.staging.yml ps --filter "status=running" | grep -q "cilupbah-staging" \
               || { echo "❌ Container not running after deploy!"; exit 1; }
 
-            # ── Run Migrations ──────────────────────────────────────
+            # ── Run Migrations (single source of truth) ─────────────
+            # Incremental only — the staging DB volume is persistent and is
+            # never wiped/freshed. A migration failure trips the ERR trap and
+            # rolls the deploy back.
             echo "Running database migrations..."
             docker exec cilupbah-staging php artisan migrate --force || { echo "❌ Migration failed!"; exit 1; }
+
+            # ── Run Seeders (idempotent; non-fatal) ─────────────────
+            # Seeders are idempotent (firstOrCreate / guarded inserts), so this
+            # is safe to re-run each deploy. Kept non-fatal so a seeder hiccup
+            # never rolls back an otherwise-healthy deploy — but the output is
+            # now visible (no more `2>/dev/null` swallowing real errors).
+            echo "Running database seeders..."
+            docker exec cilupbah-staging php artisan db:seed --force \
+              || echo "⚠️  Seeding reported issues — review logs above (deploy continues)."
 
             trap - ERR
             echo "✅ Deployment successful"

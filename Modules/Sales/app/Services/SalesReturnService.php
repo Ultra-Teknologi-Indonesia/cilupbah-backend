@@ -68,7 +68,6 @@ class SalesReturnService
 
             $return->load('items');
 
-            // Auto-accept (best-effort): kegagalan inbound tidak menggagalkan pembuatan retur.
             if ($this->settings->autoAccept()) {
                 try {
                     $this->accept($return->id, ['processed_by' => $data['created_by']]);

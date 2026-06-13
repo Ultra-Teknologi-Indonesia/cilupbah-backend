@@ -75,7 +75,6 @@ class AutoJournalService
         );
     }
 
-    /** Refund retur penjualan: Dr Retur Penjualan — Cr Kas/Bank (map refund_method). */
     public function forSalesReturnRefund(\Modules\Sales\Models\SalesReturnSettlementRefund $refund): void
     {
         $this->record(

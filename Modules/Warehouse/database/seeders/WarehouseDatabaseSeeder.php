@@ -9,6 +9,11 @@ class WarehouseDatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+
+        if (DB::table('locations')->where('location_code', 'WH-PUSAT')->exists()) {
+            return;
+        }
+
         $locationId = \Ramsey\Uuid\Uuid::uuid7()->toString();
         DB::table('locations')->insert([
             'id' => $locationId,
