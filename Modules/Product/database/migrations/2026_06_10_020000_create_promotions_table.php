@@ -1,45 +1,22 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    /**
+     * No-op: tabel `promotions` & `promotion_items` kini dibuat oleh migrasi kanonik
+     * Modules/Inventory/.../2026_06_11_000001_create_promotions_table.php (skema dengan
+     * variant_id, promo_price, min_qty, dst). Migrasi ini dikosongkan agar tidak bentrok
+     * ("relation promotions already exists") saat migrate:fresh.
+     */
     public function up(): void
     {
-
-        Schema::dropIfExists('promotion_items');
-        Schema::dropIfExists('promotions');
-
-        Schema::create('promotions', function (Blueprint $table) {
-            $table->uuid('id')->primary();
-            $table->string('name');
-            $table->string('type', 16);              
-            $table->decimal('value', 15, 2)->default(0);
-            $table->timestamp('start_at')->nullable();
-            $table->timestamp('end_at')->nullable();
-            $table->boolean('is_active')->default(true);
-            $table->timestamps();
-
-            $table->index('is_active');
-        });
-
-        Schema::create('promotion_items', function (Blueprint $table) {
-            $table->uuid('id')->primary();
-            $table->uuid('promotion_id');
-            $table->uuid('product_id');
-            $table->timestamps();
-
-            $table->index('promotion_id');
-            $table->index('product_id');
-            $table->unique(['promotion_id', 'product_id']);
-        });
+        // intentionally empty — superseded by Inventory promotions migration
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('promotion_items');
-        Schema::dropIfExists('promotions');
+        // intentionally empty
     }
 };
