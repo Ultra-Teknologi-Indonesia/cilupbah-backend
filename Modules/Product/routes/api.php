@@ -19,7 +19,6 @@ use Modules\Product\Http\Controllers\ChannelProductListingController;
 use Modules\Product\Http\Controllers\RaiseProductController;
 use Modules\Product\Http\Controllers\VariantController;
 use Modules\Product\Http\Controllers\PriceListController;
-use Modules\Product\Http\Controllers\PromotionController;
 use Modules\Product\Http\Controllers\CatalogController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
@@ -143,11 +142,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inventory/catalog/{group_id}', [CatalogController::class, 'group']);
     Route::post('inventory/catalog/upload', [ProductChannelDraftController::class, 'bulkUpload']);
     Route::get('inventory/items/errors', [ProductSyncLogController::class, 'errors']);
-
-    Route::get('inventory/promotions', [PromotionController::class, 'index']);
-    Route::post('inventory/promotions', [PromotionController::class, 'store']);
-    Route::get('inventory/promotions/{id}', [PromotionController::class, 'show'])->whereUuid('id');
-    Route::delete('inventory/promotions/{id}', [PromotionController::class, 'destroy'])->whereUuid('id');
 });
 
 Route::middleware(['auth:sanctum'])->prefix('v1/{channel}')->group(function () {
