@@ -5,6 +5,7 @@ namespace Modules\Outbound\Services;
 use Modules\Outbound\Repositories\PacklistRepository;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Jobs\ProcessPacklistCompleteJob;
+use Modules\Notification\Events\TaskAssigned;
 use Modules\Sales\Models\SalesOrder as Order;
 use Illuminate\Support\Facades\DB;
 
@@ -88,7 +89,19 @@ class PacklistService
                 ]);
             }
 
-            return $this->packlistRepository->findById($packlist->id);
+            $packlist = $this->packlistRepository->findById($packlist->id);
+
+            if (!empty($data['packer_id'])) {
+                TaskAssigned::dispatch(
+                    $data['packer_id'],
+                    'packlist',
+                    $packlist->packlist_no,
+                    $data['created_by'],
+                    ['packlist_id' => $packlist->id],
+                );
+            }
+
+            return $packlist;
         });
     }
 
@@ -109,7 +122,17 @@ class PacklistService
             'assigned_by' => $assignedBy,
         ]);
 
-        return $this->packlistRepository->findById($id);
+        $packlist = $this->packlistRepository->findById($id);
+
+        TaskAssigned::dispatch(
+            $packerId,
+            'packlist',
+            $packlist->packlist_no,
+            $assignedBy,
+            ['packlist_id' => $id],
+        );
+
+        return $packlist;
     }
 
     public function start(string $id): Packlist

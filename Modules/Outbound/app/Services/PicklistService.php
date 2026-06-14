@@ -5,6 +5,7 @@ namespace Modules\Outbound\Services;
 use Modules\Outbound\Repositories\PicklistRepository;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Jobs\ProcessPicklistCompleteJob;
+use Modules\Notification\Events\TaskAssigned;
 use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Inventory\Models\Inventory;
 use Illuminate\Support\Facades\DB;
@@ -75,7 +76,19 @@ class PicklistService
                 }
             }
 
-            return $this->picklistRepository->findById($picklist->id);
+            $picklist = $this->picklistRepository->findById($picklist->id);
+
+            if (!empty($data['picker_id'])) {
+                TaskAssigned::dispatch(
+                    $data['picker_id'],
+                    'picklist',
+                    $picklist->picklist_no,
+                    $data['created_by'],
+                    ['picklist_id' => $picklist->id],
+                );
+            }
+
+            return $picklist;
         });
     }
 
@@ -96,7 +109,17 @@ class PicklistService
             'assigned_by' => $assignedBy,
         ]);
 
-        return $this->picklistRepository->findById($id);
+        $picklist = $this->picklistRepository->findById($id);
+
+        TaskAssigned::dispatch(
+            $pickerId,
+            'picklist',
+            $picklist->picklist_no,
+            $assignedBy,
+            ['picklist_id' => $id],
+        );
+
+        return $picklist;
     }
 
     public function start(string $id): Picklist

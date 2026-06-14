@@ -7,6 +7,7 @@ use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Jobs\ProcessPutawayItemJob;
+use Modules\Notification\Events\TaskAssigned;
 use Illuminate\Support\Facades\DB;
 
 class PutawayService
@@ -95,7 +96,17 @@ class PutawayService
                 'assigned_by' => $data['performed_by'],
             ]);
 
-            $results[] = $this->putawayRepository->findById($assignment['putaway_id']);
+            $putaway = $this->putawayRepository->findById($assignment['putaway_id']);
+
+            TaskAssigned::dispatch(
+                $assignment['assigned_to'],
+                'putaway',
+                $putaway->putaway_no,
+                $data['performed_by'],
+                ['putaway_id' => $assignment['putaway_id']],
+            );
+
+            $results[] = $putaway;
         }
 
         return $results;
