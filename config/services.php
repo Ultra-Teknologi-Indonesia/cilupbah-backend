@@ -23,6 +23,11 @@ return [
         ],
     ],
 
+    'fcm' => [
+        'project_id' => env('FCM_PROJECT_ID'),
+        'credentials' => env('FCM_CREDENTIALS', storage_path('app/firebase-credentials.json')),
+    ],
+
     'tiktok' => [
         'app_key' => env('TIKTOK_APP_KEY'),
         'app_secret' => env('TIKTOK_APP_SECRET'),
