@@ -8,9 +8,10 @@ use Modules\Finance\Models\Account;
 class AccountRepository
 {
 
-    public function getActiveLookup(): Collection
+    public function getActiveLookup(?string $type = null): Collection
     {
         return Account::where('is_active', true)
+            ->when($type, fn ($q) => $q->where('account_type', $type))
             ->orderBy('account_code')
             ->get();
     }

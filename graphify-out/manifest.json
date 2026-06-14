@@ -2064,11 +2064,6 @@
     "ast_hash": "8a7310a5ca29bf4e7d3c18694537c863",
     "semantic_hash": ""
   },
-  "Modules/Product/app/Http/Controllers/PromotionController.php": {
-    "mtime": 1781316204.3666306,
-    "ast_hash": "7034916f991d7929ef684415f2b8d3f6",
-    "semantic_hash": ""
-  },
   "Modules/Product/app/Http/Controllers/RaiseProductController.php": {
     "mtime": 1781061658.435812,
     "ast_hash": "203753cd48a0e0842ecbcbb73e8f5419",
@@ -2105,8 +2100,8 @@
     "semantic_hash": ""
   },
   "Modules/Product/app/Http/Requests/CreateProductRequest.php": {
-    "mtime": 1781427199.2098544,
-    "ast_hash": "16ecf50931e399cae1fd7ec1c3deb11e",
+    "mtime": 1781430317.2105129,
+    "ast_hash": "3dd2fad31373279d0c8f32a3b07a47fe",
     "semantic_hash": ""
   },
   "Modules/Product/app/Http/Requests/DeleteVariantRequest.php": {
@@ -2134,19 +2129,14 @@
     "ast_hash": "b858a1b3d285842b6925fb30d4be85e9",
     "semantic_hash": ""
   },
-  "Modules/Product/app/Http/Requests/StorePromotionRequest.php": {
-    "mtime": 1781102859.608192,
-    "ast_hash": "0449ced13d9057530b7cf398a24ad6c9",
-    "semantic_hash": ""
-  },
   "Modules/Product/app/Http/Requests/UpdatePriceListRequest.php": {
     "mtime": 1781102859.6085267,
     "ast_hash": "44703665ec68e5370d57b721898b7d1d",
     "semantic_hash": ""
   },
   "Modules/Product/app/Http/Requests/UpdateProductRequest.php": {
-    "mtime": 1781428121.7717757,
-    "ast_hash": "88e226a34a3197e293bd4f4e84ce7271",
+    "mtime": 1781430329.026298,
+    "ast_hash": "eccf25e287e39e1100396ac1724ff869",
     "semantic_hash": ""
   },
   "Modules/Product/app/Http/Resources/ArchiveItemResource.php": {
@@ -2227,11 +2217,6 @@
   "Modules/Product/app/Http/Resources/ProductSyncLogResource.php": {
     "mtime": 1780982173.6453722,
     "ast_hash": "ecccbbf6f70e9d456d6b8e7813161ca8",
-    "semantic_hash": ""
-  },
-  "Modules/Product/app/Http/Resources/PromotionResource.php": {
-    "mtime": 1781102859.6092649,
-    "ast_hash": "b3aaefcf192d81be76c30025f8340878",
     "semantic_hash": ""
   },
   "Modules/Product/app/Http/Resources/RaiseProductDetailResource.php": {
@@ -2395,13 +2380,13 @@
     "semantic_hash": ""
   },
   "Modules/Product/app/Models/Promotion.php": {
-    "mtime": 1781102859.6111085,
-    "ast_hash": "c98235864b139fbb462d3a12fc6fc36f",
+    "mtime": 1781428910.0902975,
+    "ast_hash": "375763222542974cc3d87271802926c0",
     "semantic_hash": ""
   },
   "Modules/Product/app/Models/PromotionItem.php": {
-    "mtime": 1781102859.611392,
-    "ast_hash": "ff1835f739d152200388086117a4787f",
+    "mtime": 1781428910.0907176,
+    "ast_hash": "a6494a65521123a4531c8beff50402d6",
     "semantic_hash": ""
   },
   "Modules/Product/app/Models/RaiseProduct.php": {
@@ -2524,11 +2509,6 @@
     "ast_hash": "be390fea7e73b763684e10b0f25d4372",
     "semantic_hash": ""
   },
-  "Modules/Product/app/Repositories/PromotionRepository.php": {
-    "mtime": 1781316204.347589,
-    "ast_hash": "7a67eacbb17de5f8feeaec50037cfec3",
-    "semantic_hash": ""
-  },
   "Modules/Product/app/Repositories/RaiseProductRepository.php": {
     "mtime": 1781061658.4425435,
     "ast_hash": "3ad6b12134bc9bf322e431bc453ef1eb",
@@ -2635,18 +2615,13 @@
     "semantic_hash": ""
   },
   "Modules/Product/app/Services/ProductService.php": {
-    "mtime": 1781428142.5043576,
-    "ast_hash": "ffa9a71f9ae4e0a5099c3ba4138b92b3",
+    "mtime": 1781430342.2675135,
+    "ast_hash": "b92a8840d5bf1e7a335da04b17b3bcf3",
     "semantic_hash": ""
   },
   "Modules/Product/app/Services/ProductVariantService.php": {
     "mtime": 1781316204.3835804,
     "ast_hash": "2f401195212e291f55da445026d31fd4",
-    "semantic_hash": ""
-  },
-  "Modules/Product/app/Services/PromotionService.php": {
-    "mtime": 1781102859.6128109,
-    "ast_hash": "67528898199c23594ffc6459b9f22f88",
     "semantic_hash": ""
   },
   "Modules/Product/app/Services/RaiseProductService.php": {
@@ -2899,11 +2874,6 @@
     "ast_hash": "aeefeeb744669b4e63b1794d7f1d821a",
     "semantic_hash": ""
   },
-  "Modules/Product/database/migrations/2026_06_10_020000_create_promotions_table.php": {
-    "mtime": 1781427769.4922936,
-    "ast_hash": "d2cd8da6c814da1f8ac756eacac88961",
-    "semantic_hash": ""
-  },
   "Modules/Product/database/seeders/AttributeSeeder.php": {
     "mtime": 1780384177.7934318,
     "ast_hash": "b32ad069cf530957d0d1117e620d23cb",
@@ -2965,8 +2935,8 @@
     "semantic_hash": ""
   },
   "Modules/Product/routes/api.php": {
-    "mtime": 1781327150.9434936,
-    "ast_hash": "6c39ed552957c9bc66112f31c50de503",
+    "mtime": 1781428910.091151,
+    "ast_hash": "9582011df169a2021099758fb21bd9c4",
     "semantic_hash": ""
   },
   "Modules/Product/routes/web.php": {
@@ -3020,8 +2990,8 @@
     "semantic_hash": ""
   },
   "Modules/Product/tests/Feature/ProductE2ETest.php": {
-    "mtime": 1781316204.3962502,
-    "ast_hash": "5699bdf6b021bb63ecbad6195a62115a",
+    "mtime": 1781430460.6369598,
+    "ast_hash": "0fd353de9f79c75188627098ae8cf06c",
     "semantic_hash": ""
   },
   "Modules/Product/tests/Feature/ProductHistoriesTest.php": {

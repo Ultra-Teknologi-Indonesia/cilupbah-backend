@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Finance\Support\AccountMappingKey;
 use Modules\Inventory\Models\Inventory;
 use Modules\Product\Models\Product;
 use Modules\Product\Repositories\ProductRepository;
@@ -31,10 +32,6 @@ class ProductService
     ) {
     }
 
-    /**
-     * Bangun satu baris product_media. Bila media_uuid diberikan, url di-resolve
-     * dari media library (snapshot disimpan agar reader lama tetap pakai ->url).
-     */
     private function buildMediaRow(array $m, string $productId, ?string $variantId): array
     {
         $mediaUuid = $m['media_uuid'] ?? null;
@@ -55,6 +52,43 @@ class ProductService
             'created_at' => now(),
             'updated_at' => now(),
         ];
+    }
+
+    /**
+     * Akun default produk: pakai yang dikirim, atau fallback ke akun default
+     * organisasi (account_mappings). Kembalikan null bila dua-duanya kosong.
+     */
+    private function resolveAccountId(?string $given, string $mappingKey): ?string
+    {
+        if (! empty($given)) {
+            return $given;
+        }
+
+        return DB::table('account_mappings')->where('key', $mappingKey)->value('account_id');
+    }
+
+    /** Ambil rate pajak (cache ke product_variants.tax_rate). */
+    private function taxRate($taxId): float
+    {
+        return (float) (DB::table('taxes')->where('id', $taxId)->value('rate') ?? 0);
+    }
+
+    /** Sisipkan baris pivot toko "stok tak terbatas" untuk satu varian. */
+    private function syncUnlimitedShops(string $variantId, array $shopIds): void
+    {
+        $rows = [];
+        foreach (array_unique($shopIds) as $shopId) {
+            $rows[] = [
+                'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
+                'variant_id' => $variantId,
+                'channel_shop_id' => $shopId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+        if ($rows) {
+            DB::table('variant_unlimited_shops')->insert($rows);
+        }
     }
 
     public function resolveChannelShopId(string $shopId): ?string
@@ -137,16 +171,28 @@ class ProductService
     {
         return DB::transaction(function () use ($productId, $data) {
             $productData = Arr::only($data, [
-                'name', 'description', 'weight', 'length', 'width', 'height', 'is_active',
-                'is_bundle', 'is_consignment',
+                'name', 'sku', 'description', 'category_id', 'brand_id', 'search_keyword',
+                'order_type', 'indent_days', 'condition', 'status',
+                'weight', 'length', 'width', 'height', 'is_active', 'is_cod_allowed',
+                'is_bundle', 'is_consignment', 'package_contents',
+                'is_stored', 'is_sold', 'is_purchased', 'purchase_lead_time',
             ]);
+
+            // Akun hanya di-update bila field-nya memang dikirim (boleh null = lepas akun).
+            foreach ([
+                'sales_account_id', 'sales_return_account_id',
+                'inventory_account_id', 'cogs_account_id',
+            ] as $accCol) {
+                if (array_key_exists($accCol, $data)) {
+                    $productData[$accCol] = $data[$accCol];
+                }
+            }
 
             if (!empty($productData)) {
                 $productData['updated_at'] = now();
                 DB::table('products')->where('id', $productId)->update($productData);
             }
 
-            // Replace koleksi media level produk (variant_id NULL) bila `media` dikirim.
             if (array_key_exists('media', $data)) {
                 DB::table('product_media')
                     ->where('product_id', $productId)
@@ -166,8 +212,12 @@ class ProductService
                     if (empty($variant['sku'])) continue;
 
                     $variantData = Arr::only($variant, [
-                        'sell_price', 'is_active'
+                        'sell_price', 'buy_price', 'barcode', 'is_active',
+                        'sales_tax_id', 'purchase_tax_id', 'min_stock', 'safe_stock',
                     ]);
+                    if (!empty($variant['sales_tax_id'])) {
+                        $variantData['tax_rate'] = $this->taxRate($variant['sales_tax_id']);
+                    }
                     $variantData['updated_at'] = now();
 
                     $existingVariant = DB::table('product_variants')
@@ -188,7 +238,6 @@ class ProductService
                         $variantId = DB::table('product_variants')->where('product_id', $productId)->where('sku', $variant['sku'])->value('id');
                     }
 
-                    // Replace media varian bila `media` dikirim untuk varian ini.
                     if (array_key_exists('media', $variant)) {
                         DB::table('product_media')->where('variant_id', $variantId)->delete();
 
@@ -247,6 +296,13 @@ class ProductService
                             }
                         }
                     }
+
+                    if (array_key_exists('unlimited_shop_ids', $variant)) {
+                        DB::table('variant_unlimited_shops')->where('variant_id', $variantId)->delete();
+                        if (!empty($variant['unlimited_shop_ids'])) {
+                            $this->syncUnlimitedShops($variantId, $variant['unlimited_shop_ids']);
+                        }
+                    }
                 }
             }
 
@@ -258,10 +314,22 @@ class ProductService
     {
         return DB::transaction(function () use ($data) {
             $productData = Arr::only($data, [
-                'category_id', 'brand_id', 'name', 'description',
+                'category_id', 'brand_id', 'name', 'sku', 'description',
+                'order_type', 'indent_days',
                 'weight', 'length', 'width', 'height', 'is_active',
-                'status', 'is_bundle', 'is_consignment',
+                'is_bundle', 'is_consignment',
+                'is_stored', 'is_sold', 'is_purchased',
+                'purchase_lead_time', 'package_contents',
             ]);
+
+            // "Simpan" → in_review (default). Master HANYA lewat approve.
+            $productData['status'] = $data['status'] ?? Product::STATUS_IN_REVIEW;
+
+            // Akun: pakai input atau fallback ke mapping default organisasi.
+            $productData['sales_account_id'] = $this->resolveAccountId($data['sales_account_id'] ?? null, AccountMappingKey::SALES_REVENUE);
+            $productData['sales_return_account_id'] = $this->resolveAccountId($data['sales_return_account_id'] ?? null, AccountMappingKey::SALES_RETURN);
+            $productData['inventory_account_id'] = $this->resolveAccountId($data['inventory_account_id'] ?? null, AccountMappingKey::INVENTORY);
+            $productData['cogs_account_id'] = $this->resolveAccountId($data['cogs_account_id'] ?? null, AccountMappingKey::COGS);
 
             $productId = \Ramsey\Uuid\Uuid::uuid7()->toString();
             DB::table('products')->insert(array_merge($productData, [
@@ -308,8 +376,14 @@ class ProductService
             if (!empty($data['variants'])) {
                 foreach ($data['variants'] as $variant) {
                     $variantData = Arr::only($variant, [
-                        'sku', 'sell_price', 'is_active'
+                        'sku', 'barcode', 'buy_price', 'sell_price', 'is_active',
+                        'sales_tax_id', 'purchase_tax_id', 'min_stock', 'safe_stock',
                     ]);
+
+                    // Cache rate pajak penjualan ke tax_rate (dibaca MasterItemResource).
+                    if (!empty($variant['sales_tax_id'])) {
+                        $variantData['tax_rate'] = $this->taxRate($variant['sales_tax_id']);
+                    }
 
                     $variantId = \Ramsey\Uuid\Uuid::uuid7()->toString();
                     DB::table('product_variants')->insert(array_merge($variantData, [
@@ -318,6 +392,10 @@ class ProductService
                         'created_at' => now(),
                         'updated_at' => now(),
                     ]));
+
+                    if (!empty($variant['unlimited_shop_ids'])) {
+                        $this->syncUnlimitedShops($variantId, $variant['unlimited_shop_ids']);
+                    }
 
                     if (!empty($variant['options'])) {
                         $options = array_map(function ($opt) use ($variantId) {

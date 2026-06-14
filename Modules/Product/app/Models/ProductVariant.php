@@ -5,6 +5,7 @@ namespace Modules\Product\Models;
 use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ProductVariant extends Model
@@ -13,21 +14,49 @@ class ProductVariant extends Model
     protected $fillable = [
         'product_id',
         'sku',
+        'barcode',
+        'buy_price',
         'sell_price',
         'tax_rate',
+        'sales_tax_id',
+        'purchase_tax_id',
         'is_active',
         'is_internal',
         'min_stock',
+        'safe_stock',
         'sequence_item',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
         'is_internal' => 'boolean',
+        'buy_price' => 'decimal:2',
         'sell_price' => 'decimal:2',
         'tax_rate' => 'decimal:2',
+        'min_stock' => 'integer',
+        'safe_stock' => 'integer',
         'sequence_item' => 'integer',
     ];
+
+    public function salesTax(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Tax\Models\Tax::class, 'sales_tax_id');
+    }
+
+    public function purchaseTax(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Tax\Models\Tax::class, 'purchase_tax_id');
+    }
+
+    public function unlimitedShops(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            \Modules\Channel\Models\ChannelShop::class,
+            'variant_unlimited_shops',
+            'variant_id',
+            'channel_shop_id',
+        )->withTimestamps();
+    }
 
     public function product(): BelongsTo
     {

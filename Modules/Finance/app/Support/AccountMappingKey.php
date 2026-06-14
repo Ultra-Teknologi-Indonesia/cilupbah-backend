@@ -9,6 +9,7 @@ final class AccountMappingKey
     public const INVENTORY = 'inventory';
     public const ACCOUNTS_PAYABLE = 'accounts_payable';
     public const SALES_RETURN = 'sales_return';
+    public const COGS = 'cogs';
 
     public const DEFINITIONS = [
         self::SALES_REVENUE => ['label' => 'Pendapatan Penjualan', 'default' => '4-4000'],
@@ -16,6 +17,7 @@ final class AccountMappingKey
         self::INVENTORY => ['label' => 'Persediaan Barang', 'default' => '1-1200'],
         self::ACCOUNTS_PAYABLE => ['label' => 'Hutang Usaha', 'default' => '2-2000'],
         self::SALES_RETURN => ['label' => 'Retur Penjualan', 'default' => '4-4200'],
+        self::COGS => ['label' => 'Harga Pokok Penjualan', 'default' => '5-5000'],
     ];
 
     public static function keys(): array

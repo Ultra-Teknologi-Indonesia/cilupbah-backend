@@ -34,12 +34,13 @@ class AccountMappingApiTest extends TestCase
         $response = $this->actingAs($this->user, 'sanctum')
             ->getJson('/api/v1/systemsetting/account-mapping');
 
-        $response->assertStatus(200)->assertJsonCount(5, 'data');
+        $response->assertStatus(200)->assertJsonCount(6, 'data');
 
         $byKey = collect($response->json('data'))->keyBy('key');
         $this->assertEquals('4-4000', $byKey['sales_revenue']['account']['code']);
         $this->assertFalse($byKey['sales_revenue']['configured']);
         $this->assertEquals('1-1100', $byKey['accounts_receivable']['account']['code']);
+        $this->assertEquals('5-5000', $byKey['cogs']['account']['code']);
     }
 
     public function test_store_rejects_invalid_key_and_account(): void

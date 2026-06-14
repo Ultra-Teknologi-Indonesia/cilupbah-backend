@@ -25,9 +25,16 @@ class ProductController extends Controller
 
     private const DETAIL_RELATIONS = [
         'variants.channelMappings.channelMapping',
+        'variants.salesTax',
+        'variants.purchaseTax',
+        'variants.unlimitedShops',
         'media',
         'category',
         'brand',
+        'salesAccount',
+        'salesReturnAccount',
+        'inventoryAccount',
+        'cogsAccount',
         'channelMappings.channelShop.channel',
         'archivedBy',
     ];

@@ -1,16 +1,16 @@
 # Graph Report - cilupbah-be  (2026-06-14)
 
 ## Corpus Check
-- 101081 files · ~1,051,682 words
+- 101075 files · ~1,051,214 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 8121 nodes · 12331 edges · 933 communities (693 shown, 240 thin omitted)
-- Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 222 edges (avg confidence: 0.8)
+- 8084 nodes · 12274 edges · 929 communities (693 shown, 236 thin omitted)
+- Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 221 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `04b19482`
+- Built from commit: `962359a3`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -544,9 +544,13 @@
 - [[_COMMUNITY_Community 527|Community 527]]
 - [[_COMMUNITY_Community 528|Community 528]]
 - [[_COMMUNITY_Community 529|Community 529]]
+- [[_COMMUNITY_Community 530|Community 530]]
 - [[_COMMUNITY_Community 531|Community 531]]
+- [[_COMMUNITY_Community 532|Community 532]]
+- [[_COMMUNITY_Community 533|Community 533]]
 - [[_COMMUNITY_Community 534|Community 534]]
 - [[_COMMUNITY_Community 535|Community 535]]
+- [[_COMMUNITY_Community 536|Community 536]]
 - [[_COMMUNITY_Community 537|Community 537]]
 - [[_COMMUNITY_Community 538|Community 538]]
 - [[_COMMUNITY_Community 539|Community 539]]
@@ -581,7 +585,6 @@
 - [[_COMMUNITY_Community 568|Community 568]]
 - [[_COMMUNITY_Community 569|Community 569]]
 - [[_COMMUNITY_Community 570|Community 570]]
-- [[_COMMUNITY_Community 571|Community 571]]
 - [[_COMMUNITY_Community 572|Community 572]]
 - [[_COMMUNITY_Community 573|Community 573]]
 - [[_COMMUNITY_Community 574|Community 574]]
@@ -590,7 +593,6 @@
 - [[_COMMUNITY_Community 577|Community 577]]
 - [[_COMMUNITY_Community 578|Community 578]]
 - [[_COMMUNITY_Community 579|Community 579]]
-- [[_COMMUNITY_Community 580|Community 580]]
 - [[_COMMUNITY_Community 581|Community 581]]
 - [[_COMMUNITY_Community 582|Community 582]]
 - [[_COMMUNITY_Community 583|Community 583]]
@@ -628,23 +630,18 @@
 - [[_COMMUNITY_Community 764|Community 764]]
 - [[_COMMUNITY_Community 765|Community 765]]
 - [[_COMMUNITY_Community 766|Community 766]]
-- [[_COMMUNITY_Community 767|Community 767]]
 - [[_COMMUNITY_Community 768|Community 768]]
-- [[_COMMUNITY_Community 769|Community 769]]
-- [[_COMMUNITY_Community 770|Community 770]]
-- [[_COMMUNITY_Community 771|Community 771]]
 - [[_COMMUNITY_Community 772|Community 772]]
 - [[_COMMUNITY_Community 773|Community 773]]
 - [[_COMMUNITY_Community 774|Community 774]]
 - [[_COMMUNITY_Community 775|Community 775]]
-- [[_COMMUNITY_Community 778|Community 778]]
 - [[_COMMUNITY_Community 781|Community 781]]
 - [[_COMMUNITY_Community 782|Community 782]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `Model` - 207 edges
-2. `QueryBuilder` - 177 edges
-3. `Controller` - 174 edges
+2. `QueryBuilder` - 175 edges
+3. `Controller` - 172 edges
 4. `TestCase` - 142 edges
 5. `InventoryTest` - 83 edges
 6. `Response` - 63 edges
@@ -658,37 +655,37 @@
   Modules/AI/app/Http/Controllers/AIController.php → app/Http/Controllers/Controller.php
 - `AuthController` --inherits--> `Controller`  [EXTRACTED]
   Modules/Auth/app/Http/Controllers/AuthController.php → app/Http/Controllers/Controller.php
+- `PermissionController` --inherits--> `Controller`  [EXTRACTED]
+  Modules/Auth/app/Http/Controllers/PermissionController.php → app/Http/Controllers/Controller.php
 - `RoleController` --inherits--> `Controller`  [EXTRACTED]
   Modules/Auth/app/Http/Controllers/RoleController.php → app/Http/Controllers/Controller.php
 - `UserController` --inherits--> `Controller`  [EXTRACTED]
   Modules/Auth/app/Http/Controllers/UserController.php → app/Http/Controllers/Controller.php
-- `RoleApiTest` --inherits--> `TestCase`  [EXTRACTED]
-  Modules/Auth/tests/Feature/RoleApiTest.php → tests/TestCase.php
 
 ## Import Cycles
 - None detected.
 
-## Communities (933 total, 240 thin omitted)
+## Communities (929 total, 236 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.04
-Nodes (38): HasUuid7, AccountMapping, Channel, ChannelShop, Courier, Journal, PacklistItem, PersonalAccessToken (+30 more)
+Nodes (37): BelongsToMany, HasUploadableMedia, HasUuid7, Channel, ChannelShop, Courier, JournalDetail, PersonalAccessToken (+29 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.04
-Nodes (29): Attribute, Brand, ChannelWarehouse, ProductBundle, ProductVariantChannelMapping, ProductVariationType, ProductWholesalePrice, Province (+21 more)
+Nodes (34): AccountMapping, Attribute, Brand, ChannelWarehouse, InboundReceipt, Journal, ProductBundle, ProductSyncLog (+26 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.21
-Nodes (5): LocationZoneController, PriceListController, JsonResponse, JsonResponse, UpdatePriceListRequest
+Cohesion: 0.43
+Nodes (3): PriceListController, JsonResponse, UpdatePriceListRequest
 
 ### Community 3 - "Community 3"
-Cohesion: 0.06
-Nodes (12): InboundE2ETest, PurchaseOrder, PurchaseOrderItem, PurchaseOrderRepository, InboundDatabaseSeeder, Inbound, Location, LocationBin (+4 more)
+Cohesion: 0.07
+Nodes (11): InboundE2ETest, PurchaseOrder, PurchaseOrderItem, PurchaseOrderRepository, Inbound, Location, LocationBin, Product (+3 more)
 
 ### Community 4 - "Community 4"
-Cohesion: 0.08
-Nodes (28): Dispatchable, InteractsWithQueue, AdminAlertJob, DispatchWebhookEventJob, ProcessPacklistCompleteJob, ProcessPicklistCompleteJob, ProcessShipmentHandOverJob, ProcessStockAdjustmentJob (+20 more)
+Cohesion: 0.09
+Nodes (24): Dispatchable, InteractsWithQueue, AdminAlertJob, DispatchWebhookEventJob, ProcessPacklistCompleteJob, ProcessPicklistCompleteJob, ProcessShipmentHandOverJob, PruneUploadHistoriesJob (+16 more)
 
 ### Community 6 - "Community 6"
 Cohesion: 0.06
@@ -704,7 +701,7 @@ Nodes (13): WebhookHardeningTest, WebhookTest, Collection, LengthAwarePaginator,
 
 ### Community 9 - "Community 9"
 Cohesion: 0.07
-Nodes (15): Collection, LengthAwarePaginator, LengthAwarePaginator, LengthAwarePaginator, SalesOrder, SalesSettlement, QueryBuilder, ChannelRepository (+7 more)
+Nodes (18): Collection, DownloadTransaction, LengthAwarePaginator, LengthAwarePaginator, LengthAwarePaginator, LengthAwarePaginator, SalesSettlement, Contact (+10 more)
 
 ### Community 10 - "Community 10"
 Cohesion: 0.08
@@ -712,15 +709,15 @@ Nodes (15): LocationBinFactory, LocationFactory, LocationZoneFactory, UserFactor
 
 ### Community 11 - "Community 11"
 Cohesion: 0.04
-Nodes (20): BaseTestCase, ChannelDownloadTest, ChannelWarehouseApiTest, DownloadReviewFeedTest, ExampleTest, HorizonQueueCoverageTest, LoginApiTest, ProductMergePermissionTest (+12 more)
+Nodes (17): BaseTestCase, ChannelDownloadTest, ChannelWarehouseApiTest, ExampleTest, HorizonQueueCoverageTest, LoginApiTest, ProductMergePermissionTest, ProductNo500GuardTest (+9 more)
 
 ### Community 12 - "Community 12"
 Cohesion: 0.08
 Nodes (17): Media, UploadedFile, Media, UploadedFile, deleteMedia(), mediaService(), mediaUrl(), replaceMediaItem() (+9 more)
 
 ### Community 13 - "Community 13"
-Cohesion: 0.12
-Nodes (4): SyncStockJob, TikTokProductService, SalesOrder, SalesOrderService
+Cohesion: 0.10
+Nodes (5): SyncOrderItemsTest, SyncStockJob, SalesOrder, SalesOrderRepository, SalesOrderService
 
 ### Community 14 - "Community 14"
 Cohesion: 0.06
@@ -728,7 +725,7 @@ Nodes (19): Inventory, SalesInvoice, SalesPayment, Product, PurchaseOrder, Sales
 
 ### Community 15 - "Community 15"
 Cohesion: 0.06
-Nodes (15): Seeder, AIDatabaseSeeder, AttributeSeeder, AuthDatabaseSeeder, BrandSeeder, CategoryAttributeSeeder, ChannelCategorySeeder, ChannelDatabaseSeeder (+7 more)
+Nodes (16): Seeder, AttributeSeeder, AuthDatabaseSeeder, BrandSeeder, CategoryAttributeSeeder, ChannelCategorySeeder, ChannelDatabaseSeeder, InboundDatabaseSeeder (+8 more)
 
 ### Community 16 - "Community 16"
 Cohesion: 0.36
@@ -759,16 +756,16 @@ Cohesion: 0.05
 Nodes (37): Architecture, Catatan Eksekusi Test, Components and Interfaces, Controller, Correctness Properties, Data Models, Design Document: sales-order-rename, ERD Relasi Penjualan (Sesudah Rename) (+29 more)
 
 ### Community 23 - "Community 23"
-Cohesion: 0.08
-Nodes (13): ChannelOrderRepository, ChannelProductRepository, ChannelShopRepository, OrderService, TikTokClient, ChannelShopRepository, TikTokClient, TikTokImageUploader (+5 more)
+Cohesion: 0.18
+Nodes (6): ChannelProductRepository, ChannelShopRepository, TikTokClient, TikTokImageUploader, TikTokProductMapper, TikTokProductService
 
 ### Community 24 - "Community 24"
 Cohesion: 0.06
 Nodes (35): 1.1 Product Models, 1.2 Inbound Models, 1.3 Warehouse/LocationBin, 1.4 Fix `insertGetId()` dan `Str::orderedUuid()`, Context, Inbound Controller, Inventory Controllers, Migration: `2026_06_07_000100_change_inventory_ids_to_uuid.php` (+27 more)
 
 ### Community 25 - "Community 25"
-Cohesion: 0.07
-Nodes (11): ProductMergeServiceTest, LazyCollection, ProductMerge, ProductMergeHidden, BelongsTo, Product, Product, ProductMergeService (+3 more)
+Cohesion: 0.18
+Nodes (4): ProductMerge, BelongsTo, Product, ProductMergeService
 
 ### Community 26 - "Community 26"
 Cohesion: 0.07
@@ -779,12 +776,12 @@ Cohesion: 0.06
 Nodes (31): Audit Modul `Modules/Channel`, C-1. Endpoint store TikTok melempar 500 — UUID dilewatkan ke parameter `int`, C-2. Kebocoran kredensial toko (access_token / refresh_token / shop_cipher), Catatan pengujian, 🔴 CRITICAL, Fase 1 — Stop the bleeding (CRITICAL, ~0.5 hari), Fase 2 — Logika bisnis rusak (HIGH, ~0.5–1 hari), Fase 3 — Kepatuhan `agents.md` & ketahanan (MEDIUM, ~1–2 hari) (+23 more)
 
 ### Community 28 - "Community 28"
-Cohesion: 0.11
-Nodes (10): AdapterFactory, SyncProductToChannelJob, Product, ProductChannelMapping, Throwable, Product, LengthAwarePaginator, ProductRepository (+2 more)
+Cohesion: 0.13
+Nodes (8): AdapterFactory, SyncProductToChannelJob, Product, ProductChannelMapping, Throwable, LengthAwarePaginator, ProductRepository, ChannelProductService
 
 ### Community 29 - "Community 29"
-Cohesion: 0.09
-Nodes (17): JsonResource, Request, Request, Request, Request, Request, Request, Request (+9 more)
+Cohesion: 0.08
+Nodes (19): Request, JsonResource, Request, Request, Request, Request, Request, Request (+11 more)
 
 ### Community 30 - "Community 30"
 Cohesion: 0.13
@@ -795,8 +792,8 @@ Cohesion: 0.07
 Nodes (11): EventServiceProvider, EventServiceProvider, EventServiceProvider, EventServiceProvider, EventServiceProvider, EventServiceProvider, EventServiceProvider, EventServiceProvider (+3 more)
 
 ### Community 32 - "Community 32"
-Cohesion: 0.10
-Nodes (8): LocationBinController, GenerateLocationBinRequest, Inbound, InboundAssignment, InboundItem, JsonResponse, InboundService, StoreLocationBinRequest
+Cohesion: 0.07
+Nodes (10): LocationBinController, GenerateLocationBinRequest, LocationBinService, Inbound, InboundAssignment, InboundItem, JsonResponse, InboundService (+2 more)
 
 ### Community 33 - "Community 33"
 Cohesion: 0.10
@@ -844,7 +841,7 @@ Nodes (23): 1. Stock Opname — `362ae2b`, 2. Outbound Fulfillment (Pick/Pack/Sh
 
 ### Community 45 - "Community 45"
 Cohesion: 0.11
-Nodes (7): FormRequest, BulkMasterNamesRequest, CreatePacklistRequest, StorePurchaseBillRequest, StoreStockAdjustmentRequest, StoreWebhookSubscriptionRequest, UpdatePriceListRequest
+Nodes (7): FormRequest, AddShipmentOrdersRequest, ProcessPutawayItemRequest, ReceivePurchaseOrderRequest, SplitItemRequest, StoreStockAdjustmentRequest, StoreWebhookSubscriptionRequest
 
 ### Community 46 - "Community 46"
 Cohesion: 0.15
@@ -895,8 +892,8 @@ Cohesion: 0.14
 Nodes (4): CashbankApiTest, PurchasePayment, SalesPayment, User
 
 ### Community 59 - "Community 59"
-Cohesion: 0.22
-Nodes (6): CategoryService, CategoryController, JsonResponse, Request, Request, CategoryResource
+Cohesion: 0.32
+Nodes (4): CategoryService, CategoryController, JsonResponse, Request
 
 ### Community 60 - "Community 60"
 Cohesion: 0.16
@@ -927,12 +924,12 @@ Cohesion: 0.17
 Nodes (4): LazadaStoreApiTest, Channel, ChannelShop, User
 
 ### Community 68 - "Community 68"
-Cohesion: 0.18
-Nodes (3): MasterFeedTest, Attribute, Product
+Cohesion: 0.14
+Nodes (5): MasterFeedTest, VariantOption, BelongsTo, Attribute, Product
 
 ### Community 69 - "Community 69"
 Cohesion: 0.13
-Nodes (8): ProcessReservedStockJob, ProcessStockOpnameFinalizeJob, InventoryMovementRepository, InventoryRepository, InventoryMovementRepository, InventoryRepository, StockService, StockLockable
+Nodes (8): ProcessReservedStockJob, ProcessStockAdjustmentJob, InventoryMovementRepository, InventoryRepository, InventoryMovementRepository, InventoryRepository, StockService, StockLockable
 
 ### Community 70 - "Community 70"
 Cohesion: 0.10
@@ -944,7 +941,7 @@ Nodes (20): Acceptance Criteria, Acceptance Criteria, Acceptance Criteria, Accep
 
 ### Community 72 - "Community 72"
 Cohesion: 0.15
-Nodes (11): LazadaAuthService, TikTokProductService, TikTokClient, TikTokProductMapper, Command, LazadaRefreshTokens, ProductPullAgentCommand, PruneUploadHistories (+3 more)
+Nodes (11): TikTokOrderService, LazadaAuthService, TikTokClient, TikTokProductMapper, Command, DeclineTikTokOrder, LazadaRefreshTokens, ProductPullAgentCommand (+3 more)
 
 ### Community 73 - "Community 73"
 Cohesion: 0.10
@@ -1006,6 +1003,10 @@ Nodes (6): ProductChannelDraftController, JsonResponse, ProductChannelDraft, Req
 Cohesion: 0.19
 Nodes (5): LazadaProductSyncTest, Channel, ChannelShop, Product, User
 
+### Community 90 - "Community 90"
+Cohesion: 0.27
+Nodes (3): ProductMergeServiceTest, Product, ProductMergeService
+
 ### Community 91 - "Community 91"
 Cohesion: 0.16
 Nodes (6): Account, AccountMappingApiTest, Collection, User, AccountRepository, ChartOfAccountsSeeder
@@ -1055,8 +1056,8 @@ Cohesion: 0.24
 Nodes (5): AssignPutawayStaffRequest, PutawayController, JsonResponse, Request, ProcessPutawayItemRequest
 
 ### Community 103 - "Community 103"
-Cohesion: 0.23
-Nodes (6): AttributeService, AttributeController, JsonResponse, Request, Request, AttributeResource
+Cohesion: 0.33
+Nodes (4): AttributeService, AttributeController, JsonResponse, Request
 
 ### Community 104 - "Community 104"
 Cohesion: 0.29
@@ -1079,8 +1080,8 @@ Cohesion: 0.23
 Nodes (3): ProductMergeApiTest, ChannelShop, Product
 
 ### Community 110 - "Community 110"
-Cohesion: 0.33
-Nodes (4): SendWebhookJob, Throwable, WebhookDeliveryRepository, WebhookSubscriptionRepository
+Cohesion: 0.17
+Nodes (7): SendWebhookJob, Throwable, WebhookDeliveryRepository, WebhookSubscriptionRepository, LengthAwarePaginator, WebhookDelivery, WebhookDeliveryService
 
 ### Community 111 - "Community 111"
 Cohesion: 0.23
@@ -1141,10 +1142,6 @@ Nodes (15): authors, autoload, autoload-dev, psr-4, psr-4, description, extra, l
 ### Community 125 - "Community 125"
 Cohesion: 0.12
 Nodes (15): authors, autoload, autoload-dev, psr-4, psr-4, description, extra, laravel (+7 more)
-
-### Community 127 - "Community 127"
-Cohesion: 0.36
-Nodes (3): LengthAwarePaginator, WebhookDelivery, WebhookDeliveryService
 
 ### Community 129 - "Community 129"
 Cohesion: 0.19
@@ -1243,8 +1240,8 @@ Cohesion: 0.29
 Nodes (4): SalesInvoiceController, JsonResponse, Request, StoreSalesInvoiceRequest
 
 ### Community 153 - "Community 153"
-Cohesion: 0.21
-Nodes (6): UserController, BinaryFileResponse, JsonResponse, Request, StoreUserRequest, UpdateUserRequest
+Cohesion: 0.12
+Nodes (11): Request, UserController, BinaryFileResponse, JsonResponse, Request, Collection, Request, ProfileResource (+3 more)
 
 ### Community 154 - "Community 154"
 Cohesion: 0.25
@@ -1303,8 +1300,8 @@ Cohesion: 0.13
 Nodes (14): 1. Tujuan & Definisi, 2. Kontrak API (selaras Jubelio), 3.1 Migration baru — `add_is_pos_to_locations_table`, 3.2 Model `Location.php`, 3.3 Repository `LocationRepository.php`, 3.4 Service `LocationService.php`, 3.5 Controller `LocationController.php`, 3.6 Route `Modules/Warehouse/routes/api.php` (+6 more)
 
 ### Community 175 - "Community 175"
-Cohesion: 0.06
-Nodes (29): AccountRepository, ApiResponse, AccountLookupController, BundleController, CatalogController, ChannelProductListingController, Controller, LazadaAuthController (+21 more)
+Cohesion: 0.08
+Nodes (14): ApiResponse, ArchiveFeedController, DownloadTransactionController, LazadaStoreController, LazadaWebhookController, PermissionController, TikTokWebhookController, JsonResponse (+6 more)
 
 ### Community 176 - "Community 176"
 Cohesion: 0.30
@@ -1563,8 +1560,8 @@ Cohesion: 0.36
 Nodes (4): BrandService, BrandController, JsonResponse, Request
 
 ### Community 250 - "Community 250"
-Cohesion: 0.33
-Nodes (5): ChannelService, ChannelController, JsonResponse, Request, TikTokAuthService
+Cohesion: 0.16
+Nodes (9): ChannelService, ChannelController, JsonResponse, Request, TikTokAuthService, Request, Request, ChannelResource (+1 more)
 
 ### Community 251 - "Community 251"
 Cohesion: 0.35
@@ -1627,8 +1624,8 @@ Cohesion: 0.29
 Nodes (4): LengthAwarePaginator, Warranty, WarrantyService, WarrantyRepository
 
 ### Community 271 - "Community 271"
-Cohesion: 0.29
-Nodes (6): HasMedia, Media, UploadedFile, HasUploadableMedia, Upload, MediaService
+Cohesion: 0.44
+Nodes (4): HasMedia, Media, UploadedFile, MediaService
 
 ### Community 273 - "Community 273"
 Cohesion: 0.40
@@ -1669,6 +1666,10 @@ Nodes (3): CancelChannelOrderJob, SalesOrder, Throwable
 ### Community 286 - "Community 286"
 Cohesion: 0.27
 Nodes (4): ProcessMarketplaceOrder, SalesOrderService, Throwable, ShouldBeUnique
+
+### Community 287 - "Community 287"
+Cohesion: 0.22
+Nodes (6): ChannelOrderRepository, ChannelShopRepository, OrderService, TikTokClient, TikTokOrderService, TikTokToInternalOrderMapper
 
 ### Community 288 - "Community 288"
 Cohesion: 0.31
@@ -1735,11 +1736,11 @@ Cohesion: 0.33
 Nodes (3): ProductImportController, ProductImportService, Request
 
 ### Community 310 - "Community 310"
-Cohesion: 0.36
-Nodes (3): PromotionController, JsonResponse, StorePromotionRequest
+Cohesion: 0.22
+Nodes (3): LazyCollection, ProductMergeHidden, ProductMergeRepository
 
 ### Community 311 - "Community 311"
-Cohesion: 0.33
+Cohesion: 0.39
 Nodes (3): TikTokStoreController, ChannelShopRepository, TikTokAuthService
 
 ### Community 312 - "Community 312"
@@ -1784,7 +1785,7 @@ Nodes (3): LengthAwarePaginator, ProductSyncLog, UploadHistoryRepository
 
 ### Community 327 - "Community 327"
 Cohesion: 0.33
-Nodes (3): LengthAwarePaginator, Promotion, PromotionService
+Nodes (3): DownloadReviewFeedTest, Product, ProductVariant
 
 ### Community 330 - "Community 330"
 Cohesion: 0.39
@@ -1874,10 +1875,6 @@ Nodes (4): ChannelCategory, Collection, LengthAwarePaginator, ChannelCategoryRep
 Cohesion: 0.54
 Nodes (3): LengthAwarePaginator, Product, MasterFeedRepository
 
-### Community 356 - "Community 356"
-Cohesion: 0.43
-Nodes (3): LengthAwarePaginator, Promotion, PromotionRepository
-
 ### Community 357 - "Community 357"
 Cohesion: 0.36
 Nodes (3): LengthAwarePaginator, ProductVariant, ProductVariantService
@@ -1923,12 +1920,12 @@ Cohesion: 0.29
 Nodes (6): 1. Arsitektur: Service-Repository Pattern, 2. Standar Respons API (ApiResponse & Eloquent Resources), 3. Data Retrieval: Spatie Query Builder, 4. Implementasi Pencarian (Full-Text Search & Parameter `?search=`), 5. Pagination Standar (10 Per Page), Agent Coding Standards (cilupbah-be)
 
 ### Community 375 - "Community 375"
-Cohesion: 0.52
-Nodes (3): DownloadTransaction, LengthAwarePaginator, DownloadTransactionRepository
+Cohesion: 0.48
+Nodes (3): ChannelProductListingController, JsonResponse, Request
 
 ### Community 376 - "Community 376"
-Cohesion: 0.48
-Nodes (3): DownloadTransactionController, JsonResponse, Request
+Cohesion: 0.43
+Nodes (3): SalesReturnSettingController, JsonResponse, SaveSalesReturnSettingRequest
 
 ### Community 377 - "Community 377"
 Cohesion: 0.48
@@ -1943,8 +1940,8 @@ Cohesion: 0.48
 Nodes (3): MasterFeedController, JsonResponse, Request
 
 ### Community 380 - "Community 380"
-Cohesion: 0.43
-Nodes (3): SalesSettlementController, JsonResponse, Request
+Cohesion: 0.10
+Nodes (14): AccountRepository, AccountLookupController, CatalogController, Controller, LazadaAuthController, LocationZoneController, SalesSettlementController, LazadaAuthService (+6 more)
 
 ### Community 381 - "Community 381"
 Cohesion: 0.38
@@ -1961,6 +1958,10 @@ Nodes (4): Location, LocationBin, Product, ProductVariant
 ### Community 384 - "Community 384"
 Cohesion: 0.43
 Nodes (3): VariantController, DeleteVariantRequest, JsonResponse
+
+### Community 385 - "Community 385"
+Cohesion: 0.38
+Nodes (3): ProcessStockOpnameFinalizeJob, InventoryMovementRepository, InventoryRepository
 
 ### Community 386 - "Community 386"
 Cohesion: 0.29
@@ -1983,8 +1984,8 @@ Cohesion: 0.43
 Nodes (3): PurchaseBillItem, BelongsTo, HasMany
 
 ### Community 392 - "Community 392"
-Cohesion: 0.50
-Nodes (3): BelongsToMany, Role, SpatieRole
+Cohesion: 0.38
+Nodes (3): ProcessTikTokWebhook, TikTokOrderService, WebhookProductHandler
 
 ### Community 393 - "Community 393"
 Cohesion: 0.43
@@ -2009,10 +2010,6 @@ Nodes (3): SalesReturnSettlement, BelongsTo, HasMany
 ### Community 399 - "Community 399"
 Cohesion: 0.48
 Nodes (4): Collection, LengthAwarePaginator, UserHistoryRepository, UserHistory
-
-### Community 401 - "Community 401"
-Cohesion: 0.48
-Nodes (3): ArchiveFeedController, JsonResponse, Request
 
 ### Community 402 - "Community 402"
 Cohesion: 0.48
@@ -2058,9 +2055,13 @@ Nodes (7): 9. Sales ✅ (60✅/0🔄/0⬜), 9a. Sales Order ✅, 9b. Invoice ✅
 Cohesion: 0.47
 Nodes (3): Builder, Filter, FuzzyFilter
 
-### Community 418 - "Community 418"
+### Community 416 - "Community 416"
 Cohesion: 0.60
-Nodes (3): Collection, Request, ProfileResource
+Nodes (3): BundleController, JsonResponse, Request
+
+### Community 417 - "Community 417"
+Cohesion: 0.47
+Nodes (3): ReviewFeedController, JsonResponse, Request
 
 ### Community 419 - "Community 419"
 Cohesion: 0.33
@@ -2213,22 +2214,22 @@ Nodes (3): 18d. Matriks Omnichannel (Beyond Jubelio) — Task Breakdown per Chan
 ## Knowledge Gaps
 - **1303 isolated node(s):** `name`, `description`, `authors`, `providers`, `aliases` (+1298 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **240 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **236 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Controller` connect `Community 175` to `Community 256`, `Community 257`, `Community 2`, `Community 384`, `Community 382`, `Community 7`, `Community 272`, `Community 401`, `Community 274`, `Community 273`, `Community 275`, `Community 276`, `Community 277`, `Community 151`, `Community 278`, `Community 279`, `Community 280`, `Community 152`, `Community 281`, `Community 282`, `Community 153`, `Community 32`, `Community 39`, `Community 40`, `Community 176`, `Community 177`, `Community 305`, `Community 51`, `Community 308`, `Community 309`, `Community 52`, `Community 50`, `Community 56`, `Community 57`, `Community 311`, `Community 59`, `Community 310`, `Community 190`, `Community 191`, `Community 64`, `Community 192`, `Community 193`, `Community 194`, `Community 195`, `Community 337`, `Community 338`, `Community 339`, `Community 83`, `Community 85`, `Community 214`, `Community 86`, `Community 216`, `Community 380`, `Community 217`, `Community 218`, `Community 348`, `Community 92`, `Community 93`, `Community 219`, `Community 145`, `Community 350`, `Community 102`, `Community 103`, `Community 105`, `Community 106`, `Community 376`, `Community 249`, `Community 250`, `Community 379`, `Community 252`, `Community 381`, `Community 254`, `Community 255`?**
-  _High betweenness centrality (0.132) - this node is a cross-community bridge._
-- **Why does `QueryBuilder` connect `Community 9` to `Community 258`, `Community 3`, `Community 131`, `Community 261`, `Community 262`, `Community 263`, `Community 264`, `Community 259`, `Community 266`, `Community 133`, `Community 8`, `Community 269`, `Community 399`, `Community 26`, `Community 283`, `Community 162`, `Community 163`, `Community 165`, `Community 293`, `Community 166`, `Community 40`, `Community 167`, `Community 170`, `Community 46`, `Community 48`, `Community 181`, `Community 182`, `Community 188`, `Community 445`, `Community 446`, `Community 325`, `Community 201`, `Community 329`, `Community 203`, `Community 204`, `Community 77`, `Community 330`, `Community 331`, `Community 349`, `Community 354`, `Community 227`, `Community 355`, `Community 356`, `Community 358`, `Community 361`, `Community 236`, `Community 111`, `Community 375`, `Community 377`, `Community 378`?**
-  _High betweenness centrality (0.109) - this node is a cross-community bridge._
-- **Why does `Model` connect `Community 1` to `Community 0`, `Community 385`, `Community 512`, `Community 389`, `Community 390`, `Community 391`, `Community 393`, `Community 394`, `Community 395`, `Community 396`, `Community 397`, `Community 398`, `Community 271`, `Community 404`, `Community 21`, `Community 25`, `Community 288`, `Community 289`, `Community 416`, `Community 33`, `Community 417`, `Community 290`, `Community 422`, `Community 423`, `Community 424`, `Community 425`, `Community 426`, `Community 427`, `Community 291`, `Community 428`, `Community 429`, `Community 430`, `Community 431`, `Community 432`, `Community 433`, `Community 317`, `Community 318`, `Community 319`, `Community 320`, `Community 321`, `Community 65`, `Community 322`, `Community 202`, `Community 344`, `Community 345`, `Community 346`, `Community 347`, `Community 476`, `Community 477`, `Community 478`, `Community 479`, `Community 480`, `Community 98`, `Community 482`, `Community 228`, `Community 229`, `Community 230`, `Community 231`, `Community 493`, `Community 511`?**
-  _High betweenness centrality (0.067) - this node is a cross-community bridge._
+- **Why does `Controller` connect `Community 380` to `Community 256`, `Community 257`, `Community 384`, `Community 382`, `Community 2`, `Community 7`, `Community 272`, `Community 273`, `Community 274`, `Community 275`, `Community 276`, `Community 277`, `Community 278`, `Community 151`, `Community 279`, `Community 280`, `Community 152`, `Community 281`, `Community 282`, `Community 153`, `Community 416`, `Community 32`, `Community 417`, `Community 39`, `Community 40`, `Community 175`, `Community 176`, `Community 177`, `Community 305`, `Community 51`, `Community 308`, `Community 309`, `Community 52`, `Community 50`, `Community 56`, `Community 57`, `Community 311`, `Community 59`, `Community 190`, `Community 191`, `Community 64`, `Community 192`, `Community 193`, `Community 194`, `Community 195`, `Community 337`, `Community 338`, `Community 339`, `Community 83`, `Community 85`, `Community 214`, `Community 86`, `Community 216`, `Community 217`, `Community 218`, `Community 219`, `Community 348`, `Community 92`, `Community 350`, `Community 93`, `Community 145`, `Community 102`, `Community 103`, `Community 105`, `Community 106`, `Community 375`, `Community 376`, `Community 249`, `Community 250`, `Community 379`, `Community 252`, `Community 381`, `Community 254`, `Community 255`?**
+  _High betweenness centrality (0.134) - this node is a cross-community bridge._
+- **Why does `QueryBuilder` connect `Community 9` to `Community 258`, `Community 3`, `Community 131`, `Community 261`, `Community 262`, `Community 263`, `Community 264`, `Community 259`, `Community 266`, `Community 133`, `Community 8`, `Community 399`, `Community 26`, `Community 283`, `Community 162`, `Community 163`, `Community 165`, `Community 293`, `Community 166`, `Community 40`, `Community 167`, `Community 170`, `Community 46`, `Community 48`, `Community 181`, `Community 182`, `Community 188`, `Community 445`, `Community 446`, `Community 325`, `Community 201`, `Community 329`, `Community 203`, `Community 204`, `Community 77`, `Community 330`, `Community 331`, `Community 349`, `Community 354`, `Community 227`, `Community 355`, `Community 358`, `Community 361`, `Community 236`, `Community 111`, `Community 377`, `Community 378`, `Community 127`?**
+  _High betweenness centrality (0.101) - this node is a cross-community bridge._
+- **Why does `TestCase` connect `Community 11` to `Community 3`, `Community 5`, `Community 8`, `Community 10`, `Community 12`, `Community 13`, `Community 16`, `Community 18`, `Community 154`, `Community 155`, `Community 156`, `Community 157`, `Community 158`, `Community 159`, `Community 160`, `Community 161`, `Community 284`, `Community 30`, `Community 36`, `Community 32`, `Community 44`, `Community 51`, `Community 313`, `Community 58`, `Community 60`, `Community 61`, `Community 65`, `Community 66`, `Community 67`, `Community 196`, `Community 68`, `Community 197`, `Community 327`, `Community 198`, `Community 199`, `Community 200`, `Community 340`, `Community 87`, `Community 88`, `Community 89`, `Community 90`, `Community 91`, `Community 220`, `Community 221`, `Community 94`, `Community 95`, `Community 96`, `Community 222`, `Community 97`, `Community 223`, `Community 104`, `Community 107`, `Community 108`, `Community 109`, `Community 122`, `Community 253`, `Community 383`?**
+  _High betweenness centrality (0.074) - this node is a cross-community bridge._
 - **What connects `name`, `description`, `authors` to the rest of the system?**
   _1303 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 0` be split into smaller, more focused modules?**
-  _Cohesion score 0.03528468323977546 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.039294039294039296 - nodes in this community are weakly interconnected._
 - **Should `Community 1` be split into smaller, more focused modules?**
-  _Cohesion score 0.04408749145591251 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.04072072072072072 - nodes in this community are weakly interconnected._
 - **Should `Community 3` be split into smaller, more focused modules?**
-  _Cohesion score 0.061343204653622425 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06545879602571596 - nodes in this community are weakly interconnected._

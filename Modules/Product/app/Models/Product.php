@@ -53,6 +53,15 @@ class Product extends Model
         'archive_reason',
         'is_bundle',
         'is_consignment',
+        'is_stored',
+        'is_sold',
+        'is_purchased',
+        'purchase_lead_time',
+        'package_contents',
+        'sales_account_id',
+        'sales_return_account_id',
+        'inventory_account_id',
+        'cogs_account_id',
     ];
 
     protected $casts = [
@@ -67,6 +76,10 @@ class Product extends Model
         'archived_at' => 'datetime',
         'is_bundle' => 'boolean',
         'is_consignment' => 'boolean',
+        'is_stored' => 'boolean',
+        'is_sold' => 'boolean',
+        'is_purchased' => 'boolean',
+        'purchase_lead_time' => 'integer',
     ];
 
     public function variants(): HasMany
@@ -112,6 +125,26 @@ class Product extends Model
     public function brand(): BelongsTo
     {
         return $this->belongsTo(Brand::class);
+    }
+
+    public function salesAccount(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Finance\Models\Account::class, 'sales_account_id');
+    }
+
+    public function salesReturnAccount(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Finance\Models\Account::class, 'sales_return_account_id');
+    }
+
+    public function inventoryAccount(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Finance\Models\Account::class, 'inventory_account_id');
+    }
+
+    public function cogsAccount(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Finance\Models\Account::class, 'cogs_account_id');
     }
 
     public function archivedBy(): BelongsTo

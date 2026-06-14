@@ -74,8 +74,6 @@ class InventoryExtendedTest extends TestCase
         ]);
     }
 
-    // ==================== Promotions ====================
-
     public function test_create_promotion(): void
     {
         $response = $this->postJson('/api/v1/inventory/promotions', [
@@ -139,8 +137,6 @@ class InventoryExtendedTest extends TestCase
         $this->assertDatabaseCount('promotions', 0);
     }
 
-    // ==================== Price List ====================
-
     public function test_internal_price_list(): void
     {
         $response = $this->getJson('/api/v1/inventory/internal-price-list');
@@ -179,8 +175,6 @@ class InventoryExtendedTest extends TestCase
         $response->assertOk();
         $this->assertCount(2, $response->json('data'));
     }
-
-    // ==================== Bundles ====================
 
     public function test_list_bundles(): void
     {
@@ -227,8 +221,6 @@ class InventoryExtendedTest extends TestCase
         $response->assertJsonPath('data.is_bundle', true);
     }
 
-    // ==================== By SKU ====================
-
     public function test_get_product_by_sku(): void
     {
         $response = $this->getJson('/api/v1/inventory/items/by-sku/TP-001-A');
@@ -244,8 +236,6 @@ class InventoryExtendedTest extends TestCase
         $response->assertStatus(404);
     }
 
-    // ==================== All Stocks by IDs ====================
-
     public function test_all_stocks_by_ids(): void
     {
         $response = $this->postJson('/api/v1/inventory/items/all-stocks', [
@@ -256,8 +246,6 @@ class InventoryExtendedTest extends TestCase
         $this->assertCount(1, $response->json('data'));
         $this->assertEquals(50, $response->json('data.0.total_on_hand'));
     }
-
-    // ==================== Delete Variant ====================
 
     public function test_delete_variant_with_stock_fails(): void
     {
@@ -285,8 +273,6 @@ class InventoryExtendedTest extends TestCase
         $response->assertOk();
         $this->assertDatabaseMissing('product_variants', ['id' => $noStockVariant->id]);
     }
-
-    // ==================== Variations ====================
 
     public function test_get_variations(): void
     {

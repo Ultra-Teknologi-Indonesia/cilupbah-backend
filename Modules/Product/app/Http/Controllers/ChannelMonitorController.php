@@ -7,6 +7,7 @@ use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Product\Http\Resources\ProductMonitorResource;
+use Modules\Product\Http\Resources\ShopProductMonitorResource;
 use Modules\Product\Services\ChannelMonitorService;
 use OpenApi\Attributes as OA;
 
@@ -138,36 +139,8 @@ class ChannelMonitorController extends Controller
         }
 
         return $this->successPaginatedResponse(
-            $results->through(fn ($mapping) => $this->mapShopProduct($mapping)),
+            ShopProductMonitorResource::collection($results),
             'Channel monitor products'
         );
-    }
-
-    private function mapShopProduct(object $m): array
-    {
-        $product      = $m->product;
-        $primaryImage = $product?->media->firstWhere('is_primary', true)?->url
-            ?? $product?->media->first()?->url;
-
-        return [
-            'product_id'          => $m->product_id,
-            'product_name'        => $product->name ?? null,
-            'sku'                 => $product->sku ?? null,
-            'product_status'      => $product->status ?? null,
-            'primary_image'       => $primaryImage,
-            'external_product_id' => $m->external_product_id,
-            'sync_status'         => $m->sync_status,
-            'error_message'       => $m->error_message,
-            'last_synced_at'      => $m->last_synced_at,
-            'skus'                => $m->variantMappings->map(fn ($vm) => [
-                'variant_id'      => $vm->variant_id,
-                'sku'             => $vm->variant->sku ?? null,
-                'external_sku_id' => $vm->external_sku_id,
-                'sell_price'      => $vm->variant?->sell_price !== null ? (float) $vm->variant->sell_price : null,
-                'override_price'  => $vm->override_price !== null ? (float) $vm->override_price : null,
-                'synced_price'    => $vm->synced_price !== null ? (float) $vm->synced_price : null,
-                'synced_stock'    => $vm->synced_stock,
-            ])->values()->all(),
-        ];
     }
 }
