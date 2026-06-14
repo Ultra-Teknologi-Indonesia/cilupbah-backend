@@ -12,6 +12,7 @@ class ProductMedia extends Model
     protected $fillable = [
         'product_id',
         'variant_id',
+        'media_uuid',
         'media_type',
         'url',
         'sort_order',

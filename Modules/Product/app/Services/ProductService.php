@@ -27,7 +27,34 @@ class ProductService
 
     public function __construct(
         private readonly ProductRepository $repository,
+        private readonly \App\Services\UploadService $uploadService,
     ) {
+    }
+
+    /**
+     * Bangun satu baris product_media. Bila media_uuid diberikan, url di-resolve
+     * dari media library (snapshot disimpan agar reader lama tetap pakai ->url).
+     */
+    private function buildMediaRow(array $m, string $productId, ?string $variantId): array
+    {
+        $mediaUuid = $m['media_uuid'] ?? null;
+        $url = $m['url'] ?? null;
+
+        if ($mediaUuid && empty($url)) {
+            $url = $this->uploadService->findByUuid($mediaUuid)?->getUrl();
+        }
+
+        return [
+            'product_id' => $productId,
+            'variant_id' => $variantId,
+            'media_uuid' => $mediaUuid,
+            'media_type' => $m['media_type'] ?? 'image',
+            'url' => $url,
+            'sort_order' => $m['sort_order'] ?? 0,
+            'is_primary' => $m['is_primary'] ?? false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ];
     }
 
     public function resolveChannelShopId(string $shopId): ?string
@@ -119,6 +146,21 @@ class ProductService
                 DB::table('products')->where('id', $productId)->update($productData);
             }
 
+            // Replace koleksi media level produk (variant_id NULL) bila `media` dikirim.
+            if (array_key_exists('media', $data)) {
+                DB::table('product_media')
+                    ->where('product_id', $productId)
+                    ->whereNull('variant_id')
+                    ->delete();
+
+                if (!empty($data['media'])) {
+                    DB::table('product_media')->insert(array_map(
+                        fn ($m) => $this->buildMediaRow($m, $productId, null),
+                        $data['media']
+                    ));
+                }
+            }
+
             if (!empty($data['variants'])) {
                 foreach ($data['variants'] as $variant) {
                     if (empty($variant['sku'])) continue;
@@ -144,6 +186,18 @@ class ProductService
                             'created_at' => now(),
                         ]));
                         $variantId = DB::table('product_variants')->where('product_id', $productId)->where('sku', $variant['sku'])->value('id');
+                    }
+
+                    // Replace media varian bila `media` dikirim untuk varian ini.
+                    if (array_key_exists('media', $variant)) {
+                        DB::table('product_media')->where('variant_id', $variantId)->delete();
+
+                        if (!empty($variant['media'])) {
+                            DB::table('product_media')->insert(array_map(
+                                fn ($m) => $this->buildMediaRow($m, $productId, $variantId),
+                                $variant['media']
+                            ));
+                        }
                     }
 
                     if (!empty($variant['channel_prices'])) {
@@ -231,18 +285,10 @@ class ProductService
             }
 
             if (!empty($data['media'])) {
-                $media = array_map(function ($m) use ($productId) {
-                    return [
-                        'product_id' => $productId,
-                        'variant_id' => null,
-                        'media_type' => $m['media_type'] ?? 'image',
-                        'url' => $m['url'],
-                        'sort_order' => $m['sort_order'] ?? 0,
-                        'is_primary' => $m['is_primary'] ?? false,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ];
-                }, $data['media']);
+                $media = array_map(
+                    fn ($m) => $this->buildMediaRow($m, $productId, null),
+                    $data['media']
+                );
                 DB::table('product_media')->insert($media);
             }
 
@@ -287,18 +333,10 @@ class ProductService
                     }
 
                     if (!empty($variant['media'])) {
-                        $vMedia = array_map(function ($m) use ($productId, $variantId) {
-                            return [
-                                'product_id' => $productId,
-                                'variant_id' => $variantId,
-                                'media_type' => $m['media_type'] ?? 'image',
-                                'url' => $m['url'],
-                                'sort_order' => $m['sort_order'] ?? 0,
-                                'is_primary' => $m['is_primary'] ?? false,
-                                'created_at' => now(),
-                                'updated_at' => now(),
-                            ];
-                        }, $variant['media']);
+                        $vMedia = array_map(
+                            fn ($m) => $this->buildMediaRow($m, $productId, $variantId),
+                            $variant['media']
+                        );
                         DB::table('product_media')->insert($vMedia);
                     }
 

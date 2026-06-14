@@ -32,7 +32,8 @@ class CreateProductRequest extends FormRequest
             'specifications.*.text_value' => 'nullable|string',
 
             'media' => 'nullable|array',
-            'media.*.url' => 'required|string',
+            'media.*.media_uuid' => 'required_without:media.*.url|bail|uuid|exists:media,uuid',
+            'media.*.url' => 'required_without:media.*.media_uuid|string',
             'media.*.media_type' => 'nullable|in:image,video',
             'media.*.is_primary' => 'nullable|boolean',
             'media.*.sort_order' => 'nullable|integer',
@@ -54,7 +55,8 @@ class CreateProductRequest extends FormRequest
             'variants.*.options.*.value' => 'required|string',
 
             'variants.*.media' => 'nullable|array',
-            'variants.*.media.*.url' => 'required|string',
+            'variants.*.media.*.media_uuid' => 'required_without:variants.*.media.*.url|bail|uuid|exists:media,uuid',
+            'variants.*.media.*.url' => 'required_without:variants.*.media.*.media_uuid|string',
             'variants.*.media.*.media_type' => 'nullable|in:image,video',
             'variants.*.media.*.is_primary' => 'nullable|boolean',
             'variants.*.media.*.sort_order' => 'nullable|integer',
