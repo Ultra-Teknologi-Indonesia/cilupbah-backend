@@ -27,7 +27,7 @@ class ChannelShopManagementTest extends TestCase
             'shop_name' => 'Toko Uji',
             'access_token' => 'tok',
             'refresh_token' => 'rtok',
-            'token_expires_at' => now()->addDay(),
+            'token_expires_at' => now()->addDays(7),
             'refresh_token_expires_at' => now()->addDays(30),
             'is_active' => true,
             'order_sync_enabled' => true,
@@ -37,6 +37,12 @@ class ChannelShopManagementTest extends TestCase
     private function api()
     {
         return $this->actingAs($this->user, 'sanctum');
+    }
+
+    private function integrationOf(string $id): array
+    {
+        $res = $this->api()->getJson('/api/v1/marketplace/store')->assertOk();
+        return collect($res->json('data'))->firstWhere('id', $id)['integration'];
     }
 
     public function test_list_excludes_disconnected_shops(): void
@@ -128,9 +134,39 @@ class ChannelShopManagementTest extends TestCase
     {
         $shop = $this->shop(['refresh_token_expires_at' => now()->subDay()]);
 
-        $res = $this->api()->getJson('/api/v1/marketplace/store')->assertOk();
-        $row = collect($res->json('data'))->firstWhere('id', $shop->id);
+        $this->assertSame('error', $this->integrationOf($shop->id)['status']);
+    }
 
-        $this->assertSame('error', $row['integration']['status']);
+    public function test_integration_normal_when_healthy(): void
+    {
+        $shop = $this->shop();
+
+        $this->assertSame('normal', $this->integrationOf($shop->id)['status']);
+    }
+
+    public function test_integration_warning_when_expiring_soon(): void
+    {
+        $shop = $this->shop(['token_expires_at' => now()->addHours(5)]);
+
+        $this->assertSame('warning', $this->integrationOf($shop->id)['status']);
+    }
+
+    public function test_integration_warning_when_access_token_expired_but_refresh_valid(): void
+    {
+        $shop = $this->shop(['token_expires_at' => now()->subHour()]);
+
+        $this->assertSame('warning', $this->integrationOf($shop->id)['status']);
+    }
+
+    public function test_integration_error_from_persisted_status(): void
+    {
+        $shop = $this->shop([
+            'integration_status' => 'error',
+            'last_error' => 'Izin akses dicabut seller',
+        ]);
+
+        $integration = $this->integrationOf($shop->id);
+        $this->assertSame('error', $integration['status']);
+        $this->assertSame('Izin akses dicabut seller', $integration['note']);
     }
 }

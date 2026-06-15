@@ -65,7 +65,29 @@ class ChannelShopRepository
     {
         $channelId = \Modules\Channel\Models\Channel::where('code', $code)->value('id');
 
-        return ChannelShop::where('channel_id', $channelId)->orderBy('created_at', 'desc')->get();
+        return ChannelShop::where('channel_id', $channelId)
+            ->whereNull('disconnected_at')
+            ->orderBy('created_at', 'desc')
+            ->get();
+    }
+
+    /** Tandai integrasi toko sehat (mis. setelah refresh/sync sukses). */
+    public function markIntegrationHealthy(string $id): void
+    {
+        ChannelShop::where('id', $id)->update([
+            'integration_status' => 'normal',
+            'last_error' => null,
+            'last_synced_at' => now(),
+        ]);
+    }
+
+    /** Tandai integrasi toko bermasalah (mis. refresh/sync gagal / izin dicabut). */
+    public function markIntegrationError(string $id, ?string $message): void
+    {
+        ChannelShop::where('id', $id)->update([
+            'integration_status' => 'error',
+            'last_error' => $message,
+        ]);
     }
 
     public function findByUuid(string $id): ?ChannelShop

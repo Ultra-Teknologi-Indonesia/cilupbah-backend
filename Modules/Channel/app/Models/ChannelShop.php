@@ -22,6 +22,9 @@ class ChannelShop extends Model
         'is_active',
         'order_sync_enabled',
         'disconnected_at',
+        'integration_status',
+        'last_error',
+        'last_synced_at',
     ];
 
     protected $casts = [
@@ -30,6 +33,7 @@ class ChannelShop extends Model
         'is_active' => 'boolean',
         'order_sync_enabled' => 'boolean',
         'disconnected_at' => 'datetime',
+        'last_synced_at' => 'datetime',
     ];
 
     protected $hidden = [

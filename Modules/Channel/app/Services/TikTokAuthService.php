@@ -144,11 +144,41 @@ class TikTokAuthService
             'updated_at' => now(),
         ]);
 
+        $this->shopRepository->markIntegrationHealthy($id);
+
         return [
             'shop_id' => $shop->shop_id,
             'shop_name' => $shop->shop_name,
             'token_expires_at' => isset($data['access_token_expire_in']) ? now()->addSeconds($data['access_token_expire_in'])->toIso8601String() : null,
         ];
+    }
+
+    public function refreshExpiringTokens(int $hours = 24): array
+    {
+        $summary = ['refreshed' => 0, 'failed' => 0, 'skipped' => 0];
+
+        foreach ($this->shopRepository->getShopsByChannelCode('tiktok') as $shop) {
+            $needsRefresh = $shop->is_active
+                && $shop->refresh_token
+                && $shop->token_expires_at
+                && $shop->token_expires_at->lte(now()->addHours($hours));
+
+            if (! $needsRefresh) {
+                $summary['skipped']++;
+                continue;
+            }
+
+            try {
+                $this->refreshStoreToken($shop->id);
+                $summary['refreshed']++;
+            } catch (\Throwable $e) {
+                $summary['failed']++;
+                $this->shopRepository->markIntegrationError($shop->id, $e->getMessage());
+                Log::warning('TikTok refresh token gagal', ['shop_id' => $shop->shop_id, 'error' => $e->getMessage()]);
+            }
+        }
+
+        return $summary;
     }
 
     protected function getTokenStatus($shop): string

@@ -138,6 +138,8 @@ class LazadaAuthService
             'refresh_token_expires_at' => $refreshExpiresAt,
         ]);
 
+        $this->shopRepository->markIntegrationHealthy($id);
+
         return [
             'shop_id' => $shop->shop_id,
             'shop_name' => $shop->shop_name,
@@ -165,6 +167,7 @@ class LazadaAuthService
                 $summary['refreshed']++;
             } catch (\Throwable $e) {
                 $summary['failed']++;
+                $this->shopRepository->markIntegrationError($shop->id, $e->getMessage());
                 Log::warning('Lazada refresh token gagal', ['shop_id' => $shop->shop_id, 'error' => $e->getMessage()]);
             }
         }
