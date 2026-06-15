@@ -10,6 +10,7 @@ class MasterFeedRepository
 {
     private const RELATIONS = [
         'category',
+        'brand',
         'variationTypes.attribute',
         'variants.options.attribute',
         'variants.channelMappings.channelMapping.channelShop.channel',

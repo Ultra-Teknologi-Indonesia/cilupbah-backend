@@ -21,22 +21,9 @@ class ProductMonitorResource extends JsonResource
                 $shop    = $mapping->relationLoaded('channelShop') ? $mapping->channelShop : null;
                 $channel = ($shop && $shop->relationLoaded('channel')) ? $shop->channel : null;
 
-                $skus = [];
-                if ($mapping->relationLoaded('variantMappings')) {
-                    $skus = $mapping->variantMappings->map(function ($vm) {
-                        $variant = $vm->relationLoaded('variant') ? $vm->variant : null;
-
-                        return [
-                            'variant_id'      => $vm->variant_id,
-                            'sku'             => $variant->sku ?? null,
-                            'external_sku_id' => $vm->external_sku_id,
-                            'sell_price'      => $variant?->sell_price !== null ? (float) $variant->sell_price : null,
-                            'override_price'  => $vm->override_price !== null ? (float) $vm->override_price : null,
-                            'synced_price'    => $vm->synced_price !== null ? (float) $vm->synced_price : null,
-                            'synced_stock'    => $vm->synced_stock,
-                        ];
-                    })->values()->all();
-                }
+                $skus = $mapping->relationLoaded('variantMappings')
+                    ? VariantSyncResource::collection($mapping->variantMappings)->resolve()
+                    : [];
 
                 return [
                     'channel_shop_id'     => $mapping->channel_shop_id,

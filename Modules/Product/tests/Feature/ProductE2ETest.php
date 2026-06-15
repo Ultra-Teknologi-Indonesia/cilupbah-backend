@@ -60,6 +60,7 @@ class ProductE2ETest extends TestCase
     {
         $payload = [
             'name' => 'Produk E2E Bundle',
+            'sku' => 'E2E-PROD-01',
             'category_id' => $this->category->id,
             'brand_id' => $this->brand->id,
             'description' => 'Deskripsi produk E2E',
@@ -111,6 +112,7 @@ class ProductE2ETest extends TestCase
 
         $createResponse = $this->postJson('/api/v1/products', [
             'name' => 'Produk E2E Read',
+            'sku' => 'E2E-PROD-READ',
             'category_id' => $this->category->id,
             'weight' => 1,
             'length' => 1,
@@ -147,6 +149,7 @@ class ProductE2ETest extends TestCase
 
         $createResponse = $this->postJson('/api/v1/products', [
             'name' => 'Produk E2E Awal',
+            'sku' => 'E2E-PROD-UPDATE',
             'category_id' => $this->category->id,
             'variants' => [
                 [
@@ -203,6 +206,7 @@ class ProductE2ETest extends TestCase
 
         $createResponse = $this->postJson('/api/v1/products', [
             'name' => 'Produk E2E Hapus',
+            'sku' => 'E2E-PROD-DELETE',
             'category_id' => $this->category->id,
             'variants' => [
                 [
@@ -241,6 +245,7 @@ class ProductE2ETest extends TestCase
 
         $createResponse = $this->postJson('/api/v1/products', [
             'name' => 'Produk Masih Bergerak',
+            'sku' => 'E2E-PROD-STOCK',
             'category_id' => $this->category->id,
             'variants' => [
                 [
@@ -300,11 +305,13 @@ class ProductE2ETest extends TestCase
 
         $this->postJson('/api/v1/products', [
             'name' => 'Produk List 1',
+            'sku' => 'E2E-PROD-LIST1',
             'category_id' => $this->category->id,
             'variants' => [['sku' => 'LIST1', 'sell_price' => 1000]]
         ]);
         $this->postJson('/api/v1/products', [
             'name' => 'Produk List 2',
+            'sku' => 'E2E-PROD-LIST2',
             'category_id' => $this->category->id,
             'variants' => [['sku' => 'LIST2', 'sell_price' => 2000]]
         ]);
@@ -321,6 +328,7 @@ class ProductE2ETest extends TestCase
     {
         $createResponse = $this->postJson('/api/v1/products', [
             'name' => 'Produk Lifecycle',
+            'sku' => 'E2E-PROD-LIFECYCLE',
             'category_id' => $this->category->id,
             'variants' => [['sku' => 'LIFECYCLE1', 'sell_price' => 5000]],
             'media' => [['url' => 'http://example.com/image.jpg', 'is_primary' => true]]

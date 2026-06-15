@@ -20,8 +20,17 @@ use Modules\Product\Http\Controllers\RaiseProductController;
 use Modules\Product\Http\Controllers\VariantController;
 use Modules\Product\Http\Controllers\PriceListController;
 use Modules\Product\Http\Controllers\CatalogController;
+use Modules\Product\Http\Controllers\ProductMasterDataController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
+
+    // Master data dropdown untuk form Buat Produk (6 endpoint).
+    Route::get('products/master-data/sales-taxes', [ProductMasterDataController::class, 'salesTaxes']);
+    Route::get('products/master-data/purchase-taxes', [ProductMasterDataController::class, 'purchaseTaxes']);
+    Route::get('products/master-data/sales-accounts', [ProductMasterDataController::class, 'salesAccounts']);
+    Route::get('products/master-data/sales-return-accounts', [ProductMasterDataController::class, 'salesReturnAccounts']);
+    Route::get('products/master-data/inventory-accounts', [ProductMasterDataController::class, 'inventoryAccounts']);
+    Route::get('products/master-data/cogs-accounts', [ProductMasterDataController::class, 'cogsAccounts']);
 
     Route::get('products/uploadable', [ProductController::class, 'uploadable']);
     Route::get('products/channel-drafts', [ProductChannelDraftController::class, 'list']);

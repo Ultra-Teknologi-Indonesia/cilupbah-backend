@@ -27,6 +27,9 @@ class DatabaseSeeder extends Seeder
         $this->call(\Modules\Region\Database\Seeders\RegionDatabaseSeeder::class);
         $this->call(\Modules\Channel\Database\Seeders\ChannelDatabaseSeeder::class);
         $this->call(\Modules\Warehouse\Database\Seeders\WarehouseDatabaseSeeder::class);
+        // Master data untuk form produk: Chart of Accounts + daftar pajak.
+        $this->call(\Modules\Finance\Database\Seeders\FinanceDatabaseSeeder::class);
+        $this->call(\Modules\Tax\Database\Seeders\TaxDatabaseSeeder::class);
 
         if (app()->environment(['local', 'staging'])) {
             $this->call(TrackingItemsSeeder::class);

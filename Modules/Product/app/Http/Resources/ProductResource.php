@@ -33,6 +33,24 @@ class ProductResource extends JsonResource
             ] : null),
             'is_bundle' => $this->is_bundle,
             'is_consignment' => $this->is_consignment,
+            'is_stored' => $this->is_stored,
+            'is_sold' => $this->is_sold,
+            'is_purchased' => $this->is_purchased,
+            'order_type' => $this->order_type,
+            'is_po' => $this->order_type === 'PREORDER',
+            'indent_days' => $this->indent_days,
+            'purchase_lead_time' => $this->purchase_lead_time,
+            'package_contents' => $this->package_contents,
+            'weight' => $this->weight,
+            'length' => $this->length,
+            'width' => $this->width,
+            'height' => $this->height,
+            'accounts' => [
+                'sales' => $this->accountInfo('salesAccount'),
+                'sales_return' => $this->accountInfo('salesReturnAccount'),
+                'inventory' => $this->accountInfo('inventoryAccount'),
+                'cogs' => $this->accountInfo('cogsAccount'),
+            ],
             'channel_mappings' => $this->whenLoaded('channelMappings', function () {
                 return $this->channelMappings->map(function ($mapping) {
                     $shop = $mapping->relationLoaded('channelShop') ? $mapping->channelShop : null;
@@ -54,8 +72,29 @@ class ProductResource extends JsonResource
                     $data = [
                         'id' => $variant->id,
                         'sku' => $variant->sku,
+                        'barcode' => $variant->barcode,
+                        'buy_price' => $variant->buy_price,
                         'sell_price' => $variant->sell_price,
+                        'tax_rate' => $variant->tax_rate,
+                        'min_stock' => $variant->min_stock,
+                        'safe_stock' => $variant->safe_stock,
                         'is_active' => $variant->is_active,
+                        'sales_tax' => ($variant->relationLoaded('salesTax') && $variant->salesTax) ? [
+                            'id' => $variant->salesTax->id,
+                            'name' => $variant->salesTax->name,
+                            'rate' => (float) $variant->salesTax->rate,
+                        ] : null,
+                        'purchase_tax' => ($variant->relationLoaded('purchaseTax') && $variant->purchaseTax) ? [
+                            'id' => $variant->purchaseTax->id,
+                            'name' => $variant->purchaseTax->name,
+                            'rate' => (float) $variant->purchaseTax->rate,
+                        ] : null,
+                        'unlimited_shops' => $variant->relationLoaded('unlimitedShops')
+                            ? $variant->unlimitedShops->map(fn ($s) => [
+                                'channel_shop_id' => $s->id,
+                                'shop_name' => $s->shop_name,
+                            ])->values()
+                            : [],
                         'channel_prices' => $variant->relationLoaded('channelMappings') ? $variant->channelMappings->map(function ($map) {
                             return [
                                 'channel_shop_id' => $map->relationLoaded('channelMapping') ? $map->channelMapping->channel_shop_id : null,
@@ -117,6 +156,21 @@ class ProductResource extends JsonResource
         return [
             'min' => (float) $prices->min(),
             'max' => (float) $prices->max(),
+        ];
+    }
+
+    protected function accountInfo(string $relation): ?array
+    {
+        if (! $this->resource->relationLoaded($relation) || ! $this->{$relation}) {
+            return null;
+        }
+
+        $account = $this->{$relation};
+
+        return [
+            'id' => $account->id,
+            'code' => $account->account_code,
+            'name' => $account->account_name,
         ];
     }
 }

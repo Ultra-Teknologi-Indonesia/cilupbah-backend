@@ -12,12 +12,16 @@ class MasterItemResource extends JsonResource
     {
         return [
             'item_group_id' => $this->id,
+            'status' => $this->status,
             'is_po' => $this->order_type === 'PREORDER',
+            'is_bundle' => (bool) $this->is_bundle,
             'item_name' => $this->name,
             'last_modified' => $this->updated_at,
             'variations' => $this->variations(),
             'sell_price' => $this->minSellPrice(),
             'item_category_id' => $this->category_id,
+            'category_name' => $this->whenLoaded('category', fn () => $this->category?->name),
+            'brand_name' => $this->whenLoaded('brand', fn () => $this->brand?->name),
             'is_consignment' => (bool) $this->is_consignment,
             'variants' => $this->variantList(),
             'total_variants' => $this->resource->relationLoaded('variants') ? $this->variants->count() : 0,

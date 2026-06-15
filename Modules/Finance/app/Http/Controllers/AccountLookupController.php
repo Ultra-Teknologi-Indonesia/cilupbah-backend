@@ -5,6 +5,7 @@ namespace Modules\Finance\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Modules\Finance\Models\Account;
 use Modules\Finance\Repositories\AccountRepository;
 use OpenApi\Attributes as OA;
@@ -24,12 +25,16 @@ class AccountLookupController extends Controller
             new OA\Response(response: 401, description: 'Unauthenticated'),
         ]
     )]
-    public function all(AccountRepository $accounts): JsonResponse
+    public function all(Request $request, AccountRepository $accounts): JsonResponse
     {
-        $data = $accounts->getActiveLookup()->map(fn (Account $a) => [
+        // Opsional: ?type=revenue|asset|expense|liability|equity untuk dropdown akun spesifik.
+        $type = $request->query('type');
+
+        $data = $accounts->getActiveLookup($type)->map(fn (Account $a) => [
             'account_id' => $a->id,
             'account_code' => $a->account_code,
-            'account_name' => $a->display_name, 
+            'account_name' => $a->display_name,
+            'account_type' => $a->account_type,
         ]);
 
         return $this->successResponse($data, 'Daftar akun berhasil diambil.');

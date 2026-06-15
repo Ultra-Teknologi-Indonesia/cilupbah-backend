@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::table('product_media', function (Blueprint $table) {
             $table->uuid('media_uuid')->nullable()->after('variant_id');
-            // url kini opsional: di-resolve dari media library saat media_uuid dipakai
+
             $table->string('url')->nullable()->change();
 
             $table->index('media_uuid');

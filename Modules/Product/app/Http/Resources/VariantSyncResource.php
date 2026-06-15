@@ -1,0 +1,30 @@
+<?php
+
+namespace Modules\Product\Http\Resources;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+/**
+ * Data SKU varian tersinkron per channel (dipakai bersama oleh
+ * ProductMonitorResource & ShopProductMonitorResource).
+ *
+ * @property mixed $resource Modul ProductVariantChannelMapping
+ */
+class VariantSyncResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        $variant = $this->resource->relationLoaded('variant') ? $this->variant : null;
+
+        return [
+            'variant_id'      => $this->variant_id,
+            'sku'             => $variant->sku ?? null,
+            'external_sku_id' => $this->external_sku_id,
+            'sell_price'      => $variant?->sell_price !== null ? (float) $variant->sell_price : null,
+            'override_price'  => $this->override_price !== null ? (float) $this->override_price : null,
+            'synced_price'    => $this->synced_price !== null ? (float) $this->synced_price : null,
+            'synced_stock'    => $this->synced_stock,
+        ];
+    }
+}
