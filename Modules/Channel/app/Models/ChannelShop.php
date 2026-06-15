@@ -20,12 +20,16 @@ class ChannelShop extends Model
         'token_expires_at',
         'refresh_token_expires_at',
         'is_active',
+        'order_sync_enabled',
+        'disconnected_at',
     ];
 
     protected $casts = [
         'token_expires_at' => 'datetime',
         'refresh_token_expires_at' => 'datetime',
         'is_active' => 'boolean',
+        'order_sync_enabled' => 'boolean',
+        'disconnected_at' => 'datetime',
     ];
 
     protected $hidden = [

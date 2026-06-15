@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Channel\Http\Requests\UpdateChannelShopRequest;
 use Modules\Channel\Http\Resources\ChannelResource;
 use Modules\Channel\Http\Resources\ChannelShopResource;
 use Modules\Channel\Services\ChannelService;
@@ -32,6 +33,16 @@ class ChannelController extends Controller
         );
     }
 
+    public function updateStore(UpdateChannelShopRequest $request, string $id): JsonResponse
+    {
+        $shop = $this->channelService->updateStoreFlags($id, $request->validated());
+
+        return $this->successResponse(
+            new ChannelShopResource($shop),
+            'Pengaturan toko berhasil diperbarui.'
+        );
+    }
+
     public function index(Request $request)
     {
         try {
@@ -55,18 +66,27 @@ class ChannelController extends Controller
 
     public function disconnectShop(Request $request, string $id)
     {
+        $isApi = $request->is('api/*') || $request->wantsJson();
+
         try {
-            $this->authService->disconnectStore($id);
-            if ($request->is('api/*') || $request->wantsJson()) {
-                return $this->successResponse(null, 'Toko berhasil diputuskan dari channel.');
+            $this->channelService->disconnectStore($id);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            if ($isApi) {
+                throw $e; // handler global → 404
             }
-            return back()->with('success', 'Toko berhasil diputuskan dari channel.');
-        } catch (\Exception $e) {
-            if ($request->is('api/*') || $request->wantsJson()) {
-                return $this->errorResponse('Gagal memutuskan toko: ' . $e->getMessage(), 500);
+            return back()->with('error', 'Toko tidak ditemukan.');
+        } catch (\Throwable $e) {
+            if ($isApi) {
+                return $this->errorResponse('Gagal memutuskan toko: ' . $e->getMessage(), 422);
             }
             return back()->with('error', 'Gagal memutuskan toko: ' . $e->getMessage());
         }
+
+        if ($isApi) {
+            return $this->successResponse(null, 'Toko berhasil diputuskan dari channel.');
+        }
+
+        return back()->with('success', 'Toko berhasil diputuskan dari channel.');
     }
 
     public function refreshShopToken(Request $request, string $id)

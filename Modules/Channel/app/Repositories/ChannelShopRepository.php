@@ -14,6 +14,7 @@ class ChannelShopRepository
     {
         return QueryBuilder::for(ChannelShop::class)
             ->with('channel')
+            ->whereNull('disconnected_at')
             ->allowedSearch('shop_name')
             ->allowedFilters(
                 'channel_id',
@@ -36,11 +37,17 @@ class ChannelShopRepository
 
     public function getActiveShops()
     {
-        return DB::table('channel_shops')->where('is_active', true)->get();
+        return DB::table('channel_shops')
+            ->where('is_active', true)
+            ->whereNull('disconnected_at')
+            ->get();
     }
 
     public function updateOrCreateShop(string $shopId, array $data)
     {
+        // Setiap penyimpanan token sukses = toko terhubung kembali.
+        $data['disconnected_at'] = null;
+
         return ChannelShop::updateOrCreate(
             ['shop_id' => $shopId],
             $data
@@ -76,10 +83,14 @@ class ChannelShopRepository
         return ChannelShop::find($id);
     }
 
+    /**
+     * Soft disconnect: tandai diputus + hapus token (decoupled dari is_active).
+     * Baris & relasi produk dipertahankan; toko hilang dari daftar terhubung.
+     */
     public function disconnectShop(string $id): bool
     {
         return ChannelShop::where('id', $id)->update([
-            'is_active' => false,
+            'disconnected_at' => now(),
             'access_token' => null,
             'refresh_token' => null,
             'token_expires_at' => null,

@@ -6,6 +6,8 @@ use Modules\Channel\Http\Controllers\ChannelController;
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::get('marketplace/store', [ChannelController::class, 'stores']);
+    Route::patch('marketplace/store/{id}', [ChannelController::class, 'updateStore'])->whereUuid('id');
+    Route::delete('marketplace/store/{id}', [ChannelController::class, 'disconnectShop'])->whereUuid('id');
 
     Route::apiResource('channels', ChannelController::class)->names('channel');
 
