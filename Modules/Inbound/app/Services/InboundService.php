@@ -8,6 +8,7 @@ use Modules\Inbound\Models\InboundAssignment;
 use Modules\Inbound\Models\InboundItem;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\PutawayService;
+use Modules\Notification\Events\TaskAssigned;
 use Modules\Warehouse\Services\LocationBinService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -325,13 +326,23 @@ class InboundService
             throw new \Exception("Inbound berstatus {$inbound->status}, tidak bisa di-assign.");
         }
 
-        return $this->inboundRepository->createAssignment([
+        $assignment = $this->inboundRepository->createAssignment([
             'inbound_id'  => $inboundId,
             'assigned_to' => $assignedTo,
             'assigned_by' => $assignedBy,
             'status'      => InboundAssignment::STATUS_PENDING,
             'notes'       => $notes,
         ]);
+
+        TaskAssigned::dispatch(
+            $assignedTo,
+            'inbound',
+            $inbound->transaction_number,
+            $assignedBy,
+            ['inbound_id' => $inboundId],
+        );
+
+        return $assignment;
     }
 
     public function getAssignments(string $inboundId)

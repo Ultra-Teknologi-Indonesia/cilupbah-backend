@@ -3,6 +3,8 @@
 namespace Modules\Notification\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Modules\Notification\Models\Notification;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use OpenApi\Attributes as OA;
 
@@ -16,28 +18,25 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'user_id', type: 'string', example: '019ea2afad20700aa53cd1aeaf6a31f7'),
         new OA\Property(property: 'title', type: 'string', example: 'New Order Received'),
         new OA\Property(property: 'message', type: 'string', example: 'You have received a new order from John Doe.'),
+        new OA\Property(property: 'type', type: 'string', example: 'task_assigned'),
+        new OA\Property(property: 'data', type: 'object'),
         new OA\Property(property: 'is_read', type: 'boolean', example: false),
-        new OA\Property(property: 'created_at', type: 'string', format: 'date-time', example: '2026-06-04T12:00:00Z'),
-        new OA\Property(property: 'updated_at', type: 'string', format: 'date-time', example: '2026-06-04T12:00:00Z'),
-    ]
-)]
-#[OA\Schema(
-    schema: 'StoreNotificationRequest',
-    required: ['title', 'message'],
-    type: 'object',
-    properties: [
-        new OA\Property(property: 'user_id', type: 'string', example: '019ea2afad20700aa53cd1aeaf6a31f7'),
-        new OA\Property(property: 'title', type: 'string', example: 'New Order Received'),
-        new OA\Property(property: 'message', type: 'string', example: 'You have received a new order from John Doe.')
+        new OA\Property(property: 'read_at', type: 'string', format: 'date-time', nullable: true),
+        new OA\Property(property: 'created_at', type: 'string', format: 'date-time'),
+        new OA\Property(property: 'updated_at', type: 'string', format: 'date-time'),
     ]
 )]
 class NotificationController extends Controller
 {
     #[OA\Get(
         path: '/api/v1/notifications',
-        summary: 'Get list of notifications',
+        summary: 'Get list of notifications for current user',
         security: [['bearerAuth' => []]],
         tags: ['Notifications'],
+        parameters: [
+            new OA\Parameter(name: 'is_read', in: 'query', required: false, schema: new OA\Schema(type: 'boolean')),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+        ],
         responses: [
             new OA\Response(
                 response: 200,
@@ -51,40 +50,45 @@ class NotificationController extends Controller
             new OA\Response(response: 401, description: 'Unauthenticated')
         ]
     )]
-    public function index()
+    public function index(Request $request): JsonResponse
     {
-        return view('notification::index');
+        $query = Notification::where('user_id', $request->user()->id)
+            ->orderByDesc('created_at');
+
+        if ($request->has('is_read')) {
+            $query->where('is_read', filter_var($request->is_read, FILTER_VALIDATE_BOOLEAN));
+        }
+
+        $perPage = min((int) $request->get('per_page', 20), 100);
+
+        return response()->json($query->paginate($perPage));
     }
 
-    public function create()
-    {
-        return view('notification::create');
-    }
-
-    #[OA\Post(
-        path: '/api/v1/notifications',
-        summary: 'Create a new notification',
+    #[OA\Get(
+        path: '/api/v1/notifications/unread-count',
+        summary: 'Get unread notification count',
         security: [['bearerAuth' => []]],
         tags: ['Notifications'],
-        requestBody: new OA\RequestBody(
-            required: true,
-            content: new OA\JsonContent(ref: '#/components/schemas/StoreNotificationRequest')
-        ),
         responses: [
             new OA\Response(
-                response: 201,
-                description: 'Notification created successfully',
+                response: 200,
+                description: 'Successful operation',
                 content: new OA\JsonContent(
                     properties: [
-                        new OA\Property(property: 'data', ref: '#/components/schemas/Notification')
+                        new OA\Property(property: 'count', type: 'integer', example: 5)
                     ]
                 )
             ),
-            new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 422, description: 'Validation Error')
         ]
     )]
-    public function store(Request $request) {}
+    public function unreadCount(Request $request): JsonResponse
+    {
+        $count = Notification::where('user_id', $request->user()->id)
+            ->where('is_read', false)
+            ->count();
+
+        return response()->json(['count' => $count]);
+    }
 
     #[OA\Get(
         path: '/api/v1/notifications/{notification}',
@@ -92,60 +96,68 @@ class NotificationController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Notifications'],
         parameters: [
-            new OA\Parameter(name: 'notification', in: 'path', required: true, description: 'ID of the notification', schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'notification', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(
                 response: 200,
                 description: 'Successful operation',
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: 'data', ref: '#/components/schemas/Notification')
-                    ]
-                )
+                content: new OA\JsonContent(properties: [new OA\Property(property: 'data', ref: '#/components/schemas/Notification')])
             ),
-            new OA\Response(response: 401, description: 'Unauthenticated'),
             new OA\Response(response: 404, description: 'Notification not found')
         ]
     )]
-    public function show($id)
+    public function show(Request $request, string $id): JsonResponse
     {
-        return view('notification::show');
+        $notification = Notification::where('user_id', $request->user()->id)
+            ->findOrFail($id);
+
+        return response()->json(['data' => $notification]);
     }
 
-    public function edit($id)
-    {
-        return view('notification::edit');
-    }
-
-    #[OA\Put(
-        path: '/api/v1/notifications/{notification}',
-        summary: 'Update an existing notification',
+    #[OA\Patch(
+        path: '/api/v1/notifications/{notification}/read',
+        summary: 'Mark notification as read',
         security: [['bearerAuth' => []]],
         tags: ['Notifications'],
         parameters: [
-            new OA\Parameter(name: 'notification', in: 'path', required: true, description: 'ID of the notification to update', schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'notification', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
-        requestBody: new OA\RequestBody(
-            required: true,
-            content: new OA\JsonContent(ref: '#/components/schemas/StoreNotificationRequest')
-        ),
         responses: [
-            new OA\Response(
-                response: 200,
-                description: 'Notification updated successfully',
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: 'data', ref: '#/components/schemas/Notification')
-                    ]
-                )
-            ),
-            new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 404, description: 'Notification not found'),
-            new OA\Response(response: 422, description: 'Validation Error')
+            new OA\Response(response: 200, description: 'Marked as read'),
+            new OA\Response(response: 404, description: 'Notification not found')
         ]
     )]
-    public function update(Request $request, $id) {}
+    public function markAsRead(Request $request, string $id): JsonResponse
+    {
+        $notification = Notification::where('user_id', $request->user()->id)
+            ->findOrFail($id);
+
+        $notification->markAsRead();
+
+        return response()->json(['data' => $notification]);
+    }
+
+    #[OA\Post(
+        path: '/api/v1/notifications/read-all',
+        summary: 'Mark all notifications as read',
+        security: [['bearerAuth' => []]],
+        tags: ['Notifications'],
+        responses: [
+            new OA\Response(response: 200, description: 'All marked as read'),
+        ]
+    )]
+    public function markAllAsRead(Request $request): JsonResponse
+    {
+        Notification::where('user_id', $request->user()->id)
+            ->where('is_read', false)
+            ->update([
+                'is_read' => true,
+                'read_at' => now(),
+            ]);
+
+        return response()->json(['message' => 'All notifications marked as read']);
+    }
 
     #[OA\Delete(
         path: '/api/v1/notifications/{notification}',
@@ -153,13 +165,20 @@ class NotificationController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Notifications'],
         parameters: [
-            new OA\Parameter(name: 'notification', in: 'path', required: true, description: 'ID of the notification to delete', schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'notification', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
         responses: [
-            new OA\Response(response: 200, description: 'Notification deleted successfully'),
-            new OA\Response(response: 401, description: 'Unauthenticated'),
+            new OA\Response(response: 200, description: 'Notification deleted'),
             new OA\Response(response: 404, description: 'Notification not found')
         ]
     )]
-    public function destroy($id) {}
+    public function destroy(Request $request, string $id): JsonResponse
+    {
+        $notification = Notification::where('user_id', $request->user()->id)
+            ->findOrFail($id);
+
+        $notification->delete();
+
+        return response()->json(['message' => 'Notification deleted']);
+    }
 }

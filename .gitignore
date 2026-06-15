@@ -23,14 +23,7 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
-
-# Database Dumps
 cilupbah.sql
-
-# Sample data referensi (jangan di-commit)
 Modules/Product/channel-product.json
-graphiy
-graphiy/
-
-# Graphify knowledge graph output (di-generate lokal, jangan di-commit)
+graphify/
 /graphify-out/
