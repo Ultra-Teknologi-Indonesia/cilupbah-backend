@@ -3,6 +3,7 @@
 namespace Modules\Product\Repositories;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -28,12 +29,46 @@ class MasterFeedRepository
             ->allowedSearch('name', 'sku')
             ->allowedFilters(
                 AllowedFilter::exact('brand_id'),
-                AllowedFilter::exact('category_id'),
+                // Kategori berjenjang: cocokkan kategori terpilih + semua keturunannya.
+                AllowedFilter::callback('category_id', function ($query, $value) {
+                    $query->whereIn('category_id', $this->categoryWithDescendants($value));
+                }),
             )
             ->allowedSorts('name', 'created_at', 'updated_at')
             ->defaultSort('-updated_at')
             ->paginate(request('per_page', 10))
             ->appends(request()->query());
+    }
+
+    /**
+     * Kumpulkan id kategori terpilih beserta seluruh keturunannya (BFS satu query).
+     */
+    private function categoryWithDescendants($values): array
+    {
+        $roots = array_filter(array_map('intval', (array) $values));
+        if (empty($roots)) {
+            return [0]; // tidak ada kecocokan jika nilai kosong
+        }
+
+        $childrenByParent = [];
+        foreach (Category::query()->get(['id', 'parent_id']) as $cat) {
+            $childrenByParent[(int) $cat->parent_id][] = (int) $cat->id;
+        }
+
+        $ids = [];
+        $stack = $roots;
+        while ($stack) {
+            $cur = array_pop($stack);
+            if (in_array($cur, $ids, true)) {
+                continue;
+            }
+            $ids[] = $cur;
+            foreach ($childrenByParent[$cur] ?? [] as $child) {
+                $stack[] = $child;
+            }
+        }
+
+        return $ids;
     }
 
     public function find(string $id, string $status): Product

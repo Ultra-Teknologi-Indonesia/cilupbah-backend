@@ -11,11 +11,20 @@ class BrandSeeder extends Seeder
     {
         $data = json_decode(file_get_contents(module_path('Product', 'database/data/brand.json')), true);
 
-        $rows = array_map(fn($item) => [
-            'name'       => $item['name'],
-            'created_at' => now(),
-            'updated_at' => now(),
-        ], $data);
+        // Idempotent: lewati merek yang sudah ada (aman re-run tiap deploy).
+        $existing = DB::table('brands')->pluck('name')->all();
+        $rows = [];
+        foreach ($data as $item) {
+            if (in_array($item['name'], $existing, true)) {
+                continue;
+            }
+            $existing[] = $item['name'];
+            $rows[] = [
+                'name'       => $item['name'],
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
 
         foreach (array_chunk($rows, 100) as $chunk) {
             DB::table('brands')->insert($chunk);
