@@ -15,6 +15,7 @@ class MasterItemResource extends JsonResource
             'status' => $this->status,
             'is_po' => $this->order_type === 'PREORDER',
             'is_bundle' => (bool) $this->is_bundle,
+            'sku' => $this->sku,
             'item_name' => $this->name,
             'last_modified' => $this->updated_at,
             'variations' => $this->variations(),
