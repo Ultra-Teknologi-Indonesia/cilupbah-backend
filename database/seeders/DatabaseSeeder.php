@@ -30,6 +30,9 @@ class DatabaseSeeder extends Seeder
         // Master data untuk form produk: Chart of Accounts + daftar pajak.
         $this->call(\Modules\Finance\Database\Seeders\FinanceDatabaseSeeder::class);
         $this->call(\Modules\Tax\Database\Seeders\TaxDatabaseSeeder::class);
+        // Master data katalog: kategori (berjenjang) & merek — idempotent.
+        $this->call(\Modules\Product\Database\Seeders\CategorySeeder::class);
+        $this->call(\Modules\Product\Database\Seeders\BrandSeeder::class);
 
         if (app()->environment(['local', 'staging'])) {
             $this->call(TrackingItemsSeeder::class);
