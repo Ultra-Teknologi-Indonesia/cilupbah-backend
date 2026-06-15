@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\LazadaClient;
+use Modules\Channel\Support\OAuthFlow;
 use Tests\TestCase;
 
 class LazadaAuthTest extends TestCase
@@ -50,7 +51,8 @@ class LazadaAuthTest extends TestCase
     {
         $this->fakeTokenResponse();
 
-        $response = $this->getJson('/api/v1/lazada/callback?code=auth-code-123');
+        $state = OAuthFlow::issueState('lazada');
+        $response = $this->getJson("/api/v1/lazada/callback?code=auth-code-123&state={$state}");
 
         $response->assertStatus(200)
             ->assertJsonPath('data.new_shops.0.shop_id', '500600');
@@ -69,7 +71,8 @@ class LazadaAuthTest extends TestCase
 
     public function test_callback_without_code_returns_400(): void
     {
-        $this->getJson('/api/v1/lazada/callback')
+        $state = OAuthFlow::issueState('lazada');
+        $this->getJson("/api/v1/lazada/callback?state={$state}")
             ->assertStatus(400);
     }
 
@@ -84,7 +87,8 @@ class LazadaAuthTest extends TestCase
             ], 200),
         ]);
 
-        $this->getJson('/api/v1/lazada/callback?code=bad-code')
+        $state = OAuthFlow::issueState('lazada');
+        $this->getJson("/api/v1/lazada/callback?code=bad-code&state={$state}")
             ->assertStatus(422);
 
         $this->assertDatabaseCount('channel_shops', 0);

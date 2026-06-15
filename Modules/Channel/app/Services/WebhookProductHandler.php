@@ -27,12 +27,17 @@ class WebhookProductHandler
             return;
         }
 
-        if (in_array((string)$status, ['5', '6'])) {
-            $mapping->update(['sync_status' => 'deactivated']);
-        } elseif ((string)$status === '4') {
-            $mapping->update(['sync_status' => 'synced']);
-        } elseif ((string)$status === '3') {
-            $mapping->update(['sync_status' => 'failed', 'error_message' => $data['suspend_reason'] ?? 'Rejected by platform']);
+        // Status produk TikTok: 2=pending(review), 3=failed(ditolak),
+        // 4=live(disetujui), 5/6=deactivated.
+        if (in_array((string) $status, ['5', '6'], true)) {
+            $mapping->update(['sync_status' => ProductChannelMapping::STATUS_DEACTIVATED]);
+        } elseif ((string) $status === '4') {
+            $mapping->markApproved();
+        } elseif ((string) $status === '3') {
+            $reason = $data['suspend_reason'] ?? $data['audit_failed_reasons'] ?? 'Ditolak platform';
+            $mapping->markRejected(is_array($reason) ? json_encode($reason) : (string) $reason);
+        } elseif ((string) $status === '2') {
+            $mapping->markInReview();
         }
     }
 

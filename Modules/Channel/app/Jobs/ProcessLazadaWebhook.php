@@ -83,12 +83,12 @@ class ProcessLazadaWebhook implements ShouldQueue
         $status = strtolower((string) ($data['qc_status'] ?? $data['status'] ?? ''));
 
         if (in_array($status, ['approved', 'active'], true)) {
-            $mapping->update(['sync_status' => 'synced', 'error_message' => null]);
+            $mapping->markApproved();
+        } elseif (in_array($status, ['pending', 'reviewing', 'pending_qc'], true)) {
+            $mapping->markInReview();
         } elseif (in_array($status, ['rejected', 'suspended', 'deleted', 'inactive'], true)) {
-            $mapping->update([
-                'sync_status' => 'failed',
-                'error_message' => 'Lazada QC: ' . ($data['reasons'] ?? $data['reason'] ?? $status),
-            ]);
+            $reason = $data['reasons'] ?? $data['reason'] ?? $status;
+            $mapping->markRejected('Lazada QC: ' . (is_array($reason) ? json_encode($reason) : $reason));
         }
     }
 

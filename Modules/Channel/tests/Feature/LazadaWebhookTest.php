@@ -158,7 +158,7 @@ class LazadaWebhookTest extends TestCase
         (new ProcessLazadaWebhook($payload))->handle(app(\Modules\Channel\Services\LazadaOrderService::class));
 
         $mapping->refresh();
-        $this->assertEquals('failed', $mapping->sync_status);
+        $this->assertEquals('rejected', $mapping->sync_status);
         $this->assertStringContainsString('Gambar buram', $mapping->error_message);
     }
 
