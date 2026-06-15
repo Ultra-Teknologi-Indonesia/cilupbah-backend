@@ -33,9 +33,9 @@ class ShopProductMonitorResource extends JsonResource
             'sync_status'         => $this->sync_status,
             'error_message'       => $this->error_message,
             'last_synced_at'      => $this->last_synced_at,
-            'skus'                => VariantSyncResource::collection(
-                $this->resource->relationLoaded('variantMappings') ? $this->variantMappings : collect()
-            ),
+            'skus'                => $this->resource->relationLoaded('variantMappings')
+                ? VariantSyncResource::collection($this->variantMappings)->resolve()
+                : [],
         ];
     }
 }

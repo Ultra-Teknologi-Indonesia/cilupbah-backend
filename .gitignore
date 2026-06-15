@@ -31,3 +31,6 @@ cilupbah.sql
 Modules/Product/channel-product.json
 graphiy
 graphiy/
+
+# Graphify knowledge graph output (di-generate lokal, jangan di-commit)
+/graphify-out/
