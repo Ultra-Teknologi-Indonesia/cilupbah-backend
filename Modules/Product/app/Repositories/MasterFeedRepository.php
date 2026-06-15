@@ -4,6 +4,7 @@ namespace Modules\Product\Repositories;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Modules\Product\Models\Product;
+use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
 class MasterFeedRepository
@@ -25,6 +26,10 @@ class MasterFeedRepository
             ->when($updatedSince, fn ($query) => $query->where('updated_at', '>=', $updatedSince))
             ->with(self::RELATIONS)
             ->allowedSearch('name', 'sku')
+            ->allowedFilters(
+                AllowedFilter::exact('brand_id'),
+                AllowedFilter::exact('category_id'),
+            )
             ->allowedSorts('name', 'created_at', 'updated_at')
             ->defaultSort('-updated_at')
             ->paginate(request('per_page', 10))
