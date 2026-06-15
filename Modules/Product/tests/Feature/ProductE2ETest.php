@@ -324,7 +324,7 @@ class ProductE2ETest extends TestCase
         $this->assertGreaterThanOrEqual(2, count($data));
     }
 
-    public function test_can_approve_reject_archive_restore_product()
+    public function test_can_approve_archive_restore_product()
     {
         $createResponse = $this->postJson('/api/v1/products', [
             'name' => 'Produk Lifecycle',
@@ -335,19 +335,11 @@ class ProductE2ETest extends TestCase
         ]);
         $productId = $createResponse->json('data.product_id');
 
-        \DB::table('products')->where('id', $productId)->update(['status' => 'in_review']);
+        \DB::table('products')->where('id', $productId)->update(['status' => 'download']);
 
         $approveRes = $this->postJson("/api/v1/products/{$productId}/approve");
-          $approveRes->assertStatus(200);
+        $approveRes->assertStatus(200);
         $this->assertDatabaseHas('products', ['id' => $productId, 'status' => 'master']);
-
-        \DB::table('products')->where('id', $productId)->update(['status' => 'in_review']);
-
-        $rejectRes = $this->postJson("/api/v1/products/{$productId}/reject");
-        $rejectRes->assertStatus(200);
-        $this->assertDatabaseHas('products', ['id' => $productId, 'status' => 'download']);
-
-        \DB::table('products')->where('id', $productId)->update(['status' => 'master']);
 
         $archiveRes = $this->postJson("/api/v1/products/{$productId}/archive", [
             'reason' => 'Testing archive'

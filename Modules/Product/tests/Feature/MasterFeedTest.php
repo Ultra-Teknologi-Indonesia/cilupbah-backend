@@ -87,7 +87,7 @@ class MasterFeedTest extends TestCase
         Product::create([
             'name' => 'Draft Item',
             'category_id' => 1,
-            'status' => Product::STATUS_IN_REVIEW,
+            'status' => Product::STATUS_DOWNLOAD,
             'is_active' => true,
         ]);
     }
@@ -251,7 +251,7 @@ class MasterFeedTest extends TestCase
 
     public function test_show_non_master_returns_404(): void
     {
-        $draftId = Product::where('status', Product::STATUS_IN_REVIEW)->value('id');
+        $draftId = Product::where('status', Product::STATUS_DOWNLOAD)->value('id');
 
         $response = $this->getJson("/api/v1/products/master/{$draftId}");
 

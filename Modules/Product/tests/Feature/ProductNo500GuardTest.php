@@ -30,7 +30,6 @@ class ProductNo500GuardTest extends TestCase
             ['get', '/api/v1/products/not-a-uuid'],
             ['put', '/api/v1/products/not-a-uuid'],
             ['delete', '/api/v1/products/not-a-uuid'],
-            ['post', '/api/v1/products/not-a-uuid/submit-review'],
             ['post', '/api/v1/products/not-a-uuid/approve'],
             ['post', '/api/v1/upload-histories/not-a-uuid/re-upload'],
             ['delete', '/api/v1/upload-histories/not-a-uuid'],

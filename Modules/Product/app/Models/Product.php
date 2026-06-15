@@ -16,13 +16,13 @@ class Product extends Model
     use SoftDeletes;
 
     public const STATUS_DOWNLOAD = 'download';
+    /** @deprecated Tidak ada review internal lagi — "in review" hanya konsep marketplace. */
     public const STATUS_IN_REVIEW = 'in_review';
     public const STATUS_MASTER = 'master';
     public const STATUS_ARCHIVED = 'archived';
 
     public const STATUSES = [
         self::STATUS_DOWNLOAD,
-        self::STATUS_IN_REVIEW,
         self::STATUS_MASTER,
         self::STATUS_ARCHIVED,
     ];

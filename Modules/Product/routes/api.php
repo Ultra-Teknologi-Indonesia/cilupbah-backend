@@ -87,9 +87,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::apiResource('products', ProductController::class)->names('product')
         ->where(['product' => '[\da-fA-F]{8}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{12}']);
 
-    Route::post('products/{id}/submit-review', [ProductController::class, 'submitForReview'])->whereUuid('id');
     Route::post('products/{id}/approve', [ProductController::class, 'approve'])->whereUuid('id');
-    Route::post('products/{id}/reject', [ProductController::class, 'reject'])->whereUuid('id');
     Route::post('products/{id}/archive', [ProductController::class, 'archive'])->whereUuid('id');
     Route::post('products/{id}/restore', [ProductController::class, 'restore'])->whereUuid('id');
 

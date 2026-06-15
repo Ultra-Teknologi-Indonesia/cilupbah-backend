@@ -85,16 +85,16 @@ class DownloadReviewFeedTest extends TestCase
         $this->assertSame(9, $variant['available_qty']);
     }
 
-    public function test_includes_download_and_in_review_but_excludes_master(): void
+    public function test_includes_download_but_excludes_master_and_archived(): void
     {
-        $inReview = Product::create(['name' => 'In Review Item', 'category_id' => 1, 'status' => Product::STATUS_IN_REVIEW, 'is_active' => true]);
+        $draft = Product::create(['name' => 'Draft Item', 'category_id' => 1, 'status' => Product::STATUS_DOWNLOAD, 'is_active' => true]);
         $master = Product::create(['name' => 'Master Item', 'category_id' => 1, 'status' => Product::STATUS_MASTER, 'is_active' => true]);
         $archived = Product::create(['name' => 'Archived Item', 'category_id' => 1, 'status' => Product::STATUS_ARCHIVED, 'is_active' => true]);
 
         $ids = collect($this->getJson('/api/v1/products/reviews')->json('data'))->pluck('item_group_id')->all();
 
         $this->assertContains($this->product->id, $ids);
-        $this->assertContains($inReview->id, $ids);
+        $this->assertContains($draft->id, $ids);
         $this->assertNotContains($master->id, $ids);
         $this->assertNotContains($archived->id, $ids);
     }
@@ -110,7 +110,7 @@ class DownloadReviewFeedTest extends TestCase
 
     public function test_filter_by_status(): void
     {
-        Product::create(['name' => 'In Review Two', 'category_id' => 1, 'status' => Product::STATUS_IN_REVIEW, 'is_active' => true]);
+        Product::create(['name' => 'Master Two', 'category_id' => 1, 'status' => Product::STATUS_MASTER, 'is_active' => true]);
 
         $response = $this->getJson('/api/v1/products/reviews?filter[status]=download');
 

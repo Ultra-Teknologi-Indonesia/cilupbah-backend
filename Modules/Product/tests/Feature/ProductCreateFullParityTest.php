@@ -84,14 +84,14 @@ class ProductCreateFullParityTest extends TestCase
         ], $overrides);
     }
 
-    public function test_minimal_create_succeeds_and_starts_in_review(): void
+    public function test_minimal_create_succeeds_as_master(): void
     {
         $res = $this->postJson('/api/v1/products', $this->basePayload());
 
         $res->assertCreated()->assertJsonPath('status', 'success');
         $id = $res->json('data.product_id');
 
-        $this->assertDatabaseHas('products', ['id' => $id, 'status' => Product::STATUS_IN_REVIEW]);
+        $this->assertDatabaseHas('products', ['id' => $id, 'status' => Product::STATUS_MASTER]);
         $this->assertDatabaseHas('product_variants', ['sku' => 'RB-VAR-01', 'sell_price' => 89000]);
     }
 
@@ -159,11 +159,16 @@ class ProductCreateFullParityTest extends TestCase
         $this->assertDatabaseHas('products', ['id' => $res->json('data.product_id'), 'status' => Product::STATUS_DOWNLOAD]);
     }
 
-    public function test_create_cannot_set_master_directly(): void
+    public function test_create_can_set_master_directly(): void
     {
-        $this->postJson('/api/v1/products', $this->basePayload(['status' => 'master']))
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('status');
+        // Tanpa review internal: produk boleh dibuat langsung sebagai Master.
+        $res = $this->postJson('/api/v1/products', $this->basePayload(['status' => 'master']));
+
+        $res->assertCreated();
+        $this->assertDatabaseHas('products', [
+            'id' => $res->json('data.product_id'),
+            'status' => 'master',
+        ]);
     }
 
     public function test_account_fallback_to_mapping_when_omitted(): void

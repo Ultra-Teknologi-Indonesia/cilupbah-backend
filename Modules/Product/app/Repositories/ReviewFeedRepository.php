@@ -19,9 +19,9 @@ class ReviewFeedRepository
         'channelMappings.channelShop.channel',
     ];
 
+    // Tanpa review internal: feed ini hanya produk draf (download).
     private const REVIEW_STATUSES = [
         Product::STATUS_DOWNLOAD,
-        Product::STATUS_IN_REVIEW,
     ];
 
     public function paginate(): LengthAwarePaginator

@@ -7,21 +7,18 @@ use Modules\Product\Models\Product;
 class ProductLifecycleService
 {
 
-    public function submitForReview(Product $product): Product
-    {
-        if ($product->status !== Product::STATUS_DOWNLOAD) {
-            throw new \DomainException('Hanya produk dengan status Download yang bisa diajukan ke Review');
-        }
-
-        $product->update(['status' => Product::STATUS_IN_REVIEW]);
-
-        return $product;
-    }
-
+    /**
+     * Jadikan produk Master. Tidak ada review internal — produk draf (download)
+     * langsung dipromosikan ke Master setelah lolos kelengkapan.
+     */
     public function approve(Product $product, ?string $userId = null): Product
     {
-        if ($product->status !== Product::STATUS_IN_REVIEW) {
-            throw new \DomainException('Produk tidak dalam status In Review');
+        if ($product->status === Product::STATUS_MASTER) {
+            throw new \DomainException('Produk sudah berstatus Master');
+        }
+
+        if ($product->status === Product::STATUS_ARCHIVED) {
+            throw new \DomainException('Produk dalam Arsip — pulihkan terlebih dahulu');
         }
 
         $this->assertReadyForMaster($product);
@@ -31,17 +28,6 @@ class ProductLifecycleService
             'verified_at' => now(),
             'verified_by' => $userId,
         ]);
-
-        return $product;
-    }
-
-    public function reject(Product $product): Product
-    {
-        if ($product->status !== Product::STATUS_IN_REVIEW) {
-            throw new \DomainException('Produk tidak dalam status In Review');
-        }
-
-        $product->update(['status' => Product::STATUS_DOWNLOAD]);
 
         return $product;
     }

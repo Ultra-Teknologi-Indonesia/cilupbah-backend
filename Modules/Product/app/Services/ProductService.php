@@ -322,8 +322,9 @@ class ProductService
                 'purchase_lead_time', 'package_contents',
             ]);
 
-            // "Simpan" → in_review (default). Master HANYA lewat approve.
-            $productData['status'] = $data['status'] ?? Product::STATUS_IN_REVIEW;
+            // Tanpa review internal: produk langsung Master (default).
+            // "Simpan draf" kirim status 'download'.
+            $productData['status'] = $data['status'] ?? Product::STATUS_MASTER;
 
             // Akun: pakai input atau fallback ke mapping default organisasi.
             $productData['sales_account_id'] = $this->resolveAccountId($data['sales_account_id'] ?? null, AccountMappingKey::SALES_REVENUE);

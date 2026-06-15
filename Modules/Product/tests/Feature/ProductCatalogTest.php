@@ -55,9 +55,9 @@ class ProductCatalogTest extends TestCase
         ]);
 
         Product::create([
-            'name' => 'Pending Review Item',
+            'name' => 'Draft Item',
             'category_id' => 1,
-            'status' => Product::STATUS_IN_REVIEW,
+            'status' => Product::STATUS_DOWNLOAD,
             'is_active' => true,
         ]);
         Product::create([
@@ -79,17 +79,17 @@ class ProductCatalogTest extends TestCase
 
         $names = collect($response->json('data'))->pluck('name')->all();
         $this->assertContains('Master Camera', $names);
-        $this->assertNotContains('Pending Review Item', $names);
+        $this->assertNotContains('Draft Item', $names);
         $this->assertNotContains('Archived Item', $names);
     }
 
-    public function test_list_filters_by_status_in_review()
+    public function test_list_filters_by_status_download()
     {
-        $response = $this->getJson('/api/v1/products?status=in_review');
+        $response = $this->getJson('/api/v1/products?status=download');
 
         $response->assertStatus(200);
         $statuses = collect($response->json('data'))->pluck('status')->unique()->values()->all();
-        $this->assertSame(['in_review'], $statuses);
+        $this->assertSame(['download'], $statuses);
     }
 
     public function test_list_rejects_invalid_status()

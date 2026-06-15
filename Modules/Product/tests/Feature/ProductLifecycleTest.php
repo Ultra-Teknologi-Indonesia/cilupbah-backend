@@ -54,9 +54,9 @@ class ProductLifecycleTest extends TestCase
         return $product;
     }
 
-    public function test_approve_in_review_to_master()
+    public function test_approve_download_to_master()
     {
-        $product = $this->makeProduct(Product::STATUS_IN_REVIEW);
+        $product = $this->makeProduct(Product::STATUS_DOWNLOAD);
 
         $response = $this->postJson("/api/v1/products/{$product->id}/approve");
 
@@ -68,7 +68,7 @@ class ProductLifecycleTest extends TestCase
         $this->assertNotNull($product->verified_at);
     }
 
-    public function test_approve_fails_when_not_in_review()
+    public function test_approve_fails_when_already_master()
     {
         $product = $this->makeProduct(Product::STATUS_MASTER);
 
@@ -80,7 +80,7 @@ class ProductLifecycleTest extends TestCase
 
     public function test_approve_fails_without_variant()
     {
-        $product = $this->makeProduct(Product::STATUS_IN_REVIEW, withVariant: false);
+        $product = $this->makeProduct(Product::STATUS_DOWNLOAD, withVariant: false);
 
         $response = $this->postJson("/api/v1/products/{$product->id}/approve");
 
@@ -89,7 +89,7 @@ class ProductLifecycleTest extends TestCase
 
     public function test_approve_fails_without_image()
     {
-        $product = $this->makeProduct(Product::STATUS_IN_REVIEW, withMedia: false);
+        $product = $this->makeProduct(Product::STATUS_DOWNLOAD, withMedia: false);
 
         $response = $this->postJson("/api/v1/products/{$product->id}/approve");
 
@@ -101,26 +101,6 @@ class ProductLifecycleTest extends TestCase
         $response = $this->postJson('/api/v1/products/bogus-id/approve');
 
         $response->assertStatus(404);
-    }
-
-    public function test_reject_in_review_to_download()
-    {
-        $product = $this->makeProduct(Product::STATUS_IN_REVIEW);
-
-        $response = $this->postJson("/api/v1/products/{$product->id}/reject");
-
-        $response->assertStatus(200);
-        $response->assertJsonPath('data.status', 'download');
-        $this->assertSame('download', $product->fresh()->status);
-    }
-
-    public function test_reject_fails_when_not_in_review()
-    {
-        $product = $this->makeProduct(Product::STATUS_MASTER);
-
-        $response = $this->postJson("/api/v1/products/{$product->id}/reject");
-
-        $response->assertStatus(422);
     }
 
     public function test_archive_master()
@@ -140,7 +120,7 @@ class ProductLifecycleTest extends TestCase
 
     public function test_archive_fails_when_not_master()
     {
-        $product = $this->makeProduct(Product::STATUS_IN_REVIEW);
+        $product = $this->makeProduct(Product::STATUS_DOWNLOAD);
 
         $response = $this->postJson("/api/v1/products/{$product->id}/archive");
 

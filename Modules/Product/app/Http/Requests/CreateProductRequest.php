@@ -27,8 +27,8 @@ class CreateProductRequest extends FormRequest
             'is_consignment' => 'nullable|boolean',
             'order_type' => ['nullable', Rule::in(['REGULER', 'PREORDER', 'COD'])],
             'indent_days' => 'nullable|integer|min:0|required_if:order_type,PREORDER',
-            // master hanya bisa lewat approve; create maksimal in_review.
-            'status' => ['nullable', Rule::in(['download', 'in_review'])],
+            // Tanpa review internal: draf (download) atau langsung master.
+            'status' => ['nullable', Rule::in(['download', 'master'])],
             'is_active' => 'nullable|boolean',
 
             // ── Informasi penjualan & pembelian (header) ──────────────────
