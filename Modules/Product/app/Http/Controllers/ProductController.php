@@ -28,6 +28,7 @@ class ProductController extends Controller
         'variants.salesTax',
         'variants.purchaseTax',
         'variants.unlimitedShops',
+        'variants.inventories',
         'media',
         'category',
         'brand',
