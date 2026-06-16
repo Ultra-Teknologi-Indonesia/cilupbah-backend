@@ -24,6 +24,15 @@ class LazadaWebhookController extends Controller
             new OA\Response(response: 401, description: 'Signature tidak valid'),
         ]
     )]
+    /**
+     * Verifikasi ketersediaan service penerima pesan (probe GET dari Lazada).
+     * Harus 200 agar verifikasi callback push lulus.
+     */
+    public function verify()
+    {
+        return $this->successResponse(['service' => 'ready'], 'Lazada webhook service aktif.');
+    }
+
     public function handle(Request $request)
     {
         $rawBody = $request->getContent();

@@ -49,6 +49,7 @@ Route::prefix('v1/lazada')->group(function () {
     Route::get('auth', [\Modules\Channel\Http\Controllers\LazadaAuthController::class, 'redirect'])->name('lazada.auth');
     Route::get('callback', [\Modules\Channel\Http\Controllers\LazadaAuthController::class, 'callback'])->name('lazada.callback');
 
+    Route::get('webhook', [\Modules\Channel\Http\Controllers\LazadaWebhookController::class, 'verify'])->name('lazada.webhook.verify');
     Route::post('webhook', [\Modules\Channel\Http\Controllers\LazadaWebhookController::class, 'handle'])->name('lazada.webhook');
 
     Route::middleware('auth:sanctum')->group(function () {

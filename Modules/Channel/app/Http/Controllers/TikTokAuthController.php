@@ -26,12 +26,19 @@ class TikTokAuthController extends Controller
 
     public function callback(Request $request, \Modules\Channel\Services\TikTokAuthService $authService)
     {
-        // Validasi state (CSRF) — sekali pakai.
-        if (! OAuthFlow::consumeState($request->query('state'), self::CHANNEL)) {
+        $code = $request->query('code');
+        $state = $request->query('state');
+
+        // Probe ketersediaan callback: tanpa code & state → 200 (jangan redirect).
+        if (! $code && ! $state) {
+            return $this->successResponse(['service' => 'ready'], 'TikTok callback service aktif.');
+        }
+
+        // Validasi state (CSRF) — sekali pakai (hanya untuk alur OAuth nyata).
+        if (! OAuthFlow::consumeState($state, self::CHANNEL)) {
             return $this->finish('invalid_state', 'Sesi otorisasi tidak valid atau kedaluwarsa.', 422);
         }
 
-        $code = $request->query('code');
         if (! $code) {
             return $this->finish('no_code', 'TikTok tidak mengirimkan kode otorisasi.', 400);
         }
