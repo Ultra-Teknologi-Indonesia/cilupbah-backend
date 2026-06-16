@@ -15,10 +15,6 @@ use Modules\Product\Models\ProductVariant;
 use Modules\Product\Repositories\ProductRepository;
 use Tests\TestCase;
 
-/**
- * B5 — saat stok komponen berubah, SyncStockToChannelsJob meneruskan re-sync stok
- * ke semua bundle yang memakai komponen tersebut (stok bundle = derivasi komponen).
- */
 class BundleStockPropagationTest extends TestCase
 {
     use RefreshDatabase;
@@ -72,7 +68,6 @@ class BundleStockPropagationTest extends TestCase
         $bundleVar = $this->variant('BUNDLE-1', true);
         $bundleVar->product->bundleItems()->create(['component_variant_id' => $component->id, 'qty' => 2]);
 
-        // Bundle ter-listing di sebuah channel (synced).
         $shopId = $this->mapProductToChannel($bundleVar->product_id);
 
         Queue::fake();

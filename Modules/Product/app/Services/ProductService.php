@@ -129,7 +129,6 @@ class ProductService
         return $this->repository->saveBundle($data['id'] ?? null, $attributes, $data['components']);
     }
 
-    /** B2: komponen tak boleh varian dari produk bundle (bundle-in-bundle, padanan 23504). */
     private function guardBundleComposition(array $components): void
     {
         $variantIds = array_values(array_filter(array_column($components, 'variant_id')));
@@ -141,14 +140,12 @@ class ProductService
         }
     }
 
-    /** B2: produk yang sudah punya transaksi tak boleh dikonversi menjadi bundle (padanan 90003). */
     private function guardBundleConversion(?string $productId): void
     {
         if ($productId === null) {
             return;
         }
 
-        // Hanya transisi non-bundle → bundle yang dikunci; edit bundle yang sudah ada diizinkan.
         if ($this->repository->currentIsBundle($productId) === true) {
             return;
         }
@@ -558,13 +555,6 @@ class ProductService
         ], $specs));
     }
 
-    /**
-     * Aksi massal varian: activate | deactivate | delete (id milik produk ini).
-     * delete diproteksi: varian yang ter-listing channel / punya inventory dilewati (blocked),
-     * dan tidak boleh menyisakan 0 varian. Pelanggaran → DomainException (→ 422 di controller).
-     *
-     * @return array{affected?:int, deleted?:int, blocked?:array<int,string>}
-     */
     public function bulkUpdateVariants(Product $product, string $action, array $ids): array
     {
         $variants = ProductVariant::where('product_id', $product->id)

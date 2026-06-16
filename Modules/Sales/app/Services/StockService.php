@@ -22,12 +22,6 @@ class StockService
         protected ProductRepository $productRepository,
     ) {}
 
-    /**
-     * B4 — bila $itemId adalah varian produk bundle, jalankan $operation untuk
-     * tiap komponen × qty (atomik: semua komponen atau none). Bundle sendiri tak
-     * punya ledger fisik, jadi operasi pada bundle TIDAK menyentuh ledger-nya.
-     * Mengembalikan true bila tertangani sebagai bundle.
-     */
     private function cascadeBundle(string $itemId, int $qty, callable $operation): bool
     {
         $components = $this->productRepository->bundleComponentsForVariant($itemId);
@@ -36,7 +30,6 @@ class StockService
             return false;
         }
 
-        // Satu transaksi membungkus seluruh komponen → rollback total bila salah satu gagal.
         DB::transaction(function () use ($components, $qty, $operation) {
             foreach ($components as $component) {
                 $operation(
@@ -47,8 +40,6 @@ class StockService
             }
         });
 
-        // B5: stok komponen berubah → re-sync stok ke channel untuk komponen +
-        // semua bundle terdampak (resolusi bundle ada di SyncStockToChannelsJob).
         foreach ($components as $component) {
             SyncStockToChannelsJob::dispatch($component['variant_id']);
         }

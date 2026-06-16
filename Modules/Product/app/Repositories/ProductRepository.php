@@ -43,7 +43,7 @@ class ProductRepository
     {
         return Product::with([
             'variants.inventories',
-            // Bundle: stok diturunkan dari komponen (B3).
+
             'bundleItems.component.inventories',
         ])->whereIn('id', $ids)->get();
     }
@@ -79,7 +79,6 @@ class ProductRepository
         });
     }
 
-    /** B2 guard: dari daftar variant_id, kembalikan yang produknya adalah bundle (bundle-in-bundle terlarang). */
     public function variantIdsFromBundleProducts(array $variantIds): array
     {
         if (empty($variantIds)) {
@@ -92,7 +91,6 @@ class ProductRepository
             ->all();
     }
 
-    /** B2 guard: status is_bundle produk saat ini (null bila produk tak ada). */
     public function currentIsBundle(string $productId): ?bool
     {
         $value = Product::where('id', $productId)->value('is_bundle');
@@ -100,10 +98,6 @@ class ProductRepository
         return $value === null ? null : (bool) $value;
     }
 
-    /**
-     * B2 guard: alasan transaction-lock bila produk sudah punya transaksi
-     * (ledger inventory / order penjualan / mapping channel aktif), atau null bila bersih.
-     */
     public function transactionLockReason(string $productId): ?string
     {
         $variantIds = ProductVariant::where('product_id', $productId)->pluck('id');
@@ -129,11 +123,6 @@ class ProductRepository
         return null;
     }
 
-    /**
-     * B4: bila varian adalah varian dari produk bundle, kembalikan komponennya
-     * [['variant_id','qty','sku'], ...] (terurut variant_id agar urutan lock deterministik);
-     * null bila varian tak ada atau produknya bukan bundle.
-     */
     public function bundleComponentsForVariant(string $variantId): ?array
     {
         $productId = ProductVariant::where('id', $variantId)->value('product_id');
@@ -154,10 +143,6 @@ class ProductRepository
             ->all();
     }
 
-    /**
-     * B5: id produk bundle (distinct) yang memakai $variantId sebagai komponen.
-     * Dipakai untuk re-sync stok bundle terdampak saat stok komponen berubah.
-     */
     public function bundleProductIdsUsingComponent(string $variantId): array
     {
         return \Modules\Product\Models\ProductBundleItem::where('component_variant_id', $variantId)
@@ -192,7 +177,6 @@ class ProductRepository
             ->appends(request()->query());
     }
 
-    /** Tab Variasi: varian berpaginasi (search SKU FTS, filter[option], sort sku/sell_price/stock). */
     public function paginateVariants(string $productId): LengthAwarePaginator
     {
         return QueryBuilder::for(ProductVariant::class)
@@ -213,10 +197,6 @@ class ProductRepository
             ->appends(request()->query());
     }
 
-    /**
-     * Tab Channel / Harga Channel: varian + listing/harga channel.
-     * filter[channel]=<code>; default hanya varian yang punya listing (kecuali ?include_unlisted=1).
-     */
     public function paginateListedVariants(string $productId): LengthAwarePaginator
     {
         $channel = request('filter.channel');
@@ -238,7 +218,6 @@ class ProductRepository
             ->appends(request()->query());
     }
 
-    /** Tab Buku Harga: grosir per varian. */
     public function paginatePriceBook(string $productId): LengthAwarePaginator
     {
         return QueryBuilder::for(ProductWholesalePrice::class)

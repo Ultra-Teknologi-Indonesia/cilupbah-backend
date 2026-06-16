@@ -13,11 +13,6 @@ use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\VariantOption;
 use Tests\TestCase;
 
-/**
- * B1 — a bundle can be composed from specific variants of multi-variant products,
- * and the detail endpoint exposes the composition (parent product, variation
- * values, qty, component stock).
- */
 class BundleCompositionTest extends TestCase
 {
     use RefreshDatabase;
@@ -101,7 +96,6 @@ class BundleCompositionTest extends TestCase
         $aBiru = $a->variants()->where('sku', 'ProdukA-Biru')->first();
         $bPutih = $b->variants()->where('sku', 'ProdukB-Putih')->first();
 
-        // Give the chosen component A some stock to verify it surfaces.
         DB::table('locations')->insert([
             'id' => \Illuminate\Support\Str::uuid()->toString(),
             'location_code' => 'LOC-B1',
@@ -136,7 +130,6 @@ class BundleCompositionTest extends TestCase
         $bundleId = $create->json('data.product_id');
         $this->assertNotNull($bundleId);
 
-        // Composition stored canonically.
         $this->assertDatabaseHas('product_bundle_items', [
             'bundle_product_id' => $bundleId,
             'component_variant_id' => $aBiru->id,
@@ -148,7 +141,6 @@ class BundleCompositionTest extends TestCase
             'qty' => 2,
         ]);
 
-        // Detail exposes the composition.
         $detail = $this->getJson("/api/v1/products/{$bundleId}")->assertStatus(200);
 
         $detail->assertJsonPath('data.product_type', 'bundle');
@@ -186,8 +178,6 @@ class BundleCompositionTest extends TestCase
             ],
         ])->assertStatus(422);
     }
-
-    // ── B2: guard bisnis ────────────────────────────────────────────────
 
     public function test_bundle_in_bundle_component_is_rejected(): void
     {
@@ -283,8 +273,6 @@ class BundleCompositionTest extends TestCase
         ]);
     }
 
-    // ── B3: derivasi stok bundle ────────────────────────────────────────
-
     public function test_bundle_stock_is_min_floor_over_components(): void
     {
         $aVar = $this->multiVariantProduct('StokA', ['M'])->variants()->first();
@@ -304,7 +292,6 @@ class BundleCompositionTest extends TestCase
             ],
         ])->assertStatus(201)->json('data.product_id');
 
-        // min(floor(10/1), floor(3/1)) = 3
         $this->getJson("/api/v1/products/{$bundleId}")
             ->assertStatus(200)
             ->assertJsonPath('data.bundle_stock.available', 3)
@@ -318,8 +305,8 @@ class BundleCompositionTest extends TestCase
         $bVar = $this->multiVariantProduct('QtyB', ['M'])->variants()->first();
 
         $loc = $this->makeLocation('B3-B');
-        $this->setInventory($aVar->id, $loc, 10); // /3 → 3
-        $this->setInventory($bVar->id, $loc, 8);  // /2 → 4
+        $this->setInventory($aVar->id, $loc, 10); 
+        $this->setInventory($bVar->id, $loc, 8);  
 
         $bundleId = $this->postJson('/api/v1/inventory/items', [
             'name' => 'Bundle Qty',
@@ -331,7 +318,6 @@ class BundleCompositionTest extends TestCase
             ],
         ])->assertStatus(201)->json('data.product_id');
 
-        // min(floor(10/3)=3, floor(8/2)=4) = 3
         $this->getJson("/api/v1/products/{$bundleId}")
             ->assertStatus(200)
             ->assertJsonPath('data.bundle_stock.available', 3);
@@ -351,8 +337,8 @@ class BundleCompositionTest extends TestCase
             'sku' => 'BUNDLE-ALL',
             'category_id' => 1,
             'components' => [
-                ['variant_id' => $aVar->id, 'qty' => 2], // 3
-                ['variant_id' => $bVar->id, 'qty' => 3], // 3
+                ['variant_id' => $aVar->id, 'qty' => 2], 
+                ['variant_id' => $bVar->id, 'qty' => 3], 
             ],
         ])->assertStatus(201)->json('data.product_id');
 

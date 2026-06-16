@@ -84,7 +84,6 @@ class ProductImportService
                 throw new \Exception("Component SKU {$componentSku} not found.");
             }
 
-            // Canonical composition is product-keyed (product_bundle_items).
             $bundleProductId = $bundleVariant->product_id;
 
             $existing = DB::table('product_bundle_items')

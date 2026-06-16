@@ -376,11 +376,6 @@ class ProductController extends Controller
         );
     }
 
-    /**
-     * Aksi massal varian: activate | deactivate | delete (by ids, milik produk ini).
-     * delete diproteksi: tolak varian yang sudah ter-listing channel / punya inventory,
-     * dan jangan sisakan 0 varian.
-     */
     public function bulkVariants(Request $request, $id): JsonResponse
     {
         $product = $this->findProduct($id);

@@ -66,7 +66,6 @@ class BundleController extends Controller
             ]);
         }
 
-        // Canonical composition lives in product_bundle_items (product-keyed).
         $product->bundleItems()->delete();
         foreach ($request->input('components') as $comp) {
             $product->bundleItems()->create([

@@ -35,7 +35,6 @@ class ProductChannelPricesPriceBookTest extends TestCase
         $this->blue = ProductVariant::create(['product_id' => $this->product->id, 'sku' => 'IP-BLUE', 'sell_price' => 10000, 'is_active' => true]);
         $this->red = ProductVariant::create(['product_id' => $this->product->id, 'sku' => 'IP-RED', 'sell_price' => 11000, 'is_active' => true]);
 
-        // Listing Lazada: BLUE override 12000, RED hanya synced_price 9000.
         $channel = Channel::create(['code' => 'lazada', 'name' => 'Lazada']);
         $shop = ChannelShop::create(['channel_id' => $channel->id, 'shop_id' => 'LZ1', 'shop_name' => 'Toko Lazada', 'is_active' => true]);
         $pcm = Uuid::uuid7()->toString();
@@ -51,7 +50,6 @@ class ProductChannelPricesPriceBookTest extends TestCase
         ]);
     }
 
-    // ── #5 Harga Channel ───────────────────────────────────────────────
     public function test_channel_prices_uses_override_then_synced(): void
     {
         $res = $this->getJson("/api/v1/products/{$this->product->id}/channel-prices")->assertOk();
@@ -59,11 +57,11 @@ class ProductChannelPricesPriceBookTest extends TestCase
 
         $blue = $rows->firstWhere('sku', 'IP-BLUE');
         $this->assertEquals(10000, $blue['internal_price']);
-        $this->assertEquals(12000, $blue['prices'][0]['price']);          // override
+        $this->assertEquals(12000, $blue['prices'][0]['price']);          
         $this->assertSame('lazada', $blue['prices'][0]['channel_code']);
 
         $red = $rows->firstWhere('sku', 'IP-RED');
-        $this->assertEquals(9000, $red['prices'][0]['price']);            // fallback synced_price
+        $this->assertEquals(9000, $red['prices'][0]['price']);            
     }
 
     public function test_channel_prices_filter_channel(): void
@@ -77,7 +75,6 @@ class ProductChannelPricesPriceBookTest extends TestCase
         $this->getJson('/api/v1/products/' . Uuid::uuid7()->toString() . '/channel-prices')->assertStatus(404);
     }
 
-    // ── #6 Buku Harga ──────────────────────────────────────────────────
     public function test_price_book_lists_wholesale_tiers(): void
     {
         ProductWholesalePrice::create(['variant_id' => $this->blue->id, 'customer_type' => 'reseller', 'min_qty' => 10, 'max_qty' => 49, 'price' => 9500]);
@@ -88,7 +85,7 @@ class ProductChannelPricesPriceBookTest extends TestCase
         $res->assertJsonCount(2, 'data')
             ->assertJsonStructure(['data' => [['id', 'variant_id', 'sku', 'customer_type', 'min_qty', 'max_qty', 'price']]])
             ->assertJsonPath('data.0.sku', 'IP-BLUE')
-            ->assertJsonPath('data.0.min_qty', 10);   // urut min_qty asc
+            ->assertJsonPath('data.0.min_qty', 10);   
     }
 
     public function test_price_book_empty_when_no_wholesale(): void

@@ -13,10 +13,6 @@ use Modules\Sales\Exceptions\InsufficientStockException;
 use Modules\Sales\Services\StockService;
 use Tests\TestCase;
 
-/**
- * B4 — penjualan bundle mengkaskade ke stok komponen (× qty), atomik (semua atau none).
- * Bundle sendiri tak punya ledger fisik.
- */
 class BundleStockCascadeTest extends TestCase
 {
     use RefreshDatabase;
@@ -83,7 +79,6 @@ class BundleStockCascadeTest extends TestCase
         ]);
     }
 
-    /** Bundle dengan komponen A(qty 2) + B(qty 3); komponen diberi stok memadai. */
     private function makeBundle(int $aStock, int $bStock): array
     {
         $a = $this->variant('COMP-A');
@@ -102,12 +97,11 @@ class BundleStockCascadeTest extends TestCase
     {
         [$a, $b, $bundleVar] = $this->makeBundle(100, 100);
 
-        // Jual 5 bundle → A: 2×5=10, B: 3×5=15.
         $this->stock()->reserve('BUNDLE-1', $bundleVar->id, $this->locationId, 5, 'SO-1');
 
         $this->assertDatabaseHas('inventories', ['item_id' => $a->id, 'reserved' => 10]);
         $this->assertDatabaseHas('inventories', ['item_id' => $b->id, 'reserved' => 15]);
-        // Bundle tak punya ledger sendiri.
+
         $this->assertDatabaseMissing('inventories', ['item_id' => $bundleVar->id]);
         $this->assertDatabaseMissing('inventory_movements', ['item_id' => $bundleVar->id]);
     }
@@ -130,21 +124,20 @@ class BundleStockCascadeTest extends TestCase
         $this->stock()->reserve('BUNDLE-1', $bundleVar->id, $this->locationId, 4, 'SO-1');
         $this->stock()->pick('BUNDLE-1', $bundleVar->id, $this->locationId, 4, 'SO-1');
 
-        // A: on_hand 100-8=92, reserved 0 ; B: 100-12=88.
         $this->assertDatabaseHas('inventories', ['item_id' => $a->id, 'on_hand' => 92, 'reserved' => 0]);
         $this->assertDatabaseHas('inventories', ['item_id' => $b->id, 'on_hand' => 88, 'reserved' => 0]);
     }
 
     public function test_insufficient_component_stock_is_atomic(): void
     {
-        // B hanya 4, butuh 3×2=6 → gagal. A tidak boleh ikut ter-reserve (atomik).
+
         [$a, $b, $bundleVar] = $this->makeBundle(100, 4);
 
         try {
             $this->stock()->reserve('BUNDLE-1', $bundleVar->id, $this->locationId, 2, 'SO-1');
             $this->fail('Seharusnya InsufficientStockException dilempar.');
         } catch (InsufficientStockException) {
-            // expected
+
         }
 
         $this->assertDatabaseHas('inventories', ['item_id' => $a->id, 'reserved' => 0]);
@@ -158,7 +151,6 @@ class BundleStockCascadeTest extends TestCase
         Queue::fake();
         $this->stock()->reserve('BUNDLE-1', $bundleVar->id, $this->locationId, 1, 'SO-1');
 
-        // B5: re-sync stok untuk tiap komponen (job meneruskan ke bundle terdampak).
         Queue::assertPushed(SyncStockToChannelsJob::class, fn ($job) => $job->variantId === $a->id);
         Queue::assertPushed(SyncStockToChannelsJob::class, fn ($job) => $job->variantId === $b->id);
     }

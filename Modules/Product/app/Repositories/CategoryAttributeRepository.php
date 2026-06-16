@@ -4,10 +4,6 @@ namespace Modules\Product\Repositories;
 
 use Illuminate\Support\Facades\DB;
 
-/**
- * Kueri atribut form per kategori (untuk endpoint form-attributes). Bukan listing
- * yang digerakkan query-string → Eloquent/DB biasa di Repository (sesuai standar §3).
- */
 class CategoryAttributeRepository
 {
     public function exists(int $categoryId): bool
@@ -15,18 +11,11 @@ class CategoryAttributeRepository
         return DB::table('categories')->where('id', $categoryId)->exists();
     }
 
-    /** Kategori paling spesifik = tidak punya sub-kategori. */
     public function isLeaf(int $categoryId): bool
     {
         return ! DB::table('categories')->where('parent_id', $categoryId)->exists();
     }
 
-    /**
-     * Spesifikasi (type=spec) + jenis varian (type=sales) untuk kategori, lengkap
-     * status per channel (mapped/required).
-     *
-     * @return array{specifications: array<int,array<string,mixed>>, variant_types: array<int,array<string,mixed>>}
-     */
     public function formAttributes(int $categoryId): array
     {
         $catAttrs = DB::table('category_attributes as cga')

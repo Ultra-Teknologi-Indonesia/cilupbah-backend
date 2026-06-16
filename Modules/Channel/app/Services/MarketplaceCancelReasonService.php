@@ -10,7 +10,6 @@ class MarketplaceCancelReasonService
 
     public const SUPPORTED = [self::TIKTOK, self::LAZADA, self::SHOPEE];
 
-    /** Marketplaces that expose a live, shop-scoped reason list. */
     public const LIVE_CAPABLE = [self::TIKTOK, self::LAZADA];
 
     private const CATALOG = [
@@ -65,13 +64,6 @@ class MarketplaceCancelReasonService
         return in_array(strtolower($marketplace), self::LIVE_CAPABLE, true);
     }
 
-    /**
-     * Normalise a raw marketplace reason list (varied field names across
-     * TikTok/Lazada payloads) into the canonical [{key, label}] shape.
-     *
-     * @param  array<int, mixed>  $raw
-     * @return array<int, array{key: string, label: string}>
-     */
     public function normalize(array $raw): array
     {
         $out = [];

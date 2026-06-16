@@ -5,12 +5,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
-/**
- * B0 consolidation: move composition data from the deprecated, variant-keyed
- * `product_bundles` table into the canonical, product-keyed
- * `product_bundle_items` table. Idempotent — skips rows already present.
- * The old table is left in place (deprecated) and dropped in a later phase.
- */
 return new class extends Migration
 {
     public function up(): void
@@ -51,6 +45,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        // No-op: canonical data is retained on rollback.
+
     }
 };

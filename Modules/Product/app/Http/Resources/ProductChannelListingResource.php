@@ -5,10 +5,6 @@ namespace Modules\Product\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/**
- * Baris tab "Channel": satu varian + daftar toko/channel tempat ia ter-listing.
- * Filter ?channel=<code> mempersempit listings ke channel itu.
- */
 class ProductChannelListingResource extends JsonResource
 {
     public function toArray(Request $request): array

@@ -36,8 +36,6 @@ class SyncStockToChannelsJob implements ShouldQueue
 
         $this->dispatchForProduct($variant->product);
 
-        // B5: stok bundle = derivasi komponen → bila stok varian ini berubah,
-        // stok turunan semua bundle yang memakainya ikut berubah. Re-sync juga.
         $bundleIds = $productRepository->bundleProductIdsUsingComponent($this->variantId);
 
         if ($bundleIds === []) {

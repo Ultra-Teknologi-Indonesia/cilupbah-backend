@@ -60,9 +60,6 @@ class MarketplaceCancelReasonController extends Controller
 
         $shopId = $request->query('shop_id');
 
-        // Live fetch (shop-scoped) for marketplaces that expose a reason list API.
-        // Falls back to the curated catalog if shop_id is absent or the call fails,
-        // so the cancel dialog always has options.
         if ($shopId && $this->service->isLiveCapable($mp)) {
             try {
                 $raw = $mp === MarketplaceCancelReasonService::LAZADA

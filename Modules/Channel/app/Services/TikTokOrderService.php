@@ -158,14 +158,6 @@ class TikTokOrderService
             ->all();
     }
 
-    /**
-     * Fetch cancellation/reject reasons live from TikTok for a specific shop.
-     * Returns reasons already normalised to [{key, label}]. Throws on auth/API
-     * error so the caller can fall back to the curated catalog.
-     *
-     * Endpoint: GET /return_refund/202309/reject_reasons
-     * Response: data.reasons[] => { name, text } (name = key, text = label)
-     */
     public function getCancelReasonsLive(string $shopId): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);

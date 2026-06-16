@@ -151,10 +151,6 @@ class ProductResource extends JsonResource
         ];
     }
 
-    /**
-     * Number of variants, from the loaded relation or a withCount() result.
-     * Null when neither is available (count is unknown in that context).
-     */
     protected function totalVariants(): ?int
     {
         if ($this->resource->relationLoaded('variants')) {
@@ -164,12 +160,6 @@ class ProductResource extends JsonResource
         return $this->variants_count !== null ? (int) $this->variants_count : null;
     }
 
-    /**
-     * Derived product type (Jubelio model):
-     *  - bundle  : is_bundle = true
-     *  - variant : non-bundle with more than one variant
-     *  - single  : non-bundle with a single variant
-     */
     protected function productType(): string
     {
         if ($this->is_bundle) {
@@ -179,10 +169,6 @@ class ProductResource extends JsonResource
         return ($this->totalVariants() ?? 1) > 1 ? 'variant' : 'single';
     }
 
-    /**
-     * Bundle composition (B1): for each component show its parent product,
-     * the selected variant (sku + variation_values), qty, and component stock.
-     */
     protected function bundleComponents(): \Illuminate\Support\Collection
     {
         return $this->bundleItems->map(function ($item) {

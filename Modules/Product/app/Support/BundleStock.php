@@ -4,17 +4,6 @@ namespace Modules\Product\Support;
 
 use Modules\Product\Models\Product;
 
-/**
- * B3 — Derivasi stok bundle (read-only). Bundle tidak punya ledger sendiri;
- * stoknya diturunkan dari komponen:
- *
- *   available_bundle = MIN atas komponen( floor(available_komponen / qty) )
- *
- * on_hand memakai rumus yang sama (jumlah bundle yang bisa dirakit dari stok fisik).
- * reserved & on_order = 0 (reservasi/PO hidup di komponen, bukan di bundle).
- *
- * Prasyarat eager-load: bundleItems.component.inventories.
- */
 class BundleStock
 {
     public static function derive(Product $product): ?array

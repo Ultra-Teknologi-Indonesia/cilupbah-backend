@@ -5,10 +5,6 @@ namespace Modules\Product\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/**
- * Baris tab "Harga Channel": satu varian + harga internal + harga per toko
- * (override_price, fallback synced_price). Filter ?channel=<code>.
- */
 class ProductChannelPriceResource extends JsonResource
 {
     public function toArray(Request $request): array

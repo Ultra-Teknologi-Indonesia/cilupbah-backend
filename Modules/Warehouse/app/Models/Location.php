@@ -31,6 +31,8 @@ class Location extends Model
         'is_multi_origin',
         'default_warehouse_user',
         'is_active',
+        'is_system',
+        'is_locked',
         'is_fbl',
         'is_tcb',
         'is_fbs',
@@ -41,11 +43,15 @@ class Location extends Model
         'is_warehouse' => 'boolean',
         'is_multi_origin' => 'boolean',
         'is_active' => 'boolean',
+        'is_system' => 'boolean',
+        'is_locked' => 'boolean',
         'is_fbl' => 'boolean',
         'is_tcb' => 'boolean',
         'is_fbs' => 'boolean',
         'is_pos' => 'boolean',
     ];
+
+    public const SYSTEM_TRANSIT_CODE = 'SYS-TRANSIT';
 
     public function village(): BelongsTo
     {

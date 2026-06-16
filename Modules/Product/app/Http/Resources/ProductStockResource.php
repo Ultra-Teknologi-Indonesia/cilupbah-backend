@@ -10,7 +10,7 @@ class ProductStockResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        // Bundle tak punya ledger sendiri → stok diturunkan dari komponen (B3).
+
         $derived = BundleStock::derive($this->resource);
 
         if ($derived !== null) {

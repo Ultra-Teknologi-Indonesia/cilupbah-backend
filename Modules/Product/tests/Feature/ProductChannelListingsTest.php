@@ -33,7 +33,6 @@ class ProductChannelListingsTest extends TestCase
         $blue = ProductVariant::create(['product_id' => $this->product->id, 'sku' => 'IP-BLUE', 'sell_price' => 1000, 'is_active' => true]);
         ProductVariant::create(['product_id' => $this->product->id, 'sku' => 'IP-RED', 'sell_price' => 1000, 'is_active' => true]);
 
-        // IP-BLUE ter-listing di Lazada (Toko Lazada).
         $channel = Channel::create(['code' => 'lazada', 'name' => 'Lazada']);
         $shop = ChannelShop::create([
             'channel_id' => $channel->id, 'shop_id' => 'LZ1', 'shop_name' => 'Toko Lazada', 'is_active' => true,
@@ -60,7 +59,7 @@ class ProductChannelListingsTest extends TestCase
     {
         $res = $this->getJson($this->url())->assertOk();
 
-        $res->assertJsonCount(1, 'data')                       // hanya IP-BLUE (yang listing)
+        $res->assertJsonCount(1, 'data')                       
             ->assertJsonPath('data.0.sku', 'IP-BLUE')
             ->assertJsonCount(1, 'data.0.listings')
             ->assertJsonPath('data.0.listings.0.channel_code', 'lazada')
@@ -80,10 +79,9 @@ class ProductChannelListingsTest extends TestCase
 
     public function test_filter_by_channel_excludes_other_channels(): void
     {
-        // Tidak ada listing TikTok → listed_only menyaring habis.
+
         $this->getJson($this->url('filter[channel]=tiktok'))->assertOk()->assertJsonCount(0, 'data');
 
-        // Channel lazada → IP-BLUE muncul.
         $this->getJson($this->url('filter[channel]=lazada'))->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.listings.0.channel_code', 'lazada');

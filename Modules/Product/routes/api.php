@@ -90,12 +90,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('products/{id}/archive', [ProductController::class, 'archive'])->whereUuid('id');
     Route::post('products/{id}/restore', [ProductController::class, 'restore'])->whereUuid('id');
 
-    // Detail produk per-tab: Variasi (paginasi + search + sort) + aksi massal.
     Route::get('products/{id}/variants', [ProductController::class, 'variants'])->whereUuid('id');
     Route::post('products/{id}/variants/bulk', [ProductController::class, 'bulkVariants'])->whereUuid('id');
-    // Detail produk per-tab: Channel (listing per varian).
+
     Route::get('products/{id}/channel-listings', [ProductController::class, 'channelListings'])->whereUuid('id');
-    // Detail produk per-tab: Harga Channel (matriks) + Buku Harga (grosir).
+
     Route::get('products/{id}/channel-prices', [ProductController::class, 'channelPrices'])->whereUuid('id');
     Route::get('products/{id}/price-book', [ProductController::class, 'priceBook'])->whereUuid('id');
 

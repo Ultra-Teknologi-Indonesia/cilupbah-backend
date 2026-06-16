@@ -60,7 +60,30 @@ class InboundService
     {
         $data['type'] = Inbound::TYPE_TRANSIT_IN;
         $data['source_type'] = 'transfer';
-        return $this->createDraft($data);
+
+        return DB::transaction(function () use ($data) {
+            $items = $data['items'] ?? [];
+            unset($data['items']);
+
+            $data['transaction_number'] = $data['reference_number'] ?? ('INB-' . Str::upper(Str::random(8)));
+            // Stok sudah ditambahkan ke gudang tujuan oleh proses transfer, sehingga dokumen ini
+            // langsung berstatus RECEIVED (tidak bisa di-receive lagi -> mencegah double-count) dan
+            // hanya digunakan untuk alur putaway ke rak.
+            $data['status'] = Inbound::STATUS_RECEIVED;
+
+            $inbound = $this->inboundRepository->create($data);
+
+            foreach ($items as $itemData) {
+                $this->inboundRepository->createItem([
+                    'inbound_id'   => $inbound->id,
+                    'item_id'      => $itemData['item_id'],
+                    'expected_qty' => $itemData['expected_qty'],
+                    'received_qty' => $itemData['expected_qty'],
+                ]);
+            }
+
+            return $inbound->load('items');
+        });
     }
 
     public function receiveFromSalesReturn(array $data): Inbound

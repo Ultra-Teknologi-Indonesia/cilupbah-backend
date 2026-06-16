@@ -85,8 +85,8 @@ class ProductVariantsBulkTest extends TestCase
             ->assertJsonPath('data.deleted', 1)
             ->assertJsonPath('data.blocked', ['IP-BLUE']);
 
-        $this->assertDatabaseHas('product_variants', ['sku' => 'IP-BLUE']);   // diblokir
-        $this->assertDatabaseMissing('product_variants', ['sku' => 'IP-RED']); // terhapus
+        $this->assertDatabaseHas('product_variants', ['sku' => 'IP-BLUE']);   
+        $this->assertDatabaseMissing('product_variants', ['sku' => 'IP-RED']); 
     }
 
     public function test_cannot_delete_all_variants(): void

@@ -5,10 +5,6 @@ namespace Modules\Product\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/**
- * Baris varian untuk tab "Variasi" detail produk (ringkas + berpaginasi).
- * stock = jumlah available dari inventories (withSum di controller).
- */
 class ProductVariantRowResource extends JsonResource
 {
     public function toArray(Request $request): array

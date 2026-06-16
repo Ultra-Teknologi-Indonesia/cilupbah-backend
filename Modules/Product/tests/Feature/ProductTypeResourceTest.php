@@ -10,10 +10,6 @@ use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Tests\TestCase;
 
-/**
- * B0 — ProductResource must expose the derived product_type (single/variant/bundle)
- * and total_variants so the FE doesn't have to guess.
- */
 class ProductTypeResourceTest extends TestCase
 {
     use RefreshDatabase;

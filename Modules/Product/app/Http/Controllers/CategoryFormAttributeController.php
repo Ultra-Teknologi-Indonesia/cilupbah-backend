@@ -6,10 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Modules\Product\Repositories\CategoryAttributeRepository;
 
-/**
- * Atribut form untuk satu kategori Level-2 (paling spesifik): spesifikasi (type=spec)
- * + jenis varian (type=sales), lengkap status per channel. Semua kueri di Repository.
- */
 class CategoryFormAttributeController extends Controller
 {
     use ApiResponse;

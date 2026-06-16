@@ -9,10 +9,6 @@ use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Tests\TestCase;
 
-/**
- * B0 — the Inventory bundle endpoint must write composition to the canonical
- * product_bundle_items table, never the deprecated product_bundles table.
- */
 class BundleConsolidationTest extends TestCase
 {
     use RefreshDatabase;

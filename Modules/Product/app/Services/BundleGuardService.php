@@ -7,20 +7,11 @@ use Modules\Product\Exceptions\BundleCompositionException;
 use Modules\Product\Exceptions\ProductHasTransactionsException;
 use Modules\Product\Models\Product;
 
-/**
- * B2 business guards for bundle composition. Centralised so every write path
- * (ProductService + Inventory\BundleController) enforces the same invariants.
- */
 class BundleGuardService
 {
-    /** Channel mappings considered "active" (the product is live on a channel). */
+
     private const ACTIVE_SYNC_STATUSES = ['synced', 'syncing'];
 
-    /**
-     * Bundle-in-bundle guard: no component may be a variant of a bundle product.
-     *
-     * @param array<int, string|null> $componentVariantIds
-     */
     public function assertComponentsNotBundles(array $componentVariantIds): void
     {
         $ids = array_values(array_filter($componentVariantIds));
@@ -44,11 +35,6 @@ class BundleGuardService
         }
     }
 
-    /**
-     * Transaction-lock guard: an existing non-bundle product that already has
-     * transactions cannot be converted into a bundle. New products (null id) and
-     * products that are already bundles (editing composition) are allowed.
-     */
     public function assertConvertibleToBundle(?string $productId): void
     {
         if ($productId === null) {
