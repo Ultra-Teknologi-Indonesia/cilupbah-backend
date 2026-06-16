@@ -237,7 +237,23 @@ Regenerasi varian harus tersinkron ke marketplace (pakai infra yang ada).
 
 ---
 
-## FASE F — Frontend (`cilupbah-fe`)
+## FASE F — Frontend (`cilupbah-fe`) ✅ SELESAI
+
+Diimplementasikan (FE): hook `useCategoryFormAttributes` + service; `FormVariantSection`
+(pilih ≤2 jenis varian dari atribut kategori, tambah opsi custom-string + saran, tabel
+kombinasi cartesian utk SKU/harga; props `lockedTypeIds`/`lockedValues` utk immutability);
+`FormSpecificationSection` (spec dinamis + indikator wajib per channel); schema + payload
+builder (create & update) kirim `variation_types`/`variants(options)`/`specifications`
+dgn fallback varian tunggal. EDIT: BE `ProductResource` kini ekspos `variation_types` +
+varian `options`; `variant-combos.ts` (util key bersama), `detail-to-form` rekonstruksi
++ `detailVariantLocks` (immutability), `edit-produk-form` render builder ter-hidrasi &
+terkunci. tsc + eslint + `next build` hijau (0 error).
+
+> Sisa kecil: spesifikasi belum di-hidrasi saat EDIT (detail BE belum ekspos
+> product_specifications) → spec section tak dirender di edit & specifications tak dikirim
+> (jaga spec lama). Bisa dilengkapi saat dibutuhkan.
+
+
 
 1. **Spesifikasi dinamis**: saat kategori Level-2 dipilih → `GET …/form-attributes` →
    render field `specifications` (input sesuai `input_type`, tandai wajib + "wajib untuk Lazada").
