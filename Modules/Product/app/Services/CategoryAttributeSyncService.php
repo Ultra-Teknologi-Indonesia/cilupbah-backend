@@ -5,20 +5,9 @@ namespace Modules\Product\Services;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Services\ChannelListingValidator;
 
-/**
- * Fase A — materialkan `category_attributes` internal DARI atribut channel yang sudah
- * dipetakan (omnichannel-driven), agar spesifikasi & jenis varian akurat terhadap marketplace.
- *
- * Aturan:
- *  - sale-property channel → atribut internal type `sales` (jenis varian);
- *    selain itu → `spec` (spesifikasi).
- *  - atribut sistem (price/SellerSku/package_*) DIKECUALIKAN (diisi struktural oleh mapper).
- *  - hormati pemetaan kurasi yang sudah ada (attribute_channel_mappings) → tak buat duplikat.
- *  - idempoten.
- */
 class CategoryAttributeSyncService
 {
-    /** @return int jumlah atribut baru yang ditambahkan ke kategori */
+
     public function materializeFromChannels(int $categoryId): int
     {
         $channelCatIds = DB::table('category_channel_mappings')
@@ -51,7 +40,6 @@ class CategoryAttributeSyncService
         return $added;
     }
 
-    /** @return array<int,int> [category_id => jumlah ditambahkan] untuk semua kategori terpetakan */
     public function materializeAllMapped(): array
     {
         $categoryIds = DB::table('category_channel_mappings')->distinct()->pluck('category_id');
@@ -64,7 +52,6 @@ class CategoryAttributeSyncService
         return $result;
     }
 
-    /** Reuse pemetaan kurasi yang ada; selain itu reuse-by-name atau buat baru. */
     private function resolveInternalAttribute(object $ca): int
     {
         $mappedId = DB::table('attribute_channel_mappings')
@@ -97,7 +84,6 @@ class CategoryAttributeSyncService
         return $attributeId;
     }
 
-    /** is_required = OR antar channel (wajib bila wajib di salah satu). @return int 1 bila baris baru */
     private function upsertCategoryAttribute(int $categoryId, int $attributeId, bool $isRequired): int
     {
         $existing = DB::table('category_attributes')

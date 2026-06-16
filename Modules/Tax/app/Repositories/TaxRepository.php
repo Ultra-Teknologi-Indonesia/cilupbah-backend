@@ -10,9 +10,7 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class TaxRepository
 {
-    /**
-     * Daftar pajak aktif untuk dropdown (list tetap, bukan query-string driven).
-     */
+
     public function getActiveLookup(): Collection
     {
         return Tax::where('is_active', true)

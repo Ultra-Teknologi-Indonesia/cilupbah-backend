@@ -16,7 +16,7 @@ class ProductMasterDataLookupTest extends TestCase
     {
         parent::setUp();
         $this->actingAs(User::factory()->create());
-        // Seeder master data (Chart of Accounts + daftar pajak).
+
         $this->seed(ChartOfAccountsSeeder::class);
         $this->seed(TaxDatabaseSeeder::class);
     }
@@ -41,8 +41,8 @@ class ProductMasterDataLookupTest extends TestCase
         $this->getJson('/api/v1/products/master-data/sales-accounts')
             ->assertOk()
             ->assertJsonFragment(['account_code' => '4-4000'])
-            ->assertJsonMissing(['account_code' => '1-1200'])  // asset, harus tidak muncul
-            ->assertJsonMissing(['account_code' => '5-5000']); // expense, harus tidak muncul
+            ->assertJsonMissing(['account_code' => '1-1200'])  
+            ->assertJsonMissing(['account_code' => '5-5000']); 
     }
 
     public function test_sales_return_accounts_returns_revenue(): void

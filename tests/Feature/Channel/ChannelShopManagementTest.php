@@ -117,8 +117,8 @@ class ChannelShopManagementTest extends TestCase
 
         $fresh = $shop->fresh();
         $this->assertNotNull($fresh->disconnected_at);
-        $this->assertNull($fresh->access_token); // token dihapus
-        $this->assertNotNull($fresh); // baris tetap ada (tidak di-hard-delete)
+        $this->assertNull($fresh->access_token); 
+        $this->assertNotNull($fresh); 
 
         $ids = collect($this->api()->getJson('/api/v1/marketplace/store')->json('data'))->pluck('id');
         $this->assertFalse($ids->contains($shop->id));

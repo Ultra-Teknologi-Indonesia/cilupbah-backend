@@ -10,12 +10,6 @@ use Modules\Sales\Services\SalesInvoiceService;
 use Modules\Sales\Services\SalesOrderService;
 use Tests\TestCase;
 
-/**
- * Fase 3 regression coverage:
- *  F3.1 createOrUpdate is a real upsert (replace items + recompute total)
- *  F3.2 markAsComplete ships a packed order without a second decrement
- *  F3.3 cancelling an order persists its cancel_reason
- */
 class SalesPhase3Test extends TestCase
 {
     use RefreshDatabase;
@@ -92,8 +86,6 @@ class SalesPhase3Test extends TestCase
             ->count();
     }
 
-    // ---------- F3.1 ----------
-
     public function test_create_or_update_replaces_items_and_recomputes_total(): void
     {
         $service = app(SalesInvoiceService::class);
@@ -121,14 +113,11 @@ class SalesPhase3Test extends TestCase
             ],
         ]);
 
-        // Same invoice row, items fully replaced, total recomputed.
         $this->assertSame($invoice->id, $again->id);
         $this->assertEquals(50, $again->total_amount);
         $this->assertSame(1, DB::table('sales_invoices')->where('invoice_number', 'INV-UPSERT')->count());
         $this->assertSame(1, DB::table('sales_invoice_items')->where('sales_invoice_id', $invoice->id)->count());
     }
-
-    // ---------- F3.2 ----------
 
     public function test_mark_as_complete_ships_packed_order_without_double_decrement(): void
     {
@@ -141,7 +130,6 @@ class SalesPhase3Test extends TestCase
             'items'         => [['sku' => 'SKU-P3', 'qty_in_base' => 5, 'price' => 1000]],
         ]);
 
-        // reserved -> picked reduces on_hand once.
         $service->updateOrder($order->fresh(), ['status' => 'picked']);
         $this->assertSame(95, $this->inventory()->on_hand);
         $this->assertSame(0, $this->inventory()->reserved);
@@ -156,8 +144,6 @@ class SalesPhase3Test extends TestCase
         $this->assertSame(1, $this->movements('ORDER_SHIP'));
         $this->assertDatabaseHas('sales_orders', ['id' => $order->id, 'status' => 'shipped']);
     }
-
-    // ---------- F3.3 ----------
 
     public function test_cancelling_order_persists_cancel_reason(): void
     {

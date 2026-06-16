@@ -54,19 +54,17 @@ class UpdateProductRequest extends FormRequest
             'media.*.is_primary' => 'nullable|boolean',
             'media.*.sort_order' => 'nullable|integer',
 
-            // Maks. 2 jenis varian per produk; tiap jenis (attribute_id) unik.
             'variation_types' => 'sometimes|nullable|array|max:2',
             'variation_types.*.attribute_id' => 'required|bail|integer|distinct|exists:attributes,id',
             'variation_types.*.sort_order' => 'nullable|integer|min:0',
 
-            // Spesifikasi (replace-all saat edit).
             'specifications' => 'sometimes|nullable|array',
             'specifications.*.attribute_id' => 'required|bail|integer|exists:attributes,id',
             'specifications.*.attribute_option_id' => 'nullable|bail|integer|exists:attribute_options,id',
             'specifications.*.text_value' => 'nullable|string',
 
             'variants' => 'sometimes|array|min:1',
-            // Opsi varian (untuk ekspansi kombinasi saat edit).
+
             'variants.*.options' => 'sometimes|array',
             'variants.*.options.*.attribute_id' => 'required|bail|integer|exists:attributes,id',
             'variants.*.options.*.value' => 'required|string',

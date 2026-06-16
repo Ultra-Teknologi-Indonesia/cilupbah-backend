@@ -45,7 +45,7 @@ class ChannelShopRepository
 
     public function updateOrCreateShop(string $shopId, array $data)
     {
-        // Setiap penyimpanan token sukses = toko terhubung kembali.
+
         $data['disconnected_at'] = null;
 
         return ChannelShop::updateOrCreate(
@@ -71,7 +71,6 @@ class ChannelShopRepository
             ->get();
     }
 
-    /** Tandai integrasi toko sehat (mis. setelah refresh/sync sukses). */
     public function markIntegrationHealthy(string $id): void
     {
         ChannelShop::where('id', $id)->update([
@@ -81,7 +80,6 @@ class ChannelShopRepository
         ]);
     }
 
-    /** Tandai integrasi toko bermasalah (mis. refresh/sync gagal / izin dicabut). */
     public function markIntegrationError(string $id, ?string $message): void
     {
         ChannelShop::where('id', $id)->update([
@@ -105,10 +103,6 @@ class ChannelShopRepository
         return ChannelShop::find($id);
     }
 
-    /**
-     * Soft disconnect: tandai diputus + hapus token (decoupled dari is_active).
-     * Baris & relasi produk dipertahankan; toko hilang dari daftar terhubung.
-     */
     public function disconnectShop(string $id): bool
     {
         return ChannelShop::where('id', $id)->update([

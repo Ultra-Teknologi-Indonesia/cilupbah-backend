@@ -5,35 +5,14 @@ namespace Modules\Channel\Services;
 use Illuminate\Support\Facades\DB;
 use Modules\Product\Models\Product;
 
-/**
- * Pre-flight validator: memastikan produk siap di-listing ke sebuah channel
- * SEBELUM dikirim ke marketplace. Mencegah penolakan di sisi marketplace
- * (filosofi no-500: gagal lokal dengan checklist yang jelas).
- *
- * Mengembalikan daftar issue terstruktur; kosong = lolos.
- *  - category_unmapped : kategori produk belum dipetakan ke channel
- *  - category_deprecated: kategori channel sudah tidak berlaku (perlu petakan ulang)
- *  - attribute_unmapped: atribut wajib channel belum dipetakan ke atribut internal
- *  - attribute_missing : atribut wajib belum punya nilai di produk
- *  - value_unmapped    : nilai produk belum punya padanan opsi channel (closed list)
- */
 class ChannelListingValidator
 {
-    /**
-     * Atribut "wajib" channel yang sebenarnya diisi STRUKTURAL oleh mapper dari
-     * data varian/produk (harga, SKU, dimensi, qty) — bukan via pemetaan atribut.
-     * Tervalidasi dari respons live Lazada /category/attributes/get (mis. kategori
-     * 17935 menandai price/SellerSku/package_* sebagai is_mandatory).
-     * Tanpa skip ini, validator akan salah memblokir SEMUA produk.
-     */
+
     public const SYSTEM_ATTRIBUTES = [
         'price', 'sellersku', 'quantity',
         'package_weight', 'package_height', 'package_width', 'package_length',
     ];
 
-    /**
-     * @return array<int, array{code:string, attribute:?string, message:string}>
-     */
     public function validate(Product $product, string $channelCode): array
     {
         $channelId = DB::table('channels')->where('code', $channelCode)->value('id');
@@ -41,7 +20,6 @@ class ChannelListingValidator
             return [$this->issue('category_unmapped', null, "Channel {$channelCode} belum tersedia.")];
         }
 
-        // 1) Resolusi kategori internal → kategori channel (leaf).
         $channelCategory = DB::table('category_channel_mappings as m')
             ->join('channel_categories as c', 'c.id', '=', 'm.channel_category_id')
             ->where('m.category_id', $product->category_id)
@@ -57,7 +35,6 @@ class ChannelListingValidator
             )];
         }
 
-        // Kategori channel sudah tidak berlaku di marketplace → blokir, minta petakan ulang.
         if ($channelCategory->deprecated_at !== null) {
             return [$this->issue(
                 'category_deprecated',
@@ -66,7 +43,6 @@ class ChannelListingValidator
             )];
         }
 
-        // 2) Atribut wajib untuk kategori channel tersebut.
         $required = DB::table('channel_attributes')
             ->where('channel_category_id', $channelCategory->id)
             ->where('is_required', true)
@@ -76,16 +52,15 @@ class ChannelListingValidator
             return [];
         }
 
-        $productValues = $this->collectProductValues($product->id); // [attribute_id => [values]]
+        $productValues = $this->collectProductValues($product->id); 
         $issues = [];
 
         foreach ($required as $ca) {
-            // Atribut sistem (harga/SKU/dimensi/qty) diisi mapper dari struktur produk → lewati.
+
             if (in_array(mb_strtolower((string) $ca->external_id), self::SYSTEM_ATTRIBUTES, true)) {
                 continue;
             }
 
-            // 2a) Atribut channel → atribut internal.
             $internalAttrId = DB::table('attribute_channel_mappings')
                 ->where('channel_attribute_id', $ca->id)
                 ->value('attribute_id');
@@ -99,7 +74,6 @@ class ChannelListingValidator
                 continue;
             }
 
-            // 2b) Produk punya nilai untuk atribut internal itu?
             $values = $productValues[$internalAttrId] ?? [];
             if (empty($values)) {
                 $issues[] = $this->issue(
@@ -110,13 +84,12 @@ class ChannelListingValidator
                 continue;
             }
 
-            // 2c) Bila atribut bernilai tertutup (punya opsi), tiap nilai harus ada padanannya.
             $options = DB::table('channel_attribute_options')
                 ->where('channel_attribute_id', $ca->id)
                 ->get(['external_id', 'name']);
 
             if ($options->isEmpty()) {
-                continue; // free-text: lolos
+                continue; 
             }
 
             $allowed = $options
@@ -137,16 +110,10 @@ class ChannelListingValidator
         return $issues;
     }
 
-    /**
-     * Kumpulkan nilai produk per atribut internal dari spesifikasi + opsi varian.
-     *
-     * @return array<int, array<int, string>>
-     */
     private function collectProductValues(string $productId): array
     {
         $map = [];
 
-        // Spesifikasi: text_value atau resolusi attribute_option_id → value.
         $specs = DB::table('product_specifications as s')
             ->leftJoin('attribute_options as o', 'o.id', '=', 's.attribute_option_id')
             ->where('s.product_id', $productId)
@@ -159,7 +126,6 @@ class ChannelListingValidator
             }
         }
 
-        // Opsi varian.
         $opts = DB::table('variant_options as vo')
             ->join('product_variants as v', 'v.id', '=', 'vo.variant_id')
             ->where('v.product_id', $productId)
@@ -171,7 +137,6 @@ class ChannelListingValidator
             }
         }
 
-        // Distinct per atribut.
         foreach ($map as $attrId => $values) {
             $map[$attrId] = array_values(array_unique($values));
         }
@@ -179,9 +144,6 @@ class ChannelListingValidator
         return $map;
     }
 
-    /**
-     * @return array{code:string, attribute:?string, message:string}
-     */
     private function issue(string $code, ?string $attribute, string $message): array
     {
         return ['code' => $code, 'attribute' => $attribute, 'message' => $message];

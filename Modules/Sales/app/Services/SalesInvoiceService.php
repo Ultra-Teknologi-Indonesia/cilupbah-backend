@@ -36,7 +36,7 @@ class SalesInvoiceService
                 : null;
 
             if ($existing) {
-                // Update in place and fully replace its line items.
+
                 $existing->fill($data)->save();
                 $invoice = $existing;
                 $invoice->items()->delete();

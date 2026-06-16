@@ -7,10 +7,6 @@ use Modules\Product\Models\Product;
 class ProductLifecycleService
 {
 
-    /**
-     * Jadikan produk Master. Tidak ada review internal — produk draf (download)
-     * langsung dipromosikan ke Master setelah lolos kelengkapan.
-     */
     public function approve(Product $product, ?string $userId = null): Product
     {
         if ($product->status === Product::STATUS_MASTER) {

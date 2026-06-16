@@ -31,10 +31,6 @@ class ChannelService
         return $this->channelShopRepository->getPaginatedShops();
     }
 
-    /**
-     * Toggle is_active / order_sync_enabled sebuah toko terhubung.
-     * @throws ModelNotFoundException 404 bila toko tidak ada / sudah diputus.
-     */
     public function updateStoreFlags(string $id, array $data): ChannelShop
     {
         $shop = $this->channelShopRepository->findById($id);
@@ -48,10 +44,6 @@ class ChannelService
         return $shop->fresh('channel');
     }
 
-    /**
-     * Soft disconnect toko (hapus token + tandai diputus).
-     * @throws ModelNotFoundException 404 bila toko tidak ada / sudah diputus.
-     */
     public function disconnectStore(string $id): void
     {
         $shop = $this->channelShopRepository->findById($id);
@@ -61,6 +53,6 @@ class ChannelService
         }
 
         $this->channelShopRepository->disconnectShop($id);
-        // Revoke token di marketplace = best-effort, ditunda (client belum punya endpoint revoke).
+
     }
 }

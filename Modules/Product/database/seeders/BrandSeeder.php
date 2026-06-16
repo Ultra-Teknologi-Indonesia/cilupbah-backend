@@ -11,7 +11,6 @@ class BrandSeeder extends Seeder
     {
         $data = json_decode(file_get_contents(module_path('Product', 'database/data/brand.json')), true);
 
-        // Idempotent: lewati merek yang sudah ada (aman re-run tiap deploy).
         $existing = DB::table('brands')->pluck('name')->all();
         $rows = [];
         foreach ($data as $item) {

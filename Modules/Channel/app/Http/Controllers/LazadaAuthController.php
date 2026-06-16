@@ -52,13 +52,10 @@ class LazadaAuthController extends Controller
         $code = $request->query('code');
         $state = $request->query('state');
 
-        // Probe ketersediaan dari Lazada (verify callback): tanpa code & state →
-        // BALAS 200 dan JANGAN redirect, agar verifikasi "message receiving service" lulus.
         if (! $code && ! $state) {
             return $this->successResponse(['service' => 'ready'], 'Lazada callback service aktif.');
         }
 
-        // Validasi state (CSRF) — sekali pakai (hanya untuk alur OAuth nyata).
         if (! OAuthFlow::consumeState($state, self::CHANNEL)) {
             return $this->finish('invalid_state', 'Sesi otorisasi tidak valid atau kedaluwarsa.', 422);
         }
@@ -83,10 +80,6 @@ class LazadaAuthController extends Controller
         }
     }
 
-    /**
-     * Akhiri callback: redirect ke frontend bila FRONTEND_URL diset, selain itu
-     * balas JSON (fallback kompatibel). Tidak pernah melempar 500.
-     */
     private function finish(?string $error, string $message, int $code, array $data = [])
     {
         $params = $error ? ['error' => $error] : ['count' => $data['count'] ?? 0];

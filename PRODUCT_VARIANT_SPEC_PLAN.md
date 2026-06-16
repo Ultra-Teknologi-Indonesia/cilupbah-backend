@@ -104,7 +104,16 @@ Controller: `Modules/Product/app/Http/Controllers/CategoryFormAttributeControlle
 
 ---
 
-## FASE C — CREATE: validasi spesifikasi & varian terhadap kategori
+## FASE C — CREATE/EDIT: validasi spesifikasi & varian terhadap kategori ✅ SELESAI
+
+Diimplementasikan: `ProductService::assertCategoryAttributes($categoryId, $data, $enforceRequiredSpecs)`
+dipanggil di `createProduct` (enforce penuh) & `updateProduct` (enforce required-spec hanya bila
+`specifications` dikirim → edit varian-saja tak dipaksa). Aturan: variation_types harus atribut
+`sales` terdaftar; specifications harus atribut `spec` terdaftar; spec wajib (non-sistem) harus terisi.
+Lewati bila kategori belum punya `category_attributes` (backward-compat). DomainException→422
+(store/update sudah catch). Test `ProductCategoryAttributeValidationTest` 6/6; Product 208/208 hijau.
+
+
 
 `createProduct` sudah menyimpan; tambah **validasi keterkaitan kategori** + akurasi.
 

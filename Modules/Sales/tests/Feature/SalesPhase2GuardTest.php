@@ -10,13 +10,6 @@ use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesReturn;
 use Tests\TestCase;
 
-/**
- * Fase 2 regression coverage:
- *  F2.1 duplicate order -> 409 (+ cache freed on cancel)
- *  F2.2 return complete only from ACCEPTED -> 409 otherwise
- *  F2.3 overpayment -> 422, invoice status stays consistent
- *  F2.4 business errors surface as 4xx, never raw 500
- */
 class SalesPhase2GuardTest extends TestCase
 {
     use RefreshDatabase;
@@ -90,8 +83,6 @@ class SalesPhase2GuardTest extends TestCase
         ];
     }
 
-    // ---------- F2.1 ----------
-
     public function test_duplicate_order_returns_409(): void
     {
         $this->actingAs($this->user, 'sanctum')
@@ -111,21 +102,16 @@ class SalesPhase2GuardTest extends TestCase
 
         $orderId = $create->json('data.id');
 
-        // Cancel the order (frees the idempotency cache key).
         $this->actingAs($this->user, 'sanctum')
             ->putJson("/api/v1/sales/{$orderId}", ['status' => 'cancelled'])
             ->assertStatus(200);
 
-        // Simulate bulk-delete of the cancelled row (does not touch the cache).
         DB::table('sales_orders')->where('id', $orderId)->delete();
 
-        // Re-creating the same number must now succeed, not 409 on a stale key.
         $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/sales', $this->orderPayload('DUP-2'))
             ->assertStatus(201);
     }
-
-    // ---------- F2.2 / F2.4 ----------
 
     protected function makeReturn(string $status): SalesReturn
     {
@@ -165,8 +151,6 @@ class SalesPhase2GuardTest extends TestCase
             'status' => SalesReturn::STATUS_COMPLETED,
         ]);
     }
-
-    // ---------- F2.3 ----------
 
     protected function makeInvoice(float $total): SalesInvoice
     {
@@ -223,7 +207,6 @@ class SalesPhase2GuardTest extends TestCase
 
         $this->assertSame(SalesInvoice::STATUS_PAID, $invoice->fresh()->status);
 
-        // Deleting the second payment must drop the invoice back to OPEN.
         $paymentId = $full->json('data.id');
         $this->actingAs($this->user, 'sanctum')
             ->deleteJson('/api/v1/sales/payments', ['id' => $paymentId])

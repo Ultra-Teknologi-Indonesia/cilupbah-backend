@@ -38,7 +38,6 @@ class LazadaSyncCategoryAttributesTest extends TestCase
             'is_active' => true,
         ]);
 
-        // Kategori leaf Lazada hasil sinkron tree (prasyarat).
         $this->channelCategoryId = Uuid::uuid7()->toString();
         DB::table('channel_categories')->insert([
             'id' => $this->channelCategoryId,
@@ -81,7 +80,7 @@ class LazadaSyncCategoryAttributesTest extends TestCase
             'name' => 'Brand',
             'is_required' => true,
         ]);
-        // input_type multiSelect → is_multiple true.
+
         $this->assertDatabaseHas('channel_attributes', [
             'external_id' => 'warranty_type',
             'is_required' => false,

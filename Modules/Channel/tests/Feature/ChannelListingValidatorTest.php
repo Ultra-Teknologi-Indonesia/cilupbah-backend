@@ -33,7 +33,6 @@ class ChannelListingValidatorTest extends TestCase
         $this->category = Category::create(['name' => 'Handphone']);
         $this->brand = Attribute::firstOrCreate(['name' => 'Brand'], ['type' => 'spec']);
 
-        // Kategori channel (leaf) + pemetaan kategori internal → channel.
         $this->channelCategoryId = Uuid::uuid7()->toString();
         DB::table('channel_categories')->insert([
             'id' => $this->channelCategoryId,
@@ -53,7 +52,6 @@ class ChannelListingValidatorTest extends TestCase
         ]);
     }
 
-    /** Atribut wajib 'Brand' dengan opsi tertutup Nike/Adidas, dipetakan ke atribut internal. */
     private function addRequiredBrandAttribute(bool $mapInternal = true, bool $withOptions = true): void
     {
         $this->brandChannelAttrId = Uuid::uuid7()->toString();
@@ -133,7 +131,7 @@ class ChannelListingValidatorTest extends TestCase
 
     public function test_category_unmapped_blocks(): void
     {
-        $other = Category::create(['name' => 'Sepatu']); // tidak dipetakan
+        $other = Category::create(['name' => 'Sepatu']); 
         $this->validate($this->makeProduct(categoryId: $other->id))
             ->assertOk()
             ->assertJsonPath('data.ready', false)
@@ -143,7 +141,7 @@ class ChannelListingValidatorTest extends TestCase
     public function test_required_attribute_missing_value(): void
     {
         $this->addRequiredBrandAttribute();
-        // Produk tanpa nilai Brand.
+
         $this->validate($this->makeProduct(brandValue: null))
             ->assertOk()
             ->assertJsonPath('data.ready', false)
@@ -162,7 +160,7 @@ class ChannelListingValidatorTest extends TestCase
     public function test_value_not_in_closed_options(): void
     {
         $this->addRequiredBrandAttribute();
-        $this->validate($this->makeProduct(brandValue: 'Puma')) // bukan Nike/Adidas
+        $this->validate($this->makeProduct(brandValue: 'Puma')) 
             ->assertOk()
             ->assertJsonPath('data.ready', false)
             ->assertJsonPath('data.issues.0.code', 'value_unmapped');
@@ -179,8 +177,7 @@ class ChannelListingValidatorTest extends TestCase
 
     public function test_system_required_attributes_are_skipped(): void
     {
-        // Tervalidasi live: Lazada menandai price/SellerSku/package_* sebagai wajib,
-        // tapi itu diisi struktural oleh mapper → validator TIDAK boleh memblokir.
+
         foreach (['price', 'SellerSku', 'package_weight'] as $sys) {
             DB::table('channel_attributes')->insert([
                 'id' => Uuid::uuid7()->toString(),

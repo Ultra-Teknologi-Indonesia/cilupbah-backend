@@ -16,7 +16,7 @@ class CategorySeeder extends Seeder
     private function insertCategories(array $items, ?int $parentId): void
     {
         foreach ($items as $item) {
-            // Idempotent: cocokkan berdasarkan (name, parent_id) agar aman re-run.
+
             $query = DB::table('categories')->where('name', $item['name']);
             $parentId === null
                 ? $query->whereNull('parent_id')

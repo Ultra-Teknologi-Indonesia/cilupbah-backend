@@ -27,8 +27,6 @@ class WebhookProductHandler
             return;
         }
 
-        // Status produk TikTok: 2=pending(review), 3=failed(ditolak),
-        // 4=live(disetujui), 5/6=deactivated.
         if (in_array((string) $status, ['5', '6'], true)) {
             $mapping->update(['sync_status' => ProductChannelMapping::STATUS_DEACTIVATED]);
         } elseif ((string) $status === '4') {

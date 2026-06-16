@@ -8,11 +8,6 @@ use Illuminate\Support\Str;
 use Modules\Sales\Services\SalesOrderService;
 use Tests\TestCase;
 
-/**
- * Regression coverage for F1.1: channel webhooks that jump several lifecycle
- * steps at once must reconcile stock by walking the rank ladder, applying each
- * physical step exactly once (no leak, no double-decrement).
- */
 class ChannelStockReconcileTest extends TestCase
 {
     use RefreshDatabase;
@@ -128,14 +123,12 @@ class ChannelStockReconcileTest extends TestCase
             ->count();
     }
 
-    /** The core leak: reserved -> packed -> shipped, all via channel. */
     public function test_reserved_then_packed_then_shipped_decrements_once(): void
     {
         $this->service->upsertFromChannel($this->orderData('LZ-RC-1', 'AWAITING_SHIPMENT'));
         $this->assertSame(2, $this->inventory()->reserved);
         $this->assertSame(10, $this->inventory()->on_hand);
 
-        // Intermediate AWAITING_COLLECTION maps to 'packed'.
         $this->service->upsertFromChannel($this->orderData('LZ-RC-1', 'AWAITING_COLLECTION'));
 
         $inv = $this->inventory();
@@ -152,7 +145,6 @@ class ChannelStockReconcileTest extends TestCase
         $this->assertSame(1, $this->movements('ORDER_SHIP'), 'ship tepat sekali');
     }
 
-    /** pending -> packed in one jump must still reserve+pick once. */
     public function test_pending_then_packed_reserves_and_picks_once(): void
     {
         $this->service->upsertFromChannel($this->orderData('LZ-RC-2', 'UNPAID'));
@@ -168,7 +160,6 @@ class ChannelStockReconcileTest extends TestCase
         $this->assertSame(1, $this->movements('ORDER_PICK'));
     }
 
-    /** Channel reservation never hard-fails on oversold stock (enforce=false). */
     public function test_channel_reservation_allows_oversell(): void
     {
         DB::table('inventories')

@@ -11,11 +11,6 @@ use Modules\Tax\Http\Resources\TaxLookupResource;
 use Modules\Tax\Repositories\TaxRepository;
 use OpenApi\Attributes as OA;
 
-/**
- * Master data untuk form Buat Produk (6 dropdown):
- * Pajak Penjualan, Pajak Pembelian, Akun Penjualan, Retur Penjualan,
- * Akun Persediaan, Akun HPP. Sumber: modul Tax & Finance (akun by type).
- */
 #[OA\Tag(name: 'Products')]
 class ProductMasterDataController extends Controller
 {

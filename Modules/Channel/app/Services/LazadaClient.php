@@ -87,8 +87,6 @@ class LazadaClient
             'client_id' => $this->appKey,
         ];
 
-        // force_auth=true memaksa login ulang walau sudah ada sesi Seller Center —
-        // bikin akun test mental ke halaman password. Default mati agar sesi dipakai ulang.
         if ($forceAuth) {
             $queries['force_auth'] = 'true';
         }

@@ -152,8 +152,7 @@ class TikTokOrderService
 
     public function getCancelReasons(): array
     {
-        // Single source of truth lives in MarketplaceCancelReasonService; keep the
-        // legacy {key: label} shape for backward compatibility of this endpoint.
+
         return collect(app(MarketplaceCancelReasonService::class)->for(MarketplaceCancelReasonService::TIKTOK))
             ->pluck('label', 'key')
             ->all();

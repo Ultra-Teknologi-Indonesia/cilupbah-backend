@@ -39,7 +39,6 @@ class ProductCreateFullParityTest extends TestCase
         $this->user = User::factory()->create();
         $this->actingAs($this->user);
 
-        // bigint auto-increment ids — JANGAN set id manual.
         $this->category = Category::create(['name' => 'Aksesoris']);
         $this->brand = Brand::create(['name' => 'UltraFit']);
 
@@ -145,7 +144,7 @@ class ProductCreateFullParityTest extends TestCase
         $this->assertEquals(10, $variant->safe_stock);
         $this->assertEquals($this->salesTax->id, $variant->sales_tax_id);
         $this->assertEquals($this->purchaseTax->id, $variant->purchase_tax_id);
-        // tax_rate ter-cache dari pajak penjualan.
+
         $this->assertEquals(11, (int) $variant->tax_rate);
 
         $this->assertEquals(2, DB::table('variant_unlimited_shops')->where('variant_id', $variant->id)->count());
@@ -161,7 +160,7 @@ class ProductCreateFullParityTest extends TestCase
 
     public function test_create_can_set_master_directly(): void
     {
-        // Tanpa review internal: produk boleh dibuat langsung sebagai Master.
+
         $res = $this->postJson('/api/v1/products', $this->basePayload(['status' => 'master']));
 
         $res->assertCreated();
@@ -196,7 +195,7 @@ class ProductCreateFullParityTest extends TestCase
 
     public function test_wrong_account_type_returns_422(): void
     {
-        // sales_account_id butuh revenue, kirim akun asset → 422 (bukan 500).
+
         $this->postJson('/api/v1/products', $this->basePayload(['sales_account_id' => $this->asset->id]))
             ->assertStatus(422)
             ->assertJsonValidationErrors('sales_account_id');
@@ -204,7 +203,7 @@ class ProductCreateFullParityTest extends TestCase
 
     public function test_not_sold_and_not_purchased_is_allowed(): void
     {
-        // Aturan "minimal Dijual/Dibeli" dihapus — ketiganya boleh nonaktif.
+
         $this->postJson('/api/v1/products', $this->basePayload([
             'is_stored' => false,
             'is_sold' => false,

@@ -144,8 +144,6 @@ class SyncProductToChannelJob implements ShouldQueue
             if ($result['success']) {
                 $newExternalId = $result['external_product_id'] ?? $externalId;
 
-                // Listing baru (belum punya external id) → menunggu review marketplace.
-                // Aksi pada produk yang sudah ada (update/sync/activate) → tetap live.
                 if (empty($externalId) && in_array($this->action, ['push', 'update'], true)) {
                     $mapping->markInReview($newExternalId);
                 } else {

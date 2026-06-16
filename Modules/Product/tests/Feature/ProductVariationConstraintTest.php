@@ -27,7 +27,7 @@ class ProductVariationConstraintTest extends TestCase
         $this->actingAs($this->user);
 
         $this->category = Category::create(['name' => 'Baju']);
-        // type enum = sales|spec; firstOrCreate agar tahan bila sudah ada dari seeder.
+
         $this->warna = Attribute::firstOrCreate(['name' => 'Warna'], ['type' => 'sales']);
         $this->ukuran = Attribute::firstOrCreate(['name' => 'Ukuran'], ['type' => 'sales']);
         $this->bahan = Attribute::firstOrCreate(['name' => 'Bahan'], ['type' => 'sales']);
@@ -80,7 +80,7 @@ class ProductVariationConstraintTest extends TestCase
             'variants' => [[
                 'sku' => 'KAOS-VAR-01',
                 'sell_price' => 50000,
-                // Pakai Ukuran padahal hanya Warna yang dideklarasikan.
+
                 'options' => [['attribute_id' => $this->ukuran->id, 'value' => 'L']],
             ]],
         ]))

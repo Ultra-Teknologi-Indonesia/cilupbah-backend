@@ -104,7 +104,7 @@ class LazadaAuthTest extends TestCase
         $this->assertStringContainsString('auth.lazada.com/oauth/authorize', $url);
         $this->assertStringContainsString('client_id=test_key', $url);
         $this->assertStringContainsString('response_type=code', $url);
-        // force_auth dimatikan agar sesi Seller Center bisa dipakai ulang (akun test).
+
         $this->assertStringNotContainsString('force_auth', $url);
     }
 

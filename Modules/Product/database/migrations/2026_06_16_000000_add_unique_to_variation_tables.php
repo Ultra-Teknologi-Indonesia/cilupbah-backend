@@ -7,16 +7,10 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Jaring DB untuk invariant varian:
-     *  - satu jenis varian (attribute_id) hanya boleh sekali per produk;
-     *  - satu opsi (attribute_id) hanya boleh sekali per varian.
-     * Enforcement "maks 2 jenis" tetap di FormRequest + ProductService
-     * (tidak bisa diekspresikan sebagai unique/constraint sederhana).
-     */
+
     public function up(): void
     {
-        // Bersihkan duplikat lama (jika ada) sebelum memasang unique, simpan id terkecil.
+
         DB::statement('
             DELETE FROM product_variation_types a
             USING product_variation_types b

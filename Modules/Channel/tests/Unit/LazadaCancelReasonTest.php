@@ -5,10 +5,6 @@ namespace Modules\Channel\Tests\Unit;
 use Modules\Channel\Services\LazadaToInternalOrderMapper;
 use PHPUnit\Framework\TestCase;
 
-/**
- * Lazada cancellations must capture cancel_reason (consistent with TikTok),
- * not hardcode null.
- */
 class LazadaCancelReasonTest extends TestCase
 {
     private function items(array $overrides = []): array

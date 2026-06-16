@@ -29,7 +29,6 @@ class ProductVariantEditExpansionTest extends TestCase
         $this->ukuran = Attribute::firstOrCreate(['name' => 'Ukuran'], ['type' => 'sales']);
     }
 
-    /** Buat IP17 dengan 1 jenis varian (Warna): IP17-BLUE, IP17-RED. */
     private function createIp17(int $price = 7000): string
     {
         $res = $this->postJson('/api/v1/products', [
@@ -78,13 +77,11 @@ class ProductVariantEditExpansionTest extends TestCase
 
         $this->putJson("/api/v1/products/{$id}", $this->expandPayload())->assertOk();
 
-        // 4 varian aktif baru.
         $this->assertEquals(4, DB::table('product_variants')->where('product_id', $id)->where('is_active', true)->count());
         foreach (['IP17-BLUE-256', 'IP17-BLUE-512', 'IP17-RED-256', 'IP17-RED-512'] as $sku) {
             $this->assertDatabaseHas('product_variants', ['product_id' => $id, 'sku' => $sku, 'is_active' => true]);
         }
 
-        // 2 SKU lama TIDAK dihapus, hanya di-supersede.
         foreach (['IP17-BLUE', 'IP17-RED'] as $sku) {
             $old = DB::table('product_variants')->where('product_id', $id)->where('sku', $sku)->first();
             $this->assertNotNull($old, "SKU lama {$sku} tidak boleh dihapus");
@@ -92,7 +89,6 @@ class ProductVariantEditExpansionTest extends TestCase
             $this->assertNotNull($old->superseded_at);
         }
 
-        // Total 6 baris (2 lama + 4 baru); jenis varian jadi 2.
         $this->assertEquals(6, DB::table('product_variants')->where('product_id', $id)->count());
         $this->assertEquals(2, DB::table('product_variation_types')->where('product_id', $id)->count());
     }
@@ -101,7 +97,6 @@ class ProductVariantEditExpansionTest extends TestCase
     {
         $id = $this->createIp17();
 
-        // Hilangkan jenis Warna (hanya kirim Ukuran) → ditolak.
         $this->putJson("/api/v1/products/{$id}", [
             'variation_types' => [['attribute_id' => $this->ukuran->id, 'sort_order' => 0]],
             'variants' => [
@@ -115,7 +110,6 @@ class ProductVariantEditExpansionTest extends TestCase
     {
         $id = $this->createIp17();
 
-        // Hilangkan nilai Red (hanya kirim Blue) → ditolak.
         $this->putJson("/api/v1/products/{$id}", [
             'variation_types' => [['attribute_id' => $this->warna->id, 'sort_order' => 0]],
             'variants' => [
@@ -132,7 +126,6 @@ class ProductVariantEditExpansionTest extends TestCase
         $w = $this->warna->id;
         $u = $this->ukuran->id;
 
-        // Blue-256 TANPA sell_price → warisi 9000 dari IP17-BLUE; Red tetap lengkap.
         $this->putJson("/api/v1/products/{$id}", [
             'variation_types' => [['attribute_id' => $w, 'sort_order' => 0], ['attribute_id' => $u, 'sort_order' => 1]],
             'variants' => [

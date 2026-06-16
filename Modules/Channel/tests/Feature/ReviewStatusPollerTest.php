@@ -54,7 +54,7 @@ class ReviewStatusPollerTest extends TestCase
                 'T-A' => ['status' => '4', 'reason' => null],
                 'T-B' => ['status' => '3', 'reason' => 'Gambar buram'],
                 'T-C' => ['status' => '2', 'reason' => null],
-                // T-D tidak ada di marketplace → tidak diubah
+
             ]);
         });
 

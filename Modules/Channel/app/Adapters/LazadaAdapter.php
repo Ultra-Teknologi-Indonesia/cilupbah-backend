@@ -165,7 +165,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
 
     protected function buildProductPayload(Product $product): array
     {
-        // Pastikan opsi varian termuat agar sale-property terpetakan ke channel.
+
         $product->loadMissing('variants.options');
 
         $internal = $product->toArray();

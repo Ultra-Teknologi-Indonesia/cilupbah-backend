@@ -214,10 +214,6 @@ class TikTokProductService
         return $count;
     }
 
-    /**
-     * Tarik status listing terkini dari TikTok (untuk polling status review).
-     * @return array<string, array{status:string, reason:?string}> keyed by external product id
-     */
     public function fetchProductStatuses(string $shopId): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);

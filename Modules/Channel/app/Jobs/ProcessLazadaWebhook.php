@@ -21,11 +21,6 @@ class ProcessLazadaWebhook implements ShouldQueue
     public int $tries = 3;
     public array $backoff = [10, 60, 300];
 
-    /**
-     * Angka message_type Lazada. VERIFIKASI ke dokumentasi/uji live — bila berbeda,
-     * cukup sesuaikan konstanta ini. Routing juga didukung deteksi berbasis konten
-     * (isTokenExpiryMessage/isReverseMessage) agar tidak rapuh terhadap angka.
-     */
     private const MSG_ORDER = 0;
     private const MSG_PRODUCT = 1;
     private const MSG_PRODUCT_ALT = 2;
@@ -52,7 +47,6 @@ class ProcessLazadaWebhook implements ShouldQueue
             return;
         }
 
-        // #1 Token Expiration Alert → refresh token real-time (pengaman atas job harian).
         if ($this->isTokenExpiryMessage($messageType, $data)) {
             $this->handleTokenExpiry($authService, $sellerId);
 
@@ -66,7 +60,6 @@ class ProcessLazadaWebhook implements ShouldQueue
         };
     }
 
-    /** #3 Reverse/retur kadang datang sebagai tipe lain → re-pull order bila terdeteksi. */
     protected function handleUnknown(LazadaOrderService $orderService, string $sellerId, array $data, int $messageType): void
     {
         if ($this->isReverseMessage($data)) {
@@ -98,7 +91,6 @@ class ProcessLazadaWebhook implements ShouldQueue
             return;
         }
 
-        // #2 Product Edited / Shallow Stock → re-sync konten produk (independen dari mapping).
         if ($this->shouldRepullProduct($data)) {
             try {
                 $productService->pullProductById($sellerId, $itemId);
@@ -107,7 +99,6 @@ class ProcessLazadaWebhook implements ShouldQueue
             }
         }
 
-        // Status review/QC → update mapping (bila ada).
         $shopUuid = DB::table('channel_shops')->where('shop_id', $sellerId)->value('id');
         if (! $shopUuid) {
             return;
@@ -152,7 +143,6 @@ class ProcessLazadaWebhook implements ShouldQueue
         }
     }
 
-    /** Deteksi pesan token-expiration: message_type sistem ATAU konten payload bertanda token+expire. */
     protected function isTokenExpiryMessage(int $messageType, array $data): bool
     {
         if ($messageType === self::MSG_SYSTEM) {
@@ -164,7 +154,6 @@ class ProcessLazadaWebhook implements ShouldQueue
         return str_contains($marker, 'token') && str_contains($marker, 'expir');
     }
 
-    /** Deteksi pesan reverse/retur via kunci payload. */
     protected function isReverseMessage(array $data): bool
     {
         if (isset($data['reverse_order_id']) || isset($data['reverse_status'])) {
@@ -176,7 +165,6 @@ class ProcessLazadaWebhook implements ShouldQueue
         return str_contains($orderStatus, 'return') || str_contains($orderStatus, 'reverse');
     }
 
-    /** Produk perlu di-pull ulang bila ada perubahan konten/stok. */
     protected function shouldRepullProduct(array $data): bool
     {
         foreach (['quantity', 'price', 'skus', 'sku_list', 'stock', 'SkuList'] as $key) {

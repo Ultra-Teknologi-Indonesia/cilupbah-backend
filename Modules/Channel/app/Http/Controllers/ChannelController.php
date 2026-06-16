@@ -72,7 +72,7 @@ class ChannelController extends Controller
             $this->channelService->disconnectStore($id);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             if ($isApi) {
-                throw $e; // handler global → 404
+                throw $e; 
             }
             return back()->with('error', 'Toko tidak ditemukan.');
         } catch (\Throwable $e) {

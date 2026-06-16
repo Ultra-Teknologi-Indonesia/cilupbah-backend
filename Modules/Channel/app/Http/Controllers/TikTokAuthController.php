@@ -29,12 +29,10 @@ class TikTokAuthController extends Controller
         $code = $request->query('code');
         $state = $request->query('state');
 
-        // Probe ketersediaan callback: tanpa code & state → 200 (jangan redirect).
         if (! $code && ! $state) {
             return $this->successResponse(['service' => 'ready'], 'TikTok callback service aktif.');
         }
 
-        // Validasi state (CSRF) — sekali pakai (hanya untuk alur OAuth nyata).
         if (! OAuthFlow::consumeState($state, self::CHANNEL)) {
             return $this->finish('invalid_state', 'Sesi otorisasi tidak valid atau kedaluwarsa.', 422);
         }
@@ -60,10 +58,6 @@ class TikTokAuthController extends Controller
         }
     }
 
-    /**
-     * Akhiri callback: redirect ke frontend bila FRONTEND_URL diset, selain itu
-     * balas JSON (fallback kompatibel). Tidak pernah melempar 500.
-     */
     private function finish(?string $error, string $message, int $code, array $data = [])
     {
         $params = $error ? ['error' => $error] : ['count' => $data['count'] ?? 0];

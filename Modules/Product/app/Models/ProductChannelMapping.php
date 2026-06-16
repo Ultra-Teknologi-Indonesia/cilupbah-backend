@@ -12,12 +12,12 @@ class ProductChannelMapping extends Model
 {
     use HasUuid7;
 
-    public const STATUS_PENDING = 'pending';        // belum diunggah
-    public const STATUS_SYNCING = 'syncing';        // sedang upload
-    public const STATUS_IN_REVIEW = 'in_review';    // sudah diunggah, menunggu review marketplace
-    public const STATUS_SYNCED = 'synced';          // disetujui & live di marketplace
-    public const STATUS_REJECTED = 'rejected';      // ditolak review marketplace
-    public const STATUS_FAILED = 'failed';          // gagal teknis saat upload
+    public const STATUS_PENDING = 'pending';        
+    public const STATUS_SYNCING = 'syncing';        
+    public const STATUS_IN_REVIEW = 'in_review';    
+    public const STATUS_SYNCED = 'synced';          
+    public const STATUS_REJECTED = 'rejected';      
+    public const STATUS_FAILED = 'failed';          
     public const STATUS_DEACTIVATED = 'deactivated';
 
     protected $fillable = [
@@ -107,7 +107,6 @@ class ProductChannelMapping extends Model
         ]);
     }
 
-    /** Berhasil diunggah → menunggu hasil review marketplace. */
     public function markInReview(?string $externalProductId = null): void
     {
         $data = [
@@ -123,7 +122,6 @@ class ProductChannelMapping extends Model
         $this->update($data);
     }
 
-    /** Marketplace menyetujui listing → live. */
     public function markApproved(?string $externalProductId = null): void
     {
         $data = [
@@ -139,7 +137,6 @@ class ProductChannelMapping extends Model
         $this->update($data);
     }
 
-    /** Marketplace menolak listing (hasil review gagal) + alasan. */
     public function markRejected(string $reason): void
     {
         $this->update([

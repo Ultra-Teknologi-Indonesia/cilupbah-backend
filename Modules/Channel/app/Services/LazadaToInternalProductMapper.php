@@ -65,9 +65,7 @@ class LazadaToInternalProductMapper
 
     protected function resolveCategoryId(string $shopId, $lazadaCategoryId)
     {
-        // Kategori marketplace tanpa padanan internal → tampung di kategori khusus
-        // "Belum Dikategorikan" (jangan buang data, jangan salah filekan ke kategori asli).
-        // Surfacing: produk bisa difilter via kategori ini untuk dikategorikan ulang.
+
         $fallback = function () {
             $id = DB::table('categories')
                 ->where('name', 'Belum Dikategorikan')

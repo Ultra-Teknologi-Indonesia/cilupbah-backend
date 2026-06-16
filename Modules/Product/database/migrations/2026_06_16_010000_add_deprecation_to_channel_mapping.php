@@ -6,13 +6,7 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Edge case kategori channel (Fase 5):
-     *  - channel_categories.deprecated_at : kategori yang hilang dari marketplace
-     *    (soft-deprecate, JANGAN hapus agar mapping tidak putus).
-     *  - category_channel_mappings.is_stale / last_verified_at : penanda mapping
-     *    yang menunjuk kategori usang + kapan terakhir diverifikasi.
-     */
+
     public function up(): void
     {
         Schema::table('channel_categories', function (Blueprint $table) {

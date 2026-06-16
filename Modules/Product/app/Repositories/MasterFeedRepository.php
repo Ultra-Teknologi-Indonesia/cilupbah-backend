@@ -29,7 +29,7 @@ class MasterFeedRepository
             ->allowedSearch('name', 'sku')
             ->allowedFilters(
                 AllowedFilter::exact('brand_id'),
-                // Kategori berjenjang: cocokkan kategori terpilih + semua keturunannya.
+
                 AllowedFilter::callback('category_id', function ($query, $value) {
                     $query->whereIn('category_id', $this->categoryWithDescendants($value));
                 }),
@@ -40,14 +40,11 @@ class MasterFeedRepository
             ->appends(request()->query());
     }
 
-    /**
-     * Kumpulkan id kategori terpilih beserta seluruh keturunannya (BFS satu query).
-     */
     private function categoryWithDescendants($values): array
     {
         $roots = array_filter(array_map('intval', (array) $values));
         if (empty($roots)) {
-            return [0]; // tidak ada kecocokan jika nilai kosong
+            return [0]; 
         }
 
         $childrenByParent = [];

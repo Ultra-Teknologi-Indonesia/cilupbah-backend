@@ -17,12 +17,10 @@ class LazadaProductMapper
                 continue;
             }
 
-            // Varian yang di-supersede (Fase D) tidak di-listing ke channel.
             if (array_key_exists('is_active', $variant) && ! $variant['is_active']) {
                 continue;
             }
 
-            // Sale-property varian (mis. Warna/Ukuran) → key & nilai versi channel.
             $saleProps = $this->buildSaleProps($variant['options'] ?? [], $channelCategoryUuid);
 
             $skus[] = array_filter([
@@ -53,7 +51,6 @@ class LazadaProductMapper
         ];
     }
 
-    /** UUID kategori channel (untuk scoping atribut), beda dari external_id (untuk PrimaryCategory). */
     protected function resolveChannelCategoryUuid($categoryId): ?string
     {
         if (! $categoryId) {
@@ -69,14 +66,6 @@ class LazadaProductMapper
             ->value('channel_categories.id');
     }
 
-    /**
-     * Bangun sale-property channel dari opsi varian internal:
-     *  - key  = external_id atribut channel (nama sale-prop Lazada)
-     *  - nilai tertutup → channel_attribute_options.external_id; free-text → apa adanya
-     *  - atribut tak terpetakan → dilewati (atribut wajib ditangkap ChannelListingValidator)
-     *
-     * @return array<string, string>
-     */
     protected function buildSaleProps(array $options, ?string $channelCategoryUuid): array
     {
         if (! $channelCategoryUuid || empty($options)) {

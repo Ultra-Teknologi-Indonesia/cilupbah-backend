@@ -5,12 +5,6 @@ namespace Modules\Product\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/**
- * Satu produk di sebuah toko (channel-monitor/{shop_id}/products):
- * status sync + daftar SKU varian tersinkron.
- *
- * @property mixed $resource Modul ProductChannelMapping
- */
 class ShopProductMonitorResource extends JsonResource
 {
     public function toArray(Request $request): array

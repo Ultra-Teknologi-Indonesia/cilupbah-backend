@@ -25,7 +25,6 @@ class LazadaSyncApiController extends Controller
         protected ChannelShopRepository $shopRepository,
     ) {}
 
-    /** Push satu produk Master ke Lazada (listing). Kembalikan respons Lazada apa adanya. */
     public function pushProduct(Request $request)
     {
         $validated = $request->validate([
@@ -45,7 +44,6 @@ class LazadaSyncApiController extends Controller
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
-        // Pre-flight: cegah penolakan marketplace untuk hal yang bisa dicek lokal.
         $issues = app(ChannelListingValidator::class)->validate($product, 'lazada');
         if (! empty($issues)) {
             return $this->errorResponse('Produk belum siap di-listing ke Lazada', 422, ['issues' => $issues]);
@@ -54,7 +52,7 @@ class LazadaSyncApiController extends Controller
         $result = app(LazadaAdapter::class)->pushProduct($product, $shop);
 
         if (! ($result['success'] ?? false)) {
-            // Pesan asli Lazada untuk debugging mapper/atribut/kategori.
+
             return $this->errorResponse($result['message'] ?? 'Gagal push ke Lazada', 422, $result);
         }
 
@@ -74,7 +72,6 @@ class LazadaSyncApiController extends Controller
         );
     }
 
-    /** Sinkronkan pohon kategori Lazada ke channel_categories (prasyarat mapping kategori). */
     public function syncCategories(Request $request, LazadaProductService $productService)
     {
         $validated = $request->validate(['shop_id' => 'required|string']);
@@ -88,9 +85,6 @@ class LazadaSyncApiController extends Controller
         return $this->successResponse(['synced' => $count], "{$count} kategori Lazada disinkronkan.");
     }
 
-    /**
-     * Pre-flight kesiapan listing tanpa mengirim ke marketplace (untuk FE checklist).
-     */
     public function validateListing(Request $request, ChannelListingValidator $validator)
     {
         $validated = $request->validate(['product_id' => 'required|uuid']);
@@ -108,10 +102,6 @@ class LazadaSyncApiController extends Controller
         );
     }
 
-    /**
-     * Sinkronkan spec atribut Lazada per kategori (channel_attributes).
-     * Tanpa category_id → semua kategori yang sudah dipetakan.
-     */
     public function syncCategoryAttributes(Request $request, LazadaProductService $productService)
     {
         $validated = $request->validate([

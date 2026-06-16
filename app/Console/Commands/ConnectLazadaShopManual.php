@@ -6,11 +6,6 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Models\ChannelShop;
 
-/**
- * Daftarkan toko Lazada secara manual memakai access_token yang didapat dari
- * App Console (authorization tool) — untuk menguji integrasi tanpa harus
- * menembus alur OAuth browser (mis. akun test pinjaman).
- */
 class ConnectLazadaShopManual extends Command
 {
     protected $signature = 'lazada:connect-manual

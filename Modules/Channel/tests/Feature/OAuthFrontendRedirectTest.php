@@ -9,11 +9,6 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Support\OAuthFlow;
 use Tests\TestCase;
 
-/**
- * Memastikan callback OAuth Lazada & TikTok REDIRECT ke frontend
- * (halaman /dashboard/integrasi-channel) saat FRONTEND_URL diset,
- * dan fallback ke JSON saat tidak diset.
- */
 class OAuthFrontendRedirectTest extends TestCase
 {
     use RefreshDatabase;

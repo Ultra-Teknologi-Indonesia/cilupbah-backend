@@ -64,17 +64,14 @@ class ProductReviewStatusTest extends TestCase
     {
         $handler = app(WebhookProductHandler::class);
 
-        // 2 = pending review
         $m = $this->makeMapping('SHOP-A', 'EXT-A');
         $handler->handleProductStatusChange(['product_id' => 'EXT-A', 'status' => '2'], 'SHOP-A');
         $this->assertSame('in_review', $m->fresh()->sync_status);
 
-        // 4 = live (disetujui)
         $handler->handleProductStatusChange(['product_id' => 'EXT-A', 'status' => '4'], 'SHOP-A');
         $this->assertSame('synced', $m->fresh()->sync_status);
         $this->assertNotNull($m->fresh()->reviewed_at);
 
-        // 3 = ditolak + alasan
         $handler->handleProductStatusChange(
             ['product_id' => 'EXT-A', 'status' => '3', 'suspend_reason' => 'Konten dilarang'],
             'SHOP-A'
@@ -83,7 +80,6 @@ class ProductReviewStatusTest extends TestCase
         $this->assertSame('rejected', $rejected->sync_status);
         $this->assertSame('Konten dilarang', $rejected->error_message);
 
-        // 5 = deactivated
         $handler->handleProductStatusChange(['product_id' => 'EXT-A', 'status' => '5'], 'SHOP-A');
         $this->assertSame('deactivated', $m->fresh()->sync_status);
     }

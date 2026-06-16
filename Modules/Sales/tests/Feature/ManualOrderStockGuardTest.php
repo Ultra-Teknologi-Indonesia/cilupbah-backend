@@ -8,10 +8,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
-/**
- * F1.2 / F1.3 / F1.4 — manual order creation must surface stock/location
- * problems as 422, never as a raw 500.
- */
 class ManualOrderStockGuardTest extends TestCase
 {
     use RefreshDatabase;
@@ -101,7 +97,7 @@ class ManualOrderStockGuardTest extends TestCase
 
     public function test_missing_inventory_row_returns_422(): void
     {
-        $this->insertLocation(); // location exists, but no inventory row for the variant
+        $this->insertLocation(); 
 
         $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/sales', $this->payload('MAN-2', 1))
@@ -112,7 +108,7 @@ class ManualOrderStockGuardTest extends TestCase
 
     public function test_no_location_configured_returns_422(): void
     {
-        // No locations table rows at all.
+
         $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/sales', $this->payload('MAN-3', 1))
             ->assertStatus(422);

@@ -31,7 +31,6 @@ class LazadaPushProductTest extends TestCase
         $channel = Channel::create(['code' => 'lazada', 'name' => 'Lazada']);
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Cat']);
 
-        // Kategori sudah dipetakan ke leaf Lazada (tanpa atribut wajib) → lolos pre-flight.
         $channelCategoryId = \Ramsey\Uuid\Uuid::uuid7()->toString();
         DB::table('channel_categories')->insert([
             'id' => $channelCategoryId,

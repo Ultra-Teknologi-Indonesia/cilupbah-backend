@@ -24,7 +24,6 @@ use Modules\Product\Http\Controllers\ProductMasterDataController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
-    // Master data dropdown untuk form Buat Produk (6 endpoint).
     Route::get('products/master-data/sales-taxes', [ProductMasterDataController::class, 'salesTaxes']);
     Route::get('products/master-data/purchase-taxes', [ProductMasterDataController::class, 'purchaseTaxes']);
     Route::get('products/master-data/sales-accounts', [ProductMasterDataController::class, 'salesAccounts']);
@@ -109,7 +108,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::apiResource('categories', CategoryController::class)->names('category')->where(['category' => '[0-9]+']);
     Route::post('categories/{category}/map-channel', [CategoryController::class, 'mapChannel'])->whereNumber('category');
-    // Fase B: atribut form (spesifikasi + jenis varian) untuk kategori Level-2.
+
     Route::get('categories/{category}/form-attributes', [\Modules\Product\Http\Controllers\CategoryFormAttributeController::class, 'show'])->whereNumber('category')->name('category.form-attributes');
 
     Route::apiResource('brands', BrandController::class)->names('brand')->where(['brand' => '[0-9]+']);

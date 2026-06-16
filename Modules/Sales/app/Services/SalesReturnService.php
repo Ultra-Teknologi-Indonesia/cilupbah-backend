@@ -75,8 +75,7 @@ class SalesReturnService
                 try {
                     $this->accept($return->id, ['processed_by' => $data['created_by']]);
                 } catch (\Throwable $e) {
-                    // The return is created but stays PENDING; alert an admin so it
-                    // is not silently left unaccepted (no stock received).
+
                     Log::warning("Auto-accept retur {$return->return_number} gagal: {$e->getMessage()}");
 
                     AdminAlertJob::dispatch(
@@ -155,12 +154,9 @@ class SalesReturnService
             }
 
             if ($return->status === SalesReturn::STATUS_COMPLETED) {
-                return $this->getById($id); // idempotent
+                return $this->getById($id); 
             }
 
-            // A return must be accepted (stock received into the warehouse) before
-            // it can be completed — completing straight from PENDING would mark it
-            // done without ever restocking.
             if ($return->status !== SalesReturn::STATUS_ACCEPTED) {
                 throw new InvalidReturnStateException("Return berstatus {$return->status}, harus di-accept dulu sebelum complete.");
             }

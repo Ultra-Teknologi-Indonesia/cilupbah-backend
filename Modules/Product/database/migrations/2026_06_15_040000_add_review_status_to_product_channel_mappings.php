@@ -9,8 +9,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Longgarkan enum sync_status agar mendukung status review marketplace
-        // (in_review = menunggu approval, rejected = ditolak marketplace).
+
         DB::statement('ALTER TABLE product_channel_mappings DROP CONSTRAINT IF EXISTS product_channel_mappings_sync_status_check');
 
         Schema::table('product_channel_mappings', function (Blueprint $table) {

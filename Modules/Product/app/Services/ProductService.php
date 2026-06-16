@@ -10,6 +10,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ChannelListingValidator;
 use Modules\Finance\Support\AccountMappingKey;
 use Modules\Inventory\Models\Inventory;
 use Modules\Product\Models\Product;
@@ -55,10 +56,6 @@ class ProductService
         ];
     }
 
-    /**
-     * Akun default produk: pakai yang dikirim, atau fallback ke akun default
-     * organisasi (account_mappings). Kembalikan null bila dua-duanya kosong.
-     */
     private function resolveAccountId(?string $given, string $mappingKey): ?string
     {
         if (! empty($given)) {
@@ -68,13 +65,11 @@ class ProductService
         return DB::table('account_mappings')->where('key', $mappingKey)->value('account_id');
     }
 
-    /** Ambil rate pajak (cache ke product_variants.tax_rate). */
     private function taxRate($taxId): float
     {
         return (float) (DB::table('taxes')->where('id', $taxId)->value('rate') ?? 0);
     }
 
-    /** Sisipkan baris pivot toko "stok tak terbatas" untuk satu varian. */
     private function syncUnlimitedShops(string $variantId, array $shopIds): void
     {
         $rows = [];
@@ -170,6 +165,11 @@ class ProductService
 
     public function updateProduct(string $productId, array $data)
     {
+        if (array_key_exists('specifications', $data) || array_key_exists('variation_types', $data)) {
+            $categoryId = $data['category_id'] ?? DB::table('products')->where('id', $productId)->value('category_id');
+            $this->assertCategoryAttributes($categoryId ? (int) $categoryId : null, $data, array_key_exists('specifications', $data));
+        }
+
         $result = DB::transaction(function () use ($productId, $data) {
             $productData = Arr::only($data, [
                 'name', 'sku', 'description', 'category_id', 'brand_id', 'search_keyword',
@@ -179,7 +179,6 @@ class ProductService
                 'is_stored', 'is_sold', 'is_purchased', 'purchase_lead_time',
             ]);
 
-            // Akun hanya di-update bila field-nya memang dikirim (boleh null = lepas akun).
             foreach ([
                 'sales_account_id', 'sales_return_account_id',
                 'inventory_account_id', 'cogs_account_id',
@@ -209,7 +208,7 @@ class ProductService
             }
 
             if (array_key_exists('variation_types', $data)) {
-                // Edit terstruktur (Fase D): immutability jenis/opsi + ekspansi kombinasi.
+
                 $this->syncVariantStructure($productId, $data);
             } elseif (!empty($data['variants'])) {
                 foreach ($data['variants'] as $variant) {
@@ -317,7 +316,6 @@ class ProductService
             return $productId;
         });
 
-        // Fase E: setelah transaksi commit, propagasi perubahan varian ke channel terhubung.
         if (array_key_exists('variation_types', $data)) {
             $this->propagateVariantChangeToChannels($productId);
         }
@@ -325,11 +323,6 @@ class ProductService
         return $result;
     }
 
-    /**
-     * Edit varian terstruktur (Fase D): immutability jenis/nilai-opsi + ekspansi kombinasi.
-     * Jenis/nilai lama tak boleh dihapus; tambah nilai → regenerasi cartesian. Varian lama yang
-     * bukan kombinasi sah → soft-deprecate (is_active=false, superseded_at), TIDAK dihapus.
-     */
     private function syncVariantStructure(string $productId, array $data): void
     {
         $types = $data['variation_types'] ?? [];
@@ -347,8 +340,8 @@ class ProductService
             ->whereIn('variant_id', $activeVariants->pluck('id')->all() ?: ['00000000-0000-0000-0000-000000000000'])
             ->get(['variant_id', 'attribute_id', 'value']);
 
-        $setByVariant = [];   // [variant_id => [attrId => value]]
-        $existingValues = []; // [attrId => [lowerVal => origVal]]
+        $setByVariant = [];   
+        $existingValues = []; 
         foreach ($optRows as $o) {
             $setByVariant[$o->variant_id][(int) $o->attribute_id] = (string) $o->value;
             $existingValues[(int) $o->attribute_id][mb_strtolower((string) $o->value)] = (string) $o->value;
@@ -362,7 +355,6 @@ class ProductService
             }
         }
 
-        // Immutability: jenis & nilai-opsi lama tak boleh hilang.
         foreach ($existingTypes as $et) {
             if (! in_array($et, $payloadTypes, true)) {
                 throw new DomainException('Jenis varian yang sudah tersimpan tidak boleh dihapus.');
@@ -411,7 +403,6 @@ class ProductService
                 continue;
             }
 
-            // Kombinasi baru → harga warisan dari leluhur (default), stok 0, mapping fresh.
             $price = $v['sell_price'] ?? $this->ancestorPrice($opts, $activeVariants, $setByVariant);
             $variantId = \Ramsey\Uuid\Uuid::uuid7()->toString();
             DB::table('product_variants')->insert(array_merge(
@@ -437,7 +428,6 @@ class ProductService
             }
         }
 
-        // Soft-deprecate varian aktif yang bukan kombinasi sah (JANGAN hapus).
         foreach ($existingByKey as $key => $av) {
             if (! isset($desired[$key])) {
                 DB::table('product_variants')->where('id', $av->id)
@@ -445,7 +435,6 @@ class ProductService
             }
         }
 
-        // Tambah jenis varian baru (tak pernah hapus).
         foreach ($types as $t) {
             $attrId = (int) $t['attribute_id'];
             $exists = DB::table('product_variation_types')
@@ -462,7 +451,6 @@ class ProductService
         }
     }
 
-    /** Field varian yang boleh di-update/insert (selain id/product_id/options). */
     private function variantUpdatableFields(array $v): array
     {
         $f = Arr::only($v, [
@@ -482,7 +470,6 @@ class ProductService
         return $f;
     }
 
-    /** Harga default kombinasi baru = harga varian leluhur (option-set ⊂ kombinasi). */
     private function ancestorPrice(array $opts, $activeVariants, array $setByVariant): ?float
     {
         $combo = [];
@@ -501,7 +488,6 @@ class ProductService
         return null;
     }
 
-    /** SKU saran (fallback bila FE tak kirim): base + kode opsi ter-sanitasi, dijamin unik. */
     private function generateVariantSku(string $productId, array $opts): string
     {
         $base = DB::table('products')->where('id', $productId)->value('sku') ?: ('PRD-' . substr($productId, 0, 8));
@@ -520,7 +506,6 @@ class ProductService
         return $candidate;
     }
 
-    /** Spesifikasi: replace-all (tidak diatur immutability). */
     private function syncSpecifications(string $productId, array $specs): void
     {
         DB::table('product_specifications')->where('product_id', $productId)->delete();
@@ -536,11 +521,6 @@ class ProductService
         ], $specs));
     }
 
-    /**
-     * Fase E — propagasi perubahan struktur varian ke marketplace: update listing di tiap
-     * channel terhubung (varian supersede otomatis hilang dari payload; SKU baru masuk review).
-     * Dipanggil SETELAH transaksi commit; skip mapping yang masih 'pending'. No-500.
-     */
     private function propagateVariantChangeToChannels(string $productId): void
     {
         $mappings = DB::table('product_channel_mappings')
@@ -553,13 +533,6 @@ class ProductService
         }
     }
 
-    /**
-     * Invariant varian (selaras FormRequest + unique DB):
-     *  - maks. 2 jenis varian per produk;
-     *  - tiap jenis (attribute_id) unik;
-     *  - opsi varian hanya boleh memakai jenis yang dideklarasikan di variation_types;
-     *  - kombinasi opsi antar varian tidak boleh duplikat.
-     */
     private function assertVariationConstraints(array $data): void
     {
         $types = $data['variation_types'] ?? [];
@@ -585,7 +558,6 @@ class ProductService
                 }
             }
 
-            // Kunci kombinasi distabilkan dengan mengurutkan berdasarkan attribute_id.
             $combo = collect($options)
                 ->sortBy('attribute_id')
                 ->map(static fn ($o) => $o['attribute_id'] . ':' . $o['value'])
@@ -598,9 +570,64 @@ class ProductService
         }
     }
 
+    private function assertCategoryAttributes(?int $categoryId, array $data, bool $enforceRequiredSpecs): void
+    {
+        if (! $categoryId) {
+            return;
+        }
+
+        $catAttrs = DB::table('category_attributes as cga')
+            ->join('attributes as a', 'a.id', '=', 'cga.attribute_id')
+            ->where('cga.category_id', $categoryId)
+            ->get(['cga.attribute_id', 'cga.is_required', 'a.type', 'a.name'])
+            ->keyBy('attribute_id');
+
+        if ($catAttrs->isEmpty()) {
+            return; 
+        }
+
+        foreach ($data['variation_types'] ?? [] as $vt) {
+            $ca = $catAttrs->get((int) $vt['attribute_id']);
+            if (! $ca || $ca->type !== 'sales') {
+                throw new DomainException('Jenis varian tidak berlaku untuk kategori ini.');
+            }
+        }
+
+        $filledSpecs = [];
+        foreach ($data['specifications'] ?? [] as $s) {
+            $ca = $catAttrs->get((int) $s['attribute_id']);
+            if (! $ca || $ca->type !== 'spec') {
+                throw new DomainException('Spesifikasi tidak berlaku untuk kategori ini.');
+            }
+            $hasValue = ! empty($s['attribute_option_id'])
+                || (isset($s['text_value']) && $s['text_value'] !== '' && $s['text_value'] !== null);
+            if ($hasValue) {
+                $filledSpecs[(int) $s['attribute_id']] = true;
+            }
+        }
+
+        if (! $enforceRequiredSpecs) {
+            return;
+        }
+
+        $system = array_map('mb_strtolower', ChannelListingValidator::SYSTEM_ATTRIBUTES);
+        foreach ($catAttrs as $attrId => $ca) {
+            if ($ca->type !== 'spec' || ! $ca->is_required) {
+                continue;
+            }
+            if (in_array(mb_strtolower((string) $ca->name), $system, true)) {
+                continue;
+            }
+            if (! isset($filledSpecs[(int) $attrId])) {
+                throw new DomainException("Spesifikasi wajib '{$ca->name}' belum diisi.");
+            }
+        }
+    }
+
     public function createProduct(array $data)
     {
         $this->assertVariationConstraints($data);
+        $this->assertCategoryAttributes($data['category_id'] ?? null, $data, true);
 
         return DB::transaction(function () use ($data) {
             $productData = Arr::only($data, [
@@ -612,11 +639,8 @@ class ProductService
                 'purchase_lead_time', 'package_contents',
             ]);
 
-            // Tanpa review internal: produk langsung Master (default).
-            // "Simpan draf" kirim status 'download'.
             $productData['status'] = $data['status'] ?? Product::STATUS_MASTER;
 
-            // Akun: pakai input atau fallback ke mapping default organisasi.
             $productData['sales_account_id'] = $this->resolveAccountId($data['sales_account_id'] ?? null, AccountMappingKey::SALES_REVENUE);
             $productData['sales_return_account_id'] = $this->resolveAccountId($data['sales_return_account_id'] ?? null, AccountMappingKey::SALES_RETURN);
             $productData['inventory_account_id'] = $this->resolveAccountId($data['inventory_account_id'] ?? null, AccountMappingKey::INVENTORY);
@@ -671,7 +695,6 @@ class ProductService
                         'sales_tax_id', 'purchase_tax_id', 'min_stock', 'safe_stock',
                     ]);
 
-                    // Cache rate pajak penjualan ke tax_rate (dibaca MasterItemResource).
                     if (!empty($variant['sales_tax_id'])) {
                         $variantData['tax_rate'] = $this->taxRate($variant['sales_tax_id']);
                     }

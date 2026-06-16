@@ -110,7 +110,7 @@ class TikTokStoreApiTest extends TestCase
             ->assertStatus(200);
 
         $shop->refresh();
-        // Soft disconnect (decoupled dari is_active): ditandai diputus + token dihapus.
+
         $this->assertNotNull($shop->disconnected_at);
         $this->assertNull($shop->access_token);
         $this->assertNull($shop->refresh_token);

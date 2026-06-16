@@ -7,10 +7,6 @@ use App\Traits\ApiResponse;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
-/**
- * Fase B — atribut form untuk satu kategori Level-2 (paling spesifik):
- * spesifikasi (type=spec) + jenis varian (type=sales), lengkap status per channel.
- */
 class CategoryFormAttributeController extends Controller
 {
     use ApiResponse;
@@ -22,7 +18,6 @@ class CategoryFormAttributeController extends Controller
             return $this->errorResponse('Kategori tidak ditemukan', 404);
         }
 
-        // Hanya kategori paling spesifik (tanpa sub-kategori) yang punya atribut form.
         if (DB::table('categories')->where('parent_id', $categoryId)->exists()) {
             return $this->errorResponse('Pilih kategori paling spesifik (kategori tanpa sub-kategori).', 422);
         }
@@ -39,7 +34,6 @@ class CategoryFormAttributeController extends Controller
             ->get(['id', 'attribute_id', 'value'])
             ->groupBy('attribute_id');
 
-        // Status per channel: mapped + wajib di channel itu.
         $channelStatus = DB::table('attribute_channel_mappings as m')
             ->join('channel_attributes as ca', 'ca.id', '=', 'm.channel_attribute_id')
             ->join('channel_categories as cc', 'cc.id', '=', 'ca.channel_category_id')

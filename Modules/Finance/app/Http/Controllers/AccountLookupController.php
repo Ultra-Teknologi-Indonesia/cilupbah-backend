@@ -27,7 +27,7 @@ class AccountLookupController extends Controller
     )]
     public function all(Request $request, AccountRepository $accounts): JsonResponse
     {
-        // Opsional: ?type=revenue|asset|expense|liability|equity untuk dropdown akun spesifik.
+
         $type = $request->query('type');
 
         $data = $accounts->getActiveLookup($type)->map(fn (Account $a) => [

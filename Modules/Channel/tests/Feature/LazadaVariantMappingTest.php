@@ -39,7 +39,6 @@ class LazadaVariantMappingTest extends TestCase
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        // Warna = atribut tertutup 'color_family' (Merah → external RED-001).
         $colorAttrId = Uuid::uuid7()->toString();
         DB::table('channel_attributes')->insert([
             'id' => $colorAttrId, 'channel_category_id' => $channelCategoryId, 'external_id' => 'color_family',
@@ -55,7 +54,6 @@ class LazadaVariantMappingTest extends TestCase
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        // Ukuran = atribut bebas 'size' (tanpa opsi → pass-through).
         $sizeAttrId = Uuid::uuid7()->toString();
         DB::table('channel_attributes')->insert([
             'id' => $sizeAttrId, 'channel_category_id' => $channelCategoryId, 'external_id' => 'size',
@@ -88,7 +86,6 @@ class LazadaVariantMappingTest extends TestCase
             ['attribute_id' => $this->ukuran->id, 'value' => 'L'],
         ]);
 
-        // Warna 'Merah' → external_id 'RED-001'; Ukuran 'L' bebas → apa adanya.
         $this->assertSame('RED-001', $saleProp['color_family']);
         $this->assertSame('L', $saleProp['size']);
     }
@@ -101,7 +98,7 @@ class LazadaVariantMappingTest extends TestCase
 
     public function test_unmapped_closed_value_falls_back_to_raw(): void
     {
-        // 'Hijau' bukan opsi → fallback nilai mentah (ChannelListingValidator menangkapnya).
+
         $saleProp = $this->mapWith([['attribute_id' => $this->warna->id, 'value' => 'Hijau']]);
         $this->assertSame('Hijau', $saleProp['color_family']);
     }

@@ -27,7 +27,7 @@ class SalesPaymentService
     public function create(array $data): SalesPayment
     {
         return DB::transaction(function () use ($data) {
-            // Lock the invoice first so the balance check and the write are atomic.
+
             $invoice = SalesInvoice::lockForUpdate()->findOrFail($data['sales_invoice_id']);
 
             $remaining = (float) $invoice->total_amount - (float) $invoice->paid_amount;
@@ -62,11 +62,6 @@ class SalesPaymentService
         });
     }
 
-    /**
-     * Derive invoice status from the actual paid amount so it stays consistent
-     * across both payment creation and deletion. Never overrides a CANCELLED
-     * invoice.
-     */
     private function resolveInvoiceStatus(SalesInvoice $invoice): string
     {
         if ($invoice->status === SalesInvoice::STATUS_CANCELLED) {

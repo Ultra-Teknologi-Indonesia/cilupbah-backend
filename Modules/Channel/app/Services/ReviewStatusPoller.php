@@ -6,10 +6,6 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Product\Models\ProductChannelMapping;
 
-/**
- * Fallback bila webhook terlewat: tarik status listing dari marketplace dan
- * sinkronkan ke product_channel_mappings (tersimpan di DB).
- */
 class ReviewStatusPoller
 {
     public function __construct(
@@ -17,7 +13,6 @@ class ReviewStatusPoller
         protected LazadaProductService $lazada,
     ) {}
 
-    /** @return array{shops:int, checked:int, updated:int} */
     public function pollAll(): array
     {
         $summary = ['shops' => 0, 'checked' => 0, 'updated' => 0];
@@ -35,7 +30,6 @@ class ReviewStatusPoller
         return $summary;
     }
 
-    /** @return array{checked:int, updated:int} */
     public function pollShop(ChannelShop $shop): array
     {
         $shop->loadMissing('channel');

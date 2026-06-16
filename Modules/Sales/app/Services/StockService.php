@@ -19,15 +19,6 @@ class StockService
         protected InventoryRepository $inventoryRepository,
     ) {}
 
-    /**
-     * Reserve stock for an order line.
-     *
-     * @param bool $enforce When true (manual orders) availability is enforced and
-     *                      missing/insufficient stock raises InsufficientStockException (422).
-     *                      When false (marketplace orders already committed at the channel)
-     *                      the reservation is recorded regardless and only logged, so the
-     *                      webhook never hard-fails on an out-of-sync stock count.
-     */
     public function reserve(string $sku, string $itemId, string $locationId, int $qty, string $transactionNumber, bool $enforce = true): void
     {
         $this->withStockLock($itemId, $locationId, function () use ($sku, $itemId, $locationId, $qty, $transactionNumber, $enforce) {
@@ -37,7 +28,7 @@ class StockService
                     : $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
 
                 if (!$inventory) {
-                    // Manual flow: no inventory row means nothing is available.
+
                     throw new InsufficientStockException($sku, 0, $qty);
                 }
 

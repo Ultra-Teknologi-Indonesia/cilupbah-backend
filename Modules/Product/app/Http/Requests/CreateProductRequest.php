@@ -16,9 +16,9 @@ class CreateProductRequest extends FormRequest
     public function rules(): array
     {
         return [
-            // ── Detail produk ─────────────────────────────────────────────
+
             'name' => 'required|string|max:255',
-            // SKU kanonik ada di varian; sku produk opsional (boleh mirror varian).
+
             'sku' => 'nullable|string|max:50|unique:products,sku',
             'category_id' => 'required|bail|integer|exists:categories,id',
             'brand_id' => 'nullable|bail|integer|exists:brands,id',
@@ -27,11 +27,10 @@ class CreateProductRequest extends FormRequest
             'is_consignment' => 'nullable|boolean',
             'order_type' => ['nullable', Rule::in(['REGULER', 'PREORDER', 'COD'])],
             'indent_days' => 'nullable|integer|min:0|required_if:order_type,PREORDER',
-            // Tanpa review internal: draf (download) atau langsung master.
+
             'status' => ['nullable', Rule::in(['download', 'master'])],
             'is_active' => 'nullable|boolean',
 
-            // ── Informasi penjualan & pembelian (header) ──────────────────
             'is_stored' => 'nullable|boolean',
             'is_sold' => 'nullable|boolean',
             'is_purchased' => 'nullable|boolean',
@@ -41,14 +40,12 @@ class CreateProductRequest extends FormRequest
             'inventory_account_id' => ['nullable', 'uuid', Rule::exists('accounts', 'id')->where('account_type', 'asset')],
             'cogs_account_id' => ['nullable', 'uuid', Rule::exists('accounts', 'id')->where('account_type', 'expense')],
 
-            // ── Informasi pengiriman ──────────────────────────────────────
             'weight' => 'nullable|numeric|min:0',
             'length' => 'nullable|numeric|min:0',
             'width' => 'nullable|numeric|min:0',
             'height' => 'nullable|numeric|min:0',
             'package_contents' => 'nullable|string|max:2000',
 
-            // ── Media (produk) ────────────────────────────────────────────
             'media' => 'nullable|array|max:10',
             'media.*.media_uuid' => 'required_without:media.*.url|bail|uuid|exists:media,uuid',
             'media.*.url' => 'required_without:media.*.media_uuid|string',
@@ -56,18 +53,15 @@ class CreateProductRequest extends FormRequest
             'media.*.is_primary' => 'nullable|boolean',
             'media.*.sort_order' => 'nullable|integer|min:0',
 
-            // ── Spesifikasi & variasi ─────────────────────────────────────
             'specifications' => 'nullable|array',
             'specifications.*.attribute_id' => 'required|bail|integer|exists:attributes,id',
             'specifications.*.attribute_option_id' => 'nullable|bail|integer|exists:attribute_options,id',
             'specifications.*.text_value' => 'nullable|string',
 
-            // Maks. 2 jenis varian per produk; tiap jenis (attribute_id) unik.
             'variation_types' => 'nullable|array|max:2',
             'variation_types.*.attribute_id' => 'required|bail|integer|distinct|exists:attributes,id',
             'variation_types.*.sort_order' => 'nullable|integer|min:0',
 
-            // ── Varian (produk satuan = 1 varian; variasi = banyak) ───────
             'variants' => 'required|array|min:1',
             'variants.*.sku' => 'required|string|max:50|distinct:ignore_case|unique:product_variants,sku',
             'variants.*.barcode' => 'nullable|string|max:100|distinct:ignore_case|unique:product_variants,barcode',
@@ -107,7 +101,7 @@ class CreateProductRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $v) {
-            // Batas stok aman tidak boleh lebih kecil dari batas stok menipis.
+
             foreach ((array) $this->input('variants', []) as $i => $variant) {
                 $min = $variant['min_stock'] ?? null;
                 $safe = $variant['safe_stock'] ?? null;

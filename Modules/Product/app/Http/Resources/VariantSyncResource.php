@@ -5,12 +5,6 @@ namespace Modules\Product\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/**
- * Data SKU varian tersinkron per channel (dipakai bersama oleh
- * ProductMonitorResource & ShopProductMonitorResource).
- *
- * @property mixed $resource Modul ProductVariantChannelMapping
- */
 class VariantSyncResource extends JsonResource
 {
     public function toArray(Request $request): array

@@ -6,10 +6,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Channel\Models\Channel;
 use Tests\TestCase;
 
-/**
- * Verifikasi "message receiving service" Lazada/TikTok: probe callback (tanpa
- * code & state) HARUS balas 200 — bukan redirect — agar verifikasi lulus.
- */
 class CallbackVerificationTest extends TestCase
 {
     use RefreshDatabase;
@@ -17,7 +13,7 @@ class CallbackVerificationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        // FRONTEND_URL diset → buktikan probe TIDAK ikut ter-redirect.
+
         config(['app.frontend_url' => 'https://app.ultra-fit.id']);
         Channel::create(['code' => 'lazada', 'name' => 'Lazada']);
         Channel::create(['code' => 'tiktok', 'name' => 'TikTok']);
@@ -48,7 +44,7 @@ class CallbackVerificationTest extends TestCase
 
     public function test_real_oauth_with_bad_state_still_redirects(): void
     {
-        // Ada code & state → alur OAuth nyata → tetap redirect (bukan probe).
+
         $res = $this->get('/api/v1/lazada/callback?code=x&state=salah');
 
         $res->assertRedirect();

@@ -37,10 +37,6 @@ class CategorySyncEdgeCaseTest extends TestCase
         ]);
     }
 
-    /**
-     * Satu fake dengan closure penghitung — sync ke-N memakai tree ke-N.
-     * (Http::fake berulang = first-match-wins, jadi tak bisa di-override per panggilan.)
-     */
     private function fakeTreeSequence(array $trees): void
     {
         $i = 0;
@@ -66,7 +62,6 @@ class CategorySyncEdgeCaseTest extends TestCase
         $this->sync();
         $this->assertDatabaseCount('channel_categories', 2);
 
-        // Petakan kategori internal → CAT-B.
         $catB = DB::table('channel_categories')->where('external_id', 'CAT-B')->first();
         $internal = Category::create(['name' => 'Internal']);
         DB::table('category_channel_mappings')->insert([
@@ -74,15 +69,12 @@ class CategorySyncEdgeCaseTest extends TestCase
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        // Re-sync TANPA CAT-B.
         $this->sync();
 
-        // Tidak dihapus; CAT-B deprecated, CAT-A aktif.
         $this->assertDatabaseCount('channel_categories', 2);
         $this->assertNotNull(DB::table('channel_categories')->where('external_id', 'CAT-B')->value('deprecated_at'));
         $this->assertNull(DB::table('channel_categories')->where('external_id', 'CAT-A')->value('deprecated_at'));
 
-        // Mapping ke CAT-B jadi stale.
         $this->assertTrue((bool) DB::table('category_channel_mappings')->where('channel_category_id', $catB->id)->value('is_stale'));
     }
 
@@ -101,11 +93,9 @@ class CategorySyncEdgeCaseTest extends TestCase
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        // Hilang → deprecated.
         $this->sync();
         $this->assertNotNull(DB::table('channel_categories')->where('external_id', 'CAT-B')->value('deprecated_at'));
 
-        // Muncul lagi → aktif kembali, mapping segar.
         $this->sync();
         $this->assertNull(DB::table('channel_categories')->where('external_id', 'CAT-B')->value('deprecated_at'));
         $this->assertFalse((bool) DB::table('category_channel_mappings')->where('channel_category_id', $catB->id)->value('is_stale'));

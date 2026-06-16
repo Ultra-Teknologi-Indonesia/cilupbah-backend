@@ -25,7 +25,7 @@ class ProductVariantChannelPropagationTest extends TestCase
             'name' => 'P', 'category_id' => null,
             'variants' => [
                 ['sku' => 'IP17-BLUE-256', 'sell_price' => 100, 'is_active' => true],
-                ['sku' => 'IP17-BLUE', 'sell_price' => 100, 'is_active' => false], // di-supersede
+                ['sku' => 'IP17-BLUE', 'sell_price' => 100, 'is_active' => false], 
             ],
         ]);
 
@@ -49,7 +49,6 @@ class ProductVariantChannelPropagationTest extends TestCase
             'access_token' => 'tok', 'is_active' => true,
         ]);
 
-        // Buat produk 1 jenis (Warna).
         $id = $this->postJson('/api/v1/products', [
             'name' => 'iPhone 17', 'sku' => 'IP17', 'category_id' => $category->id,
             'variation_types' => [['attribute_id' => $warna->id, 'sort_order' => 0]],
@@ -59,7 +58,6 @@ class ProductVariantChannelPropagationTest extends TestCase
             ],
         ])->assertCreated()->json('data.product_id');
 
-        // Listing channel sudah ada (synced).
         DB::table('product_channel_mappings')->insert([
             'id' => Uuid::uuid7()->toString(),
             'product_id' => $id, 'channel_shop_id' => $shop->id,
@@ -69,7 +67,6 @@ class ProductVariantChannelPropagationTest extends TestCase
 
         Queue::fake();
 
-        // Edit: tambah jenis Ukuran → ekspansi.
         $this->putJson("/api/v1/products/{$id}", [
             'variation_types' => [['attribute_id' => $warna->id, 'sort_order' => 0], ['attribute_id' => $ukuran->id, 'sort_order' => 1]],
             'variants' => [

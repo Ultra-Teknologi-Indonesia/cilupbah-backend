@@ -13,10 +13,6 @@ use Modules\Sales\Services\SalesReturnService;
 use Modules\Sales\Services\SalesReturnSettingService;
 use Tests\TestCase;
 
-/**
- * F3.4 — when auto-accept is enabled but accepting the return fails, the return
- * stays PENDING and an AdminAlertJob is dispatched so it is not silently lost.
- */
 class SalesReturnAutoAcceptAlertTest extends TestCase
 {
     use RefreshDatabase;
@@ -57,7 +53,6 @@ class SalesReturnAutoAcceptAlertTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        // Auto-accept ON, but the inbound (restock) step blows up.
         $this->mock(SalesReturnSettingService::class, function ($m) {
             $m->shouldReceive('autoAccept')->andReturn(true);
             $m->shouldReceive('restockLocationId')->andReturn(null);

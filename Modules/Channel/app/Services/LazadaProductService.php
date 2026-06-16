@@ -19,10 +19,6 @@ class LazadaProductService
         protected LazadaAuthService $authService,
     ) {}
 
-    /**
-     * Tarik status listing terkini dari Lazada (untuk polling status review).
-     * @return array<string, array{status:string, reason:?string}> keyed by external product id (item_id)
-     */
     public function fetchProductStatuses(string $shopId): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);
@@ -65,10 +61,6 @@ class LazadaProductService
         return $statuses;
     }
 
-    /**
-     * Tarik pohon kategori Lazada → upsert ke channel_categories.
-     * Prasyarat agar PrimaryCategory (pemetaan kategori) bisa di-resolve saat push.
-     */
     public function syncCategoryTree(string $shopId): int
     {
         $shop = $this->shopRepository->findByShopId($shopId);
@@ -126,8 +118,6 @@ class LazadaProductService
 
         $walk(is_array($nodes) ? $nodes : [], '0');
 
-        // Edge case: kategori yang hilang dari response → soft-deprecate (jangan hapus);
-        // yang muncul lagi → aktifkan kembali. Lalu segarkan staleness mapping.
         if (! empty($seen)) {
             DB::table('channel_categories')
                 ->where('channel_id', $channelId)
@@ -147,10 +137,6 @@ class LazadaProductService
         return $count;
     }
 
-    /**
-     * Tandai mapping kategori: is_stale=true bila menunjuk kategori channel yang
-     * sudah deprecated; selain itu is_stale=false + last_verified_at=now.
-     */
     protected function refreshMappingStaleness($channelId): void
     {
         $deprecated = DB::table('channel_categories')
@@ -176,14 +162,6 @@ class LazadaProductService
         }
     }
 
-    /**
-     * Tarik spec atribut Lazada untuk satu kategori (leaf) → upsert ke
-     * channel_attributes + channel_attribute_options. Prasyarat pre-flight
-     * validator (memeriksa atribut wajib sebelum push).
-     *
-     * @param  string  $categoryExtId  external_id kategori Lazada (channel_categories.external_id)
-     * @return int Jumlah atribut yang disinkronkan.
-     */
     public function syncCategoryAttributes(string $shopId, string $categoryExtId): int
     {
         $shop = $this->shopRepository->findByShopId($shopId);
@@ -222,7 +200,7 @@ class LazadaProductService
         $count = 0;
 
         foreach ($attributes as $attr) {
-            // Lazada mengidentifikasi atribut via "name" (label = tampilan).
+
             $extId = (string) ($attr['name'] ?? '');
             if ($extId === '') {
                 continue;
@@ -257,7 +235,6 @@ class LazadaProductService
             }
             $count++;
 
-            // Opsi nilai tertutup (untuk value-mapping varian di Fase 4).
             foreach ($attr['options'] ?? [] as $opt) {
                 $optExtId = (string) ($opt['name'] ?? $opt['id'] ?? '');
                 if ($optExtId === '') {
@@ -290,13 +267,6 @@ class LazadaProductService
         return $count;
     }
 
-    /**
-     * Sinkron atribut untuk SEMUA kategori leaf Lazada yang sudah dipetakan
-     * dari kategori internal (category_channel_mappings). Mengembalikan
-     * [external_id => jumlah_atribut].
-     *
-     * @return array<string, int>
-     */
     public function syncAllMappedCategoryAttributes(string $shopId): array
     {
         $channelId = DB::table('channels')->where('code', 'lazada')->value('id');
@@ -318,10 +288,6 @@ class LazadaProductService
         return $result;
     }
 
-    /**
-     * Tarik & sinkron SATU produk Lazada (untuk webhook Product Edited / Shallow Stock).
-     * Mengembalikan true bila berhasil di-upsert.
-     */
     public function pullProductById(string $shopId, string $itemId): bool
     {
         $shop = $this->shopRepository->findByShopId($shopId);

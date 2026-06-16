@@ -37,7 +37,6 @@ class CategoryFormAttributeTest extends TestCase
             ['category_id' => $this->category->id, 'attribute_id' => $warnaId, 'is_required' => false, 'created_at' => now(), 'updated_at' => now()],
         ]);
 
-        // Channel: Brand wajib di Lazada.
         $channel = Channel::create(['code' => 'lazada', 'name' => 'Lazada']);
         $ccId = Uuid::uuid7()->toString();
         DB::table('channel_categories')->insert([
@@ -71,7 +70,7 @@ class CategoryFormAttributeTest extends TestCase
 
     public function test_non_leaf_category_returns_422(): void
     {
-        // Kategori induk (punya sub-kategori) → bukan paling spesifik.
+
         $parent = Category::create(['name' => 'Elektronik']);
         Category::create(['name' => 'Sub', 'parent_id' => $parent->id]);
 

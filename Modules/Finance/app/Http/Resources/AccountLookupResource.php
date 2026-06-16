@@ -5,9 +5,6 @@ namespace Modules\Finance\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/**
- * Bentuk ringkas Account untuk dropdown master data (form Buat Produk).
- */
 class AccountLookupResource extends JsonResource
 {
     public function toArray(Request $request): array

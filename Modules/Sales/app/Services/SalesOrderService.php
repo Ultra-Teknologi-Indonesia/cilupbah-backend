@@ -83,8 +83,7 @@ class SalesOrderService
                 ->get();
 
             foreach ($orders as $order) {
-                // Reconcile from the order's current status so any not-yet-applied
-                // pick step is performed exactly once before shipping.
+
                 $this->reconcileStockTransition($order, $order->status, 'shipped');
                 $order->update(['status' => 'shipped']);
                 SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
@@ -133,11 +132,6 @@ class SalesOrderService
         return ['order_id' => $order->id, 'status' => 'requested'];
     }
 
-    /**
-     * Idempotency key for "this marketplace order has been ingested".
-     * Set after a successful create, cleared whenever the order is cancelled or
-     * deleted, and otherwise expires after IDEMPOTENCY_TTL.
-     */
     private function idempotencyKey(?string $source, string $salesOrderNo): string
     {
         $marketplace = $source ?: 'manual';
@@ -172,7 +166,7 @@ class SalesOrderService
                 return $order;
             });
         } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
-            // Concurrent create or re-submit of an existing salesorder_no.
+
             throw new DuplicateOrderException($marketplace, $marketplaceOrderId);
         }
 
@@ -210,7 +204,7 @@ class SalesOrderService
             $stockMutated = true;
 
             if ($newStatus === 'cancelled') {
-                // Free the idempotency key so the same salesorder_no can be re-created.
+
                 Cache::forget($this->idempotencyKey($order->source, $order->salesorder_no));
             }
 
@@ -387,29 +381,12 @@ class SalesOrderService
         return $newRank > $currentRank ? $newStatus : $currentStatus;
     }
 
-    /**
-     * Reconcile stock for a channel-driven status change.
-     *
-     * Marketplace webhooks can jump several lifecycle steps at once (e.g.
-     * reserved -> packed -> shipped). We walk the rank ladder and apply each
-     * step's stock effect exactly once, so on_hand/reserved stay correct
-     * regardless of which intermediate statuses we actually observed.
-     *
-     * All order stock mutations flow through StockService keyed by
-     * salesorder_no, and the internal status persisted between webhooks is
-     * monotonic (resolveInternalStatus never moves backwards except to
-     * cancelled), so each physical step runs at most once across the lifecycle.
-     */
     private function reconcileStockTransition(SalesOrder $order, ?string $previousStatus, string $finalStatus): bool
     {
         if ($finalStatus === 'cancelled') {
             return $this->releaseStockForStatus($order, $previousStatus);
         }
 
-        // Orders first seen past the reservation point (packed/shipped) are
-        // adopted as-is: we never managed their reservation, so touching stock
-        // now would be wrong. Only a brand-new order that lands on 'reserved'
-        // gets a reservation.
         if ($previousStatus === null) {
             if ($finalStatus === 'reserved') {
                 $this->reserveStockForOrder($order, false);
@@ -434,10 +411,10 @@ class SalesOrderService
 
         for ($rank = $fromRank + 1; $rank <= $toRank; $rank++) {
             match ($rank) {
-                1       => $this->reserveStockForOrder($order, false), // -> reserved
-                2       => $this->pickStockForOrder($order),           // -> picked
-                4       => $this->shipStockForOrder($order),           // -> shipped
-                default => null,                                       // -> packed: no stock effect
+                1       => $this->reserveStockForOrder($order, false), 
+                2       => $this->pickStockForOrder($order),           
+                4       => $this->shipStockForOrder($order),           
+                default => null,                                       
             };
 
             if ($rank !== 3) {
@@ -533,12 +510,6 @@ class SalesOrderService
         $this->releaseStockForStatus($order, $order->status);
     }
 
-    /**
-     * Release held stock based on the order's effective status at the moment of
-     * cancellation. A 'reserved' order only holds a reservation (cancel it),
-     * while 'picked'/'packed' have already left on_hand (restore it). Orders that
-     * never reached reservation, or already shipped, leave stock untouched.
-     */
     private function releaseStockForStatus(SalesOrder $order, ?string $status): bool
     {
         if (! in_array($status, ['reserved', 'picked', 'packed'], true)) {
