@@ -188,7 +188,18 @@ payload SaleProp benar (Warna pakai external_id, Ukuran pass-through).
 
 ---
 
-## FASE 5 — Edge case kategori berubah/hilang (gap Q5) 🟡
+## FASE 5 — Edge case kategori berubah/hilang (gap Q5) ✅ SELESAI
+
+Diimplementasikan: migrasi `channel_categories.deprecated_at` +
+`category_channel_mappings.is_stale/last_verified_at`. `syncCategoryTree`:
+kategori hilang dari response → soft-deprecate (tidak dihapus), muncul lagi →
+diaktifkan kembali; `refreshMappingStaleness` menandai mapping stale/segar.
+`ChannelListingValidator` blokir kategori deprecated (issue `category_deprecated`).
+Inbound `resolveCategoryId` fallback → kategori khusus "Belum Dikategorikan"
+(bukan kategori asli pertama) sebagai surfacing re-kategorisasi.
+Test `CategorySyncEdgeCaseTest` 4/4; Channel 124/124, Product 192/192 hijau.
+
+
 
 **Pekerjaan:**
 1. Migration: tambah `deprecated_at` di `channel_categories`; `is_stale` +

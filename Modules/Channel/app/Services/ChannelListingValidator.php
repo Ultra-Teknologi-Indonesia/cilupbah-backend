@@ -12,6 +12,7 @@ use Modules\Product\Models\Product;
  *
  * Mengembalikan daftar issue terstruktur; kosong = lolos.
  *  - category_unmapped : kategori produk belum dipetakan ke channel
+ *  - category_deprecated: kategori channel sudah tidak berlaku (perlu petakan ulang)
  *  - attribute_unmapped: atribut wajib channel belum dipetakan ke atribut internal
  *  - attribute_missing : atribut wajib belum punya nilai di produk
  *  - value_unmapped    : nilai produk belum punya padanan opsi channel (closed list)
@@ -33,7 +34,7 @@ class ChannelListingValidator
             ->join('channel_categories as c', 'c.id', '=', 'm.channel_category_id')
             ->where('m.category_id', $product->category_id)
             ->where('c.channel_id', $channelId)
-            ->select('c.id', 'c.name')
+            ->select('c.id', 'c.name', 'c.deprecated_at')
             ->first();
 
         if (! $channelCategory) {
@@ -41,6 +42,15 @@ class ChannelListingValidator
                 'category_unmapped',
                 null,
                 "Kategori produk belum dipetakan ke {$channelCode}."
+            )];
+        }
+
+        // Kategori channel sudah tidak berlaku di marketplace → blokir, minta petakan ulang.
+        if ($channelCategory->deprecated_at !== null) {
+            return [$this->issue(
+                'category_deprecated',
+                $channelCategory->name,
+                "Kategori {$channelCode} '{$channelCategory->name}' sudah tidak berlaku — petakan ulang."
             )];
         }
 

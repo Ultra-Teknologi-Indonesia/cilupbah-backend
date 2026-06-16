@@ -85,12 +85,14 @@ class LazadaProductService
         $nodes = $res['data'] ?? [];
 
         $count = 0;
-        $walk = function (array $list, string $parent) use (&$walk, &$count, $channelId) {
+        $seen = [];
+        $walk = function (array $list, string $parent) use (&$walk, &$count, &$seen, $channelId) {
             foreach ($list as $node) {
                 $extId = (string) ($node['category_id'] ?? '');
                 if ($extId === '') {
                     continue;
                 }
+                $seen[] = $extId;
 
                 $values = [
                     'parent_external_id' => $parent,
@@ -124,7 +126,54 @@ class LazadaProductService
 
         $walk(is_array($nodes) ? $nodes : [], '0');
 
+        // Edge case: kategori yang hilang dari response → soft-deprecate (jangan hapus);
+        // yang muncul lagi → aktifkan kembali. Lalu segarkan staleness mapping.
+        if (! empty($seen)) {
+            DB::table('channel_categories')
+                ->where('channel_id', $channelId)
+                ->whereNotIn('external_id', $seen)
+                ->whereNull('deprecated_at')
+                ->update(['deprecated_at' => now(), 'updated_at' => now()]);
+
+            DB::table('channel_categories')
+                ->where('channel_id', $channelId)
+                ->whereIn('external_id', $seen)
+                ->whereNotNull('deprecated_at')
+                ->update(['deprecated_at' => null, 'updated_at' => now()]);
+
+            $this->refreshMappingStaleness($channelId);
+        }
+
         return $count;
+    }
+
+    /**
+     * Tandai mapping kategori: is_stale=true bila menunjuk kategori channel yang
+     * sudah deprecated; selain itu is_stale=false + last_verified_at=now.
+     */
+    protected function refreshMappingStaleness($channelId): void
+    {
+        $deprecated = DB::table('channel_categories')
+            ->where('channel_id', $channelId)
+            ->whereNotNull('deprecated_at')
+            ->pluck('id');
+
+        $active = DB::table('channel_categories')
+            ->where('channel_id', $channelId)
+            ->whereNull('deprecated_at')
+            ->pluck('id');
+
+        if ($deprecated->isNotEmpty()) {
+            DB::table('category_channel_mappings')
+                ->whereIn('channel_category_id', $deprecated)
+                ->update(['is_stale' => true, 'updated_at' => now()]);
+        }
+
+        if ($active->isNotEmpty()) {
+            DB::table('category_channel_mappings')
+                ->whereIn('channel_category_id', $active)
+                ->update(['is_stale' => false, 'last_verified_at' => now(), 'updated_at' => now()]);
+        }
     }
 
     /**
