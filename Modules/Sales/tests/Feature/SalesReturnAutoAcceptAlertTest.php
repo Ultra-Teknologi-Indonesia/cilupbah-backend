@@ -73,7 +73,7 @@ class SalesReturnAutoAcceptAlertTest extends TestCase
         $return = $service->create([
             'location_id' => $locationId,
             'created_by'  => 'tester',
-            'items'       => [['item_id' => $productId, 'qty' => 1]],
+            'items'       => [['item_id' => $variantId, 'qty' => 1]],
         ]);
 
         Bus::assertDispatched(AdminAlertJob::class);

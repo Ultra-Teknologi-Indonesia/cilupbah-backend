@@ -152,11 +152,11 @@ class TikTokOrderService
 
     public function getCancelReasons(): array
     {
-        return [
-            "seller_cancel_reason_out_of_stock" => "Stok habis",
-            "seller_cancel_reason_wrong_price" => "Kesalahan harga",
-            "seller_cancel_paid_reason_address_not_deliver" => "Alamat pembeli tidak terjangkau"
-        ];
+        // Single source of truth lives in MarketplaceCancelReasonService; keep the
+        // legacy {key: label} shape for backward compatibility of this endpoint.
+        return collect(app(MarketplaceCancelReasonService::class)->for(MarketplaceCancelReasonService::TIKTOK))
+            ->pluck('label', 'key')
+            ->all();
     }
 
     public function cancelProduct(string $orderId, string $reason): array

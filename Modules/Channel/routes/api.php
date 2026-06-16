@@ -5,6 +5,9 @@ use Modules\Channel\Http\Controllers\ChannelController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
+    Route::get('marketplace/cancel-reasons', [\Modules\Channel\Http\Controllers\MarketplaceCancelReasonController::class, 'index'])->name('marketplace.cancel-reasons.index');
+    Route::get('marketplace/cancel-reasons/{marketplace}', [\Modules\Channel\Http\Controllers\MarketplaceCancelReasonController::class, 'show'])->name('marketplace.cancel-reasons.show');
+
     Route::get('marketplace/store', [ChannelController::class, 'stores']);
     Route::patch('marketplace/store/{id}', [ChannelController::class, 'updateStore'])->whereUuid('id');
     Route::delete('marketplace/store/{id}', [ChannelController::class, 'disconnectShop'])->whereUuid('id');
@@ -60,6 +63,7 @@ Route::prefix('v1/lazada')->group(function () {
         Route::post('sync/products/push', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'pushProduct'])->name('lazada.sync.products.push');
         Route::post('sync/categories', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'syncCategories'])->name('lazada.sync.categories');
         Route::post('sync/category-attributes', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'syncCategoryAttributes'])->name('lazada.sync.category-attributes');
+        Route::post('listing/validate', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'validateListing'])->name('lazada.listing.validate');
 
         Route::post('sync/pack', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'packOrder'])->name('lazada.sync.pack');
         Route::post('sync/cancel', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'cancelOrder'])->name('lazada.sync.cancel');

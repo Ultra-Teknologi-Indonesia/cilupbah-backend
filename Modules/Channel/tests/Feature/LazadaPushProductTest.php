@@ -28,8 +28,27 @@ class LazadaPushProductTest extends TestCase
             'services.lazada.app_secret' => 's',
             'services.lazada.base_url' => 'https://api.lazada.co.id/rest',
         ]);
-        Channel::create(['code' => 'lazada', 'name' => 'Lazada']);
+        $channel = Channel::create(['code' => 'lazada', 'name' => 'Lazada']);
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Cat']);
+
+        // Kategori sudah dipetakan ke leaf Lazada (tanpa atribut wajib) → lolos pre-flight.
+        $channelCategoryId = \Ramsey\Uuid\Uuid::uuid7()->toString();
+        DB::table('channel_categories')->insert([
+            'id' => $channelCategoryId,
+            'channel_id' => $channel->id,
+            'external_id' => 'CAT-100',
+            'parent_external_id' => '0',
+            'name' => 'Cat Lazada',
+            'is_leaf' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('category_channel_mappings')->insert([
+            'category_id' => 1,
+            'channel_category_id' => $channelCategoryId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     private function makeProductAndShop(): array

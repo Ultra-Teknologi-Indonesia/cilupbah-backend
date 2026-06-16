@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Modules\Channel\Adapters\LazadaAdapter;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Services\ChannelListingValidator;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\LazadaProductService;
 use Modules\Product\Models\Product;
@@ -42,6 +43,12 @@ class LazadaSyncApiController extends Controller
         $product = Product::with(['variants', 'media'])->find($validated['product_id']);
         if (! $product) {
             return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        // Pre-flight: cegah penolakan marketplace untuk hal yang bisa dicek lokal.
+        $issues = app(ChannelListingValidator::class)->validate($product, 'lazada');
+        if (! empty($issues)) {
+            return $this->errorResponse('Produk belum siap di-listing ke Lazada', 422, ['issues' => $issues]);
         }
 
         $result = app(LazadaAdapter::class)->pushProduct($product, $shop);
@@ -79,6 +86,26 @@ class LazadaSyncApiController extends Controller
         }
 
         return $this->successResponse(['synced' => $count], "{$count} kategori Lazada disinkronkan.");
+    }
+
+    /**
+     * Pre-flight kesiapan listing tanpa mengirim ke marketplace (untuk FE checklist).
+     */
+    public function validateListing(Request $request, ChannelListingValidator $validator)
+    {
+        $validated = $request->validate(['product_id' => 'required|uuid']);
+
+        $product = Product::find($validated['product_id']);
+        if (! $product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        $issues = $validator->validate($product, 'lazada');
+
+        return $this->successResponse(
+            ['ready' => empty($issues), 'issues' => $issues],
+            empty($issues) ? 'Produk siap di-listing ke Lazada.' : 'Produk belum siap di-listing.'
+        );
     }
 
     /**

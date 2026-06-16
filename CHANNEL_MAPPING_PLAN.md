@@ -114,7 +114,19 @@ dengan flag `is_required`.
 
 ---
 
-## FASE 3 — Pre-flight `ChannelListingValidator` (gap Q2) 🟠
+## FASE 3 — Pre-flight `ChannelListingValidator` (gap Q2) ✅ SELESAI
+
+Diimplementasikan: `Modules/Channel/app/Services/ChannelListingValidator::validate(Product, channelCode)`
+→ daftar issue terstruktur (`category_unmapped`, `attribute_unmapped`,
+`attribute_missing`, `value_unmapped`); kosong = lolos. Resolusi kategori via
+`category_channel_mappings`, atribut wajib via `channel_attributes`, nilai produk
+dari `product_specifications` + `variant_options`, opsi tertutup via
+`channel_attribute_options`. Diintegrasikan ke `pushProduct` (blokir 422 + issues
+SEBELUM kirim ke Lazada) + endpoint `POST /v1/lazada/listing/validate` (checklist FE).
+Test `ChannelListingValidatorTest` 6/6 + push diperbarui (kategori dipetakan);
+Channel 97/97 hijau.
+
+
 
 **Masalah:** kegagalan baru ketahuan setelah ditolak marketplace. Validasi harus lokal.
 
