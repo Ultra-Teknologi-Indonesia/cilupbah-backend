@@ -12,7 +12,9 @@ use Modules\Product\Http\Requests\UpdateProductRequest;
 use Modules\Product\Http\Resources\ProductPriceResource;
 use Modules\Product\Http\Resources\ProductResource;
 use Modules\Product\Http\Resources\ProductStockResource;
+use Modules\Product\Http\Resources\ProductVariantRowResource;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductVariant;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Product\Services\ProductService;
 use Modules\Product\Services\ProductLifecycleService;
@@ -335,6 +337,59 @@ class ProductController extends Controller
             ['product_id' => $product->id],
             $isUpdate ? 'Bundle produk berhasil diperbarui' : 'Bundle produk berhasil dibuat',
             $isUpdate ? 200 : 201,
+        );
+    }
+
+    #[OA\Get(
+        path: '/api/v1/products/{id}/variants',
+        summary: 'Daftar varian produk (paginasi + search + sort)',
+        tags: ['Products'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'search', in: 'query', required: false, description: 'Cari SKU / nilai opsi', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'sku | sell_price | stock (awali - untuk desc)', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'OK'),
+            new OA\Response(response: 404, description: 'Produk tidak ditemukan'),
+        ]
+    )]
+    public function variants(Request $request, $id): JsonResponse
+    {
+        $product = $this->findProduct($id);
+        if (! $product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        $search = trim((string) $request->query('search', ''));
+        $sort = (string) $request->query('sort', 'sku');
+        $dir = str_starts_with($sort, '-') ? 'desc' : 'asc';
+        $col = ltrim($sort, '-');
+        $perPage = min(max((int) $request->integer('per_page', 20), 1), 200);
+
+        $query = ProductVariant::query()
+            ->where('product_id', $product->id)
+            ->with('options')
+            ->withSum('inventories', 'available');
+
+        if ($search !== '') {
+            $query->where(function ($w) use ($search) {
+                $w->where('sku', 'ilike', "%{$search}%")
+                    ->orWhereHas('options', fn ($o) => $o->where('value', 'ilike', "%{$search}%"));
+            });
+        }
+
+        match ($col) {
+            'sell_price' => $query->orderBy('sell_price', $dir),
+            // NULLS LAST: varian tanpa baris inventory (sum null) tidak melompat ke atas saat desc.
+            'stock' => $query->orderByRaw('inventories_sum_available ' . ($dir === 'desc' ? 'desc' : 'asc') . ' nulls last'),
+            default => $query->orderBy('sku', $dir),
+        };
+
+        return $this->successPaginatedResponse(
+            ProductVariantRowResource::collection($query->paginate($perPage)),
+            'Daftar varian berhasil diambil.'
         );
     }
 
