@@ -59,7 +59,17 @@ class UpdateProductRequest extends FormRequest
             'variation_types.*.attribute_id' => 'required|bail|integer|distinct|exists:attributes,id',
             'variation_types.*.sort_order' => 'nullable|integer|min:0',
 
+            // Spesifikasi (replace-all saat edit).
+            'specifications' => 'sometimes|nullable|array',
+            'specifications.*.attribute_id' => 'required|bail|integer|exists:attributes,id',
+            'specifications.*.attribute_option_id' => 'nullable|bail|integer|exists:attribute_options,id',
+            'specifications.*.text_value' => 'nullable|string',
+
             'variants' => 'sometimes|array|min:1',
+            // Opsi varian (untuk ekspansi kombinasi saat edit).
+            'variants.*.options' => 'sometimes|array',
+            'variants.*.options.*.attribute_id' => 'required|bail|integer|exists:attributes,id',
+            'variants.*.options.*.value' => 'required|string',
             'variants.*.sku' => 'required_with:variants|string|max:50|distinct:ignore_case',
             'variants.*.barcode' => 'sometimes|nullable|string|max:100',
             'variants.*.sell_price' => 'sometimes|numeric|min:0',

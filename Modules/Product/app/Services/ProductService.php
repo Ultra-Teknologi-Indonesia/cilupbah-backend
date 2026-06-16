@@ -207,7 +207,10 @@ class ProductService
                 }
             }
 
-            if (!empty($data['variants'])) {
+            if (array_key_exists('variation_types', $data)) {
+                // Edit terstruktur (Fase D): immutability jenis/opsi + ekspansi kombinasi.
+                $this->syncVariantStructure($productId, $data);
+            } elseif (!empty($data['variants'])) {
                 foreach ($data['variants'] as $variant) {
                     if (empty($variant['sku'])) continue;
 
@@ -306,8 +309,223 @@ class ProductService
                 }
             }
 
+            if (array_key_exists('specifications', $data)) {
+                $this->syncSpecifications($productId, $data['specifications'] ?? []);
+            }
+
             return $productId;
         });
+    }
+
+    /**
+     * Edit varian terstruktur (Fase D): immutability jenis/nilai-opsi + ekspansi kombinasi.
+     * Jenis/nilai lama tak boleh dihapus; tambah nilai → regenerasi cartesian. Varian lama yang
+     * bukan kombinasi sah → soft-deprecate (is_active=false, superseded_at), TIDAK dihapus.
+     */
+    private function syncVariantStructure(string $productId, array $data): void
+    {
+        $types = $data['variation_types'] ?? [];
+        $payloadVariants = $data['variants'] ?? [];
+
+        $existingTypes = DB::table('product_variation_types')
+            ->where('product_id', $productId)->pluck('attribute_id')
+            ->map(fn ($v) => (int) $v)->all();
+
+        $activeVariants = DB::table('product_variants')
+            ->where('product_id', $productId)->where('is_active', true)
+            ->get(['id', 'sku', 'sell_price']);
+
+        $optRows = DB::table('variant_options')
+            ->whereIn('variant_id', $activeVariants->pluck('id')->all() ?: ['00000000-0000-0000-0000-000000000000'])
+            ->get(['variant_id', 'attribute_id', 'value']);
+
+        $setByVariant = [];   // [variant_id => [attrId => value]]
+        $existingValues = []; // [attrId => [lowerVal => origVal]]
+        foreach ($optRows as $o) {
+            $setByVariant[$o->variant_id][(int) $o->attribute_id] = (string) $o->value;
+            $existingValues[(int) $o->attribute_id][mb_strtolower((string) $o->value)] = (string) $o->value;
+        }
+
+        $payloadTypes = array_map(static fn ($t) => (int) $t['attribute_id'], $types);
+        $payloadValues = [];
+        foreach ($payloadVariants as $v) {
+            foreach ($v['options'] ?? [] as $opt) {
+                $payloadValues[(int) $opt['attribute_id']][mb_strtolower((string) $opt['value'])] = true;
+            }
+        }
+
+        // Immutability: jenis & nilai-opsi lama tak boleh hilang.
+        foreach ($existingTypes as $et) {
+            if (! in_array($et, $payloadTypes, true)) {
+                throw new DomainException('Jenis varian yang sudah tersimpan tidak boleh dihapus.');
+            }
+        }
+        foreach ($existingValues as $attrId => $vals) {
+            foreach ($vals as $lk => $orig) {
+                if (! isset($payloadValues[$attrId][$lk])) {
+                    throw new DomainException("Opsi varian '{$orig}' yang sudah tersimpan tidak boleh dihapus.");
+                }
+            }
+        }
+
+        $this->assertVariationConstraints($data);
+
+        $keyOfOpts = static function (array $opts): string {
+            $p = [];
+            foreach ($opts as $o) { $p[(int) $o['attribute_id']] = mb_strtolower((string) $o['value']); }
+            ksort($p);
+            return implode('|', array_map(static fn ($k, $v) => "{$k}:{$v}", array_keys($p), $p));
+        };
+        $keyOfSet = static function (array $set): string {
+            $p = [];
+            foreach ($set as $a => $v) { $p[(int) $a] = mb_strtolower((string) $v); }
+            ksort($p);
+            return implode('|', array_map(static fn ($k, $v) => "{$k}:{$v}", array_keys($p), $p));
+        };
+
+        $existingByKey = [];
+        foreach ($activeVariants as $av) {
+            $existingByKey[$keyOfSet($setByVariant[$av->id] ?? [])] = $av;
+        }
+
+        $desired = [];
+        foreach ($payloadVariants as $v) {
+            $opts = $v['options'] ?? [];
+            $key = $keyOfOpts($opts);
+            $desired[$key] = true;
+
+            if (isset($existingByKey[$key])) {
+                $upd = $this->variantUpdatableFields($v);
+                if ($upd) {
+                    $upd['updated_at'] = now();
+                    DB::table('product_variants')->where('id', $existingByKey[$key]->id)->update($upd);
+                }
+                continue;
+            }
+
+            // Kombinasi baru → harga warisan dari leluhur (default), stok 0, mapping fresh.
+            $price = $v['sell_price'] ?? $this->ancestorPrice($opts, $activeVariants, $setByVariant);
+            $variantId = \Ramsey\Uuid\Uuid::uuid7()->toString();
+            DB::table('product_variants')->insert(array_merge(
+                $this->variantUpdatableFields($v),
+                [
+                    'id' => $variantId,
+                    'product_id' => $productId,
+                    'sku' => $v['sku'] ?? $this->generateVariantSku($productId, $opts),
+                    'sell_price' => $price ?? 0,
+                    'is_active' => true,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]
+            ));
+            foreach ($opts as $o) {
+                DB::table('variant_options')->insert([
+                    'variant_id' => $variantId,
+                    'attribute_id' => (int) $o['attribute_id'],
+                    'value' => (string) $o['value'],
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+        }
+
+        // Soft-deprecate varian aktif yang bukan kombinasi sah (JANGAN hapus).
+        foreach ($existingByKey as $key => $av) {
+            if (! isset($desired[$key])) {
+                DB::table('product_variants')->where('id', $av->id)
+                    ->update(['is_active' => false, 'superseded_at' => now(), 'updated_at' => now()]);
+            }
+        }
+
+        // Tambah jenis varian baru (tak pernah hapus).
+        foreach ($types as $t) {
+            $attrId = (int) $t['attribute_id'];
+            $exists = DB::table('product_variation_types')
+                ->where('product_id', $productId)->where('attribute_id', $attrId)->exists();
+            if (! $exists) {
+                DB::table('product_variation_types')->insert([
+                    'product_id' => $productId,
+                    'attribute_id' => $attrId,
+                    'sort_order' => $t['sort_order'] ?? 0,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+        }
+    }
+
+    /** Field varian yang boleh di-update/insert (selain id/product_id/options). */
+    private function variantUpdatableFields(array $v): array
+    {
+        $f = Arr::only($v, [
+            'buy_price', 'barcode', 'is_active',
+            'sales_tax_id', 'purchase_tax_id', 'min_stock', 'safe_stock',
+        ]);
+        if (array_key_exists('sell_price', $v) && $v['sell_price'] !== null) {
+            $f['sell_price'] = $v['sell_price'];
+        }
+        if (! empty($v['sku'])) {
+            $f['sku'] = $v['sku'];
+        }
+        if (! empty($v['sales_tax_id'])) {
+            $f['tax_rate'] = $this->taxRate($v['sales_tax_id']);
+        }
+
+        return $f;
+    }
+
+    /** Harga default kombinasi baru = harga varian leluhur (option-set ⊂ kombinasi). */
+    private function ancestorPrice(array $opts, $activeVariants, array $setByVariant): ?float
+    {
+        $combo = [];
+        foreach ($opts as $o) { $combo[(int) $o['attribute_id']] = mb_strtolower((string) $o['value']); }
+
+        foreach ($activeVariants as $av) {
+            $set = $setByVariant[$av->id] ?? [];
+            if (empty($set)) { continue; }
+            $subset = true;
+            foreach ($set as $a => $val) {
+                if (($combo[(int) $a] ?? null) !== mb_strtolower((string) $val)) { $subset = false; break; }
+            }
+            if ($subset) { return (float) $av->sell_price; }
+        }
+
+        return null;
+    }
+
+    /** SKU saran (fallback bila FE tak kirim): base + kode opsi ter-sanitasi, dijamin unik. */
+    private function generateVariantSku(string $productId, array $opts): string
+    {
+        $base = DB::table('products')->where('id', $productId)->value('sku') ?: ('PRD-' . substr($productId, 0, 8));
+        $parts = [$base];
+        foreach ($opts as $o) {
+            $parts[] = preg_replace('/[^A-Za-z0-9]+/', '-', (string) $o['value']);
+        }
+        $sku = strtoupper(trim(implode('-', $parts), '-'));
+
+        $candidate = $sku;
+        $i = 1;
+        while (DB::table('product_variants')->where('sku', $candidate)->exists()) {
+            $candidate = $sku . '-' . (++$i);
+        }
+
+        return $candidate;
+    }
+
+    /** Spesifikasi: replace-all (tidak diatur immutability). */
+    private function syncSpecifications(string $productId, array $specs): void
+    {
+        DB::table('product_specifications')->where('product_id', $productId)->delete();
+        if (empty($specs)) { return; }
+
+        DB::table('product_specifications')->insert(array_map(static fn ($s) => [
+            'product_id' => $productId,
+            'attribute_id' => $s['attribute_id'],
+            'attribute_option_id' => $s['attribute_option_id'] ?? null,
+            'text_value' => $s['text_value'] ?? null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ], $specs));
     }
 
     /**

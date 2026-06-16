@@ -182,7 +182,12 @@ class ProductController extends Controller
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
-        $this->productService->updateProduct($id, $request->validated());
+        try {
+            $this->productService->updateProduct($id, $request->validated());
+        } catch (\DomainException $e) {
+            // Pelanggaran aturan bisnis (mis. immutability/invariant varian) → 422, bukan 500.
+            return $this->errorResponse($e->getMessage(), 422);
+        }
 
         return $this->successResponse(
             new ProductResource($product->fresh(self::DETAIL_RELATIONS)),
