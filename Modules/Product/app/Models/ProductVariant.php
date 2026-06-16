@@ -83,6 +83,10 @@ class ProductVariant extends Model
         return $this->hasMany(WholesalePrice::class, 'variant_id');
     }
 
+    /**
+     * @deprecated B0 consolidation — use Product::bundleItems() (product-keyed
+     * `product_bundle_items`) instead. Kept until `product_bundles` is dropped.
+     */
     public function bundleComponents(): HasMany
     {
         return $this->hasMany(ProductBundle::class, 'bundle_variant_id');

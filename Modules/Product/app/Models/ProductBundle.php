@@ -5,6 +5,12 @@ namespace Modules\Product\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @deprecated B0 consolidation — composition is now stored in the product-keyed
+ * `product_bundle_items` table via {@see ProductBundleItem} / Product::bundleItems().
+ * Retained read-only until the `product_bundles` table is dropped in a later phase.
+ * Do not write to this model.
+ */
 class ProductBundle extends Model
 {
     protected $fillable = [

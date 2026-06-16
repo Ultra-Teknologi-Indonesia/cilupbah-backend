@@ -7,7 +7,6 @@ use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Product\Models\Product;
-use Modules\Product\Models\ProductBundle;
 use Modules\Product\Models\ProductVariant;
 
 class BundleController extends Controller
@@ -18,8 +17,8 @@ class BundleController extends Controller
     {
         $query = Product::where('is_bundle', true)
             ->with([
-                'variants' => fn ($q) => $q->select('id', 'product_id', 'sku', 'sell_price')
-                    ->with('bundleComponents.componentVariant:id,product_id,sku,sell_price'),
+                'variants' => fn ($q) => $q->select('id', 'product_id', 'sku', 'sell_price'),
+                'bundleItems.component:id,product_id,sku,sell_price',
             ])
             ->when($request->search, fn ($q, $v) => $q->where('name', 'ilike', "%{$v}%"))
             ->orderByDesc('created_at');
@@ -67,16 +66,16 @@ class BundleController extends Controller
             ]);
         }
 
-        ProductBundle::where('bundle_variant_id', $variant->id)->delete();
+        // Canonical composition lives in product_bundle_items (product-keyed).
+        $product->bundleItems()->delete();
         foreach ($request->input('components') as $comp) {
-            ProductBundle::create([
-                'bundle_variant_id' => $variant->id,
+            $product->bundleItems()->create([
                 'component_variant_id' => $comp['variant_id'],
                 'qty' => $comp['qty'],
             ]);
         }
 
-        $product->load('variants.bundleComponents.componentVariant:id,product_id,sku,sell_price');
+        $product->load('variants:id,product_id,sku,sell_price', 'bundleItems.component:id,product_id,sku,sell_price');
 
         return $this->successResponse($product, $id ? 'Bundle updated.' : 'Bundle created.', $id ? 200 : 201);
     }

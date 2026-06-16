@@ -4,6 +4,7 @@ namespace Modules\Product\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class ProductImportService
 {
@@ -83,21 +84,25 @@ class ProductImportService
                 throw new \Exception("Component SKU {$componentSku} not found.");
             }
 
-            $existing = DB::table('product_bundles')
-                ->where('bundle_variant_id', $bundleVariant->id)
+            // Canonical composition is product-keyed (product_bundle_items).
+            $bundleProductId = $bundleVariant->product_id;
+
+            $existing = DB::table('product_bundle_items')
+                ->where('bundle_product_id', $bundleProductId)
                 ->where('component_variant_id', $componentVariant->id)
                 ->first();
 
             if ($existing) {
-                DB::table('product_bundles')
+                DB::table('product_bundle_items')
                     ->where('id', $existing->id)
                     ->update([
                         'qty' => $qty,
                         'updated_at' => now(),
                     ]);
             } else {
-                DB::table('product_bundles')->insert([
-                    'bundle_variant_id' => $bundleVariant->id,
+                DB::table('product_bundle_items')->insert([
+                    'id' => (string) Str::orderedUuid(),
+                    'bundle_product_id' => $bundleProductId,
                     'component_variant_id' => $componentVariant->id,
                     'qty' => $qty,
                     'created_at' => now(),

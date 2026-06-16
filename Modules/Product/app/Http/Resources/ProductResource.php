@@ -32,6 +32,8 @@ class ProductResource extends JsonResource
                 'name' => $this->brand->name,
             ] : null),
             'is_bundle' => $this->is_bundle,
+            'product_type' => $this->productType(),
+            'total_variants' => $this->totalVariants(),
             'is_consignment' => $this->is_consignment,
             'is_stored' => $this->is_stored,
             'is_sold' => $this->is_sold,
@@ -140,6 +142,34 @@ class ProductResource extends JsonResource
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];
+    }
+
+    /**
+     * Number of variants, from the loaded relation or a withCount() result.
+     * Null when neither is available (count is unknown in that context).
+     */
+    protected function totalVariants(): ?int
+    {
+        if ($this->resource->relationLoaded('variants')) {
+            return $this->variants->count();
+        }
+
+        return $this->variants_count !== null ? (int) $this->variants_count : null;
+    }
+
+    /**
+     * Derived product type (Jubelio model):
+     *  - bundle  : is_bundle = true
+     *  - variant : non-bundle with more than one variant
+     *  - single  : non-bundle with a single variant
+     */
+    protected function productType(): string
+    {
+        if ($this->is_bundle) {
+            return 'bundle';
+        }
+
+        return ($this->totalVariants() ?? 1) > 1 ? 'variant' : 'single';
     }
 
     protected function primaryImageUrl(): ?string
