@@ -4,7 +4,10 @@ namespace Modules\Sales\Services;
 
 use Modules\Sales\Repositories\SalesReturnRepository;
 use Modules\Sales\Models\SalesReturn;
+use Modules\Sales\Exceptions\InvalidReturnStateException;
+use Modules\Sales\Jobs\AdminAlertJob;
 use Modules\Inbound\Services\InboundService;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -72,7 +75,15 @@ class SalesReturnService
                 try {
                     $this->accept($return->id, ['processed_by' => $data['created_by']]);
                 } catch (\Throwable $e) {
+                    // The return is created but stays PENDING; alert an admin so it
+                    // is not silently left unaccepted (no stock received).
                     Log::warning("Auto-accept retur {$return->return_number} gagal: {$e->getMessage()}");
+
+                    AdminAlertJob::dispatch(
+                        "Auto-accept sales return gagal: {$return->return_number}",
+                        $e->getMessage(),
+                        ['sales_return_id' => $return->id, 'return_number' => $return->return_number]
+                    )->onQueue(config('queue.names.failed_jobs'));
                 }
             }
 
@@ -87,11 +98,11 @@ class SalesReturnService
             $return = $this->returnRepository->findByIdForUpdate($id);
 
             if (! $return) {
-                throw new \Exception('Sales return tidak ditemukan.');
+                throw new ModelNotFoundException('Sales return tidak ditemukan.');
             }
 
             if ($return->status !== SalesReturn::STATUS_PENDING) {
-                throw new \Exception("Return sudah berstatus {$return->status}.");
+                throw new InvalidReturnStateException("Return sudah berstatus {$return->status}.");
             }
 
             $this->returnRepository->updateStatus($return, SalesReturn::STATUS_ACCEPTED, $data['processed_by']);
@@ -120,11 +131,11 @@ class SalesReturnService
             $return = $this->returnRepository->findByIdForUpdate($id);
 
             if (! $return) {
-                throw new \Exception('Sales return tidak ditemukan.');
+                throw new ModelNotFoundException('Sales return tidak ditemukan.');
             }
 
             if ($return->status !== SalesReturn::STATUS_PENDING) {
-                throw new \Exception("Return sudah berstatus {$return->status}.");
+                throw new InvalidReturnStateException("Return sudah berstatus {$return->status}.");
             }
 
             $return->update(['notes' => $data['reason'] ?? $return->notes]);
@@ -140,11 +151,18 @@ class SalesReturnService
             $return = $this->returnRepository->findByIdForUpdate($id);
 
             if (! $return) {
-                throw new \Exception('Sales return tidak ditemukan.');
+                throw new ModelNotFoundException('Sales return tidak ditemukan.');
             }
 
-            if (! in_array($return->status, [SalesReturn::STATUS_PENDING, SalesReturn::STATUS_ACCEPTED])) {
-                throw new \Exception("Return berstatus {$return->status}, tidak bisa di-complete.");
+            if ($return->status === SalesReturn::STATUS_COMPLETED) {
+                return $this->getById($id); // idempotent
+            }
+
+            // A return must be accepted (stock received into the warehouse) before
+            // it can be completed — completing straight from PENDING would mark it
+            // done without ever restocking.
+            if ($return->status !== SalesReturn::STATUS_ACCEPTED) {
+                throw new InvalidReturnStateException("Return berstatus {$return->status}, harus di-accept dulu sebelum complete.");
             }
 
             $this->returnRepository->updateStatus($return, SalesReturn::STATUS_COMPLETED, $data['processed_by']);

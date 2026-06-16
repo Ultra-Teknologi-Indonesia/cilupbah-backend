@@ -9,6 +9,7 @@ use Modules\Sales\Exceptions\CannotDeleteActiveOrderException;
 use Modules\Sales\Exceptions\DuplicateOrderException;
 use Modules\Sales\Exceptions\InsufficientStockException;
 use Modules\Sales\Exceptions\InvalidStatusTransitionException;
+use Modules\Sales\Exceptions\LocationNotConfiguredException;
 use Modules\Sales\Jobs\CancelChannelOrderJob;
 use Modules\Sales\Jobs\SyncStockJob;
 use Modules\Sales\Models\SalesOrder;
@@ -82,7 +83,9 @@ class SalesOrderService
                 ->get();
 
             foreach ($orders as $order) {
-                $this->applyStockTransition($order, 'shipped');
+                // Reconcile from the order's current status so any not-yet-applied
+                // pick step is performed exactly once before shipping.
+                $this->reconcileStockTransition($order, $order->status, 'shipped');
                 $order->update(['status' => 'shipped']);
                 SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
                 $count++;
@@ -130,31 +133,48 @@ class SalesOrderService
         return ['order_id' => $order->id, 'status' => 'requested'];
     }
 
+    /**
+     * Idempotency key for "this marketplace order has been ingested".
+     * Set after a successful create, cleared whenever the order is cancelled or
+     * deleted, and otherwise expires after IDEMPOTENCY_TTL.
+     */
+    private function idempotencyKey(?string $source, string $salesOrderNo): string
+    {
+        $marketplace = $source ?: 'manual';
+
+        return "order:done:{$marketplace}:{$salesOrderNo}";
+    }
+
     public function createOrder(array $validated): SalesOrder
     {
         $marketplace = $validated['source'] ?? 'manual';
         $marketplaceOrderId = $validated['salesorder_no'];
-        $idempotencyKey = "order:done:{$marketplace}:{$marketplaceOrderId}";
+        $idempotencyKey = $this->idempotencyKey($validated['source'] ?? null, $marketplaceOrderId);
 
         if (Cache::has($idempotencyKey)) {
             throw new DuplicateOrderException($marketplace, $marketplaceOrderId);
         }
 
-        $order = DB::transaction(function () use ($validated) {
-            $order = SalesOrder::create(array_merge($validated, ['status' => 'pending']));
+        try {
+            $order = DB::transaction(function () use ($validated) {
+                $order = SalesOrder::create(array_merge($validated, ['status' => 'pending']));
 
-            if (! empty($validated['items'])) {
-                $this->orderRepository->syncOrderItems($order->id, $validated['items']);
-            }
+                if (! empty($validated['items'])) {
+                    $this->orderRepository->syncOrderItems($order->id, $validated['items']);
+                }
 
-            $order->load('items');
-            $this->reserveStockForOrder($order);
+                $order->load('items');
+                $this->reserveStockForOrder($order, $this->isManualSource($order->source));
 
-            $order->status = 'reserved';
-            $order->save();
+                $order->status = 'reserved';
+                $order->save();
 
-            return $order;
-        });
+                return $order;
+            });
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+            // Concurrent create or re-submit of an existing salesorder_no.
+            throw new DuplicateOrderException($marketplace, $marketplaceOrderId);
+        }
 
         Cache::put($idempotencyKey, true, self::IDEMPOTENCY_TTL);
 
@@ -171,12 +191,17 @@ class SalesOrderService
             $newStatus = $validated['status'];
             $this->validateTransition($order->status, $newStatus);
 
-            DB::transaction(function () use ($order, $newStatus) {
+            $cancelReason = $newStatus === 'cancelled'
+                ? ($validated['cancel_reason'] ?? 'seller_cancel_reason_out_of_stock')
+                : null;
+
+            DB::transaction(function () use ($order, $newStatus, $cancelReason) {
                 $this->applyStockTransition($order, $newStatus);
                 $order->status = $newStatus;
 
                 if ($newStatus === 'cancelled') {
                     $order->is_canceled = true;
+                    $order->cancel_reason = $cancelReason;
                 }
 
                 $order->save();
@@ -184,8 +209,12 @@ class SalesOrderService
 
             $stockMutated = true;
 
+            if ($newStatus === 'cancelled') {
+                // Free the idempotency key so the same salesorder_no can be re-created.
+                Cache::forget($this->idempotencyKey($order->source, $order->salesorder_no));
+            }
+
             if ($newStatus === 'cancelled' && $order->source) {
-                $cancelReason = $validated['cancel_reason'] ?? 'seller_cancel_reason_out_of_stock';
                 CancelChannelOrderJob::dispatch($order->id, $cancelReason)
                     ->onQueue(config('queue.names.orders'));
             }
@@ -223,9 +252,7 @@ class SalesOrderService
             $order->delete();
         }
 
-        $marketplace = $order->source ?? 'manual';
-        $idempotencyKey = "order:done:{$marketplace}:{$order->salesorder_no}";
-        Cache::forget($idempotencyKey);
+        Cache::forget($this->idempotencyKey($order->source, $order->salesorder_no));
 
         if (! empty($skus)) {
             SyncStockJob::dispatch(null, $skus)->onQueue(config('queue.names.stock_sync'));
@@ -304,7 +331,7 @@ class SalesOrderService
 
             $order->load('items');
 
-            $stockMutated = $this->applyChannelStockTransition($order, $previousStatus, $finalStatus);
+            $stockMutated = $this->reconcileStockTransition($order, $previousStatus, $finalStatus);
 
             DB::commit();
 
@@ -360,31 +387,65 @@ class SalesOrderService
         return $newRank > $currentRank ? $newStatus : $currentStatus;
     }
 
-    private function applyChannelStockTransition(SalesOrder $order, ?string $previousStatus, string $finalStatus): bool
+    /**
+     * Reconcile stock for a channel-driven status change.
+     *
+     * Marketplace webhooks can jump several lifecycle steps at once (e.g.
+     * reserved -> packed -> shipped). We walk the rank ladder and apply each
+     * step's stock effect exactly once, so on_hand/reserved stay correct
+     * regardless of which intermediate statuses we actually observed.
+     *
+     * All order stock mutations flow through StockService keyed by
+     * salesorder_no, and the internal status persisted between webhooks is
+     * monotonic (resolveInternalStatus never moves backwards except to
+     * cancelled), so each physical step runs at most once across the lifecycle.
+     */
+    private function reconcileStockTransition(SalesOrder $order, ?string $previousStatus, string $finalStatus): bool
     {
-        if (in_array($previousStatus, [null, 'pending']) && $finalStatus === 'reserved') {
-            $this->reserveStockForOrder($order);
-            return true;
+        if ($finalStatus === 'cancelled') {
+            return $this->releaseStockForStatus($order, $previousStatus);
         }
 
-        if (in_array($previousStatus, ['reserved', 'picked', 'packed']) && $finalStatus === 'shipped') {
-
-            if ($previousStatus === 'reserved') {
-                $this->pickStockForOrder($order);
+        // Orders first seen past the reservation point (packed/shipped) are
+        // adopted as-is: we never managed their reservation, so touching stock
+        // now would be wrong. Only a brand-new order that lands on 'reserved'
+        // gets a reservation.
+        if ($previousStatus === null) {
+            if ($finalStatus === 'reserved') {
+                $this->reserveStockForOrder($order, false);
+                return true;
             }
 
-            $this->shipStockForOrder($order);
-            return true;
+            return false;
         }
 
-        if (in_array($previousStatus, ['reserved', 'picked', 'packed']) && $finalStatus === 'cancelled') {
-            $order->status = $previousStatus;
-            $this->releaseStockForOrder($order);
-            $order->status = $finalStatus;
-            return true;
+        if ($previousStatus === 'cancelled') {
+            return false;
         }
 
-        return false;
+        $fromRank = self::STATUS_RANK[$previousStatus] ?? 0;
+        $toRank = self::STATUS_RANK[$finalStatus] ?? -1;
+
+        if ($toRank <= $fromRank) {
+            return false;
+        }
+
+        $mutated = false;
+
+        for ($rank = $fromRank + 1; $rank <= $toRank; $rank++) {
+            match ($rank) {
+                1       => $this->reserveStockForOrder($order, false), // -> reserved
+                2       => $this->pickStockForOrder($order),           // -> picked
+                4       => $this->shipStockForOrder($order),           // -> shipped
+                default => null,                                       // -> packed: no stock effect
+            };
+
+            if ($rank !== 3) {
+                $mutated = true;
+            }
+        }
+
+        return $mutated;
     }
 
     private function validateTransition(string $from, string $to): void
@@ -409,7 +470,7 @@ class SalesOrderService
         };
     }
 
-    private function reserveStockForOrder(SalesOrder $order): void
+    private function reserveStockForOrder(SalesOrder $order, bool $enforce = true): void
     {
         foreach ($order->items as $item) {
             if (! $item->item_id) {
@@ -424,6 +485,7 @@ class SalesOrderService
                 $locationId,
                 $item->qty_in_base,
                 $order->salesorder_no,
+                $enforce,
             );
         }
     }
@@ -468,9 +530,22 @@ class SalesOrderService
 
     private function releaseStockForOrder(SalesOrder $order): void
     {
-        if (! in_array($order->status, ['reserved', 'picked', 'packed'])) {
-            return;
+        $this->releaseStockForStatus($order, $order->status);
+    }
+
+    /**
+     * Release held stock based on the order's effective status at the moment of
+     * cancellation. A 'reserved' order only holds a reservation (cancel it),
+     * while 'picked'/'packed' have already left on_hand (restore it). Orders that
+     * never reached reservation, or already shipped, leave stock untouched.
+     */
+    private function releaseStockForStatus(SalesOrder $order, ?string $status): bool
+    {
+        if (! in_array($status, ['reserved', 'picked', 'packed'], true)) {
+            return false;
         }
+
+        $order->loadMissing('items');
 
         foreach ($order->items as $item) {
             if (! $item->item_id) {
@@ -479,7 +554,7 @@ class SalesOrderService
 
             $locationId = $this->resolveLocationId($order);
 
-            if ($order->status === 'reserved') {
+            if ($status === 'reserved') {
                 $this->stockService->cancel(
                     $item->sku ?? "item:{$item->item_id}",
                     $item->item_id,
@@ -497,6 +572,8 @@ class SalesOrderService
                 );
             }
         }
+
+        return true;
     }
 
     private function resolveLocationId(SalesOrder $order): string
@@ -517,6 +594,15 @@ class SalesOrderService
 
         $defaultLocation = DB::table('locations')->first();
 
+        if (! $defaultLocation) {
+            throw new LocationNotConfiguredException($order->salesorder_no ?? 'unknown');
+        }
+
         return $defaultLocation->id;
+    }
+
+    private function isManualSource(?string $source): bool
+    {
+        return in_array($source, [null, '', 'manual'], true);
     }
 }

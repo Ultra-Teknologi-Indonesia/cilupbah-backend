@@ -113,12 +113,9 @@ class SalesReturnController extends Controller
     )]
     public function store(StoreSalesReturnRequest $request): JsonResponse
     {
-        try {
-            $return = $this->returnService->create($request->validated());
-            return $this->successResponse($return, 'Sales return berhasil dibuat', 201);
-        } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
-        }
+        $return = $this->returnService->create($request->validated());
+
+        return $this->successResponse($return, 'Sales return berhasil dibuat', 201);
     }
 
     #[OA\Post(
@@ -144,12 +141,9 @@ class SalesReturnController extends Controller
     {
         $request->validate(['processed_by' => 'required|string|max:100']);
 
-        try {
-            $return = $this->returnService->accept($id, $request->only('processed_by'));
-            return $this->successResponse($return, 'Return diterima, Inbound GRN dibuat');
-        } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
-        }
+        $return = $this->returnService->accept($id, $request->only('processed_by'));
+
+        return $this->successResponse($return, 'Return diterima, Inbound GRN dibuat');
     }
 
     #[OA\Post(
@@ -179,12 +173,9 @@ class SalesReturnController extends Controller
             'reason'       => 'nullable|string',
         ]);
 
-        try {
-            $return = $this->returnService->reject($id, $request->only('processed_by', 'reason'));
-            return $this->successResponse($return, 'Return ditolak');
-        } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
-        }
+        $return = $this->returnService->reject($id, $request->only('processed_by', 'reason'));
+
+        return $this->successResponse($return, 'Return ditolak');
     }
 
     #[OA\Post(
@@ -210,12 +201,9 @@ class SalesReturnController extends Controller
     {
         $request->validate(['processed_by' => 'required|string|max:100']);
 
-        try {
-            $return = $this->returnService->complete($id, $request->only('processed_by'));
-            return $this->successResponse($return, 'Return selesai');
-        } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
-        }
+        $return = $this->returnService->complete($id, $request->only('processed_by'));
+
+        return $this->successResponse($return, 'Return selesai');
     }
 
     #[OA\Get(

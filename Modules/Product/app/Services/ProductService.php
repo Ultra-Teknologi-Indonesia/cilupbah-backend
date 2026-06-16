@@ -310,8 +310,55 @@ class ProductService
         });
     }
 
+    /**
+     * Invariant varian (selaras FormRequest + unique DB):
+     *  - maks. 2 jenis varian per produk;
+     *  - tiap jenis (attribute_id) unik;
+     *  - opsi varian hanya boleh memakai jenis yang dideklarasikan di variation_types;
+     *  - kombinasi opsi antar varian tidak boleh duplikat.
+     */
+    private function assertVariationConstraints(array $data): void
+    {
+        $types = $data['variation_types'] ?? [];
+
+        if (count($types) > 2) {
+            throw new DomainException('Maksimal 2 jenis varian per produk.');
+        }
+
+        $typeAttrIds = array_map(static fn ($t) => (int) $t['attribute_id'], $types);
+
+        if (count($typeAttrIds) !== count(array_unique($typeAttrIds))) {
+            throw new DomainException('Jenis varian tidak boleh duplikat.');
+        }
+
+        $seenCombos = [];
+
+        foreach ($data['variants'] ?? [] as $variant) {
+            $options = $variant['options'] ?? [];
+
+            foreach ($options as $opt) {
+                if (! in_array((int) $opt['attribute_id'], $typeAttrIds, true)) {
+                    throw new DomainException('Opsi varian memakai jenis yang tidak ada di variation_types.');
+                }
+            }
+
+            // Kunci kombinasi distabilkan dengan mengurutkan berdasarkan attribute_id.
+            $combo = collect($options)
+                ->sortBy('attribute_id')
+                ->map(static fn ($o) => $o['attribute_id'] . ':' . $o['value'])
+                ->implode('|');
+
+            if ($combo !== '' && isset($seenCombos[$combo])) {
+                throw new DomainException('Kombinasi varian tidak boleh sama dengan varian lain.');
+            }
+            $seenCombos[$combo] = true;
+        }
+    }
+
     public function createProduct(array $data)
     {
+        $this->assertVariationConstraints($data);
+
         return DB::transaction(function () use ($data) {
             $productData = Arr::only($data, [
                 'category_id', 'brand_id', 'name', 'sku', 'description',

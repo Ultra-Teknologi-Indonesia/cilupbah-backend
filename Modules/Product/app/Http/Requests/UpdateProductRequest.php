@@ -54,6 +54,11 @@ class UpdateProductRequest extends FormRequest
             'media.*.is_primary' => 'nullable|boolean',
             'media.*.sort_order' => 'nullable|integer',
 
+            // Maks. 2 jenis varian per produk; tiap jenis (attribute_id) unik.
+            'variation_types' => 'sometimes|nullable|array|max:2',
+            'variation_types.*.attribute_id' => 'required|bail|integer|distinct|exists:attributes,id',
+            'variation_types.*.sort_order' => 'nullable|integer|min:0',
+
             'variants' => 'sometimes|array|min:1',
             'variants.*.sku' => 'required_with:variants|string|max:50|distinct:ignore_case',
             'variants.*.barcode' => 'sometimes|nullable|string|max:100',

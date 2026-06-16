@@ -62,12 +62,9 @@ class SalesPaymentController extends Controller
     )]
     public function store(StoreSalesPaymentRequest $request): JsonResponse
     {
-        try {
-            $payment = $this->paymentService->create($request->validated());
-            return $this->successResponse($payment, 'Payment berhasil dibuat', 201);
-        } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
-        }
+        $payment = $this->paymentService->create($request->validated());
+
+        return $this->successResponse($payment, 'Payment berhasil dibuat', 201);
     }
 
     #[OA\Get(
@@ -114,11 +111,8 @@ class SalesPaymentController extends Controller
     {
         $request->validate(['id' => 'required|bail|uuid|exists:sales_payments,id']);
 
-        try {
-            $this->paymentService->delete($request->input('id'));
-            return $this->successResponse(null, 'Payment berhasil dihapus');
-        } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
-        }
+        $this->paymentService->delete($request->input('id'));
+
+        return $this->successResponse(null, 'Payment berhasil dihapus');
     }
 }

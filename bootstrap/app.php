@@ -6,7 +6,10 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Modules\Sales\Exceptions\CannotDeleteActiveOrderException;
 use Modules\Sales\Exceptions\DuplicateOrderException;
 use Modules\Sales\Exceptions\InsufficientStockException;
+use Modules\Sales\Exceptions\InvalidReturnStateException;
 use Modules\Sales\Exceptions\InvalidStatusTransitionException;
+use Modules\Sales\Exceptions\LocationNotConfiguredException;
+use Modules\Sales\Exceptions\PaymentExceedsInvoiceException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -30,7 +33,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $exceptions->render(function (\Throwable $e, \Illuminate\Http\Request $request) {
             if ($request->is('api/*')) {
-                if ($e instanceof DuplicateOrderException) {
+                if ($e instanceof DuplicateOrderException
+                    || $e instanceof InvalidReturnStateException) {
                     return response()->json([
                         'status' => 'error',
                         'message' => $e->getMessage(),
@@ -39,6 +43,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
                 if ($e instanceof InsufficientStockException
                     || $e instanceof InvalidStatusTransitionException
+                    || $e instanceof LocationNotConfiguredException
+                    || $e instanceof PaymentExceedsInvoiceException
                     || $e instanceof CannotDeleteActiveOrderException) {
                     return response()->json([
                         'status' => 'error',

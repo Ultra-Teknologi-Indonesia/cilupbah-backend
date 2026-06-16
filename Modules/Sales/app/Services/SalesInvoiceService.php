@@ -28,17 +28,28 @@ class SalesInvoiceService
     public function createOrUpdate(array $data): SalesInvoice
     {
         return DB::transaction(function () use ($data) {
-            $data['invoice_number'] = $data['invoice_number'] ?? $this->invoiceRepository->generateInvoiceNo();
-            $data['status'] = $data['status'] ?? SalesInvoice::STATUS_DRAFT;
+            $items = $data['items'] ?? [];
+            unset($data['items']);
 
-            $invoice = $this->invoiceRepository->create($data);
+            $existing = ! empty($data['invoice_number'])
+                ? SalesInvoice::where('invoice_number', $data['invoice_number'])->first()
+                : null;
 
-            if (! empty($data['items'])) {
-                foreach ($data['items'] as $item) {
-                    $item['sales_invoice_id'] = $invoice->id;
-                    $item['subtotal'] = $item['subtotal'] ?? (($item['qty'] * $item['unit_price']) - ($item['disc_amount'] ?? 0) + ($item['tax_amount'] ?? 0));
-                    $this->invoiceRepository->createItem($item);
-                }
+            if ($existing) {
+                // Update in place and fully replace its line items.
+                $existing->fill($data)->save();
+                $invoice = $existing;
+                $invoice->items()->delete();
+            } else {
+                $data['invoice_number'] = $data['invoice_number'] ?? $this->invoiceRepository->generateInvoiceNo();
+                $data['status'] = $data['status'] ?? SalesInvoice::STATUS_DRAFT;
+                $invoice = $this->invoiceRepository->create($data);
+            }
+
+            foreach ($items as $item) {
+                $item['sales_invoice_id'] = $invoice->id;
+                $item['subtotal'] = $item['subtotal'] ?? (($item['qty'] * $item['unit_price']) - ($item['disc_amount'] ?? 0) + ($item['tax_amount'] ?? 0));
+                $this->invoiceRepository->createItem($item);
             }
 
             $invoice->total_amount = $invoice->items()->sum('subtotal');

@@ -106,12 +106,9 @@ class SalesReturnSettlementController extends Controller
             'amount'        => 'required|numeric|min:0.01',
         ]);
 
-        try {
-            $entry = $this->service->createInvoice($validated);
-            return $this->successResponse($entry, 'Settlement invoice berhasil dibuat', 201);
-        } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
-        }
+        $entry = $this->service->createInvoice($validated);
+
+        return $this->successResponse($entry, 'Settlement invoice berhasil dibuat', 201);
     }
 
     #[OA\Get(
@@ -192,12 +189,9 @@ class SalesReturnSettlementController extends Controller
             'notes'          => 'nullable|string',
         ]);
 
-        try {
-            $refund = $this->service->createRefund($validated);
-            return $this->successResponse($refund, 'Refund berhasil dibuat', 201);
-        } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
-        }
+        $refund = $this->service->createRefund($validated);
+
+        return $this->successResponse($refund, 'Refund berhasil dibuat', 201);
     }
 
     #[OA\Get(

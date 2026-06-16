@@ -133,6 +133,9 @@ class ProductController extends Controller
             return $this->successResponse([
                 'product_id' => $productId
             ], 'Product created successfully', 201);
+        } catch (\DomainException $e) {
+            // Pelanggaran aturan bisnis (mis. invariant varian) → 422, bukan 500.
+            return $this->errorResponse($e->getMessage(), 422);
         } catch (\Exception $e) {
             return $this->errorResponse('Failed to create product', 500, ['error' => $e->getMessage()]);
         }

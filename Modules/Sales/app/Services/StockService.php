@@ -3,9 +3,11 @@
 namespace Modules\Sales\Services;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
+use Modules\Sales\Exceptions\InsufficientStockException;
 use App\Traits\StockLockable;
 
 class StockService
@@ -17,14 +19,43 @@ class StockService
         protected InventoryRepository $inventoryRepository,
     ) {}
 
-    public function reserve(string $sku, string $itemId, string $locationId, int $qty, string $transactionNumber): void
+    /**
+     * Reserve stock for an order line.
+     *
+     * @param bool $enforce When true (manual orders) availability is enforced and
+     *                      missing/insufficient stock raises InsufficientStockException (422).
+     *                      When false (marketplace orders already committed at the channel)
+     *                      the reservation is recorded regardless and only logged, so the
+     *                      webhook never hard-fails on an out-of-sync stock count.
+     */
+    public function reserve(string $sku, string $itemId, string $locationId, int $qty, string $transactionNumber, bool $enforce = true): void
     {
-        $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
-            DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
-                $inventory = $this->inventoryRepository->findExactForUpdate($itemId, $locationId, null);
+        $this->withStockLock($itemId, $locationId, function () use ($sku, $itemId, $locationId, $qty, $transactionNumber, $enforce) {
+            DB::transaction(function () use ($sku, $itemId, $locationId, $qty, $transactionNumber, $enforce) {
+                $inventory = $enforce
+                    ? $this->inventoryRepository->findExactForUpdate($itemId, $locationId, null)
+                    : $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
 
                 if (!$inventory) {
-                    throw new \RuntimeException("Inventory tidak ditemukan untuk item {$itemId}.");
+                    // Manual flow: no inventory row means nothing is available.
+                    throw new InsufficientStockException($sku, 0, $qty);
+                }
+
+                $available = $inventory->on_hand - $inventory->on_order - $inventory->reserved;
+
+                if ($available < $qty) {
+                    if ($enforce) {
+                        throw new InsufficientStockException($sku, max(0, $available), $qty);
+                    }
+
+                    Log::warning('Stock oversold on channel reservation', [
+                        'sku'                => $sku,
+                        'item_id'            => $itemId,
+                        'location_id'        => $locationId,
+                        'available'          => $available,
+                        'requested'          => $qty,
+                        'transaction_number' => $transactionNumber,
+                    ]);
                 }
 
                 $inventory->reserved += $qty;

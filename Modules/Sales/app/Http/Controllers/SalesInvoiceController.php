@@ -72,12 +72,9 @@ class SalesInvoiceController extends Controller
     )]
     public function store(StoreSalesInvoiceRequest $request): JsonResponse
     {
-        try {
-            $invoice = $this->invoiceService->createOrUpdate($request->validated());
-            return $this->successResponse($invoice, 'Invoice berhasil dibuat', 201);
-        } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
-        }
+        $invoice = $this->invoiceService->createOrUpdate($request->validated());
+
+        return $this->successResponse($invoice, 'Invoice berhasil dibuat', 201);
     }
 
     #[OA\Get(
@@ -208,12 +205,9 @@ class SalesInvoiceController extends Controller
             'created_by' => 'required|string|max:100',
         ]);
 
-        try {
-            $invoice = $this->invoiceService->createFromOrder($validated);
-            return $this->successResponse($invoice, 'Invoice berhasil dibuat dari order', 201);
-        } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
-        }
+        $invoice = $this->invoiceService->createFromOrder($validated);
+
+        return $this->successResponse($invoice, 'Invoice berhasil dibuat dari order', 201);
     }
 
     #[OA\Post(
@@ -249,11 +243,8 @@ class SalesInvoiceController extends Controller
             'created_by'     => 'required|string|max:100',
         ]);
 
-        try {
-            $result = $this->invoiceService->createFromOrderWithPayment($validated);
-            return $this->successResponse($result, 'Invoice dan payment berhasil dibuat', 201);
-        } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
-        }
+        $result = $this->invoiceService->createFromOrderWithPayment($validated);
+
+        return $this->successResponse($result, 'Invoice dan payment berhasil dibuat', 201);
     }
 }

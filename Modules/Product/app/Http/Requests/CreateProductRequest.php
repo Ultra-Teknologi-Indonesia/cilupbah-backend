@@ -62,8 +62,9 @@ class CreateProductRequest extends FormRequest
             'specifications.*.attribute_option_id' => 'nullable|bail|integer|exists:attribute_options,id',
             'specifications.*.text_value' => 'nullable|string',
 
-            'variation_types' => 'nullable|array',
-            'variation_types.*.attribute_id' => 'required|bail|integer|exists:attributes,id',
+            // Maks. 2 jenis varian per produk; tiap jenis (attribute_id) unik.
+            'variation_types' => 'nullable|array|max:2',
+            'variation_types.*.attribute_id' => 'required|bail|integer|distinct|exists:attributes,id',
             'variation_types.*.sort_order' => 'nullable|integer|min:0',
 
             // ── Varian (produk satuan = 1 varian; variasi = banyak) ───────
@@ -123,6 +124,8 @@ class CreateProductRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'variation_types.max' => 'Maksimal 2 jenis varian per produk.',
+            'variation_types.*.attribute_id.distinct' => 'Jenis varian tidak boleh duplikat.',
             'sku.unique' => 'SKU produk sudah digunakan.',
             'variants.*.sku.unique' => 'SKU varian sudah digunakan.',
             'variants.*.sku.distinct' => 'SKU varian tidak boleh sama antar varian.',

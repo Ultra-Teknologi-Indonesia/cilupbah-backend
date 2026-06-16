@@ -3,6 +3,7 @@
 namespace Modules\Sales\Services;
 
 use Illuminate\Support\Facades\DB;
+use Modules\Sales\Exceptions\PaymentExceedsInvoiceException;
 use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesPayment;
 use Modules\Sales\Repositories\SalesPaymentRepository;
@@ -26,15 +27,21 @@ class SalesPaymentService
     public function create(array $data): SalesPayment
     {
         return DB::transaction(function () use ($data) {
+            // Lock the invoice first so the balance check and the write are atomic.
+            $invoice = SalesInvoice::lockForUpdate()->findOrFail($data['sales_invoice_id']);
+
+            $remaining = (float) $invoice->total_amount - (float) $invoice->paid_amount;
+
+            if ((float) $data['amount'] > $remaining) {
+                throw new PaymentExceedsInvoiceException($remaining, (float) $data['amount']);
+            }
+
             $data['payment_number'] = $data['payment_number'] ?? $this->paymentRepository->generatePaymentNo();
 
             $payment = $this->paymentRepository->create($data);
 
-            $invoice = SalesInvoice::lockForUpdate()->findOrFail($data['sales_invoice_id']);
             $invoice->paid_amount += $payment->amount;
-            if ($invoice->paid_amount >= $invoice->total_amount) {
-                $invoice->status = SalesInvoice::STATUS_PAID;
-            }
+            $invoice->status = $this->resolveInvoiceStatus($invoice);
             $invoice->save();
 
             return $payment;
@@ -47,13 +54,27 @@ class SalesPaymentService
             $payment = SalesPayment::findOrFail($id);
             $invoice = SalesInvoice::lockForUpdate()->findOrFail($payment->sales_invoice_id);
 
-            $invoice->paid_amount = max(0, $invoice->paid_amount - $payment->amount);
-            if ($invoice->status === SalesInvoice::STATUS_PAID) {
-                $invoice->status = SalesInvoice::STATUS_OPEN;
-            }
+            $invoice->paid_amount = max(0, (float) $invoice->paid_amount - (float) $payment->amount);
+            $invoice->status = $this->resolveInvoiceStatus($invoice);
             $invoice->save();
 
             $payment->delete();
         });
+    }
+
+    /**
+     * Derive invoice status from the actual paid amount so it stays consistent
+     * across both payment creation and deletion. Never overrides a CANCELLED
+     * invoice.
+     */
+    private function resolveInvoiceStatus(SalesInvoice $invoice): string
+    {
+        if ($invoice->status === SalesInvoice::STATUS_CANCELLED) {
+            return SalesInvoice::STATUS_CANCELLED;
+        }
+
+        return (float) $invoice->paid_amount >= (float) $invoice->total_amount
+            ? SalesInvoice::STATUS_PAID
+            : SalesInvoice::STATUS_OPEN;
     }
 }
