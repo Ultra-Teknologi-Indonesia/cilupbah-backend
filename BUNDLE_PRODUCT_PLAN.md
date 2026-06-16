@@ -126,11 +126,15 @@ stok** (stok bundle = turunan; saat terjual, potong komponen + re-sync stok prod
   / `sync_price_stock` yang sudah ada; tambahkan resolusi "bundle terdampak".
 - Test (mock adapter): jual bundle → dispatch sync stok untuk bundle + komponen terdampak.
 
-## FASE B6 — Frontend
+## FASE B6 — Frontend ✅ SELESAI
 
-- Builder bundle: pilih **produk** → bila multi-varian, pilih **varian** mana → set qty (UI seperti
-  contoh `compositions`). Tampilkan stok turunan bundle (read-only) + peringatan bila komponen habis.
-- Tampilkan badge tipe produk (Satuan/Varian/Bundle) dari `product_type`.
+- ✅ Builder bundle (`bundle-builder.tsx`): cari **produk** (exclude bundle) → bila multi-varian pilih
+  **varian** → set qty (stepper). Terintegrasi di form Detail saat toggle Bundle aktif; submit via
+  endpoint `storeBundle` (`POST /inventory/items`) → `useCreateBundle`.
+- ✅ Tab Komposisi (detail): stok turunan bundle (read-only, dari `bundle_stock`) + peringatan bila
+  komponen kurang dari kebutuhan 1 bundle (baris merah + banner).
+- ✅ Badge tipe produk (Satuan/Varian/Bundle) dari `product_type` — `ProductTypeBadge` di detail header.
+- Catatan: hidrasi edit bundle (detail → form) belum; alur create bundle sudah jalan end-to-end.
 
 ---
 
