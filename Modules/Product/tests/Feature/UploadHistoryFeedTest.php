@@ -210,6 +210,36 @@ class UploadHistoryFeedTest extends TestCase
         $this->assertNotContains($this->failed->id, $ids);
     }
 
+    public function test_filter_by_product_id_scopes_entries(): void
+    {
+        $other = Product::create([
+            'name' => 'Produk Lain',
+            'category_id' => 1,
+            'brand_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+        ]);
+        $otherLog = ProductSyncLog::create([
+            'product_id' => $other->id,
+            'channel_shop_id' => $this->shop->id,
+            'action' => ProductSyncLog::ACTION_UPLOAD,
+            'status' => ProductSyncLog::STATUS_FAILED,
+            'error_message' => 'E500',
+        ]);
+
+        $response = $this->getJson('/api/v1/upload-histories?filter[product_id]='.$this->product->id);
+
+        $response->assertStatus(200);
+        $ids = collect($response->json('data'))->pluck('id')->all();
+        $this->assertContains($this->failed->id, $ids);
+        $this->assertContains($this->success->id, $ids);
+        $this->assertNotContains($otherLog->id, $ids);
+        $this->assertSame(
+            [$this->product->id],
+            collect($response->json('data'))->pluck('item_group_id')->unique()->all()
+        );
+    }
+
     public function test_reupload_failed_entry_dispatches_job_and_sets_pending(): void
     {
         Queue::fake();
