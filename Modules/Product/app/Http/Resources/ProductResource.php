@@ -34,6 +34,7 @@ class ProductResource extends JsonResource
             'is_bundle' => $this->is_bundle,
             'product_type' => $this->productType(),
             'total_variants' => $this->totalVariants(),
+            'bundle_components' => $this->whenLoaded('bundleItems', fn () => $this->bundleComponents()),
             'is_consignment' => $this->is_consignment,
             'is_stored' => $this->is_stored,
             'is_sold' => $this->is_sold,
@@ -170,6 +171,39 @@ class ProductResource extends JsonResource
         }
 
         return ($this->totalVariants() ?? 1) > 1 ? 'variant' : 'single';
+    }
+
+    /**
+     * Bundle composition (B1): for each component show its parent product,
+     * the selected variant (sku + variation_values), qty, and component stock.
+     */
+    protected function bundleComponents(): \Illuminate\Support\Collection
+    {
+        return $this->bundleItems->map(function ($item) {
+            $variant = $item->relationLoaded('component') ? $item->component : null;
+
+            return [
+                'component_variant_id' => $item->component_variant_id,
+                'qty' => (int) $item->qty,
+                'sku' => $variant->sku ?? null,
+                'product' => ($variant && $variant->relationLoaded('product') && $variant->product) ? [
+                    'id' => $variant->product->id,
+                    'name' => $variant->product->name,
+                ] : null,
+                'variation_values' => ($variant && $variant->relationLoaded('options'))
+                    ? $variant->options->map(fn ($o) => [
+                        'attribute_id' => $o->attribute_id,
+                        'value' => $o->value,
+                    ])->values()
+                    : [],
+                'stock' => ($variant && $variant->relationLoaded('inventories')) ? [
+                    'on_hand' => (int) $variant->inventories->sum('on_hand'),
+                    'reserved' => (int) $variant->inventories->sum('reserved'),
+                    'on_order' => (int) $variant->inventories->sum('on_order'),
+                    'available' => (int) $variant->inventories->sum('available'),
+                ] : null,
+            ];
+        })->values();
     }
 
     protected function primaryImageUrl(): ?string

@@ -17,16 +17,26 @@ perlu flag terpisah. Bundle = produk dengan **SKU sendiri** yang isinya referens
 
 ---
 
+## Status pengerjaan
+
+- ✅ **Modul Dasar** — selesai (model produk Satuan/Varian/Bundle + `is_bundle`).
+- ✅ **FASE B0** — selesai (commit `9be5fb7`): konsolidasi tabel komposisi ke
+  `product_bundle_items`, migrasi data, `product_bundles` deprecated, `ProductResource`
+  ekspos `product_type` + `total_variants`. 221 test Product+Inventory hijau.
+- ✅ **FASE B1** — selesai: validasi komponen (varian aktif) + detail bundle ekspos komposisi
+  (produk induk, variation_values, qty, stok komponen). 223 test hijau.
+- ⬜ B2 → B6 — belum.
+
 ## Kondisi saat ini (hasil audit)
 
 | # | Area | Status |
 |---|---|---|
 | 1 | `is_bundle` flag (products) | ✅ ada (migration + model + di-set saat create bundle) |
-| 2 | Penyimpanan komposisi | ⚠️ **DUA tabel** rancu: `product_bundles` (variant↔variant, lama) **dan** `product_bundle_items` (bundle_product_id↔component_variant_id+qty, baru). `saveBundle` pakai yang baru. |
+| 2 | Penyimpanan komposisi | ✅ **DIKONSOLIDASI (B0)** — kanonik `product_bundle_items` (bundle_product_id↔component_variant_id+qty). Semua penulis (Inventory `BundleController`, `ProductImportService`, `saveBundle`) diarahkan ke sini. `product_bundles` (lama) `@deprecated`, belum di-drop. |
 | 3 | API buat bundle | ✅ `StoreBundleRequest` (`components[].variant_id`+`qty`) → `createOrUpdateBundle` → `saveBundle`. Pilih komponen = kirim `variant_id` (varian spesifik). |
 | 4 | Stok bundle (derivasi + potong komponen) | ❌ **TIDAK ADA** — `StockService` tak mengenali bundle; jual bundle TIDAK memotong komponen → **risiko oversell**. |
 | 5 | Guard (bundle-in-bundle, transaction-lock) | ❌ tidak ada |
-| 6 | Satuan vs Varian | ✅ implisit by-count (`total_variants`) — sesuai Jubelio |
+| 6 | Satuan vs Varian | ✅ implisit by-count (`total_variants`) — sesuai Jubelio. **B0**: diekspos eksplisit via `product_type` di `ProductResource`. |
 | 7 | Omnichannel bundle | ⚠️ mapper push bundle sebagai **1 SKU sendiri** — lihat koreksi di bawah |
 
 ### ⚠️ Koreksi atas audit (area 7)
@@ -39,24 +49,28 @@ stok** (stok bundle = turunan; saat terjual, potong komponen + re-sync stok prod
 
 ---
 
-## FASE B0 — Konsolidasi tabel komposisi + ekspos tipe
+## FASE B0 — Konsolidasi tabel komposisi + ekspos tipe ✅ SELESAI (commit 9be5fb7)
 
-- Kanonikkan ke **`product_bundle_items`** (`bundle_product_id`, `component_variant_id`, `qty`).
-  `product_bundles` (variant↔variant) → tandai deprecated; migrasikan data bila ada; arahkan
-  semua penulis ke tabel kanonik (audit: ProductImportService & BundleController Inventory masih
-  pakai tabel lama).
-- `ProductResource` ekspos `product_type` turunan: `bundle` (is_bundle) | `variant` (>1 varian) |
+- ✅ Kanonikkan ke **`product_bundle_items`** (`bundle_product_id`, `component_variant_id`, `qty`).
+  `product_bundles` (variant↔variant) → ditandai `@deprecated`; data dimigrasikan (migration
+  idempoten); semua penulis dialihkan ke tabel kanonik (ProductImportService & BundleController
+  Inventory tak lagi menulis ke tabel lama).
+- ✅ `ProductResource` ekspos `product_type` turunan: `bundle` (is_bundle) | `variant` (>1 varian) |
   `single` (1 varian) + `total_variants` — agar FE jelas tanpa menebak.
-- Test: resource mengembalikan product_type benar untuk 3 kasus.
+- ✅ Test: resource mengembalikan product_type benar untuk 3 kasus + Inventory bundle store
+  menulis ke tabel kanonik.
+- Catatan: `product_bundles` belum di-drop (deprecate dulu; drop di fase terpisah saat aman).
 
-## FASE B1 — Komposisi: pilih produk + varian + qty
+## FASE B1 — Komposisi: pilih produk + varian + qty ✅ SELESAI
 
-- `StoreBundleRequest`/`UpdateBundle`: `components[].variant_id` (uuid, exists) + `qty>=1`;
-  validasi varian **aktif** & milik produk non-bundle (lihat B2). Dukung memilih **varian
-  spesifik** dari produk multi-varian (FE kirim variant_id varian terpilih).
-- Detail bundle (`GET /products/{id}`) ekspos komposisi: per komponen tampilkan produk induk,
-  varian (variation_values), qty, stok komponen — selaras `bundles_variants.compositions` Jubelio.
-- Test: buat bundle dari 1 varian produk-A + 1 varian produk-B (multi-varian) → tersimpan benar.
+- ✅ `StoreBundleRequest`: `components[].variant_id` (uuid, exists) + `qty>=1`; validasi varian
+  **aktif** (`Rule::exists(...is_active=true)`). Memilih varian spesifik dari produk multi-varian
+  = FE kirim `variant_id` varian terpilih (sudah didukung skema product_bundle_items).
+- ✅ Detail bundle (`GET /products/{id}`) ekspos `bundle_components`: per komponen → produk induk
+  (id,name), varian (sku), variation_values, qty, stok komponen (on_hand/reserved/available).
+- ✅ Test: bundle dari varian spesifik produk-A + produk-B (multi-varian) tersimpan & detail benar;
+  varian non-aktif ditolak 422.
+- Catatan: guard varian harus milik produk **non-bundle** (bundle-in-bundle) → ditegakkan di **B2**.
 
 ## FASE B2 — Guard bisnis (anti error 23504 & 90003) 🔴
 
