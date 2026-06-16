@@ -134,7 +134,8 @@ stok** (stok bundle = turunan; saat terjual, potong komponen + re-sync stok prod
 - ✅ Tab Komposisi (detail): stok turunan bundle (read-only, dari `bundle_stock`) + peringatan bila
   komponen kurang dari kebutuhan 1 bundle (baris merah + banner).
 - ✅ Badge tipe produk (Satuan/Varian/Bundle) dari `product_type` — `ProductTypeBadge` di detail header.
-- Catatan: hidrasi edit bundle (detail → form) belum; alur create bundle sudah jalan end-to-end.
+- ✅ Hidrasi edit bundle: `detailToFormValues` memuat `bundleComponents` dari detail; `EditProdukForm`
+  branch submit ke `storeBundle` (dengan `id`) untuk update komposisi. Create + edit bundle end-to-end.
 
 ---
 
