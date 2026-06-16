@@ -156,7 +156,19 @@ API marketplace.
 
 ---
 
-## FASE 4 — Value mapping varian di Mapper (gap Q3) 🟡
+## FASE 4 — Value mapping varian di Mapper (gap Q3) ✅ SELESAI
+
+Diimplementasikan: `LazadaProductMapper::buildSaleProps` — tiap opsi varian →
+sale-property channel (key = `channel_attributes.external_id`; nilai tertutup →
+`channel_attribute_options.external_id` (case-insensitive); free-text pass-through;
+atribut tak terpetakan dilewati). `resolveChannelCategoryUuid` untuk scoping atribut.
+`LazadaAdapter::buildProductPayload` `loadMissing('variants.options')`. Test
+`LazadaVariantMappingTest` 4/4; Channel 116/116, Product 192/192 hijau.
+
+> Perlu validasi LIVE: struktur `SaleProp` di payload `/product/create` Lazada
+> (saat ini nested object per-SKU) — sesuaikan setelah uji push asli.
+
+
 
 **Masalah:** atribut varian bernilai tertutup (mis. Warna) dikirim apa adanya; harus
 dipetakan ke `channel_attribute_options.external_id`.
