@@ -129,6 +129,31 @@ class ProductRepository
         return null;
     }
 
+    /**
+     * B4: bila varian adalah varian dari produk bundle, kembalikan komponennya
+     * [['variant_id','qty','sku'], ...] (terurut variant_id agar urutan lock deterministik);
+     * null bila varian tak ada atau produknya bukan bundle.
+     */
+    public function bundleComponentsForVariant(string $variantId): ?array
+    {
+        $productId = ProductVariant::where('id', $variantId)->value('product_id');
+
+        if ($productId === null || ! Product::where('id', $productId)->value('is_bundle')) {
+            return null;
+        }
+
+        return \Modules\Product\Models\ProductBundleItem::where('bundle_product_id', $productId)
+            ->with('component:id,sku')
+            ->orderBy('component_variant_id')
+            ->get()
+            ->map(fn ($item) => [
+                'variant_id' => $item->component_variant_id,
+                'qty' => (int) $item->qty,
+                'sku' => $item->component?->sku,
+            ])
+            ->all();
+    }
+
     public function paginateIndex(?string $status = null): LengthAwarePaginator
     {
         return QueryBuilder::for(Product::class)

@@ -31,7 +31,11 @@ perlu flag terpisah. Bundle = produk dengan **SKU sendiri** yang isinya referens
 - ✅ **FASE B3** — selesai: derivasi stok bundle `MIN(floor(available_komponen/qty))` via
   `Support\BundleStock::derive`; diekspos `bundle_stock` di detail produk + `ProductStockResource`
   (endpoint all-stocks). Read-only, bundle tanpa ledger sendiri.
-- ⬜ B4 → B6 — belum.
+- ✅ **FASE B4** — selesai: `StockService` (reserve/pick/ship/cancel/restore) deteksi varian bundle
+  via `ProductRepository::bundleComponentsForVariant` → kaskade ke komponen ×qty, atomik (1 transaksi),
+  urutan lock deterministik (orderBy variant_id). Bundle tak menyentuh ledger sendiri. Transparan
+  ke `SalesOrderService` (tanpa perubahan caller).
+- ⬜ B5 → B6 — belum.
 
 ## Kondisi saat ini (hasil audit)
 
@@ -100,14 +104,17 @@ stok** (stok bundle = turunan; saat terjual, potong komponen + re-sync stok prod
 - ✅ Test: {A:10/1, B:3/1} → 3; qty>1 ({A:10/3=3, B:8/2=4} → 3); via endpoint all-stocks.
 - FE menampilkan stok bundle → digarap di **B6**.
 
-## FASE B4 — Potong stok komponen saat bundle terjual 🔴 (anti-oversell)
+## FASE B4 — Potong stok komponen saat bundle terjual ✅ SELESAI (anti-oversell)
 
-- `StockService` (reserve/pick/ship/cancel/restore): bila item adalah **varian bundle**, lakukan
-  kaskade ke komponen × qty (reserve/pick/ship komponen; cancel/restore mengembalikan). Bundle
-  sendiri TIDAK punya ledger fisik.
-- Idempoten + transaksional (semua komponen atau none).
-- Test: jual 2 bundle → tiap komponen berkurang qty×2; cancel mengembalikan; stok komponen kurang
-  dari kebutuhan → ditolak/short sesuai kebijakan reserve.
+- ✅ `StockService` (reserve/pick/ship/cancel/restore): bila item adalah **varian bundle**, kaskade
+  ke komponen × qty (`cascadeBundle` membungkus seluruh komponen dalam 1 `DB::transaction`). Bundle
+  sendiri TIDAK menyentuh ledger (tak punya inventory/movement).
+- ✅ Transaksional (semua komponen atau none) — komponen kurang → `InsufficientStockException` →
+  rollback total. Urutan lock deterministik (`bundleComponentsForVariant` orderBy `component_variant_id`)
+  untuk hindari deadlock antar order bundle yang berbagi komponen.
+- ✅ Transparan ke `SalesOrderService`/`ReleaseExpiredReservationsJob` (caller tak berubah).
+- ✅ Test (BundleStockCascadeTest): reserve ×qty, cancel mengembalikan, pick potong on_hand,
+  insufficient atomik, item non-bundle tak terpengaruh.
 
 ## FASE B5 — Propagasi stok omnichannel
 
