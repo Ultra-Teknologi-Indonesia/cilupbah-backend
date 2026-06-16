@@ -393,6 +393,76 @@ class ProductController extends Controller
         );
     }
 
+    /**
+     * Aksi massal varian: activate | deactivate | delete (by ids, milik produk ini).
+     * delete diproteksi: tolak varian yang sudah ter-listing channel / punya inventory,
+     * dan jangan sisakan 0 varian.
+     */
+    public function bulkVariants(Request $request, $id): JsonResponse
+    {
+        $product = $this->findProduct($id);
+        if (! $product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        $data = $request->validate([
+            'action' => 'required|in:activate,deactivate,delete',
+            'variant_ids' => 'required|array|min:1',
+            'variant_ids.*' => 'uuid',
+        ]);
+
+        $variants = ProductVariant::where('product_id', $product->id)
+            ->whereIn('id', $data['variant_ids'])
+            ->get(['id', 'sku']);
+
+        if ($variants->isEmpty()) {
+            return $this->errorResponse('Tidak ada varian yang cocok untuk produk ini.', 422);
+        }
+
+        if ($data['action'] !== 'delete') {
+            ProductVariant::whereIn('id', $variants->pluck('id'))
+                ->update(['is_active' => $data['action'] === 'activate', 'updated_at' => now()]);
+
+            return $this->successResponse(
+                ['affected' => $variants->count()],
+                'Status varian diperbarui.'
+            );
+        }
+
+        // delete — proteksi integritas
+        $total = ProductVariant::where('product_id', $product->id)->count();
+        if ($variants->count() >= $total) {
+            return $this->errorResponse('Tidak bisa menghapus semua varian; produk butuh minimal 1 varian.', 422);
+        }
+
+        $blocked = [];
+        $deletable = [];
+        foreach ($variants as $v) {
+            $listed = \Illuminate\Support\Facades\DB::table('product_variant_channel_mappings')->where('variant_id', $v->id)->exists();
+            $hasStock = \Illuminate\Support\Facades\DB::table('inventories')->where('item_id', $v->id)->exists();
+            if ($listed || $hasStock) {
+                $blocked[] = $v->sku;
+            } else {
+                $deletable[] = $v->id;
+            }
+        }
+
+        if (empty($deletable)) {
+            return $this->errorResponse(
+                'Varian sudah ter-listing di channel atau punya stok — tidak bisa dihapus: ' . implode(', ', $blocked),
+                422,
+                ['blocked' => $blocked]
+            );
+        }
+
+        ProductVariant::whereIn('id', $deletable)->delete();
+
+        return $this->successResponse(
+            ['deleted' => count($deletable), 'blocked' => $blocked],
+            'Varian dihapus.' . ($blocked ? ' Sebagian dilewati karena terpakai.' : '')
+        );
+    }
+
     private function findProduct($id, array $with = []): ?Product
     {
         $normalizedId = str_replace('-', '', (string) $id);
