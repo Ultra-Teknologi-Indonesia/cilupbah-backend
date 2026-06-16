@@ -58,6 +58,12 @@ class SalesOrderRepository
             ->paginate($limit);
     }
 
+    /**
+     * "Failed" orders are a deliberate subset of cancelled orders: those that
+     * had an internal cancellation request (cancel_request_reason, set by the
+     * Outbound request-cancel flow) and ended up cancelled. Marketplace-initiated
+     * cancellations (no internal request) show under getCancelledOrders instead.
+     */
     public function getFailedOrders(int $limit = 10)
     {
         return QueryBuilder::for(SalesOrder::class)

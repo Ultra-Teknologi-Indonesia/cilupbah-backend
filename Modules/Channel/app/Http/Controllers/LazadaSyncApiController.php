@@ -81,6 +81,38 @@ class LazadaSyncApiController extends Controller
         return $this->successResponse(['synced' => $count], "{$count} kategori Lazada disinkronkan.");
     }
 
+    /**
+     * Sinkronkan spec atribut Lazada per kategori (channel_attributes).
+     * Tanpa category_id → semua kategori yang sudah dipetakan.
+     */
+    public function syncCategoryAttributes(Request $request, LazadaProductService $productService)
+    {
+        $validated = $request->validate([
+            'shop_id' => 'required|string',
+            'category_id' => 'nullable|string',
+        ]);
+
+        try {
+            if (! empty($validated['category_id'])) {
+                $count = $productService->syncCategoryAttributes($validated['shop_id'], $validated['category_id']);
+
+                return $this->successResponse(
+                    ['synced' => $count, 'category_id' => $validated['category_id']],
+                    "{$count} atribut Lazada disinkronkan."
+                );
+            }
+
+            $results = $productService->syncAllMappedCategoryAttributes($validated['shop_id']);
+        } catch (\Throwable $e) {
+            return $this->errorResponse('Gagal sinkron atribut Lazada: ' . $e->getMessage(), 422);
+        }
+
+        return $this->successResponse(
+            ['categories' => $results, 'total' => array_sum($results)],
+            array_sum($results) . ' atribut dari ' . count($results) . ' kategori disinkronkan.'
+        );
+    }
+
     #[OA\Post(
         path: '/api/v1/lazada/sync/pull',
         summary: 'Tarik order Lazada satu toko',

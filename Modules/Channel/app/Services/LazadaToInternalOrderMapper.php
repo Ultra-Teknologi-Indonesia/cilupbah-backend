@@ -64,7 +64,11 @@ class LazadaToInternalOrderMapper
             'status' => 'UNPAID',
             'is_paid' => $isPaid,
             'is_canceled' => $channelStatus === 'CANCELLED',
-            'cancel_reason' => null,
+            // Lazada exposes the cancellation reason at order- or item-level; mirror
+            // TikTok by capturing it instead of dropping it (only when cancelled).
+            'cancel_reason' => $channelStatus === 'CANCELLED'
+                ? ($lazadaOrder['reason'] ?? $lazadaOrder['cancel_reason'] ?? $orderItems[0]['reason'] ?? $orderItems[0]['reason_detail'] ?? null)
+                : null,
             'payment_method' => $lazadaOrder['payment_method'] ?? null,
             'payment_method_name' => $lazadaOrder['payment_method'] ?? null,
             'tracking_number' => $orderItems[0]['tracking_code'] ?? null,

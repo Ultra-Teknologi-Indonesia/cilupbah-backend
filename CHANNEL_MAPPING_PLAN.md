@@ -77,7 +77,21 @@ di atas hanya jaring anti-duplikat-dimensi. Trigger DB = overkill, tidak dipakai
 
 ---
 
-## FASE 2 — Sinkron `channel_attributes` per kategori 🟠 prasyarat Fase 3
+## FASE 2 — Sinkron `channel_attributes` per kategori ✅ SELESAI
+
+Diimplementasikan: `LazadaProductService::syncCategoryAttributes($shopId, $categoryExtId)`
+(GET `/category/attributes/get` → upsert `channel_attributes` {external_id=name,
+name=label, is_required=is_mandatory, is_multiple=input_type∈{multiSelect,...}} +
+`channel_attribute_options`) & `syncAllMappedCategoryAttributes` (loop semua leaf
+yang dipetakan). Endpoint `POST /v1/lazada/sync/category-attributes` + command
+`lazada:sync-category-attributes {shop_id} {category_id?}`. Test
+`LazadaSyncCategoryAttributesTest` 3/3 (persist+options, idempoten, kategori belum
+sinkron→422); Channel 91/91 hijau.
+
+> Perlu validasi LIVE: nama field response `/category/attributes/get` (mapping
+> is_mandatory/input_type/options) — saat ini berdasarkan dokumentasi, defensif.
+
+
 
 **Masalah:** `syncCategoryTree` hanya menarik pohon kategori; **spec atribut per leaf
 belum ditarik**, jadi pre-flight validator (Fase 3) belum punya data acuan.
