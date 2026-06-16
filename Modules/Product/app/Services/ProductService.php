@@ -8,6 +8,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
+use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Finance\Support\AccountMappingKey;
 use Modules\Inventory\Models\Inventory;
@@ -169,7 +170,7 @@ class ProductService
 
     public function updateProduct(string $productId, array $data)
     {
-        return DB::transaction(function () use ($productId, $data) {
+        $result = DB::transaction(function () use ($productId, $data) {
             $productData = Arr::only($data, [
                 'name', 'sku', 'description', 'category_id', 'brand_id', 'search_keyword',
                 'order_type', 'indent_days', 'condition', 'status',
@@ -315,6 +316,13 @@ class ProductService
 
             return $productId;
         });
+
+        // Fase E: setelah transaksi commit, propagasi perubahan varian ke channel terhubung.
+        if (array_key_exists('variation_types', $data)) {
+            $this->propagateVariantChangeToChannels($productId);
+        }
+
+        return $result;
     }
 
     /**
@@ -526,6 +534,23 @@ class ProductService
             'created_at' => now(),
             'updated_at' => now(),
         ], $specs));
+    }
+
+    /**
+     * Fase E — propagasi perubahan struktur varian ke marketplace: update listing di tiap
+     * channel terhubung (varian supersede otomatis hilang dari payload; SKU baru masuk review).
+     * Dipanggil SETELAH transaksi commit; skip mapping yang masih 'pending'. No-500.
+     */
+    private function propagateVariantChangeToChannels(string $productId): void
+    {
+        $mappings = DB::table('product_channel_mappings')
+            ->where('product_id', $productId)
+            ->where('sync_status', '!=', 'pending')
+            ->get(['channel_shop_id']);
+
+        foreach ($mappings as $m) {
+            SyncProductToChannelJob::dispatch($productId, $m->channel_shop_id, 'update');
+        }
     }
 
     /**

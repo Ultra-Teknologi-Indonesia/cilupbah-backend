@@ -17,6 +17,11 @@ class LazadaProductMapper
                 continue;
             }
 
+            // Varian yang di-supersede (Fase D) tidak di-listing ke channel.
+            if (array_key_exists('is_active', $variant) && ! $variant['is_active']) {
+                continue;
+            }
+
             // Sale-property varian (mis. Warna/Ukuran) → key & nilai versi channel.
             $saleProps = $this->buildSaleProps($variant['options'] ?? [], $channelCategoryUuid);
 

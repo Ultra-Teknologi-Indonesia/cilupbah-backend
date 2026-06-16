@@ -179,7 +179,19 @@ jenis/nilai → 422; tambah nilai → ekspansi benar.
 
 ---
 
-## FASE E — Propagasi omnichannel saat varian berubah
+## FASE E — Propagasi omnichannel saat varian berubah ✅ SELESAI
+
+Diimplementasikan: `LazadaProductMapper` melewati varian `is_active=false` (supersede tak di-listing);
+`ProductService::propagateVariantChangeToChannels` dispatch `SyncProductToChannelJob('update')` ke
+tiap channel terhubung (skip `pending`) **setelah** transaksi commit (varian baru → update listing →
+markInReview via job; SKU lama hilang dari payload). Value-mapping Fase 4 + pre-flight Fase 3 tetap
+berlaku. Test `ProductVariantChannelPropagationTest` 3/3 (mapper skip supersede, dispatch update,
+no-dispatch tanpa channel); Product 196/196, Channel 131/131 hijau.
+
+> Catatan: filter varian aktif & dispatch saat ini fokus Lazada (channel terintegrasi). Paritas
+> TikTok (filter is_active di payload-nya) bisa menyusul saat dibutuhkan.
+
+
 
 Regenerasi varian harus tersinkron ke marketplace (pakai infra yang ada).
 
