@@ -10,6 +10,7 @@ use Modules\Product\Http\Requests\ItemIdsRequest;
 use Modules\Product\Http\Requests\StoreBundleRequest;
 use Modules\Product\Http\Requests\UpdateProductRequest;
 use Modules\Product\Http\Resources\ProductPriceResource;
+use Modules\Product\Http\Resources\ProductChannelListingResource;
 use Modules\Product\Http\Resources\ProductResource;
 use Modules\Product\Http\Resources\ProductStockResource;
 use Modules\Product\Http\Resources\ProductVariantRowResource;
@@ -460,6 +461,51 @@ class ProductController extends Controller
         return $this->successResponse(
             ['deleted' => count($deletable), 'blocked' => $blocked],
             'Varian dihapus.' . ($blocked ? ' Sebagian dilewati karena terpakai.' : '')
+        );
+    }
+
+    #[OA\Get(
+        path: '/api/v1/products/{id}/channel-listings',
+        summary: 'Listing channel per varian (paginasi + filter channel)',
+        tags: ['Products'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'channel', in: 'query', required: false, description: 'Kode channel (mis. lazada)', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'include_unlisted', in: 'query', required: false, description: 'Sertakan varian tanpa listing (default false)', schema: new OA\Schema(type: 'boolean')),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'OK'),
+            new OA\Response(response: 404, description: 'Produk tidak ditemukan'),
+        ]
+    )]
+    public function channelListings(Request $request, $id): JsonResponse
+    {
+        $product = $this->findProduct($id);
+        if (! $product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        $channel = $request->query('channel');
+        $perPage = min(max((int) $request->integer('per_page', 20), 1), 200);
+
+        $query = ProductVariant::query()
+            ->where('product_id', $product->id)
+            ->with(['options', 'channelMappings.channelMapping.channelShop.channel'])
+            ->orderBy('sku');
+
+        // Default: hanya varian yang punya listing (listed_only) — sesuai UX.
+        if (! $request->boolean('include_unlisted')) {
+            $query->whereHas('channelMappings.channelMapping', function ($q) use ($channel) {
+                if ($channel) {
+                    $q->whereHas('channelShop.channel', fn ($c) => $c->where('code', $channel));
+                }
+            });
+        }
+
+        return $this->successPaginatedResponse(
+            ProductChannelListingResource::collection($query->paginate($perPage)),
+            'Daftar listing channel berhasil diambil.'
         );
     }
 

@@ -93,6 +93,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     // Detail produk per-tab: Variasi (paginasi + search + sort) + aksi massal.
     Route::get('products/{id}/variants', [ProductController::class, 'variants'])->whereUuid('id');
     Route::post('products/{id}/variants/bulk', [ProductController::class, 'bulkVariants'])->whereUuid('id');
+    // Detail produk per-tab: Channel (listing per varian).
+    Route::get('products/{id}/channel-listings', [ProductController::class, 'channelListings'])->whereUuid('id');
 
     Route::get('products/{id}/channel-drafts', [ProductChannelDraftController::class, 'index'])->whereUuid('id');
     Route::post('products/{id}/channel-drafts', [ProductChannelDraftController::class, 'store'])->whereUuid('id');
