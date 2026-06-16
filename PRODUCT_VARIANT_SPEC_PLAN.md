@@ -31,7 +31,18 @@ Channel: `category_channel_mappings` · `channel_attributes` · `attribute_chann
 
 ---
 
-## FASE A — Fondasi data: `category_attributes` + mapping omnichannel
+## FASE A — Fondasi data: `category_attributes` + mapping omnichannel ✅ SELESAI
+
+Diimplementasikan: migration `channel_attributes.is_sale_prop` (+ `syncCategoryAttributes` simpan
+is_sale_prop); `CategoryAttributeSyncService::materializeFromChannels` — turunkan atribut internal
+dari channel: sale-prop→`sales`(jenis varian), selain→`spec`(spesifikasi); kecualikan
+SYSTEM_ATTRIBUTES; hormati pemetaan kurasi yang ada (tak duplikat); is_required = OR antar channel;
+materialkan `attribute_options` dari opsi channel; idempoten. Command
+`categories:materialize-attributes {category_id?}`. `ChannelListingValidator::SYSTEM_ATTRIBUTES`
+dipublikkan (single-source). Test `CategoryAttributeMaterializeTest` 3/3 (sales/spec+skip system,
+idempoten, hormati kurasi); Product 199/199, Channel 131/131 hijau.
+
+
 
 **Masalah:** tabel kosong → form dinamis tak punya sumber. Dan harus **akurat ke marketplace**.
 

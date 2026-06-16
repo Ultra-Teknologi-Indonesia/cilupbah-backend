@@ -234,6 +234,7 @@ class LazadaProductService
                 'name' => (string) ($attr['label'] ?? $attr['name'] ?? ''),
                 'is_required' => (bool) ($attr['is_mandatory'] ?? false),
                 'is_multiple' => in_array($inputType, ['multiselect', 'multienuminput', 'checkbox'], true),
+                'is_sale_prop' => (bool) ($attr['is_sale_prop'] ?? false),
                 'updated_at' => now(),
             ];
 

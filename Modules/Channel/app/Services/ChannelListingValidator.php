@@ -26,7 +26,7 @@ class ChannelListingValidator
      * 17935 menandai price/SellerSku/package_* sebagai is_mandatory).
      * Tanpa skip ini, validator akan salah memblokir SEMUA produk.
      */
-    private const SYSTEM_ATTRIBUTES = [
+    public const SYSTEM_ATTRIBUTES = [
         'price', 'sellersku', 'quantity',
         'package_weight', 'package_height', 'package_width', 'package_length',
     ];
