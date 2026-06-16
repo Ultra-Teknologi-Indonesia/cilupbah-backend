@@ -132,7 +132,7 @@ class LazadaWebhookTest extends TestCase
             ], 200),
         ]);
 
-        (new ProcessLazadaWebhook($this->orderPayload()))->handle(app(\Modules\Channel\Services\LazadaOrderService::class));
+        (new ProcessLazadaWebhook($this->orderPayload()))->handle(app(\Modules\Channel\Services\LazadaOrderService::class), app(\Modules\Channel\Services\LazadaProductService::class), app(\Modules\Channel\Services\LazadaAuthService::class));
 
         $order = SalesOrder::where('salesorder_no', '900123')->first();
         $this->assertNotNull($order);
@@ -155,7 +155,7 @@ class LazadaWebhookTest extends TestCase
             'data' => ['item_id' => '555100', 'qc_status' => 'rejected', 'reasons' => 'Gambar buram'],
         ]);
 
-        (new ProcessLazadaWebhook($payload))->handle(app(\Modules\Channel\Services\LazadaOrderService::class));
+        (new ProcessLazadaWebhook($payload))->handle(app(\Modules\Channel\Services\LazadaOrderService::class), app(\Modules\Channel\Services\LazadaProductService::class), app(\Modules\Channel\Services\LazadaAuthService::class));
 
         $mapping->refresh();
         $this->assertEquals('rejected', $mapping->sync_status);
@@ -166,7 +166,7 @@ class LazadaWebhookTest extends TestCase
     {
         $payload = $this->orderPayload(['message_type' => 99, 'data' => []]);
 
-        (new ProcessLazadaWebhook($payload))->handle(app(\Modules\Channel\Services\LazadaOrderService::class));
+        (new ProcessLazadaWebhook($payload))->handle(app(\Modules\Channel\Services\LazadaOrderService::class), app(\Modules\Channel\Services\LazadaProductService::class), app(\Modules\Channel\Services\LazadaAuthService::class));
 
         $this->assertTrue(true); 
     }

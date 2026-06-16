@@ -268,6 +268,57 @@ class LazadaProductService
         return $result;
     }
 
+    /**
+     * Tarik & sinkron SATU produk Lazada (untuk webhook Product Edited / Shallow Stock).
+     * Mengembalikan true bila berhasil di-upsert.
+     */
+    public function pullProductById(string $shopId, string $itemId): bool
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            return false;
+        }
+
+        $params = ['item_id' => $itemId];
+
+        try {
+            $res = $this->client->request('GET', '/product/item/get', $params, $shop->access_token);
+        } catch (TokenExpiredException $e) {
+            $this->authService->refreshStoreToken((string) $shop->id);
+            $shop = $this->shopRepository->findByShopId($shopId);
+            $res = $this->client->request('GET', '/product/item/get', $params, $shop->access_token);
+        }
+
+        $item = $res['data'] ?? null;
+        if (! is_array($item) || empty($item)) {
+            return false;
+        }
+
+        $productService = app(\Modules\Product\Services\ProductService::class);
+
+        try {
+            $internalData = $this->inboundMapper->map($item, $shopId);
+            $insertedId = $productService->upsertFromChannel($internalData);
+        } catch (\Throwable $e) {
+            Log::error('Lazada: gagal re-sync produk ' . $itemId . ': ' . $e->getMessage());
+
+            return false;
+        }
+
+        if (! $insertedId) {
+            return false;
+        }
+
+        $this->productRepository->upsertChannelMapping(
+            (string) $insertedId,
+            $shopId,
+            (string) ($item['item_id'] ?? $itemId),
+            'synced'
+        );
+
+        return true;
+    }
+
     public function pullProducts(string $shopId): int
     {
         $shop = $this->shopRepository->findByShopId($shopId);
