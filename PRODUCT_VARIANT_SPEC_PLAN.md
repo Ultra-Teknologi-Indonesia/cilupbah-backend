@@ -69,7 +69,15 @@ punya `attribute_channel_mappings` (tervalidasi: tak ada atribut wajib tanpa map
 
 ---
 
-## FASE B — Endpoint atribut per-kategori (Level-2)
+## FASE B — Endpoint atribut per-kategori (Level-2) ✅ SELESAI
+
+Diimplementasikan: `CategoryFormAttributeController::show` → `GET /api/v1/categories/{id}/form-attributes`
+mengembalikan `specifications` (type=spec) + `variant_types` (type=sales) dari `category_attributes`,
+tiap atribut: `attribute_id`, `name`, `is_required`, `options`, dan `channels{code:{mapped,required}}`
+(dari `attribute_channel_mappings`→`channel_attributes`→`channels`). Non-leaf (punya sub-kategori)→422;
+tidak ada→404. Test `CategoryFormAttributeTest` 3/3; Product 202/202 hijau.
+
+
 
 FE butuh: pilih kategori Level-2 → tahu **spesifikasi** & **jenis varian** yang berlaku.
 

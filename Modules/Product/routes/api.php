@@ -109,6 +109,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::apiResource('categories', CategoryController::class)->names('category')->where(['category' => '[0-9]+']);
     Route::post('categories/{category}/map-channel', [CategoryController::class, 'mapChannel'])->whereNumber('category');
+    // Fase B: atribut form (spesifikasi + jenis varian) untuk kategori Level-2.
+    Route::get('categories/{category}/form-attributes', [\Modules\Product\Http\Controllers\CategoryFormAttributeController::class, 'show'])->whereNumber('category')->name('category.form-attributes');
 
     Route::apiResource('brands', BrandController::class)->names('brand')->where(['brand' => '[0-9]+']);
     Route::apiResource('attributes', AttributeController::class)->names('attribute')->where(['attribute' => '[0-9]+']);
