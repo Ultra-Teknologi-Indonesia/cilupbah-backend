@@ -16,6 +16,7 @@ use Modules\Product\Http\Controllers\MasterFeedController;
 use Modules\Product\Http\Controllers\ReviewFeedController;
 use Modules\Product\Http\Controllers\ArchiveFeedController;
 use Modules\Product\Http\Controllers\ChannelProductListingController;
+use Modules\Product\Http\Controllers\ProductUploadListingController;
 use Modules\Product\Http\Controllers\RaiseProductController;
 use Modules\Product\Http\Controllers\VariantController;
 use Modules\Product\Http\Controllers\PriceListController;
@@ -94,6 +95,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('products/{id}/variants/bulk', [ProductController::class, 'bulkVariants'])->whereUuid('id');
 
     Route::get('products/{id}/channel-listings', [ProductController::class, 'channelListings'])->whereUuid('id');
+
+    Route::get('products/{id}/upload-listing', [ProductUploadListingController::class, 'index'])->whereUuid('id');
+    Route::post('products/{id}/upload-listing/match', [ProductUploadListingController::class, 'match'])->whereUuid('id');
 
     Route::get('products/{id}/channel-prices', [ProductController::class, 'channelPrices'])->whereUuid('id');
     Route::get('products/{id}/price-book', [ProductController::class, 'priceBook'])->whereUuid('id');
