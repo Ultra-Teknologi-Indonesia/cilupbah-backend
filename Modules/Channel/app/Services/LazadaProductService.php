@@ -65,6 +65,68 @@ class LazadaProductService
         return $statuses;
     }
 
+    /**
+     * Tarik pohon kategori Lazada → upsert ke channel_categories.
+     * Prasyarat agar PrimaryCategory (pemetaan kategori) bisa di-resolve saat push.
+     */
+    public function syncCategoryTree(string $shopId): int
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            throw new \Exception("Toko Lazada tidak terhubung: {$shopId}");
+        }
+
+        $channelId = DB::table('channels')->where('code', 'lazada')->value('id');
+        if (! $channelId) {
+            throw new \Exception('Channel lazada belum ter-seed.');
+        }
+
+        $res = $this->client->request('GET', '/category/tree/get', [], $shop->access_token);
+        $nodes = $res['data'] ?? [];
+
+        $count = 0;
+        $walk = function (array $list, string $parent) use (&$walk, &$count, $channelId) {
+            foreach ($list as $node) {
+                $extId = (string) ($node['category_id'] ?? '');
+                if ($extId === '') {
+                    continue;
+                }
+
+                $values = [
+                    'parent_external_id' => $parent,
+                    'name' => (string) ($node['name'] ?? ''),
+                    'is_leaf' => (bool) ($node['leaf'] ?? false),
+                    'updated_at' => now(),
+                ];
+
+                $existing = DB::table('channel_categories')
+                    ->where('channel_id', $channelId)
+                    ->where('external_id', $extId)
+                    ->first();
+
+                if ($existing) {
+                    DB::table('channel_categories')->where('id', $existing->id)->update($values);
+                } else {
+                    DB::table('channel_categories')->insert($values + [
+                        'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
+                        'channel_id' => $channelId,
+                        'external_id' => $extId,
+                        'created_at' => now(),
+                    ]);
+                }
+                $count++;
+
+                if (! empty($node['children']) && is_array($node['children'])) {
+                    $walk($node['children'], $extId);
+                }
+            }
+        };
+
+        $walk(is_array($nodes) ? $nodes : [], '0');
+
+        return $count;
+    }
+
     public function pullProducts(string $shopId): int
     {
         $shop = $this->shopRepository->findByShopId($shopId);

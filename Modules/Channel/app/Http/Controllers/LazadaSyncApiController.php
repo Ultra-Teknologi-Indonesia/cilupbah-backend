@@ -5,8 +5,13 @@ namespace Modules\Channel\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
+use Modules\Channel\Adapters\LazadaAdapter;
+use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\LazadaOrderService;
+use Modules\Channel\Services\LazadaProductService;
+use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductChannelMapping;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Lazada', description: 'Integrasi OAuth Lazada')]
@@ -18,6 +23,63 @@ class LazadaSyncApiController extends Controller
         protected LazadaOrderService $orderService,
         protected ChannelShopRepository $shopRepository,
     ) {}
+
+    /** Push satu produk Master ke Lazada (listing). Kembalikan respons Lazada apa adanya. */
+    public function pushProduct(Request $request)
+    {
+        $validated = $request->validate([
+            'shop_id' => 'required|string',
+            'product_id' => 'required|uuid',
+        ]);
+
+        $shop = ChannelShop::where('shop_id', $validated['shop_id'])
+            ->whereNull('disconnected_at')
+            ->first();
+        if (! $shop) {
+            return $this->errorResponse('Toko Lazada tidak ditemukan / terputus', 404);
+        }
+
+        $product = Product::with(['variants', 'media'])->find($validated['product_id']);
+        if (! $product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        $result = app(LazadaAdapter::class)->pushProduct($product, $shop);
+
+        if (! ($result['success'] ?? false)) {
+            // Pesan asli Lazada untuk debugging mapper/atribut/kategori.
+            return $this->errorResponse($result['message'] ?? 'Gagal push ke Lazada', 422, $result);
+        }
+
+        $externalId = $result['external_product_id'] ?? null;
+
+        $mapping = ProductChannelMapping::firstOrNew([
+            'product_id' => $product->id,
+            'channel_shop_id' => $shop->id,
+        ]);
+        $mapping->external_product_id = $externalId;
+        $mapping->save();
+        $mapping->markInReview($externalId);
+
+        return $this->successResponse(
+            ['external_product_id' => $externalId],
+            'Produk berhasil didorong ke Lazada (menunggu review).'
+        );
+    }
+
+    /** Sinkronkan pohon kategori Lazada ke channel_categories (prasyarat mapping kategori). */
+    public function syncCategories(Request $request, LazadaProductService $productService)
+    {
+        $validated = $request->validate(['shop_id' => 'required|string']);
+
+        try {
+            $count = $productService->syncCategoryTree($validated['shop_id']);
+        } catch (\Throwable $e) {
+            return $this->errorResponse('Gagal sinkron kategori Lazada: ' . $e->getMessage(), 422);
+        }
+
+        return $this->successResponse(['synced' => $count], "{$count} kategori Lazada disinkronkan.");
+    }
 
     #[OA\Post(
         path: '/api/v1/lazada/sync/pull',
