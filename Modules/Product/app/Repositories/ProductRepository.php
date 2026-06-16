@@ -41,7 +41,11 @@ class ProductRepository
 
     public function getByIdsWithStock(array $ids): Collection
     {
-        return Product::with('variants.inventories')->whereIn('id', $ids)->get();
+        return Product::with([
+            'variants.inventories',
+            // Bundle: stok diturunkan dari komponen (B3).
+            'bundleItems.component.inventories',
+        ])->whereIn('id', $ids)->get();
     }
 
     public function getByIdsWithVariants(array $ids): Collection

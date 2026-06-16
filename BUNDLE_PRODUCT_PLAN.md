@@ -28,7 +28,10 @@ perlu flag terpisah. Bundle = produk dengan **SKU sendiri** yang isinya referens
 - ✅ **FASE B2** — selesai: guard bundle-in-bundle (23504) + transaction-lock (90003) di
   `ProductService::createOrUpdateBundle` (via repo `variantIdsFromBundleProducts`,
   `currentIsBundle`, `transactionLockReason`); `storeBundle` catch DomainException→422.
-- ⬜ B3 → B6 — belum.
+- ✅ **FASE B3** — selesai: derivasi stok bundle `MIN(floor(available_komponen/qty))` via
+  `Support\BundleStock::derive`; diekspos `bundle_stock` di detail produk + `ProductStockResource`
+  (endpoint all-stocks). Read-only, bundle tanpa ledger sendiri.
+- ⬜ B4 → B6 — belum.
 
 ## Kondisi saat ini (hasil audit)
 
@@ -87,13 +90,15 @@ stok** (stok bundle = turunan; saat terjual, potong komponen + re-sync stok prod
 - ✅ Test (BundleCompositionTest): bundle-in-bundle ditolak, produk dgn mapping aktif gagal dikonversi,
   produk bersih sukses jadi bundle (happy path).
 
-## FASE B3 — Derivasi stok bundle 🔴
+## FASE B3 — Derivasi stok bundle ✅ SELESAI
 
-- `available_bundle = MIN atas komponen( floor(available_komponen / qty) )`.
-  (Rumus komposit umum; spec Jubelio hanya definisikan komposisi, jadi rumus ini keputusan kita —
-  didokumentasikan.)
-- Ekspos di Inventory/stock resource + detail produk (read-only; bundle tak punya ledger sendiri).
-- Test: komponen {A:10/1, B:3/1} → bundle=3; komponen qty>1 dihitung benar.
+- ✅ `available_bundle = MIN atas komponen( floor(available_komponen / qty) )` di
+  `Modules/Product/app/Support/BundleStock.php`. `on_hand` pakai rumus sama (jumlah bundle yang bisa
+  dirakit); `reserved`/`on_order` = 0 (hidup di komponen).
+- ✅ Ekspos `bundle_stock` di `ProductResource` (detail) + `ProductStockResource` (all-stocks);
+  repo `getByIdsWithStock` eager-load `bundleItems.component.inventories`. Read-only.
+- ✅ Test: {A:10/1, B:3/1} → 3; qty>1 ({A:10/3=3, B:8/2=4} → 3); via endpoint all-stocks.
+- FE menampilkan stok bundle → digarap di **B6**.
 
 ## FASE B4 — Potong stok komponen saat bundle terjual 🔴 (anti-oversell)
 

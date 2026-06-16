@@ -40,6 +40,7 @@ class ProductResource extends JsonResource
             'product_type' => $this->productType(),
             'total_variants' => $this->totalVariants(),
             'bundle_components' => $this->whenLoaded('bundleItems', fn () => $this->bundleComponents()),
+            'bundle_stock' => $this->whenLoaded('bundleItems', fn () => \Modules\Product\Support\BundleStock::derive($this->resource)),
             'is_consignment' => $this->is_consignment,
             'is_stored' => $this->is_stored,
             'is_sold' => $this->is_sold,

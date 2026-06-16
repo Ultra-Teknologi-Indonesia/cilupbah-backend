@@ -63,6 +63,36 @@ class BundleCompositionTest extends TestCase
         return $product;
     }
 
+    private function makeLocation(string $code): string
+    {
+        $id = \Illuminate\Support\Str::uuid()->toString();
+        DB::table('locations')->insert([
+            'id' => $id,
+            'location_code' => $code,
+            'location_name' => 'Gudang '.$code,
+            'location_type' => 'WAREHOUSE',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $id;
+    }
+
+    private function setInventory(string $variantId, string $locationId, int $available): void
+    {
+        DB::table('inventories')->insert([
+            'id' => \Illuminate\Support\Str::uuid()->toString(),
+            'item_id' => $variantId,
+            'location_id' => $locationId,
+            'bin_id' => null,
+            'on_hand' => $available,
+            'reserved' => 0,
+            'available' => $available,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
     public function test_bundle_from_specific_variants_of_multi_variant_products(): void
     {
         $a = $this->multiVariantProduct('ProdukA', ['Merah', 'Biru']);
@@ -251,5 +281,86 @@ class BundleCompositionTest extends TestCase
             'component_variant_id' => $component->id,
             'qty' => 2,
         ]);
+    }
+
+    // ── B3: derivasi stok bundle ────────────────────────────────────────
+
+    public function test_bundle_stock_is_min_floor_over_components(): void
+    {
+        $aVar = $this->multiVariantProduct('StokA', ['M'])->variants()->first();
+        $bVar = $this->multiVariantProduct('StokB', ['M'])->variants()->first();
+
+        $loc = $this->makeLocation('B3-A');
+        $this->setInventory($aVar->id, $loc, 10);
+        $this->setInventory($bVar->id, $loc, 3);
+
+        $bundleId = $this->postJson('/api/v1/inventory/items', [
+            'name' => 'Bundle Stok',
+            'sku' => 'BUNDLE-STOK',
+            'category_id' => 1,
+            'components' => [
+                ['variant_id' => $aVar->id, 'qty' => 1],
+                ['variant_id' => $bVar->id, 'qty' => 1],
+            ],
+        ])->assertStatus(201)->json('data.product_id');
+
+        // min(floor(10/1), floor(3/1)) = 3
+        $this->getJson("/api/v1/products/{$bundleId}")
+            ->assertStatus(200)
+            ->assertJsonPath('data.bundle_stock.available', 3)
+            ->assertJsonPath('data.bundle_stock.on_hand', 3)
+            ->assertJsonPath('data.bundle_stock.reserved', 0);
+    }
+
+    public function test_bundle_stock_respects_component_qty(): void
+    {
+        $aVar = $this->multiVariantProduct('QtyA', ['M'])->variants()->first();
+        $bVar = $this->multiVariantProduct('QtyB', ['M'])->variants()->first();
+
+        $loc = $this->makeLocation('B3-B');
+        $this->setInventory($aVar->id, $loc, 10); // /3 → 3
+        $this->setInventory($bVar->id, $loc, 8);  // /2 → 4
+
+        $bundleId = $this->postJson('/api/v1/inventory/items', [
+            'name' => 'Bundle Qty',
+            'sku' => 'BUNDLE-QTY',
+            'category_id' => 1,
+            'components' => [
+                ['variant_id' => $aVar->id, 'qty' => 3],
+                ['variant_id' => $bVar->id, 'qty' => 2],
+            ],
+        ])->assertStatus(201)->json('data.product_id');
+
+        // min(floor(10/3)=3, floor(8/2)=4) = 3
+        $this->getJson("/api/v1/products/{$bundleId}")
+            ->assertStatus(200)
+            ->assertJsonPath('data.bundle_stock.available', 3);
+    }
+
+    public function test_bundle_stock_via_all_stocks_endpoint(): void
+    {
+        $aVar = $this->multiVariantProduct('AllA', ['M'])->variants()->first();
+        $bVar = $this->multiVariantProduct('AllB', ['M'])->variants()->first();
+
+        $loc = $this->makeLocation('B3-C');
+        $this->setInventory($aVar->id, $loc, 6);
+        $this->setInventory($bVar->id, $loc, 9);
+
+        $bundleId = $this->postJson('/api/v1/inventory/items', [
+            'name' => 'Bundle All',
+            'sku' => 'BUNDLE-ALL',
+            'category_id' => 1,
+            'components' => [
+                ['variant_id' => $aVar->id, 'qty' => 2], // 3
+                ['variant_id' => $bVar->id, 'qty' => 3], // 3
+            ],
+        ])->assertStatus(201)->json('data.product_id');
+
+        $res = $this->postJson('/api/v1/inventory/items/all-stocks', [
+            'item_ids' => [$bundleId],
+        ])->assertStatus(200);
+
+        $row = collect($res->json('data'))->firstWhere('item_id', $bundleId);
+        $this->assertSame(3, $row['available']);
     }
 }
