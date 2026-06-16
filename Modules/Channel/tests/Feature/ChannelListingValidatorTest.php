@@ -176,4 +176,24 @@ class ChannelListingValidatorTest extends TestCase
             ->assertJsonPath('data.ready', true)
             ->assertJsonCount(0, 'data.issues');
     }
+
+    public function test_system_required_attributes_are_skipped(): void
+    {
+        // Tervalidasi live: Lazada menandai price/SellerSku/package_* sebagai wajib,
+        // tapi itu diisi struktural oleh mapper → validator TIDAK boleh memblokir.
+        foreach (['price', 'SellerSku', 'package_weight'] as $sys) {
+            DB::table('channel_attributes')->insert([
+                'id' => Uuid::uuid7()->toString(),
+                'channel_category_id' => $this->channelCategoryId,
+                'external_id' => $sys, 'name' => $sys,
+                'is_required' => true, 'is_multiple' => false,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+
+        $this->validate($this->makeProduct())
+            ->assertOk()
+            ->assertJsonPath('data.ready', true)
+            ->assertJsonCount(0, 'data.issues');
+    }
 }

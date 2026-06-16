@@ -20,6 +20,18 @@ use Modules\Product\Models\Product;
 class ChannelListingValidator
 {
     /**
+     * Atribut "wajib" channel yang sebenarnya diisi STRUKTURAL oleh mapper dari
+     * data varian/produk (harga, SKU, dimensi, qty) — bukan via pemetaan atribut.
+     * Tervalidasi dari respons live Lazada /category/attributes/get (mis. kategori
+     * 17935 menandai price/SellerSku/package_* sebagai is_mandatory).
+     * Tanpa skip ini, validator akan salah memblokir SEMUA produk.
+     */
+    private const SYSTEM_ATTRIBUTES = [
+        'price', 'sellersku', 'quantity',
+        'package_weight', 'package_height', 'package_width', 'package_length',
+    ];
+
+    /**
      * @return array<int, array{code:string, attribute:?string, message:string}>
      */
     public function validate(Product $product, string $channelCode): array
@@ -68,6 +80,11 @@ class ChannelListingValidator
         $issues = [];
 
         foreach ($required as $ca) {
+            // Atribut sistem (harga/SKU/dimensi/qty) diisi mapper dari struktur produk → lewati.
+            if (in_array(mb_strtolower((string) $ca->external_id), self::SYSTEM_ATTRIBUTES, true)) {
+                continue;
+            }
+
             // 2a) Atribut channel → atribut internal.
             $internalAttrId = DB::table('attribute_channel_mappings')
                 ->where('channel_attribute_id', $ca->id)
