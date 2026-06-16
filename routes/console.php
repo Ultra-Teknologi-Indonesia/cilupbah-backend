@@ -11,4 +11,7 @@ Artisan::command('inspire', function () {
 Schedule::command('lazada:refresh-tokens')->dailyAt('02:00')->withoutOverlapping();
 Schedule::command('tiktok:refresh-tokens')->dailyAt('02:30')->withoutOverlapping();
 
+// Fallback status review marketplace (bila webhook terlewat) — simpan ke DB.
+Schedule::command('products:poll-review-status')->everyThirtyMinutes()->withoutOverlapping();
+
 Schedule::command('horizon:snapshot')->everyFiveMinutes();

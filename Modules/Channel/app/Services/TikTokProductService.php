@@ -214,6 +214,53 @@ class TikTokProductService
         return $count;
     }
 
+    /**
+     * Tarik status listing terkini dari TikTok (untuk polling status review).
+     * @return array<string, array{status:string, reason:?string}> keyed by external product id
+     */
+    public function fetchProductStatuses(string $shopId): array
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            return [];
+        }
+
+        $accessToken = $shop->access_token;
+        $shopCipher  = $shop->shop_cipher ?? '';
+        $statuses    = [];
+        $pageToken   = null;
+
+        do {
+            $queries = ['shop_cipher' => $shopCipher, 'page_size' => 100];
+            if ($pageToken) {
+                $queries['page_token'] = $pageToken;
+            }
+
+            try {
+                $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
+            } catch (TokenExpiredException $e) {
+                $accessToken = $this->refreshShopToken($shop);
+                $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
+            }
+
+            foreach ($res['data']['products'] ?? [] as $item) {
+                $extId = (string) ($item['id'] ?? '');
+                if ($extId === '') {
+                    continue;
+                }
+                $reason = $item['audit_failed_reasons'] ?? null;
+                $statuses[$extId] = [
+                    'status' => (string) ($item['status'] ?? ''),
+                    'reason' => is_array($reason) ? json_encode($reason) : $reason,
+                ];
+            }
+
+            $pageToken = $res['data']['next_page_token'] ?? null;
+        } while ($pageToken);
+
+        return $statuses;
+    }
+
     protected function refreshShopToken(object $shop): string
     {
         if (empty($shop->refresh_token)) {

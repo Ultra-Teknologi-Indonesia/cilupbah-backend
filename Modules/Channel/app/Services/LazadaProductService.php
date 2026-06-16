@@ -19,6 +19,52 @@ class LazadaProductService
         protected LazadaAuthService $authService,
     ) {}
 
+    /**
+     * Tarik status listing terkini dari Lazada (untuk polling status review).
+     * @return array<string, array{status:string, reason:?string}> keyed by external product id (item_id)
+     */
+    public function fetchProductStatuses(string $shopId): array
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            return [];
+        }
+
+        $statuses = [];
+        $offset = 0;
+        $limit = 50;
+
+        do {
+            $params = ['filter' => 'all', 'offset' => $offset, 'limit' => $limit];
+
+            try {
+                $res = $this->client->request('GET', '/products/get', $params, $shop->access_token);
+            } catch (TokenExpiredException $e) {
+                $this->authService->refreshStoreToken((string) $shop->id);
+                $shop = $this->shopRepository->findByShopId($shopId);
+                $res = $this->client->request('GET', '/products/get', $params, $shop->access_token);
+            }
+
+            $products = $res['data']['products'] ?? [];
+
+            foreach ($products as $item) {
+                $extId = (string) ($item['item_id'] ?? '');
+                if ($extId === '') {
+                    continue;
+                }
+                $reason = $item['reasons'] ?? $item['reason'] ?? null;
+                $statuses[$extId] = [
+                    'status' => strtolower((string) ($item['qc_status'] ?? $item['status'] ?? '')),
+                    'reason' => is_array($reason) ? json_encode($reason) : $reason,
+                ];
+            }
+
+            $offset += $limit;
+        } while (count($products) === $limit);
+
+        return $statuses;
+    }
+
     public function pullProducts(string $shopId): int
     {
         $shop = $this->shopRepository->findByShopId($shopId);

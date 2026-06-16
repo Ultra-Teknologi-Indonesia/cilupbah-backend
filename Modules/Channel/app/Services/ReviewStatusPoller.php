@@ -1,0 +1,127 @@
+<?php
+
+namespace Modules\Channel\Services;
+
+use Illuminate\Support\Facades\Log;
+use Modules\Channel\Models\ChannelShop;
+use Modules\Product\Models\ProductChannelMapping;
+
+/**
+ * Fallback bila webhook terlewat: tarik status listing dari marketplace dan
+ * sinkronkan ke product_channel_mappings (tersimpan di DB).
+ */
+class ReviewStatusPoller
+{
+    public function __construct(
+        protected TikTokProductService $tiktok,
+        protected LazadaProductService $lazada,
+    ) {}
+
+    /** @return array{shops:int, checked:int, updated:int} */
+    public function pollAll(): array
+    {
+        $summary = ['shops' => 0, 'checked' => 0, 'updated' => 0];
+
+        ChannelShop::with('channel')
+            ->whereNull('disconnected_at')
+            ->whereHas('channel', fn ($q) => $q->whereIn('code', ['tiktok', 'lazada']))
+            ->each(function (ChannelShop $shop) use (&$summary) {
+                $r = $this->pollShop($shop);
+                $summary['shops']++;
+                $summary['checked'] += $r['checked'];
+                $summary['updated'] += $r['updated'];
+            });
+
+        return $summary;
+    }
+
+    /** @return array{checked:int, updated:int} */
+    public function pollShop(ChannelShop $shop): array
+    {
+        $shop->loadMissing('channel');
+        $code = $shop->channel?->code;
+
+        try {
+            $statuses = match ($code) {
+                'tiktok' => $this->tiktok->fetchProductStatuses($shop->shop_id),
+                'lazada' => $this->lazada->fetchProductStatuses($shop->shop_id),
+                default => [],
+            };
+        } catch (\Throwable $e) {
+            Log::warning('Polling status review gagal', ['shop_id' => $shop->shop_id, 'error' => $e->getMessage()]);
+            return ['checked' => 0, 'updated' => 0];
+        }
+
+        if (empty($statuses)) {
+            return ['checked' => 0, 'updated' => 0];
+        }
+
+        $mappings = ProductChannelMapping::where('channel_shop_id', $shop->id)
+            ->whereNotNull('external_product_id')
+            ->whereIn('sync_status', [
+                ProductChannelMapping::STATUS_PENDING,
+                ProductChannelMapping::STATUS_SYNCING,
+                ProductChannelMapping::STATUS_IN_REVIEW,
+                ProductChannelMapping::STATUS_SYNCED,
+            ])
+            ->get();
+
+        $checked = 0;
+        $updated = 0;
+
+        foreach ($mappings as $mapping) {
+            $info = $statuses[$mapping->external_product_id] ?? null;
+            if (! $info) {
+                continue;
+            }
+            $checked++;
+
+            $target = $this->mapStatus($code, $info['status']);
+            if ($target === null || $target === $mapping->sync_status) {
+                continue;
+            }
+
+            $this->apply($mapping, $target, $info['reason'] ?? null);
+            $updated++;
+        }
+
+        return ['checked' => $checked, 'updated' => $updated];
+    }
+
+    protected function mapStatus(?string $code, string $raw): ?string
+    {
+        if ($code === 'tiktok') {
+            return match ($raw) {
+                '2' => ProductChannelMapping::STATUS_IN_REVIEW,
+                '4', 'ACTIVATE' => ProductChannelMapping::STATUS_SYNCED,
+                '3' => ProductChannelMapping::STATUS_REJECTED,
+                '5', '6' => ProductChannelMapping::STATUS_DEACTIVATED,
+                default => null,
+            };
+        }
+
+        if ($code === 'lazada') {
+            return match (true) {
+                in_array($raw, ['approved', 'active'], true) => ProductChannelMapping::STATUS_SYNCED,
+                in_array($raw, ['pending', 'reviewing', 'pending_qc'], true) => ProductChannelMapping::STATUS_IN_REVIEW,
+                in_array($raw, ['rejected', 'suspended', 'deleted', 'inactive'], true) => ProductChannelMapping::STATUS_REJECTED,
+                default => null,
+            };
+        }
+
+        return null;
+    }
+
+    protected function apply(ProductChannelMapping $mapping, string $target, ?string $reason): void
+    {
+        match ($target) {
+            ProductChannelMapping::STATUS_SYNCED => $mapping->markApproved(),
+            ProductChannelMapping::STATUS_IN_REVIEW => $mapping->markInReview(),
+            ProductChannelMapping::STATUS_REJECTED => $mapping->markRejected($reason ?: 'Ditolak marketplace'),
+            ProductChannelMapping::STATUS_DEACTIVATED => $mapping->update([
+                'sync_status' => ProductChannelMapping::STATUS_DEACTIVATED,
+            ]),
+            default => null,
+        };
+    }
+}
