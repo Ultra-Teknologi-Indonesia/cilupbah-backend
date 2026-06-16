@@ -115,6 +115,9 @@ class ProductService
 
     public function createOrUpdateBundle(array $data): Product
     {
+        $this->guardBundleComposition($data['components']);
+        $this->guardBundleConversion($data['id'] ?? null);
+
         $attributes = [
             'name' => $data['name'],
             'sku' => $data['sku'] ?? null,
@@ -124,6 +127,39 @@ class ProductService
         ];
 
         return $this->repository->saveBundle($data['id'] ?? null, $attributes, $data['components']);
+    }
+
+    /** B2: komponen tak boleh varian dari produk bundle (bundle-in-bundle, padanan 23504). */
+    private function guardBundleComposition(array $components): void
+    {
+        $variantIds = array_values(array_filter(array_column($components, 'variant_id')));
+
+        if ($this->repository->variantIdsFromBundleProducts($variantIds) !== []) {
+            throw new DomainException(
+                'Komponen bundle tidak boleh berisi produk bundle (bundle-in-bundle tidak diizinkan).'
+            );
+        }
+    }
+
+    /** B2: produk yang sudah punya transaksi tak boleh dikonversi menjadi bundle (padanan 90003). */
+    private function guardBundleConversion(?string $productId): void
+    {
+        if ($productId === null) {
+            return;
+        }
+
+        // Hanya transisi non-bundle → bundle yang dikunci; edit bundle yang sudah ada diizinkan.
+        if ($this->repository->currentIsBundle($productId) === true) {
+            return;
+        }
+
+        $reason = $this->repository->transactionLockReason($productId);
+
+        if ($reason !== null) {
+            throw new DomainException(
+                "Produk tidak dapat diubah menjadi bundle karena {$reason}."
+            );
+        }
     }
 
     public function deleteProduct(Product $product): void

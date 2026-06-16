@@ -4,8 +4,11 @@ namespace Modules\Product\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Modules\Channel\Models\Channel;
+use Modules\Channel\Models\ChannelShop;
 use Modules\Product\Models\Attribute;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\VariantOption;
 use Tests\TestCase;
@@ -152,5 +155,101 @@ class BundleCompositionTest extends TestCase
                 ['variant_id' => $inactive->id, 'qty' => 1],
             ],
         ])->assertStatus(422);
+    }
+
+    // ── B2: guard bisnis ────────────────────────────────────────────────
+
+    public function test_bundle_in_bundle_component_is_rejected(): void
+    {
+        $innerBundle = Product::create([
+            'name' => 'Inner Bundle',
+            'category_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+            'is_bundle' => true,
+        ]);
+        $innerVariant = ProductVariant::create([
+            'product_id' => $innerBundle->id,
+            'sku' => 'INNER-BUNDLE-VAR',
+            'is_active' => true,
+        ]);
+
+        $this->postJson('/api/v1/inventory/items', [
+            'name' => 'Outer Bundle',
+            'sku' => 'OUTER-BUNDLE',
+            'category_id' => 1,
+            'components' => [
+                ['variant_id' => $innerVariant->id, 'qty' => 1],
+            ],
+        ])->assertStatus(422);
+
+        $this->assertDatabaseMissing('products', ['sku' => 'OUTER-BUNDLE']);
+    }
+
+    public function test_product_with_active_channel_mapping_cannot_convert_to_bundle(): void
+    {
+        $product = Product::create([
+            'name' => 'Sudah Terhubung',
+            'category_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+            'is_bundle' => false,
+        ]);
+
+        $channel = Channel::create(['code' => 'shopee', 'name' => 'Shopee', 'is_active' => true]);
+        $shop = ChannelShop::create([
+            'channel_id' => $channel->id,
+            'shop_id' => 'SHOP-X',
+            'shop_name' => 'Toko X',
+            'is_active' => true,
+        ]);
+        ProductChannelMapping::create([
+            'product_id' => $product->id,
+            'channel_shop_id' => $shop->id,
+            'external_product_id' => 'EXT-X',
+            'sync_status' => ProductChannelMapping::STATUS_SYNCED,
+        ]);
+
+        $component = $this->multiVariantProduct('KompA', ['X'])->variants()->first();
+
+        $this->postJson('/api/v1/inventory/items', [
+            'id' => $product->id,
+            'name' => 'Sudah Terhubung',
+            'category_id' => 1,
+            'components' => [
+                ['variant_id' => $component->id, 'qty' => 1],
+            ],
+        ])->assertStatus(422);
+
+        $this->assertDatabaseHas('products', ['id' => $product->id, 'is_bundle' => false]);
+    }
+
+    public function test_clean_product_can_be_converted_to_bundle(): void
+    {
+        $product = Product::create([
+            'name' => 'Produk Bersih',
+            'category_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+            'is_bundle' => false,
+        ]);
+
+        $component = $this->multiVariantProduct('KompB', ['Y'])->variants()->first();
+
+        $this->postJson('/api/v1/inventory/items', [
+            'id' => $product->id,
+            'name' => 'Produk Bersih',
+            'category_id' => 1,
+            'components' => [
+                ['variant_id' => $component->id, 'qty' => 2],
+            ],
+        ])->assertStatus(200);
+
+        $this->assertDatabaseHas('products', ['id' => $product->id, 'is_bundle' => true]);
+        $this->assertDatabaseHas('product_bundle_items', [
+            'bundle_product_id' => $product->id,
+            'component_variant_id' => $component->id,
+            'qty' => 2,
+        ]);
     }
 }

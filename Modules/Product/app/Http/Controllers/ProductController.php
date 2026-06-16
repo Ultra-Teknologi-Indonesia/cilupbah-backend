@@ -332,7 +332,13 @@ class ProductController extends Controller
     public function storeBundle(StoreBundleRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $product = $this->productService->createOrUpdateBundle($data);
+
+        try {
+            $product = $this->productService->createOrUpdateBundle($data);
+        } catch (\DomainException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
         $isUpdate = isset($data['id']);
 
         return $this->successResponse(

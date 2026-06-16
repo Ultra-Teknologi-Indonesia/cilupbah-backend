@@ -75,6 +75,56 @@ class ProductRepository
         });
     }
 
+    /** B2 guard: dari daftar variant_id, kembalikan yang produknya adalah bundle (bundle-in-bundle terlarang). */
+    public function variantIdsFromBundleProducts(array $variantIds): array
+    {
+        if (empty($variantIds)) {
+            return [];
+        }
+
+        return ProductVariant::whereIn('id', $variantIds)
+            ->whereHas('product', fn ($q) => $q->where('is_bundle', true))
+            ->pluck('id')
+            ->all();
+    }
+
+    /** B2 guard: status is_bundle produk saat ini (null bila produk tak ada). */
+    public function currentIsBundle(string $productId): ?bool
+    {
+        $value = Product::where('id', $productId)->value('is_bundle');
+
+        return $value === null ? null : (bool) $value;
+    }
+
+    /**
+     * B2 guard: alasan transaction-lock bila produk sudah punya transaksi
+     * (ledger inventory / order penjualan / mapping channel aktif), atau null bila bersih.
+     */
+    public function transactionLockReason(string $productId): ?string
+    {
+        $variantIds = ProductVariant::where('product_id', $productId)->pluck('id');
+
+        if ($variantIds->isNotEmpty()) {
+            if (\Modules\Inventory\Models\InventoryMovement::whereIn('item_id', $variantIds)->exists()) {
+                return 'sudah memiliki riwayat pergerakan stok';
+            }
+
+            if (\Modules\Sales\Models\SalesOrderItem::whereIn('item_id', $variantIds)->exists()) {
+                return 'sudah memiliki transaksi penjualan';
+            }
+        }
+
+        $hasActiveMapping = \Modules\Product\Models\ProductChannelMapping::where('product_id', $productId)
+            ->where('sync_status', '!=', \Modules\Product\Models\ProductChannelMapping::STATUS_DEACTIVATED)
+            ->exists();
+
+        if ($hasActiveMapping) {
+            return 'sudah memiliki mapping channel aktif';
+        }
+
+        return null;
+    }
+
     public function paginateIndex(?string $status = null): LengthAwarePaginator
     {
         return QueryBuilder::for(Product::class)

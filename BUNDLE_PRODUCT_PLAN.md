@@ -25,7 +25,10 @@ perlu flag terpisah. Bundle = produk dengan **SKU sendiri** yang isinya referens
   ekspos `product_type` + `total_variants`. 221 test Product+Inventory hijau.
 - ✅ **FASE B1** — selesai: validasi komponen (varian aktif) + detail bundle ekspos komposisi
   (produk induk, variation_values, qty, stok komponen). 223 test hijau.
-- ⬜ B2 → B6 — belum.
+- ✅ **FASE B2** — selesai: guard bundle-in-bundle (23504) + transaction-lock (90003) di
+  `ProductService::createOrUpdateBundle` (via repo `variantIdsFromBundleProducts`,
+  `currentIsBundle`, `transactionLockReason`); `storeBundle` catch DomainException→422.
+- ⬜ B3 → B6 — belum.
 
 ## Kondisi saat ini (hasil audit)
 
@@ -72,13 +75,17 @@ stok** (stok bundle = turunan; saat terjual, potong komponen + re-sync stok prod
   varian non-aktif ditolak 422.
 - Catatan: guard varian harus milik produk **non-bundle** (bundle-in-bundle) → ditegakkan di **B2**.
 
-## FASE B2 — Guard bisnis (anti error 23504 & 90003) 🔴
+## FASE B2 — Guard bisnis (anti error 23504 & 90003) ✅ SELESAI
 
-- **Bundle-in-bundle**: komponen tak boleh varian dari produk `is_bundle=true` → DomainException→422
-  (padanan 23504).
-- **Transaction-lock**: produk yang sudah punya transaksi (inventory ledger / order line / channel
-  mapping aktif) tak boleh diubah jadi bundle → 422 (padanan 90003).
-- Test: kedua guard menolak; happy path lolos.
+- ✅ **Bundle-in-bundle**: komponen tak boleh varian dari produk `is_bundle=true` → DomainException→422
+  (padanan 23504). Repo `variantIdsFromBundleProducts(array): array`.
+- ✅ **Transaction-lock**: produk non-bundle yang sudah punya transaksi (ledger `inventory_movements` /
+  `sales_order_items` / mapping channel non-`deactivated`) tak boleh dikonversi jadi bundle → 422
+  (padanan 90003). Repo `transactionLockReason(id): ?string`; transisi non-bundle→bundle saja yang
+  dikunci (`currentIsBundle` true → edit bundle lama tetap diizinkan).
+- ✅ `storeBundle` (`POST /inventory/items`) catch `\DomainException`→422.
+- ✅ Test (BundleCompositionTest): bundle-in-bundle ditolak, produk dgn mapping aktif gagal dikonversi,
+  produk bersih sukses jadi bundle (happy path).
 
 ## FASE B3 — Derivasi stok bundle 🔴
 
