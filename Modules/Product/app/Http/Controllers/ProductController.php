@@ -11,11 +11,14 @@ use Modules\Product\Http\Requests\StoreBundleRequest;
 use Modules\Product\Http\Requests\UpdateProductRequest;
 use Modules\Product\Http\Resources\ProductPriceResource;
 use Modules\Product\Http\Resources\ProductChannelListingResource;
+use Modules\Product\Http\Resources\ProductChannelPriceResource;
+use Modules\Product\Http\Resources\ProductPriceBookResource;
 use Modules\Product\Http\Resources\ProductResource;
 use Modules\Product\Http\Resources\ProductStockResource;
 use Modules\Product\Http\Resources\ProductVariantRowResource;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
+use Modules\Product\Models\ProductWholesalePrice;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Product\Services\ProductService;
 use Modules\Product\Services\ProductLifecycleService;
@@ -506,6 +509,84 @@ class ProductController extends Controller
         return $this->successPaginatedResponse(
             ProductChannelListingResource::collection($query->paginate($perPage)),
             'Daftar listing channel berhasil diambil.'
+        );
+    }
+
+    #[OA\Get(
+        path: '/api/v1/products/{id}/channel-prices',
+        summary: 'Harga channel per varian (internal + override per toko)',
+        tags: ['Products'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'channel', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'include_unlisted', in: 'query', required: false, schema: new OA\Schema(type: 'boolean')),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'OK'),
+            new OA\Response(response: 404, description: 'Produk tidak ditemukan'),
+        ]
+    )]
+    public function channelPrices(Request $request, $id): JsonResponse
+    {
+        $product = $this->findProduct($id);
+        if (! $product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        $channel = $request->query('channel');
+        $perPage = min(max((int) $request->integer('per_page', 20), 1), 200);
+
+        $query = ProductVariant::query()
+            ->where('product_id', $product->id)
+            ->with(['options', 'channelMappings.channelMapping.channelShop.channel'])
+            ->orderBy('sku');
+
+        if (! $request->boolean('include_unlisted')) {
+            $query->whereHas('channelMappings.channelMapping', function ($q) use ($channel) {
+                if ($channel) {
+                    $q->whereHas('channelShop.channel', fn ($c) => $c->where('code', $channel));
+                }
+            });
+        }
+
+        return $this->successPaginatedResponse(
+            ProductChannelPriceResource::collection($query->paginate($perPage)),
+            'Harga channel berhasil diambil.'
+        );
+    }
+
+    #[OA\Get(
+        path: '/api/v1/products/{id}/price-book',
+        summary: 'Buku harga (grosir) per varian',
+        tags: ['Products'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'OK'),
+            new OA\Response(response: 404, description: 'Produk tidak ditemukan'),
+        ]
+    )]
+    public function priceBook(Request $request, $id): JsonResponse
+    {
+        $product = $this->findProduct($id);
+        if (! $product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        $perPage = min(max((int) $request->integer('per_page', 20), 1), 200);
+
+        $query = ProductWholesalePrice::query()
+            ->whereHas('variant', fn ($v) => $v->where('product_id', $product->id))
+            ->with('variant:id,sku')
+            ->orderBy('variant_id')
+            ->orderBy('min_qty');
+
+        return $this->successPaginatedResponse(
+            ProductPriceBookResource::collection($query->paginate($perPage)),
+            'Buku harga berhasil diambil.'
         );
     }
 
