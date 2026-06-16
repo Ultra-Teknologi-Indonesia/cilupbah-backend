@@ -17,8 +17,6 @@ use Modules\Product\Http\Resources\ProductResource;
 use Modules\Product\Http\Resources\ProductStockResource;
 use Modules\Product\Http\Resources\ProductVariantRowResource;
 use Modules\Product\Models\Product;
-use Modules\Product\Models\ProductVariant;
-use Modules\Product\Models\ProductWholesalePrice;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Product\Services\ProductService;
 use Modules\Product\Services\ProductLifecycleService;
@@ -366,33 +364,8 @@ class ProductController extends Controller
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
-        $search = trim((string) $request->query('search', ''));
-        $sort = (string) $request->query('sort', 'sku');
-        $dir = str_starts_with($sort, '-') ? 'desc' : 'asc';
-        $col = ltrim($sort, '-');
-        $perPage = min(max((int) $request->integer('per_page', 20), 1), 200);
-
-        $query = ProductVariant::query()
-            ->where('product_id', $product->id)
-            ->with('options')
-            ->withSum('inventories', 'available');
-
-        if ($search !== '') {
-            $query->where(function ($w) use ($search) {
-                $w->where('sku', 'ilike', "%{$search}%")
-                    ->orWhereHas('options', fn ($o) => $o->where('value', 'ilike', "%{$search}%"));
-            });
-        }
-
-        match ($col) {
-            'sell_price' => $query->orderBy('sell_price', $dir),
-            // NULLS LAST: varian tanpa baris inventory (sum null) tidak melompat ke atas saat desc.
-            'stock' => $query->orderByRaw('inventories_sum_available ' . ($dir === 'desc' ? 'desc' : 'asc') . ' nulls last'),
-            default => $query->orderBy('sku', $dir),
-        };
-
         return $this->successPaginatedResponse(
-            ProductVariantRowResource::collection($query->paginate($perPage)),
+            ProductVariantRowResource::collection($this->productRepository->paginateVariants($product->id)),
             'Daftar varian berhasil diambil.'
         );
     }
@@ -415,56 +388,13 @@ class ProductController extends Controller
             'variant_ids.*' => 'uuid',
         ]);
 
-        $variants = ProductVariant::where('product_id', $product->id)
-            ->whereIn('id', $data['variant_ids'])
-            ->get(['id', 'sku']);
-
-        if ($variants->isEmpty()) {
-            return $this->errorResponse('Tidak ada varian yang cocok untuk produk ini.', 422);
+        try {
+            $result = $this->productService->bulkUpdateVariants($product, $data['action'], $data['variant_ids']);
+        } catch (\DomainException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
         }
 
-        if ($data['action'] !== 'delete') {
-            ProductVariant::whereIn('id', $variants->pluck('id'))
-                ->update(['is_active' => $data['action'] === 'activate', 'updated_at' => now()]);
-
-            return $this->successResponse(
-                ['affected' => $variants->count()],
-                'Status varian diperbarui.'
-            );
-        }
-
-        // delete — proteksi integritas
-        $total = ProductVariant::where('product_id', $product->id)->count();
-        if ($variants->count() >= $total) {
-            return $this->errorResponse('Tidak bisa menghapus semua varian; produk butuh minimal 1 varian.', 422);
-        }
-
-        $blocked = [];
-        $deletable = [];
-        foreach ($variants as $v) {
-            $listed = \Illuminate\Support\Facades\DB::table('product_variant_channel_mappings')->where('variant_id', $v->id)->exists();
-            $hasStock = \Illuminate\Support\Facades\DB::table('inventories')->where('item_id', $v->id)->exists();
-            if ($listed || $hasStock) {
-                $blocked[] = $v->sku;
-            } else {
-                $deletable[] = $v->id;
-            }
-        }
-
-        if (empty($deletable)) {
-            return $this->errorResponse(
-                'Varian sudah ter-listing di channel atau punya stok — tidak bisa dihapus: ' . implode(', ', $blocked),
-                422,
-                ['blocked' => $blocked]
-            );
-        }
-
-        ProductVariant::whereIn('id', $deletable)->delete();
-
-        return $this->successResponse(
-            ['deleted' => count($deletable), 'blocked' => $blocked],
-            'Varian dihapus.' . ($blocked ? ' Sebagian dilewati karena terpakai.' : '')
-        );
+        return $this->successResponse($result, 'Aksi massal varian berhasil.');
     }
 
     #[OA\Get(
@@ -489,25 +419,8 @@ class ProductController extends Controller
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
-        $channel = $request->query('channel');
-        $perPage = min(max((int) $request->integer('per_page', 20), 1), 200);
-
-        $query = ProductVariant::query()
-            ->where('product_id', $product->id)
-            ->with(['options', 'channelMappings.channelMapping.channelShop.channel'])
-            ->orderBy('sku');
-
-        // Default: hanya varian yang punya listing (listed_only) — sesuai UX.
-        if (! $request->boolean('include_unlisted')) {
-            $query->whereHas('channelMappings.channelMapping', function ($q) use ($channel) {
-                if ($channel) {
-                    $q->whereHas('channelShop.channel', fn ($c) => $c->where('code', $channel));
-                }
-            });
-        }
-
         return $this->successPaginatedResponse(
-            ProductChannelListingResource::collection($query->paginate($perPage)),
+            ProductChannelListingResource::collection($this->productRepository->paginateListedVariants($product->id)),
             'Daftar listing channel berhasil diambil.'
         );
     }
@@ -534,24 +447,8 @@ class ProductController extends Controller
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
-        $channel = $request->query('channel');
-        $perPage = min(max((int) $request->integer('per_page', 20), 1), 200);
-
-        $query = ProductVariant::query()
-            ->where('product_id', $product->id)
-            ->with(['options', 'channelMappings.channelMapping.channelShop.channel'])
-            ->orderBy('sku');
-
-        if (! $request->boolean('include_unlisted')) {
-            $query->whereHas('channelMappings.channelMapping', function ($q) use ($channel) {
-                if ($channel) {
-                    $q->whereHas('channelShop.channel', fn ($c) => $c->where('code', $channel));
-                }
-            });
-        }
-
         return $this->successPaginatedResponse(
-            ProductChannelPriceResource::collection($query->paginate($perPage)),
+            ProductChannelPriceResource::collection($this->productRepository->paginateListedVariants($product->id)),
             'Harga channel berhasil diambil.'
         );
     }
@@ -576,16 +473,8 @@ class ProductController extends Controller
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
-        $perPage = min(max((int) $request->integer('per_page', 20), 1), 200);
-
-        $query = ProductWholesalePrice::query()
-            ->whereHas('variant', fn ($v) => $v->where('product_id', $product->id))
-            ->with('variant:id,sku')
-            ->orderBy('variant_id')
-            ->orderBy('min_qty');
-
         return $this->successPaginatedResponse(
-            ProductPriceBookResource::collection($query->paginate($perPage)),
+            ProductPriceBookResource::collection($this->productRepository->paginatePriceBook($product->id)),
             'Buku harga berhasil diambil.'
         );
     }

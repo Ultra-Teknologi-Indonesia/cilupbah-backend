@@ -14,6 +14,7 @@ use Modules\Channel\Services\ChannelListingValidator;
 use Modules\Finance\Support\AccountMappingKey;
 use Modules\Inventory\Models\Inventory;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductVariant;
 use Modules\Product\Repositories\ProductRepository;
 
 class ProductService
@@ -519,6 +520,56 @@ class ProductService
             'created_at' => now(),
             'updated_at' => now(),
         ], $specs));
+    }
+
+    /**
+     * Aksi massal varian: activate | deactivate | delete (id milik produk ini).
+     * delete diproteksi: varian yang ter-listing channel / punya inventory dilewati (blocked),
+     * dan tidak boleh menyisakan 0 varian. Pelanggaran → DomainException (→ 422 di controller).
+     *
+     * @return array{affected?:int, deleted?:int, blocked?:array<int,string>}
+     */
+    public function bulkUpdateVariants(Product $product, string $action, array $ids): array
+    {
+        $variants = ProductVariant::where('product_id', $product->id)
+            ->whereIn('id', $ids)
+            ->get(['id', 'sku']);
+
+        if ($variants->isEmpty()) {
+            throw new DomainException('Tidak ada varian yang cocok untuk produk ini.');
+        }
+
+        if ($action !== 'delete') {
+            ProductVariant::whereIn('id', $variants->pluck('id'))
+                ->update(['is_active' => $action === 'activate', 'updated_at' => now()]);
+
+            return ['affected' => $variants->count()];
+        }
+
+        $total = ProductVariant::where('product_id', $product->id)->count();
+        if ($variants->count() >= $total) {
+            throw new DomainException('Tidak bisa menghapus semua varian; produk butuh minimal 1 varian.');
+        }
+
+        $blocked = [];
+        $deletable = [];
+        foreach ($variants as $v) {
+            $listed = DB::table('product_variant_channel_mappings')->where('variant_id', $v->id)->exists();
+            $hasStock = DB::table('inventories')->where('item_id', $v->id)->exists();
+            if ($listed || $hasStock) {
+                $blocked[] = $v->sku;
+            } else {
+                $deletable[] = $v->id;
+            }
+        }
+
+        if (empty($deletable)) {
+            throw new DomainException('Varian sudah ter-listing di channel atau punya stok — tidak bisa dihapus: ' . implode(', ', $blocked));
+        }
+
+        ProductVariant::whereIn('id', $deletable)->delete();
+
+        return ['deleted' => count($deletable), 'blocked' => $blocked];
     }
 
     private function propagateVariantChangeToChannels(string $productId): void

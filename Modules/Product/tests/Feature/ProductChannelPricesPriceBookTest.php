@@ -68,7 +68,7 @@ class ProductChannelPricesPriceBookTest extends TestCase
 
     public function test_channel_prices_filter_channel(): void
     {
-        $this->getJson("/api/v1/products/{$this->product->id}/channel-prices?channel=tiktok")
+        $this->getJson("/api/v1/products/{$this->product->id}/channel-prices?filter[channel]=tiktok")
             ->assertOk()->assertJsonCount(0, 'data');
     }
 

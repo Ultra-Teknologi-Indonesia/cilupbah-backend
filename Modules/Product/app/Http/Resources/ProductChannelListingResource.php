@@ -13,7 +13,7 @@ class ProductChannelListingResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        $channel = $request->query('channel');
+        $channel = $request->input('filter.channel');
 
         $listings = collect($this->relationLoaded('channelMappings') ? $this->channelMappings : [])
             ->map(function ($m) {

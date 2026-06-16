@@ -81,10 +81,10 @@ class ProductChannelListingsTest extends TestCase
     public function test_filter_by_channel_excludes_other_channels(): void
     {
         // Tidak ada listing TikTok → listed_only menyaring habis.
-        $this->getJson($this->url('channel=tiktok'))->assertOk()->assertJsonCount(0, 'data');
+        $this->getJson($this->url('filter[channel]=tiktok'))->assertOk()->assertJsonCount(0, 'data');
 
         // Channel lazada → IP-BLUE muncul.
-        $this->getJson($this->url('channel=lazada'))->assertOk()
+        $this->getJson($this->url('filter[channel]=lazada'))->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.listings.0.channel_code', 'lazada');
     }

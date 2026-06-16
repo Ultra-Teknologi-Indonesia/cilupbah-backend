@@ -3,11 +3,14 @@
 namespace Modules\Product\Repositories;
 
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductVariant;
+use Modules\Product\Models\ProductWholesalePrice;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\AllowedSort;
 
 class ProductRepository
 {
@@ -94,6 +97,64 @@ class ProductRepository
             ->whereDoesntHave('channelMappings', fn ($query) => $query->where('channel_shop_id', $channelShopId))
             ->allowedSearch('name')
             ->allowedSorts('name', 'created_at')
+            ->paginate(request('per_page', 10))
+            ->appends(request()->query());
+    }
+
+    /** Tab Variasi: varian berpaginasi (search SKU FTS, filter[option], sort sku/sell_price/stock). */
+    public function paginateVariants(string $productId): LengthAwarePaginator
+    {
+        return QueryBuilder::for(ProductVariant::class)
+            ->where('product_id', $productId)
+            ->with('options')
+            ->withSum('inventories', 'available')
+            ->allowedSearch('sku')
+            ->allowedFilters(
+                AllowedFilter::callback('option', fn ($q, $v) => $q->whereHas('options', fn ($o) => $o->where('value', 'ilike', "%{$v}%")))
+            )
+            ->allowedSorts(
+                'sku',
+                'sell_price',
+                AllowedSort::callback('stock', fn ($q, bool $desc) => $q->orderByRaw('inventories_sum_available ' . ($desc ? 'desc' : 'asc') . ' nulls last'))
+            )
+            ->defaultSort('sku')
+            ->paginate(request('per_page', 10))
+            ->appends(request()->query());
+    }
+
+    /**
+     * Tab Channel / Harga Channel: varian + listing/harga channel.
+     * filter[channel]=<code>; default hanya varian yang punya listing (kecuali ?include_unlisted=1).
+     */
+    public function paginateListedVariants(string $productId): LengthAwarePaginator
+    {
+        $channel = request('filter.channel');
+        $includeUnlisted = request()->boolean('include_unlisted');
+
+        return QueryBuilder::for(ProductVariant::class)
+            ->where('product_id', $productId)
+            ->with(['options', 'channelMappings.channelMapping.channelShop.channel'])
+            ->allowedFilters(
+                AllowedFilter::callback('channel', fn ($q, $v) => $q->whereHas(
+                    'channelMappings.channelMapping.channelShop.channel',
+                    fn ($c) => $c->where('code', $v)
+                ))
+            )
+            ->when(! $includeUnlisted && ! $channel, fn ($q) => $q->whereHas('channelMappings.channelMapping'))
+            ->allowedSorts('sku', 'sell_price')
+            ->defaultSort('sku')
+            ->paginate(request('per_page', 10))
+            ->appends(request()->query());
+    }
+
+    /** Tab Buku Harga: grosir per varian. */
+    public function paginatePriceBook(string $productId): LengthAwarePaginator
+    {
+        return QueryBuilder::for(ProductWholesalePrice::class)
+            ->whereHas('variant', fn ($v) => $v->where('product_id', $productId))
+            ->with('variant:id,sku')
+            ->allowedSorts('min_qty', 'customer_type', 'price')
+            ->defaultSort('variant_id', 'min_qty')
             ->paginate(request('per_page', 10))
             ->appends(request()->query());
     }

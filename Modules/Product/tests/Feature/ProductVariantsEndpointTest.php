@@ -73,9 +73,9 @@ class ProductVariantsEndpointTest extends TestCase
             ->assertJsonPath('data.0.sku', 'IP-RED');
     }
 
-    public function test_search_by_option_value(): void
+    public function test_filter_by_option_value(): void
     {
-        $this->getJson($this->url('search=Green'))
+        $this->getJson($this->url('filter[option]=Green'))
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.sku', 'IP-GREEN');
