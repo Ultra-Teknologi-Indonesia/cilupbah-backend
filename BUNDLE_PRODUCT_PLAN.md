@@ -35,7 +35,9 @@ perlu flag terpisah. Bundle = produk dengan **SKU sendiri** yang isinya referens
   via `ProductRepository::bundleComponentsForVariant` → kaskade ke komponen ×qty, atomik (1 transaksi),
   urutan lock deterministik (orderBy variant_id). Bundle tak menyentuh ledger sendiri. Transparan
   ke `SalesOrderService` (tanpa perubahan caller).
-- ⬜ B5 → B6 — belum.
+- ✅ **FASE B5** — selesai: SyncStockToChannelsJob propagasi ke bundle terdampak
+  (ProductRepository::bundleProductIdsUsingComponent); cascade B4 dispatch sync per komponen.
+- ⬜ B6 — belum.
 
 ## Kondisi saat ini (hasil audit)
 
@@ -116,7 +118,7 @@ stok** (stok bundle = turunan; saat terjual, potong komponen + re-sync stok prod
 - ✅ Test (BundleStockCascadeTest): reserve ×qty, cancel mengembalikan, pick potong on_hand,
   insufficient atomik, item non-bundle tak terpengaruh.
 
-## FASE B5 — Propagasi stok omnichannel
+## FASE B5 — Propagasi stok omnichannel ✅ SELESAI
 
 - Bundle listing = **1 SKU sendiri** (sudah benar) dengan stok = derivasi (B3).
 - Saat stok komponen berubah (mis. bundle/komponen terjual), re-sync stok ke channel untuk:

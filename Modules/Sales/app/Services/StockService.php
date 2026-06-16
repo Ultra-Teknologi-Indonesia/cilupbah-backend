@@ -4,6 +4,7 @@ namespace Modules\Sales\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Jobs\SyncStockToChannelsJob;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
@@ -45,6 +46,12 @@ class StockService
                 );
             }
         });
+
+        // B5: stok komponen berubah → re-sync stok ke channel untuk komponen +
+        // semua bundle terdampak (resolusi bundle ada di SyncStockToChannelsJob).
+        foreach ($components as $component) {
+            SyncStockToChannelsJob::dispatch($component['variant_id']);
+        }
 
         return true;
     }

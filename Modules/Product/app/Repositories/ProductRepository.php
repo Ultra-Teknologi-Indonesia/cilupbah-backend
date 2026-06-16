@@ -154,6 +154,18 @@ class ProductRepository
             ->all();
     }
 
+    /**
+     * B5: id produk bundle (distinct) yang memakai $variantId sebagai komponen.
+     * Dipakai untuk re-sync stok bundle terdampak saat stok komponen berubah.
+     */
+    public function bundleProductIdsUsingComponent(string $variantId): array
+    {
+        return \Modules\Product\Models\ProductBundleItem::where('component_variant_id', $variantId)
+            ->distinct()
+            ->pluck('bundle_product_id')
+            ->all();
+    }
+
     public function paginateIndex(?string $status = null): LengthAwarePaginator
     {
         return QueryBuilder::for(Product::class)

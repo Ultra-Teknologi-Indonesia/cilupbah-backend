@@ -4,7 +4,9 @@ namespace Modules\Sales\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Modules\Channel\Jobs\SyncStockToChannelsJob;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Sales\Exceptions\InsufficientStockException;
@@ -147,6 +149,29 @@ class BundleStockCascadeTest extends TestCase
 
         $this->assertDatabaseHas('inventories', ['item_id' => $a->id, 'reserved' => 0]);
         $this->assertDatabaseHas('inventories', ['item_id' => $b->id, 'reserved' => 0]);
+    }
+
+    public function test_bundle_sale_dispatches_stock_sync_for_components(): void
+    {
+        [$a, $b, $bundleVar] = $this->makeBundle(100, 100);
+
+        Queue::fake();
+        $this->stock()->reserve('BUNDLE-1', $bundleVar->id, $this->locationId, 1, 'SO-1');
+
+        // B5: re-sync stok untuk tiap komponen (job meneruskan ke bundle terdampak).
+        Queue::assertPushed(SyncStockToChannelsJob::class, fn ($job) => $job->variantId === $a->id);
+        Queue::assertPushed(SyncStockToChannelsJob::class, fn ($job) => $job->variantId === $b->id);
+    }
+
+    public function test_non_bundle_sale_does_not_dispatch_bundle_sync(): void
+    {
+        $single = $this->variant('SINGLE-9');
+        $this->setInventory($single->id, 50);
+
+        Queue::fake();
+        $this->stock()->reserve('SINGLE-9', $single->id, $this->locationId, 3, 'SO-3');
+
+        Queue::assertNotPushed(SyncStockToChannelsJob::class);
     }
 
     public function test_non_bundle_item_is_unaffected(): void
