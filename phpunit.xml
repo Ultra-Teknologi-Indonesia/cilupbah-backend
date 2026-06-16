@@ -34,6 +34,7 @@
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
+        <env name="FRONTEND_URL" value=""/>
         <env name="DB_CONNECTION" value="pgsql"/>
         <env name="DB_DATABASE" value="cilupbah_testing"/>
         <env name="DB_HOST" value="/tmp"/>
