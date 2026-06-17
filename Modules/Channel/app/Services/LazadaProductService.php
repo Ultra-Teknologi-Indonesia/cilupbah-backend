@@ -419,4 +419,80 @@ class LazadaProductService
 
         return $count;
     }
+
+    /**
+     * Rekonsiliasi NON-DESTRUKTIF: tarik produk Lazada lalu update HANYA kolom
+     * mapping channel (atribut, seller_sku, harga) untuk listing yang sudah
+     * termapping. Tidak menyentuh master.
+     */
+    public function reconcileChannelData(string $shopId): int
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            throw new \Exception("Toko Lazada tidak ditemukan atau belum terhubung: {$shopId}");
+        }
+
+        $channelShopId = $shop->id;
+        $updated = 0;
+        $offset = 0;
+        $limit = 50;
+
+        do {
+            $params = ['filter' => 'all', 'offset' => $offset, 'limit' => $limit];
+
+            try {
+                $res = $this->client->request('GET', '/products/get', $params, $shop->access_token);
+            } catch (TokenExpiredException $e) {
+                $this->authService->refreshStoreToken((string) $shop->id);
+                $shop = $this->shopRepository->findByShopId($shopId);
+                $res = $this->client->request('GET', '/products/get', $params, $shop->access_token);
+            }
+
+            $products = $res['data']['products'] ?? [];
+
+            foreach ($products as $item) {
+                $mapping = \Modules\Product\Models\ProductChannelMapping::where('external_product_id', (string) ($item['item_id'] ?? ''))
+                    ->where('channel_shop_id', $channelShopId)
+                    ->first();
+
+                if (! $mapping) {
+                    continue;
+                }
+
+                $attrs = (! empty($item['attributes']) && is_array($item['attributes'])) ? $item['attributes'] : null;
+                $canonical = \Modules\Channel\Repositories\ChannelProductRepository::canonicalAttributes($attrs);
+                $mapping->update([
+                    'channel_attributes' => $canonical !== null ? json_decode($canonical, true) : null,
+                ]);
+
+                foreach ($item['skus'] ?? [] as $skuData) {
+                    if (empty($skuData['SkuId'])) {
+                        continue;
+                    }
+                    $vm = \Modules\Product\Models\ProductVariantChannelMapping::where('product_channel_mapping_id', $mapping->id)
+                        ->where('external_sku_id', (string) $skuData['SkuId'])
+                        ->first();
+                    if (! $vm) {
+                        continue;
+                    }
+                    $vmUpdate = [];
+                    if (! empty($skuData['SellerSku'])) {
+                        $vmUpdate['channel_seller_sku'] = $skuData['SellerSku'];
+                    }
+                    if (isset($skuData['price'])) {
+                        $vmUpdate['synced_price'] = $skuData['price'];
+                    }
+                    if ($vmUpdate) {
+                        $vm->update($vmUpdate);
+                    }
+                }
+
+                $updated++;
+            }
+
+            $offset += $limit;
+        } while (count($products) === $limit);
+
+        return $updated;
+    }
 }

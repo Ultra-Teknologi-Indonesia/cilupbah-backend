@@ -116,6 +116,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::delete('upload-histories/{id}', [ProductSyncLogController::class, 'destroy'])->whereUuid('id');
     Route::get('download-histories', [ProductSyncLogController::class, 'downloadHistories']);
 
+    Route::post('channel-monitor/refresh', [ChannelMonitorController::class, 'refresh']);
     Route::get('channel-monitor', [ChannelMonitorController::class, 'index']);
     Route::get('channel-monitor/summary', [ChannelMonitorController::class, 'summary']);
     Route::get('channel-monitor/{shop_id}', [ChannelMonitorController::class, 'detail']);

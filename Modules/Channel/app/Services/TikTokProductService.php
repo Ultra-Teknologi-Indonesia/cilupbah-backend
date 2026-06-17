@@ -227,6 +227,96 @@ class TikTokProductService
         return $count;
     }
 
+    /**
+     * Rekonsiliasi NON-DESTRUKTIF: tarik produk dari channel lalu update HANYA
+     * kolom mapping channel (atribut, seller_sku, harga) untuk listing yang
+     * sudah termapping. Tidak menyentuh master (tak panggil upsertFromChannel).
+     */
+    public function reconcileChannelData(string $shopId): int
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (!$shop || !$shop->access_token) {
+            throw new \Exception("No access token found for shop: {$shopId}");
+        }
+
+        $accessToken   = $shop->access_token;
+        $shopCipher    = $shop->shop_cipher ?? '';
+        $channelShopId = $shop->id;
+
+        $updated   = 0;
+        $pageToken = null;
+
+        do {
+            $queries = ['shop_cipher' => $shopCipher, 'page_size' => 100];
+            if ($pageToken) {
+                $queries['page_token'] = $pageToken;
+            }
+
+            try {
+                $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
+            } catch (TokenExpiredException $e) {
+                $accessToken = $this->refreshShopToken($shop);
+                $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
+            }
+
+            if (!isset($res['data']['products'])) {
+                break;
+            }
+
+            foreach ($res['data']['products'] as $item) {
+                $mapping = \Modules\Product\Models\ProductChannelMapping::where('external_product_id', (string) ($item['id'] ?? ''))
+                    ->where('channel_shop_id', $channelShopId)
+                    ->first();
+
+                if (!$mapping) {
+                    continue;
+                }
+
+                $attrs = [];
+                foreach ($item['product_attributes'] ?? [] as $attr) {
+                    if (empty($attr['name'])) {
+                        continue;
+                    }
+                    $vals = array_filter(array_map(fn ($v) => $v['name'] ?? '', $attr['values'] ?? []));
+                    sort($vals);
+                    $attrs[$attr['name']] = implode(', ', $vals);
+                }
+                $canonical = \Modules\Channel\Repositories\ChannelProductRepository::canonicalAttributes($attrs ?: null);
+                $mapping->update([
+                    'channel_attributes' => $canonical !== null ? json_decode($canonical, true) : null,
+                ]);
+
+                foreach ($item['skus'] ?? [] as $skuData) {
+                    if (empty($skuData['id'])) {
+                        continue;
+                    }
+                    $vm = \Modules\Product\Models\ProductVariantChannelMapping::where('product_channel_mapping_id', $mapping->id)
+                        ->where('external_sku_id', (string) $skuData['id'])
+                        ->first();
+                    if (!$vm) {
+                        continue;
+                    }
+                    $vmUpdate = [];
+                    if (!empty($skuData['seller_sku'])) {
+                        $vmUpdate['channel_seller_sku'] = $skuData['seller_sku'];
+                    }
+                    if (isset($skuData['price']['tax_exclusive_price'])) {
+                        $vmUpdate['synced_price'] = $skuData['price']['tax_exclusive_price'];
+                    }
+                    if ($vmUpdate) {
+                        $vm->update($vmUpdate);
+                    }
+                }
+
+                $updated++;
+            }
+
+            $pageToken = $res['data']['next_page_token'] ?? null;
+        } while ($pageToken);
+
+        return $updated;
+    }
+
     public function fetchProductStatuses(string $shopId): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);
