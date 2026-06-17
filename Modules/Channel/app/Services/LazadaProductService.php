@@ -371,7 +371,8 @@ class LazadaProductService
                             (string) $insertedId,
                             $shopId,
                             (string) ($item['item_id'] ?? ''),
-                            'synced'
+                            'synced',
+                            (! empty($item['attributes']) && is_array($item['attributes'])) ? $item['attributes'] : null
                         );
 
                         foreach ($item['skus'] ?? [] as $skuData) {

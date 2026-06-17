@@ -79,12 +79,15 @@ class ProductPantauanRepository
                 });
                 break;
 
-            // atribut: data atribut channel belum disimpan → kosong sampai fase berikutnya.
             case 'atribut':
+                // Atribut channel (kanonik) berbeda antar toko untuk produk yang sama.
+                // Cast ke text karena tipe json Postgres tak punya operator distinct.
+                $query->whereRaw(
+                    "(select count(distinct channel_attributes::text) from product_channel_mappings where product_id = products.id and channel_attributes is not null) > 1"
+                );
+                break;
+
             default:
-                if ($lens === 'atribut') {
-                    $query->whereRaw('1 = 0');
-                }
                 break;
         }
     }

@@ -166,11 +166,22 @@ class TikTokProductService
                     $insertedId   = $productService->upsertFromChannel($internalData);
 
                     if ($insertedId) {
+                        $attrs = [];
+                        foreach ($item['product_attributes'] ?? [] as $attr) {
+                            if (empty($attr['name'])) {
+                                continue;
+                            }
+                            $vals = array_filter(array_map(fn ($v) => $v['name'] ?? '', $attr['values'] ?? []));
+                            sort($vals);
+                            $attrs[$attr['name']] = implode(', ', $vals);
+                        }
+
                         $pcmId = $this->productRepository->upsertChannelMapping(
                             (string) $insertedId,
                             $shopId,
                             (string) $item['id'],
-                            'synced'
+                            'synced',
+                            $attrs ?: null
                         );
 
                         foreach ($item['skus'] ?? [] as $skuData) {

@@ -145,7 +145,8 @@ class ChannelProductRepository
         string $productId,
         string $shopId,
         ?string $externalProductId = null,
-        string $syncStatus = 'synced'
+        string $syncStatus = 'synced',
+        ?array $channelAttributes = null
     ): string {
         $channelShop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
         if (!$channelShop) {
@@ -153,6 +154,7 @@ class ChannelProductRepository
         }
 
         $now = now();
+        $attributesJson = self::canonicalAttributes($channelAttributes);
 
         $existing = DB::table('product_channel_mappings')
             ->where('product_id', $productId)
@@ -169,6 +171,9 @@ class ChannelProductRepository
             if ($externalProductId !== null) {
                 $update['external_product_id'] = $externalProductId;
             }
+            if ($attributesJson !== null) {
+                $update['channel_attributes'] = $attributesJson;
+            }
 
             DB::table('product_channel_mappings')
                 ->where('id', $existing->id)
@@ -183,6 +188,7 @@ class ChannelProductRepository
             'product_id'          => $productId,
             'channel_shop_id'     => $channelShop->id,
             'external_product_id' => $externalProductId,
+            'channel_attributes'  => $attributesJson,
             'sync_status'         => $syncStatus,
             'last_synced_at'      => $now,
             'created_at'          => $now,
@@ -190,6 +196,25 @@ class ChannelProductRepository
         ]);
 
         return $pcmId;
+    }
+
+    /**
+     * Normalisasi atribut channel ke JSON kanonik (key tersortir) agar dua toko
+     * dengan atribut sama (urutan beda) dianggap seragam.
+     */
+    public static function canonicalAttributes(?array $attributes): ?string
+    {
+        if (empty($attributes)) {
+            return null;
+        }
+
+        $normalized = [];
+        foreach ($attributes as $key => $value) {
+            $normalized[(string) $key] = is_array($value) ? implode(', ', $value) : (string) $value;
+        }
+        ksort($normalized);
+
+        return json_encode($normalized);
     }
 
     public function upsertVariantChannelMapping(

@@ -24,6 +24,7 @@ class ProductChannelMapping extends Model
         'product_id',
         'channel_shop_id',
         'external_product_id',
+        'channel_attributes',
         'channel_url',
         'sync_status',
         'error_message',
@@ -32,6 +33,7 @@ class ProductChannelMapping extends Model
     ];
 
     protected $casts = [
+        'channel_attributes' => 'array',
         'last_synced_at' => 'datetime',
         'reviewed_at' => 'datetime',
     ];

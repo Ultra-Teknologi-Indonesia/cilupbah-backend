@@ -179,4 +179,35 @@ class ProductPantauanTest extends TestCase
     {
         $this->getJson('/api/v1/products/pantauan?lens=ngawur')->assertStatus(422);
     }
+
+    public function test_upsert_stores_canonical_channel_attributes(): void
+    {
+        $product = $this->product('Produk Atribut');
+
+        app(\Modules\Channel\Repositories\ChannelProductRepository::class)
+            ->upsertChannelMapping($product->id, 'SHOP-A', 'EXT-ATTR', 'synced', ['Warna' => 'Merah', 'Brand' => 'Acme']);
+
+        $row = ProductChannelMapping::where('product_id', $product->id)->first();
+        $this->assertNotNull($row);
+        // Kanonik: key tersortir (Brand sebelum Warna).
+        $this->assertSame(['Brand' => 'Acme', 'Warna' => 'Merah'], $row->channel_attributes);
+    }
+
+    public function test_atribut_lens_flags_divergent_attributes(): void
+    {
+        $divergent = $this->product('Atribut Beda');
+        ProductChannelMapping::create(['product_id' => $divergent->id, 'channel_shop_id' => $this->shopA->id, 'external_product_id' => 'AB-A', 'sync_status' => 'synced', 'channel_attributes' => ['Brand' => 'Acme']]);
+        ProductChannelMapping::create(['product_id' => $divergent->id, 'channel_shop_id' => $this->shopB->id, 'external_product_id' => 'AB-B', 'sync_status' => 'synced', 'channel_attributes' => ['Brand' => 'Beta']]);
+
+        $uniform = $this->product('Atribut Sama');
+        ProductChannelMapping::create(['product_id' => $uniform->id, 'channel_shop_id' => $this->shopA->id, 'external_product_id' => 'AS-A', 'sync_status' => 'synced', 'channel_attributes' => ['Brand' => 'Acme']]);
+        ProductChannelMapping::create(['product_id' => $uniform->id, 'channel_shop_id' => $this->shopB->id, 'external_product_id' => 'AS-B', 'sync_status' => 'synced', 'channel_attributes' => ['Brand' => 'Acme']]);
+
+        $response = $this->getJson('/api/v1/products/pantauan?lens=atribut');
+
+        $response->assertStatus(200);
+        $names = collect($response->json('data'))->pluck('product_name')->all();
+        $this->assertContains('Atribut Beda', $names);
+        $this->assertNotContains('Atribut Sama', $names);
+    }
 }
