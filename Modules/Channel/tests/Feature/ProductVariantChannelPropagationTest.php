@@ -51,6 +51,7 @@ class ProductVariantChannelPropagationTest extends TestCase
 
         $id = $this->postJson('/api/v1/products', [
             'name' => 'iPhone 17', 'sku' => 'IP17', 'category_id' => $category->id,
+            'media' => [['url' => 'https://img.test/a.jpg', 'media_type' => 'image']],
             'variation_types' => [['attribute_id' => $warna->id, 'sort_order' => 0]],
             'variants' => [
                 ['sku' => 'IP17-BLUE', 'sell_price' => 9000, 'is_active' => true,
@@ -90,6 +91,7 @@ class ProductVariantChannelPropagationTest extends TestCase
 
         $id = $this->postJson('/api/v1/products', [
             'name' => 'P', 'sku' => 'P1', 'category_id' => $category->id,
+            'media' => [['url' => 'https://img.test/a.jpg', 'media_type' => 'image']],
             'variation_types' => [['attribute_id' => $warna->id, 'sort_order' => 0]],
             'variants' => [['sku' => 'P1-BLUE', 'sell_price' => 100, 'is_active' => true,
                 'options' => [['attribute_id' => $warna->id, 'value' => 'Blue']]]],

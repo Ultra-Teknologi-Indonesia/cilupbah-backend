@@ -42,6 +42,7 @@ class ProductCategoryAttributeValidationTest extends TestCase
     {
         return array_merge([
             'name' => 'iPhone', 'sku' => 'IP', 'category_id' => $this->category->id,
+            'media' => [['url' => 'https://img.test/a.jpg', 'media_type' => 'image']],
             'variation_types' => [['attribute_id' => $this->warna->id, 'sort_order' => 0]],
             'specifications' => [['attribute_id' => $this->brand->id, 'text_value' => 'Apple']],
             'variants' => [

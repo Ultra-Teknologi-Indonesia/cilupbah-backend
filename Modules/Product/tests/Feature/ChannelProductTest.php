@@ -110,6 +110,7 @@ class ChannelProductTest extends TestCase
             'name' => 'New Tiktok Product ' . rand(1000, 9999),
             'description' => 'Test description',
             'is_active' => true,
+            'media' => [['url' => 'https://img.test/a.jpg', 'media_type' => 'image']],
             'variants' => [
                 [
                     'sku' => 'TEST-SKU-VAR-' . rand(1000, 9999),

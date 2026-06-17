@@ -102,6 +102,21 @@ class CreateProductRequest extends FormRequest
     {
         $validator->after(function (Validator $v) {
 
+            // Media level produk: wajib ≥1 foto, maks 9 foto + 1 video (batas TikTok).
+            $media = collect((array) $this->input('media', []))->filter(fn ($m) => is_array($m));
+            $images = $media->filter(fn ($m) => ($m['media_type'] ?? 'image') !== 'video');
+            $videos = $media->filter(fn ($m) => ($m['media_type'] ?? 'image') === 'video');
+
+            if ($images->isEmpty()) {
+                $v->errors()->add('media', 'Minimal 1 foto produk wajib diunggah.');
+            }
+            if ($images->count() > 9) {
+                $v->errors()->add('media', 'Maksimal 9 foto produk.');
+            }
+            if ($videos->count() > 1) {
+                $v->errors()->add('media', 'Maksimal 1 video produk.');
+            }
+
             foreach ((array) $this->input('variants', []) as $i => $variant) {
                 $min = $variant['min_stock'] ?? null;
                 $safe = $variant['safe_stock'] ?? null;

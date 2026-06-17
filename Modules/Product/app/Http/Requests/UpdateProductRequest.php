@@ -91,4 +91,26 @@ class UpdateProductRequest extends FormRequest
             'variants.*.media.*.sort_order' => 'nullable|integer',
         ];
     }
+
+    public function withValidator(\Illuminate\Contracts\Validation\Validator $validator): void
+    {
+        $validator->after(function ($v) {
+            // Saat media diubah: wajib ≥1 foto, maks 9 foto + 1 video.
+            if ($this->has('media')) {
+                $media = collect((array) $this->input('media', []))->filter(fn ($m) => is_array($m));
+                $images = $media->filter(fn ($m) => ($m['media_type'] ?? 'image') !== 'video');
+                $videos = $media->filter(fn ($m) => ($m['media_type'] ?? 'image') === 'video');
+
+                if ($images->isEmpty()) {
+                    $v->errors()->add('media', 'Minimal 1 foto produk wajib diunggah.');
+                }
+                if ($images->count() > 9) {
+                    $v->errors()->add('media', 'Maksimal 9 foto produk.');
+                }
+                if ($videos->count() > 1) {
+                    $v->errors()->add('media', 'Maksimal 1 video produk.');
+                }
+            }
+        });
+    }
 }

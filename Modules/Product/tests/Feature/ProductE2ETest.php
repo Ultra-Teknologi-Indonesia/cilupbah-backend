@@ -71,6 +71,7 @@ class ProductE2ETest extends TestCase
             'is_active' => true,
             'is_bundle' => true,
             'is_consignment' => false,
+            'media' => [['url' => 'https://img.test/a.jpg', 'media_type' => 'image']],
             'variants' => [
                 [
                     'sku' => 'E2E-VAR-01',
@@ -114,6 +115,7 @@ class ProductE2ETest extends TestCase
             'name' => 'Produk E2E Read',
             'sku' => 'E2E-PROD-READ',
             'category_id' => $this->category->id,
+            'media' => [['url' => 'https://img.test/a.jpg', 'media_type' => 'image']],
             'weight' => 1,
             'length' => 1,
             'width' => 1,
@@ -151,6 +153,7 @@ class ProductE2ETest extends TestCase
             'name' => 'Produk E2E Awal',
             'sku' => 'E2E-PROD-UPDATE',
             'category_id' => $this->category->id,
+            'media' => [['url' => 'https://img.test/a.jpg', 'media_type' => 'image']],
             'variants' => [
                 [
                     'sku' => 'E2E-VAR-UPDATE',
@@ -208,6 +211,7 @@ class ProductE2ETest extends TestCase
             'name' => 'Produk E2E Hapus',
             'sku' => 'E2E-PROD-DELETE',
             'category_id' => $this->category->id,
+            'media' => [['url' => 'https://img.test/a.jpg', 'media_type' => 'image']],
             'variants' => [
                 [
                     'sku' => 'E2E-VAR-DELETE',
@@ -247,6 +251,7 @@ class ProductE2ETest extends TestCase
             'name' => 'Produk Masih Bergerak',
             'sku' => 'E2E-PROD-STOCK',
             'category_id' => $this->category->id,
+            'media' => [['url' => 'https://img.test/a.jpg', 'media_type' => 'image']],
             'variants' => [
                 [
                     'sku' => 'E2E-VAR-STOCK',
@@ -307,12 +312,14 @@ class ProductE2ETest extends TestCase
             'name' => 'Produk List 1',
             'sku' => 'E2E-PROD-LIST1',
             'category_id' => $this->category->id,
+            'media' => [['url' => 'https://img.test/a.jpg', 'media_type' => 'image']],
             'variants' => [['sku' => 'LIST1', 'sell_price' => 1000]]
         ]);
         $this->postJson('/api/v1/products', [
             'name' => 'Produk List 2',
             'sku' => 'E2E-PROD-LIST2',
             'category_id' => $this->category->id,
+            'media' => [['url' => 'https://img.test/a.jpg', 'media_type' => 'image']],
             'variants' => [['sku' => 'LIST2', 'sell_price' => 2000]]
         ]);
 
