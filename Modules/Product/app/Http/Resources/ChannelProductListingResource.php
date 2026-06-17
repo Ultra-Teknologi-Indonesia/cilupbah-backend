@@ -24,6 +24,7 @@ class ChannelProductListingResource extends JsonResource
         return [
             'channel_group_id' => $this->external_product_id,
             'store_id' => $this->channel_shop_id,
+            'shop_id' => $shop->shop_id ?? null,
             'item_group_name' => $this->relationLoaded('product') ? ($this->product->name ?? null) : null,
             'min' => $shop->shop_name ?? null,
             'channel_id' => $shop->channel_id ?? null,
