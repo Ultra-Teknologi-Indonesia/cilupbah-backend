@@ -57,8 +57,9 @@ class TikTokProductMapper
         }
 
         if (!empty($internalProduct['variants'])) {
+            $variantCount = count($internalProduct['variants']);
             $skus = [];
-            foreach ($internalProduct['variants'] as $variant) {
+            foreach (array_values($internalProduct['variants']) as $idx => $variant) {
                 $sku = [
                     'seller_sku' => $variant['sku'] ?? '',
                     'price' => [
@@ -67,14 +68,14 @@ class TikTokProductMapper
                     ],
                     'inventory' => [
                         [
-                            'warehouse_id' => $warehouseId, 
-                            'quantity' => (int)($variant['stock'] ?? 100) 
+                            'warehouse_id' => $warehouseId,
+                            'quantity' => (int)($variant['stock'] ?? 100)
                         ]
                     ]
                 ];
 
+                $salesAttributes = [];
                 if (!empty($variant['options'])) {
-                    $salesAttributes = [];
                     foreach ($variant['options'] as $option) {
                         $attrName  = strtolower($option['attribute_name'] ?? '');
                         $attrId    = $salesAttrIdMap[$attrName]
@@ -84,12 +85,21 @@ class TikTokProductMapper
                             'custom_value' => $option['value'],
                         ];
                     }
+                } elseif ($variantCount > 1) {
+                    // Multi-SKU tanpa variasi → sintesis sales attribute default agar
+                    // TikTok bisa membedakan SKU (hindari error "sale attribute name
+                    // or attribute ID should not be empty").
+                    $salesAttributes[] = [
+                        'attribute_name' => 'Tipe',
+                        'custom_value' => ($variant['sku'] ?? '') ?: ('Varian ' . ($idx + 1)),
+                    ];
+                }
 
+                if (!empty($salesAttributes)) {
                     // Foto per-varian → lekatkan ke nilai sales attribute pertama.
-                    if (!empty($variant['image_uri']) && !empty($salesAttributes)) {
+                    if (!empty($variant['image_uri'])) {
                         $salesAttributes[0]['sku_img'] = ['uri' => $variant['image_uri']];
                     }
-
                     $sku['sales_attributes'] = $salesAttributes;
                 }
 

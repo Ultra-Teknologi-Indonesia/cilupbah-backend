@@ -50,6 +50,29 @@ class TikTokMapperMediaTest extends TestCase
         $this->assertSame(['uri' => 'var-uri-1'], $payload['skus'][0]['sales_attributes'][0]['sku_img']);
     }
 
+    public function test_multi_variant_without_options_gets_synthesized_sales_attribute(): void
+    {
+        $internal = ['name' => 'P', 'variants' => [
+            ['sku' => 'ZB-I5', 'sell_price' => 1000],
+            ['sku' => 'ZB-I7', 'sell_price' => 2000],
+        ]];
+
+        $payload = $this->mapper()->map($internal, ['u1']);
+
+        $this->assertSame('Tipe', $payload['skus'][0]['sales_attributes'][0]['attribute_name']);
+        $this->assertSame('ZB-I5', $payload['skus'][0]['sales_attributes'][0]['custom_value']);
+        $this->assertSame('ZB-I7', $payload['skus'][1]['sales_attributes'][0]['custom_value']);
+    }
+
+    public function test_single_variant_without_options_has_no_sales_attribute(): void
+    {
+        $internal = ['name' => 'P', 'variants' => [['sku' => 'SOLO', 'sell_price' => 1000]]];
+
+        $payload = $this->mapper()->map($internal, ['u1']);
+
+        $this->assertArrayNotHasKey('sales_attributes', $payload['skus'][0]);
+    }
+
     public function test_no_sku_img_when_variant_has_no_options(): void
     {
         $internal = ['name' => 'P', 'variants' => [[
