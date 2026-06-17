@@ -18,6 +18,9 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/profile', [AuthController::class, 'profile'])->name('auth.profile');
     Route::put('/profile/avatar', [AuthController::class, 'updateAvatar'])->name('auth.profile.avatar');
 
+    // Lookup user bergaya Jubelio untuk dropdown (auth saja, tanpa permission view-user).
+    Route::get('/systemsetting/users', [UserController::class, 'lookup'])->name('auth.users.lookup');
+
     Route::get('/roles', [RoleController::class, 'index'])->name('auth.roles.index');
     Route::get('/roles/{id}', [RoleController::class, 'show'])->whereUuid('id')->name('auth.roles.show');
 

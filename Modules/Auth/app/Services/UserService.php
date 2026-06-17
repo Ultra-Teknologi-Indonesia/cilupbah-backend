@@ -33,6 +33,37 @@ class UserService
         return $this->userRepository->findByIdWithRelations($id);
     }
 
+    /**
+     * Lookup user bergaya Jubelio untuk dropdown (mis. Default Staff gudang).
+     * Mengembalikan { data: [{user_id, email, last_login, is_owner}], totalCount }.
+     */
+    public function getUserLookup(?string $q, int $page, int $pageSize): array
+    {
+        $query = User::query()->with('roles');
+
+        if (! empty($q)) {
+            $query->where(function ($w) use ($q) {
+                $w->where('email', 'ilike', "%{$q}%")
+                    ->orWhere('name', 'ilike', "%{$q}%");
+            });
+        }
+
+        $total = (clone $query)->count();
+
+        $users = $query->orderBy('email')
+            ->forPage($page, $pageSize)
+            ->get();
+
+        $data = $users->map(fn (User $u) => [
+            'user_id' => $u->id,
+            'email' => $u->email,
+            'last_login' => optional($u->last_login_at)->toIso8601String(),
+            'is_owner' => $u->hasRole('owner'),
+        ])->all();
+
+        return ['data' => $data, 'totalCount' => $total];
+    }
+
     public function downloadUsersExport(): BinaryFileResponse
     {
         return Excel::download(
