@@ -265,4 +265,66 @@ class MasterFeedTest extends TestCase
 
         $response->assertStatus(422);
     }
+
+    private function makeMasterProduct(string $name, array $attrs, float $price): Product
+    {
+        $product = Product::create(array_merge([
+            'name' => $name,
+            'category_id' => 1,
+            'brand_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+            'is_bundle' => false,
+            'is_consignment' => false,
+        ], $attrs));
+
+        ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => strtoupper(str_replace(' ', '-', $name)),
+            'sell_price' => $price,
+            'is_active' => true,
+        ]);
+
+        return $product;
+    }
+
+    /** @return string[] */
+    private function masterNames(string $query): array
+    {
+        return collect($this->getJson("/api/v1/products/master?{$query}")->json('data'))
+            ->pluck('item_name')
+            ->all();
+    }
+
+    public function test_filter_type_narrows_results(): void
+    {
+        // master (Softcase Rhombic): is_consignment=true, order_type=PREORDER, is_bundle=false.
+        $this->makeMasterProduct('Paket Bundle', ['is_bundle' => true], 100000);
+        $this->makeMasterProduct('Satuan Polos', [], 30000);
+
+        $this->assertEqualsCanonicalizing(['Softcase Rhombic'], $this->masterNames('filter[type]=konsinyasi'));
+        $this->assertEqualsCanonicalizing(['Paket Bundle'], $this->masterNames('filter[type]=bundle'));
+        $this->assertEqualsCanonicalizing(['Satuan Polos'], $this->masterNames('filter[type]=satuan'));
+        $this->assertContains('Softcase Rhombic', $this->masterNames('filter[type]=pre_order'));
+    }
+
+    public function test_filter_price_range_narrows_results(): void
+    {
+        $this->makeMasterProduct('Paket Bundle', ['is_bundle' => true], 100000);
+        $this->makeMasterProduct('Satuan Polos', [], 30000);
+
+        // Softcase punya varian 50000 → masuk; bundle 100000 & satuan 30000 → di luar.
+        $this->assertEqualsCanonicalizing(
+            ['Softcase Rhombic'],
+            $this->masterNames('filter[min_price]=40000&filter[max_price]=60000')
+        );
+    }
+
+    public function test_filter_channel_narrows_results(): void
+    {
+        $this->seedChannelMapping('tiktok', 'TT123', null);
+
+        $this->assertContains('Softcase Rhombic', $this->masterNames('filter[channel]=tiktok'));
+        $this->assertCount(0, $this->getJson('/api/v1/products/master?filter[channel]=lazada')->json('data'));
+    }
 }
