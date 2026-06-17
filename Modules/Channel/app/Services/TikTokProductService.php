@@ -184,7 +184,9 @@ class TikTokProductService
                                 $this->productRepository->upsertVariantChannelMapping(
                                     $pcmId,
                                     $variant->id,
-                                    $skuData['id'] ?? null
+                                    $skuData['id'] ?? null,
+                                    $skuData['seller_sku'] ?? null,
+                                    $skuData['price']['tax_exclusive_price'] ?? null
                                 );
                             }
                         }

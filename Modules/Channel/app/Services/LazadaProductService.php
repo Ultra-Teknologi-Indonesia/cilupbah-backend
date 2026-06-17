@@ -388,7 +388,9 @@ class LazadaProductService
                                 $this->productRepository->upsertVariantChannelMapping(
                                     $pcmId,
                                     $variant->id,
-                                    isset($skuData['SkuId']) ? (string) $skuData['SkuId'] : null
+                                    isset($skuData['SkuId']) ? (string) $skuData['SkuId'] : null,
+                                    $skuData['SellerSku'] ?? null,
+                                    $skuData['price'] ?? null
                                 );
                             }
                         }

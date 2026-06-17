@@ -227,6 +227,7 @@ class SyncProductToChannelJob implements ShouldQueue
                     ['variant_id' => $variant->id],
                     [
                         'external_sku_id' => $skuData['id'],
+                        'channel_seller_sku' => $skuData['seller_sku'],
                     ]
                 );
             }

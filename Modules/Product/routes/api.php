@@ -16,6 +16,7 @@ use Modules\Product\Http\Controllers\MasterFeedController;
 use Modules\Product\Http\Controllers\ReviewFeedController;
 use Modules\Product\Http\Controllers\ArchiveFeedController;
 use Modules\Product\Http\Controllers\ChannelProductListingController;
+use Modules\Product\Http\Controllers\ProductPantauanController;
 use Modules\Product\Http\Controllers\ProductUploadListingController;
 use Modules\Product\Http\Controllers\RaiseProductController;
 use Modules\Product\Http\Controllers\VariantController;
@@ -47,6 +48,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::get('products/channel-products', [ChannelProductListingController::class, 'index']);
     Route::get('products/channel-products/{id}', [ChannelProductListingController::class, 'show'])->whereUuid('id');
+
+    Route::get('products/pantauan', [ProductPantauanController::class, 'index']);
 
     Route::get('raise-products', [RaiseProductController::class, 'index']);
     Route::get('raise-products/{id}', [RaiseProductController::class, 'show'])->whereUuid('id');

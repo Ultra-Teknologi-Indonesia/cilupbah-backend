@@ -195,7 +195,9 @@ class ChannelProductRepository
     public function upsertVariantChannelMapping(
         string $pcmId,
         string $variantId,
-        ?string $externalSkuId = null
+        ?string $externalSkuId = null,
+        ?string $channelSellerSku = null,
+        $syncedPrice = null
     ): void {
         $now = now();
 
@@ -209,6 +211,12 @@ class ChannelProductRepository
             if ($externalSkuId !== null) {
                 $update['external_sku_id'] = $externalSkuId;
             }
+            if ($channelSellerSku !== null) {
+                $update['channel_seller_sku'] = $channelSellerSku;
+            }
+            if ($syncedPrice !== null) {
+                $update['synced_price'] = $syncedPrice;
+            }
             DB::table('product_variant_channel_mappings')
                 ->where('id', $existing->id)
                 ->update($update);
@@ -220,6 +228,8 @@ class ChannelProductRepository
             'product_channel_mapping_id' => $pcmId,
             'variant_id'                 => $variantId,
             'external_sku_id'            => $externalSkuId,
+            'channel_seller_sku'         => $channelSellerSku,
+            'synced_price'               => $syncedPrice,
             'created_at'                 => $now,
             'updated_at'                 => $now,
         ]);

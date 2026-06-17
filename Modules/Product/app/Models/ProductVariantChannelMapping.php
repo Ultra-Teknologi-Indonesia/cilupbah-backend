@@ -14,6 +14,7 @@ class ProductVariantChannelMapping extends Model
         'product_channel_mapping_id',
         'variant_id',
         'external_sku_id',
+        'channel_seller_sku',
         'synced_price',
         'synced_stock',
         'override_price',
