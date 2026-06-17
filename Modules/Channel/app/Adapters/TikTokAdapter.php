@@ -77,9 +77,10 @@ class TikTokAdapter implements MarketplaceAdapterInterface
     public function updateProduct(Product $product, ChannelShop $shop, string $externalProductId): array
     {
         $internalProductArray = $product->toArray();
-        $internalProductArray['variants'] = $product->variants->toArray();
+        $internalProductArray['variants'] = $this->buildUpdateVariants($product, $shop, $externalProductId);
 
         $config = config('channel.tiktok_defaults', []);
+        $config['mode'] = 'update';
         $payload = $this->outboundMapper->map($internalProductArray, [], $config);
         $payload['product_id'] = $externalProductId;
 
@@ -98,6 +99,81 @@ class TikTokAdapter implements MarketplaceAdapterInterface
                 'success' => false,
                 'message' => $e->getMessage(),
             ];
+        }
+    }
+
+    protected function buildUpdateVariants(Product $product, ChannelShop $shop, string $externalProductId): array
+    {
+
+        $stored = [];
+        foreach ($product->variants as $variant) {
+            $mapping = $variant->channelMappings->first(function ($m) use ($shop) {
+                return $m->channelMapping && $m->channelMapping->channel_shop_id === $shop->id;
+            });
+            if ($mapping) {
+                $stored[$variant->sku] = [
+                    'external_sku_id'      => $mapping->external_sku_id,
+                    'sales_attribute_id'   => $mapping->sales_attribute_id,
+                    'sales_attribute_name' => $mapping->sales_attribute_name,
+                ];
+            }
+        }
+
+        $needsBackfill = $product->variants->contains(function ($variant) use ($stored) {
+            return empty($stored[$variant->sku]['sales_attribute_id']);
+        });
+
+        if ($needsBackfill) {
+            $detail = $this->getProductDetail($shop, $externalProductId);
+            foreach ($detail['data']['skus'] ?? [] as $remoteSku) {
+                $sellerSku = $remoteSku['seller_sku'] ?? null;
+                if ($sellerSku === null) {
+                    continue;
+                }
+                $sale = $remoteSku['sales_attributes'][0] ?? null;
+                $stored[$sellerSku] = [
+                    'external_sku_id'      => $stored[$sellerSku]['external_sku_id'] ?? ($remoteSku['id'] ?? null),
+                    'sales_attribute_id'   => is_array($sale) ? ($sale['attribute_id'] ?? $sale['id'] ?? null) : null,
+                    'sales_attribute_name' => is_array($sale) ? ($sale['attribute_name'] ?? $sale['name'] ?? null) : null,
+                ];
+            }
+        }
+
+        $variants = [];
+        foreach ($product->variants as $variant) {
+            $row = $variant->toArray();
+            $meta = $stored[$variant->sku] ?? [];
+
+            if (!empty($meta['external_sku_id'])) {
+                $row['external_sku_id'] = $meta['external_sku_id'];
+            }
+            if (!empty($meta['sales_attribute_id'])) {
+                $row['sales_attributes'] = [[
+                    'attribute_id'   => $meta['sales_attribute_id'],
+                    'attribute_name' => $meta['sales_attribute_name'] ?? null,
+                    'custom_value'   => $variant->sku,
+                ]];
+            }
+
+            $variants[] = $row;
+        }
+
+        return $variants;
+    }
+
+    public function getProductDetail(ChannelShop $shop, string $externalProductId): ?array
+    {
+        try {
+            return $this->client->request(
+                'GET',
+                "/product/202309/products/{$externalProductId}",
+                ['shop_cipher' => $shop->shop_cipher ?? ''],
+                [],
+                $shop->access_token
+            );
+        } catch (\Exception $e) {
+            Log::warning("TikTok getProductDetail error: " . $e->getMessage());
+            return null;
         }
     }
 

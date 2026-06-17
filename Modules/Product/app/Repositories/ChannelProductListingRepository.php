@@ -39,10 +39,6 @@ class ChannelProductListingRepository
             ->appends(request()->query());
     }
 
-    /**
-     * Filter mapping yang punya minimal satu varian dengan harga efektif
-     * (override_price bila ada, jika tidak sell_price master) memenuhi batas.
-     */
     private function filterByPrice($query, string $operator, $value)
     {
         return $query->whereHas('variantMappings', function ($mapping) use ($operator, $value) {

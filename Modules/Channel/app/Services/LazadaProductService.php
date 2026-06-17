@@ -335,10 +335,6 @@ class LazadaProductService
         return true;
     }
 
-    /**
-     * Cari produk di Lazada (by SKU/nama). NON-DESTRUKTIF: hanya membaca.
-     * Mengembalikan DTO ringan untuk modal "Download Satuan".
-     */
     public function searchProducts(string $shopId, string $query): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);
@@ -485,11 +481,6 @@ class LazadaProductService
         return $count;
     }
 
-    /**
-     * Rekonsiliasi NON-DESTRUKTIF: tarik produk Lazada lalu update HANYA kolom
-     * mapping channel (atribut, seller_sku, harga) untuk listing yang sudah
-     * termapping. Tidak menyentuh master.
-     */
     public function reconcileChannelData(string $shopId): int
     {
         $shop = $this->shopRepository->findByShopId($shopId);

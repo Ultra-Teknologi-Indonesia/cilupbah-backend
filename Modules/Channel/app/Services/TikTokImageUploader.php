@@ -11,20 +11,11 @@ class TikTokImageUploader
         protected ChannelMediaResolver $resolver,
     ) {}
 
-    /**
-     * Kompat lama: kembalikan hanya daftar URI hasil upload.
-     */
     public function uploadFromUrls(array $urls, string $accessToken): array
     {
         return $this->upload($urls, $accessToken)['uris'];
     }
 
-    /**
-     * Upload gambar ke TikTok. Mengembalikan URI yang berhasil + alasan kegagalan
-     * per gambar (untuk pesan error yang jelas).
-     *
-     * @return array{uris: string[], errors: array<int, array{url: string, reason: string}>}
-     */
     public function upload(array $urls, string $accessToken): array
     {
         $uris = [];
@@ -79,10 +70,6 @@ class TikTokImageUploader
         return ['uris' => $uris, 'errors' => $errors];
     }
 
-    /**
-     * Upload video produk ke TikTok (endpoint files/upload). Mengembalikan id
-     * video, atau null bila byte tak tersedia / upload gagal (non-fatal).
-     */
     public function uploadVideo(string $url, string $accessToken): ?string
     {
         $bytes = $this->resolver->bytes($url);
@@ -116,13 +103,6 @@ class TikTokImageUploader
         }
     }
 
-    /**
-     * Validasi & normalisasi byte gambar untuk TikTok (hanya terima JPG/PNG).
-     * JPG/PNG diteruskan apa adanya; format lain (webp/gif/bmp) dikonversi ke
-     * JPEG via GD. Mengembalikan [content, ext] atau null bila bukan gambar valid.
-     *
-     * @return array{0: string, 1: string}|null
-     */
     protected function prepare(string $bytes): ?array
     {
         $info = @getimagesizefromstring($bytes);
@@ -141,7 +121,6 @@ class TikTokImageUploader
             return [$bytes, 'png'];
         }
 
-        // Format lain → konversi ke JPEG (TikTok hanya terima JPG/PNG).
         if (! function_exists('imagecreatefromstring')) {
             return null;
         }
@@ -155,7 +134,6 @@ class TikTokImageUploader
         $width = imagesx($img);
         $height = imagesy($img);
 
-        // Ratakan transparansi ke latar putih agar JPEG tidak hitam.
         $canvas = imagecreatetruecolor($width, $height);
         $white = imagecolorallocate($canvas, 255, 255, 255);
         imagefilledrectangle($canvas, 0, 0, $width, $height, $white);

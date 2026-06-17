@@ -81,7 +81,7 @@ class ProductUploadListingTest extends TestCase
 
     public function test_belum_diupload_returns_connected_shops_without_mapping(): void
     {
-        $this->uploadTo($this->shopA, 'TT-1'); // shopA sudah diupload
+        $this->uploadTo($this->shopA, 'TT-1'); 
 
         $response = $this->getJson("/api/v1/products/{$this->product->id}/upload-listing?is_uploaded=false");
 
@@ -165,7 +165,7 @@ class ProductUploadListingTest extends TestCase
 
     public function test_match_flags_unsynced_variant_for_uploaded_store(): void
     {
-        // Diupload tanpa variant mapping → varian master belum tersinkron.
+
         $this->uploadTo($this->shopA, 'TT-1', withVariant: false);
 
         $response = $this->postJson("/api/v1/products/{$this->product->id}/upload-listing/match", [

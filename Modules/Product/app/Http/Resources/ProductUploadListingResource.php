@@ -5,11 +5,6 @@ namespace Modules\Product\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/**
- * Satu baris = satu toko tujuan untuk satu produk (tab Belum/Sudah Diupload).
- * Resource membungkus ChannelShop; data produk + mapping disuntik service via
- * setAttribute('item_group_id'/'item_group_name') dan setRelation('productMapping').
- */
 class ProductUploadListingResource extends JsonResource
 {
     public function toArray(Request $request): array

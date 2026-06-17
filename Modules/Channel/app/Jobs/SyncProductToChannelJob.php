@@ -223,12 +223,26 @@ class SyncProductToChannelJob implements ShouldQueue
 
             $variant = $product->variants->where('sku', $skuData['seller_sku'])->first();
             if ($variant) {
+                $attributes = [
+                    'external_sku_id' => $skuData['id'] ?? null,
+                    'channel_seller_sku' => $skuData['seller_sku'],
+                ];
+
+                $sale = $skuData['sales_attributes'][0] ?? null;
+                if (is_array($sale)) {
+                    $saleId = $sale['attribute_id'] ?? $sale['id'] ?? null;
+                    $saleName = $sale['attribute_name'] ?? $sale['name'] ?? null;
+                    if ($saleId !== null) {
+                        $attributes['sales_attribute_id'] = (string) $saleId;
+                    }
+                    if ($saleName !== null) {
+                        $attributes['sales_attribute_name'] = (string) $saleName;
+                    }
+                }
+
                 $mapping->variantMappings()->updateOrCreate(
                     ['variant_id' => $variant->id],
-                    [
-                        'external_sku_id' => $skuData['id'],
-                        'channel_seller_sku' => $skuData['seller_sku'],
-                    ]
+                    $attributes
                 );
             }
         }

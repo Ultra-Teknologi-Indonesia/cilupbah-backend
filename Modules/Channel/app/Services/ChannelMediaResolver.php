@@ -90,8 +90,7 @@ class ChannelMediaResolver
         }
 
         try {
-            // Header browser + retry: banyak CDN (Wikimedia dll.) menolak (403)
-            // request tanpa User-Agent. Ikuti redirect agar thumbnail tetap terambil.
+
             $response = Http::withHeaders([
                 'User-Agent' => 'Mozilla/5.0 (compatible; CilupbahBot/1.0; +https://cilupbah.com)',
                 'Accept' => 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',

@@ -6,10 +6,6 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Jobs\ReconcileChannelDataJob;
 use Modules\Channel\Models\ChannelShop;
 
-/**
- * Orkestrasi rekonsiliasi data channel (non-destruktif) untuk tombol Refresh
- * Pantauan. Hanya channel yang punya implementasi pull (TikTok, Lazada).
- */
 class ChannelReconcileService
 {
     protected function reconcilerFor(string $channel): ?callable
@@ -37,11 +33,6 @@ class ChannelReconcileService
         }
     }
 
-    /**
-     * Antrekan rekonsiliasi semua toko aktif yang channel-nya didukung.
-     *
-     * @return array{queued:int, skipped_channels:array<int,string>}
-     */
     public function reconcileAllActive(?string $userId = null): array
     {
         $shops = ChannelShop::with('channel')

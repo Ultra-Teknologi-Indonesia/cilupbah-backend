@@ -288,7 +288,6 @@ class MasterFeedTest extends TestCase
         return $product;
     }
 
-    /** @return string[] */
     private function masterNames(string $query): array
     {
         return collect($this->getJson("/api/v1/products/master?{$query}")->json('data'))
@@ -298,7 +297,7 @@ class MasterFeedTest extends TestCase
 
     public function test_filter_type_narrows_results(): void
     {
-        // master (Softcase Rhombic): is_consignment=true, order_type=PREORDER, is_bundle=false.
+
         $this->makeMasterProduct('Paket Bundle', ['is_bundle' => true], 100000);
         $this->makeMasterProduct('Satuan Polos', [], 30000);
 
@@ -313,7 +312,6 @@ class MasterFeedTest extends TestCase
         $this->makeMasterProduct('Paket Bundle', ['is_bundle' => true], 100000);
         $this->makeMasterProduct('Satuan Polos', [], 30000);
 
-        // Softcase punya varian 50000 → masuk; bundle 100000 & satuan 30000 → di luar.
         $this->assertEqualsCanonicalizing(
             ['Softcase Rhombic'],
             $this->masterNames('filter[min_price]=40000&filter[max_price]=60000')

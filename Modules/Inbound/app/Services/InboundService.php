@@ -66,9 +66,7 @@ class InboundService
             unset($data['items']);
 
             $data['transaction_number'] = $data['reference_number'] ?? ('INB-' . Str::upper(Str::random(8)));
-            // Stok sudah ditambahkan ke gudang tujuan oleh proses transfer, sehingga dokumen ini
-            // langsung berstatus RECEIVED (tidak bisa di-receive lagi -> mencegah double-count) dan
-            // hanya digunakan untuk alur putaway ke rak.
+
             $data['status'] = Inbound::STATUS_RECEIVED;
 
             $inbound = $this->inboundRepository->create($data);

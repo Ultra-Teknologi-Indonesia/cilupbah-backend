@@ -7,14 +7,10 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
+use Modules\Product\Models\ProductSyncLog;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
-/**
- * Daftar produk untuk Pantauan dengan 4 lensa ketidakseragaman.
- * Lensa belum_upload & harga didukung penuh; sku & atribut menyusul (butuh
- * data channel yang disimpan di fase berikutnya).
- */
 class ProductPantauanRepository
 {
     public function paginate(string $lens): LengthAwarePaginator
@@ -40,6 +36,17 @@ class ProductPantauanRepository
             )
             ->defaultSort('name');
 
+        if ($lens === 'gagal_upload') {
+            // Pesan error upload terakhir agar UI bisa menampilkan penyebabnya.
+            $query->addSelect(['last_upload_error' => ProductSyncLog::query()
+                ->select('error_message')
+                ->whereColumn('product_id', 'products.id')
+                ->where('action', ProductSyncLog::ACTION_UPLOAD)
+                ->where('status', ProductSyncLog::STATUS_FAILED)
+                ->latest()
+                ->limit(1)]);
+        }
+
         $this->applyLens($query, $lens, $activeShopCount);
 
         return $query->paginate(request('per_page', 25))->appends(request()->query());
@@ -49,7 +56,7 @@ class ProductPantauanRepository
     {
         switch ($lens) {
             case 'belum_upload':
-                // Produk yang belum terupload ke ≥1 toko aktif.
+
                 $query->whereRaw(
                     "(select count(distinct channel_shop_id) from product_channel_mappings where product_id = products.id and sync_status <> ?) < ?",
                     [ProductChannelMapping::STATUS_DEACTIVATED, $activeShopCount]
@@ -57,8 +64,7 @@ class ProductPantauanRepository
                 break;
 
             case 'harga':
-                // Harga berbeda antar channel (override), ATAU harga live channel
-                // (synced_price) berbeda dari harga efektif master.
+
                 $query->whereExists(function ($q) {
                     $q->selectRaw('1')
                         ->from('product_variants as pv')
@@ -68,7 +74,7 @@ class ProductPantauanRepository
                 break;
 
             case 'sku':
-                // Seller SKU di channel berbeda dari SKU master.
+
                 $query->whereExists(function ($q) {
                     $q->selectRaw('1')
                         ->from('product_variants as pv')
@@ -80,11 +86,33 @@ class ProductPantauanRepository
                 break;
 
             case 'atribut':
-                // Atribut channel (kanonik) berbeda antar toko untuk produk yang sama.
-                // Cast ke text karena tipe json Postgres tak punya operator distinct.
+
                 $query->whereRaw(
                     "(select count(distinct channel_attributes::text) from product_channel_mappings where product_id = products.id and channel_attributes is not null) > 1"
                 );
+                break;
+
+            case 'gagal_upload':
+                // Produk yang gagal diupload ke channel, ATAU yang strukturnya pasti
+                // ditolak: multi-varian tanpa atribut variasi (sale attribute kosong di
+                // TikTok). Menangkap kasus yang tak terlihat di lensa "atribut".
+                $query->where(function ($w) {
+                    // (a) ada log upload gagal (sumber sama dgn upload-histories).
+                    $w->whereExists(fn ($q) => $q->selectRaw('1')
+                        ->from('product_sync_logs as psl')
+                        ->whereColumn('psl.product_id', 'products.id')
+                        ->where('psl.action', ProductSyncLog::ACTION_UPLOAD)
+                        ->where('psl.status', ProductSyncLog::STATUS_FAILED))
+                    // (b) prediktif: >1 varian DAN tak satu pun varian punya variant_options.
+                    ->orWhereRaw(
+                        "(select count(*) from product_variants pv where pv.product_id = products.id) > 1
+                         and not exists (
+                            select 1 from product_variants pv
+                            join variant_options vo on vo.variant_id = pv.id
+                            where pv.product_id = products.id
+                         )"
+                    );
+                });
                 break;
 
             default:

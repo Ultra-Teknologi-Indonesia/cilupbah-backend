@@ -47,7 +47,6 @@ class UserManagementApiTest extends TestCase
     {
         $plain = User::factory()->create();
 
-        // Tanpa permission view-user: /users diblokir, tapi /systemsetting/users boleh.
         $this->actingAs($plain, 'sanctum')
             ->getJson('/api/v1/users')
             ->assertStatus(403);

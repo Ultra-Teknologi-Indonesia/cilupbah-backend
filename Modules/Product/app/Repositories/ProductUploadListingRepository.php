@@ -10,10 +10,7 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class ProductUploadListingRepository
 {
-    /**
-     * Toko tujuan untuk satu produk, dipecah berdasarkan apakah produk sudah
-     * diupload ke toko itu (ada ProductChannelMapping) atau belum.
-     */
+
     public function paginateDestinations(string $productId, bool $isUploaded): LengthAwarePaginator
     {
         return QueryBuilder::for(ChannelShop::class)

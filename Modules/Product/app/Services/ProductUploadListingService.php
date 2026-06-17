@@ -4,8 +4,10 @@ namespace Modules\Product\Services;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ChannelListingValidator;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
+use Modules\Product\Models\ProductSyncLog;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Repositories\ProductUploadListingRepository;
 
@@ -13,12 +15,11 @@ class ProductUploadListingService
 {
     public const MESSAGE_MATCHED = 'Sesuai sama master';
 
-    public function __construct(private ProductUploadListingRepository $repository) {}
+    public function __construct(
+        private ProductUploadListingRepository $repository,
+        private ChannelListingValidator $validator,
+    ) {}
 
-    /**
-     * Daftar toko tujuan untuk satu produk (tab Belum/Sudah Diupload). Data
-     * produk + mapping disuntik ke tiap ChannelShop agar resource dapat membaca.
-     */
     public function listDestinations(string $productId, bool $isUploaded): LengthAwarePaginator
     {
         $product = Product::findOrFail($productId);
@@ -44,16 +45,6 @@ class ProductUploadListingService
         return $paginator;
     }
 
-    /**
-     * Kecocokan data master dengan channel per (toko × varian).
-     *
-     * Catatan: BE tidak menyimpan nama produk sisi-channel, jadi kecocokan
-     * dinilai dari drift sinkronisasi nyata (varian master belum tersinkron,
-     * atau mapping rejected/failed) — bukan perbandingan nama seperti Jubelio.
-     *
-     * @param  string[]  $storeIds  channel_shop UUID
-     * @return array<int, array{store_id:string, channel_group_id:?string, message:string, matched:bool}>
-     */
     public function match(string $productId, array $storeIds): array
     {
         $product = Product::with('variants')->findOrFail($productId);
@@ -65,6 +56,11 @@ class ProductUploadListingService
             ->get()
             ->keyBy('channel_shop_id');
 
+        $shops = ChannelShop::with('channel')
+            ->whereIn('id', $storeIds)
+            ->get()
+            ->keyBy('id');
+
         $rows = [];
 
         foreach ($storeIds as $storeId) {
@@ -74,14 +70,19 @@ class ProductUploadListingService
                 ? $mapping->variantMappings->pluck('variant_id')->all()
                 : [];
 
+            // Penyebab "match tapi gagal upload": (1) ada log upload gagal,
+            // (2) belum siap upload (multi-varian tanpa atribut variasi).
+            $failedMessage = $this->latestFailedUploadMessage($productId, $storeId);
+            $readinessMessage = $this->uploadReadinessIssue($product, $shops->get($storeId));
+
             if ($variants->isEmpty()) {
-                [$matched, $message] = $this->evaluate($mapping, null, $syncedVariantIds);
+                [$matched, $message] = $this->evaluate($mapping, null, $syncedVariantIds, $failedMessage, $readinessMessage);
                 $rows[] = ['store_id' => $storeId, 'channel_group_id' => $channelGroupId, 'message' => $message, 'matched' => $matched];
                 continue;
             }
 
             foreach ($variants as $variant) {
-                [$matched, $message] = $this->evaluate($mapping, $variant, $syncedVariantIds);
+                [$matched, $message] = $this->evaluate($mapping, $variant, $syncedVariantIds, $failedMessage, $readinessMessage);
                 $rows[] = ['store_id' => $storeId, 'channel_group_id' => $channelGroupId, 'message' => $message, 'matched' => $matched];
             }
         }
@@ -89,12 +90,23 @@ class ProductUploadListingService
         return $rows;
     }
 
-    /**
-     * @param  string[]  $syncedVariantIds
-     * @return array{0:bool,1:string}
-     */
-    private function evaluate(?ProductChannelMapping $mapping, ?ProductVariant $variant, array $syncedVariantIds): array
-    {
+    private function evaluate(
+        ?ProductChannelMapping $mapping,
+        ?ProductVariant $variant,
+        array $syncedVariantIds,
+        ?string $failedMessage = null,
+        ?string $readinessMessage = null
+    ): array {
+        // Upload pernah gagal → tampilkan errornya, jangan laporkan "sesuai".
+        if ($failedMessage !== null) {
+            return [false, $failedMessage];
+        }
+
+        // Belum siap upload (struktur atribut variasi) → akan gagal kalau diupload.
+        if ($readinessMessage !== null) {
+            return [false, $readinessMessage];
+        }
+
         if (! $mapping) {
             return [true, self::MESSAGE_MATCHED];
         }
@@ -108,5 +120,40 @@ class ProductUploadListingService
         }
 
         return [true, self::MESSAGE_MATCHED];
+    }
+
+    /**
+     * Pesan error bila upload terakhir produk ke toko ini berstatus gagal; null jika
+     * tidak ada upload atau upload terakhir berhasil.
+     */
+    private function latestFailedUploadMessage(string $productId, string $storeId): ?string
+    {
+        $log = ProductSyncLog::query()
+            ->where('product_id', $productId)
+            ->where('channel_shop_id', $storeId)
+            ->where('action', ProductSyncLog::ACTION_UPLOAD)
+            ->latest()
+            ->first();
+
+        if ($log && $log->status === ProductSyncLog::STATUS_FAILED) {
+            return $log->error_message ?: 'Upload terakhir gagal';
+        }
+
+        return null;
+    }
+
+    /**
+     * Masalah kesiapan upload independen dari mapping (mis. multi-varian tanpa atribut
+     * variasi pada TikTok). Null bila siap.
+     */
+    private function uploadReadinessIssue(Product $product, ?ChannelShop $shop): ?string
+    {
+        $channelCode = $shop?->channel?->code;
+
+        if ($channelCode === 'tiktok' && $this->validator->lacksVariationAttributes($product)) {
+            return 'Produk multi-varian tanpa atribut variasi — wajib diisi sebelum upload ke TikTok.';
+        }
+
+        return null;
     }
 }

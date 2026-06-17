@@ -19,10 +19,6 @@ class ChannelMonitorController extends Controller
         protected ChannelMonitorService $monitorService,
     ) {}
 
-    /**
-     * Refresh data channel (non-destruktif): antrekan rekonsiliasi semua toko
-     * aktif yang channel-nya didukung. Master tidak tersentuh.
-     */
     public function refresh(Request $request): JsonResponse
     {
         $result = app(\Modules\Channel\Services\ChannelReconcileService::class)

@@ -47,11 +47,6 @@ class UserController extends Controller
         );
     }
 
-    /**
-     * Lookup user bergaya Jubelio untuk dropdown (mis. Default Staff gudang).
-     * Hanya butuh autentikasi, tanpa permission view-user.
-     * Response: { data: [{user_id, email, last_login, is_owner}], totalCount }.
-     */
     public function lookup(Request $request): JsonResponse
     {
         $result = $this->userService->getUserLookup(

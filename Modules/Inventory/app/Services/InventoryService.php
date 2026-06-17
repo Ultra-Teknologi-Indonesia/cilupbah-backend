@@ -194,7 +194,6 @@ class InventoryService
                     'created_by'         => $data['created_by'],
                 ]);
 
-                // Barang ditampung sementara di lokasi Transit selama dalam perjalanan.
                 $transitInventory = $this->inventoryRepository->findOrCreateForUpdate(
                     $itemData['item_id'],
                     $transitLocationId,
@@ -241,7 +240,6 @@ class InventoryService
             foreach ($transfer->items as $item) {
                 $qty = $item->qty;
 
-                // Keluarkan barang dari lokasi Transit (penampungan sementara).
                 $transitInventory = $this->inventoryRepository->findExactForUpdate(
                     $item->item_id,
                     $transitLocationId,
@@ -311,9 +309,6 @@ class InventoryService
                 'expected_qty' => $item->qty,
             ])->toArray();
 
-            // Barang sudah masuk ke gudang tujuan (stok ditambah di atas), jadi dokumen inbound
-            // dibuat langsung berstatus RECEIVED — hanya untuk alur putaway ke rak, bukan untuk
-            // menerima stok lagi (mencegah double-count).
             $inboundService->receiveFromTransfer([
                 'location_id'      => $transfer->destination_location_id,
                 'reference_number' => $receiveNumber,
@@ -327,11 +322,6 @@ class InventoryService
         });
     }
 
-    /**
-     * Pastikan lokasi Transit sistem (beserta default bin-nya) tersedia, lalu kembalikan id-nya.
-     *
-     * @return array{0: string, 1: string} [transitLocationId, transitBinId]
-     */
     protected function resolveTransitLocation(): array
     {
         $transit = Location::firstOrCreate(

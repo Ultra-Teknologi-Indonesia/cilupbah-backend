@@ -17,6 +17,7 @@ class ProductPantauanResource extends JsonResource
             'category_name' => $this->relationLoaded('category') ? ($this->category->name ?? null) : null,
             'product_type' => $this->is_bundle ? 'bundle' : ($this->is_consignment ? 'konsinyasi' : 'satuan'),
             'not_uploaded_count' => $this->not_uploaded_count !== null ? (int) $this->not_uploaded_count : null,
+            'last_upload_error' => $this->last_upload_error ?? null,
         ];
     }
 

@@ -33,10 +33,6 @@ class UserService
         return $this->userRepository->findByIdWithRelations($id);
     }
 
-    /**
-     * Lookup user bergaya Jubelio untuk dropdown (mis. Default Staff gudang).
-     * Mengembalikan { data: [{user_id, email, last_login, is_owner}], totalCount }.
-     */
     public function getUserLookup(?string $q, int $page, int $pageSize): array
     {
         $query = User::query()->with('roles');

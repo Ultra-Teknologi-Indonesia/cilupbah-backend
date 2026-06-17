@@ -11,6 +11,7 @@ class TikTokProductMapper
         $warehouseId = $config['warehouse_id'] ?? '7646426075561690887';
 
         $attributes = $config['attributes'] ?? [];
+        $isUpdate = ($config['mode'] ?? 'create') === 'update';
 
         $salesAttrIdMap = [
             'warna'   => '100000',
@@ -40,14 +41,12 @@ class TikTokProductMapper
             'product_attributes' => $attributes ?: [],
         ];
 
-        // TikTok membatasi main_images maksimal 9.
         if (!empty($uploadedImageIds)) {
             $payload['main_images'] = array_map(function ($uri) {
                 return ['uri' => $uri];
             }, array_slice(array_values($uploadedImageIds), 0, 9));
         }
 
-        // Video produk (id dari files/upload).
         if (!empty($config['video_id'])) {
             $payload['video'] = ['id' => $config['video_id']];
         }
@@ -74,8 +73,15 @@ class TikTokProductMapper
                     ]
                 ];
 
+                if (!empty($variant['external_sku_id'])) {
+                    $sku['id'] = (string) $variant['external_sku_id'];
+                }
+
                 $salesAttributes = [];
-                if (!empty($variant['options'])) {
+                if (!empty($variant['sales_attributes'])) {
+
+                    $salesAttributes = $this->normalizeSalesAttributes($variant['sales_attributes']);
+                } elseif (!empty($variant['options'])) {
                     foreach ($variant['options'] as $option) {
                         $attrName  = strtolower($option['attribute_name'] ?? '');
                         $attrId    = $salesAttrIdMap[$attrName]
@@ -86,17 +92,35 @@ class TikTokProductMapper
                         ];
                     }
                 } elseif ($variantCount > 1) {
-                    // Multi-SKU tanpa variasi → sintesis sales attribute default agar
-                    // TikTok bisa membedakan SKU (hindari error "sale attribute name
-                    // or attribute ID should not be empty").
+
                     $salesAttributes[] = [
                         'attribute_name' => 'Tipe',
                         'custom_value' => ($variant['sku'] ?? '') ?: ('Varian ' . ($idx + 1)),
                     ];
                 }
 
+                $salesAttributes = array_values(array_filter(
+                    $salesAttributes,
+                    fn ($attr) => ($attr['attribute_id'] ?? '') !== '' || ($attr['attribute_name'] ?? '') !== ''
+                ));
+
+                if ($isUpdate && $variantCount > 1) {
+                    $hasUsableId = !empty(array_filter(
+                        $salesAttributes,
+                        fn ($attr) => ($attr['attribute_id'] ?? '') !== ''
+                    ));
+                    if (!$hasUsableId) {
+                        throw new \RuntimeException(
+                            "Tidak bisa update SKU '" . ($variant['sku'] ?? ('Varian ' . ($idx + 1)))
+                            . "' ke TikTok: attribute_id sales attribute tidak diketahui. "
+                            . "Lengkapi atribut variasi produk lalu upload ulang.",
+                            422
+                        );
+                    }
+                }
+
                 if (!empty($salesAttributes)) {
-                    // Foto per-varian → lekatkan ke nilai sales attribute pertama.
+
                     if (!empty($variant['image_uri'])) {
                         $salesAttributes[0]['sku_img'] = ['uri' => $variant['image_uri']];
                     }
@@ -109,5 +133,31 @@ class TikTokProductMapper
         }
 
         return $payload;
+    }
+
+    private function normalizeSalesAttributes(array $salesAttributes): array
+    {
+        $normalized = [];
+
+        foreach ($salesAttributes as $attr) {
+            $attributeId   = (string) ($attr['attribute_id'] ?? $attr['id'] ?? '');
+            $attributeName = (string) ($attr['attribute_name'] ?? $attr['name'] ?? '');
+            $customValue   = (string) ($attr['custom_value'] ?? $attr['value'] ?? $attr['value_name'] ?? '');
+
+            $entry = ['custom_value' => $customValue];
+            if ($attributeId !== '') {
+                $entry['attribute_id'] = $attributeId;
+            }
+            if ($attributeName !== '') {
+                $entry['attribute_name'] = $attributeName;
+            }
+            if (!empty($attr['sku_img'])) {
+                $entry['sku_img'] = $attr['sku_img'];
+            }
+
+            $normalized[] = $entry;
+        }
+
+        return $normalized;
     }
 }

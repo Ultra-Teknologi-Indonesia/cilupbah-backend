@@ -95,7 +95,7 @@ class UpdateProductRequest extends FormRequest
     public function withValidator(\Illuminate\Contracts\Validation\Validator $validator): void
     {
         $validator->after(function ($v) {
-            // Saat media diubah: wajib ≥1 foto, maks 9 foto + 1 video.
+
             if ($this->has('media')) {
                 $media = collect((array) $this->input('media', []))->filter(fn ($m) => is_array($m));
                 $images = $media->filter(fn ($m) => ($m['media_type'] ?? 'image') !== 'video');

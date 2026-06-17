@@ -50,7 +50,6 @@ class TikTokProductService
         $variants = $this->productRepository->getVariantsByProductId($productId);
         $media = collect($this->productRepository->getMediaByProductId($productId));
 
-        // Foto LEVEL PRODUK (variant_id null) → main_images (di-cap 9 di mapper).
         $imageUrls = $media
             ->filter(fn ($m) => ($m->variant_id ?? null) === null && $m->media_type === 'image')
             ->pluck('url')
@@ -59,13 +58,10 @@ class TikTokProductService
         $uploadResult = $this->imageUploader->upload($imageUrls, $accessToken);
         $uploadedImageIds = $uploadResult['uris'];
 
-        // Pre-flight: TikTok mewajibkan main_images. Gagal cepat dengan pesan
-        // jelas daripada kena error mentah "MainImages is a required field".
         if (empty($uploadedImageIds)) {
             throw new \RuntimeException($this->noImageMessage($imageUrls, $uploadResult['errors']), 422);
         }
 
-        // Video produk (opsional, 1 per produk).
         $videoId = null;
         $productVideo = $media->first(fn ($m) => ($m->variant_id ?? null) === null && $m->media_type === 'video');
         if ($productVideo) {
@@ -78,7 +74,6 @@ class TikTokProductService
             $options = $this->productRepository->getVariantOptions($v->id);
             $variantArr['options'] = array_map(fn($opt) => (array)$opt, $options);
 
-            // Foto per-varian (pertama) → sku_img (non-fatal bila gagal).
             $variantImage = $media->first(fn ($m) => ($m->variant_id ?? null) === $v->id && $m->media_type === 'image');
             if ($variantImage) {
                 $vUris = $this->imageUploader->upload([$variantImage->url], $accessToken)['uris'];
@@ -90,51 +85,74 @@ class TikTokProductService
             return $variantArr;
         })->toArray();
 
-        $tiktokCategoryId = null;
-        if (!empty($product->category_id)) {
-            $tiktokCategoryId = $this->productRepository->getChannelCategoryExternalId($product->category_id, $shop->channel_id);
+        $config = $this->buildUploadConfig($product, $shop, $videoId);
+
+        $payload = $this->mapper->map($internalProduct, $uploadedImageIds, $config);
+
+        $res = $this->client->request('POST', '/product/202309/products', ['shop_cipher' => $shopCipher], $payload, $accessToken);
+
+        if (isset($res['data']['product_id'])) {
+            $pcmId = $this->productRepository->upsertChannelMapping($productId, $shopId, $res['data']['product_id'], 'synced');
+            $this->persistVariantMappings($pcmId, $variants, $res['data']['skus'] ?? []);
         }
 
+        return $res;
+    }
+
+    /**
+     * Simpan id SKU + sales attribute yang dikembalikan TikTok ke
+     * product_variant_channel_mappings, agar update berikutnya bisa mengirimnya
+     * kembali (TikTok mewajibkan attribute_id pada update).
+     */
+    /**
+     * Bangun config payload TikTok (category_id, video_id, product_attributes) dari
+     * spesifikasi produk. Dipakai oleh pushProduct & pushUpdate agar konsisten.
+     */
+    private function buildUploadConfig($product, $shop, ?string $videoId): array
+    {
         $config = [];
-        if ($tiktokCategoryId) {
-            $config['category_id'] = $tiktokCategoryId;
+
+        if (!empty($product->category_id)) {
+            $tiktokCategoryId = $this->productRepository->getChannelCategoryExternalId($product->category_id, $shop->channel_id);
+            if ($tiktokCategoryId) {
+                $config['category_id'] = $tiktokCategoryId;
+            }
         }
+
         if ($videoId) {
             $config['video_id'] = $videoId;
         }
 
-        $specs = $this->productRepository->getProductSpecifications($productId);
+        $specs = $this->productRepository->getProductSpecifications($product->id);
 
         $mappedAttributes = [];
         foreach ($specs as $spec) {
-
             $mapping = $this->productRepository->getAttributeChannelMapping($spec->attribute_id);
+            if (! $mapping) {
+                continue;
+            }
 
-            if ($mapping) {
-                $channelAttr = $this->productRepository->getChannelAttribute($mapping->channel_attribute_id);
+            $channelAttr = $this->productRepository->getChannelAttribute($mapping->channel_attribute_id);
+            if (! $channelAttr) {
+                continue;
+            }
 
-                if ($channelAttr) {
-                    $attrData = ['id' => $channelAttr->external_id, 'values' => []];
+            $attrData = ['id' => $channelAttr->external_id, 'values' => []];
 
-                    if ($spec->attribute_option_id) {
-
-                        $optMapping = $this->productRepository->getAttributeOptionChannelMapping($spec->attribute_option_id);
-
-                        if ($optMapping) {
-                            $channelOpt = $this->productRepository->getChannelAttributeOption($optMapping->channel_attribute_option_id);
-
-                            if ($channelOpt) {
-                                $attrData['values'][] = ['id' => $channelOpt->external_id, 'name' => $channelOpt->name];
-                            }
-                        }
-                    } else if ($spec->text_value) {
-                        $attrData['values'][] = ['name' => $spec->text_value];
-                    }
-
-                    if (!empty($attrData['values'])) {
-                        $mappedAttributes[] = $attrData;
+            if ($spec->attribute_option_id) {
+                $optMapping = $this->productRepository->getAttributeOptionChannelMapping($spec->attribute_option_id);
+                if ($optMapping) {
+                    $channelOpt = $this->productRepository->getChannelAttributeOption($optMapping->channel_attribute_option_id);
+                    if ($channelOpt) {
+                        $attrData['values'][] = ['id' => $channelOpt->external_id, 'name' => $channelOpt->name];
                     }
                 }
+            } else if ($spec->text_value) {
+                $attrData['values'][] = ['name' => $spec->text_value];
+            }
+
+            if (!empty($attrData['values'])) {
+                $mappedAttributes[] = $attrData;
             }
         }
 
@@ -142,15 +160,33 @@ class TikTokProductService
             $config['attributes'] = $mappedAttributes;
         }
 
-        $payload = $this->mapper->map($internalProduct, $uploadedImageIds, $config);
+        return $config;
+    }
 
-        $res = $this->client->request('POST', '/product/202309/products', ['shop_cipher' => $shopCipher], $payload, $accessToken);
+    private function persistVariantMappings(string $pcmId, $variants, array $skus): void
+    {
+        $variantBySku = collect($variants)->keyBy('sku');
 
-        if (isset($res['data']['product_id'])) {
-            $this->productRepository->updateChannelProductId($productId, $res['data']['product_id'], $shopId);
+        foreach ($skus as $skuData) {
+            $sellerSku = $skuData['seller_sku'] ?? null;
+            if ($sellerSku === null || !$variantBySku->has($sellerSku)) {
+                continue;
+            }
+
+            $sale = $skuData['sales_attributes'][0] ?? null;
+            $saleId = is_array($sale) ? (string) ($sale['attribute_id'] ?? $sale['id'] ?? '') : '';
+            $saleName = is_array($sale) ? (string) ($sale['attribute_name'] ?? $sale['name'] ?? '') : '';
+
+            $this->productRepository->upsertVariantChannelMapping(
+                $pcmId,
+                $variantBySku->get($sellerSku)->id,
+                $skuData['id'] ?? null,
+                $sellerSku,
+                null,
+                $saleId !== '' ? $saleId : null,
+                $saleName !== '' ? $saleName : null,
+            );
         }
-
-        return $res;
     }
 
     public function pullProducts(string $shopId): int
@@ -255,10 +291,6 @@ class TikTokProductService
         return $count;
     }
 
-    /**
-     * Cari produk di TikTok (by SKU/nama). NON-DESTRUKTIF: hanya membaca, tidak
-     * menyentuh master. Mengembalikan DTO ringan untuk modal "Download Satuan".
-     */
     public function searchProducts(string $shopId, string $query): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);
@@ -319,10 +351,6 @@ class TikTokProductService
         return $results;
     }
 
-    /**
-     * Download satu produk TikTok by external id (Download Satuan). Mirror
-     * pullProducts untuk satu item; status produk → 'download'.
-     */
     public function pullProductById(string $shopId, string $externalProductId): bool
     {
         $shop = $this->shopRepository->findByShopId($shopId);
@@ -416,11 +444,6 @@ class TikTokProductService
         return false;
     }
 
-    /**
-     * Rekonsiliasi NON-DESTRUKTIF: tarik produk dari channel lalu update HANYA
-     * kolom mapping channel (atribut, seller_sku, harga) untuk listing yang
-     * sudah termapping. Tidak menyentuh master (tak panggil upsertFromChannel).
-     */
     public function reconcileChannelData(string $shopId): int
     {
         $shop = $this->shopRepository->findByShopId($shopId);
@@ -549,13 +572,6 @@ class TikTokProductService
         return $statuses;
     }
 
-    /**
-     * Pesan jelas saat tak ada gambar yang berhasil diunggah ke TikTok
-     * (menggantikan error mentah "MainImages is a required field").
-     *
-     * @param array<int, string> $imageUrls
-     * @param array<int, array{url: string, reason: string}> $errors
-     */
     protected function noImageMessage(array $imageUrls, array $errors): string
     {
         if (empty($imageUrls)) {
@@ -710,13 +726,11 @@ class TikTokProductService
         $media = collect($this->productRepository->getMediaByProductId($productId));
         $accessToken = $shop->access_token;
 
-        // Foto LEVEL PRODUK → main_images (di-cap 9 di mapper).
         $imageUrls = $media
             ->filter(fn ($m) => ($m->variant_id ?? null) === null && ($m->media_type ?? 'image') === 'image')
             ->pluck('url')
             ->all();
 
-        // Gambar harus diunggah dulu ke TikTok (butuh URI, bukan URL mentah).
         $uploadResult = $this->imageUploader->upload($imageUrls, $accessToken);
         $uploadedImageIds = $uploadResult['uris'];
 
@@ -730,11 +744,30 @@ class TikTokProductService
             $videoId = $this->imageUploader->uploadVideo($productVideo->url, $accessToken);
         }
 
+        // Sales attribute + id SKU yang sudah diberikan TikTok saat create, agar
+        // dikirim ulang persis (TikTok mewajibkan attribute_id pada update).
+        $storedMappings = $this->productRepository->getVariantChannelMappings($productId, $shopId);
+
         $internalProduct = (array)$product;
-        $internalProduct['variants'] = $variants->map(function ($v) use ($media, $accessToken) {
+        $internalProduct['variants'] = $variants->map(function ($v) use ($media, $accessToken, $storedMappings) {
             $variantArr = (array)$v;
-            $options = $this->productRepository->getRawVariantOptions($v->id);
+            // Konsisten dgn pushProduct: getVariantOptions (join attributes → attribute_name terisi).
+            $options = $this->productRepository->getVariantOptions($v->id);
             $variantArr['options'] = array_map(fn($opt) => (array)$opt, $options);
+
+            $stored = $storedMappings[$v->id] ?? null;
+            if ($stored) {
+                if (!empty($stored->external_sku_id)) {
+                    $variantArr['external_sku_id'] = $stored->external_sku_id;
+                }
+                if (!empty($stored->sales_attribute_id)) {
+                    $variantArr['sales_attributes'] = [[
+                        'attribute_id'   => $stored->sales_attribute_id,
+                        'attribute_name' => $stored->sales_attribute_name,
+                        'custom_value'   => $v->sku ?? '',
+                    ]];
+                }
+            }
 
             $variantImage = $media->first(fn ($m) => ($m->variant_id ?? null) === $v->id && ($m->media_type ?? 'image') === 'image');
             if ($variantImage) {
@@ -747,7 +780,10 @@ class TikTokProductService
             return $variantArr;
         })->toArray();
 
-        $config = $videoId ? ['video_id' => $videoId] : [];
+        // Bangun config penuh (kategori + atribut produk) seperti pushProduct, bukan
+        // hanya video — agar update tidak menjatuhkan data tersebut.
+        $config = $this->buildUploadConfig($product, $shop, $videoId);
+        $config['mode'] = 'update';
         $payload = $this->mapper->map($internalProduct, $uploadedImageIds, $config);
 
         return $this->client->request('PUT', "/product/202309/products/{$externalProductId}", ['shop_cipher' => $shop->shop_cipher ?? ''], $payload, $shop->access_token);

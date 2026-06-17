@@ -60,7 +60,7 @@ class WebhookProductHandler
             foreach ($data['skus'] as $skuData) {
                 $variantMapping = $mapping->variantMappings()->where('external_sku_id', $skuData['id'])->first();
                 if ($variantMapping) {
-                    // Tangkap nilai aktual channel untuk deteksi ketidakseragaman.
+
                     $update = [];
                     if (!empty($skuData['seller_sku'])) {
                         $update['channel_seller_sku'] = $skuData['seller_sku'];

@@ -171,7 +171,7 @@ class TikTokImageUploadTest extends TestCase
         $product = (object) ['id' => 'p1', 'name' => 'Produk', 'category_id' => null];
 
         $client = Mockery::mock(TikTokClient::class);
-        $client->shouldNotReceive('request'); // create TIDAK boleh dipanggil
+        $client->shouldNotReceive('request'); 
 
         $shopRepo = Mockery::mock(ChannelShopRepository::class);
         $shopRepo->shouldReceive('findByShopId')->andReturn($shop);
@@ -245,7 +245,8 @@ class TikTokImageUploadTest extends TestCase
         $productRepo->shouldReceive('getVariantOptions')->with('v1')
             ->andReturn([(object) ['attribute_name' => 'Warna', 'value' => 'Merah']]);
         $productRepo->shouldReceive('getProductSpecifications')->andReturn([]);
-        $productRepo->shouldReceive('updateChannelProductId')->andReturnNull();
+        $productRepo->shouldReceive('upsertChannelMapping')->andReturn('pcm-1');
+        $productRepo->shouldReceive('upsertVariantChannelMapping')->andReturnNull();
 
         $uploader = Mockery::mock(TikTokImageUploader::class);
         $uploader->shouldReceive('upload')->with(['https://x/main.jpg'], 'tok')

@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('warehouse_settings', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            // Toggle global "Gunakan Layout Gudang".
+
             $table->boolean('use_warehouse_layout')->default(true);
             $table->timestamps();
         });

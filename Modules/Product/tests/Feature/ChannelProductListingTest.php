@@ -317,8 +317,8 @@ class ChannelProductListingTest extends TestCase
 
     public function test_filter_min_price_uses_effective_price(): void
     {
-        $this->seedPriced('Murah', 'CHEAP', 50000, null);      // efektif 50.000 (sell_price)
-        $this->seedPriced('Mahal', 'PRICEY', 80000, 300000);   // efektif 300.000 (override)
+        $this->seedPriced('Murah', 'CHEAP', 50000, null);      
+        $this->seedPriced('Mahal', 'PRICEY', 80000, 300000);   
 
         $response = $this->getJson('/api/v1/products/channel-products?filter[min_price]=100000');
 

@@ -73,7 +73,6 @@ class ChannelDownloadService
         return $count;
     }
 
-    /** Download Satuan — cari produk di channel (by SKU/nama). */
     public function searchProducts(string $channel, string $shopId, string $query): array
     {
         $this->assertSupported($channel);
@@ -85,7 +84,6 @@ class ChannelDownloadService
         };
     }
 
-    /** Download Satuan — tarik satu produk by external id. */
     public function downloadProduct(string $channel, string $shopId, string $externalProductId): bool
     {
         $this->assertSupported($channel);

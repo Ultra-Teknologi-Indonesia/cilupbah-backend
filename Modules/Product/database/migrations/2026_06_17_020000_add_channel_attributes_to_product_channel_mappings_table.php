@@ -9,8 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('product_channel_mappings', function (Blueprint $table) {
-            // Atribut aktual produk di channel (kanonik, dari pull). Untuk deteksi
-            // "Atribut Tidak Seragam" antar channel.
+
             $table->json('channel_attributes')->nullable()->after('external_product_id');
         });
     }

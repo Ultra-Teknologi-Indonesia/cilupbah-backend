@@ -46,7 +46,6 @@ class ChannelReconcileTest extends TestCase
             'is_active' => true,
         ]);
 
-        // Produk master yang sudah termapping (akan direkonsiliasi).
         $this->product = Product::create(['name' => 'Produk Asli', 'category_id' => 1, 'status' => Product::STATUS_MASTER, 'is_active' => true]);
         $variant = ProductVariant::create(['product_id' => $this->product->id, 'sku' => 'MST-1', 'sell_price' => 50000, 'is_active' => true]);
         $this->mapping = ProductChannelMapping::create([
@@ -94,12 +93,10 @@ class ChannelReconcileTest extends TestCase
     {
         app(TikTokProductService::class)->reconcileChannelData('SHOP-TT');
 
-        // Master TIDAK berubah.
         $this->product->refresh();
         $this->assertSame('Produk Asli', $this->product->name);
         $this->assertSame(Product::STATUS_MASTER, $this->product->status);
 
-        // Kolom channel terupdate dari data live.
         $this->mapping->refresh();
         $this->assertSame(['Brand' => 'Acme'], $this->mapping->channel_attributes);
 
@@ -112,7 +109,6 @@ class ChannelReconcileTest extends TestCase
     {
         app(TikTokProductService::class)->reconcileChannelData('SHOP-TT');
 
-        // Produk channel yang tak termapping tidak dibuat sebagai master.
         $this->assertSame(1, Product::count());
         $this->assertDatabaseMissing('products', ['name' => 'Produk Channel Tak Termapping']);
     }
@@ -129,7 +125,7 @@ class ChannelReconcileTest extends TestCase
         $response = $this->postJson('/api/v1/channel-monitor/refresh');
 
         $response->assertStatus(202);
-        $response->assertJsonPath('data.queued', 2); // tiktok + lazada
+        $response->assertJsonPath('data.queued', 2); 
         $this->assertContains('shopee', $response->json('data.skipped_channels'));
         Queue::assertPushed(ReconcileChannelDataJob::class, 2);
     }

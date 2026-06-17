@@ -34,7 +34,6 @@ class MasterFeedRepository
                     $query->whereIn('category_id', $this->categoryWithDescendants($value));
                 }),
 
-                // Tipe produk (selaras MasterItemResource: is_po = order_type==='PREORDER').
                 AllowedFilter::callback('type', function ($query, $value) {
                     match ($value) {
                         'bundle' => $query->where('is_bundle', true),
@@ -47,11 +46,9 @@ class MasterFeedRepository
                     };
                 }),
 
-                // Rentang harga efektif (min varian).
                 AllowedFilter::callback('min_price', fn ($query, $value) => $query->whereHas('variants', fn ($q) => $q->where('sell_price', '>=', $value))),
                 AllowedFilter::callback('max_price', fn ($query, $value) => $query->whereHas('variants', fn ($q) => $q->where('sell_price', '<=', $value))),
 
-                // Produk yang termapping ke channel tertentu.
                 AllowedFilter::callback('channel', fn ($query, $value) => $query->whereHas('channelMappings.channelShop.channel', fn ($q) => $q->where('code', $value))),
             )
             ->allowedSorts('name', 'created_at', 'updated_at')

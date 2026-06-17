@@ -8,8 +8,10 @@ use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
+use Modules\Product\Models\ProductSyncLog;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\ProductVariantChannelMapping;
+use Modules\Product\Models\VariantOption;
 use Tests\TestCase;
 
 class ProductPantauanTest extends TestCase
@@ -58,10 +60,10 @@ class ProductPantauanTest extends TestCase
 
     public function test_belum_upload_lists_products_not_uploaded_to_all_shops(): void
     {
-        $partial = $this->product('Produk Sebagian'); // 2 toko aktif, baru 1
+        $partial = $this->product('Produk Sebagian'); 
         $this->mapTo($partial, $this->shopA, 'A-1');
 
-        $full = $this->product('Produk Lengkap'); // sudah di 2 toko
+        $full = $this->product('Produk Lengkap'); 
         $this->mapTo($full, $this->shopA, 'F-1');
         $this->mapTo($full, $this->shopB, 'F-2');
 
@@ -180,6 +182,64 @@ class ProductPantauanTest extends TestCase
         $this->getJson('/api/v1/products/pantauan?lens=ngawur')->assertStatus(422);
     }
 
+    public function test_gagal_upload_lists_products_with_failed_upload_log(): void
+    {
+        $failed = $this->product('Upload Gagal');
+        ProductSyncLog::create([
+            'product_id' => $failed->id,
+            'channel_shop_id' => $this->shopA->id,
+            'action' => ProductSyncLog::ACTION_UPLOAD,
+            'status' => ProductSyncLog::STATUS_FAILED,
+            'error_message' => 'TikTok API Error: The sale attribute name or attribute ID should not be empty.',
+        ]);
+
+        $ok = $this->product('Upload Sukses');
+        ProductSyncLog::create([
+            'product_id' => $ok->id,
+            'channel_shop_id' => $this->shopA->id,
+            'action' => ProductSyncLog::ACTION_UPLOAD,
+            'status' => ProductSyncLog::STATUS_SUCCESS,
+        ]);
+
+        $response = $this->getJson('/api/v1/products/pantauan?lens=gagal_upload');
+
+        $response->assertStatus(200);
+        $names = collect($response->json('data'))->pluck('product_name')->all();
+        $this->assertContains('Upload Gagal', $names);
+        $this->assertNotContains('Upload Sukses', $names);
+
+        $row = collect($response->json('data'))->firstWhere('product_name', 'Upload Gagal');
+        $this->assertStringContainsString('sale attribute', $row['last_upload_error']);
+    }
+
+    public function test_gagal_upload_flags_multivariant_without_options(): void
+    {
+        $attrId = DB::table('attributes')->insertGetId([
+            'name' => 'Ukuran', 'type' => 'sales', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $noOpts = $this->product('Multi Tanpa Opsi');
+        ProductVariant::create(['product_id' => $noOpts->id, 'sku' => 'MTO-1', 'sell_price' => 1, 'is_active' => true]);
+        ProductVariant::create(['product_id' => $noOpts->id, 'sku' => 'MTO-2', 'sell_price' => 1, 'is_active' => true]);
+
+        $withOpts = $this->product('Multi Dengan Opsi');
+        $w1 = ProductVariant::create(['product_id' => $withOpts->id, 'sku' => 'MDO-1', 'sell_price' => 1, 'is_active' => true]);
+        $w2 = ProductVariant::create(['product_id' => $withOpts->id, 'sku' => 'MDO-2', 'sell_price' => 1, 'is_active' => true]);
+        VariantOption::create(['variant_id' => $w1->id, 'attribute_id' => $attrId, 'value' => '40']);
+        VariantOption::create(['variant_id' => $w2->id, 'attribute_id' => $attrId, 'value' => '41']);
+
+        $single = $this->product('Satu Varian');
+        ProductVariant::create(['product_id' => $single->id, 'sku' => 'SV-1', 'sell_price' => 1, 'is_active' => true]);
+
+        $response = $this->getJson('/api/v1/products/pantauan?lens=gagal_upload');
+
+        $response->assertStatus(200);
+        $names = collect($response->json('data'))->pluck('product_name')->all();
+        $this->assertContains('Multi Tanpa Opsi', $names);
+        $this->assertNotContains('Multi Dengan Opsi', $names);
+        $this->assertNotContains('Satu Varian', $names);
+    }
+
     public function test_upsert_stores_canonical_channel_attributes(): void
     {
         $product = $this->product('Produk Atribut');
@@ -189,7 +249,7 @@ class ProductPantauanTest extends TestCase
 
         $row = ProductChannelMapping::where('product_id', $product->id)->first();
         $this->assertNotNull($row);
-        // Kanonik: key tersortir (Brand sebelum Warna).
+
         $this->assertSame(['Brand' => 'Acme', 'Warna' => 'Merah'], $row->channel_attributes);
     }
 

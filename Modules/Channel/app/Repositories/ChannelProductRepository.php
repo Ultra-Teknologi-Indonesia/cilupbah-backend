@@ -198,10 +198,6 @@ class ChannelProductRepository
         return $pcmId;
     }
 
-    /**
-     * Normalisasi atribut channel ke JSON kanonik (key tersortir) agar dua toko
-     * dengan atribut sama (urutan beda) dianggap seragam.
-     */
     public static function canonicalAttributes(?array $attributes): ?string
     {
         if (empty($attributes)) {
@@ -222,7 +218,9 @@ class ChannelProductRepository
         string $variantId,
         ?string $externalSkuId = null,
         ?string $channelSellerSku = null,
-        $syncedPrice = null
+        $syncedPrice = null,
+        ?string $salesAttributeId = null,
+        ?string $salesAttributeName = null
     ): void {
         $now = now();
 
@@ -242,6 +240,12 @@ class ChannelProductRepository
             if ($syncedPrice !== null) {
                 $update['synced_price'] = $syncedPrice;
             }
+            if ($salesAttributeId !== null) {
+                $update['sales_attribute_id'] = $salesAttributeId;
+            }
+            if ($salesAttributeName !== null) {
+                $update['sales_attribute_name'] = $salesAttributeName;
+            }
             DB::table('product_variant_channel_mappings')
                 ->where('id', $existing->id)
                 ->update($update);
@@ -255,8 +259,32 @@ class ChannelProductRepository
             'external_sku_id'            => $externalSkuId,
             'channel_seller_sku'         => $channelSellerSku,
             'synced_price'               => $syncedPrice,
+            'sales_attribute_id'         => $salesAttributeId,
+            'sales_attribute_name'       => $salesAttributeName,
             'created_at'                 => $now,
             'updated_at'                 => $now,
         ]);
+    }
+
+    /**
+     * Mapping varian-channel tersimpan (per produk × toko), di-key dgn variant_id.
+     * Dipakai untuk mengirim ulang id SKU + sales attribute saat update ke channel.
+     *
+     * @return array<string, object>
+     */
+    public function getVariantChannelMappings(string $productId, string $shopId): array
+    {
+        $channelShop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
+        if (!$channelShop) {
+            return [];
+        }
+
+        return DB::table('product_variant_channel_mappings as pvcm')
+            ->join('product_channel_mappings as pcm', 'pcm.id', '=', 'pvcm.product_channel_mapping_id')
+            ->where('pcm.product_id', $productId)
+            ->where('pcm.channel_shop_id', $channelShop->id)
+            ->get(['pvcm.variant_id', 'pvcm.external_sku_id', 'pvcm.sales_attribute_id', 'pvcm.sales_attribute_name'])
+            ->keyBy('variant_id')
+            ->all();
     }
 }

@@ -15,9 +15,21 @@ class ChannelListingValidator
 
     public function validate(Product $product, string $channelCode): array
     {
+        // Produk multi-varian tanpa atribut variasi pasti ditolak channel (mis. TikTok:
+        // "sale attribute name or attribute ID should not be empty"). Independen dari
+        // pemetaan kategori, jadi disertakan lebih dulu.
+        $issues = [];
+        if ($this->lacksVariationAttributes($product)) {
+            $issues[] = $this->issue(
+                'variation_attribute_missing',
+                null,
+                "Produk multi-varian tanpa atribut variasi — wajib diisi sebelum upload ke {$channelCode}."
+            );
+        }
+
         $channelId = DB::table('channels')->where('code', $channelCode)->value('id');
         if (! $channelId) {
-            return [$this->issue('category_unmapped', null, "Channel {$channelCode} belum tersedia.")];
+            return array_merge($issues, [$this->issue('category_unmapped', null, "Channel {$channelCode} belum tersedia.")]);
         }
 
         $channelCategory = DB::table('category_channel_mappings as m')
@@ -28,19 +40,19 @@ class ChannelListingValidator
             ->first();
 
         if (! $channelCategory) {
-            return [$this->issue(
+            return array_merge($issues, [$this->issue(
                 'category_unmapped',
                 null,
                 "Kategori produk belum dipetakan ke {$channelCode}."
-            )];
+            )]);
         }
 
         if ($channelCategory->deprecated_at !== null) {
-            return [$this->issue(
+            return array_merge($issues, [$this->issue(
                 'category_deprecated',
                 $channelCategory->name,
                 "Kategori {$channelCode} '{$channelCategory->name}' sudah tidak berlaku — petakan ulang."
-            )];
+            )]);
         }
 
         $required = DB::table('channel_attributes')
@@ -49,11 +61,10 @@ class ChannelListingValidator
             ->get(['id', 'external_id', 'name']);
 
         if ($required->isEmpty()) {
-            return [];
+            return $issues;
         }
 
-        $productValues = $this->collectProductValues($product->id); 
-        $issues = [];
+        $productValues = $this->collectProductValues($product->id);
 
         foreach ($required as $ca) {
 
@@ -108,6 +119,29 @@ class ChannelListingValidator
         }
 
         return $issues;
+    }
+
+    /**
+     * Predikat bersama: produk multi-varian (>1) yang tak satu pun variannya punya
+     * variant_options. Inilah kondisi struktural di balik kegagalan upload "sale
+     * attribute kosong" — dipakai juga oleh lensa Pantauan "gagal_upload".
+     */
+    public function lacksVariationAttributes(Product $product): bool
+    {
+        $variantCount = DB::table('product_variants')
+            ->where('product_id', $product->id)
+            ->count();
+
+        if ($variantCount <= 1) {
+            return false;
+        }
+
+        $hasAnyOptions = DB::table('variant_options as vo')
+            ->join('product_variants as pv', 'pv.id', '=', 'vo.variant_id')
+            ->where('pv.product_id', $product->id)
+            ->exists();
+
+        return ! $hasAnyOptions;
     }
 
     private function collectProductValues(string $productId): array
