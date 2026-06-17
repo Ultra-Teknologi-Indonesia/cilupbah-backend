@@ -124,6 +124,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('/not-started', [PutawayController::class, 'notStarted'])->name('putaway.notStarted');
         Route::get('/in-progress', [PutawayController::class, 'inProgress'])->name('putaway.inProgress');
         Route::get('/completed', [PutawayController::class, 'completed'])->name('putaway.completed');
+        Route::get('/bins/lookup', [PutawayController::class, 'lookupBin'])->name('putaway.lookupBin');
         Route::get('/{id}', [PutawayController::class, 'show'])->name('putaway.show');
         Route::get('/{id}/items', [PutawayController::class, 'items'])->name('putaway.items');
         Route::post('/assign-staff', [PutawayController::class, 'assignStaff'])->name('putaway.assignStaff');

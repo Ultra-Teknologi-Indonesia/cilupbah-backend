@@ -9,6 +9,7 @@ use Modules\Inventory\Services\PutawayService;
 use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Http\Requests\AssignPutawayStaffRequest;
 use Modules\Inventory\Http\Requests\ProcessPutawayItemRequest;
+use Modules\Warehouse\Models\LocationBin;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Putaway', description: 'API Endpoints for Standalone Putaway')]
@@ -267,5 +268,41 @@ class PutawayController extends Controller
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
+    }
+
+    #[OA\Get(
+        path: '/api/v1/putaway/bins/lookup',
+        summary: 'Lookup bin by code for putaway scanning',
+        security: [['bearerAuth' => []]],
+        tags: ['Putaway'],
+        parameters: [
+            new OA\Parameter(name: 'code', in: 'query', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'location_id', in: 'query', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Bin ditemukan.'),
+            new OA\Response(response: 404, description: 'Bin tidak ditemukan.'),
+        ]
+    )]
+    public function lookupBin(Request $request): JsonResponse
+    {
+        $request->validate([
+            'code' => 'required|string',
+            'location_id' => 'required|string',
+        ]);
+
+        $code = $request->query('code');
+        $locationId = $request->query('location_id');
+
+        $bin = LocationBin::where('location_id', $locationId)
+            ->where('is_inbound', false)
+            ->where(fn ($q) => $q->where('bin_final_code', $code)->orWhere('id', $code))
+            ->first();
+
+        if (!$bin) {
+            return $this->errorResponse('Rak tidak ditemukan.', 404);
+        }
+
+        return $this->successResponse($bin, 'Bin ditemukan.');
     }
 }
