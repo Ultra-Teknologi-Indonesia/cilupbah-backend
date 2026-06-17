@@ -28,22 +28,28 @@ class TikTokProductMapper
             'category_version' => $config['category_version'] ?? 'v2',
             'category_id' => $categoryId,
             'package_weight' => [
-                'value' => (string)($internalProduct['weight'] ?: 1.0),
+                'value' => (string)(($internalProduct['weight'] ?? null) ?: 1.0),
                 'unit' => 'KILOGRAM'
             ],
             'package_dimensions' => [
-                'length' => (string)(int)($internalProduct['length'] ?: 10),
-                'width' => (string)(int)($internalProduct['width'] ?: 10),
-                'height' => (string)(int)($internalProduct['height'] ?: 10),
+                'length' => (string)(int)(($internalProduct['length'] ?? null) ?: 10),
+                'width' => (string)(int)(($internalProduct['width'] ?? null) ?: 10),
+                'height' => (string)(int)(($internalProduct['height'] ?? null) ?: 10),
                 'unit' => 'CENTIMETER'
             ],
             'product_attributes' => $attributes ?: [],
         ];
 
+        // TikTok membatasi main_images maksimal 9.
         if (!empty($uploadedImageIds)) {
             $payload['main_images'] = array_map(function ($uri) {
                 return ['uri' => $uri];
-            }, $uploadedImageIds);
+            }, array_slice(array_values($uploadedImageIds), 0, 9));
+        }
+
+        // Video produk (id dari files/upload).
+        if (!empty($config['video_id'])) {
+            $payload['video'] = ['id' => $config['video_id']];
         }
 
         if (!empty($internalProduct['brand_id'])) {
@@ -78,6 +84,12 @@ class TikTokProductMapper
                             'custom_value' => $option['value'],
                         ];
                     }
+
+                    // Foto per-varian → lekatkan ke nilai sales attribute pertama.
+                    if (!empty($variant['image_uri']) && !empty($salesAttributes)) {
+                        $salesAttributes[0]['sku_img'] = ['uri' => $variant['image_uri']];
+                    }
+
                     $sku['sales_attributes'] = $salesAttributes;
                 }
 

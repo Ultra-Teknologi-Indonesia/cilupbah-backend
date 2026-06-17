@@ -48,20 +48,45 @@ class TikTokProductService
         }
 
         $variants = $this->productRepository->getVariantsByProductId($productId);
-        $media = $this->productRepository->getMediaByProductId($productId);
+        $media = collect($this->productRepository->getMediaByProductId($productId));
 
-        $imageUrls = collect($media)
-            ->filter(fn ($m) => $m->media_type === 'image')
+        // Foto LEVEL PRODUK (variant_id null) → main_images (di-cap 9 di mapper).
+        $imageUrls = $media
+            ->filter(fn ($m) => ($m->variant_id ?? null) === null && $m->media_type === 'image')
             ->pluck('url')
             ->all();
 
-        $uploadedImageIds = $this->imageUploader->uploadFromUrls($imageUrls, $accessToken);
+        $uploadResult = $this->imageUploader->upload($imageUrls, $accessToken);
+        $uploadedImageIds = $uploadResult['uris'];
+
+        // Pre-flight: TikTok mewajibkan main_images. Gagal cepat dengan pesan
+        // jelas daripada kena error mentah "MainImages is a required field".
+        if (empty($uploadedImageIds)) {
+            throw new \RuntimeException($this->noImageMessage($imageUrls, $uploadResult['errors']), 422);
+        }
+
+        // Video produk (opsional, 1 per produk).
+        $videoId = null;
+        $productVideo = $media->first(fn ($m) => ($m->variant_id ?? null) === null && $m->media_type === 'video');
+        if ($productVideo) {
+            $videoId = $this->imageUploader->uploadVideo($productVideo->url, $accessToken);
+        }
 
         $internalProduct = (array)$product;
-        $internalProduct['variants'] = $variants->map(function ($v) {
+        $internalProduct['variants'] = $variants->map(function ($v) use ($media, $accessToken) {
             $variantArr = (array)$v;
             $options = $this->productRepository->getVariantOptions($v->id);
             $variantArr['options'] = array_map(fn($opt) => (array)$opt, $options);
+
+            // Foto per-varian (pertama) → sku_img (non-fatal bila gagal).
+            $variantImage = $media->first(fn ($m) => ($m->variant_id ?? null) === $v->id && $m->media_type === 'image');
+            if ($variantImage) {
+                $vUris = $this->imageUploader->upload([$variantImage->url], $accessToken)['uris'];
+                if (!empty($vUris)) {
+                    $variantArr['image_uri'] = $vUris[0];
+                }
+            }
+
             return $variantArr;
         })->toArray();
 
@@ -73,6 +98,9 @@ class TikTokProductService
         $config = [];
         if ($tiktokCategoryId) {
             $config['category_id'] = $tiktokCategoryId;
+        }
+        if ($videoId) {
+            $config['video_id'] = $videoId;
         }
 
         $specs = $this->productRepository->getProductSpecifications($productId);
@@ -521,6 +549,28 @@ class TikTokProductService
         return $statuses;
     }
 
+    /**
+     * Pesan jelas saat tak ada gambar yang berhasil diunggah ke TikTok
+     * (menggantikan error mentah "MainImages is a required field").
+     *
+     * @param array<int, string> $imageUrls
+     * @param array<int, array{url: string, reason: string}> $errors
+     */
+    protected function noImageMessage(array $imageUrls, array $errors): string
+    {
+        if (empty($imageUrls)) {
+            return 'Produk belum memiliki gambar. Tambahkan minimal 1 gambar (JPG/PNG) sebelum upload ke TikTok.';
+        }
+
+        $reason = ! empty($errors)
+            ? collect($errors)->pluck('reason')->unique()->take(2)->implode('; ')
+            : 'tidak diketahui';
+        $count = count($imageUrls);
+
+        return "Gagal memproses {$count} gambar untuk TikTok: {$reason}. "
+            . 'Pastikan gambar dapat diakses & berformat JPG/PNG minimal 300x300.';
+    }
+
     protected function refreshShopToken(object $shop): string
     {
         if (empty($shop->refresh_token)) {
@@ -657,22 +707,48 @@ class TikTokProductService
         }
 
         $variants = $this->productRepository->getVariantsByProductId($productId);
-        $media = $this->productRepository->getMediaByProductId($productId);
+        $media = collect($this->productRepository->getMediaByProductId($productId));
+        $accessToken = $shop->access_token;
 
-        $uploadedImageIds = [];
-        foreach ($media as $m) {
-            $uploadedImageIds[] = $m->url;
+        // Foto LEVEL PRODUK → main_images (di-cap 9 di mapper).
+        $imageUrls = $media
+            ->filter(fn ($m) => ($m->variant_id ?? null) === null && ($m->media_type ?? 'image') === 'image')
+            ->pluck('url')
+            ->all();
+
+        // Gambar harus diunggah dulu ke TikTok (butuh URI, bukan URL mentah).
+        $uploadResult = $this->imageUploader->upload($imageUrls, $accessToken);
+        $uploadedImageIds = $uploadResult['uris'];
+
+        if (empty($uploadedImageIds)) {
+            throw new \RuntimeException($this->noImageMessage($imageUrls, $uploadResult['errors']), 422);
+        }
+
+        $videoId = null;
+        $productVideo = $media->first(fn ($m) => ($m->variant_id ?? null) === null && ($m->media_type ?? '') === 'video');
+        if ($productVideo) {
+            $videoId = $this->imageUploader->uploadVideo($productVideo->url, $accessToken);
         }
 
         $internalProduct = (array)$product;
-        $internalProduct['variants'] = $variants->map(function ($v) {
+        $internalProduct['variants'] = $variants->map(function ($v) use ($media, $accessToken) {
             $variantArr = (array)$v;
             $options = $this->productRepository->getRawVariantOptions($v->id);
             $variantArr['options'] = array_map(fn($opt) => (array)$opt, $options);
+
+            $variantImage = $media->first(fn ($m) => ($m->variant_id ?? null) === $v->id && ($m->media_type ?? 'image') === 'image');
+            if ($variantImage) {
+                $vUris = $this->imageUploader->upload([$variantImage->url], $accessToken)['uris'];
+                if (!empty($vUris)) {
+                    $variantArr['image_uri'] = $vUris[0];
+                }
+            }
+
             return $variantArr;
         })->toArray();
 
-        $payload = $this->mapper->map($internalProduct, $uploadedImageIds);
+        $config = $videoId ? ['video_id' => $videoId] : [];
+        $payload = $this->mapper->map($internalProduct, $uploadedImageIds, $config);
 
         return $this->client->request('PUT', "/product/202309/products/{$externalProductId}", ['shop_cipher' => $shop->shop_cipher ?? ''], $payload, $shop->access_token);
     }
