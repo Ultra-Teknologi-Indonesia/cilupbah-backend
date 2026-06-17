@@ -40,6 +40,8 @@ class LocationApiTest extends TestCase
             'village_id' => $villageId,
             'address' => 'Test Address',
             'post_code' => '12345',
+            'phone' => '+628123456789',
+            'email' => 'warehouse@test.com',
             'is_active' => true,
             'is_warehouse' => true,
         ];
@@ -97,6 +99,39 @@ class LocationApiTest extends TestCase
 
         $response->assertStatus(422)
                  ->assertJsonValidationErrors(['location_name']);
+    }
+
+    public function test_create_requires_phone_and_email(): void
+    {
+        $payload = [
+            'location_code' => 'TEST-004',
+            'location_name' => 'Test Warehouse',
+        ];
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/locations', $payload)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['phone', 'email']);
+    }
+
+    public function test_resource_exposes_system_and_contact_fields(): void
+    {
+        $location = Location::factory()->create([
+            'is_system' => true,
+            'is_locked' => true,
+            'phone' => '+628111',
+            'email' => 'loc@test.com',
+            'coordinate' => '(-6.1,106.6)',
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/locations/{$location->id}")
+            ->assertStatus(200)
+            ->assertJsonPath('data.is_system', true)
+            ->assertJsonPath('data.is_locked', true)
+            ->assertJsonPath('data.phone', '+628111')
+            ->assertJsonPath('data.email', 'loc@test.com')
+            ->assertJsonPath('data.coordinate', '(-6.1,106.6)');
     }
 
     public function test_returns_404_when_fetching_nonexistent_location(): void

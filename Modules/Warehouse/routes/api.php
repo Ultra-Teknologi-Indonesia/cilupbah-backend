@@ -5,8 +5,12 @@ use Modules\Warehouse\Http\Controllers\LocationController;
 use Modules\Warehouse\Http\Controllers\LocationZoneController;
 use Modules\Warehouse\Http\Controllers\LocationBinController;
 use Modules\Warehouse\Http\Controllers\ChannelWarehouseController;
+use Modules\Warehouse\Http\Controllers\WarehouseSettingController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
+
+    Route::get('systemsetting/warehouse-layout', [WarehouseSettingController::class, 'index'])->name('warehouse.setting.index');
+    Route::post('systemsetting/warehouse-layout', [WarehouseSettingController::class, 'store'])->name('warehouse.setting.store');
 
     Route::get('locations/store', [ChannelWarehouseController::class, 'index'])->name('warehouse.location.store-mapping');
 
