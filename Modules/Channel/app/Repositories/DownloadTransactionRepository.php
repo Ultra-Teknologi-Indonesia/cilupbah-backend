@@ -22,6 +22,8 @@ class DownloadTransactionRepository
                 AllowedFilter::exact('state'),
                 AllowedFilter::callback('channel', fn ($query, $value) => $query->whereHas('channelShop.channel', fn ($channel) => $channel->where('code', $value))),
                 AllowedFilter::callback('shop_id', fn ($query, $value) => $query->whereHas('channelShop', fn ($shop) => $shop->where('shop_id', $value))),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('created_at', '>=', $value)),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('created_at', '<=', $value)),
             )
             ->allowedSorts('created_at', 'trx_no')
             ->defaultSort('-created_at')
@@ -49,6 +51,13 @@ class DownloadTransactionRepository
                 'channelMappings' => fn ($query) => $query->where('channel_shop_id', $channelShopId),
                 'merge',
             ])
+            ->allowedFilters(
+                AllowedFilter::callback('is_master', function ($query, $value) {
+                    filter_var($value, FILTER_VALIDATE_BOOLEAN)
+                        ? $query->whereHas('merge')
+                        : $query->whereDoesntHave('merge');
+                }),
+            )
             ->allowedSearch('name', 'sku')
             ->defaultSort('-updated_at')
             ->allowedSorts('name', 'updated_at')

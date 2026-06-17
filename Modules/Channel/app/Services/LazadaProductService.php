@@ -335,6 +335,71 @@ class LazadaProductService
         return true;
     }
 
+    /**
+     * Cari produk di Lazada (by SKU/nama). NON-DESTRUKTIF: hanya membaca.
+     * Mengembalikan DTO ringan untuk modal "Download Satuan".
+     */
+    public function searchProducts(string $shopId, string $query): array
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            return [];
+        }
+
+        $needle  = trim(mb_strtolower($query));
+        $results = [];
+        $offset  = 0;
+        $limit   = 50;
+        $pages   = 0;
+
+        do {
+            $params = ['filter' => 'all', 'offset' => $offset, 'limit' => $limit];
+            if ($needle !== '') {
+                $params['search'] = $query;
+            }
+
+            try {
+                $res = $this->client->request('GET', '/products/get', $params, $shop->access_token);
+            } catch (TokenExpiredException $e) {
+                $this->authService->refreshStoreToken((string) $shop->id);
+                $shop = $this->shopRepository->findByShopId($shopId);
+                $res = $this->client->request('GET', '/products/get', $params, $shop->access_token);
+            }
+
+            $products = $res['data']['products'] ?? [];
+
+            foreach ($products as $item) {
+                $name      = (string) ($item['attributes']['name'] ?? '');
+                $sellerSku = null;
+                foreach ($item['skus'] ?? [] as $sku) {
+                    if (! empty($sku['SellerSku'])) {
+                        $sellerSku = $sku['SellerSku'];
+                        break;
+                    }
+                }
+
+                if ($needle !== '' && ! str_contains(mb_strtolower($name . ' ' . (string) $sellerSku), $needle)) {
+                    continue;
+                }
+
+                $results[] = [
+                    'external_product_id' => (string) ($item['item_id'] ?? ''),
+                    'name'                => $name,
+                    'seller_sku'          => $sellerSku,
+                    'image'               => $item['images'][0] ?? null,
+                    'shop_id'             => $shopId,
+                    'shop_name'           => $shop->shop_name ?? null,
+                    'channel_code'        => 'lazada',
+                ];
+            }
+
+            $offset += $limit;
+            $pages++;
+        } while (count($products) === $limit && $pages < 5 && count($results) < 200);
+
+        return $results;
+    }
+
     public function pullProducts(string $shopId): int
     {
         $shop = $this->shopRepository->findByShopId($shopId);

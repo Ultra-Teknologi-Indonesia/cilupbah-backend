@@ -228,6 +228,167 @@ class TikTokProductService
     }
 
     /**
+     * Cari produk di TikTok (by SKU/nama). NON-DESTRUKTIF: hanya membaca, tidak
+     * menyentuh master. Mengembalikan DTO ringan untuk modal "Download Satuan".
+     */
+    public function searchProducts(string $shopId, string $query): array
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (!$shop || !$shop->access_token) {
+            return [];
+        }
+
+        $accessToken = $shop->access_token;
+        $shopCipher  = $shop->shop_cipher ?? '';
+        $needle      = trim(mb_strtolower($query));
+
+        $results   = [];
+        $pageToken = null;
+        $pages     = 0;
+
+        do {
+            $queries = ['shop_cipher' => $shopCipher, 'page_size' => 100];
+            if ($pageToken) {
+                $queries['page_token'] = $pageToken;
+            }
+
+            try {
+                $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
+            } catch (TokenExpiredException $e) {
+                $accessToken = $this->refreshShopToken($shop);
+                $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
+            }
+
+            foreach ($res['data']['products'] ?? [] as $item) {
+                $title     = (string) ($item['title'] ?? '');
+                $sellerSku = null;
+                foreach ($item['skus'] ?? [] as $sku) {
+                    if (!empty($sku['seller_sku'])) {
+                        $sellerSku = $sku['seller_sku'];
+                        break;
+                    }
+                }
+
+                if ($needle !== '' && !str_contains(mb_strtolower($title . ' ' . (string) $sellerSku), $needle)) {
+                    continue;
+                }
+
+                $results[] = [
+                    'external_product_id' => (string) ($item['id'] ?? ''),
+                    'name'                => $title,
+                    'seller_sku'          => $sellerSku,
+                    'image'               => $item['main_images'][0]['thumb_urls'][0] ?? ($item['main_images'][0]['uri'] ?? null),
+                    'shop_id'             => $shopId,
+                    'shop_name'           => $shop->shop_name ?? null,
+                    'channel_code'        => 'tiktok',
+                ];
+            }
+
+            $pageToken = $res['data']['next_page_token'] ?? null;
+            $pages++;
+        } while ($pageToken && $pages < 5 && count($results) < 200);
+
+        return $results;
+    }
+
+    /**
+     * Download satu produk TikTok by external id (Download Satuan). Mirror
+     * pullProducts untuk satu item; status produk → 'download'.
+     */
+    public function pullProductById(string $shopId, string $externalProductId): bool
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (!$shop || !$shop->access_token) {
+            return false;
+        }
+
+        $accessToken   = $shop->access_token;
+        $shopCipher    = $shop->shop_cipher ?? '';
+        $channelShopId = $shop->id;
+
+        $productService = app(\Modules\Product\Services\ProductService::class);
+        $mapper         = app(TikTokToInternalProductMapper::class);
+
+        $pageToken = null;
+
+        do {
+            $queries = ['shop_cipher' => $shopCipher, 'page_size' => 100];
+            if ($pageToken) {
+                $queries['page_token'] = $pageToken;
+            }
+
+            try {
+                $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
+            } catch (TokenExpiredException $e) {
+                $accessToken = $this->refreshShopToken($shop);
+                $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
+            }
+
+            foreach ($res['data']['products'] ?? [] as $item) {
+                if ((string) ($item['id'] ?? '') !== (string) $externalProductId) {
+                    continue;
+                }
+
+                $internalData = $mapper->map($item, $shopId);
+                $insertedId   = $productService->upsertFromChannel($internalData);
+
+                if (!$insertedId) {
+                    return false;
+                }
+
+                $attrs = [];
+                foreach ($item['product_attributes'] ?? [] as $attr) {
+                    if (empty($attr['name'])) {
+                        continue;
+                    }
+                    $vals = array_filter(array_map(fn ($v) => $v['name'] ?? '', $attr['values'] ?? []));
+                    sort($vals);
+                    $attrs[$attr['name']] = implode(', ', $vals);
+                }
+
+                $pcmId = $this->productRepository->upsertChannelMapping(
+                    (string) $insertedId,
+                    $shopId,
+                    (string) $item['id'],
+                    'synced',
+                    $attrs ?: null
+                );
+
+                foreach ($item['skus'] ?? [] as $skuData) {
+                    $sku = !empty($skuData['seller_sku'])
+                        ? $skuData['seller_sku']
+                        : ('TK-' . ($skuData['id'] ?? ''));
+
+                    $variant = $this->productRepository->getVariantByProductIdAndSku((string) $insertedId, $sku);
+
+                    if ($variant) {
+                        $this->productRepository->upsertVariantChannelMapping(
+                            $pcmId,
+                            $variant->id,
+                            $skuData['id'] ?? null,
+                            $skuData['seller_sku'] ?? null,
+                            $skuData['price']['tax_exclusive_price'] ?? null
+                        );
+                    }
+                }
+
+                ProductSyncLog::record([
+                    'channel_shop_id' => $channelShopId,
+                    'action'          => ProductSyncLog::ACTION_DOWNLOAD,
+                    'status'          => ProductSyncLog::STATUS_SUCCESS,
+                    'response'        => ['external_product_id' => (string) $item['id']],
+                ]);
+
+                return true;
+            }
+
+            $pageToken = $res['data']['next_page_token'] ?? null;
+        } while ($pageToken);
+
+        return false;
+    }
+
+    /**
      * Rekonsiliasi NON-DESTRUKTIF: tarik produk dari channel lalu update HANYA
      * kolom mapping channel (atribut, seller_sku, harga) untuk listing yang
      * sudah termapping. Tidak menyentuh master (tak panggil upsertFromChannel).

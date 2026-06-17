@@ -81,4 +81,58 @@ class ChannelDownloadController extends Controller
 
         return $this->successResponse($collection, 'Download massal diantrekan', 202);
     }
+
+    #[OA\Get(
+        path: "/api/v1/{channel}/download/search",
+        summary: "Cari produk di marketplace (Download Satuan)",
+        tags: ["Channel Download"]
+    )]
+    #[OA\Parameter(name: "channel", in: "path", required: true, schema: new OA\Schema(type: "string"))]
+    #[OA\Parameter(name: "shop_id", in: "query", required: true, schema: new OA\Schema(type: "string"))]
+    #[OA\Parameter(name: "q", in: "query", required: false, schema: new OA\Schema(type: "string"))]
+    public function search(Request $request, string $channel): JsonResponse
+    {
+        $data = $request->validate([
+            'shop_id' => 'required|string',
+            'q' => 'nullable|string',
+        ]);
+
+        try {
+            $items = $this->downloadService->searchProducts($channel, $data['shop_id'], $data['q'] ?? '');
+        } catch (\RuntimeException $e) {
+            return $this->errorResponse($e->getMessage(), $e->getCode() ?: 422);
+        } catch (\Exception $e) {
+            return $this->errorResponse('Gagal mencari produk: ' . $e->getMessage(), 500);
+        }
+
+        return $this->successResponse($items, 'Pencarian produk channel berhasil');
+    }
+
+    #[OA\Post(
+        path: "/api/v1/{channel}/download-product",
+        summary: "Download satu produk dari marketplace by external id (Download Satuan)",
+        tags: ["Channel Download"]
+    )]
+    #[OA\Parameter(name: "channel", in: "path", required: true, schema: new OA\Schema(type: "string"))]
+    #[OA\RequestBody(required: true, content: new OA\JsonContent(properties: [
+        new OA\Property(property: "shop_id", type: "string"),
+        new OA\Property(property: "external_product_id", type: "string"),
+    ]))]
+    public function downloadProduct(Request $request, string $channel): JsonResponse
+    {
+        $data = $request->validate([
+            'shop_id' => 'required|string',
+            'external_product_id' => 'required|string',
+        ]);
+
+        try {
+            $this->downloadService->downloadProduct($channel, $data['shop_id'], $data['external_product_id']);
+        } catch (\RuntimeException $e) {
+            return $this->errorResponse($e->getMessage(), $e->getCode() ?: 422);
+        } catch (\Exception $e) {
+            return $this->errorResponse('Gagal mengunduh produk: ' . $e->getMessage(), 500);
+        }
+
+        return $this->successResponse(null, 'Produk berhasil diunduh dari channel');
+    }
 }

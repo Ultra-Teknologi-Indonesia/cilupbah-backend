@@ -73,6 +73,44 @@ class ChannelDownloadService
         return $count;
     }
 
+    /** Download Satuan — cari produk di channel (by SKU/nama). */
+    public function searchProducts(string $channel, string $shopId, string $query): array
+    {
+        $this->assertSupported($channel);
+
+        return match (strtolower($channel)) {
+            'tiktok' => app(TikTokProductService::class)->searchProducts($shopId, $query),
+            'lazada' => app(LazadaProductService::class)->searchProducts($shopId, $query),
+            default => [],
+        };
+    }
+
+    /** Download Satuan — tarik satu produk by external id. */
+    public function downloadProduct(string $channel, string $shopId, string $externalProductId): bool
+    {
+        $this->assertSupported($channel);
+        $channelShopId = $this->requireChannelShopId($shopId);
+
+        $ok = match (strtolower($channel)) {
+            'tiktok' => app(TikTokProductService::class)->pullProductById($shopId, $externalProductId),
+            'lazada' => app(LazadaProductService::class)->pullProductById($shopId, $externalProductId),
+            default => false,
+        };
+
+        if (! $ok) {
+            ProductSyncLog::record([
+                'channel_shop_id' => $channelShopId,
+                'action' => ProductSyncLog::ACTION_DOWNLOAD,
+                'status' => ProductSyncLog::STATUS_FAILED,
+                'error_message' => "Produk {$externalProductId} tidak ditemukan atau gagal diunduh",
+            ]);
+
+            throw new \RuntimeException('Produk tidak ditemukan atau gagal diunduh', 422);
+        }
+
+        return true;
+    }
+
     protected function assertSupported(string $channel): void
     {
         if (! in_array(strtolower($channel), ['tiktok', 'lazada'], true)) {

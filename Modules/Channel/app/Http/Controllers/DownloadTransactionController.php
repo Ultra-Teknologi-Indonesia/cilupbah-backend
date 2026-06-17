@@ -77,6 +77,7 @@ class DownloadTransactionController extends Controller
                 'created_date' => $transaction->created_at,
                 'executed_by' => $transaction->executor->email ?? 'system',
                 'state' => $transaction->state,
+                'store_name' => $transaction->channelShop->shop_name ?? null,
             ],
             'products' => $items,
             'count' => $products->total(),
