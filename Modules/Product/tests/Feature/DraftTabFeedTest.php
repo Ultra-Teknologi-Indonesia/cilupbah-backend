@@ -8,11 +8,13 @@ use Illuminate\Support\Facades\Queue;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Product\Models\Attribute;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelDraft;
 use Modules\Product\Models\ProductMedia;
 use Modules\Product\Models\ProductSyncLog;
 use Modules\Product\Models\ProductVariant;
+use Modules\Product\Models\VariantOption;
 use Tests\TestCase;
 
 class DraftTabFeedTest extends TestCase
@@ -37,8 +39,13 @@ class DraftTabFeedTest extends TestCase
             'status' => Product::STATUS_MASTER,
             'is_active' => true,
         ]);
-        ProductVariant::create(['product_id' => $this->product->id, 'sku' => 'DRF-A', 'sell_price' => 1000, 'is_active' => true]);
-        ProductVariant::create(['product_id' => $this->product->id, 'sku' => 'DRF-B', 'sell_price' => 2000, 'is_active' => true]);
+        $variantA = ProductVariant::create(['product_id' => $this->product->id, 'sku' => 'DRF-A', 'sell_price' => 1000, 'is_active' => true]);
+        $variantB = ProductVariant::create(['product_id' => $this->product->id, 'sku' => 'DRF-B', 'sell_price' => 2000, 'is_active' => true]);
+
+        // Atribut variasi agar produk multi-varian lolos gate kesiapan upload.
+        $color = Attribute::create(['name' => 'Warna', 'type' => 'sales']);
+        VariantOption::create(['variant_id' => $variantA->id, 'attribute_id' => $color->id, 'value' => 'Merah']);
+        VariantOption::create(['variant_id' => $variantB->id, 'attribute_id' => $color->id, 'value' => 'Biru']);
         ProductMedia::create([
             'product_id' => $this->product->id,
             'media_type' => 'image',
@@ -216,5 +223,38 @@ class DraftTabFeedTest extends TestCase
         $this->assertCount(1, $response->json('data.skipped'));
         $this->assertDatabaseMissing('product_channel_drafts', ['id' => $this->draftA->id]);
         $this->assertDatabaseHas('product_channel_drafts', ['id' => $cancelled->id]);
+    }
+
+    public function test_upload_blocked_when_multivariant_without_variation_attributes(): void
+    {
+        Queue::fake();
+
+        // Produk multi-varian TANPA variant_options → pasti ditolak channel.
+        $bare = Product::create([
+            'name' => 'Bare Multivariant',
+            'category_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+        ]);
+        ProductVariant::create(['product_id' => $bare->id, 'sku' => 'BARE-A', 'sell_price' => 1000, 'is_active' => true]);
+        ProductVariant::create(['product_id' => $bare->id, 'sku' => 'BARE-B', 'sell_price' => 2000, 'is_active' => true]);
+
+        $draft = ProductChannelDraft::create([
+            'product_id' => $bare->id,
+            'channel_shop_id' => $this->shopA->id,
+            'status' => ProductChannelDraft::STATUS_DRAFT,
+        ]);
+
+        $response = $this->postJson("/api/v1/products/channel-drafts/{$draft->id}/upload");
+
+        $response->assertStatus(422);
+        $response->assertJsonFragment([
+            'message' => 'Produk multi-varian tanpa atribut variasi — wajib diisi sebelum upload ke shopee.',
+        ]);
+
+        Queue::assertNothingPushed();
+        // Draft tetap ada & tidak ada log upload yang dibuat.
+        $this->assertDatabaseHas('product_channel_drafts', ['id' => $draft->id]);
+        $this->assertDatabaseMissing('product_sync_logs', ['product_id' => $bare->id]);
     }
 }

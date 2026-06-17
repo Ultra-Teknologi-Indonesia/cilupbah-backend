@@ -60,9 +60,8 @@ class ChannelMonitorRepository
     public function getShopStats(string $channelShopId): array
     {
         return ProductChannelMapping::where('channel_shop_id', $channelShopId)
-            ->selectRaw('sync_status, count(*) as count')
-            ->groupBy('sync_status')
-            ->pluck('count', 'sync_status')
+            ->get(['sync_status'])
+            ->countBy('sync_status')
             ->toArray();
     }
 

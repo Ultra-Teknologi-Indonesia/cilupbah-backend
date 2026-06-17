@@ -2,15 +2,17 @@
 
 namespace Modules\Product\Services;
 
-use Illuminate\Support\Facades\DB;
 use Modules\Product\Exceptions\BundleCompositionException;
 use Modules\Product\Exceptions\ProductHasTransactionsException;
 use Modules\Product\Models\Product;
+use Modules\Product\Repositories\BundleGuardRepository;
 
 class BundleGuardService
 {
 
     private const ACTIVE_SYNC_STATUSES = ['synced', 'syncing'];
+
+    public function __construct(private BundleGuardRepository $repository) {}
 
     public function assertComponentsNotBundles(array $componentVariantIds): void
     {
@@ -20,12 +22,7 @@ class BundleGuardService
             return;
         }
 
-        $offending = DB::table('product_variants as v')
-            ->join('products as p', 'p.id', '=', 'v.product_id')
-            ->whereIn('v.id', $ids)
-            ->where('p.is_bundle', true)
-            ->pluck('v.sku')
-            ->all();
+        $offending = $this->repository->bundleComponentSkus($ids);
 
         if (! empty($offending)) {
             throw new BundleCompositionException(
@@ -50,15 +47,12 @@ class BundleGuardService
         $variantIds = $product->variants()->pluck('id')->all();
 
         $hasLedger = ! empty($variantIds)
-            && DB::table('inventory_movements')->whereIn('item_id', $variantIds)->exists();
+            && $this->repository->hasInventoryMovements($variantIds);
 
         $hasOrderLines = ! empty($variantIds)
-            && DB::table('sales_order_items')->whereIn('item_id', $variantIds)->exists();
+            && $this->repository->hasSalesOrderLines($variantIds);
 
-        $hasActiveListing = DB::table('product_channel_mappings')
-            ->where('product_id', $productId)
-            ->whereIn('sync_status', self::ACTIVE_SYNC_STATUSES)
-            ->exists();
+        $hasActiveListing = $this->repository->hasActiveChannelListing($productId, self::ACTIVE_SYNC_STATUSES);
 
         if ($hasLedger || $hasOrderLines || $hasActiveListing) {
             throw new ProductHasTransactionsException(

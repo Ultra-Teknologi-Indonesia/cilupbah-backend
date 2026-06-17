@@ -99,15 +99,6 @@ class TikTokProductService
         return $res;
     }
 
-    /**
-     * Simpan id SKU + sales attribute yang dikembalikan TikTok ke
-     * product_variant_channel_mappings, agar update berikutnya bisa mengirimnya
-     * kembali (TikTok mewajibkan attribute_id pada update).
-     */
-    /**
-     * Bangun config payload TikTok (category_id, video_id, product_attributes) dari
-     * spesifikasi produk. Dipakai oleh pushProduct & pushUpdate agar konsisten.
-     */
     private function buildUploadConfig($product, $shop, ?string $videoId): array
     {
         $config = [];
@@ -744,14 +735,12 @@ class TikTokProductService
             $videoId = $this->imageUploader->uploadVideo($productVideo->url, $accessToken);
         }
 
-        // Sales attribute + id SKU yang sudah diberikan TikTok saat create, agar
-        // dikirim ulang persis (TikTok mewajibkan attribute_id pada update).
         $storedMappings = $this->productRepository->getVariantChannelMappings($productId, $shopId);
 
         $internalProduct = (array)$product;
         $internalProduct['variants'] = $variants->map(function ($v) use ($media, $accessToken, $storedMappings) {
             $variantArr = (array)$v;
-            // Konsisten dgn pushProduct: getVariantOptions (join attributes → attribute_name terisi).
+
             $options = $this->productRepository->getVariantOptions($v->id);
             $variantArr['options'] = array_map(fn($opt) => (array)$opt, $options);
 
@@ -780,8 +769,6 @@ class TikTokProductService
             return $variantArr;
         })->toArray();
 
-        // Bangun config penuh (kategori + atribut produk) seperti pushProduct, bukan
-        // hanya video — agar update tidak menjatuhkan data tersebut.
         $config = $this->buildUploadConfig($product, $shop, $videoId);
         $config['mode'] = 'update';
         $payload = $this->mapper->map($internalProduct, $uploadedImageIds, $config);

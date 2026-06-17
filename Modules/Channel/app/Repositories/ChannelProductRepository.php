@@ -266,12 +266,6 @@ class ChannelProductRepository
         ]);
     }
 
-    /**
-     * Mapping varian-channel tersimpan (per produk × toko), di-key dgn variant_id.
-     * Dipakai untuk mengirim ulang id SKU + sales attribute saat update ke channel.
-     *
-     * @return array<string, object>
-     */
     public function getVariantChannelMappings(string $productId, string $shopId): array
     {
         $channelShop = DB::table('channel_shops')->where('shop_id', $shopId)->first();

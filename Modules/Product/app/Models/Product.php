@@ -112,6 +112,11 @@ class Product extends Model
         return $this->hasMany(ProductChannelMapping::class);
     }
 
+    public function syncLogs(): HasMany
+    {
+        return $this->hasMany(ProductSyncLog::class);
+    }
+
     public function media(): HasMany
     {
         return $this->hasMany(ProductMedia::class);

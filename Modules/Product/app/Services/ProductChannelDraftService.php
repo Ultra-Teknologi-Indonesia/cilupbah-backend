@@ -6,11 +6,14 @@ use DomainException;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ChannelListingValidator;
+use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelDraft;
 use Modules\Product\Models\ProductSyncLog;
 
 class ProductChannelDraftService
 {
+    public function __construct(private ChannelListingValidator $validator) {}
 
     public function upsertDraft(string $productId, string $shopId, array $data, ?string $userId = null): ProductChannelDraft
     {
@@ -52,6 +55,8 @@ class ProductChannelDraftService
                 throw new DomainException('Draft yang dibatalkan tidak dapat di-upload.');
             }
 
+            $this->assertReadyForUpload($draft);
+
             $log = ProductSyncLog::record([
                 'product_id' => $draft->product_id,
                 'channel_shop_id' => $draft->channel_shop_id,
@@ -82,6 +87,28 @@ class ProductChannelDraftService
         }
 
         return ['uploaded' => $uploaded, 'skipped' => $skipped];
+    }
+
+    /**
+     * Gate kesiapan upload: blokir produk yang STRUKTURNYA pasti ditolak channel,
+     * yaitu produk multi-varian tanpa atribut variasi (penyebab error TikTok
+     * "sale attribute ... should not be empty"). Isu yang lebih lunak (mis.
+     * pemetaan kategori) tidak diblokir di sini karena kategori channel di-resolve
+     * dari draft (channel_category_id), bukan dari master.
+     */
+    private function assertReadyForUpload(ProductChannelDraft $draft): void
+    {
+        $product = Product::find($draft->product_id);
+        if (! $product) {
+            throw new DomainException('Produk tidak ditemukan.');
+        }
+
+        if ($this->validator->lacksVariationAttributes($product)) {
+            $channelCode = ChannelShop::with('channel')->find($draft->channel_shop_id)?->channel?->code ?? 'channel';
+            throw new DomainException(
+                "Produk multi-varian tanpa atribut variasi — wajib diisi sebelum upload ke {$channelCode}."
+            );
+        }
     }
 
     protected function requireChannelShopId(string $shopId): string

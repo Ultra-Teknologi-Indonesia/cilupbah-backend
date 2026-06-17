@@ -68,7 +68,6 @@ class TikTokProductMapperTest extends TestCase
     {
         $mapper = new TikTokProductMapper();
 
-        // Passthrough dgn entry kosong (tanpa id & name) harus disaring.
         $payload = $mapper->map($this->product([
             [
                 'sku' => 'ZB14-I5-512', 'sell_price' => 12000000, 'stock' => 5, 'options' => [],
@@ -76,7 +75,6 @@ class TikTokProductMapperTest extends TestCase
             ],
         ]), [], ['mode' => 'create']);
 
-        // Satu-satunya entry tak punya id/name → disaring → tidak ada sales_attributes.
         $this->assertArrayNotHasKey('sales_attributes', $payload['skus'][0]);
     }
 }

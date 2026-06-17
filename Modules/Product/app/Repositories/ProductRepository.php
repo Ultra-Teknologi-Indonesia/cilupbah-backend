@@ -190,6 +190,8 @@ class ProductRepository
             ->allowedSorts(
                 'sku',
                 'sell_price',
+                // Pengecualian terdokumentasi: "NULLS LAST" khusus Postgres, tidak ada
+                // padanan Eloquent murni (orderByRaw adalah idiom Laravel untuk ini).
                 AllowedSort::callback('stock', fn ($q, bool $desc) => $q->orderByRaw('inventories_sum_available ' . ($desc ? 'desc' : 'asc') . ' nulls last'))
             )
             ->defaultSort('sku')

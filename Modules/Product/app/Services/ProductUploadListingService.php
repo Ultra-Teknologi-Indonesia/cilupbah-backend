@@ -70,8 +70,6 @@ class ProductUploadListingService
                 ? $mapping->variantMappings->pluck('variant_id')->all()
                 : [];
 
-            // Penyebab "match tapi gagal upload": (1) ada log upload gagal,
-            // (2) belum siap upload (multi-varian tanpa atribut variasi).
             $failedMessage = $this->latestFailedUploadMessage($productId, $storeId);
             $readinessMessage = $this->uploadReadinessIssue($product, $shops->get($storeId));
 
@@ -97,12 +95,11 @@ class ProductUploadListingService
         ?string $failedMessage = null,
         ?string $readinessMessage = null
     ): array {
-        // Upload pernah gagal → tampilkan errornya, jangan laporkan "sesuai".
+
         if ($failedMessage !== null) {
             return [false, $failedMessage];
         }
 
-        // Belum siap upload (struktur atribut variasi) → akan gagal kalau diupload.
         if ($readinessMessage !== null) {
             return [false, $readinessMessage];
         }
@@ -122,10 +119,6 @@ class ProductUploadListingService
         return [true, self::MESSAGE_MATCHED];
     }
 
-    /**
-     * Pesan error bila upload terakhir produk ke toko ini berstatus gagal; null jika
-     * tidak ada upload atau upload terakhir berhasil.
-     */
     private function latestFailedUploadMessage(string $productId, string $storeId): ?string
     {
         $log = ProductSyncLog::query()
@@ -142,10 +135,6 @@ class ProductUploadListingService
         return null;
     }
 
-    /**
-     * Masalah kesiapan upload independen dari mapping (mis. multi-varian tanpa atribut
-     * variasi pada TikTok). Null bila siap.
-     */
     private function uploadReadinessIssue(Product $product, ?ChannelShop $shop): ?string
     {
         $channelCode = $shop?->channel?->code;

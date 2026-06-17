@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Adapters\AdapterFactory;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ChannelListingValidator;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductSyncLog;
@@ -69,6 +70,22 @@ class SyncProductToChannelJob implements ShouldQueue
         }
 
         $channelCode = $shop->channel->code ?? 'tiktok';
+
+        // Pertahanan berlapis: produk multi-varian tanpa atribut variasi pasti
+        // ditolak channel (sale attribute kosong). Hentikan lebih awal dengan
+        // pesan jelas, tanpa retry, alih-alih membiarkan channel menolaknya.
+        if (in_array($this->action, ['push', 'update'], true)
+            && app(ChannelListingValidator::class)->lacksVariationAttributes($product)) {
+            $message = "Produk multi-varian tanpa atribut variasi — wajib diisi sebelum upload ke {$channelCode}.";
+            $mapping = ProductChannelMapping::firstOrCreate([
+                'product_id' => $this->productId,
+                'channel_shop_id' => $this->channelShopId,
+            ]);
+            $mapping->markAsFailed($message);
+            $this->recordUploadResult(false, $message);
+
+            return;
+        }
 
         $circuitKey = "circuit_breaker:{$channelCode}";
         if (Cache::has($circuitKey)) {

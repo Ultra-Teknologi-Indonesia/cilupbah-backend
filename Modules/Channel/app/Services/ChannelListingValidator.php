@@ -15,9 +15,7 @@ class ChannelListingValidator
 
     public function validate(Product $product, string $channelCode): array
     {
-        // Produk multi-varian tanpa atribut variasi pasti ditolak channel (mis. TikTok:
-        // "sale attribute name or attribute ID should not be empty"). Independen dari
-        // pemetaan kategori, jadi disertakan lebih dulu.
+
         $issues = [];
         if ($this->lacksVariationAttributes($product)) {
             $issues[] = $this->issue(
@@ -121,11 +119,6 @@ class ChannelListingValidator
         return $issues;
     }
 
-    /**
-     * Predikat bersama: produk multi-varian (>1) yang tak satu pun variannya punya
-     * variant_options. Inilah kondisi struktural di balik kegagalan upload "sale
-     * attribute kosong" — dipakai juga oleh lensa Pantauan "gagal_upload".
-     */
     public function lacksVariationAttributes(Product $product): bool
     {
         $variantCount = DB::table('product_variants')

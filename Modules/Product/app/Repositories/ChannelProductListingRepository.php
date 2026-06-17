@@ -41,12 +41,19 @@ class ChannelProductListingRepository
 
     private function filterByPrice($query, string $operator, $value)
     {
+        // Harga efektif = override_price bila ada, jika tidak sell_price master.
+        // COALESCE dipecah menjadi dua cabang OR agar tetap Eloquent (tanpa raw).
         return $query->whereHas('variantMappings', function ($mapping) use ($operator, $value) {
             $mapping->join('product_variants', 'product_variants.id', '=', 'product_variant_channel_mappings.variant_id')
-                ->whereRaw(
-                    "COALESCE(product_variant_channel_mappings.override_price, product_variants.sell_price) {$operator} ?",
-                    [(float) $value]
-                );
+                ->where(function ($w) use ($operator, $value) {
+                    $w->where(function ($a) use ($operator, $value) {
+                        $a->whereNotNull('product_variant_channel_mappings.override_price')
+                            ->where('product_variant_channel_mappings.override_price', $operator, (float) $value);
+                    })->orWhere(function ($b) use ($operator, $value) {
+                        $b->whereNull('product_variant_channel_mappings.override_price')
+                            ->where('product_variants.sell_price', $operator, (float) $value);
+                    });
+                });
         });
     }
 

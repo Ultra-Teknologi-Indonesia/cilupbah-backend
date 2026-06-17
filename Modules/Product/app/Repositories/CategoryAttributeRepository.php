@@ -2,46 +2,54 @@
 
 namespace Modules\Product\Repositories;
 
-use Illuminate\Support\Facades\DB;
+use Modules\Product\Models\AttributeChannelMapping;
+use Modules\Product\Models\AttributeOption;
+use Modules\Product\Models\Category;
+use Modules\Product\Models\CategoryAttribute;
 
 class CategoryAttributeRepository
 {
     public function exists(int $categoryId): bool
     {
-        return DB::table('categories')->where('id', $categoryId)->exists();
+        return Category::whereKey($categoryId)->exists();
     }
 
     public function isLeaf(int $categoryId): bool
     {
-        return ! DB::table('categories')->where('parent_id', $categoryId)->exists();
+        return ! Category::where('parent_id', $categoryId)->exists();
     }
 
     public function formAttributes(int $categoryId): array
     {
-        $catAttrs = DB::table('category_attributes as cga')
-            ->join('attributes as a', 'a.id', '=', 'cga.attribute_id')
-            ->where('cga.category_id', $categoryId)
-            ->get(['a.id', 'a.name', 'a.type', 'cga.is_required']);
+        $catAttrs = CategoryAttribute::with('attribute')
+            ->where('category_id', $categoryId)
+            ->get()
+            ->map(fn (CategoryAttribute $ca) => (object) [
+                'id' => (int) $ca->attribute->id,
+                'name' => $ca->attribute->name,
+                'type' => $ca->attribute->type,
+                'is_required' => $ca->is_required,
+            ]);
 
         $attrIds = $catAttrs->pluck('id')->all() ?: [-1];
 
-        $options = DB::table('attribute_options')
-            ->whereIn('attribute_id', $attrIds)
+        $options = AttributeOption::whereIn('attribute_id', $attrIds)
             ->get(['id', 'attribute_id', 'value'])
             ->groupBy('attribute_id');
 
-        $channelStatus = DB::table('attribute_channel_mappings as m')
-            ->join('channel_attributes as ca', 'ca.id', '=', 'm.channel_attribute_id')
-            ->join('channel_categories as cc', 'cc.id', '=', 'ca.channel_category_id')
-            ->join('channels as ch', 'ch.id', '=', 'cc.channel_id')
-            ->whereIn('m.attribute_id', $attrIds)
-            ->get(['m.attribute_id', 'ch.code', 'ca.is_required'])
+        $channelStatus = AttributeChannelMapping::with('channelAttribute.channelCategory.channel')
+            ->whereIn('attribute_id', $attrIds)
+            ->get()
             ->groupBy('attribute_id');
 
         $build = function ($a) use ($options, $channelStatus) {
             $channels = [];
-            foreach ($channelStatus->get($a->id, collect()) as $row) {
-                $channels[$row->code] = ['mapped' => true, 'required' => (bool) $row->is_required];
+            foreach ($channelStatus->get($a->id, collect()) as $mapping) {
+                $code = $mapping->channelAttribute?->channelCategory?->channel?->code;
+                if ($code === null) {
+                    continue;
+                }
+                $channels[$code] = ['mapped' => true, 'required' => (bool) $mapping->channelAttribute->is_required];
             }
 
             return [
