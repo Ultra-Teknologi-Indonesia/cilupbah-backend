@@ -47,6 +47,8 @@ class TikTokProductService
             throw new \Exception("Product not found");
         }
 
+        $this->assertValidTikTokTitle($product->name ?? '');
+
         $variants = $this->productRepository->getVariantsByProductId($productId);
         $media = collect($this->productRepository->getMediaByProductId($productId));
 
@@ -103,11 +105,16 @@ class TikTokProductService
     {
         $config = [];
 
-        if (!empty($product->category_id)) {
-            $tiktokCategoryId = $this->productRepository->getChannelCategoryExternalId($product->category_id, $shop->channel_id);
-            if ($tiktokCategoryId) {
-                $config['category_id'] = $tiktokCategoryId;
+        $channelCategory = $this->resolveChannelCategory($product, $shop);
+        if ($channelCategory) {
+            if (! $channelCategory->is_leaf) {
+                throw new \RuntimeException(
+                    "Kategori channel produk ini bukan kategori paling spesifik (Jenis Produk). "
+                    . "Pilih Jenis Produk (sub-kategori terdalam) lalu upload ulang.",
+                    422
+                );
             }
+            $config['category_id'] = $channelCategory->external_id;
         }
 
         if ($videoId) {
@@ -152,6 +159,32 @@ class TikTokProductService
         }
 
         return $config;
+    }
+
+    /**
+     * Resolve the TikTok channel category to upload to, preferring the leaf category
+     * the user explicitly selected in the product channel draft, then falling back to
+     * the internal-category mapping (also preferring a leaf). Returns {external_id, is_leaf}.
+     */
+    private function resolveChannelCategory($product, $shop): ?object
+    {
+        $draft = \Modules\Product\Models\ProductChannelDraft::where('product_id', $product->id)
+            ->where('channel_shop_id', $shop->id)
+            ->latest('updated_at')
+            ->first();
+
+        if ($draft && $draft->channel_category_id) {
+            $info = $this->productRepository->getChannelCategoryInfoById($draft->channel_category_id);
+            if ($info) {
+                return $info;
+            }
+        }
+
+        if (!empty($product->category_id)) {
+            return $this->productRepository->getChannelCategoryInfoByInternal($product->category_id, $shop->channel_id);
+        }
+
+        return null;
     }
 
     private function persistVariantMappings(string $pcmId, $variants, array $skus): void
@@ -563,6 +596,27 @@ class TikTokProductService
         return $statuses;
     }
 
+    protected function assertValidTikTokTitle(string $name): void
+    {
+        $len = mb_strlen(trim($name));
+
+        if ($len < 25) {
+            throw new \RuntimeException(
+                "Nama produk minimal 25 karakter untuk TikTok (saat ini {$len}). "
+                . "Perpanjang nama produk lalu upload ulang.",
+                422
+            );
+        }
+
+        if ($len > 255) {
+            throw new \RuntimeException(
+                "Nama produk maksimal 255 karakter untuk TikTok (saat ini {$len}). "
+                . "Persingkat nama produk lalu upload ulang.",
+                422
+            );
+        }
+    }
+
     protected function noImageMessage(array $imageUrls, array $errors): string
     {
         if (empty($imageUrls)) {
@@ -712,6 +766,8 @@ class TikTokProductService
         if (!$externalProductId) {
             throw new \Exception("Product not synced to TikTok yet");
         }
+
+        $this->assertValidTikTokTitle($product->name ?? '');
 
         $variants = $this->productRepository->getVariantsByProductId($productId);
         $media = collect($this->productRepository->getMediaByProductId($productId));

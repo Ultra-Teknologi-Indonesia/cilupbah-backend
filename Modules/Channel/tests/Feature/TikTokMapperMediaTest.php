@@ -16,7 +16,7 @@ class TikTokMapperMediaTest extends TestCase
     {
         $uris = array_map(fn ($i) => "uri-$i", range(1, 12));
 
-        $payload = $this->mapper()->map(['name' => 'P', 'variants' => []], $uris);
+        $payload = $this->mapper()->map(['name' => 'Produk Uji Media TikTok 123', 'variants' => []], $uris);
 
         $this->assertCount(9, $payload['main_images']);
         $this->assertSame(['uri' => 'uri-1'], $payload['main_images'][0]);
@@ -24,21 +24,21 @@ class TikTokMapperMediaTest extends TestCase
 
     public function test_video_included_when_video_id_present(): void
     {
-        $payload = $this->mapper()->map(['name' => 'P', 'variants' => []], ['u1'], ['video_id' => 'vid-1']);
+        $payload = $this->mapper()->map(['name' => 'Produk Uji Media TikTok 123', 'variants' => []], ['u1'], ['video_id' => 'vid-1']);
 
         $this->assertSame(['id' => 'vid-1'], $payload['video']);
     }
 
     public function test_no_video_field_without_video_id(): void
     {
-        $payload = $this->mapper()->map(['name' => 'P', 'variants' => []], ['u1']);
+        $payload = $this->mapper()->map(['name' => 'Produk Uji Media TikTok 123', 'variants' => []], ['u1']);
 
         $this->assertArrayNotHasKey('video', $payload);
     }
 
     public function test_sku_img_attached_to_first_sales_attribute(): void
     {
-        $internal = ['name' => 'P', 'variants' => [[
+        $internal = ['name' => 'Produk Uji Media TikTok 123', 'variants' => [[
             'sku' => 'V1',
             'sell_price' => 1000,
             'options' => [['attribute_name' => 'Warna', 'value' => 'Merah']],
@@ -52,7 +52,7 @@ class TikTokMapperMediaTest extends TestCase
 
     public function test_multi_variant_without_options_gets_synthesized_sales_attribute(): void
     {
-        $internal = ['name' => 'P', 'variants' => [
+        $internal = ['name' => 'Produk Uji Media TikTok 123', 'variants' => [
             ['sku' => 'ZB-I5', 'sell_price' => 1000],
             ['sku' => 'ZB-I7', 'sell_price' => 2000],
         ]];
@@ -66,7 +66,7 @@ class TikTokMapperMediaTest extends TestCase
 
     public function test_single_variant_without_options_has_no_sales_attribute(): void
     {
-        $internal = ['name' => 'P', 'variants' => [['sku' => 'SOLO', 'sell_price' => 1000]]];
+        $internal = ['name' => 'Produk Uji Media TikTok 123', 'variants' => [['sku' => 'SOLO', 'sell_price' => 1000]]];
 
         $payload = $this->mapper()->map($internal, ['u1']);
 
@@ -75,7 +75,7 @@ class TikTokMapperMediaTest extends TestCase
 
     public function test_no_sku_img_when_variant_has_no_options(): void
     {
-        $internal = ['name' => 'P', 'variants' => [[
+        $internal = ['name' => 'Produk Uji Media TikTok 123', 'variants' => [[
             'sku' => 'V1',
             'sell_price' => 1000,
             'image_uri' => 'var-uri-1',

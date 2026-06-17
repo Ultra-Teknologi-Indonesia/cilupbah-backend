@@ -6,6 +6,13 @@ class TikTokProductMapper
 {
     public function map(array $internalProduct, array $uploadedImageIds = [], array $config = []): array
     {
+        $titleLen = mb_strlen(trim((string)($internalProduct['name'] ?? '')));
+        if ($titleLen < 25 || $titleLen > 255) {
+            throw new \RuntimeException(
+                "Nama produk harus 25–255 karakter untuk TikTok (saat ini {$titleLen}).",
+                422
+            );
+        }
 
         $categoryId = $config['category_id'] ?? '600048';
         $warehouseId = $config['warehouse_id'] ?? '7646426075561690887';

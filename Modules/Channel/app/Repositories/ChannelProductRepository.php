@@ -72,15 +72,42 @@ class ChannelProductRepository
 
     public function getChannelCategoryExternalId(string $categoryId, string $channelId): ?string
     {
+        return optional($this->getChannelCategoryInfoByInternal($categoryId, $channelId))->external_id;
+    }
+
+    /**
+     * Resolve the mapped channel category for an internal category, preferring a leaf
+     * (most specific) category. Returns {external_id, is_leaf} or null.
+     */
+    public function getChannelCategoryInfoByInternal(string $categoryId, string $channelId): ?object
+    {
         $category = \Modules\Product\Models\Category::with([
-            'channelCategories' => fn ($q) => $q->where('channel_id', $channelId),
+            'channelCategories' => fn ($q) => $q->where('channel_id', $channelId)->orderByDesc('is_leaf'),
         ])->find($categoryId);
 
-        if ($category && $category->channelCategories->isNotEmpty()) {
-            return $category->channelCategories->first()->external_id;
+        if (! $category || $category->channelCategories->isEmpty()) {
+            return null;
         }
 
-        return null;
+        $chosen = $category->channelCategories->firstWhere('is_leaf', true)
+            ?? $category->channelCategories->first();
+
+        return (object) [
+            'external_id' => $chosen->external_id,
+            'is_leaf' => (bool) $chosen->is_leaf,
+        ];
+    }
+
+    /**
+     * Look up a channel category directly by its primary key (e.g. the leaf chosen in a draft).
+     * Returns {external_id, is_leaf} or null.
+     */
+    public function getChannelCategoryInfoById(string $channelCategoryId): ?object
+    {
+        return DB::table('channel_categories')
+            ->where('id', $channelCategoryId)
+            ->select('external_id', 'is_leaf')
+            ->first();
     }
 
     public function getProductSpecifications(string $productId)

@@ -102,6 +102,17 @@ class CreateProductRequest extends FormRequest
     {
         $validator->after(function (Validator $v) {
 
+            $categoryId = $this->input('category_id');
+            if ($categoryId !== null && $v->errors()->has('category_id') === false) {
+                $repo = app(\Modules\Product\Repositories\CategoryAttributeRepository::class);
+                if (! $repo->isLeaf((int) $categoryId)) {
+                    $v->errors()->add(
+                        'category_id',
+                        'Pilih kategori paling spesifik: Kategori → Sub-Kategori → Jenis Produk wajib dipilih.'
+                    );
+                }
+            }
+
             $media = collect((array) $this->input('media', []))->filter(fn ($m) => is_array($m));
             $images = $media->filter(fn ($m) => ($m['media_type'] ?? 'image') !== 'video');
             $videos = $media->filter(fn ($m) => ($m['media_type'] ?? 'image') === 'video');

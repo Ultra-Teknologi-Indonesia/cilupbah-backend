@@ -64,6 +64,31 @@ class TikTokProductMapperTest extends TestCase
         $this->assertSame('ZB14-I5-512', $sku['sales_attributes'][0]['custom_value']);
     }
 
+    public function test_map_throws_when_title_shorter_than_25_chars(): void
+    {
+        $mapper = new TikTokProductMapper();
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionCode(422);
+
+        $mapper->map([
+            'name' => 'Erigo Hoodie',
+            'variants' => [['sku' => 'A', 'sell_price' => 1000]],
+        ], [], ['mode' => 'create']);
+    }
+
+    public function test_map_accepts_title_within_25_and_255_chars(): void
+    {
+        $mapper = new TikTokProductMapper();
+
+        $payload = $mapper->map([
+            'name' => 'Erigo Hoodie Original Premium Unisex',
+            'variants' => [['sku' => 'A', 'sell_price' => 1000]],
+        ], [], ['mode' => 'create']);
+
+        $this->assertSame('Erigo Hoodie Original Premium Unisex', $payload['title']);
+    }
+
     public function test_never_emits_sale_attribute_lacking_both_id_and_name(): void
     {
         $mapper = new TikTokProductMapper();
