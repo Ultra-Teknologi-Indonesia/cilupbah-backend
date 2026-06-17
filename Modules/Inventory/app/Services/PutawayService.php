@@ -145,7 +145,7 @@ class PutawayService
             throw new \Exception("Putaway harus IN_PROGRESS untuk memproses item (status saat ini: {$putaway->status}).");
         }
 
-        ProcessPutawayItemJob::dispatch($putawayId, $itemId, $data);
+        ProcessPutawayItemJob::dispatchSync($putawayId, $itemId, $data);
     }
 
     public function complete(string $id): Putaway
