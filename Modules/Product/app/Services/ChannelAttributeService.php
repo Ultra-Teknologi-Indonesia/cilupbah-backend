@@ -51,6 +51,10 @@ class ChannelAttributeService
         $client = app(TikTokClient::class);
         $queries = ['category_version' => 'v2'];
 
+        if ($shop->shop_cipher) {
+            $queries['shop_cipher'] = $shop->shop_cipher;
+        }
+
         try {
             $res = $client->request(
                 'GET', 
