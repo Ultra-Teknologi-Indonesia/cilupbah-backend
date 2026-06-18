@@ -47,7 +47,7 @@ class UpdateProductRequest extends FormRequest
             'inventory_account_id' => ['sometimes', 'nullable', 'uuid', Rule::exists('accounts', 'id')->where('account_type', 'asset')],
             'cogs_account_id' => ['sometimes', 'nullable', 'uuid', Rule::exists('accounts', 'id')->where('account_type', 'expense')],
 
-            'media' => 'sometimes|array',
+            'media' => 'sometimes|array|min:1|max:10',
             'media.*.media_uuid' => 'required_without:media.*.url|bail|uuid|exists:media,uuid',
             'media.*.url' => 'required_without:media.*.media_uuid|string',
             'media.*.media_type' => 'nullable|in:image,video',

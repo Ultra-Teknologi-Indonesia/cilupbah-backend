@@ -46,7 +46,7 @@ class CreateProductRequest extends FormRequest
             'height' => 'nullable|numeric|min:0',
             'package_contents' => 'nullable|string|max:2000',
 
-            'media' => 'nullable|array|max:10',
+            'media' => 'required|array|min:1|max:10',
             'media.*.media_uuid' => 'required_without:media.*.url|bail|uuid|exists:media,uuid',
             'media.*.url' => 'required_without:media.*.media_uuid|string',
             'media.*.media_type' => 'nullable|in:image,video',
@@ -154,6 +154,9 @@ class CreateProductRequest extends FormRequest
             'inventory_account_id.exists' => 'Akun Persediaan harus akun bertipe aset (asset).',
             'cogs_account_id.exists' => 'Akun HPP harus akun bertipe beban (expense).',
             'indent_days.required_if' => 'Lama indent wajib diisi untuk produk Pre-Order.',
+            'media.required' => 'Minimal 1 foto produk wajib diunggah.',
+            'media.min' => 'Minimal 1 foto produk wajib diunggah.',
+            'media.max' => 'Maksimal 9 foto dan 1 video produk (total 10 media).',
         ];
     }
 }

@@ -3,6 +3,7 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\DB;
+use Modules\Channel\Support\DescriptionFormatter;
 
 class LazadaProductMapper
 {
@@ -42,7 +43,7 @@ class LazadaProductMapper
                     'Images' => $imageUrls ? ['Image' => array_values($imageUrls)] : null,
                     'Attributes' => [
                         'name' => $product['name'] ?? 'Produk',
-                        'description' => $product['description'] ?? ($product['name'] ?? ''),
+                        'description' => DescriptionFormatter::toHtml($product['description'] ?? '') ?: ($product['name'] ?? ''),
                         'brand' => $config['brand'] ?? 'No Brand',
                     ],
                     'Skus' => ['Sku' => $skus],

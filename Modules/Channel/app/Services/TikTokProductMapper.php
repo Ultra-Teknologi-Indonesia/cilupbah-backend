@@ -2,6 +2,8 @@
 
 namespace Modules\Channel\Services;
 
+use Modules\Channel\Support\DescriptionFormatter;
+
 class TikTokProductMapper
 {
     public function map(array $internalProduct, array $uploadedImageIds = [], array $config = []): array
@@ -27,7 +29,7 @@ class TikTokProductMapper
         $payload = [
             'save_mode' => 'LISTING',
             'title' => $internalProduct['name'],
-            'description' => $internalProduct['description'] ?? '',
+            'description' => DescriptionFormatter::toPlainText($internalProduct['description'] ?? ''),
             'category_version' => $config['category_version'] ?? 'v2',
             'category_id' => $categoryId,
             'package_weight' => [
