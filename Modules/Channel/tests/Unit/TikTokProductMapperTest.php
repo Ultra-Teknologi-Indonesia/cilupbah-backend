@@ -29,7 +29,7 @@ class TikTokProductMapperTest extends TestCase
         $this->assertCount(2, $payload['skus']);
         $attr = $payload['skus'][0]['sales_attributes'][0];
         $this->assertSame('Tipe', $attr['name']);
-        $this->assertSame('ZB14-I5-512', $attr['custom_value']);
+        $this->assertSame('ZB14-I5-512', $attr['value_name']);
     }
 
     public function test_update_throws_when_multivariant_has_no_resolvable_attribute_id(): void
@@ -61,7 +61,7 @@ class TikTokProductMapperTest extends TestCase
         $sku = $payload['skus'][0];
         $this->assertSame('TT-SKU-1', $sku['id']);
         $this->assertSame('100000', $sku['sales_attributes'][0]['id']);
-        $this->assertSame('ZB14-I5-512', $sku['sales_attributes'][0]['custom_value']);
+        $this->assertSame('ZB14-I5-512', $sku['sales_attributes'][0]['value_name']);
     }
 
     public function test_map_throws_when_title_shorter_than_25_chars(): void
@@ -117,9 +117,9 @@ class TikTokProductMapperTest extends TestCase
         $attrs = $payload['skus'][0]['sales_attributes'];
         $this->assertSame('200001', $attrs[0]['id']);
         $this->assertSame('RAM', $attrs[0]['name']);
-        $this->assertSame('256/8', $attrs[0]['custom_value']);
+        $this->assertSame('256/8', $attrs[0]['value_name']);
         $this->assertSame('200002', $attrs[1]['id']);
-        $this->assertSame('14', $attrs[1]['custom_value']);
+        $this->assertSame('14', $attrs[1]['value_name']);
     }
 
     public function test_sales_attribute_uses_tiktok_name_over_internal_name(): void
@@ -142,7 +142,9 @@ class TikTokProductMapperTest extends TestCase
 
         $attrs = $payload['skus'][0]['sales_attributes'];
         $this->assertSame('Kapasitas', $attrs[0]['name']);
+        $this->assertSame('256/8', $attrs[0]['value_name']);
         $this->assertSame('Warna', $attrs[1]['name']);
+        $this->assertSame('14', $attrs[1]['value_name']);
     }
 
     public function test_name_map_fallback_when_no_id_mapping(): void
@@ -163,7 +165,7 @@ class TikTokProductMapperTest extends TestCase
 
         $attr = $payload['skus'][0]['sales_attributes'][0];
         $this->assertSame('300001', $attr['id']);
-        $this->assertSame('Merah', $attr['custom_value']);
+        $this->assertSame('Merah', $attr['value_name']);
     }
 
     public function test_unknown_attribute_uses_attribute_name_fallback(): void
@@ -182,7 +184,7 @@ class TikTokProductMapperTest extends TestCase
         $attr = $payload['skus'][0]['sales_attributes'][0];
         $this->assertArrayNotHasKey('id', $attr);
         $this->assertSame('Bahan', $attr['name']);
-        $this->assertSame('Katun', $attr['custom_value']);
+        $this->assertSame('Katun', $attr['value_name']);
     }
 
     public function test_never_emits_sale_attribute_lacking_both_id_and_name(): void

@@ -92,7 +92,7 @@ class TikTokProductMapper
                             ? (string) $salesAttributeMap[$optAttrId]
                             : ($salesNameMap[$attrName] ?? null);
 
-                        $entry = ['custom_value' => $option['value']];
+                        $entry = ['value_name' => $option['value']];
                         if ($resolvedId) {
                             $entry['id'] = $resolvedId;
                             $entry['name'] = $salesIdToName[$resolvedId] ?? $option['attribute_name'] ?? '';
@@ -109,7 +109,7 @@ class TikTokProductMapper
 
                     $salesAttributes[] = [
                         'name' => 'Tipe',
-                        'custom_value' => ($variant['sku'] ?? '') ?: ('Varian ' . ($idx + 1)),
+                        'value_name' => ($variant['sku'] ?? '') ?: ('Varian ' . ($idx + 1)),
                     ];
                 }
 
@@ -156,9 +156,9 @@ class TikTokProductMapper
         foreach ($salesAttributes as $attr) {
             $attributeId   = (string) ($attr['attribute_id'] ?? $attr['id'] ?? '');
             $attributeName = (string) ($attr['attribute_name'] ?? $attr['name'] ?? '');
-            $customValue   = (string) ($attr['custom_value'] ?? $attr['value'] ?? $attr['value_name'] ?? '');
+            $valueName     = (string) ($attr['custom_value'] ?? $attr['value'] ?? $attr['value_name'] ?? '');
 
-            $entry = ['custom_value' => $customValue];
+            $entry = ['value_name' => $valueName];
             if ($attributeId !== '') {
                 $entry['id'] = $attributeId;
             }
