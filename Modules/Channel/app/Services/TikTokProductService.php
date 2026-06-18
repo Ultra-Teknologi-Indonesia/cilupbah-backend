@@ -130,6 +130,11 @@ class TikTokProductService
                 if (! empty($salesMap)) {
                     $config['sales_attribute_map'] = $salesMap;
                 }
+
+                $nameMap = $this->productRepository->getSalePropNameMap($channelCategory->id);
+                if (! empty($nameMap)) {
+                    $config['sales_attribute_name_map'] = $nameMap;
+                }
             }
         }
 

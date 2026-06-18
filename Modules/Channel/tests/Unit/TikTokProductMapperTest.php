@@ -121,7 +121,7 @@ class TikTokProductMapperTest extends TestCase
         $this->assertSame('14', $attrs[1]['custom_value']);
     }
 
-    public function test_without_dynamic_map_uses_attribute_name_fallback(): void
+    public function test_name_map_fallback_when_no_id_mapping(): void
     {
         $mapper = new TikTokProductMapper();
 
@@ -132,11 +132,13 @@ class TikTokProductMapperTest extends TestCase
                     ['attribute_id' => 99, 'attribute_name' => 'Warna', 'value' => 'Merah'],
                 ],
             ],
-        ]), [], ['mode' => 'create']);
+        ]), [], [
+            'mode' => 'create',
+            'sales_attribute_name_map' => ['warna' => '300001'],
+        ]);
 
         $attr = $payload['skus'][0]['sales_attributes'][0];
-        $this->assertArrayNotHasKey('attribute_id', $attr);
-        $this->assertSame('Warna', $attr['attribute_name']);
+        $this->assertSame('300001', $attr['attribute_id']);
         $this->assertSame('Merah', $attr['custom_value']);
     }
 

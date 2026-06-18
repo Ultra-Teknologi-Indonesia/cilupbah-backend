@@ -21,6 +21,7 @@ class TikTokProductMapper
         $isUpdate = ($config['mode'] ?? 'create') === 'update';
 
         $salesAttributeMap = $config['sales_attribute_map'] ?? [];
+        $salesNameMap = $config['sales_attribute_name_map'] ?? [];
 
         $payload = [
             'save_mode' => 'LISTING',
@@ -88,7 +89,7 @@ class TikTokProductMapper
 
                         $resolvedId = ($optAttrId && isset($salesAttributeMap[$optAttrId]))
                             ? (string) $salesAttributeMap[$optAttrId]
-                            : null;
+                            : ($salesNameMap[$attrName] ?? null);
 
                         $entry = ['custom_value' => $option['value']];
                         if ($resolvedId) {

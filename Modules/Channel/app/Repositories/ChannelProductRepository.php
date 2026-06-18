@@ -146,6 +146,16 @@ class ChannelProductRepository
             ->all();
     }
 
+    public function getSalePropNameMap(string $channelCategoryId): array
+    {
+        return DB::table('channel_attributes')
+            ->where('channel_category_id', $channelCategoryId)
+            ->where('is_sale_prop', true)
+            ->get(['external_id', 'name'])
+            ->mapWithKeys(fn ($a) => [mb_strtolower($a->name) => $a->external_id])
+            ->all();
+    }
+
     public function getChannelWarehouseByStore(string $shopId)
     {
         return DB::table('channel_warehouses')->where('store_id', $shopId)->first();
