@@ -200,15 +200,22 @@ class TikTokProductService
                     continue;
                 }
 
-                $defaultOption = \Modules\Product\Models\ChannelAttributeOption::where('channel_attribute_id', $reqAttr->id)
-                    ->first();
+                $options = \Modules\Product\Models\ChannelAttributeOption::where('channel_attribute_id', $reqAttr->id)
+                    ->get();
 
-                if ($defaultOption) {
-                    $mappedAttributes[] = [
-                        'id' => $reqAttr->external_id,
-                        'values' => [['id' => $defaultOption->external_id, 'name' => $defaultOption->name]],
-                    ];
+                if ($options->isEmpty()) {
+                    continue;
                 }
+
+                $defaultOption = $options->first(function ($opt) {
+                    $lower = mb_strtolower($opt->name);
+                    return in_array($lower, ['tidak', 'no', 'none', 'tidak ada']);
+                }) ?? $options->first();
+
+                $mappedAttributes[] = [
+                    'id' => $reqAttr->external_id,
+                    'values' => [['id' => $defaultOption->external_id, 'name' => $defaultOption->name]],
+                ];
             }
         }
 
