@@ -24,7 +24,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         return 'lazada';
     }
 
-    public function pushProduct(Product $product, ChannelShop $shop): array
+    public function pushProduct(Product $product, ChannelShop $shop, ?array $attributeMapping = null): array
     {
         $payload = $this->buildProductPayload($product);
 

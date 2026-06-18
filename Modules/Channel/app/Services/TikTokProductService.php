@@ -114,7 +114,7 @@ class TikTokProductService
         return $res;
     }
 
-    private function buildUploadConfig($product, $shop, ?string $videoId): array
+    public function buildUploadConfig($product, $shop, ?string $videoId = null, ?array $userAttributeMapping = null): array
     {
         $config = [];
 
@@ -189,6 +189,26 @@ class TikTokProductService
 
         if ($channelCategory && ! empty($channelCategory->id)) {
             $coveredIds = collect($mappedAttributes)->pluck('id')->all();
+
+            if ($userAttributeMapping) {
+                foreach ($userAttributeMapping as $attrExternalId => $optionExternalId) {
+                    $attrExternalId = (string) $attrExternalId;
+                    $optionExternalId = (string) $optionExternalId;
+                    if (in_array($attrExternalId, $coveredIds)) {
+                        continue;
+                    }
+                    $optionName = \Modules\Product\Models\ChannelAttributeOption::where('external_id', $optionExternalId)->value('name');
+                    $value = ['id' => $optionExternalId];
+                    if ($optionName !== null) {
+                        $value['name'] = $optionName;
+                    }
+                    $mappedAttributes[] = [
+                        'id' => $attrExternalId,
+                        'values' => [$value],
+                    ];
+                    $coveredIds[] = $attrExternalId;
+                }
+            }
 
             $requiredAttrs = \Modules\Product\Models\ChannelAttribute::where('channel_category_id', $channelCategory->id)
                 ->where('is_required', true)

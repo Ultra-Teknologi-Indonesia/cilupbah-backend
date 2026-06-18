@@ -29,12 +29,14 @@ class SyncProductToChannelJob implements ShouldQueue
     public string $productId;
     public string $channelShopId;
     public string $action;
+    public ?array $attributeMapping;
 
-    public function __construct(string $productId, string $channelShopId, string $action)
+    public function __construct(string $productId, string $channelShopId, string $action, ?array $attributeMapping = null)
     {
         $this->productId = $productId;
         $this->channelShopId = $channelShopId;
         $this->action = $action;
+        $this->attributeMapping = $attributeMapping;
 
         $this->onQueue(config('queue.names.channel_sync'));
     }
@@ -126,14 +128,14 @@ class SyncProductToChannelJob implements ShouldQueue
                     if ($externalId) {
                         $result = $adapter->updateProduct($product, $shop, $externalId);
                     } else {
-                        $result = $adapter->pushProduct($product, $shop);
+                        $result = $adapter->pushProduct($product, $shop, $this->attributeMapping);
                     }
                     break;
                 case 'update':
                     if ($externalId) {
                         $result = $adapter->updateProduct($product, $shop, $externalId);
                     } else {
-                        $result = $adapter->pushProduct($product, $shop);
+                        $result = $adapter->pushProduct($product, $shop, $this->attributeMapping);
                     }
                     break;
                 case 'delete':

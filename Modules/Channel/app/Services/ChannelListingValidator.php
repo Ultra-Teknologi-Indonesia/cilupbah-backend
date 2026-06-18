@@ -56,7 +56,7 @@ class ChannelListingValidator
         $required = DB::table('channel_attributes')
             ->where('channel_category_id', $channelCategory->id)
             ->where('is_required', true)
-            ->get(['id', 'external_id', 'name']);
+            ->get(['id', 'external_id', 'name', 'is_sale_prop']);
 
         if ($required->isEmpty()) {
             return $issues;
@@ -75,11 +75,18 @@ class ChannelListingValidator
                 ->value('attribute_id');
 
             if (! $internalAttrId) {
-                $issues[] = $this->issue(
-                    'attribute_unmapped',
-                    $ca->name,
-                    "Atribut wajib '{$ca->name}' belum dipetakan ke atribut internal."
-                );
+                // Non-sale-prop attributes with options are auto-injected by buildUploadConfig (Layer 3).
+                $hasOptions = ! $ca->is_sale_prop && DB::table('channel_attribute_options')
+                    ->where('channel_attribute_id', $ca->id)
+                    ->exists();
+
+                if (! $hasOptions) {
+                    $issues[] = $this->issue(
+                        'attribute_unmapped',
+                        $ca->name,
+                        "Atribut wajib '{$ca->name}' belum dipetakan ke atribut internal."
+                    );
+                }
                 continue;
             }
 

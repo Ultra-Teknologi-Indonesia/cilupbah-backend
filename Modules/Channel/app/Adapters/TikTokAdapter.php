@@ -9,6 +9,7 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\TikTokClient;
 use Modules\Channel\Services\TikTokImageUploader;
 use Modules\Channel\Services\TikTokProductMapper;
+use Modules\Channel\Services\TikTokProductService;
 use Modules\Channel\Services\TikTokToInternalProductMapper;
 use Modules\Product\Models\Product;
 
@@ -18,17 +19,20 @@ class TikTokAdapter implements MarketplaceAdapterInterface
     protected TikTokProductMapper $outboundMapper;
     protected TikTokToInternalProductMapper $inboundMapper;
     protected TikTokImageUploader $imageUploader;
+    protected TikTokProductService $productService;
 
     public function __construct(
         TikTokClient $client,
         TikTokProductMapper $outboundMapper,
         TikTokToInternalProductMapper $inboundMapper,
-        TikTokImageUploader $imageUploader
+        TikTokImageUploader $imageUploader,
+        TikTokProductService $productService
     ) {
         $this->client = $client;
         $this->outboundMapper = $outboundMapper;
         $this->inboundMapper = $inboundMapper;
         $this->imageUploader = $imageUploader;
+        $this->productService = $productService;
     }
 
     public function getChannelCode(): string
@@ -36,7 +40,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         return 'tiktok';
     }
 
-    public function pushProduct(Product $product, ChannelShop $shop): array
+    public function pushProduct(Product $product, ChannelShop $shop, ?array $attributeMapping = null): array
     {
         $imageUrls = $product->media->where('media_type', 'image')->pluck('url')->all();
         $imageUris = empty($imageUrls) ? [] : $this->imageUploader->uploadFromUrls($imageUrls, $shop->access_token);
@@ -44,7 +48,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         $internalProductArray = $product->toArray();
         $internalProductArray['variants'] = $product->variants->toArray();
 
-        $config = config('channel.tiktok_defaults', []);
+        $config = $this->productService->buildUploadConfig($product, $shop, null, $attributeMapping);
 
         $payload = $this->outboundMapper->map($internalProductArray, $imageUris, $config);
 
@@ -79,7 +83,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         $internalProductArray = $product->toArray();
         $internalProductArray['variants'] = $this->buildUpdateVariants($product, $shop, $externalProductId);
 
-        $config = config('channel.tiktok_defaults', []);
+        $config = $this->productService->buildUploadConfig($product, $shop);
         $config['mode'] = 'update';
         $payload = $this->outboundMapper->map($internalProductArray, [], $config);
         $payload['product_id'] = $externalProductId;

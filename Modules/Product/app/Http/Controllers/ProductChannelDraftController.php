@@ -7,9 +7,12 @@ use DomainException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Product\Http\Requests\StoreCatalogListingRequest;
 use Modules\Product\Http\Requests\StoreChannelDraftRequest;
 use Modules\Product\Http\Resources\ProductChannelDraftResource;
+use Modules\Product\Models\ChannelAttribute;
 use Modules\Product\Models\ProductChannelDraft;
 use Modules\Product\Repositories\ProductChannelDraftRepository;
 use Modules\Product\Repositories\ProductRepository;
@@ -25,6 +28,7 @@ class ProductChannelDraftController extends Controller
         protected ProductChannelDraftService $draftService,
         protected ProductChannelDraftRepository $draftRepository,
         protected ProductRepository $productRepository,
+        protected ChannelProductRepository $channelProductRepository,
     ) {}
 
     #[OA\Get(
@@ -203,6 +207,105 @@ class ProductChannelDraftController extends Controller
             'Listing produk berhasil disimpan',
             201
         );
+    }
+
+    public function requiredAttributes(Request $request, $id): JsonResponse
+    {
+        if (! $this->isUuid($id)) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        $shopId = $request->query('shop_id');
+        if (! $shopId) {
+            return $this->errorResponse('Parameter shop_id wajib diisi', 422);
+        }
+
+        $channelShop = ChannelShop::with('channel')->where('shop_id', $shopId)->first();
+        if (! $channelShop) {
+            return $this->errorResponse('Toko tidak ditemukan', 404);
+        }
+
+        if (($channelShop->channel->code ?? '') !== 'tiktok') {
+            return $this->successResponse(['channel_category_id' => null, 'attributes' => []], 'Non-TikTok channel');
+        }
+
+        $product = $this->productRepository->findWithRelations($id);
+        if (! $product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        $channelCategory = $this->resolveChannelCategoryForProduct($product, $channelShop);
+        if (! $channelCategory) {
+            return $this->errorResponse('Kategori belum dipetakan ke TikTok. Petakan kategori terlebih dahulu.', 422);
+        }
+
+        $requiredAttrs = ChannelAttribute::where('channel_category_id', $channelCategory->id)
+            ->where('is_required', true)
+            ->where('is_sale_prop', false)
+            ->with('options')
+            ->get();
+
+        $coveredExternalIds = $this->getCoveredAttributeExternalIds($product->id, $channelCategory->id);
+
+        $attributes = $requiredAttrs->map(function ($attr) use ($coveredExternalIds) {
+            $isCovered = in_array($attr->external_id, $coveredExternalIds);
+
+            return [
+                'external_id' => $attr->external_id,
+                'name' => $attr->name,
+                'is_covered' => $isCovered,
+                'options' => $attr->options->map(fn ($opt) => [
+                    'external_id' => $opt->external_id,
+                    'name' => $opt->name,
+                ])->values()->all(),
+            ];
+        })->values()->all();
+
+        return $this->successResponse([
+            'channel_category_id' => $channelCategory->id,
+            'attributes' => $attributes,
+        ]);
+    }
+
+    private function resolveChannelCategoryForProduct($product, ChannelShop $shop): ?object
+    {
+        $draft = ProductChannelDraft::where('product_id', $product->id)
+            ->where('channel_shop_id', $shop->id)
+            ->latest('updated_at')
+            ->first();
+
+        if ($draft && $draft->channel_category_id) {
+            $info = $this->channelProductRepository->getChannelCategoryInfoById($draft->channel_category_id);
+            if ($info) {
+                return $info;
+            }
+        }
+
+        if (! empty($product->category_id)) {
+            return $this->channelProductRepository->getChannelCategoryInfoByInternal($product->category_id, $shop->channel_id);
+        }
+
+        return null;
+    }
+
+    private function getCoveredAttributeExternalIds(string $productId, string $channelCategoryId): array
+    {
+        $specs = $this->channelProductRepository->getProductSpecifications($productId);
+        $covered = [];
+
+        foreach ($specs as $spec) {
+            $mapping = $this->channelProductRepository->getAttributeChannelMapping($spec->attribute_id);
+            if (! $mapping) {
+                continue;
+            }
+
+            $channelAttr = $this->channelProductRepository->getChannelAttribute($mapping->channel_attribute_id);
+            if ($channelAttr && $channelAttr->channel_category_id === $channelCategoryId) {
+                $covered[] = $channelAttr->external_id;
+            }
+        }
+
+        return $covered;
     }
 
     private function productExists($id): bool

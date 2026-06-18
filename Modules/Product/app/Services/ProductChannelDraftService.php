@@ -64,7 +64,9 @@ class ProductChannelDraftService
                 'status' => ProductSyncLog::STATUS_PENDING,
             ]);
 
-            SyncProductToChannelJob::dispatch($draft->product_id, $draft->channel_shop_id, 'push')->afterCommit();
+            $attributeMapping = $draft->attribute_mapping;
+
+            SyncProductToChannelJob::dispatch($draft->product_id, $draft->channel_shop_id, 'push', $attributeMapping)->afterCommit();
 
             $draft->delete();
 

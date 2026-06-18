@@ -105,6 +105,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('products/{id}/channel-prices', [ProductController::class, 'channelPrices'])->whereUuid('id');
     Route::get('products/{id}/price-book', [ProductController::class, 'priceBook'])->whereUuid('id');
 
+    Route::get('products/{id}/channel-drafts/required-attributes', [ProductChannelDraftController::class, 'requiredAttributes'])->whereUuid('id');
     Route::get('products/{id}/channel-drafts', [ProductChannelDraftController::class, 'index'])->whereUuid('id');
     Route::post('products/{id}/channel-drafts', [ProductChannelDraftController::class, 'store'])->whereUuid('id');
     Route::put('products/{id}/channel-drafts/{draft}', [ProductChannelDraftController::class, 'update'])->whereUuid('id')->whereUuid('draft');
