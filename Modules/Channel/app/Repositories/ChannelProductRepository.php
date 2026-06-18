@@ -93,6 +93,7 @@ class ChannelProductRepository
             ?? $category->channelCategories->first();
 
         return (object) [
+            'id' => $chosen->id,
             'external_id' => $chosen->external_id,
             'is_leaf' => (bool) $chosen->is_leaf,
         ];
@@ -106,7 +107,7 @@ class ChannelProductRepository
     {
         return DB::table('channel_categories')
             ->where('id', $channelCategoryId)
-            ->select('external_id', 'is_leaf')
+            ->select('id', 'external_id', 'is_leaf')
             ->first();
     }
 
@@ -133,6 +134,16 @@ class ChannelProductRepository
     public function getChannelAttributeOption(string $id)
     {
         return DB::table('channel_attribute_options')->where('id', $id)->first();
+    }
+
+    public function getSalesAttributeMap(string $channelCategoryId): array
+    {
+        return DB::table('channel_attributes as ca')
+            ->join('attribute_channel_mappings as m', 'm.channel_attribute_id', '=', 'ca.id')
+            ->where('ca.channel_category_id', $channelCategoryId)
+            ->where('ca.is_sale_prop', true)
+            ->pluck('ca.external_id', 'm.attribute_id')
+            ->all();
     }
 
     public function getChannelWarehouseByStore(string $shopId)

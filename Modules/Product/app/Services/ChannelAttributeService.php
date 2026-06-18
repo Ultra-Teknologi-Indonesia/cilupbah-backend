@@ -41,7 +41,7 @@ class ChannelAttributeService
         }
     }
 
-    protected function syncTikTokAttributes(Channel $channel, ChannelCategory $category): void
+    public function syncTikTokAttributes(Channel $channel, ChannelCategory $category): void
     {
         $shop = \Modules\Channel\Models\ChannelShop::where('channel_id', $channel->id)->first();
         if (!$shop || !$shop->access_token) {

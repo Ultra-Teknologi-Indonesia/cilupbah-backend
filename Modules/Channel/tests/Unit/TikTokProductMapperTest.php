@@ -89,6 +89,76 @@ class TikTokProductMapperTest extends TestCase
         $this->assertSame('Erigo Hoodie Original Premium Unisex', $payload['title']);
     }
 
+    public function test_dynamic_sales_attribute_map_resolves_by_attribute_id(): void
+    {
+        $mapper = new TikTokProductMapper();
+
+        $payload = $mapper->map($this->product([
+            [
+                'sku' => 'ZB14-256-8-14', 'sell_price' => 8000000, 'stock' => 5,
+                'options' => [
+                    ['attribute_id' => 32, 'attribute_name' => 'RAM', 'value' => '256/8'],
+                    ['attribute_id' => 12, 'attribute_name' => 'Display Size', 'value' => '14'],
+                ],
+            ],
+            [
+                'sku' => 'ZB14-512-16-14', 'sell_price' => 12000000, 'stock' => 5,
+                'options' => [
+                    ['attribute_id' => 32, 'attribute_name' => 'RAM', 'value' => '512/16'],
+                    ['attribute_id' => 12, 'attribute_name' => 'Display Size', 'value' => '14'],
+                ],
+            ],
+        ]), [], [
+            'mode' => 'create',
+            'sales_attribute_map' => [32 => '200001', 12 => '200002'],
+        ]);
+
+        $this->assertCount(2, $payload['skus']);
+        $attrs = $payload['skus'][0]['sales_attributes'];
+        $this->assertSame('200001', $attrs[0]['attribute_id']);
+        $this->assertSame('256/8', $attrs[0]['custom_value']);
+        $this->assertSame('200002', $attrs[1]['attribute_id']);
+        $this->assertSame('14', $attrs[1]['custom_value']);
+    }
+
+    public function test_without_dynamic_map_uses_attribute_name_fallback(): void
+    {
+        $mapper = new TikTokProductMapper();
+
+        $payload = $mapper->map($this->product([
+            [
+                'sku' => 'SHIRT-RED', 'sell_price' => 100000, 'stock' => 10,
+                'options' => [
+                    ['attribute_id' => 99, 'attribute_name' => 'Warna', 'value' => 'Merah'],
+                ],
+            ],
+        ]), [], ['mode' => 'create']);
+
+        $attr = $payload['skus'][0]['sales_attributes'][0];
+        $this->assertArrayNotHasKey('attribute_id', $attr);
+        $this->assertSame('Warna', $attr['attribute_name']);
+        $this->assertSame('Merah', $attr['custom_value']);
+    }
+
+    public function test_unknown_attribute_uses_attribute_name_fallback(): void
+    {
+        $mapper = new TikTokProductMapper();
+
+        $payload = $mapper->map($this->product([
+            [
+                'sku' => 'ITEM-A', 'sell_price' => 50000, 'stock' => 5,
+                'options' => [
+                    ['attribute_id' => 777, 'attribute_name' => 'Bahan', 'value' => 'Katun'],
+                ],
+            ],
+        ]), [], ['mode' => 'create']);
+
+        $attr = $payload['skus'][0]['sales_attributes'][0];
+        $this->assertArrayNotHasKey('attribute_id', $attr);
+        $this->assertSame('Bahan', $attr['attribute_name']);
+        $this->assertSame('Katun', $attr['custom_value']);
+    }
+
     public function test_never_emits_sale_attribute_lacking_both_id_and_name(): void
     {
         $mapper = new TikTokProductMapper();

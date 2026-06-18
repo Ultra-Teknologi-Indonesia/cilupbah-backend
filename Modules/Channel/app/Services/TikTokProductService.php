@@ -2,6 +2,7 @@
 
 namespace Modules\Channel\Services;
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Repositories\ChannelShopRepository;
@@ -9,6 +10,7 @@ use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Channel\Services\TikTokToInternalOrderMapper;
 use Modules\Channel\Services\TikTokToInternalProductMapper;
 use Modules\Product\Models\ProductSyncLog;
+use Modules\Product\Services\ChannelAttributeService;
 
 class TikTokProductService
 {
@@ -87,6 +89,13 @@ class TikTokProductService
             return $variantArr;
         })->toArray();
 
+        $hasOptions = collect($internalProduct['variants'])->contains(fn ($v) => ! empty($v['options']));
+        if ($hasOptions) {
+            $internalProduct['variants'] = array_values(
+                array_filter($internalProduct['variants'], fn ($v) => ! empty($v['options']))
+            );
+        }
+
         $config = $this->buildUploadConfig($product, $shop, $videoId);
 
         $payload = $this->mapper->map($internalProduct, $uploadedImageIds, $config);
@@ -115,6 +124,13 @@ class TikTokProductService
                 );
             }
             $config['category_id'] = $channelCategory->external_id;
+
+            if (! empty($channelCategory->id)) {
+                $salesMap = $this->productRepository->getSalesAttributeMap($channelCategory->id);
+                if (! empty($salesMap)) {
+                    $config['sales_attribute_map'] = $salesMap;
+                }
+            }
         }
 
         if ($videoId) {
@@ -825,6 +841,13 @@ class TikTokProductService
             return $variantArr;
         })->toArray();
 
+        $hasOptions = collect($internalProduct['variants'])->contains(fn ($v) => ! empty($v['options']));
+        if ($hasOptions) {
+            $internalProduct['variants'] = array_values(
+                array_filter($internalProduct['variants'], fn ($v) => ! empty($v['options']) || ! empty($v['sales_attributes']))
+            );
+        }
+
         $config = $this->buildUploadConfig($product, $shop, $videoId);
         $config['mode'] = 'update';
         $payload = $this->mapper->map($internalProduct, $uploadedImageIds, $config);
@@ -897,5 +920,52 @@ class TikTokProductService
         }
 
         return $failCount;
+    }
+
+    public function syncCategoryAttributes(string $shopId, string $categoryExtId): int
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            throw new \Exception("Toko TikTok tidak terhubung: {$shopId}");
+        }
+
+        $channelId = DB::table('channels')->where('code', 'tiktok')->value('id');
+        if (! $channelId) {
+            throw new \Exception('Channel tiktok belum ter-seed.');
+        }
+
+        $channelCategory = \Modules\Product\Models\ChannelCategory::where('channel_id', $channelId)
+            ->where('external_id', $categoryExtId)
+            ->first();
+        if (! $channelCategory) {
+            throw new \Exception("Kategori TikTok {$categoryExtId} belum disinkronkan.");
+        }
+
+        $channel = \Modules\Channel\Models\Channel::find($channelId);
+
+        app(ChannelAttributeService::class)->syncTikTokAttributes($channel, $channelCategory);
+
+        return \Modules\Product\Models\ChannelAttribute::where('channel_category_id', $channelCategory->id)->count();
+    }
+
+    public function syncAllMappedCategoryAttributes(string $shopId): array
+    {
+        $channelId = DB::table('channels')->where('code', 'tiktok')->value('id');
+        if (! $channelId) {
+            throw new \Exception('Channel tiktok belum ter-seed.');
+        }
+
+        $leaves = DB::table('category_channel_mappings as m')
+            ->join('channel_categories as c', 'c.id', '=', 'm.channel_category_id')
+            ->where('c.channel_id', $channelId)
+            ->distinct()
+            ->pluck('c.external_id');
+
+        $result = [];
+        foreach ($leaves as $extId) {
+            $result[(string) $extId] = $this->syncCategoryAttributes($shopId, (string) $extId);
+        }
+
+        return $result;
     }
 }

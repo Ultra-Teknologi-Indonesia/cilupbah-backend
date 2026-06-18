@@ -20,14 +20,7 @@ class TikTokProductMapper
         $attributes = $config['attributes'] ?? [];
         $isUpdate = ($config['mode'] ?? 'create') === 'update';
 
-        $salesAttrIdMap = [
-            'warna'   => '100000',
-            'color'   => '100000',
-            'ukuran'  => '100007',
-            'size'    => '100007',
-            'varian'  => '100000',
-            'variasi' => '100000',
-        ];
+        $salesAttributeMap = $config['sales_attribute_map'] ?? [];
 
         $payload = [
             'save_mode' => 'LISTING',
@@ -90,13 +83,20 @@ class TikTokProductMapper
                     $salesAttributes = $this->normalizeSalesAttributes($variant['sales_attributes']);
                 } elseif (!empty($variant['options'])) {
                     foreach ($variant['options'] as $option) {
-                        $attrName  = strtolower($option['attribute_name'] ?? '');
-                        $attrId    = $salesAttrIdMap[$attrName]
-                            ?? ($config['sales_attribute_id'] ?? '100000');
-                        $salesAttributes[] = [
-                            'attribute_id' => $attrId,
-                            'custom_value' => $option['value'],
-                        ];
+                        $optAttrId = $option['attribute_id'] ?? null;
+                        $attrName = strtolower($option['attribute_name'] ?? '');
+
+                        $resolvedId = ($optAttrId && isset($salesAttributeMap[$optAttrId]))
+                            ? (string) $salesAttributeMap[$optAttrId]
+                            : null;
+
+                        $entry = ['custom_value' => $option['value']];
+                        if ($resolvedId) {
+                            $entry['attribute_id'] = $resolvedId;
+                        } else {
+                            $entry['attribute_name'] = $option['attribute_name'] ?? 'Tipe';
+                        }
+                        $salesAttributes[] = $entry;
                     }
                 } elseif ($variantCount > 1) {
 
