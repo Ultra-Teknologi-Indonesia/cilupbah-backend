@@ -179,6 +179,31 @@ class TikTokProductService
             }
         }
 
+        if ($channelCategory && ! empty($channelCategory->id)) {
+            $coveredIds = collect($mappedAttributes)->pluck('id')->all();
+
+            $requiredAttrs = \Modules\Product\Models\ChannelAttribute::where('channel_category_id', $channelCategory->id)
+                ->where('is_required', true)
+                ->where('is_sale_prop', false)
+                ->get();
+
+            foreach ($requiredAttrs as $reqAttr) {
+                if (in_array($reqAttr->external_id, $coveredIds)) {
+                    continue;
+                }
+
+                $defaultOption = \Modules\Product\Models\ChannelAttributeOption::where('channel_attribute_id', $reqAttr->id)
+                    ->first();
+
+                if ($defaultOption) {
+                    $mappedAttributes[] = [
+                        'id' => $reqAttr->external_id,
+                        'values' => [['id' => $defaultOption->external_id, 'name' => $defaultOption->name]],
+                    ];
+                }
+            }
+        }
+
         if (!empty($mappedAttributes)) {
             $config['attributes'] = $mappedAttributes;
         }
