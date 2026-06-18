@@ -7,35 +7,54 @@ use Illuminate\Support\Facades\DB;
 
 class CategorySeeder extends Seeder
 {
+    private array $externalToInternalId = [];
+
     public function run(): void
     {
-        $data = json_decode(file_get_contents(module_path('Product', 'database/data/category.json')), true);
-        $this->insertCategories($data, null);
+        $data = json_decode(
+            file_get_contents(module_path('Product', 'database/data/tiktok_categories_l3.json')),
+            true
+        );
+
+        $categories = $data['categories'];
+
+        $byParent = [];
+        foreach ($categories as $cat) {
+            $byParent[$cat['parent_id']][] = $cat;
+        }
+
+        $this->insertLevel($byParent, '0', null);
+
+        $this->command->info('CategorySeeder: ' . count($this->externalToInternalId) . ' categories seeded from TikTok data.');
     }
 
-    private function insertCategories(array $items, ?int $parentId): void
+    private function insertLevel(array $byParent, string $parentExternalId, ?int $parentInternalId): void
     {
-        foreach ($items as $item) {
+        $children = $byParent[$parentExternalId] ?? [];
+        $now = now();
 
-            $query = DB::table('categories')->where('name', $item['name']);
-            $parentId === null
-                ? $query->whereNull('parent_id')
-                : $query->where('parent_id', $parentId);
-
-            $existing = $query->first();
+        foreach ($children as $cat) {
+            $existing = DB::table('categories')
+                ->where('name', $cat['local_name'])
+                ->where(fn ($q) => $parentInternalId === null
+                    ? $q->whereNull('parent_id')
+                    : $q->where('parent_id', $parentInternalId))
+                ->first();
 
             $id = $existing
                 ? $existing->id
                 : DB::table('categories')->insertGetId([
-                    'parent_id'  => $parentId,
-                    'name'       => $item['name'],
-                    'is_active'  => true,
-                    'created_at' => now(),
-                    'updated_at' => now(),
+                    'parent_id' => $parentInternalId,
+                    'name' => $cat['local_name'],
+                    'is_active' => true,
+                    'created_at' => $now,
+                    'updated_at' => $now,
                 ]);
 
-            if (!empty($item['children'])) {
-                $this->insertCategories($item['children'], $id);
+            $this->externalToInternalId[$cat['id']] = $id;
+
+            if (isset($byParent[$cat['id']])) {
+                $this->insertLevel($byParent, $cat['id'], $id);
             }
         }
     }

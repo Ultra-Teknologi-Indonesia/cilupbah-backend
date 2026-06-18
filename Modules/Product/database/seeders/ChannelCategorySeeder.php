@@ -13,26 +13,17 @@ class ChannelCategorySeeder extends Seeder
     {
         $tiktokChannel = Channel::where('code', 'tiktok')->first();
 
-        if (!$tiktokChannel) {
+        if (! $tiktokChannel) {
             $this->command->warn('TikTok channel not found. Skipping ChannelCategorySeeder.');
             return;
         }
 
-        $jsonFile = base_path('tiktok_categories.json');
+        $data = json_decode(
+            file_get_contents(module_path('Product', 'database/data/tiktok_categories_l3.json')),
+            true
+        );
 
-        if (!file_exists($jsonFile)) {
-            $this->command->warn('tiktok_categories.json file not found. Skipping ChannelCategorySeeder.');
-            return;
-        }
-
-        $data = json_decode(file_get_contents($jsonFile), true);
-
-        if (!isset($data['data']['categories'])) {
-            $this->command->warn('Invalid JSON structure in tiktok_categories.json. Skipping.');
-            return;
-        }
-
-        $categories = $data['data']['categories'];
+        $categories = $data['categories'];
 
         $chunks = array_chunk($categories, 500);
 
@@ -41,6 +32,15 @@ class ChannelCategorySeeder extends Seeder
         foreach ($chunks as $chunk) {
             $insertData = [];
             foreach ($chunk as $item) {
+                $exists = DB::table('channel_categories')
+                    ->where('channel_id', $tiktokChannel->id)
+                    ->where('external_id', $item['id'])
+                    ->exists();
+
+                if ($exists) {
+                    continue;
+                }
+
                 $insertData[] = [
                     'id' => Uuid::uuid7()->toString(),
                     'channel_id' => $tiktokChannel->id,
@@ -53,7 +53,9 @@ class ChannelCategorySeeder extends Seeder
                 ];
             }
 
-            DB::table('channel_categories')->insertOrIgnore($insertData);
+            if (! empty($insertData)) {
+                DB::table('channel_categories')->insert($insertData);
+            }
         }
 
         $this->command->info('Finished importing TikTok categories.');
