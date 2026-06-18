@@ -112,6 +112,11 @@ class Product extends Model
         return $this->hasMany(ProductChannelMapping::class);
     }
 
+    public function channelValidations(): HasMany
+    {
+        return $this->hasMany(ProductChannelValidation::class);
+    }
+
     public function syncLogs(): HasMany
     {
         return $this->hasMany(ProductSyncLog::class);

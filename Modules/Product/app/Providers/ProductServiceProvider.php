@@ -5,6 +5,7 @@ namespace Modules\Product\Providers;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Product\Console\Commands\PruneUploadHistories;
+use Modules\Product\Console\Commands\RecomputeChannelValidation;
 use Modules\Product\Jobs\PruneUploadHistoriesJob;
 
 class ProductServiceProvider extends ModuleServiceProvider
@@ -16,6 +17,7 @@ class ProductServiceProvider extends ModuleServiceProvider
 
     protected array $commands = [
         PruneUploadHistories::class,
+        RecomputeChannelValidation::class,
     ];
 
     protected array $providers = [
@@ -26,5 +28,10 @@ class ProductServiceProvider extends ModuleServiceProvider
     protected function configureSchedules(Schedule $schedule): void
     {
         $schedule->job(new PruneUploadHistoriesJob())->daily();
+
+        // Rekonsiliasi berkala status Tidak Cocok (jaring pengaman bila event terlewat).
+        $schedule->command('products:recompute-validation --queue')
+            ->hourly()
+            ->withoutOverlapping();
     }
 }

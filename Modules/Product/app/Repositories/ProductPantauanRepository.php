@@ -7,6 +7,7 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
+use Modules\Product\Models\ProductChannelValidation;
 use Modules\Product\Models\ProductSyncLog;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -21,7 +22,7 @@ class ProductPantauanRepository
             ->count();
 
         $query = QueryBuilder::for(Product::class)
-            ->with(['category', 'media'])
+            ->with(['category', 'media', 'channelValidations.channel'])
             // Jumlah toko aktif tempat produk sudah tersinkron (1 mapping per toko),
             // dihitung lewat withCount sehingga tidak perlu raw SQL.
             ->withCount(['channelMappings as synced_shop_count' => fn ($q) => $q->where('sync_status', '<>', ProductChannelMapping::STATUS_DEACTIVATED)])
@@ -71,31 +72,20 @@ class ProductPantauanRepository
                 break;
 
             case 'harga':
-                // Pengecualian terdokumentasi: harga efektif = coalesce(override_price, sell_price).
-                // "count(distinct <ekspresi coalesce>)" lintas-tabel tidak punya padanan
-                // Eloquent murni (has() hanya menghitung baris, bukan distinct ekspresi),
-                // jadi ekspresi raw Postgres diisolasi di sini.
-                $query->whereHas('variants', fn ($v) => $v->whereRaw(
-                    '((select count(distinct coalesce(pvcm.override_price, product_variants.sell_price)) from product_variant_channel_mappings pvcm where pvcm.variant_id = product_variants.id) > 1'
-                    . ' or exists (select 1 from product_variant_channel_mappings pvcm2 where pvcm2.variant_id = product_variants.id and pvcm2.synced_price is not null and pvcm2.synced_price <> coalesce(pvcm2.override_price, product_variants.sell_price)))'
-                ));
+                // Harga Tidak Cocok: status termaterialisasi di product_channel_validations
+                // (synced_price marketplace <> coalesce(override_price, sell_price)).
+                $this->whereMismatch($query, 'price_status');
                 break;
 
             case 'sku':
-                // Ada varian yang seller SKU di channel berbeda dari SKU master.
-                $query->whereHas('variants', fn ($v) => $v->whereHas('channelMappings', fn ($cm) => $cm
-                    ->whereNotNull('channel_seller_sku')
-                    ->whereColumn('product_variant_channel_mappings.channel_seller_sku', '<>', 'product_variants.sku')));
+                // SKU Tidak Cocok: channel_seller_sku marketplace <> SKU master.
+                $this->whereMismatch($query, 'sku_status');
                 break;
 
             case 'atribut':
-                // Pengecualian terdokumentasi: tipe json Postgres tak punya operator
-                // distinct, sehingga butuh cast ::text. "count(distinct json::text)"
-                // tidak dapat diekspresikan dengan Eloquent murni.
-                $query->whereHas('channelMappings', fn ($q) => $q->whereNotNull('channel_attributes'))
-                    ->whereRaw(
-                        '(select count(distinct channel_attributes::text) from product_channel_mappings where product_id = products.id and channel_attributes is not null) > 1'
-                    );
+                // Atribut Tidak Cocok: validasi skema kategori marketplace
+                // (ChannelListingValidator) — termaterialisasi per produk × channel.
+                $this->whereMismatch($query, 'attribute_status');
                 break;
 
             case 'gagal_upload':
@@ -114,6 +104,19 @@ class ProductPantauanRepository
             default:
                 break;
         }
+    }
+
+    private function whereMismatch($query, string $statusColumn): void
+    {
+        $channelCode = request('filter.channel');
+
+        $query->whereHas('channelValidations', function ($q) use ($statusColumn, $channelCode) {
+            $q->where($statusColumn, ProductChannelValidation::STATUS_MISMATCH);
+
+            if ($channelCode) {
+                $q->whereHas('channel', fn ($c) => $c->where('code', $channelCode));
+            }
+        });
     }
 
     private function filterType($query, $value)

@@ -212,8 +212,16 @@ Implementasi: `Modules/Product/app/Jobs/RecomputeProductChannelValidationJob.php
 
 ## 12. Definition of Done (Fase 0)
 
-- [ ] Tabel `product_channel_validation` + model + index.
-- [ ] `ProductChannelValidationService` (atribut/harga/sku) + job + full-sweep command + scheduler.
-- [ ] 3 lens membaca status materialized; Resource menampilkan `issues` per channel.
-- [ ] Backfill dijalankan; ASUS tampil di lens atribut.
-- [ ] Test unit + feature hijau; perilaku harga/sku setara/levih akurat dari sebelumnya.
+- [x] Tabel `product_channel_validations` + model + index.
+- [x] `ProductChannelValidationService` (atribut/harga/sku) + job + full-sweep command + scheduler.
+- [x] 3 lens membaca status materialized; Resource menampilkan `mismatches` (issues) per channel.
+- [x] Event-driven refresh tersambung di `SyncProductToChannelJob` + cron rekonsiliasi hourly.
+- [x] Test feature hijau (ProductPantauanTest 12/12; regresi terkait 48/48).
+- [ ] **Deploy:** jalankan `php artisan migrate` lalu `php artisan products:recompute-validation` (backfill) di env target.
+
+### Catatan deploy Fase 0
+Migration sudah diverifikasi lewat `RefreshDatabase` di test, tetapi **belum** dijalankan di DB nyata.
+Untuk mengaktifkan fitur di staging/produksi:
+1. `php artisan migrate` (buat tabel `product_channel_validations`).
+2. `php artisan products:recompute-validation` (backfill status; tamb. `--queue` untuk lewat queue).
+Setelah itu ASUS akan tampil di `pantauan?lens=atribut` via `variation_attribute_missing`.

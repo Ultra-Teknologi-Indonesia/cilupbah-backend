@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Adapters\AdapterFactory;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ChannelListingValidator;
+use Modules\Product\Jobs\RecomputeProductChannelValidationJob;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductSyncLog;
@@ -83,6 +84,7 @@ class SyncProductToChannelJob implements ShouldQueue
             ]);
             $mapping->markAsFailed($message);
             $this->recordUploadResult(false, $message);
+            $this->refreshChannelValidation();
 
             return;
         }
@@ -175,6 +177,8 @@ class SyncProductToChannelJob implements ShouldQueue
                 if ($this->action === 'delete') {
                     $mapping->delete();
                 }
+
+                $this->refreshChannelValidation();
             } else {
                 $message = $result['message'] ?? 'Gagal mengeksekusi aksi';
                 $mapping->markAsFailed($message);
@@ -187,10 +191,20 @@ class SyncProductToChannelJob implements ShouldQueue
         } catch (\Exception $e) {
             $mapping->markAsFailed($e->getMessage());
             $this->recordUploadResult(false, $e->getMessage());
+            $this->refreshChannelValidation();
             $this->handleFailure($channelCode);
 
             throw $e;
         }
+    }
+
+    /**
+     * Perbarui status Tidak Cocok (atribut/harga/sku) untuk produk ini setelah
+     * status mapping / data sinkron berubah. Dijalankan async; idempotent.
+     */
+    protected function refreshChannelValidation(): void
+    {
+        RecomputeProductChannelValidationJob::dispatch($this->productId)->afterCommit();
     }
 
     protected function recordUploadResult(bool $success, ?string $message, ?array $response = null): void

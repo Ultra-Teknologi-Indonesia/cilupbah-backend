@@ -58,6 +58,14 @@ class ProductPantauanTest extends TestCase
         ]);
     }
 
+    private function recompute(Product ...$products): void
+    {
+        $service = app(\Modules\Product\Services\ProductChannelValidationService::class);
+        foreach ($products as $product) {
+            $service->recompute($product);
+        }
+    }
+
     public function test_belum_upload_lists_products_not_uploaded_to_all_shops(): void
     {
         $partial = $this->product('Produk Sebagian'); 
@@ -80,19 +88,18 @@ class ProductPantauanTest extends TestCase
 
     public function test_harga_lists_price_divergent_products(): void
     {
+        // Harga marketplace (synced_price) berbeda dari harga efektif master.
         $divergent = $this->product('Harga Beda');
         $v1 = ProductVariant::create(['product_id' => $divergent->id, 'sku' => 'HB-1', 'sell_price' => 100000, 'is_active' => true]);
         $mA = $this->mapTo($divergent, $this->shopA, 'HB-A');
-        $mB = $this->mapTo($divergent, $this->shopB, 'HB-B');
-        ProductVariantChannelMapping::create(['product_channel_mapping_id' => $mA->id, 'variant_id' => $v1->id, 'override_price' => 100000]);
-        ProductVariantChannelMapping::create(['product_channel_mapping_id' => $mB->id, 'variant_id' => $v1->id, 'override_price' => 150000]);
+        ProductVariantChannelMapping::create(['product_channel_mapping_id' => $mA->id, 'variant_id' => $v1->id, 'synced_price' => 150000]);
 
         $uniform = $this->product('Harga Sama');
         $v2 = ProductVariant::create(['product_id' => $uniform->id, 'sku' => 'HS-1', 'sell_price' => 100000, 'is_active' => true]);
         $mC = $this->mapTo($uniform, $this->shopA, 'HS-A');
-        $mD = $this->mapTo($uniform, $this->shopB, 'HS-B');
-        ProductVariantChannelMapping::create(['product_channel_mapping_id' => $mC->id, 'variant_id' => $v2->id, 'override_price' => 100000]);
-        ProductVariantChannelMapping::create(['product_channel_mapping_id' => $mD->id, 'variant_id' => $v2->id, 'override_price' => 100000]);
+        ProductVariantChannelMapping::create(['product_channel_mapping_id' => $mC->id, 'variant_id' => $v2->id, 'synced_price' => 100000]);
+
+        $this->recompute($divergent, $uniform);
 
         $response = $this->getJson('/api/v1/products/pantauan?lens=harga');
 
@@ -156,6 +163,8 @@ class ProductPantauanTest extends TestCase
         $m2 = $this->mapTo($uniform, $this->shopA, 'U-1');
         ProductVariantChannelMapping::create(['product_channel_mapping_id' => $m2->id, 'variant_id' => $v2->id, 'channel_seller_sku' => 'MASTER-B']);
 
+        $this->recompute($divergent, $uniform);
+
         $response = $this->getJson('/api/v1/products/pantauan?lens=sku');
 
         $response->assertStatus(200);
@@ -170,6 +179,8 @@ class ProductPantauanTest extends TestCase
         $v = ProductVariant::create(['product_id' => $product->id, 'sku' => 'X-1', 'sell_price' => 1, 'is_active' => true]);
         $m = $this->mapTo($product, $this->shopA, 'N-1');
         ProductVariantChannelMapping::create(['product_channel_mapping_id' => $m->id, 'variant_id' => $v->id]);
+
+        $this->recompute($product);
 
         $response = $this->getJson('/api/v1/products/pantauan?lens=sku');
 
@@ -253,21 +264,38 @@ class ProductPantauanTest extends TestCase
         $this->assertSame(['Brand' => 'Acme', 'Warna' => 'Merah'], $row->channel_attributes);
     }
 
-    public function test_atribut_lens_flags_divergent_attributes(): void
+    public function test_atribut_lens_flags_multivariant_without_variation_attributes(): void
     {
-        $divergent = $this->product('Atribut Beda');
-        ProductChannelMapping::create(['product_id' => $divergent->id, 'channel_shop_id' => $this->shopA->id, 'external_product_id' => 'AB-A', 'sync_status' => 'synced', 'channel_attributes' => ['Brand' => 'Acme']]);
-        ProductChannelMapping::create(['product_id' => $divergent->id, 'channel_shop_id' => $this->shopB->id, 'external_product_id' => 'AB-B', 'sync_status' => 'synced', 'channel_attributes' => ['Brand' => 'Beta']]);
+        // Kasus ASUS: produk multi-varian tanpa atribut variasi → ditolak channel
+        // ("sale attribute kosong"). Validator menandai variation_attribute_missing.
+        $attrId = DB::table('attributes')->insertGetId([
+            'name' => 'Ukuran', 'type' => 'sales', 'created_at' => now(), 'updated_at' => now(),
+        ]);
 
-        $uniform = $this->product('Atribut Sama');
-        ProductChannelMapping::create(['product_id' => $uniform->id, 'channel_shop_id' => $this->shopA->id, 'external_product_id' => 'AS-A', 'sync_status' => 'synced', 'channel_attributes' => ['Brand' => 'Acme']]);
-        ProductChannelMapping::create(['product_id' => $uniform->id, 'channel_shop_id' => $this->shopB->id, 'external_product_id' => 'AS-B', 'sync_status' => 'synced', 'channel_attributes' => ['Brand' => 'Acme']]);
+        $bad = $this->product('Atribut Kurang');
+        ProductVariant::create(['product_id' => $bad->id, 'sku' => 'AK-1', 'sell_price' => 1, 'is_active' => true]);
+        ProductVariant::create(['product_id' => $bad->id, 'sku' => 'AK-2', 'sell_price' => 1, 'is_active' => true]);
+        $this->mapTo($bad, $this->shopA, 'AK-A');
+
+        $good = $this->product('Atribut Lengkap');
+        $g1 = ProductVariant::create(['product_id' => $good->id, 'sku' => 'AL-1', 'sell_price' => 1, 'is_active' => true]);
+        $g2 = ProductVariant::create(['product_id' => $good->id, 'sku' => 'AL-2', 'sell_price' => 1, 'is_active' => true]);
+        VariantOption::create(['variant_id' => $g1->id, 'attribute_id' => $attrId, 'value' => '40']);
+        VariantOption::create(['variant_id' => $g2->id, 'attribute_id' => $attrId, 'value' => '41']);
+        $this->mapTo($good, $this->shopA, 'AL-A');
+
+        $this->recompute($bad, $good);
 
         $response = $this->getJson('/api/v1/products/pantauan?lens=atribut');
 
         $response->assertStatus(200);
         $names = collect($response->json('data'))->pluck('product_name')->all();
-        $this->assertContains('Atribut Beda', $names);
-        $this->assertNotContains('Atribut Sama', $names);
+        $this->assertContains('Atribut Kurang', $names);
+        // 'Atribut Lengkap' punya opsi & skema TikTok belum di-ingest → status 'na', tidak terdaftar.
+        $this->assertNotContains('Atribut Lengkap', $names);
+
+        $row = collect($response->json('data'))->firstWhere('product_name', 'Atribut Kurang');
+        $codes = collect($row['mismatches'])->flatMap(fn ($m) => collect($m['attribute_issues'])->pluck('code'))->all();
+        $this->assertContains('variation_attribute_missing', $codes);
     }
 }
