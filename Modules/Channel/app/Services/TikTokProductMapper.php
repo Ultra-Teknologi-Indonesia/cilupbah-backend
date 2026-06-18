@@ -93,29 +93,30 @@ class TikTokProductMapper
 
                         $entry = ['custom_value' => $option['value']];
                         if ($resolvedId) {
-                            $entry['attribute_id'] = $resolvedId;
+                            $entry['id'] = $resolvedId;
+                            $entry['name'] = $option['attribute_name'] ?? '';
                         } else {
-                            $entry['attribute_name'] = $option['attribute_name'] ?? 'Tipe';
+                            $entry['name'] = $option['attribute_name'] ?? 'Tipe';
                         }
                         $salesAttributes[] = $entry;
                     }
                 } elseif ($variantCount > 1) {
 
                     $salesAttributes[] = [
-                        'attribute_name' => 'Tipe',
+                        'name' => 'Tipe',
                         'custom_value' => ($variant['sku'] ?? '') ?: ('Varian ' . ($idx + 1)),
                     ];
                 }
 
                 $salesAttributes = array_values(array_filter(
                     $salesAttributes,
-                    fn ($attr) => ($attr['attribute_id'] ?? '') !== '' || ($attr['attribute_name'] ?? '') !== ''
+                    fn ($attr) => ($attr['id'] ?? '') !== '' || ($attr['name'] ?? '') !== ''
                 ));
 
                 if ($isUpdate && $variantCount > 1) {
                     $hasUsableId = !empty(array_filter(
                         $salesAttributes,
-                        fn ($attr) => ($attr['attribute_id'] ?? '') !== ''
+                        fn ($attr) => ($attr['id'] ?? '') !== ''
                     ));
                     if (!$hasUsableId) {
                         throw new \RuntimeException(
@@ -154,10 +155,10 @@ class TikTokProductMapper
 
             $entry = ['custom_value' => $customValue];
             if ($attributeId !== '') {
-                $entry['attribute_id'] = $attributeId;
+                $entry['id'] = $attributeId;
             }
             if ($attributeName !== '') {
-                $entry['attribute_name'] = $attributeName;
+                $entry['name'] = $attributeName;
             }
             if (!empty($attr['sku_img'])) {
                 $entry['sku_img'] = $attr['sku_img'];

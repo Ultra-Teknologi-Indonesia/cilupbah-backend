@@ -28,7 +28,7 @@ class TikTokProductMapperTest extends TestCase
 
         $this->assertCount(2, $payload['skus']);
         $attr = $payload['skus'][0]['sales_attributes'][0];
-        $this->assertSame('Tipe', $attr['attribute_name']);
+        $this->assertSame('Tipe', $attr['name']);
         $this->assertSame('ZB14-I5-512', $attr['custom_value']);
     }
 
@@ -60,7 +60,7 @@ class TikTokProductMapperTest extends TestCase
 
         $sku = $payload['skus'][0];
         $this->assertSame('TT-SKU-1', $sku['id']);
-        $this->assertSame('100000', $sku['sales_attributes'][0]['attribute_id']);
+        $this->assertSame('100000', $sku['sales_attributes'][0]['id']);
         $this->assertSame('ZB14-I5-512', $sku['sales_attributes'][0]['custom_value']);
     }
 
@@ -115,9 +115,9 @@ class TikTokProductMapperTest extends TestCase
 
         $this->assertCount(2, $payload['skus']);
         $attrs = $payload['skus'][0]['sales_attributes'];
-        $this->assertSame('200001', $attrs[0]['attribute_id']);
+        $this->assertSame('200001', $attrs[0]['id']);
         $this->assertSame('256/8', $attrs[0]['custom_value']);
-        $this->assertSame('200002', $attrs[1]['attribute_id']);
+        $this->assertSame('200002', $attrs[1]['id']);
         $this->assertSame('14', $attrs[1]['custom_value']);
     }
 
@@ -138,7 +138,7 @@ class TikTokProductMapperTest extends TestCase
         ]);
 
         $attr = $payload['skus'][0]['sales_attributes'][0];
-        $this->assertSame('300001', $attr['attribute_id']);
+        $this->assertSame('300001', $attr['id']);
         $this->assertSame('Merah', $attr['custom_value']);
     }
 
@@ -156,8 +156,8 @@ class TikTokProductMapperTest extends TestCase
         ]), [], ['mode' => 'create']);
 
         $attr = $payload['skus'][0]['sales_attributes'][0];
-        $this->assertArrayNotHasKey('attribute_id', $attr);
-        $this->assertSame('Bahan', $attr['attribute_name']);
+        $this->assertArrayNotHasKey('id', $attr);
+        $this->assertSame('Bahan', $attr['name']);
         $this->assertSame('Katun', $attr['custom_value']);
     }
 

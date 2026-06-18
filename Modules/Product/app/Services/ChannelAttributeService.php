@@ -78,7 +78,7 @@ class ChannelAttributeService
                     ],
                     [
                         'name' => $attr['name'],
-                        'is_required' => $attr['is_required'] ?? false,
+                        'is_required' => $attr['is_requried'] ?? $attr['is_required'] ?? false,
                         'is_multiple' => $attr['is_multiple_selection'] ?? false,
                         'is_sale_prop' => ($attr['type'] ?? null) === 'SALES_PROPERTY'
                             || ($attr['is_sale_prop'] ?? false),
