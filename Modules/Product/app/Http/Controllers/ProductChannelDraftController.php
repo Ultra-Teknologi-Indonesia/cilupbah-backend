@@ -264,6 +264,7 @@ class ProductChannelDraftController extends Controller
         return $this->successResponse([
             'channel_category_id' => $channelCategory->id,
             'attributes' => $attributes,
+            'rules' => $channelCategory->rules,
         ]);
     }
 

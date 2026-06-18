@@ -3,6 +3,8 @@
 namespace Modules\Product\Repositories;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
+use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
@@ -99,6 +101,19 @@ class ProductPantauanRepository
                         ->has('variants', '>', 1)
                         ->whereDoesntHave('variants', fn ($v) => $v->has('options')));
                 });
+                break;
+
+            case 'persyaratan':
+                $tiktokChannelId = Channel::where('code', 'tiktok')->value('id');
+                if ($tiktokChannelId) {
+                    $query->whereIn('category_id', function ($sub) use ($tiktokChannelId) {
+                        $sub->select('ccm.category_id')
+                            ->from('category_channel_mappings as ccm')
+                            ->join('channel_categories as cc', 'cc.id', '=', 'ccm.channel_category_id')
+                            ->where('cc.channel_id', $tiktokChannelId)
+                            ->whereNotNull('cc.rules');
+                    });
+                }
                 break;
 
             default:

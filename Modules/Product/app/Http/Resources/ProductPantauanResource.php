@@ -4,6 +4,8 @@ namespace Modules\Product\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\DB;
+use Modules\Channel\Models\Channel;
 
 class ProductPantauanResource extends JsonResource
 {
@@ -19,6 +21,7 @@ class ProductPantauanResource extends JsonResource
             'not_uploaded_count' => $this->not_uploaded_count !== null ? (int) $this->not_uploaded_count : null,
             'last_upload_error' => $this->last_upload_error ?? null,
             'mismatches' => $this->mismatches(),
+            'requirements_summary' => $this->requirementsSummary(),
         ];
     }
 
@@ -41,6 +44,53 @@ class ProductPantauanResource extends JsonResource
             'sku_status' => $v->sku_status,
             'sku_issues' => $v->sku_issues ?? [],
         ])->values()->all();
+    }
+
+    protected function requirementsSummary(): ?string
+    {
+        if (! $this->category_id) {
+            return null;
+        }
+
+        $tiktokChannelId = Channel::where('code', 'tiktok')->value('id');
+        if (! $tiktokChannelId) {
+            return null;
+        }
+
+        $channelCategory = DB::table('category_channel_mappings as ccm')
+            ->join('channel_categories as cc', 'cc.id', '=', 'ccm.channel_category_id')
+            ->where('ccm.category_id', $this->category_id)
+            ->where('cc.channel_id', $tiktokChannelId)
+            ->whereNotNull('cc.rules')
+            ->select('cc.rules')
+            ->first();
+
+        if (! $channelCategory) {
+            return null;
+        }
+
+        $rules = json_decode($channelCategory->rules, true);
+        $parts = [];
+
+        $certs = $rules['product_certifications'] ?? [];
+        $requiredCerts = array_filter($certs, fn ($c) => $c['is_required'] ?? false);
+        if (count($requiredCerts) > 0) {
+            $parts[] = count($requiredCerts) . ' sertifikasi wajib';
+        }
+
+        if ($rules['size_chart']['is_required'] ?? false) {
+            $parts[] = 'Size Chart';
+        }
+
+        if ($rules['manufacturer']['is_required'] ?? false) {
+            $parts[] = 'Manufacturer';
+        }
+
+        if ($rules['package_dimension']['is_required'] ?? false) {
+            $parts[] = 'Dimensi Paket';
+        }
+
+        return empty($parts) ? null : implode(', ', $parts);
     }
 
     protected function primaryImage(): ?string

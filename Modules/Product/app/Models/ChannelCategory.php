@@ -19,10 +19,12 @@ class ChannelCategory extends Model
         'parent_external_id',
         'name',
         'is_leaf',
+        'rules',
     ];
 
     protected $casts = [
         'is_leaf' => 'boolean',
+        'rules' => 'array',
     ];
 
     public function channel(): BelongsTo

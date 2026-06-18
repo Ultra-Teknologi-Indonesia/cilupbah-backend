@@ -5,7 +5,9 @@ namespace Modules\Product\Services;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ChannelListingValidator;
+use Modules\Product\Models\ChannelCategory;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductChannelDraft;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductSyncLog;
 use Modules\Product\Models\ProductVariant;
@@ -62,6 +64,7 @@ class ProductUploadListingService
             ->keyBy('id');
 
         $rows = [];
+        $rulesSummaryCache = [];
 
         foreach ($storeIds as $storeId) {
             $mapping = $mappings->get($storeId);
@@ -73,15 +76,21 @@ class ProductUploadListingService
             $failedMessage = $this->latestFailedUploadMessage($productId, $storeId);
             $readinessMessage = $this->uploadReadinessIssue($product, $shops->get($storeId));
 
+            $shop = $shops->get($storeId);
+            $rulesSummary = null;
+            if ($shop && ($shop->channel->code ?? '') === 'tiktok') {
+                $rulesSummary = $rulesSummaryCache[$storeId] ??= $this->buildRulesSummary($product, $shop);
+            }
+
             if ($variants->isEmpty()) {
                 [$matched, $message] = $this->evaluate($mapping, null, $syncedVariantIds, $failedMessage, $readinessMessage);
-                $rows[] = ['store_id' => $storeId, 'channel_group_id' => $channelGroupId, 'message' => $message, 'matched' => $matched];
+                $rows[] = ['store_id' => $storeId, 'channel_group_id' => $channelGroupId, 'message' => $message, 'matched' => $matched, 'rules_summary' => $rulesSummary];
                 continue;
             }
 
             foreach ($variants as $variant) {
                 [$matched, $message] = $this->evaluate($mapping, $variant, $syncedVariantIds, $failedMessage, $readinessMessage);
-                $rows[] = ['store_id' => $storeId, 'channel_group_id' => $channelGroupId, 'message' => $message, 'matched' => $matched];
+                $rows[] = ['store_id' => $storeId, 'channel_group_id' => $channelGroupId, 'message' => $message, 'matched' => $matched, 'rules_summary' => $rulesSummary];
             }
         }
 
@@ -144,5 +153,49 @@ class ProductUploadListingService
         }
 
         return null;
+    }
+
+    private function buildRulesSummary(Product $product, ChannelShop $shop): ?array
+    {
+        $channelCategory = $this->resolveChannelCategory($product, $shop);
+        if (! $channelCategory || ! $channelCategory->rules) {
+            return null;
+        }
+
+        $rules = $channelCategory->rules;
+        $certs = $rules['product_certifications'] ?? [];
+        $requiredCerts = array_filter($certs, fn ($c) => $c['is_required'] ?? false);
+
+        $hasSpecial = count($requiredCerts) > 0
+            || ($rules['size_chart']['is_required'] ?? false)
+            || ($rules['manufacturer']['is_required'] ?? false)
+            || ($rules['package_dimension']['is_required'] ?? false);
+
+        return [
+            'required_certs_count' => count($requiredCerts),
+            'size_chart_required' => $rules['size_chart']['is_required'] ?? false,
+            'has_special_requirements' => $hasSpecial,
+        ];
+    }
+
+    private function resolveChannelCategory(Product $product, ChannelShop $shop): ?ChannelCategory
+    {
+        $draft = ProductChannelDraft::where('product_id', $product->id)
+            ->where('channel_shop_id', $shop->id)
+            ->latest('updated_at')
+            ->first();
+
+        if ($draft && $draft->channel_category_id) {
+            return ChannelCategory::find($draft->channel_category_id);
+        }
+
+        if (! $product->category_id) {
+            return null;
+        }
+
+        return ChannelCategory::query()
+            ->where('channel_id', $shop->channel_id)
+            ->whereHas('localCategories', fn ($q) => $q->where('categories.id', $product->category_id))
+            ->first();
     }
 }
