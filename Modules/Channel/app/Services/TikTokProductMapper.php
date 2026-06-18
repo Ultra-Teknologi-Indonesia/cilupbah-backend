@@ -22,6 +22,7 @@ class TikTokProductMapper
 
         $salesAttributeMap = $config['sales_attribute_map'] ?? [];
         $salesNameMap = $config['sales_attribute_name_map'] ?? [];
+        $salesIdToName = $config['sales_attribute_id_to_name'] ?? [];
 
         $payload = [
             'save_mode' => 'LISTING',
@@ -94,7 +95,7 @@ class TikTokProductMapper
                         $entry = ['custom_value' => $option['value']];
                         if ($resolvedId) {
                             $entry['id'] = $resolvedId;
-                            $entry['name'] = $option['attribute_name'] ?? '';
+                            $entry['name'] = $salesIdToName[$resolvedId] ?? $option['attribute_name'] ?? '';
                         } else {
                             $displayName = $option['attribute_name'] ?? '';
                             if ($displayName === '') {

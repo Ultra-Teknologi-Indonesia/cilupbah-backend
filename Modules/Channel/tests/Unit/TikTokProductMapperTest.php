@@ -116,9 +116,33 @@ class TikTokProductMapperTest extends TestCase
         $this->assertCount(2, $payload['skus']);
         $attrs = $payload['skus'][0]['sales_attributes'];
         $this->assertSame('200001', $attrs[0]['id']);
+        $this->assertSame('RAM', $attrs[0]['name']);
         $this->assertSame('256/8', $attrs[0]['custom_value']);
         $this->assertSame('200002', $attrs[1]['id']);
         $this->assertSame('14', $attrs[1]['custom_value']);
+    }
+
+    public function test_sales_attribute_uses_tiktok_name_over_internal_name(): void
+    {
+        $mapper = new TikTokProductMapper();
+
+        $payload = $mapper->map($this->product([
+            [
+                'sku' => 'ZB14-256-8-14', 'sell_price' => 8000000, 'stock' => 5,
+                'options' => [
+                    ['attribute_id' => 32, 'attribute_name' => 'RAM', 'value' => '256/8'],
+                    ['attribute_id' => 12, 'attribute_name' => 'Display Size', 'value' => '14'],
+                ],
+            ],
+        ]), [], [
+            'mode' => 'create',
+            'sales_attribute_map' => [32 => '100090', 12 => '100000'],
+            'sales_attribute_id_to_name' => ['100090' => 'Kapasitas', '100000' => 'Warna'],
+        ]);
+
+        $attrs = $payload['skus'][0]['sales_attributes'];
+        $this->assertSame('Kapasitas', $attrs[0]['name']);
+        $this->assertSame('Warna', $attrs[1]['name']);
     }
 
     public function test_name_map_fallback_when_no_id_mapping(): void

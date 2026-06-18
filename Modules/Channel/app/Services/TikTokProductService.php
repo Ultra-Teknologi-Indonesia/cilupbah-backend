@@ -139,6 +139,14 @@ class TikTokProductService
                 if (! empty($nameMap)) {
                     $config['sales_attribute_name_map'] = $nameMap;
                 }
+
+                $idToName = \Modules\Product\Models\ChannelAttribute::where('channel_category_id', $channelCategory->id)
+                    ->where('is_sale_prop', true)
+                    ->pluck('name', 'external_id')
+                    ->toArray();
+                if (! empty($idToName)) {
+                    $config['sales_attribute_id_to_name'] = $idToName;
+                }
             }
         }
 
