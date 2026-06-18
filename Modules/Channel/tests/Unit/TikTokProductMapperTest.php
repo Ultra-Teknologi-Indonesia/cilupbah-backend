@@ -174,4 +174,20 @@ class TikTokProductMapperTest extends TestCase
 
         $this->assertArrayNotHasKey('sales_attributes', $payload['skus'][0]);
     }
+
+    public function test_options_without_attribute_name_are_skipped(): void
+    {
+        $mapper = new TikTokProductMapper();
+
+        $payload = $mapper->map($this->product([
+            [
+                'sku' => 'ZB14-I5-512', 'sell_price' => 12000000, 'stock' => 5,
+                'options' => [
+                    ['attribute_id' => null, 'attribute_name' => null, 'value' => 'some-val'],
+                ],
+            ],
+        ]), [], ['mode' => 'create']);
+
+        $this->assertArrayNotHasKey('sales_attributes', $payload['skus'][0]);
+    }
 }

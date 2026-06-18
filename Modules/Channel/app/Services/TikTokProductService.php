@@ -89,10 +89,14 @@ class TikTokProductService
             return $variantArr;
         })->toArray();
 
-        $hasOptions = collect($internalProduct['variants'])->contains(fn ($v) => ! empty($v['options']));
-        if ($hasOptions) {
+        $hasMeaningfulOptions = collect($internalProduct['variants'])->contains(
+            fn ($v) => collect($v['options'] ?? [])->contains(fn ($opt) => ! empty($opt['attribute_id']))
+        );
+        if ($hasMeaningfulOptions) {
             $internalProduct['variants'] = array_values(
-                array_filter($internalProduct['variants'], fn ($v) => ! empty($v['options']))
+                array_filter($internalProduct['variants'], fn ($v) =>
+                    collect($v['options'] ?? [])->contains(fn ($opt) => ! empty($opt['attribute_id']))
+                )
             );
         }
 
@@ -846,10 +850,14 @@ class TikTokProductService
             return $variantArr;
         })->toArray();
 
-        $hasOptions = collect($internalProduct['variants'])->contains(fn ($v) => ! empty($v['options']));
-        if ($hasOptions) {
+        $hasMeaningfulOptions = collect($internalProduct['variants'])->contains(
+            fn ($v) => collect($v['options'] ?? [])->contains(fn ($opt) => ! empty($opt['attribute_id']))
+        );
+        if ($hasMeaningfulOptions) {
             $internalProduct['variants'] = array_values(
-                array_filter($internalProduct['variants'], fn ($v) => ! empty($v['options']) || ! empty($v['sales_attributes']))
+                array_filter($internalProduct['variants'], fn ($v) =>
+                    collect($v['options'] ?? [])->contains(fn ($opt) => ! empty($opt['attribute_id']))
+                    || ! empty($v['sales_attributes']))
             );
         }
 

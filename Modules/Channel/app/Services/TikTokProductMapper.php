@@ -96,7 +96,11 @@ class TikTokProductMapper
                             $entry['id'] = $resolvedId;
                             $entry['name'] = $option['attribute_name'] ?? '';
                         } else {
-                            $entry['name'] = $option['attribute_name'] ?? 'Tipe';
+                            $displayName = $option['attribute_name'] ?? '';
+                            if ($displayName === '') {
+                                continue;
+                            }
+                            $entry['name'] = $displayName;
                         }
                         $salesAttributes[] = $entry;
                     }
