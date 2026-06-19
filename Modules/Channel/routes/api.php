@@ -20,30 +20,30 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
 Route::prefix('v1/tiktok')->group(function () {
 
-    Route::post('webhook', [\Modules\Channel\Http\Controllers\TikTokWebhookController::class, 'handle']);
-    Route::get('auth', [\Modules\Channel\Http\Controllers\TikTokAuthController::class, 'redirect']);
-    Route::get('callback', [\Modules\Channel\Http\Controllers\TikTokAuthController::class, 'callback']);
+    Route::post('webhook', [\Modules\Channel\Http\Controllers\TikTokWebhookController::class, 'handle'])->name('tiktok.webhook');
+    Route::get('auth', [\Modules\Channel\Http\Controllers\TikTokAuthController::class, 'redirect'])->name('tiktok.auth');
+    Route::get('callback', [\Modules\Channel\Http\Controllers\TikTokAuthController::class, 'callback'])->name('tiktok.callback');
 
     Route::middleware('auth:sanctum')->group(function () {
-        Route::get('cancel-reasons', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'getCancelReasons']);
-        Route::post('cancel-product', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'cancelProduct']);
+        Route::get('cancel-reasons', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'getCancelReasons'])->name('tiktok.cancel-reasons');
+        Route::post('cancel-product', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'cancelProduct'])->name('tiktok.cancel-product');
 
-        Route::get('stores', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'index']);
-        Route::get('stores/{id}', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'show'])->whereUuid('id');
-        Route::delete('stores/{id}', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'destroy'])->whereUuid('id');
-        Route::post('stores/{id}/refresh-token', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'refreshToken'])->whereUuid('id');
+        Route::get('stores', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'index'])->name('tiktok.stores.index');
+        Route::get('stores/{id}', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'show'])->whereUuid('id')->name('tiktok.stores.show');
+        Route::delete('stores/{id}', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'destroy'])->whereUuid('id')->name('tiktok.stores.destroy');
+        Route::post('stores/{id}/refresh-token', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'refreshToken'])->whereUuid('id')->name('tiktok.stores.refresh');
 
-        Route::post('auto-sync/pull-orders', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pullOrdersAll']);
-        Route::post('auto-sync/pull-products', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pullProductsAll']);
+        Route::post('auto-sync/pull-orders', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pullOrdersAll'])->name('tiktok.sync.pull-all');
+        Route::post('auto-sync/pull-products', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pullProductsAll'])->name('tiktok.sync.pull-products');
 
-        Route::post('sync/pull', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pullOrders']);
-        Route::post('sync/accept', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'acceptOrder']);
-        Route::post('sync/decline', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'declineOrder']);
+        Route::post('sync/pull', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pullOrders'])->name('tiktok.sync.pull');
+        Route::post('sync/accept', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'acceptOrder'])->name('tiktok.sync.accept');
+        Route::post('sync/decline', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'declineOrder'])->name('tiktok.sync.decline');
         Route::post('sync/categories', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'syncCategories'])->name('tiktok.sync.categories');
-        Route::post('sync/category-attributes', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'syncCategoryAttributes']);
-        Route::post('sync/products/push', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pushProduct']);
-        Route::post('sync/products/sync', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'syncProduct']);
-        Route::post('sync/products/bulk-push', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'bulkPush']);
+        Route::post('sync/category-attributes', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'syncCategoryAttributes'])->name('tiktok.sync.category-attributes');
+        Route::post('sync/products/push', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pushProduct'])->name('tiktok.sync.products.push');
+        Route::post('sync/products/sync', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'syncProduct'])->name('tiktok.sync.products.sync');
+        Route::post('sync/products/bulk-push', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'bulkPush'])->name('tiktok.sync.products.bulk-push');
     });
 });
 
@@ -88,7 +88,9 @@ Route::prefix('v1/shopee')->group(function () {
     Route::match(['get', 'post'], 'push-ping', [\Modules\Channel\Http\Controllers\ShopeeWebhookController::class, 'ping'])->name('shopee.push-ping');
 
     Route::middleware('auth:sanctum')->group(function () {
+        Route::get('stores', [\Modules\Channel\Http\Controllers\ShopeeStoreController::class, 'index'])->name('shopee.stores.index');
         Route::get('stores/{id}', [\Modules\Channel\Http\Controllers\ShopeeStoreController::class, 'show'])->whereUuid('id')->name('shopee.stores.show');
+        Route::delete('stores/{id}', [\Modules\Channel\Http\Controllers\ShopeeStoreController::class, 'destroy'])->whereUuid('id')->name('shopee.stores.destroy');
         Route::post('stores/{id}/refresh-token', [\Modules\Channel\Http\Controllers\ShopeeStoreController::class, 'refreshToken'])->whereUuid('id')->name('shopee.stores.refresh');
 
         Route::post('sync/pull', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'pullOrders'])->name('shopee.sync.pull');

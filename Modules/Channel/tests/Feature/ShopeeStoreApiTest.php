@@ -39,6 +39,23 @@ class ShopeeStoreApiTest extends TestCase
         ]);
     }
 
+    public function test_index_lists_shopee_stores(): void
+    {
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/shopee/stores')
+            ->assertStatus(200)
+            ->assertJsonPath('data.0.shop_id', '778899');
+    }
+
+    public function test_destroy_disconnects_store(): void
+    {
+        $this->actingAs($this->user, 'sanctum')
+            ->deleteJson("/api/v1/shopee/stores/{$this->shop->id}")
+            ->assertStatus(200);
+
+        $this->assertFalse((bool) $this->shop->fresh()->is_active);
+    }
+
     public function test_show_returns_store_detail(): void
     {
         $this->actingAs($this->user, 'sanctum')

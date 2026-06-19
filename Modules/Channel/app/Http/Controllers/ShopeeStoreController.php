@@ -17,6 +17,18 @@ class ShopeeStoreController extends Controller
     ) {}
 
     #[OA\Get(
+        path: '/api/v1/shopee/stores',
+        summary: 'Daftar toko Shopee terhubung',
+        security: [['bearerAuth' => []]],
+        tags: ['Shopee'],
+        responses: [new OA\Response(response: 200, description: 'OK')]
+    )]
+    public function index()
+    {
+        return $this->successResponse($this->authService->getStores(), 'Daftar toko Shopee berhasil diambil');
+    }
+
+    #[OA\Get(
         path: '/api/v1/shopee/stores/{id}',
         summary: 'Detail toko Shopee (termasuk status token)',
         security: [['bearerAuth' => []]],
@@ -31,6 +43,28 @@ class ShopeeStoreController extends Controller
     {
         try {
             return $this->successResponse($this->authService->getStoreDetail($id), 'Detail toko berhasil diambil');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 404);
+        }
+    }
+
+    #[OA\Delete(
+        path: '/api/v1/shopee/stores/{id}',
+        summary: 'Putuskan koneksi toko Shopee',
+        security: [['bearerAuth' => []]],
+        tags: ['Shopee'],
+        parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [
+            new OA\Response(response: 200, description: 'Terputus'),
+            new OA\Response(response: 404, description: 'Tidak ditemukan'),
+        ]
+    )]
+    public function destroy(string $id)
+    {
+        try {
+            $this->authService->disconnectStore($id);
+
+            return $this->successResponse(null, 'Toko berhasil diputuskan');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 404);
         }
