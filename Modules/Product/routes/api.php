@@ -127,10 +127,17 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('channel-monitor/{shop_id}', [ChannelMonitorController::class, 'detail']);
     Route::get('channel-monitor/{shop_id}/products', [ChannelMonitorController::class, 'products']);
 
+    Route::get('categories/system', [CategoryController::class, 'systemCategories']);
+    Route::post('categories/enable', [CategoryController::class, 'enableCategories']);
+    Route::post('categories/disable', [CategoryController::class, 'disableCategories']);
+    Route::get('categories/mapping', [CategoryController::class, 'mappingList']);
+
     Route::apiResource('categories', CategoryController::class)->names('category')->where(['category' => '[0-9]+']);
     Route::post('categories/{category}/map-channel', [CategoryController::class, 'mapChannel'])->whereNumber('category');
 
     Route::get('categories/{category}/form-attributes', [\Modules\Product\Http\Controllers\CategoryFormAttributeController::class, 'show'])->whereNumber('category')->name('category.form-attributes');
+    Route::post('categories/{category}/attributes', [\Modules\Product\Http\Controllers\CategoryFormAttributeController::class, 'store'])->whereNumber('category');
+    Route::delete('categories/{category}/attributes/{attribute}', [\Modules\Product\Http\Controllers\CategoryFormAttributeController::class, 'destroy'])->whereNumber('category')->whereNumber('attribute');
 
     Route::apiResource('brands', BrandController::class)->names('brand')->where(['brand' => '[0-9]+']);
     Route::apiResource('attributes', AttributeController::class)->names('attribute')->where(['attribute' => '[0-9]+']);

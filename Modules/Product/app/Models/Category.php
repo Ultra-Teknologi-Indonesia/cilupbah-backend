@@ -13,11 +13,29 @@ class Category extends Model
         'parent_id',
         'name',
         'is_active',
+        'source',
+        'is_enabled',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'is_enabled' => 'boolean',
     ];
+
+    public function scopeEnabled($query)
+    {
+        return $query->where('is_enabled', true);
+    }
+
+    public function scopeSystem($query)
+    {
+        return $query->where('source', 'system');
+    }
+
+    public function scopeCustom($query)
+    {
+        return $query->where('source', 'custom');
+    }
 
     public function parent(): BelongsTo
     {

@@ -10,30 +10,57 @@ use Illuminate\Database\Eloquent\Collection;
 
 class CategoryRepository
 {
-    public function getPaginated(int $perPage = 10): LengthAwarePaginator
+    public function getPaginated(int $perPage = 10, bool $enabledOnly = true): LengthAwarePaginator
     {
-        return QueryBuilder::for(Category::class)
+        $query = QueryBuilder::for(Category::class)
             ->allowedIncludes('parent', 'children', 'children.children', 'children.children.children', 'attributes')
             ->allowedSearch('name')
             ->allowedFilters(
                 AllowedFilter::exact('is_active'),
-                AllowedFilter::exact('parent_id')
+                AllowedFilter::exact('parent_id'),
+                AllowedFilter::exact('source')
             )
-            ->allowedSorts('name', 'created_at')
-            ->paginate(request('per_page', $perPage))
+            ->allowedSorts('name', 'created_at');
+
+        if ($enabledOnly) {
+            $query->where('is_enabled', true);
+        }
+
+        return $query->paginate(request('per_page', $perPage))
             ->appends(request()->query());
     }
 
-    public function getAll(): Collection
+    public function getAll(bool $enabledOnly = true): Collection
     {
-        return QueryBuilder::for(Category::class)
+        $query = QueryBuilder::for(Category::class)
             ->allowedIncludes('parent', 'children', 'children.children', 'children.children.children', 'attributes')
             ->allowedSearch('name')
             ->allowedFilters(
                 AllowedFilter::exact('is_active'),
-                AllowedFilter::exact('parent_id')
+                AllowedFilter::exact('parent_id'),
+                AllowedFilter::exact('source')
+            )
+            ->allowedSorts('name', 'created_at');
+
+        if ($enabledOnly) {
+            $query->where('is_enabled', true);
+        }
+
+        return $query->get();
+    }
+
+    public function getSystemCategories(): Collection
+    {
+        return QueryBuilder::for(Category::class)
+            ->where('source', 'system')
+            ->allowedSearch('name')
+            ->allowedFilters(
+                AllowedFilter::exact('is_active'),
+                AllowedFilter::exact('parent_id'),
+                AllowedFilter::exact('is_enabled')
             )
             ->allowedSorts('name', 'created_at')
+            ->allowedIncludes('children', 'children.children', 'children.children.children')
             ->get();
     }
 

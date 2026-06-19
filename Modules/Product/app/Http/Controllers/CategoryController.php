@@ -37,6 +37,7 @@ class CategoryController extends Controller
             'name' => 'required|string|max:255',
             'parent_id' => 'nullable|bail|integer|exists:categories,id',
             'is_active' => 'nullable|boolean',
+            'is_leaf' => 'nullable|boolean',
         ]);
 
         try {
@@ -106,5 +107,47 @@ class CategoryController extends Controller
         } catch (\Throwable $e) {
             return $this->errorResponse('Kategori tidak ditemukan', 404);
         }
+    }
+
+    public function systemCategories(Request $request): JsonResponse
+    {
+        $categories = $this->categoryService->getSystemCategories();
+        return $this->successResponse(CategoryResource::collection($categories), 'Berhasil mengambil daftar kategori sistem');
+    }
+
+    public function enableCategories(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'required|integer|exists:categories,id',
+        ]);
+
+        try {
+            $count = $this->categoryService->enableSystemCategories($validated['ids']);
+            return $this->successResponse(['enabled_count' => $count], "Berhasil mengaktifkan {$count} kategori");
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function disableCategories(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'required|integer|exists:categories,id',
+        ]);
+
+        try {
+            $count = $this->categoryService->disableSystemCategories($validated['ids']);
+            return $this->successResponse(['disabled_count' => $count], "Berhasil menonaktifkan {$count} kategori");
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function mappingList(Request $request): JsonResponse
+    {
+        $mappings = $this->categoryService->getMappingList();
+        return $this->successPaginatedResponse($mappings, 'Berhasil mengambil daftar mapping kategori');
     }
 }

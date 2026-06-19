@@ -43,6 +43,7 @@ class CategorySeeder extends Seeder
                     'name' => $cat['local_name'],
                     'is_leaf' => $cat['is_leaf'],
                     'parent_id' => $parentInternalId,
+                    'source' => 'system',
                     'updated_at' => $now,
                 ]);
                 $id = $existing->id;
@@ -53,6 +54,8 @@ class CategorySeeder extends Seeder
                     'name' => $cat['local_name'],
                     'is_leaf' => $cat['is_leaf'],
                     'is_active' => true,
+                    'source' => 'system',
+                    'is_enabled' => false,
                     'created_at' => $now,
                     'updated_at' => $now,
                 ]);
