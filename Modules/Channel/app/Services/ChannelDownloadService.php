@@ -80,6 +80,7 @@ class ChannelDownloadService
         return match (strtolower($channel)) {
             'tiktok' => app(TikTokProductService::class)->searchProducts($shopId, $query),
             'lazada' => app(LazadaProductService::class)->searchProducts($shopId, $query),
+            'shopee' => app(ShopeeProductService::class)->searchProducts($shopId, $query),
             default => [],
         };
     }
@@ -92,6 +93,7 @@ class ChannelDownloadService
         $ok = match (strtolower($channel)) {
             'tiktok' => app(TikTokProductService::class)->pullProductById($shopId, $externalProductId),
             'lazada' => app(LazadaProductService::class)->pullProductById($shopId, $externalProductId),
+            'shopee' => app(ShopeeProductService::class)->pullProductById($shopId, $externalProductId),
             default => false,
         };
 
@@ -111,7 +113,7 @@ class ChannelDownloadService
 
     protected function assertSupported(string $channel): void
     {
-        if (! in_array(strtolower($channel), ['tiktok', 'lazada'], true)) {
+        if (! in_array(strtolower($channel), ['tiktok', 'lazada', 'shopee'], true)) {
             throw new \RuntimeException("Channel '{$channel}' belum didukung untuk download", 422);
         }
     }
@@ -132,6 +134,7 @@ class ChannelDownloadService
         return match (strtolower($channel)) {
             'tiktok' => fn (string $shopId) => app(TikTokProductService::class)->pullProducts($shopId),
             'lazada' => fn (string $shopId) => app(LazadaProductService::class)->pullProducts($shopId),
+            'shopee' => fn (string $shopId) => app(ShopeeProductService::class)->pullProducts($shopId),
             default => throw new \RuntimeException("Channel '{$channel}' belum didukung untuk download", 422),
         };
     }

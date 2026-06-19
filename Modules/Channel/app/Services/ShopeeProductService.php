@@ -3,8 +3,11 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Modules\Channel\Exceptions\TokenExpiredException;
+use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Product\Models\ProductSyncLog;
 use Ramsey\Uuid\Uuid;
 
 /**
@@ -21,6 +24,7 @@ class ShopeeProductService
         protected ShopeeClient $client,
         protected ChannelShopRepository $shopRepository,
         protected ShopeeAuthService $authService,
+        protected ChannelProductRepository $productRepository,
     ) {}
 
     /** Tarik seluruh pohon kategori Shopee → channel_categories. */
@@ -192,6 +196,237 @@ class ShopeeProductService
             'tier_variation' => $res['response']['tier_variation'] ?? [],
             'models' => $res['response']['model'] ?? [],
         ];
+    }
+
+    /**
+     * Tarik semua produk toko Shopee → tabel produk internal (status 'download') + channel mapping.
+     * Alur: get_item_list (paginasi offset) → get_item_base_info (≤50/batch) → get_model_list utk item ber-varian.
+     */
+    public function pullProducts(string $shopId): int
+    {
+        $shop = $this->requireShop($shopId);
+        $productService = app(\Modules\Product\Services\ProductService::class);
+        $mapper = app(ShopeeToInternalProductMapper::class);
+
+        $count = 0;
+        $offset = 0;
+        $pageSize = 50;
+
+        do {
+            $list = $this->fetchItemList($shop, $offset, $pageSize);
+            $itemIds = $this->extractItemIds($list);
+
+            foreach (array_chunk($itemIds, 50) as $chunk) {
+                foreach ($this->fetchBaseInfo($shop, $chunk) as $item) {
+                    try {
+                        $item = $this->hydrateModels($shop, $item);
+                        if ($this->persistItem($shop, $shopId, $item, $mapper, $productService)) {
+                            $count++;
+                        }
+                    } catch (\Throwable $e) {
+                        Log::error('Shopee pull gagal item ' . ($item['item_id'] ?? '?') . ': ' . $e->getMessage());
+
+                        ProductSyncLog::record([
+                            'channel_shop_id' => $shop->id,
+                            'action' => ProductSyncLog::ACTION_DOWNLOAD,
+                            'status' => ProductSyncLog::STATUS_FAILED,
+                            'payload' => [
+                                'external_product_id' => $item['item_id'] ?? null,
+                                'title' => $item['item_name'] ?? null,
+                            ],
+                            'error_message' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            }
+
+            $hasNext = (bool) ($list['has_next_page'] ?? false);
+            $offset = (int) ($list['next_offset'] ?? ($offset + $pageSize));
+        } while ($hasNext);
+
+        return $count;
+    }
+
+    /** Tarik satu produk Shopee by item_id (Download Satuan). */
+    public function pullProductById(string $shopId, string $externalProductId): bool
+    {
+        $shop = $this->requireShop($shopId);
+        $productService = app(\Modules\Product\Services\ProductService::class);
+        $mapper = app(ShopeeToInternalProductMapper::class);
+
+        $item = $this->fetchBaseInfo($shop, [$externalProductId])[0] ?? null;
+        if (! $item) {
+            return false;
+        }
+
+        $item = $this->hydrateModels($shop, $item);
+
+        if (! $this->persistItem($shop, $shopId, $item, $mapper, $productService)) {
+            return false;
+        }
+
+        ProductSyncLog::record([
+            'channel_shop_id' => $shop->id,
+            'action' => ProductSyncLog::ACTION_DOWNLOAD,
+            'status' => ProductSyncLog::STATUS_SUCCESS,
+            'response' => ['external_product_id' => (string) ($item['item_id'] ?? $externalProductId)],
+        ]);
+
+        return true;
+    }
+
+    /** Cari produk di toko Shopee (Download Satuan) — ringkasan tanpa persist. */
+    public function searchProducts(string $shopId, string $query): array
+    {
+        $shop = $this->requireShop($shopId);
+        $needle = trim(mb_strtolower($query));
+
+        $results = [];
+        $offset = 0;
+        $pageSize = 50;
+        $pages = 0;
+
+        do {
+            $list = $this->fetchItemList($shop, $offset, $pageSize);
+            $itemIds = $this->extractItemIds($list);
+
+            foreach ($this->fetchBaseInfo($shop, $itemIds) as $item) {
+                $name = (string) ($item['item_name'] ?? '');
+                $sellerSku = $item['item_sku'] ?? null;
+
+                if ($needle !== '' && ! str_contains(mb_strtolower($name . ' ' . (string) $sellerSku), $needle)) {
+                    continue;
+                }
+
+                $results[] = [
+                    'external_product_id' => (string) ($item['item_id'] ?? ''),
+                    'name' => $name,
+                    'seller_sku' => $sellerSku,
+                    'image' => $item['image']['image_url_list'][0] ?? null,
+                    'shop_id' => $shopId,
+                    'shop_name' => $shop->shop_name ?? null,
+                    'channel_code' => 'shopee',
+                ];
+            }
+
+            $hasNext = (bool) ($list['has_next_page'] ?? false);
+            $offset = (int) ($list['next_offset'] ?? ($offset + $pageSize));
+            $pages++;
+        } while ($hasNext && $pages < 5 && count($results) < 200);
+
+        return $results;
+    }
+
+    /** Satu halaman get_item_list. */
+    protected function fetchItemList(object $shop, int $offset, int $pageSize): array
+    {
+        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/product/get_item_list', [
+            'offset' => $offset,
+            'page_size' => $pageSize,
+        ], $token, $shop->shop_id));
+
+        return $res['response'] ?? [];
+    }
+
+    /** Info dasar untuk sekumpulan item_id (≤50 per Shopee). */
+    protected function fetchBaseInfo(object $shop, array $itemIds): array
+    {
+        if (empty($itemIds)) {
+            return [];
+        }
+
+        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/product/get_item_base_info', [
+            'item_id_list' => implode(',', $itemIds),
+        ], $token, $shop->shop_id));
+
+        return $res['response']['item_list'] ?? [];
+    }
+
+    /** Lengkapi item ber-varian dengan model_list dari get_model_list. */
+    protected function hydrateModels(object $shop, array $item): array
+    {
+        if (empty($item['has_model'])) {
+            return $item;
+        }
+
+        $itemId = (string) ($item['item_id'] ?? '');
+        if ($itemId === '') {
+            return $item;
+        }
+
+        try {
+            $item['model_list'] = $this->getModelList($shop->shop_id, $itemId)['models'] ?? [];
+        } catch (\Throwable $e) {
+            Log::warning("Shopee get_model_list gagal item {$itemId}: " . $e->getMessage());
+        }
+
+        return $item;
+    }
+
+    /** Map + upsert satu item Shopee ke produk internal + channel mapping. */
+    protected function persistItem(object $shop, string $shopId, array $item, ShopeeToInternalProductMapper $mapper, $productService): bool
+    {
+        $insertedId = $productService->upsertFromChannel($mapper->map($item, $shopId));
+        if (! $insertedId) {
+            return false;
+        }
+
+        $pcmId = $this->productRepository->upsertChannelMapping(
+            (string) $insertedId,
+            $shopId,
+            (string) ($item['item_id'] ?? ''),
+            'synced',
+            null
+        );
+
+        $models = $item['model_list'] ?? [];
+
+        if (empty($models)) {
+            // Item tanpa varian → mapper membuat satu varian fallback SKU "SHP-{item_id}".
+            $sku = 'SHP-' . ($item['item_id'] ?? '');
+            $variant = $this->productRepository->getVariantByProductIdAndSku((string) $insertedId, $sku);
+            if ($variant) {
+                $this->productRepository->upsertVariantChannelMapping(
+                    $pcmId,
+                    $variant->id,
+                    null,
+                    $item['item_sku'] ?? null,
+                    $item['price_info'][0]['current_price'] ?? null
+                );
+            }
+
+            return true;
+        }
+
+        foreach ($models as $model) {
+            $sku = ! empty($model['model_sku'])
+                ? $model['model_sku']
+                : ('SHP-' . ($model['model_id'] ?? ''));
+
+            $variant = $this->productRepository->getVariantByProductIdAndSku((string) $insertedId, $sku);
+            if (! $variant) {
+                continue;
+            }
+
+            $this->productRepository->upsertVariantChannelMapping(
+                $pcmId,
+                $variant->id,
+                isset($model['model_id']) ? (string) $model['model_id'] : null,
+                $model['model_sku'] ?? null,
+                $model['price_info'][0]['current_price'] ?? $model['original_price'] ?? null
+            );
+        }
+
+        return true;
+    }
+
+    /** Ambil daftar item_id dari respons get_item_list. */
+    protected function extractItemIds(array $list): array
+    {
+        return array_values(array_filter(array_map(
+            fn ($it) => (string) ($it['item_id'] ?? ''),
+            $list['item'] ?? []
+        )));
     }
 
     protected function sweepDeprecated(string $channelId, array $seen): void

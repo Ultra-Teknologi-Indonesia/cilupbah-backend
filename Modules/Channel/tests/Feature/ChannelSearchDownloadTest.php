@@ -167,11 +167,11 @@ class ChannelSearchDownloadTest extends TestCase
 
     public function test_download_product_unsupported_channel_returns_422(): void
     {
-        $shopee = Channel::create(['code' => 'shopee', 'name' => 'Shopee', 'is_active' => true]);
-        ChannelShop::create(['channel_id' => $shopee->id, 'shop_id' => 'SHOP-SP', 'access_token' => 't', 'is_active' => true]);
+        $blibli = Channel::create(['code' => 'blibli', 'name' => 'Blibli', 'is_active' => true]);
+        ChannelShop::create(['channel_id' => $blibli->id, 'shop_id' => 'SHOP-SP', 'access_token' => 't', 'is_active' => true]);
 
         $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/v1/shopee/download-product', [
+            ->postJson('/api/v1/blibli/download-product', [
                 'shop_id' => 'SHOP-SP',
                 'external_product_id' => 'X',
             ])

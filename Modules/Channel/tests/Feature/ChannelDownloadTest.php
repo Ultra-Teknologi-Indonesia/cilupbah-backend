@@ -124,7 +124,7 @@ class ChannelDownloadTest extends TestCase
 
     public function test_download_unsupported_channel_returns_422()
     {
-        $response = $this->postJson('/api/v1/shopee/download', ['shop_id' => 'SHOP-DL-1']);
+        $response = $this->postJson('/api/v1/blibli/download', ['shop_id' => 'SHOP-DL-1']);
         $response->assertStatus(422);
         $response->assertJsonPath('status', 'error');
     }
