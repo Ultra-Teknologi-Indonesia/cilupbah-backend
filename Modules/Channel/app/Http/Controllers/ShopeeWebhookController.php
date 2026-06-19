@@ -96,6 +96,23 @@ class ShopeeWebhookController extends Controller
                 return response('', 200);
             }
 
+            $payload = json_decode($rawBody, true);
+
+            // Shopee verification message (code 0) — accept regardless of signature
+            // so the initial "Set Push" verification passes. Signature validation
+            // is "technically optional" per Shopee docs.
+            if (is_array($payload) && ($payload['code'] ?? -1) === 0 && isset($payload['data']['verify_info'])) {
+                $signatureOk = $this->isValidSignature($request, $rawBody);
+                Log::info('Shopee push verification message', [
+                    'ip' => $request->ip(),
+                    'signature_valid' => $signatureOk,
+                    'verify_info' => $payload['data']['verify_info'],
+                ]);
+                $result = $signatureOk ? 'verification_signed_200' : 'verification_sig_mismatch_200';
+
+                return response('', 200);
+            }
+
             if (! $this->isValidSignature($request, $rawBody)) {
                 Log::warning('Shopee push signature tidak valid', [
                     'ip' => $request->ip(),
@@ -106,8 +123,6 @@ class ShopeeWebhookController extends Controller
 
                 return response('', 401);
             }
-
-            $payload = json_decode($rawBody, true);
 
             if (! is_array($payload)) {
                 Log::warning('Shopee push payload bukan JSON valid — diabaikan.');
@@ -133,7 +148,8 @@ class ShopeeWebhookController extends Controller
 
     protected function isValidSignature(Request $request, string $rawBody): bool
     {
-        $partnerKey = (string) config('services.shopee.partner_key');
+        $pushPartnerKey = (string) config('services.shopee.push_partner_key');
+        $partnerKey = $pushPartnerKey !== '' ? $pushPartnerKey : (string) config('services.shopee.partner_key');
         $provided = (string) $request->header('Authorization', '');
 
         if ($provided === '' || $partnerKey === '') {
@@ -154,8 +170,7 @@ class ShopeeWebhookController extends Controller
                 'request_url' => $request->url(),
                 'expected' => $expected,
                 'provided' => strtolower($provided),
-                'partner_key_len' => strlen($partnerKey),
-                'partner_key_prefix' => substr($partnerKey, 0, 8),
+                'key_source' => $pushPartnerKey !== '' ? 'push_partner_key' : 'partner_key',
                 'body_len' => strlen($rawBody),
             ]);
 

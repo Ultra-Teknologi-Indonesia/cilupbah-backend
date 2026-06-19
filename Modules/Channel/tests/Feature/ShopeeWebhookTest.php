@@ -23,6 +23,7 @@ class ShopeeWebhookTest extends TestCase
         config([
             'services.shopee.partner_id' => '200123',
             'services.shopee.partner_key' => 'test_partner_key',
+            'services.shopee.push_partner_key' => '',
             'services.shopee.push_url' => '',
             'services.shopee.redirect_uri' => '',
             'services.shopee.host' => 'https://partner.shopeemobile.com',
@@ -139,6 +140,25 @@ class ShopeeWebhookTest extends TestCase
         $payload = $this->orderPayload();
         $body = json_encode($payload);
         $signature = ShopeeSignature::pushSign($customUrl, $body, 'test_partner_key');
+
+        $this->call('POST', '/api/v1/shopee/webhook', [], [], [], [
+            'HTTP_AUTHORIZATION' => $signature,
+            'CONTENT_TYPE' => 'application/json',
+        ], $body)->assertStatus(200);
+
+        Queue::assertPushed(ProcessShopeeWebhook::class, 1);
+    }
+
+    public function test_push_partner_key_takes_precedence(): void
+    {
+        Queue::fake();
+
+        $pushKey = 'separate_push_key';
+        config(['services.shopee.push_partner_key' => $pushKey]);
+
+        $payload = $this->orderPayload();
+        $body = json_encode($payload);
+        $signature = ShopeeSignature::pushSign(self::URL, $body, $pushKey);
 
         $this->call('POST', '/api/v1/shopee/webhook', [], [], [], [
             'HTTP_AUTHORIZATION' => $signature,
