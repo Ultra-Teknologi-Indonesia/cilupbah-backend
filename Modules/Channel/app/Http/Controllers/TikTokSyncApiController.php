@@ -189,6 +189,19 @@ class TikTokSyncApiController extends Controller
         }
     }
 
+    public function syncCategories(Request $request, TikTokProductService $productService)
+    {
+        $validated = $request->validate(['shop_id' => ['required', 'string']]);
+
+        try {
+            $count = $productService->syncCategoryTree($validated['shop_id']);
+        } catch (\Throwable $e) {
+            return $this->errorResponse('Gagal sinkron kategori TikTok: ' . $e->getMessage(), 422);
+        }
+
+        return $this->successResponse(['synced' => $count], "{$count} kategori TikTok disinkronkan.");
+    }
+
     public function syncCategoryAttributes(Request $request, TikTokProductService $productService)
     {
         $validated = $request->validate([

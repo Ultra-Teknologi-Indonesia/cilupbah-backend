@@ -995,6 +995,107 @@ class TikTokProductService
         return $failCount;
     }
 
+    /** Tarik seluruh pohon kategori TikTok → channel_categories. */
+    public function syncCategoryTree(string $shopId): int
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            throw new \Exception("Toko TikTok tidak terhubung: {$shopId}");
+        }
+
+        $channelId = DB::table('channels')->where('code', 'tiktok')->value('id');
+        if (! $channelId) {
+            throw new \Exception('Channel tiktok belum ter-seed.');
+        }
+
+        $count = 0;
+        $seen = [];
+        $pageToken = '';
+
+        do {
+            $queries = [
+                'shop_cipher' => $shop->shop_id,
+                'locale' => 'id-ID',
+                'page_size' => 200,
+            ];
+            if ($pageToken !== '') {
+                $queries['page_token'] = $pageToken;
+            }
+
+            $res = $this->client->request(
+                'GET',
+                '/product/202309/categories',
+                $queries,
+                [],
+                $shop->access_token
+            );
+
+            $categories = $res['data']['categories'] ?? [];
+
+            foreach ($categories as $node) {
+                $extId = (string) ($node['id'] ?? '');
+                if ($extId === '') {
+                    continue;
+                }
+                $seen[] = $extId;
+
+                $parentId = (string) ($node['parent_id'] ?? '0');
+                if ($parentId === '') {
+                    $parentId = '0';
+                }
+
+                $values = [
+                    'parent_external_id' => $parentId,
+                    'name' => (string) ($node['local_name'] ?? $node['name'] ?? ''),
+                    'is_leaf' => (bool) ($node['is_leaf'] ?? false),
+                    'updated_at' => now(),
+                ];
+
+                $existing = DB::table('channel_categories')
+                    ->where('channel_id', $channelId)
+                    ->where('external_id', $extId)
+                    ->first();
+
+                if ($existing) {
+                    DB::table('channel_categories')->where('id', $existing->id)->update($values);
+                } else {
+                    DB::table('channel_categories')->insert($values + [
+                        'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
+                        'channel_id' => $channelId,
+                        'external_id' => $extId,
+                        'created_at' => now(),
+                    ]);
+                }
+                $count++;
+            }
+
+            $pageToken = $res['data']['next_page_token'] ?? '';
+        } while ($pageToken !== '');
+
+        $this->sweepDeprecated($channelId, $seen);
+
+        return $count;
+    }
+
+    protected function sweepDeprecated(string $channelId, array $seen): void
+    {
+        if (empty($seen)) {
+            return;
+        }
+
+        DB::table('channel_categories')
+            ->where('channel_id', $channelId)
+            ->whereNotIn('external_id', $seen)
+            ->whereNull('deprecated_at')
+            ->update(['deprecated_at' => now(), 'updated_at' => now()]);
+
+        DB::table('channel_categories')
+            ->where('channel_id', $channelId)
+            ->whereIn('external_id', $seen)
+            ->whereNotNull('deprecated_at')
+            ->update(['deprecated_at' => null, 'updated_at' => now()]);
+    }
+
     public function syncCategoryAttributes(string $shopId, string $categoryExtId): int
     {
         $shop = $this->shopRepository->findByShopId($shopId);
