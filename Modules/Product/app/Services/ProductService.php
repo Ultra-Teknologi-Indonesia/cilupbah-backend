@@ -15,6 +15,7 @@ use Modules\Finance\Support\AccountMappingKey;
 use Modules\Inventory\Models\Inventory;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
+use Modules\Product\Models\Attribute;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Product\Repositories\ProductWriteRepository;
 
@@ -612,8 +613,40 @@ class ProductService
         }
     }
 
+    private function resolveCustomAttributes(array &$data): void
+    {
+        $nameToId = [];
+
+        foreach ($data['variation_types'] ?? [] as $i => $vt) {
+            if (!empty($vt['attribute_id'])) continue;
+            $name = $vt['name'] ?? null;
+            if (!$name) continue;
+
+            if (!isset($nameToId[$name])) {
+                $attr = Attribute::create(['name' => $name, 'type' => 'sales']);
+                $nameToId[$name] = $attr->id;
+            }
+            $data['variation_types'][$i]['attribute_id'] = $nameToId[$name];
+        }
+
+        foreach ($data['variants'] ?? [] as $vi => $variant) {
+            foreach ($variant['options'] ?? [] as $oi => $opt) {
+                if (!empty($opt['attribute_id'])) continue;
+                $name = $opt['name'] ?? null;
+                if (!$name) continue;
+
+                if (!isset($nameToId[$name])) {
+                    $attr = Attribute::create(['name' => $name, 'type' => 'sales']);
+                    $nameToId[$name] = $attr->id;
+                }
+                $data['variants'][$vi]['options'][$oi]['attribute_id'] = $nameToId[$name];
+            }
+        }
+    }
+
     public function createProduct(array $data)
     {
+        $this->resolveCustomAttributes($data);
         $this->assertVariationConstraints($data);
         $this->assertCategoryAttributes($data['category_id'] ?? null, $data, true);
 

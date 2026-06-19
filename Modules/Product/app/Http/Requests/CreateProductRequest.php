@@ -59,7 +59,8 @@ class CreateProductRequest extends FormRequest
             'specifications.*.text_value' => 'nullable|string',
 
             'variation_types' => 'nullable|array|max:2',
-            'variation_types.*.attribute_id' => 'required|bail|integer|distinct|exists:attributes,id',
+            'variation_types.*.attribute_id' => 'nullable|bail|integer|distinct|exists:attributes,id',
+            'variation_types.*.name' => 'nullable|string|max:100',
             'variation_types.*.sort_order' => 'nullable|integer|min:0',
 
             'variants' => 'required|array|min:1',
@@ -77,7 +78,8 @@ class CreateProductRequest extends FormRequest
             'variants.*.unlimited_shop_ids.*' => 'uuid|distinct|exists:channel_shops,id',
 
             'variants.*.options' => 'nullable|array',
-            'variants.*.options.*.attribute_id' => 'required|bail|integer|exists:attributes,id',
+            'variants.*.options.*.attribute_id' => 'nullable|bail|integer|exists:attributes,id',
+            'variants.*.options.*.name' => 'nullable|string|max:100',
             'variants.*.options.*.value' => 'required|string',
 
             'variants.*.media' => 'nullable|array',
@@ -101,6 +103,20 @@ class CreateProductRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $v) {
+
+            foreach ((array) $this->input('variation_types', []) as $i => $vt) {
+                if (empty($vt['attribute_id']) && empty($vt['name'])) {
+                    $v->errors()->add("variation_types.$i.attribute_id", 'Attribute ID atau nama jenis varian wajib diisi.');
+                }
+            }
+
+            foreach ((array) $this->input('variants', []) as $vi => $variant) {
+                foreach ((array) ($variant['options'] ?? []) as $oi => $opt) {
+                    if (empty($opt['attribute_id']) && empty($opt['name'])) {
+                        $v->errors()->add("variants.$vi.options.$oi.attribute_id", 'Attribute ID atau nama opsi varian wajib diisi.');
+                    }
+                }
+            }
 
             $categoryId = $this->input('category_id');
             if ($categoryId !== null && $v->errors()->has('category_id') === false) {
