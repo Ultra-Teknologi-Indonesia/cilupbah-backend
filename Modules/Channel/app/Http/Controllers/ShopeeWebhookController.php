@@ -21,16 +21,29 @@ class ShopeeWebhookController extends Controller
         return $this->successResponse(['service' => 'ready'], 'Shopee webhook service aktif.');
     }
 
+    public function ping()
+    {
+        return response('', 200);
+    }
+
     public function debug(Request $request)
     {
-        return $this->successResponse([
-            'push_url' => config('services.shopee.push_url'),
-            'redirect_uri' => config('services.shopee.redirect_uri'),
-            'has_partner_key' => config('services.shopee.partner_key') !== null && config('services.shopee.partner_key') !== '',
-            'partner_id' => config('services.shopee.partner_id'),
-            'request_url' => $request->url(),
-            'resolved_push_url' => $this->resolvePushUrl($request),
-        ], 'Shopee push config debug.');
+        $logFile = storage_path('logs/shopee-push-debug.json');
+        $entries = file_exists($logFile)
+            ? json_decode(file_get_contents($logFile), true) ?? []
+            : [];
+
+        return response()->json([
+            'config' => [
+                'push_url' => config('services.shopee.push_url'),
+                'redirect_uri' => config('services.shopee.redirect_uri'),
+                'has_partner_key' => config('services.shopee.partner_key') !== null && config('services.shopee.partner_key') !== '',
+                'partner_id' => config('services.shopee.partner_id'),
+                'request_url' => $request->url(),
+                'resolved_push_url' => $this->resolvePushUrl($request),
+            ],
+            'recent_requests' => array_slice($entries, -20),
+        ]);
     }
 
     #[OA\Post(
@@ -45,38 +58,49 @@ class ShopeeWebhookController extends Controller
     public function handle(Request $request)
     {
         $rawBody = $request->getContent();
+        $result = 'unknown';
 
-        if ($request->header('Authorization', '') === '') {
-            Log::info('Shopee push verification probe', ['ip' => $request->ip()]);
+        try {
+            if ($request->header('Authorization', '') === '') {
+                Log::info('Shopee push verification probe', ['ip' => $request->ip()]);
+                $result = 'verification_probe_200';
+
+                return response('', 200);
+            }
+
+            if (! $this->isValidSignature($request, $rawBody)) {
+                Log::warning('Shopee push signature tidak valid', [
+                    'ip' => $request->ip(),
+                    'url' => $request->url(),
+                    'push_url' => $this->resolvePushUrl($request),
+                ]);
+                $result = 'invalid_signature_401';
+
+                return response('', 401);
+            }
+
+            $payload = json_decode($rawBody, true);
+
+            if (! is_array($payload)) {
+                Log::warning('Shopee push payload bukan JSON valid — diabaikan.');
+                $result = 'invalid_json_200';
+
+                return response('', 200);
+            }
+
+            if (! $this->isFirstDelivery($payload)) {
+                $result = 'duplicate_200';
+
+                return response('', 200);
+            }
+
+            ProcessShopeeWebhook::dispatch($payload);
+            $result = 'dispatched_200';
 
             return response('', 200);
+        } finally {
+            $this->logPushRequest($request, $rawBody, $result);
         }
-
-        if (! $this->isValidSignature($request, $rawBody)) {
-            Log::warning('Shopee push signature tidak valid', [
-                'ip' => $request->ip(),
-                'url' => $request->url(),
-                'push_url' => $this->resolvePushUrl($request),
-            ]);
-
-            return response('', 401);
-        }
-
-        $payload = json_decode($rawBody, true);
-
-        if (! is_array($payload)) {
-            Log::warning('Shopee push payload bukan JSON valid — diabaikan.');
-
-            return response('', 200);
-        }
-
-        if (! $this->isFirstDelivery($payload)) {
-            return response('', 200);
-        }
-
-        ProcessShopeeWebhook::dispatch($payload);
-
-        return response('', 200);
     }
 
     protected function isValidSignature(Request $request, string $rawBody): bool
@@ -142,5 +166,42 @@ class ShopeeWebhookController extends Controller
         ]));
 
         return Cache::add($key, 1, now()->addDay());
+    }
+
+    protected function logPushRequest(Request $request, string $rawBody, string $result): void
+    {
+        try {
+            $logFile = storage_path('logs/shopee-push-debug.json');
+            $entries = file_exists($logFile)
+                ? json_decode(file_get_contents($logFile), true) ?? []
+                : [];
+
+            $auth = $request->header('Authorization', '');
+            $entries[] = [
+                'time' => now()->toIso8601String(),
+                'method' => $request->method(),
+                'url' => $request->url(),
+                'full_url' => $request->fullUrl(),
+                'ip' => $request->ip(),
+                'has_authorization' => $auth !== '',
+                'authorization_preview' => $auth !== '' ? substr($auth, 0, 20) . '...' : '(empty)',
+                'content_type' => $request->header('Content-Type'),
+                'body_length' => strlen($rawBody),
+                'body_preview' => substr($rawBody, 0, 200),
+                'resolved_push_url' => $this->resolvePushUrl($request),
+                'result' => $result,
+                'headers' => collect($request->headers->all())
+                    ->map(fn ($v) => implode(', ', $v))
+                    ->except(['cookie'])
+                    ->toArray(),
+            ];
+
+            // Keep last 50 entries
+            $entries = array_slice($entries, -50);
+
+            file_put_contents($logFile, json_encode($entries, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        } catch (\Throwable $e) {
+            Log::error('Failed to write shopee push debug log', ['error' => $e->getMessage()]);
+        }
     }
 }
