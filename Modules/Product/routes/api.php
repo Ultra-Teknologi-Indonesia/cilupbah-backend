@@ -131,6 +131,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('categories/enable', [CategoryController::class, 'enableCategories']);
     Route::post('categories/disable', [CategoryController::class, 'disableCategories']);
     Route::get('categories/mapping', [CategoryController::class, 'mappingList']);
+    Route::get('categories/search', [CategoryController::class, 'search']);
 
     Route::apiResource('categories', CategoryController::class)->names('category')->where(['category' => '[0-9]+']);
     Route::post('categories/{category}/map-channel', [CategoryController::class, 'mapChannel'])->whereNumber('category');

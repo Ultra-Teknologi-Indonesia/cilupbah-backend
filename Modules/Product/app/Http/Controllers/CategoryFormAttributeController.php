@@ -44,7 +44,6 @@ class CategoryFormAttributeController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'type' => 'required|in:sales,spec',
-            'is_required' => 'sometimes|boolean',
         ]);
 
         $result = DB::transaction(function () use ($validated, $categoryId) {
@@ -56,7 +55,7 @@ class CategoryFormAttributeController extends Controller
             CategoryAttribute::create([
                 'category_id' => $categoryId,
                 'attribute_id' => $attribute->id,
-                'is_required' => $validated['is_required'] ?? false,
+                'is_required' => true,
             ]);
 
             return $attribute;
