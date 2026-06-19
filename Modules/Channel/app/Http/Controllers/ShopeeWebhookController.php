@@ -63,13 +63,43 @@ class ShopeeWebhookController extends Controller
         $provided = (string) $request->header('Authorization', '');
 
         if ($provided === '' || $partnerKey === '') {
+            Log::warning('Shopee webhook signature kosong', [
+                'has_auth' => $provided !== '',
+                'has_key' => $partnerKey !== '',
+            ]);
+
             return false;
         }
 
-        // Shopee menandatangani push URL (tanpa query string) + "|" + raw body.
-        $expected = ShopeeSignature::pushSign($request->url(), $rawBody, $partnerKey);
+        $pushUrl = $this->resolvePushUrl($request);
+        $expected = ShopeeSignature::pushSign($pushUrl, $rawBody, $partnerKey);
 
-        return hash_equals($expected, strtolower($provided));
+        if (! hash_equals($expected, strtolower($provided))) {
+            Log::warning('Shopee webhook signature mismatch', [
+                'push_url_used' => $pushUrl,
+                'request_url' => $request->url(),
+            ]);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Resolve the public-facing push URL that Shopee uses for signing.
+     * Behind a reverse proxy, $request->url() may return internal URL
+     * (e.g. http://127.0.0.1:8000/...) instead of the public URL.
+     */
+    protected function resolvePushUrl(Request $request): string
+    {
+        $configuredUrl = (string) config('services.shopee.push_url');
+
+        if ($configuredUrl !== '') {
+            return $configuredUrl;
+        }
+
+        return $request->url();
     }
 
     protected function isFirstDelivery(array $payload): bool
