@@ -166,17 +166,34 @@ class LazadaAdapter implements MarketplaceAdapterInterface
     protected function buildProductPayload(Product $product): array
     {
 
-        $product->loadMissing('variants.options');
+        $product->loadMissing('variants.options', 'media');
 
-        $internal = $product->toArray();
-        $internal['variants'] = $product->variants->toArray();
+        $images = $product->media->where('media_type', 'image');
 
-        $imageUrls = [];
-        foreach ($product->media ?? [] as $media) {
-            if (! empty($media->url)) {
-                $imageUrls[] = $media->url;
+        // Gambar level-produk: media tanpa variant_id (fallback ke semua bila tak ada yang khusus produk).
+        $imageUrls = $images->whereNull('variant_id')->sortBy('sort_order')->pluck('url')->values()->all();
+        if (empty($imageUrls)) {
+            $imageUrls = $images->sortBy('sort_order')->pluck('url')->values()->all();
+        }
+
+        // Gambar per varian (Lazada menerima URL langsung, tanpa pre-upload).
+        $variantImageById = [];
+        foreach ($images->whereNotNull('variant_id')->sortBy('sort_order')->groupBy('variant_id') as $variantId => $group) {
+            $url = $group->first()->url ?? null;
+            if ($url) {
+                $variantImageById[$variantId] = $url;
             }
         }
+
+        $internal = $product->toArray();
+        $internal['variants'] = $product->variants->map(function ($variant) use ($variantImageById) {
+            $arr = $variant->toArray();
+            if (! empty($variantImageById[$variant->id])) {
+                $arr['image_url'] = $variantImageById[$variant->id];
+            }
+
+            return $arr;
+        })->all();
 
         return $this->outboundMapper->map($internal, $imageUrls, config('channel.lazada_defaults', []));
     }

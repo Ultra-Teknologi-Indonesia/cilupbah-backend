@@ -42,11 +42,37 @@ class TikTokAdapter implements MarketplaceAdapterInterface
 
     public function pushProduct(Product $product, ChannelShop $shop, ?array $attributeMapping = null): array
     {
-        $imageUrls = $product->media->where('media_type', 'image')->pluck('url')->all();
-        $imageUris = empty($imageUrls) ? [] : $this->imageUploader->uploadFromUrls($imageUrls, $shop->access_token);
+        $images = $product->media->where('media_type', 'image');
+
+        // Gambar level-produk: media tanpa variant_id (fallback ke semua bila tak ada yang khusus produk).
+        $productImageUrls = $images->whereNull('variant_id')->sortBy('sort_order')->pluck('url')->values()->all();
+        if (empty($productImageUrls)) {
+            $productImageUrls = $images->sortBy('sort_order')->pluck('url')->values()->all();
+        }
+        $imageUris = empty($productImageUrls) ? [] : $this->imageUploader->uploadFromUrls($productImageUrls, $shop->access_token);
+
+        // Gambar per varian: upload satu per satu agar bisa dipetakan variant_id → uri.
+        $variantUriById = [];
+        foreach ($images->whereNotNull('variant_id')->sortBy('sort_order')->groupBy('variant_id') as $variantId => $group) {
+            $url = $group->first()->url ?? null;
+            if (! $url) {
+                continue;
+            }
+            $uri = $this->imageUploader->uploadFromUrls([$url], $shop->access_token)[0] ?? null;
+            if ($uri) {
+                $variantUriById[$variantId] = $uri;
+            }
+        }
 
         $internalProductArray = $product->toArray();
-        $internalProductArray['variants'] = $product->variants->toArray();
+        $internalProductArray['variants'] = $product->variants->map(function ($variant) use ($variantUriById) {
+            $arr = $variant->toArray();
+            if (! empty($variantUriById[$variant->id])) {
+                $arr['image_uri'] = $variantUriById[$variant->id];
+            }
+
+            return $arr;
+        })->all();
 
         $config = $this->productService->buildUploadConfig($product, $shop, null, $attributeMapping);
 

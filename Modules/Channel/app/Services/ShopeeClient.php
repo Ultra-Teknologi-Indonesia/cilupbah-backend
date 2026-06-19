@@ -122,6 +122,41 @@ class ShopeeClient
         return $data;
     }
 
+    /**
+     * Upload gambar ke media space Shopee (Public API, multipart form-data).
+     * Mengembalikan image_id untuk dipakai pada add_item (image.image_id_list / tier image).
+     */
+    public function uploadImage(string $contents, string $filename = 'image.jpg'): ?string
+    {
+        $path = '/api/v2/media_space/upload_image';
+        $timestamp = time();
+        $sign = ShopeeSignature::publicSign($this->partnerId, $path, $timestamp, $this->partnerKey);
+
+        $this->throttle();
+
+        $url = $this->host . $path . '?' . http_build_query([
+            'partner_id' => $this->partnerId,
+            'timestamp' => $timestamp,
+            'sign' => $sign,
+        ]);
+
+        $response = Http::attach('image', $contents, $filename)->post($url);
+        $data = $response->json() ?? [];
+
+        if (! empty($data['error'])) {
+            Log::error('Shopee upload_image error', [
+                'error' => $data['error'],
+                'message' => $data['message'] ?? null,
+            ]);
+
+            return null;
+        }
+
+        return $data['response']['image_info']['image_id']
+            ?? $data['response']['image_info_list'][0]['image_info']['image_id']
+            ?? null;
+    }
+
     protected function publicPost(string $path, array $body): array
     {
         $timestamp = time();

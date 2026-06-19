@@ -61,11 +61,17 @@ class ShopeeProductMapper
     protected function buildVariations(array $variants): array
     {
         $optionNames = [];
+        $optionImages = [];
         $models = [];
 
         foreach ($variants as $variant) {
             $optionName = $this->variantOptionName($variant);
             $optionNames[$optionName] ??= count($optionNames);
+
+            // Gambar per varian dipasang ke opsi tier (image_id hasil upload media).
+            if (! isset($optionImages[$optionName]) && ! empty($variant['image_id'])) {
+                $optionImages[$optionName] = $variant['image_id'];
+            }
 
             $models[] = [
                 'tier_index' => [$optionNames[$optionName]],
@@ -77,7 +83,14 @@ class ShopeeProductMapper
 
         $tierVariation = [[
             'name' => 'Variasi',
-            'option_list' => array_map(fn ($name) => ['option' => $name], array_keys($optionNames)),
+            'option_list' => array_map(function ($name) use ($optionImages) {
+                $option = ['option' => $name];
+                if (! empty($optionImages[$name])) {
+                    $option['image'] = ['image_id' => $optionImages[$name]];
+                }
+
+                return $option;
+            }, array_keys($optionNames)),
         ]];
 
         return [$tierVariation, $models];

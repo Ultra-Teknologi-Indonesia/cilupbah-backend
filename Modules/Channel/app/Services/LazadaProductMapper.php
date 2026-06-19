@@ -33,6 +33,7 @@ class LazadaProductMapper
                 'package_width' => (float) ($product['width'] ?? 0) ?: null,
                 'package_height' => (float) ($product['height'] ?? 0) ?: null,
                 'SaleProp' => $saleProps ?: null,
+                'Images' => ! empty($variant['image_url']) ? [$variant['image_url']] : null,
             ], fn ($v) => $v !== null);
         }
 
