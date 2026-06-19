@@ -107,7 +107,18 @@ class CategoryService
     public function mapToChannel(int $categoryId, array $channelCategoryIds): Category
     {
         $category = $this->getCategoryById($categoryId);
-        $category->channelCategories()->sync($channelCategoryIds);
+
+        $incoming = \Modules\Product\Models\ChannelCategory::whereIn('id', $channelCategoryIds)->get();
+        $channelIdsToReplace = $incoming->pluck('channel_id')->unique();
+
+        DB::transaction(function () use ($category, $channelCategoryIds, $channelIdsToReplace) {
+            $existingToRemove = $category->channelCategories()
+                ->whereIn('channel_categories.channel_id', $channelIdsToReplace)
+                ->pluck('channel_categories.id');
+
+            $category->channelCategories()->detach($existingToRemove);
+            $category->channelCategories()->attach($channelCategoryIds);
+        });
 
         return $category->load('channelCategories');
     }
@@ -222,6 +233,7 @@ class CategoryService
                 'full_category_name' => $fullName,
                 'source' => $category->source,
                 'channels' => $allChannels->map(fn ($ch) => [
+                    'id' => $ch->id,
                     'code' => $ch->code,
                     'name' => $ch->name,
                 ])->values(),

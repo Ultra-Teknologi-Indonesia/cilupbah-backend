@@ -4,7 +4,9 @@ namespace Modules\Product\Services;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
+use Modules\Channel\Models\Channel;
 use Modules\Product\Repositories\ChannelCategoryRepository;
+use Ramsey\Uuid\Uuid;
 
 class ChannelCategoryService
 {
@@ -17,11 +19,26 @@ class ChannelCategoryService
 
     public function getPaginated(string $channelId, int $perPage = 10): LengthAwarePaginator
     {
-        return $this->repository->getPaginated($channelId, $perPage);
+        return $this->repository->getPaginated($this->resolveChannelId($channelId), $perPage);
     }
 
     public function getAll(string $channelId): Collection
     {
-        return $this->repository->getAll($channelId);
+        return $this->repository->getAll($this->resolveChannelId($channelId));
+    }
+
+    protected function resolveChannelId(string $channelId): string
+    {
+        if (Uuid::isValid($channelId)) {
+            return $channelId;
+        }
+
+        $channel = Channel::where('code', $channelId)->first();
+
+        if (! $channel) {
+            abort(404, "Channel '{$channelId}' tidak ditemukan");
+        }
+
+        return $channel->id;
     }
 }
