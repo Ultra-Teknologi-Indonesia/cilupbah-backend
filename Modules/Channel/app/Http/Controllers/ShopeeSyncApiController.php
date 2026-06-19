@@ -10,6 +10,7 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\ChannelListingValidator;
 use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Channel\Services\ShopeeProductService;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
 use OpenApi\Attributes as OA;
@@ -168,5 +169,60 @@ class ShopeeSyncApiController extends Controller
             ['external_product_id' => $externalId],
             'Produk berhasil didorong ke Shopee (menunggu review).'
         );
+    }
+
+    #[OA\Post(path: '/api/v1/shopee/sync/categories', summary: 'Sinkron pohon kategori Shopee', tags: ['Shopee'])]
+    public function syncCategories(Request $request, ShopeeProductService $productService)
+    {
+        $validated = $request->validate(['shop_id' => ['required', 'string']]);
+
+        try {
+            $count = $productService->syncCategoryTree($validated['shop_id']);
+        } catch (\Throwable $e) {
+            return $this->errorResponse('Gagal sinkron kategori Shopee: ' . $e->getMessage(), 422);
+        }
+
+        return $this->successResponse(['synced' => $count], "{$count} kategori Shopee disinkronkan.");
+    }
+
+    #[OA\Post(path: '/api/v1/shopee/sync/category-attributes', summary: 'Sinkron atribut kategori Shopee', tags: ['Shopee'])]
+    public function syncCategoryAttributes(Request $request, ShopeeProductService $productService)
+    {
+        $validated = $request->validate([
+            'shop_id' => ['required', 'string'],
+            'category_id' => ['nullable', 'string'],
+        ]);
+
+        try {
+            if (! empty($validated['category_id'])) {
+                $count = $productService->syncCategoryAttributes($validated['shop_id'], $validated['category_id']);
+
+                return $this->successResponse(
+                    ['synced' => $count, 'category_id' => $validated['category_id']],
+                    "{$count} atribut Shopee disinkronkan."
+                );
+            }
+
+            $results = $productService->syncAllMappedCategoryAttributes($validated['shop_id']);
+        } catch (\Throwable $e) {
+            return $this->errorResponse('Gagal sinkron atribut Shopee: ' . $e->getMessage(), 422);
+        }
+
+        return $this->successResponse(
+            ['categories' => $results, 'total' => array_sum($results)],
+            array_sum($results) . ' atribut dari ' . count($results) . ' kategori disinkronkan.'
+        );
+    }
+
+    #[OA\Get(path: '/api/v1/shopee/products/{item}/models', summary: 'Daftar varian/model item Shopee', tags: ['Shopee'])]
+    public function getModels(Request $request, string $item, ShopeeProductService $productService)
+    {
+        $validated = $request->validate(['shop_id' => ['required', 'string']]);
+
+        try {
+            return $this->successResponse($productService->getModelList($validated['shop_id'], $item), 'Daftar varian Shopee berhasil diambil.');
+        } catch (\Throwable $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
     }
 }

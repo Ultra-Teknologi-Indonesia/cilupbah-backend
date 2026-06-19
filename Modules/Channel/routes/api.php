@@ -94,6 +94,9 @@ Route::prefix('v1/shopee')->group(function () {
         Route::get('logistics', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'logistics'])->name('shopee.logistics');
 
         Route::post('sync/products/push', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'pushProduct'])->name('shopee.sync.products.push');
+        Route::post('sync/categories', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'syncCategories'])->name('shopee.sync.categories');
+        Route::post('sync/category-attributes', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'syncCategoryAttributes'])->name('shopee.sync.category-attributes');
+        Route::get('products/{item}/models', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'getModels'])->name('shopee.products.models');
     });
 });
 
