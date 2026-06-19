@@ -52,6 +52,7 @@ class ShopeeToInternalProductMapper
     protected function mapVariants(array $shopeeItem): array
     {
         $variants = [];
+        $tierVariation = $shopeeItem['tier_variation'] ?? [];
 
         foreach ($shopeeItem['model_list'] ?? [] as $model) {
             $sku = ! empty($model['model_sku'])
@@ -60,15 +61,45 @@ class ShopeeToInternalProductMapper
 
             $price = (float) ($model['price_info'][0]['current_price'] ?? $model['original_price'] ?? 0);
 
-            $variants[] = [
+            $variant = [
                 'sku' => $sku,
                 'sell_price' => $price,
                 'buy_price' => $price,
                 'is_active' => true,
             ];
+
+            $imageUrl = $this->resolveModelImage($tierVariation, $model);
+            if ($imageUrl) {
+                $variant['media'] = [[
+                    'media_type' => 'image',
+                    'url' => $imageUrl,
+                    'is_primary' => true,
+                    'sort_order' => 0,
+                ]];
+            }
+
+            $variants[] = $variant;
         }
 
         return $variants;
+    }
+
+    /** Gambar varian Shopee ada di opsi tier_variation, dipetakan via tier_index model. */
+    protected function resolveModelImage(array $tierVariation, array $model): ?string
+    {
+        $tierIndex = $model['tier_index'][0] ?? null;
+        if ($tierIndex === null) {
+            return null;
+        }
+
+        $option = $tierVariation[0]['option_list'][$tierIndex] ?? null;
+        if (! $option) {
+            return null;
+        }
+
+        return $option['image']['image_url']
+            ?? $option['image_url']
+            ?? ($option['image']['image_url_list'][0] ?? null);
     }
 
     protected function resolveCategoryId(string $shopId, $shopeeCategoryId)

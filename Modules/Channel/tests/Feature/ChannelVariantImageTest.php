@@ -7,9 +7,12 @@ use Illuminate\Support\Facades\Http;
 use Mockery;
 use Modules\Channel\Services\ChannelMediaResolver;
 use Modules\Channel\Services\LazadaProductMapper;
+use Modules\Channel\Services\LazadaToInternalProductMapper;
 use Modules\Channel\Services\ShopeeClient;
 use Modules\Channel\Services\ShopeeMediaUploader;
 use Modules\Channel\Services\ShopeeProductMapper;
+use Modules\Channel\Services\ShopeeToInternalProductMapper;
+use Modules\Channel\Services\TikTokToInternalProductMapper;
 use Tests\TestCase;
 
 class ChannelVariantImageTest extends TestCase
@@ -52,6 +55,70 @@ class ChannelVariantImageTest extends TestCase
         $optionList = $payload['tier_variation'][0]['option_list'];
         $this->assertSame(['image_id' => 'shp-img-1'], $optionList[0]['image']);
         $this->assertArrayNotHasKey('image', $optionList[1]);
+    }
+
+    public function test_shopee_inbound_maps_per_variant_image_from_tier_option(): void
+    {
+        $item = [
+            'item_id' => 555,
+            'item_name' => 'Kaos',
+            'image' => ['image_url_list' => ['https://img/main.jpg']],
+            'tier_variation' => [[
+                'name' => 'Warna',
+                'option_list' => [
+                    ['option' => 'Merah', 'image' => ['image_url' => 'https://img/merah.jpg']],
+                    ['option' => 'Biru'],
+                ],
+            ]],
+            'model_list' => [
+                ['model_id' => 1, 'model_sku' => 'V1', 'tier_index' => [0], 'price_info' => [['current_price' => 1000]]],
+                ['model_id' => 2, 'model_sku' => 'V2', 'tier_index' => [1], 'price_info' => [['current_price' => 2000]]],
+            ],
+        ];
+
+        $internal = app(ShopeeToInternalProductMapper::class)->map($item, 'SHOP-1');
+
+        $v1 = collect($internal['variants'])->firstWhere('sku', 'V1');
+        $v2 = collect($internal['variants'])->firstWhere('sku', 'V2');
+        $this->assertSame('https://img/merah.jpg', $v1['media'][0]['url']);
+        $this->assertArrayNotHasKey('media', $v2);
+    }
+
+    public function test_lazada_inbound_maps_per_sku_image(): void
+    {
+        $product = [
+            'attributes' => ['name' => 'Kaos'],
+            'images' => ['https://img/main.jpg'],
+            'skus' => [
+                ['SellerSku' => 'V1', 'price' => 1000, 'Images' => ['https://img/v1.jpg']],
+                ['SellerSku' => 'V2', 'price' => 2000],
+            ],
+        ];
+
+        $internal = app(LazadaToInternalProductMapper::class)->map($product, 'SHOP-1');
+
+        $v1 = collect($internal['variants'])->firstWhere('sku', 'V1');
+        $v2 = collect($internal['variants'])->firstWhere('sku', 'V2');
+        $this->assertSame('https://img/v1.jpg', $v1['media'][0]['url']);
+        $this->assertArrayNotHasKey('media', $v2);
+    }
+
+    public function test_tiktok_inbound_maps_per_sku_image(): void
+    {
+        $product = [
+            'title' => 'Kaos',
+            'skus' => [
+                ['seller_sku' => 'V1', 'sales_attributes' => [['sku_img' => ['url_list' => ['https://img/v1.jpg']]]]],
+                ['seller_sku' => 'V2', 'sales_attributes' => [['value_name' => 'Biru']]],
+            ],
+        ];
+
+        $internal = app(TikTokToInternalProductMapper::class)->map($product, 'SHOP-1');
+
+        $v1 = collect($internal['variants'])->firstWhere('sku', 'V1');
+        $v2 = collect($internal['variants'])->firstWhere('sku', 'V2');
+        $this->assertSame('https://img/v1.jpg', $v1['media'][0]['url']);
+        $this->assertArrayNotHasKey('media', $v2);
     }
 
     public function test_shopee_media_uploader_uploads_once_and_caches(): void

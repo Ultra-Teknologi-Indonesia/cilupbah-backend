@@ -41,13 +41,20 @@ class LazadaToInternalProductMapper
 
             $price = (float) ($skuData['special_price'] ?? 0) ?: (float) ($skuData['price'] ?? 0);
 
-            $internal['variants'][] = [
+            $variant = [
                 'sku' => $sku,
                 'sell_price' => $price,
                 'buy_price' => $price,
                 'weight' => (float) ($skuData['package_weight'] ?? 0),
                 'is_active' => strtolower((string) ($skuData['Status'] ?? 'active')) === 'active',
             ];
+
+            $variant['media'] = $this->variantMedia($skuData['Images'] ?? []);
+            if (empty($variant['media'])) {
+                unset($variant['media']);
+            }
+
+            $internal['variants'][] = $variant;
         }
 
         if (empty($internal['variants'])) {
@@ -61,6 +68,25 @@ class LazadaToInternalProductMapper
         $internal['sku'] = $internal['variants'][0]['sku'] ?? null;
 
         return $internal;
+    }
+
+    /** Gambar per-SKU Lazada → struktur media internal. */
+    protected function variantMedia(array $images): array
+    {
+        $media = [];
+        foreach (array_values($images) as $idx => $url) {
+            if (! $url) {
+                continue;
+            }
+            $media[] = [
+                'media_type' => 'image',
+                'url' => $url,
+                'is_primary' => $idx === 0,
+                'sort_order' => $idx,
+            ];
+        }
+
+        return $media;
     }
 
     protected function resolveCategoryId(string $shopId, $lazadaCategoryId)

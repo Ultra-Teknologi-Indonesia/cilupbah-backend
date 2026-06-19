@@ -74,10 +74,16 @@ class ShopeeProductPullTest extends TestCase
             ], 200),
             'partner.shopeemobile.com/api/v2/product/get_model_list*' => Http::response([
                 'response' => [
-                    'tier_variation' => [],
+                    'tier_variation' => [[
+                        'name' => 'Warna',
+                        'option_list' => [
+                            ['option' => 'Merah', 'image' => ['image_url' => 'https://img.shopee/var-merah.jpg']],
+                        ],
+                    ]],
                     'model' => [[
                         'model_id' => 777100,
                         'model_sku' => 'VAR-A',
+                        'tier_index' => [0],
                         'price_info' => [['current_price' => 55000]],
                         'original_price' => 55000,
                     ]],
@@ -105,6 +111,7 @@ class ShopeeProductPullTest extends TestCase
         // Gambar produk tersimpan ke product_media (url-based, level produk).
         $media = DB::table('product_media')
             ->where('product_id', $product->id)
+            ->whereNull('variant_id')
             ->where('media_type', 'image')
             ->get();
         $this->assertCount(1, $media);
@@ -122,6 +129,15 @@ class ShopeeProductPullTest extends TestCase
             ->first();
         $this->assertEquals('777100', $pvcm->external_sku_id);
         $this->assertEquals('VAR-A', $pvcm->channel_seller_sku);
+
+        // Gambar per varian tersimpan ke product_media dengan variant_id (sinkron varian↔gambar).
+        $variantMedia = DB::table('product_media')
+            ->where('product_id', $product->id)
+            ->where('variant_id', $variant->id)
+            ->where('media_type', 'image')
+            ->first();
+        $this->assertNotNull($variantMedia, 'gambar varian harus tersimpan dengan variant_id');
+        $this->assertEquals('https://img.shopee/var-merah.jpg', $variantMedia->url);
     }
 
     public function test_pull_product_by_id_handles_item_without_models(): void

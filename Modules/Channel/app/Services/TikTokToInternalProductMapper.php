@@ -62,13 +62,25 @@ class TikTokToInternalProductMapper
                     $qty = $skuData['inventory'][0]['quantity'] ?? 0;
                 }
 
-                $internal['variants'][] = [
+                $variant = [
                     'sku' => $sku,
                     'sell_price' => $price,
                     'buy_price' => $price,
                     'weight' => $internal['weight'] ?? 0,
                     'is_active' => true,
                 ];
+
+                $imageUrl = $this->resolveSkuImage($skuData['sales_attributes'] ?? []);
+                if ($imageUrl) {
+                    $variant['media'] = [[
+                        'media_type' => 'image',
+                        'url' => $imageUrl,
+                        'is_primary' => true,
+                        'sort_order' => 0,
+                    ]];
+                }
+
+                $internal['variants'][] = $variant;
             }
         } else {
             $internal['variants'][] = [
@@ -81,6 +93,24 @@ class TikTokToInternalProductMapper
         $internal['sku'] = $internal['variants'][0]['sku'] ?? null;
 
         return $internal;
+    }
+
+    /** Gambar varian TikTok tersimpan di sales_attributes[].sku_img. */
+    protected function resolveSkuImage(array $salesAttributes): ?string
+    {
+        foreach ($salesAttributes as $attr) {
+            $img = $attr['sku_img'] ?? null;
+            if (! $img) {
+                continue;
+            }
+
+            $url = $img['url_list'][0] ?? $img['uri'] ?? null;
+            if ($url) {
+                return $url;
+            }
+        }
+
+        return null;
     }
 
     protected function resolveCategoryId(string $shopId, ?string $tiktokCategoryId): int

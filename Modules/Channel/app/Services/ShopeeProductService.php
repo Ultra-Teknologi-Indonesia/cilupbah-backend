@@ -355,7 +355,10 @@ class ShopeeProductService
         }
 
         try {
-            $item['model_list'] = $this->getModelList($shop->shop_id, $itemId)['models'] ?? [];
+            $modelList = $this->getModelList($shop->shop_id, $itemId);
+            $item['model_list'] = $modelList['models'] ?? [];
+            // tier_variation menyimpan gambar per opsi → dipakai mapper untuk gambar per varian.
+            $item['tier_variation'] = $modelList['tier_variation'] ?? [];
         } catch (\Throwable $e) {
             Log::warning("Shopee get_model_list gagal item {$itemId}: " . $e->getMessage());
         }
