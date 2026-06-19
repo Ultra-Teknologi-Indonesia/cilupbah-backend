@@ -225,7 +225,9 @@ class CategoryService
             foreach ($allChannels as $ch) {
                 $mapped = $mappedByCode[$ch->code] ?? null;
                 $channels["{$ch->code}_category_id"] = $mapped?->external_id;
-                $channels["{$ch->code}_category_name"] = $mapped ? $mapped->name : null;
+                $channels["{$ch->code}_category_name"] = $mapped
+                    ? $this->buildChannelCategoryFullName($mapped)
+                    : null;
             }
 
             return array_merge([
@@ -251,6 +253,22 @@ class CategoryService
         while ($current->parent_id) {
             $current = Category::find($current->parent_id);
             if (!$current) break;
+            array_unshift($parts, $current->name);
+        }
+
+        return implode(' > ', $parts);
+    }
+
+    private function buildChannelCategoryFullName(\Modules\Product\Models\ChannelCategory $cc): string
+    {
+        $parts = [$cc->name];
+        $current = $cc;
+
+        while ($current->parent_external_id && $current->parent_external_id !== '0') {
+            $current = \Modules\Product\Models\ChannelCategory::where('channel_id', $current->channel_id)
+                ->where('external_id', $current->parent_external_id)
+                ->first();
+            if (! $current) break;
             array_unshift($parts, $current->name);
         }
 
