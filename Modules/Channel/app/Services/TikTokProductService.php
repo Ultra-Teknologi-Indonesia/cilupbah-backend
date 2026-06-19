@@ -1014,7 +1014,7 @@ class TikTokProductService
 
         do {
             $queries = [
-                'shop_cipher' => $shop->shop_id,
+                'shop_cipher' => $shop->shop_cipher,
                 'locale' => 'id-ID',
                 'page_size' => 200,
             ];
