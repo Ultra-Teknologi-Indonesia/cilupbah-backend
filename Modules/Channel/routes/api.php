@@ -74,6 +74,26 @@ Route::prefix('v1/lazada')->group(function () {
     });
 });
 
+Route::prefix('v1/shopee')->group(function () {
+    Route::get('auth', [\Modules\Channel\Http\Controllers\ShopeeAuthController::class, 'redirect'])->name('shopee.auth');
+    Route::get('callback', [\Modules\Channel\Http\Controllers\ShopeeAuthController::class, 'callback'])->name('shopee.callback');
+
+    Route::get('webhook', [\Modules\Channel\Http\Controllers\ShopeeWebhookController::class, 'verify'])->name('shopee.webhook.verify');
+    Route::post('webhook', [\Modules\Channel\Http\Controllers\ShopeeWebhookController::class, 'handle'])->name('shopee.webhook');
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('sync/pull', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'pullOrders'])->name('shopee.sync.pull');
+        Route::post('auto-sync/pull-orders', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'pullOrdersAll'])->name('shopee.sync.pull-all');
+
+        Route::post('sync/ship', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'shipOrder'])->name('shopee.sync.ship');
+        Route::post('sync/cancel', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'cancelOrder'])->name('shopee.sync.cancel');
+        Route::get('cancel-reasons', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'cancelReasons'])->name('shopee.cancel-reasons');
+        Route::get('logistics', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'logistics'])->name('shopee.logistics');
+
+        Route::post('sync/products/push', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'pushProduct'])->name('shopee.sync.products.push');
+    });
+});
+
 Route::middleware(['auth:sanctum'])->prefix('v1/{channel}')->group(function () {
     Route::post('download', [\Modules\Channel\Http\Controllers\ChannelDownloadController::class, 'download']);
     Route::post('download/bulk', [\Modules\Channel\Http\Controllers\ChannelDownloadController::class, 'downloadBulk']);

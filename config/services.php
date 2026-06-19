@@ -45,4 +45,11 @@ return [
         'base_url' => env('LAZADA_BASE_URL', 'https://api.lazada.co.id/rest'),
     ],
 
+    'shopee' => [
+        'partner_id' => env('SHOPEE_PARTNER_ID'),
+        'partner_key' => env('SHOPEE_PARTNER_KEY'),
+        'redirect_uri' => env('SHOPEE_REDIRECT_URI'),
+        'host' => env('SHOPEE_HOST', 'https://partner.shopeemobile.com'),
+    ],
+
 ];
