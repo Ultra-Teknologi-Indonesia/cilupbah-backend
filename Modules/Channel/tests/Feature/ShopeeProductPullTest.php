@@ -100,6 +100,15 @@ class ShopeeProductPullTest extends TestCase
         $product = DB::table('products')->where('id', $variant->product_id)->first();
         $this->assertEquals('download', $product->status);
         $this->assertEquals('Kaos Shopee', $product->name);
+        $this->assertNotNull($product->category_id, 'kategori harus ter-resolve (fallback bila perlu)');
+
+        // Gambar produk tersimpan ke product_media (url-based, level produk).
+        $media = DB::table('product_media')
+            ->where('product_id', $product->id)
+            ->where('media_type', 'image')
+            ->get();
+        $this->assertCount(1, $media);
+        $this->assertEquals('https://img.shopee/1.jpg', $media->first()->url);
 
         $pcm = DB::table('product_channel_mappings')
             ->where('product_id', $product->id)
