@@ -34,9 +34,28 @@ class ShopeeWebhookController extends Controller
             : [];
 
         $partnerKey = (string) config('services.shopee.partner_key');
-        $testBody = '{"code":0,"data":{"verify_info":"test"}}';
         $pushUrl = $this->resolvePushUrl($request);
-        $testSig = ShopeeSignature::pushSign($pushUrl, $testBody, $partnerKey);
+
+        $lastEntry = end($entries) ?: null;
+        $replay = null;
+        if ($lastEntry && ($lastEntry['has_authorization'] ?? false)) {
+            $replayBody = $lastEntry['body_full'] ?? $lastEntry['body_preview'] ?? '';
+            $replayAuth = '';
+            $rawHeaders = $lastEntry['headers'] ?? [];
+            $replayAuth = $rawHeaders['authorization'] ?? '';
+
+            $replay = [
+                'shopee_authorization' => $replayAuth,
+                'body_used' => $replayBody,
+                'url_used' => $pushUrl,
+                'base_string' => $pushUrl . '|' . $replayBody,
+                'our_signature' => ShopeeSignature::pushSign($pushUrl, $replayBody, $partnerKey),
+                'match' => hash_equals(
+                    ShopeeSignature::pushSign($pushUrl, $replayBody, $partnerKey),
+                    strtolower($replayAuth)
+                ),
+            ];
+        }
 
         return response()->json([
             'config' => [
@@ -49,9 +68,8 @@ class ShopeeWebhookController extends Controller
                 'partner_id' => config('services.shopee.partner_id'),
                 'request_url' => $request->url(),
                 'resolved_push_url' => $pushUrl,
-                'test_signature' => $testSig,
-                'test_base_string' => $pushUrl . '|' . $testBody,
             ],
+            'signature_replay' => $replay,
             'recent_requests' => array_slice($entries, -20),
         ]);
     }
@@ -200,6 +218,7 @@ class ShopeeWebhookController extends Controller
                 'authorization_preview' => $auth !== '' ? substr($auth, 0, 20) . '...' : '(empty)',
                 'content_type' => $request->header('Content-Type'),
                 'body_length' => strlen($rawBody),
+                'body_full' => $rawBody,
                 'body_preview' => substr($rawBody, 0, 200),
                 'resolved_push_url' => $this->resolvePushUrl($request),
                 'result' => $result,
