@@ -37,14 +37,13 @@ class CategoryController extends Controller
             'name' => 'required|string|max:255',
             'parent_id' => 'nullable|bail|integer|exists:categories,id',
             'is_active' => 'nullable|boolean',
-            'is_leaf' => 'nullable|boolean',
         ]);
 
         try {
             $category = $this->categoryService->createCategory($validated);
             return $this->successResponse(new CategoryResource($category), 'Kategori berhasil dibuat', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            return $this->errorResponse($e->getMessage(), 422);
         }
     }
 

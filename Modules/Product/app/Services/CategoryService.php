@@ -42,16 +42,41 @@ class CategoryService
     {
         $data['source'] = 'custom';
         $data['is_enabled'] = true;
+        $data['is_leaf'] = true;
+
+        if (!empty($data['parent_id'])) {
+            $parentDepth = $this->computeDepth($data['parent_id']);
+            if ($parentDepth >= 2) {
+                throw new Exception('Maksimal 3 level kategori (kedalaman 0-2)');
+            }
+        }
 
         return DB::transaction(function () use ($data) {
             $category = $this->repository->create($data);
 
             if ($category->parent_id) {
+                Category::where('id', $category->parent_id)
+                    ->where('is_leaf', true)
+                    ->update(['is_leaf' => false]);
+
                 $this->enableParentsRecursive($category->parent_id);
             }
 
             return $category;
         });
+    }
+
+    private function computeDepth(int $categoryId): int
+    {
+        $depth = 0;
+        $current = Category::find($categoryId);
+
+        while ($current && $current->parent_id) {
+            $depth++;
+            $current = Category::find($current->parent_id);
+        }
+
+        return $depth;
     }
 
     public function updateCategory(int $id, array $data): Category

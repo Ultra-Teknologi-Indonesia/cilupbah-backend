@@ -13,12 +13,14 @@ class Category extends Model
         'parent_id',
         'name',
         'is_active',
+        'is_leaf',
         'source',
         'is_enabled',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'is_leaf' => 'boolean',
         'is_enabled' => 'boolean',
     ];
 
