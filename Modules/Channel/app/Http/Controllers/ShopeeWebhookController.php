@@ -35,26 +35,30 @@ class ShopeeWebhookController extends Controller
         $rawBody = $request->getContent();
 
         if (! $this->isValidSignature($request, $rawBody)) {
-            Log::warning('Shopee webhook signature tidak valid', ['ip' => $request->ip()]);
+            Log::warning('Shopee push signature tidak valid', [
+                'ip' => $request->ip(),
+                'url' => $request->url(),
+                'push_url' => $this->resolvePushUrl($request),
+            ]);
 
-            return $this->errorResponse('Invalid signature', 401);
+            return response('', 401);
         }
 
         $payload = json_decode($rawBody, true);
 
         if (! is_array($payload)) {
-            Log::warning('Shopee webhook payload bukan JSON valid — diabaikan.');
+            Log::warning('Shopee push payload bukan JSON valid — diabaikan.');
 
-            return $this->successResponse(['received' => true], 'OK');
+            return response('', 200);
         }
 
         if (! $this->isFirstDelivery($payload)) {
-            return $this->successResponse(['received' => true, 'duplicate' => true], 'OK');
+            return response('', 200);
         }
 
         ProcessShopeeWebhook::dispatch($payload);
 
-        return $this->successResponse(['received' => true], 'OK');
+        return response('', 200);
     }
 
     protected function isValidSignature(Request $request, string $rawBody): bool
@@ -63,7 +67,7 @@ class ShopeeWebhookController extends Controller
         $provided = (string) $request->header('Authorization', '');
 
         if ($provided === '' || $partnerKey === '') {
-            Log::warning('Shopee webhook signature kosong', [
+            Log::warning('Shopee push auth/key kosong', [
                 'has_auth' => $provided !== '',
                 'has_key' => $partnerKey !== '',
             ]);
@@ -75,9 +79,11 @@ class ShopeeWebhookController extends Controller
         $expected = ShopeeSignature::pushSign($pushUrl, $rawBody, $partnerKey);
 
         if (! hash_equals($expected, strtolower($provided))) {
-            Log::warning('Shopee webhook signature mismatch', [
+            Log::warning('Shopee push signature mismatch', [
                 'push_url_used' => $pushUrl,
                 'request_url' => $request->url(),
+                'expected' => substr($expected, 0, 16) . '…',
+                'provided' => substr(strtolower($provided), 0, 16) . '…',
             ]);
 
             return false;
@@ -87,9 +93,8 @@ class ShopeeWebhookController extends Controller
     }
 
     /**
-     * Resolve the public-facing push URL that Shopee uses for signing.
-     * Behind a reverse proxy, $request->url() may return internal URL
-     * (e.g. http://127.0.0.1:8000/...) instead of the public URL.
+     * Behind a reverse proxy $request->url() may return the internal URL.
+     * SHOPEE_PUSH_URL lets you pin the public-facing URL Shopee signs with.
      */
     protected function resolvePushUrl(Request $request): string
     {

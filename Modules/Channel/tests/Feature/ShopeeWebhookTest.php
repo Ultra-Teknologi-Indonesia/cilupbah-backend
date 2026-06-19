@@ -23,6 +23,7 @@ class ShopeeWebhookTest extends TestCase
         config([
             'services.shopee.partner_id' => '200123',
             'services.shopee.partner_key' => 'test_partner_key',
+            'services.shopee.push_url' => '',
             'services.shopee.host' => 'https://partner.shopeemobile.com',
         ]);
 
@@ -67,7 +68,9 @@ class ShopeeWebhookTest extends TestCase
     {
         Queue::fake();
 
-        $this->postWebhook($this->orderPayload())->assertStatus(200);
+        $this->postWebhook($this->orderPayload())
+            ->assertStatus(200)
+            ->assertSee('', false);
 
         Queue::assertPushed(ProcessShopeeWebhook::class, fn ($job) => ($job->payload['data']['ordersn'] ?? null) === '2606SHOPEE01');
     }
@@ -86,7 +89,7 @@ class ShopeeWebhookTest extends TestCase
         Queue::fake();
 
         $this->postWebhook($this->orderPayload())->assertStatus(200);
-        $this->postWebhook($this->orderPayload())->assertStatus(200)->assertJsonPath('data.duplicate', true);
+        $this->postWebhook($this->orderPayload())->assertStatus(200);
 
         Queue::assertPushed(ProcessShopeeWebhook::class, 1);
     }
@@ -123,5 +126,24 @@ class ShopeeWebhookTest extends TestCase
         (new ProcessShopeeWebhook($this->orderPayload(['code' => 99, 'data' => []])))->handle(app(\Modules\Channel\Services\ShopeeOrderService::class));
 
         $this->assertTrue(true);
+    }
+
+    public function test_configured_push_url_used_for_signature(): void
+    {
+        Queue::fake();
+
+        $customUrl = 'https://staging.example.com/api/v1/shopee/callback';
+        config(['services.shopee.push_url' => $customUrl]);
+
+        $payload = $this->orderPayload();
+        $body = json_encode($payload);
+        $signature = ShopeeSignature::pushSign($customUrl, $body, 'test_partner_key');
+
+        $this->call('POST', '/api/v1/shopee/webhook', [], [], [], [
+            'HTTP_AUTHORIZATION' => $signature,
+            'CONTENT_TYPE' => 'application/json',
+        ], $body)->assertStatus(200);
+
+        Queue::assertPushed(ProcessShopeeWebhook::class, 1);
     }
 }
