@@ -46,6 +46,12 @@ class ShopeeWebhookController extends Controller
     {
         $rawBody = $request->getContent();
 
+        if ($request->header('Authorization', '') === '') {
+            Log::info('Shopee push verification probe', ['ip' => $request->ip()]);
+
+            return response('', 200);
+        }
+
         if (! $this->isValidSignature($request, $rawBody)) {
             Log::warning('Shopee push signature tidak valid', [
                 'ip' => $request->ip(),

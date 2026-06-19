@@ -147,4 +147,15 @@ class ShopeeWebhookTest extends TestCase
 
         Queue::assertPushed(ProcessShopeeWebhook::class, 1);
     }
+
+    public function test_verification_probe_without_auth_returns_200(): void
+    {
+        Queue::fake();
+
+        $this->call('POST', '/api/v1/shopee/callback', [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+        ], '')->assertStatus(200);
+
+        Queue::assertNothingPushed();
+    }
 }
