@@ -285,9 +285,13 @@ class ProductController extends Controller
             'reason' => 'nullable|string|max:255',
         ]);
 
-        return $this->runBulk($validated['ids'], function (Product $product) use ($validated, $request) {
-            $this->lifecycleService->archive($product, $validated['reason'] ?? null, $request->user()?->id);
-        }, 'diarsipkan');
+        $result = $this->lifecycleService->bulkArchive(
+            $validated['ids'],
+            $validated['reason'] ?? null,
+            $request->user()?->id
+        );
+
+        return $this->successResponse($result, "{$result['success']} produk berhasil diarsipkan");
     }
 
     public function bulkRestore(Request $request): JsonResponse
@@ -297,9 +301,9 @@ class ProductController extends Controller
             'ids.*' => 'uuid|exists:products,id',
         ]);
 
-        return $this->runBulk($validated['ids'], function (Product $product) {
-            $this->lifecycleService->restore($product);
-        }, 'dipulihkan');
+        $result = $this->lifecycleService->bulkRestore($validated['ids']);
+
+        return $this->successResponse($result, "{$result['success']} produk berhasil dipulihkan");
     }
 
     public function bulkDelete(Request $request): JsonResponse
@@ -309,35 +313,9 @@ class ProductController extends Controller
             'ids.*' => 'uuid|exists:products,id',
         ]);
 
-        return $this->runBulk($validated['ids'], function (Product $product) {
-            $this->productService->deleteProduct($product);
-        }, 'dihapus');
-    }
+        $result = $this->productService->bulkDelete($validated['ids']);
 
-    private function runBulk(array $ids, callable $action, string $verb): JsonResponse
-    {
-        $success = 0;
-        $errors = [];
-
-        foreach ($ids as $id) {
-            $product = Product::find($id);
-            if (!$product) {
-                $errors[] = "Produk {$id} tidak ditemukan";
-                continue;
-            }
-            try {
-                $action($product);
-                $success++;
-            } catch (\DomainException $e) {
-                $errors[] = "{$product->name}: {$e->getMessage()}";
-            }
-        }
-
-        return $this->successResponse([
-            'success' => $success,
-            'failed' => count($errors),
-            'errors' => $errors,
-        ], "{$success} produk berhasil {$verb}");
+        return $this->successResponse($result, "{$result['success']} produk berhasil dihapus");
     }
 
     private function runLifecycle($id, callable $action, string $message): JsonResponse

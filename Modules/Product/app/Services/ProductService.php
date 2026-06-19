@@ -161,6 +161,28 @@ class ProductService
         $product->delete();
     }
 
+    public function bulkDelete(array $ids): array
+    {
+        $success = 0;
+        $errors = [];
+
+        foreach ($ids as $id) {
+            $product = Product::find($id);
+            if (!$product) {
+                $errors[] = "Produk {$id} tidak ditemukan";
+                continue;
+            }
+            try {
+                $this->deleteProduct($product);
+                $success++;
+            } catch (DomainException $e) {
+                $errors[] = "{$product->name}: {$e->getMessage()}";
+            }
+        }
+
+        return ['success' => $success, 'failed' => count($errors), 'errors' => $errors];
+    }
+
     public function upsertFromChannel(array $data)
     {
         $sku = $data['sku'] ?? ($data['variants'][0]['sku'] ?? null);
