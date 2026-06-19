@@ -21,6 +21,18 @@ class ShopeeWebhookController extends Controller
         return $this->successResponse(['service' => 'ready'], 'Shopee webhook service aktif.');
     }
 
+    public function debug(Request $request)
+    {
+        return $this->successResponse([
+            'push_url' => config('services.shopee.push_url'),
+            'redirect_uri' => config('services.shopee.redirect_uri'),
+            'has_partner_key' => config('services.shopee.partner_key') !== null && config('services.shopee.partner_key') !== '',
+            'partner_id' => config('services.shopee.partner_id'),
+            'request_url' => $request->url(),
+            'resolved_push_url' => $this->resolvePushUrl($request),
+        ], 'Shopee push config debug.');
+    }
+
     #[OA\Post(
         path: '/api/v1/shopee/webhook',
         summary: 'Push (webhook) masuk Shopee — order status, item update, dsb',
@@ -94,14 +106,18 @@ class ShopeeWebhookController extends Controller
 
     /**
      * Behind a reverse proxy $request->url() may return the internal URL.
-     * SHOPEE_PUSH_URL lets you pin the public-facing URL Shopee signs with.
+     * Fallback chain: SHOPEE_PUSH_URL → SHOPEE_REDIRECT_URI → $request->url()
      */
     protected function resolvePushUrl(Request $request): string
     {
-        $configuredUrl = (string) config('services.shopee.push_url');
+        $pushUrl = (string) config('services.shopee.push_url');
+        if ($pushUrl !== '') {
+            return $pushUrl;
+        }
 
-        if ($configuredUrl !== '') {
-            return $configuredUrl;
+        $redirectUri = (string) config('services.shopee.redirect_uri');
+        if ($redirectUri !== '') {
+            return strtok($redirectUri, '?');
         }
 
         return $request->url();

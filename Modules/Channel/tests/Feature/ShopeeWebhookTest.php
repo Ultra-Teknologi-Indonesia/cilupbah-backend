@@ -24,6 +24,7 @@ class ShopeeWebhookTest extends TestCase
             'services.shopee.partner_id' => '200123',
             'services.shopee.partner_key' => 'test_partner_key',
             'services.shopee.push_url' => '',
+            'services.shopee.redirect_uri' => '',
             'services.shopee.host' => 'https://partner.shopeemobile.com',
         ]);
 

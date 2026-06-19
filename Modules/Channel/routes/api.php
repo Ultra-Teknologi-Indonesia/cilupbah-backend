@@ -83,6 +83,7 @@ Route::prefix('v1/shopee')->group(function () {
 
     Route::get('webhook', [\Modules\Channel\Http\Controllers\ShopeeWebhookController::class, 'verify'])->name('shopee.webhook.verify');
     Route::post('webhook', [\Modules\Channel\Http\Controllers\ShopeeWebhookController::class, 'handle'])->name('shopee.webhook');
+    Route::get('push-debug', [\Modules\Channel\Http\Controllers\ShopeeWebhookController::class, 'debug'])->name('shopee.push-debug');
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('sync/pull', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'pullOrders'])->name('shopee.sync.pull');
