@@ -95,8 +95,17 @@ class MasterDataSeeder extends Seeder
     {
         $this->command->info('  A1: Seeding internal categories...');
 
-        DB::table('category_channel_mappings')->truncate();
+        DB::table('attribute_option_channel_mappings')->truncate();
+        DB::table('attribute_channel_mappings')->truncate();
+        DB::table('product_specifications')->truncate();
+        DB::table('product_variation_types')->truncate();
+        DB::table('channel_attribute_options')->truncate();
+        DB::table('channel_attributes')->truncate();
+        DB::table('attribute_options')->truncate();
         DB::table('category_attributes')->truncate();
+        DB::table('attributes')->truncate();
+        DB::table('category_channel_mappings')->truncate();
+        DB::table('channel_categories')->truncate();
         DB::table('categories')->truncate();
 
         $byParent = [];
@@ -136,8 +145,6 @@ class MasterDataSeeder extends Seeder
     private function seedChannelCategories(array $categories, string $channelId): void
     {
         $this->command->info('  A2: Seeding channel categories...');
-
-        DB::table('channel_categories')->where('channel_id', $channelId)->delete();
 
         $now = now();
         $chunks = array_chunk($categories, 500);
@@ -273,17 +280,7 @@ class MasterDataSeeder extends Seeder
 
     private function truncateAttributeTables(): void
     {
-        $this->command->info('  B2: Truncating attribute tables...');
-
-        DB::table('attribute_option_channel_mappings')->truncate();
-        DB::table('attribute_channel_mappings')->truncate();
-        DB::table('product_specifications')->truncate();
-        DB::table('product_variation_types')->truncate();
-        DB::table('channel_attribute_options')->truncate();
-        DB::table('channel_attributes')->truncate();
-        DB::table('attribute_options')->truncate();
-        DB::table('category_attributes')->truncate();
-        DB::table('attributes')->truncate();
+        $this->command->info('  B2: Attribute tables already truncated in A1, skipping...');
     }
 
     /**
