@@ -10,6 +10,8 @@ Artisan::command('inspire', function () {
 
 Schedule::command('lazada:refresh-tokens')->dailyAt('02:00')->withoutOverlapping();
 Schedule::command('tiktok:refresh-tokens')->dailyAt('02:30')->withoutOverlapping();
+// Token akses Shopee hanya 4 jam → refresh proaktif tiap jam, bukan harian.
+Schedule::command('shopee:refresh-tokens')->hourly()->withoutOverlapping();
 
 Schedule::command('products:poll-review-status')->everyThirtyMinutes()->withoutOverlapping();
 
