@@ -63,8 +63,8 @@ class CategoryAttributeRepository
         };
 
         return [
-            'specifications' => $catAttrs->where('type', 'spec')->map($build)->values(),
-            'variant_types' => $catAttrs->where('type', 'sales')->map($build)->values(),
+            'specifications' => $catAttrs->where('type', 'spec')->sortByDesc('is_required')->map($build)->values(),
+            'variant_types' => $catAttrs->where('type', 'sales')->sortByDesc('is_required')->map($build)->values(),
         ];
     }
 }
