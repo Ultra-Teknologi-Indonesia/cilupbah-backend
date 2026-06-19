@@ -87,6 +87,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('products/merge/unhide', [ProductMergeController::class, 'unhide']);
     });
 
+    Route::post('products/bulk-archive', [ProductController::class, 'bulkArchive']);
+    Route::post('products/bulk-restore', [ProductController::class, 'bulkRestore']);
+    Route::post('products/bulk-delete', [ProductController::class, 'bulkDelete']);
+
     Route::apiResource('products', ProductController::class)->names('product')
         ->where(['product' => '[\da-fA-F]{8}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{12}']);
 
