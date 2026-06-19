@@ -73,6 +73,10 @@ class CreateProductRequest extends FormRequest
             'variants.*.min_stock' => 'nullable|integer|min:0',
             'variants.*.safe_stock' => 'nullable|integer|min:0',
             'variants.*.is_active' => 'nullable|boolean',
+            'variants.*.weight' => 'nullable|numeric|min:0',
+            'variants.*.length' => 'nullable|numeric|min:0',
+            'variants.*.width' => 'nullable|numeric|min:0',
+            'variants.*.height' => 'nullable|numeric|min:0',
 
             'variants.*.unlimited_shop_ids' => 'nullable|array',
             'variants.*.unlimited_shop_ids.*' => 'uuid|distinct|exists:channel_shops,id',

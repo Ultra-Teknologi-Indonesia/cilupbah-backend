@@ -248,6 +248,7 @@ class ProductService
                     $variantData = Arr::only($variant, [
                         'sell_price', 'buy_price', 'barcode', 'is_active',
                         'sales_tax_id', 'purchase_tax_id', 'min_stock', 'safe_stock',
+                        'weight', 'length', 'width', 'height',
                     ]);
                     if (!empty($variant['sales_tax_id'])) {
                         $variantData['tax_rate'] = $this->taxRate($variant['sales_tax_id']);
@@ -434,6 +435,7 @@ class ProductService
         $f = Arr::only($v, [
             'buy_price', 'barcode', 'is_active',
             'sales_tax_id', 'purchase_tax_id', 'min_stock', 'safe_stock',
+            'weight', 'length', 'width', 'height',
         ]);
         if (array_key_exists('sell_price', $v) && $v['sell_price'] !== null) {
             $f['sell_price'] = $v['sell_price'];
@@ -736,6 +738,7 @@ class ProductService
                     $variantData = Arr::only($variant, [
                         'sku', 'barcode', 'buy_price', 'sell_price', 'is_active',
                         'sales_tax_id', 'purchase_tax_id', 'min_stock', 'safe_stock',
+                        'weight', 'length', 'width', 'height',
                     ]);
 
                     if (!empty($variant['sales_tax_id'])) {

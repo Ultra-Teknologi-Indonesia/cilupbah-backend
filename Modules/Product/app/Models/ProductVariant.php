@@ -25,6 +25,10 @@ class ProductVariant extends Model
         'min_stock',
         'safe_stock',
         'sequence_item',
+        'weight',
+        'length',
+        'width',
+        'height',
     ];
 
     protected $casts = [
@@ -36,6 +40,10 @@ class ProductVariant extends Model
         'min_stock' => 'integer',
         'safe_stock' => 'integer',
         'sequence_item' => 'integer',
+        'weight' => 'decimal:2',
+        'length' => 'decimal:2',
+        'width' => 'decimal:2',
+        'height' => 'decimal:2',
     ];
 
     public function salesTax(): BelongsTo

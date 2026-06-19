@@ -103,6 +103,10 @@ class ProductResource extends JsonResource
                         'min_stock' => $variant->min_stock,
                         'safe_stock' => $variant->safe_stock,
                         'is_active' => $variant->is_active,
+                        'weight' => $variant->weight,
+                        'length' => $variant->length,
+                        'width' => $variant->width,
+                        'height' => $variant->height,
                         'sales_tax' => ($variant->relationLoaded('salesTax') && $variant->salesTax) ? [
                             'id' => $variant->salesTax->id,
                             'name' => $variant->salesTax->name,
