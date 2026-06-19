@@ -116,8 +116,10 @@ class MasterDataSeeder extends Seeder
 
         foreach ($children as $cat) {
             $internalId = DB::table('categories')->insertGetId([
+                'external_id' => $cat['id'],
                 'parent_id' => $parentInternalId,
                 'name' => $cat['local_name'],
+                'is_leaf' => $cat['is_leaf'],
                 'is_active' => true,
                 'created_at' => $now,
                 'updated_at' => $now,

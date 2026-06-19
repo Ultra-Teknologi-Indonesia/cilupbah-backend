@@ -35,21 +35,28 @@ class CategorySeeder extends Seeder
 
         foreach ($children as $cat) {
             $existing = DB::table('categories')
-                ->where('name', $cat['local_name'])
-                ->where(fn ($q) => $parentInternalId === null
-                    ? $q->whereNull('parent_id')
-                    : $q->where('parent_id', $parentInternalId))
+                ->where('external_id', $cat['id'])
                 ->first();
 
-            $id = $existing
-                ? $existing->id
-                : DB::table('categories')->insertGetId([
+            if ($existing) {
+                DB::table('categories')->where('id', $existing->id)->update([
+                    'name' => $cat['local_name'],
+                    'is_leaf' => $cat['is_leaf'],
+                    'parent_id' => $parentInternalId,
+                    'updated_at' => $now,
+                ]);
+                $id = $existing->id;
+            } else {
+                $id = DB::table('categories')->insertGetId([
+                    'external_id' => $cat['id'],
                     'parent_id' => $parentInternalId,
                     'name' => $cat['local_name'],
+                    'is_leaf' => $cat['is_leaf'],
                     'is_active' => true,
                     'created_at' => $now,
                     'updated_at' => $now,
                 ]);
+            }
 
             $this->externalToInternalId[$cat['id']] = $id;
 
