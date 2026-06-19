@@ -467,6 +467,10 @@ class MasterDataSeeder extends Seeder
             }
 
             foreach ($cat['attributes'] as $attr) {
+                if (! ($attr['is_requried'] ?? false)) {
+                    continue;
+                }
+
                 $type = $this->mapAttrType($attr['type']);
                 $attrKey = $this->makeAttrKey($attr['name'], $type);
                 $internalAttrId = $this->attrKeyToInternalId[$attrKey] ?? null;
@@ -483,7 +487,7 @@ class MasterDataSeeder extends Seeder
                 $batch[] = [
                     'category_id' => $internalCatId,
                     'attribute_id' => $internalAttrId,
-                    'is_required' => $attr['is_requried'] ?? false,
+                    'is_required' => true,
                     'created_at' => $now,
                     'updated_at' => $now,
                 ];
