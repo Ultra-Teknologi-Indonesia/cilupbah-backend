@@ -33,14 +33,24 @@ class ShopeeWebhookController extends Controller
             ? json_decode(file_get_contents($logFile), true) ?? []
             : [];
 
+        $partnerKey = (string) config('services.shopee.partner_key');
+        $testBody = '{"code":0,"data":{"verify_info":"test"}}';
+        $pushUrl = $this->resolvePushUrl($request);
+        $testSig = ShopeeSignature::pushSign($pushUrl, $testBody, $partnerKey);
+
         return response()->json([
             'config' => [
                 'push_url' => config('services.shopee.push_url'),
                 'redirect_uri' => config('services.shopee.redirect_uri'),
-                'has_partner_key' => config('services.shopee.partner_key') !== null && config('services.shopee.partner_key') !== '',
+                'has_partner_key' => $partnerKey !== '',
+                'partner_key_length' => strlen($partnerKey),
+                'partner_key_prefix' => substr($partnerKey, 0, 8),
+                'partner_key_sha256' => hash('sha256', $partnerKey),
                 'partner_id' => config('services.shopee.partner_id'),
                 'request_url' => $request->url(),
-                'resolved_push_url' => $this->resolvePushUrl($request),
+                'resolved_push_url' => $pushUrl,
+                'test_signature' => $testSig,
+                'test_base_string' => $pushUrl . '|' . $testBody,
             ],
             'recent_requests' => array_slice($entries, -20),
         ]);
@@ -124,8 +134,11 @@ class ShopeeWebhookController extends Controller
             Log::warning('Shopee push signature mismatch', [
                 'push_url_used' => $pushUrl,
                 'request_url' => $request->url(),
-                'expected' => substr($expected, 0, 16) . '…',
-                'provided' => substr(strtolower($provided), 0, 16) . '…',
+                'expected' => $expected,
+                'provided' => strtolower($provided),
+                'partner_key_len' => strlen($partnerKey),
+                'partner_key_prefix' => substr($partnerKey, 0, 8),
+                'body_len' => strlen($rawBody),
             ]);
 
             return false;
