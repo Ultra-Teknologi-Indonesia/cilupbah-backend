@@ -88,6 +88,9 @@ Route::prefix('v1/shopee')->group(function () {
     Route::match(['get', 'post'], 'push-ping', [\Modules\Channel\Http\Controllers\ShopeeWebhookController::class, 'ping'])->name('shopee.push-ping');
 
     Route::middleware('auth:sanctum')->group(function () {
+        Route::get('stores/{id}', [\Modules\Channel\Http\Controllers\ShopeeStoreController::class, 'show'])->whereUuid('id')->name('shopee.stores.show');
+        Route::post('stores/{id}/refresh-token', [\Modules\Channel\Http\Controllers\ShopeeStoreController::class, 'refreshToken'])->whereUuid('id')->name('shopee.stores.refresh');
+
         Route::post('sync/pull', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'pullOrders'])->name('shopee.sync.pull');
         Route::post('auto-sync/pull-orders', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'pullOrdersAll'])->name('shopee.sync.pull-all');
 
