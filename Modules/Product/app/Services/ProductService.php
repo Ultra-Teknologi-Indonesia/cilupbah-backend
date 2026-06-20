@@ -209,7 +209,7 @@ class ProductService
             $productData = Arr::only($data, [
                 'name', 'sku', 'description', 'category_id', 'brand_id', 'search_keyword',
                 'order_type', 'indent_days', 'condition', 'status',
-                'weight', 'length', 'width', 'height', 'is_active', 'is_cod_allowed',
+                'weight', 'weight_unit', 'length', 'width', 'height', 'is_active', 'is_cod_allowed',
                 'is_bundle', 'is_consignment', 'package_contents',
                 'is_stored', 'is_sold', 'is_purchased', 'purchase_lead_time',
             ]);
@@ -678,7 +678,7 @@ class ProductService
             $productData = Arr::only($data, [
                 'category_id', 'brand_id', 'name', 'sku', 'description',
                 'order_type', 'indent_days',
-                'weight', 'length', 'width', 'height', 'is_active',
+                'weight', 'weight_unit', 'length', 'width', 'height', 'is_active',
                 'is_bundle', 'is_consignment',
                 'is_stored', 'is_sold', 'is_purchased',
                 'purchase_lead_time', 'package_contents',

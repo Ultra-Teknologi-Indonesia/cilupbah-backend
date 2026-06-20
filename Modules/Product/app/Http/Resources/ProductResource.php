@@ -51,6 +51,7 @@ class ProductResource extends JsonResource
             'purchase_lead_time' => $this->purchase_lead_time,
             'package_contents' => $this->package_contents,
             'weight' => $this->weight,
+            'weight_unit' => $this->weight_unit ?? 'kg',
             'length' => $this->length,
             'width' => $this->width,
             'height' => $this->height,

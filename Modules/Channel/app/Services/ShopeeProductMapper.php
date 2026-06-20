@@ -5,12 +5,6 @@ namespace Modules\Channel\Services;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Support\DescriptionFormatter;
 
-/**
- * Internal Product → payload Shopee add_item (v2).
- *
- * Catatan verifikasi live: field image (image_id_list) butuh upload media lebih dulu;
- * struktur tier_variation/model_list & logistic_info per-region wajib dikonfirmasi di sandbox.
- */
 class ShopeeProductMapper
 {
     public function map(array $product, array $imageIds = [], array $config = []): array
@@ -23,7 +17,7 @@ class ShopeeProductMapper
             'item_name' => $product['name'] ?? 'Produk',
             'description' => DescriptionFormatter::toHtml($product['description'] ?? '') ?: ($product['name'] ?? ''),
             'item_sku' => $itemSku,
-            'weight' => (float) ($product['weight'] ?? $config['weight'] ?? 0.1) ?: 0.1,
+            'weight' => \Modules\Channel\Support\WeightConverter::toKg($product['weight'] ?? $config['weight'] ?? 0.1, $product['weight_unit'] ?? 'kg') ?: 0.1,
             'dimension' => [
                 'package_length' => (int) ($product['length'] ?? $config['length'] ?? 10),
                 'package_width' => (int) ($product['width'] ?? $config['width'] ?? 10),
@@ -53,11 +47,6 @@ class ShopeeProductMapper
         return array_filter($payload, fn ($v) => $v !== null);
     }
 
-    /**
-     * Bangun tier_variation (1 tier dari opsi pertama tiap varian) + model_list.
-     *
-     * @return array{0: array, 1: array}
-     */
     protected function buildVariations(array $variants): array
     {
         $optionNames = [];
@@ -68,7 +57,6 @@ class ShopeeProductMapper
             $optionName = $this->variantOptionName($variant);
             $optionNames[$optionName] ??= count($optionNames);
 
-            // Gambar per varian dipasang ke opsi tier (image_id hasil upload media).
             if (! isset($optionImages[$optionName]) && ! empty($variant['image_id'])) {
                 $optionImages[$optionName] = $variant['image_id'];
             }

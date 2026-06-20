@@ -28,7 +28,7 @@ class LazadaProductMapper
                 'SellerSku' => $variant['sku'],
                 'quantity' => (int) ($variant['stock'] ?? 0),
                 'price' => (float) ($variant['sell_price'] ?? 0),
-                'package_weight' => (float) ($variant['weight'] ?? $product['weight'] ?? 0.1) ?: 0.1,
+                'package_weight' => \Modules\Channel\Support\WeightConverter::toKg($variant['weight'] ?? $product['weight'] ?? 0.1, $product['weight_unit'] ?? 'kg') ?: 0.1,
                 'package_length' => (float) ($product['length'] ?? 0) ?: null,
                 'package_width' => (float) ($product['width'] ?? 0) ?: null,
                 'package_height' => (float) ($product['height'] ?? 0) ?: null,

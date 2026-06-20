@@ -37,6 +37,7 @@ class Product extends Model
         'order_type',
         'indent_days',
         'weight',
+        'weight_unit',
         'length',
         'width',
         'height',

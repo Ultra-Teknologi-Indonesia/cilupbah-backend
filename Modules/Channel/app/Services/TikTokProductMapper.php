@@ -33,7 +33,7 @@ class TikTokProductMapper
             'category_version' => $config['category_version'] ?? 'v2',
             'category_id' => $categoryId,
             'package_weight' => [
-                'value' => (string)(($internalProduct['weight'] ?? null) ?: 1.0),
+                'value' => (string)(\Modules\Channel\Support\WeightConverter::toKg($internalProduct['weight'] ?? null, $internalProduct['weight_unit'] ?? 'kg') ?: 1.0),
                 'unit' => 'KILOGRAM'
             ],
             'package_dimensions' => [
