@@ -173,6 +173,24 @@ class ProductPantauanTest extends TestCase
         $this->assertNotContains('SKU Sama', $names);
     }
 
+    public function test_shopee_is_in_scope_and_flags_price_mismatch(): void
+    {
+        // shopB = channel Shopee (lihat setUp). Sebelum Shopee masuk
+        // IN_SCOPE_CHANNELS, recompute melewati mismatch ini.
+        $divergent = $this->product('Shopee Harga Beda');
+        $v = ProductVariant::create(['product_id' => $divergent->id, 'sku' => 'SHP-HB-1', 'sell_price' => 100000, 'is_active' => true]);
+        $m = $this->mapTo($divergent, $this->shopB, 'SHP-HB');
+        ProductVariantChannelMapping::create(['product_channel_mapping_id' => $m->id, 'variant_id' => $v->id, 'synced_price' => 175000]);
+
+        $this->recompute($divergent);
+
+        $response = $this->getJson('/api/v1/products/pantauan?lens=harga&filter[channel]=shopee');
+
+        $response->assertStatus(200);
+        $names = collect($response->json('data'))->pluck('product_name')->all();
+        $this->assertContains('Shopee Harga Beda', $names);
+    }
+
     public function test_sku_lens_ignores_mappings_without_channel_sku(): void
     {
         $product = $this->product('Tanpa Channel SKU');

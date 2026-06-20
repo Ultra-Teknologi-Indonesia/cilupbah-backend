@@ -12,7 +12,7 @@ use Modules\Product\Models\ProductChannelValidation;
 class ProductChannelValidationService
 {
 
-    public const IN_SCOPE_CHANNELS = ['tiktok', 'lazada'];
+    public const IN_SCOPE_CHANNELS = ['tiktok', 'lazada', 'shopee'];
 
     private const ATTRIBUTE_ISSUE_CODES = [
         'variation_attribute_missing',
