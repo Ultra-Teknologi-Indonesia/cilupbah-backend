@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Contracts\MarketplaceAdapterInterface;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ChannelStockResolver;
 use Modules\Channel\Services\LazadaClient;
 use Modules\Channel\Services\LazadaProductMapper;
 use Modules\Channel\Services\LazadaToInternalProductMapper;
@@ -17,6 +18,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         protected LazadaClient $client,
         protected LazadaProductMapper $outboundMapper,
         protected LazadaToInternalProductMapper $inboundMapper,
+        protected ChannelStockResolver $stockResolver,
     ) {}
 
     public function getChannelCode(): string
@@ -26,7 +28,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
 
     public function pushProduct(Product $product, ChannelShop $shop, ?array $attributeMapping = null): array
     {
-        $payload = $this->buildProductPayload($product);
+        $payload = $this->buildProductPayload($product, $shop);
 
         try {
             $res = $this->client->request('POST', '/product/create', [
@@ -54,7 +56,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
 
     public function updateProduct(Product $product, ChannelShop $shop, string $externalProductId): array
     {
-        $payload = $this->buildProductPayload($product);
+        $payload = $this->buildProductPayload($product, $shop);
         $payload['Request']['Product']['ItemId'] = $externalProductId;
 
         try {
@@ -163,10 +165,13 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         return $this->inboundMapper->map($channelData, $shopId);
     }
 
-    protected function buildProductPayload(Product $product): array
+    protected function buildProductPayload(Product $product, ChannelShop $shop): array
     {
 
         $product->loadMissing('variants.options', 'media');
+
+        // Stok dikirim dari sistem kita ke channel (bukan diimpor dari channel).
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
 
         $images = $product->media->where('media_type', 'image');
 
@@ -186,11 +191,12 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         }
 
         $internal = $product->toArray();
-        $internal['variants'] = $product->variants->map(function ($variant) use ($variantImageById) {
+        $internal['variants'] = $product->variants->map(function ($variant) use ($variantImageById, $stockByVariant) {
             $arr = $variant->toArray();
             if (! empty($variantImageById[$variant->id])) {
                 $arr['image_url'] = $variantImageById[$variant->id];
             }
+            $arr['stock'] = $stockByVariant[$variant->id] ?? 0;
 
             return $arr;
         })->all();

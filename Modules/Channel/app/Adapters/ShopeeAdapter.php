@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Contracts\MarketplaceAdapterInterface;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ChannelStockResolver;
 use Modules\Channel\Services\ShopeeClient;
 use Modules\Channel\Services\ShopeeMediaUploader;
 use Modules\Channel\Services\ShopeeProductMapper;
@@ -23,6 +24,7 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         protected ShopeeProductMapper $outboundMapper,
         protected ShopeeToInternalProductMapper $inboundMapper,
         protected ShopeeMediaUploader $mediaUploader,
+        protected ChannelStockResolver $stockResolver,
     ) {}
 
     public function getChannelCode(): string
@@ -33,7 +35,7 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
     public function pushProduct(Product $product, ChannelShop $shop, ?array $attributeMapping = null): array
     {
         try {
-            $payload = $this->buildProductPayload($product);
+            $payload = $this->buildProductPayload($product, $shop);
             $res = $this->client->request('POST', '/api/v2/product/add_item', $payload, $shop->access_token, $shop->shop_id);
 
             $itemId = $res['response']['item_id'] ?? null;
@@ -58,7 +60,7 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
     public function updateProduct(Product $product, ChannelShop $shop, string $externalProductId): array
     {
         try {
-            $payload = $this->buildProductPayload($product);
+            $payload = $this->buildProductPayload($product, $shop);
             $payload['item_id'] = (int) $externalProductId;
 
             $res = $this->client->request('POST', '/api/v2/product/update_item', $payload, $shop->access_token, $shop->shop_id);
@@ -173,9 +175,12 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         return $this->inboundMapper->map($channelData, $shopId);
     }
 
-    protected function buildProductPayload(Product $product): array
+    protected function buildProductPayload(Product $product, ChannelShop $shop): array
     {
         $product->loadMissing('variants.options', 'media');
+
+        // Stok dikirim dari sistem kita ke channel (bukan diimpor dari channel).
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
 
         $images = $product->media->where('media_type', 'image');
 
@@ -200,11 +205,12 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         }
 
         $internal = $product->toArray();
-        $internal['variants'] = $product->variants->map(function ($variant) use ($variantImageIdById) {
+        $internal['variants'] = $product->variants->map(function ($variant) use ($variantImageIdById, $stockByVariant) {
             $arr = $variant->toArray();
             if (! empty($variantImageIdById[$variant->id])) {
                 $arr['image_id'] = $variantImageIdById[$variant->id];
             }
+            $arr['stock'] = $stockByVariant[$variant->id] ?? 0;
 
             return $arr;
         })->all();

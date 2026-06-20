@@ -27,14 +27,14 @@ class TikTokProductService
         ChannelShopRepository $shopRepository,
         ChannelProductRepository $productRepository,
         TikTokImageUploader $imageUploader,
-        ChannelStockResolver $stockResolver
+        ?ChannelStockResolver $stockResolver = null
     ) {
         $this->client = $client;
         $this->mapper = $mapper;
         $this->shopRepository = $shopRepository;
         $this->productRepository = $productRepository;
         $this->imageUploader = $imageUploader;
-        $this->stockResolver = $stockResolver;
+        $this->stockResolver = $stockResolver ?? app(ChannelStockResolver::class);
     }
 
     public function pushProduct(string $productId, string $shopId)

@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Contracts\MarketplaceAdapterInterface;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ChannelStockResolver;
 use Modules\Channel\Services\TikTokClient;
 use Modules\Channel\Services\TikTokImageUploader;
 use Modules\Channel\Services\TikTokProductMapper;
@@ -20,19 +21,22 @@ class TikTokAdapter implements MarketplaceAdapterInterface
     protected TikTokToInternalProductMapper $inboundMapper;
     protected TikTokImageUploader $imageUploader;
     protected TikTokProductService $productService;
+    protected ChannelStockResolver $stockResolver;
 
     public function __construct(
         TikTokClient $client,
         TikTokProductMapper $outboundMapper,
         TikTokToInternalProductMapper $inboundMapper,
         TikTokImageUploader $imageUploader,
-        TikTokProductService $productService
+        TikTokProductService $productService,
+        ChannelStockResolver $stockResolver
     ) {
         $this->client = $client;
         $this->outboundMapper = $outboundMapper;
         $this->inboundMapper = $inboundMapper;
         $this->imageUploader = $imageUploader;
         $this->productService = $productService;
+        $this->stockResolver = $stockResolver;
     }
 
     public function getChannelCode(): string
@@ -64,12 +68,16 @@ class TikTokAdapter implements MarketplaceAdapterInterface
             }
         }
 
+        // Stok dikirim dari sistem kita ke channel (bukan diimpor dari channel).
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
+
         $internalProductArray = $product->toArray();
-        $internalProductArray['variants'] = $product->variants->map(function ($variant) use ($variantUriById) {
+        $internalProductArray['variants'] = $product->variants->map(function ($variant) use ($variantUriById, $stockByVariant) {
             $arr = $variant->toArray();
             if (! empty($variantUriById[$variant->id])) {
                 $arr['image_uri'] = $variantUriById[$variant->id];
             }
+            $arr['stock'] = $stockByVariant[$variant->id] ?? 0;
 
             return $arr;
         })->all();
@@ -169,10 +177,14 @@ class TikTokAdapter implements MarketplaceAdapterInterface
             }
         }
 
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
+
         $variants = [];
         foreach ($product->variants as $variant) {
             $row = $variant->toArray();
             $meta = $stored[$variant->sku] ?? [];
+
+            $row['stock'] = $stockByVariant[$variant->id] ?? 0;
 
             if (!empty($meta['external_sku_id'])) {
                 $row['external_sku_id'] = $meta['external_sku_id'];

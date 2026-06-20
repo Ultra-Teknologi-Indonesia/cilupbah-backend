@@ -26,7 +26,7 @@ class LazadaProductMapper
 
             $skus[] = array_filter([
                 'SellerSku' => $variant['sku'],
-                'quantity' => 0,
+                'quantity' => (int) ($variant['stock'] ?? 0),
                 'price' => (float) ($variant['sell_price'] ?? 0),
                 'package_weight' => (float) ($variant['weight'] ?? $product['weight'] ?? 0.1) ?: 0.1,
                 'package_length' => (float) ($product['length'] ?? 0) ?: null,

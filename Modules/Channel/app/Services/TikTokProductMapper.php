@@ -72,7 +72,7 @@ class TikTokProductMapper
                     'inventory' => [
                         [
                             'warehouse_id' => $warehouseId,
-                            'quantity' => (int)($variant['stock'] ?? 100)
+                            'quantity' => (int)($variant['stock'] ?? 0)
                         ]
                     ]
                 ];
