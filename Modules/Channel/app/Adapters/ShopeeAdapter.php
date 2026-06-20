@@ -208,7 +208,114 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
             return $arr;
         })->all();
 
-        return $this->outboundMapper->map($internal, $imageIds, config('channel.shopee_defaults', []));
+        $config = config('channel.shopee_defaults', []);
+        $channelCategoryUuid = $this->resolveChannelCategoryUuid($product);
+        if ($channelCategoryUuid) {
+            $config['attribute_list'] = $this->buildAttributeList($product, $channelCategoryUuid);
+            $config['tier_variation_name'] = $this->resolveTierVariationName($product, $channelCategoryUuid);
+        }
+
+        return $this->outboundMapper->map($internal, $imageIds, $config);
+    }
+
+    protected function resolveChannelCategoryUuid(Product $product): ?string
+    {
+        if (! $product->category_id) {
+            return null;
+        }
+
+        $channelId = DB::table('channels')->where('code', 'shopee')->value('id');
+        if (! $channelId) {
+            return null;
+        }
+
+        return DB::table('category_channel_mappings')
+            ->join('channel_categories', 'channel_categories.id', '=', 'category_channel_mappings.channel_category_id')
+            ->where('category_channel_mappings.category_id', $product->category_id)
+            ->where('channel_categories.channel_id', $channelId)
+            ->value('channel_categories.id');
+    }
+
+    protected function buildAttributeList(Product $product, string $channelCategoryUuid): array
+    {
+        $specs = DB::table('product_specifications')->where('product_id', $product->id)->get();
+        $attributes = [];
+
+        foreach ($specs as $spec) {
+            $mapping = DB::table('attribute_channel_mappings')
+                ->where('attribute_id', $spec->attribute_id)
+                ->first();
+
+            if (! $mapping) {
+                continue;
+            }
+
+            $channelAttr = DB::table('channel_attributes')
+                ->where('id', $mapping->channel_attribute_id)
+                ->where('channel_category_id', $channelCategoryUuid)
+                ->where('is_sale_prop', false)
+                ->first();
+
+            if (! $channelAttr) {
+                continue;
+            }
+
+            $attrData = [
+                'attribute_id' => (int) $channelAttr->external_id,
+                'attribute_value_list' => [],
+            ];
+
+            if ($spec->attribute_option_id) {
+                $optMapping = DB::table('attribute_option_channel_mappings')
+                    ->where('attribute_option_id', $spec->attribute_option_id)
+                    ->first();
+
+                if ($optMapping) {
+                    $channelOpt = DB::table('channel_attribute_options')
+                        ->where('id', $optMapping->channel_attribute_option_id)
+                        ->first();
+
+                    if ($channelOpt) {
+                        $attrData['attribute_value_list'][] = [
+                            'value_id' => (int) $channelOpt->external_id,
+                            'original_value_name' => $channelOpt->name,
+                        ];
+                    }
+                }
+            } elseif ($spec->text_value) {
+                $attrData['attribute_value_list'][] = [
+                    'original_value_name' => $spec->text_value,
+                ];
+            }
+
+            if (! empty($attrData['attribute_value_list'])) {
+                $attributes[] = $attrData;
+            }
+        }
+
+        return $attributes;
+    }
+
+    protected function resolveTierVariationName(Product $product, string $channelCategoryUuid): ?string
+    {
+        $firstSalesOption = DB::table('product_variants as pv')
+            ->join('product_variant_options as pvo', 'pvo.variant_id', '=', 'pv.id')
+            ->where('pv.product_id', $product->id)
+            ->whereNotNull('pvo.attribute_id')
+            ->value('pvo.attribute_id');
+
+        if (! $firstSalesOption) {
+            return null;
+        }
+
+        $channelAttr = DB::table('attribute_channel_mappings as acm')
+            ->join('channel_attributes as ca', 'ca.id', '=', 'acm.channel_attribute_id')
+            ->where('acm.attribute_id', $firstSalesOption)
+            ->where('ca.channel_category_id', $channelCategoryUuid)
+            ->where('ca.is_sale_prop', true)
+            ->value('ca.name');
+
+        return $channelAttr;
     }
 
     protected function normalizeSkus(array $modelList): array

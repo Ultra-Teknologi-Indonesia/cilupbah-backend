@@ -83,8 +83,10 @@ class ChannelProductService
 
         $product = $this->productRepo->findByExternalId($externalId, $channelShopId);
 
-        SyncProductToChannelJob::dispatch($product->id, $channelShopId, 'delete');
-
+        // Sesuai perilaku Jubelio: menghapus produk di internal TIDAK menghapus
+        // listing di marketplace. Cukup hapus data master lokal; produk yang
+        // sudah tayang di channel tetap ada (hapus permanen dilakukan manual di
+        // Seller Centre masing-masing marketplace).
         $product->delete();
     }
 

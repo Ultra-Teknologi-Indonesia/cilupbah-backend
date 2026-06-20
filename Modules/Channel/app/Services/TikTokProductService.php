@@ -378,12 +378,15 @@ class TikTokProductService
                             $variant = $this->productRepository->getVariantByProductIdAndSku((string) $insertedId, $sku);
 
                             if ($variant) {
+                                $salesAttr = $skuData['sales_attributes'][0] ?? null;
                                 $this->productRepository->upsertVariantChannelMapping(
                                     $pcmId,
                                     $variant->id,
                                     $skuData['id'] ?? null,
                                     $skuData['seller_sku'] ?? null,
-                                    $skuData['price']['tax_exclusive_price'] ?? null
+                                    $skuData['price']['tax_exclusive_price'] ?? null,
+                                    $salesAttr['id'] ?? null,
+                                    $salesAttr['name'] ?? null
                                 );
                             }
                         }
@@ -564,12 +567,15 @@ class TikTokProductService
             $variant = $this->productRepository->getVariantByProductIdAndSku((string) $insertedId, $sku);
 
             if ($variant) {
+                $salesAttr = $skuData['sales_attributes'][0] ?? null;
                 $this->productRepository->upsertVariantChannelMapping(
                     $pcmId,
                     $variant->id,
                     $skuData['id'] ?? null,
                     $skuData['seller_sku'] ?? null,
-                    $skuData['price']['tax_exclusive_price'] ?? null
+                    $skuData['price']['tax_exclusive_price'] ?? null,
+                    $salesAttr['id'] ?? null,
+                    $salesAttr['name'] ?? null
                 );
             }
         }

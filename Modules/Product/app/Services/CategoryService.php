@@ -257,6 +257,96 @@ class CategoryService
         return implode(' > ', $parts);
     }
 
+    public function getAttributeMappingList(int $categoryId): array
+    {
+        return $this->buildMappingList($categoryId, 'spec', false);
+    }
+
+    public function getVariationMappingList(int $categoryId): array
+    {
+        return $this->buildMappingList($categoryId, 'sales', true);
+    }
+
+    protected function buildMappingList(int $categoryId, string $type, bool $isSaleProp): array
+    {
+        $category = $this->getCategoryById($categoryId);
+
+        $attributes = DB::table('category_attributes')
+            ->join('attributes', 'attributes.id', '=', 'category_attributes.attribute_id')
+            ->where('category_attributes.category_id', $categoryId)
+            ->where('attributes.type', $type)
+            ->select('attributes.id', 'attributes.name')
+            ->orderBy('attributes.name')
+            ->get();
+
+        $channels = Channel::orderBy('name')->get(['id', 'code', 'name']);
+
+        $channelCategoryMap = DB::table('category_channel_mappings')
+            ->join('channel_categories', 'channel_categories.id', '=', 'category_channel_mappings.channel_category_id')
+            ->where('category_channel_mappings.category_id', $categoryId)
+            ->select('channel_categories.id', 'channel_categories.channel_id')
+            ->get()
+            ->keyBy('channel_id');
+
+        $result = [];
+        foreach ($attributes as $attr) {
+            $row = [
+                'attribute_id' => $attr->id,
+                'attribute_name' => $attr->name,
+                'channels' => [],
+            ];
+
+            foreach ($channels as $channel) {
+                $ccEntry = $channelCategoryMap->get($channel->id);
+                $mapping = null;
+
+                if ($ccEntry) {
+                    $mapping = DB::table('attribute_channel_mappings as acm')
+                        ->join('channel_attributes as ca', 'ca.id', '=', 'acm.channel_attribute_id')
+                        ->where('acm.attribute_id', $attr->id)
+                        ->where('ca.channel_category_id', $ccEntry->id)
+                        ->where('ca.is_sale_prop', $isSaleProp)
+                        ->select('ca.id as channel_attribute_id', 'ca.name as channel_attribute_name', 'ca.external_id')
+                        ->first();
+                }
+
+                $row['channels'][] = [
+                    'channel_id' => $channel->id,
+                    'channel_code' => $channel->code,
+                    'channel_name' => $channel->name,
+                    'channel_category_id' => $ccEntry?->id,
+                    'mapped_channel_attribute_id' => $mapping?->channel_attribute_id,
+                    'mapped_channel_attribute_name' => $mapping?->channel_attribute_name ?? '-',
+                ];
+            }
+
+            $result[] = $row;
+        }
+
+        return $result;
+    }
+
+    public function getAvailableChannelAttributes(int $categoryId, string $channelId, bool $isSaleProp): array
+    {
+        $channelCategoryId = DB::table('category_channel_mappings')
+            ->join('channel_categories', 'channel_categories.id', '=', 'category_channel_mappings.channel_category_id')
+            ->where('category_channel_mappings.category_id', $categoryId)
+            ->where('channel_categories.channel_id', $channelId)
+            ->value('channel_categories.id');
+
+        if (!$channelCategoryId) {
+            return [];
+        }
+
+        return DB::table('channel_attributes')
+            ->where('channel_category_id', $channelCategoryId)
+            ->where('is_sale_prop', $isSaleProp)
+            ->select('id', 'name', 'external_id', 'is_required')
+            ->orderBy('name')
+            ->get()
+            ->toArray();
+    }
+
     private function buildChannelCategoryFullName(\Modules\Product\Models\ChannelCategory $cc): string
     {
         $parts = [$cc->name];

@@ -27,6 +27,10 @@ class ShopeeProductMapper
             'logistic_info' => $config['logistic_info'] ?? [],
         ];
 
+        if (! empty($config['attribute_list'])) {
+            $payload['attribute_list'] = $config['attribute_list'];
+        }
+
         if (! empty($config['brand_id'])) {
             $payload['brand'] = ['brand_id' => (int) $config['brand_id']];
         }
@@ -37,7 +41,7 @@ class ShopeeProductMapper
         ));
 
         if (count($variants) > 1) {
-            [$payload['tier_variation'], $payload['model_list']] = $this->buildVariations($variants);
+            [$payload['tier_variation'], $payload['model_list']] = $this->buildVariations($variants, $config['tier_variation_name'] ?? null);
         } else {
             $first = $variants[0] ?? [];
             $payload['price_info'] = [['current_price' => (float) ($first['sell_price'] ?? 0)]];
@@ -47,7 +51,7 @@ class ShopeeProductMapper
         return array_filter($payload, fn ($v) => $v !== null);
     }
 
-    protected function buildVariations(array $variants): array
+    protected function buildVariations(array $variants, ?string $tierName = null): array
     {
         $optionNames = [];
         $optionImages = [];
@@ -70,7 +74,7 @@ class ShopeeProductMapper
         }
 
         $tierVariation = [[
-            'name' => 'Variasi',
+            'name' => $tierName ?: 'Variasi',
             'option_list' => array_map(function ($name) use ($optionImages) {
                 $option = ['option' => $name];
                 if (! empty($optionImages[$name])) {

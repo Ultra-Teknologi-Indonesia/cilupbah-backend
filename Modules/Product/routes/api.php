@@ -131,10 +131,18 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('categories/enable', [CategoryController::class, 'enableCategories']);
     Route::post('categories/disable', [CategoryController::class, 'disableCategories']);
     Route::get('categories/mapping', [CategoryController::class, 'mappingList']);
-    Route::get('categories/search', [CategoryController::class, 'search']);
+
 
     Route::apiResource('categories', CategoryController::class)->names('category')->where(['category' => '[0-9]+']);
     Route::post('categories/{category}/map-channel', [CategoryController::class, 'mapChannel'])->whereNumber('category');
+
+    Route::get('categories/{category}/attribute-mapping', [CategoryController::class, 'attributeMapping'])->whereNumber('category');
+    Route::post('categories/{category}/attribute-mapping', [CategoryController::class, 'storeAttributeMapping'])->whereNumber('category');
+    Route::delete('categories/{category}/attribute-mapping', [CategoryController::class, 'removeAttributeMapping'])->whereNumber('category');
+    Route::get('categories/{category}/variation-mapping', [CategoryController::class, 'variationMapping'])->whereNumber('category');
+    Route::post('categories/{category}/variation-mapping', [CategoryController::class, 'storeAttributeMapping'])->whereNumber('category');
+    Route::delete('categories/{category}/variation-mapping', [CategoryController::class, 'removeAttributeMapping'])->whereNumber('category');
+    Route::get('categories/{category}/available-channel-attributes', [CategoryController::class, 'availableChannelAttributes'])->whereNumber('category');
 
     Route::get('categories/{category}/form-attributes', [\Modules\Product\Http\Controllers\CategoryFormAttributeController::class, 'show'])->whereNumber('category')->name('category.form-attributes');
     Route::post('categories/{category}/attributes', [\Modules\Product\Http\Controllers\CategoryFormAttributeController::class, 'store'])->whereNumber('category');

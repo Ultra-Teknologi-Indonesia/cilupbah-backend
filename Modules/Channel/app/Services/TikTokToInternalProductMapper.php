@@ -70,6 +70,7 @@ class TikTokToInternalProductMapper
         }
 
         $variationTypeOrder = [];
+        $mainImageUrls = array_keys($seenUrls);
 
         if (!empty($tiktokProduct['skus'])) {
             foreach ($tiktokProduct['skus'] as $skuData) {
@@ -111,11 +112,11 @@ class TikTokToInternalProductMapper
                     $variant['options'] = $options;
                 }
 
-                $imageUrl = $this->resolveSkuImage($skuData['sales_attributes'] ?? []);
-                if ($imageUrl) {
+                $skuImg = $this->extractSkuImage($skuData);
+                if ($skuImg && !in_array($skuImg, $mainImageUrls, true)) {
                     $variant['media'] = [[
                         'media_type' => 'image',
-                        'url' => $imageUrl,
+                        'url' => $skuImg,
                         'is_primary' => true,
                         'sort_order' => 0,
                     ]];
@@ -142,6 +143,20 @@ class TikTokToInternalProductMapper
         return $internal;
     }
 
+    protected function extractSkuImage(array $skuData): ?string
+    {
+        foreach ($skuData['sales_attributes'] ?? [] as $attr) {
+            $uri = $attr['sku_img']['uri']
+                ?? $attr['sku_img']['url_list'][0]
+                ?? null;
+            if ($uri) {
+                return $this->normalizeImageUrl($uri);
+            }
+        }
+
+        return null;
+    }
+
     protected function normalizeImageUrl(?string $url): ?string
     {
         if (!$url || $url === '') {
@@ -159,23 +174,6 @@ class TikTokToInternalProductMapper
         return null;
     }
 
-    protected function resolveSkuImage(array $salesAttributes): ?string
-    {
-        foreach ($salesAttributes as $attr) {
-            $img = $attr['sku_img'] ?? null;
-            if (! $img) {
-                continue;
-            }
-
-            $raw = $img['url_list'][0] ?? $img['uri'] ?? null;
-            $url = $this->normalizeImageUrl($raw);
-            if ($url) {
-                return $url;
-            }
-        }
-
-        return null;
-    }
 
     protected function resolveCategoryId(string $shopId, ?string $tiktokCategoryId): int
     {

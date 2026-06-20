@@ -57,7 +57,7 @@ class AttributeService
     public function mapToChannel(int $attributeId, array $channelAttributeIds): Attribute
     {
         $attribute = $this->getAttributeById($attributeId);
-        $attribute->channelAttributes()->sync($channelAttributeIds);
+        $attribute->channelAttributes()->syncWithoutDetaching($channelAttributeIds);
 
         return $attribute->load('channelAttributes');
     }

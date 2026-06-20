@@ -23,12 +23,12 @@ class CategoryAttributeRepository
     {
         $catAttrs = CategoryAttribute::with('attribute')
             ->where('category_id', $categoryId)
-            ->where('is_required', true)
             ->get()
             ->map(fn (CategoryAttribute $ca) => (object) [
                 'id' => (int) $ca->attribute->id,
                 'name' => $ca->attribute->name,
                 'type' => $ca->attribute->type,
+                'is_required' => (bool) $ca->is_required,
             ]);
 
         $attrIds = $catAttrs->pluck('id')->all() ?: [-1];
@@ -55,6 +55,7 @@ class CategoryAttributeRepository
             return [
                 'attribute_id' => (int) $a->id,
                 'name' => $a->name,
+                'is_required' => $a->is_required,
                 'options' => $options->get($a->id, collect())
                     ->map(fn ($o) => ['id' => (int) $o->id, 'value' => $o->value])->values(),
                 'channels' => (object) $channels,
