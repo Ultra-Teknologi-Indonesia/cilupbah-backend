@@ -35,28 +35,34 @@ class ChannelDownloadTest extends TestCase
             'is_active' => true,
         ]);
 
+        $detail = [
+            'id' => 'TIKTOK-PROD-1',
+            'title' => 'Downloaded Phone',
+            'status' => 'ACTIVATE',
+            'description' => 'Deskripsi produk',
+            'skus' => [
+                [
+                    'id' => 'SKU-EXT-1',
+                    'seller_sku' => 'DL-SKU-1',
+                    'price' => ['tax_exclusive_price' => 10000],
+                    'inventory' => [['quantity' => 5]],
+                ],
+            ],
+            'main_images' => [['urls' => ['https://img/1.jpg']]],
+        ];
+
         Http::fake([
+            // Detail per produk (dipakai pull untuk opsi varian, gambar, deskripsi).
+            '*/products/TIKTOK-PROD-1*' => Http::response([
+                'code' => 0,
+                'message' => 'Success',
+                'data' => $detail,
+            ], 200),
+            // Enumerasi id produk.
             '*products/search*' => Http::response([
                 'code' => 0,
                 'message' => 'Success',
-                'data' => [
-                    'products' => [
-                        [
-                            'id' => 'TIKTOK-PROD-1',
-                            'title' => 'Downloaded Phone',
-                            'status' => 'ACTIVATE',
-                            'skus' => [
-                                [
-                                    'id' => 'SKU-EXT-1',
-                                    'seller_sku' => 'DL-SKU-1',
-                                    'price' => ['tax_exclusive_price' => 10000],
-                                    'inventory' => [['quantity' => 5]],
-                                ],
-                            ],
-                            'main_images' => [['urls' => ['https://img/1.jpg']]],
-                        ],
-                    ],
-                ],
+                'data' => ['products' => [['id' => 'TIKTOK-PROD-1', 'title' => 'Downloaded Phone']]],
             ], 200),
         ]);
     }

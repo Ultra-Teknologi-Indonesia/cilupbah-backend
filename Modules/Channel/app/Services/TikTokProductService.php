@@ -342,12 +342,15 @@ class TikTokProductService
 
             foreach ($res['data']['products'] as $item) {
                 try {
-                    $internalData = $mapper->map($item, $shopId);
+                    // Endpoint search ringkas; ambil detail agar opsi varian, gambar
+                    // varian, dan deskripsi ikut terunduh.
+                    $detail       = $this->fetchProductDetail($shop, (string) ($item['id'] ?? ''), $accessToken) ?? $item;
+                    $internalData = $mapper->map($detail, $shopId);
                     $insertedId   = $productService->upsertFromChannel($internalData);
 
                     if ($insertedId) {
                         $attrs = [];
-                        foreach ($item['product_attributes'] ?? [] as $attr) {
+                        foreach ($detail['product_attributes'] ?? [] as $attr) {
                             if (empty($attr['name'])) {
                                 continue;
                             }
@@ -364,7 +367,7 @@ class TikTokProductService
                             $attrs ?: null
                         );
 
-                        foreach ($item['skus'] ?? [] as $skuData) {
+                        foreach ($detail['skus'] ?? [] as $skuData) {
                             $sku = !empty($skuData['seller_sku'])
                                 ? $skuData['seller_sku']
                                 : ('TK-' . $skuData['id']);
@@ -496,6 +499,25 @@ class TikTokProductService
         return $img['urls'][0] ?? $img['uri'] ?? null;
     }
 
+    /**
+     * Detail lengkap satu produk TikTok. Endpoint search hanya ringkas — detail
+     * berisi skus.sales_attributes (opsi varian), sku_img (gambar varian), dan deskripsi.
+     */
+    protected function fetchProductDetail(object $shop, string $externalProductId, string &$accessToken): ?array
+    {
+        $path    = "/product/202309/products/{$externalProductId}";
+        $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
+
+        try {
+            $res = $this->client->request('GET', $path, $queries, [], $accessToken);
+        } catch (TokenExpiredException $e) {
+            $accessToken = $this->refreshShopToken($shop);
+            $res = $this->client->request('GET', $path, $queries, [], $accessToken);
+        }
+
+        return $res['data'] ?? null;
+    }
+
     public function pullProductById(string $shopId, string $externalProductId): bool
     {
         $shop = $this->shopRepository->findByShopId($shopId);
@@ -504,89 +526,67 @@ class TikTokProductService
         }
 
         $accessToken   = $shop->access_token;
-        $shopCipher    = $shop->shop_cipher ?? '';
         $channelShopId = $shop->id;
 
         $productService = app(\Modules\Product\Services\ProductService::class);
         $mapper         = app(TikTokToInternalProductMapper::class);
 
-        $pageToken = null;
+        $detail = $this->fetchProductDetail($shop, $externalProductId, $accessToken);
+        if (! $detail) {
+            return false;
+        }
 
-        do {
-            $queries = ['shop_cipher' => $shopCipher, 'page_size' => 100];
-            if ($pageToken) {
-                $queries['page_token'] = $pageToken;
+        $internalData = $mapper->map($detail, $shopId);
+        $insertedId   = $productService->upsertFromChannel($internalData);
+
+        if (!$insertedId) {
+            return false;
+        }
+
+        $attrs = [];
+        foreach ($detail['product_attributes'] ?? [] as $attr) {
+            if (empty($attr['name'])) {
+                continue;
             }
+            $vals = array_filter(array_map(fn ($v) => $v['name'] ?? '', $attr['values'] ?? []));
+            sort($vals);
+            $attrs[$attr['name']] = implode(', ', $vals);
+        }
 
-            try {
-                $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
-            } catch (TokenExpiredException $e) {
-                $accessToken = $this->refreshShopToken($shop);
-                $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
-            }
+        $pcmId = $this->productRepository->upsertChannelMapping(
+            (string) $insertedId,
+            $shopId,
+            (string) ($detail['id'] ?? $externalProductId),
+            'synced',
+            $attrs ?: null
+        );
 
-            foreach ($res['data']['products'] ?? [] as $item) {
-                if ((string) ($item['id'] ?? '') !== (string) $externalProductId) {
-                    continue;
-                }
+        foreach ($detail['skus'] ?? [] as $skuData) {
+            $sku = !empty($skuData['seller_sku'])
+                ? $skuData['seller_sku']
+                : ('TK-' . ($skuData['id'] ?? ''));
 
-                $internalData = $mapper->map($item, $shopId);
-                $insertedId   = $productService->upsertFromChannel($internalData);
+            $variant = $this->productRepository->getVariantByProductIdAndSku((string) $insertedId, $sku);
 
-                if (!$insertedId) {
-                    return false;
-                }
-
-                $attrs = [];
-                foreach ($item['product_attributes'] ?? [] as $attr) {
-                    if (empty($attr['name'])) {
-                        continue;
-                    }
-                    $vals = array_filter(array_map(fn ($v) => $v['name'] ?? '', $attr['values'] ?? []));
-                    sort($vals);
-                    $attrs[$attr['name']] = implode(', ', $vals);
-                }
-
-                $pcmId = $this->productRepository->upsertChannelMapping(
-                    (string) $insertedId,
-                    $shopId,
-                    (string) $item['id'],
-                    'synced',
-                    $attrs ?: null
+            if ($variant) {
+                $this->productRepository->upsertVariantChannelMapping(
+                    $pcmId,
+                    $variant->id,
+                    $skuData['id'] ?? null,
+                    $skuData['seller_sku'] ?? null,
+                    $skuData['price']['tax_exclusive_price'] ?? null
                 );
-
-                foreach ($item['skus'] ?? [] as $skuData) {
-                    $sku = !empty($skuData['seller_sku'])
-                        ? $skuData['seller_sku']
-                        : ('TK-' . ($skuData['id'] ?? ''));
-
-                    $variant = $this->productRepository->getVariantByProductIdAndSku((string) $insertedId, $sku);
-
-                    if ($variant) {
-                        $this->productRepository->upsertVariantChannelMapping(
-                            $pcmId,
-                            $variant->id,
-                            $skuData['id'] ?? null,
-                            $skuData['seller_sku'] ?? null,
-                            $skuData['price']['tax_exclusive_price'] ?? null
-                        );
-                    }
-                }
-
-                ProductSyncLog::record([
-                    'channel_shop_id' => $channelShopId,
-                    'action'          => ProductSyncLog::ACTION_DOWNLOAD,
-                    'status'          => ProductSyncLog::STATUS_SUCCESS,
-                    'response'        => ['external_product_id' => (string) $item['id']],
-                ]);
-
-                return true;
             }
+        }
 
-            $pageToken = $res['data']['next_page_token'] ?? null;
-        } while ($pageToken);
+        ProductSyncLog::record([
+            'channel_shop_id' => $channelShopId,
+            'action'          => ProductSyncLog::ACTION_DOWNLOAD,
+            'status'          => ProductSyncLog::STATUS_SUCCESS,
+            'response'        => ['external_product_id' => (string) ($detail['id'] ?? $externalProductId)],
+        ]);
 
-        return false;
+        return true;
     }
 
     public function reconcileChannelData(string $shopId): int
