@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Jobs\DownloadProductsJob;
 use Modules\Channel\Models\DownloadTransaction;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductSyncLog;
 
 class ChannelDownloadService
@@ -77,12 +78,48 @@ class ChannelDownloadService
     {
         $this->assertSupported($channel);
 
-        return match (strtolower($channel)) {
+        $results = match (strtolower($channel)) {
             'tiktok' => app(TikTokProductService::class)->searchProducts($shopId, $query),
             'lazada' => app(LazadaProductService::class)->searchProducts($shopId, $query),
             'shopee' => app(ShopeeProductService::class)->searchProducts($shopId, $query),
             default => [],
         };
+
+        return $this->flagDownloaded($shopId, $results);
+    }
+
+    /** Tandai produk channel yang sudah pernah diunduh (punya channel mapping). */
+    protected function flagDownloaded(string $shopId, array $results): array
+    {
+        if (empty($results)) {
+            return $results;
+        }
+
+        $channelShopId = $this->channelShopRepository->getIdByShopId($shopId);
+
+        $downloaded = [];
+        if ($channelShopId) {
+            $ids = array_values(array_filter(array_map(
+                fn ($r) => isset($r['external_product_id']) ? (string) $r['external_product_id'] : null,
+                $results
+            )));
+
+            if (! empty($ids)) {
+                $downloaded = array_flip(
+                    ProductChannelMapping::where('channel_shop_id', $channelShopId)
+                        ->whereIn('external_product_id', $ids)
+                        ->pluck('external_product_id')
+                        ->map(fn ($v) => (string) $v)
+                        ->all()
+                );
+            }
+        }
+
+        return array_map(function ($r) use ($downloaded) {
+            $r['already_downloaded'] = isset($downloaded[(string) ($r['external_product_id'] ?? '')]);
+
+            return $r;
+        }, $results);
     }
 
     public function getProductImage(string $channel, string $shopId, string $externalProductId): ?string
