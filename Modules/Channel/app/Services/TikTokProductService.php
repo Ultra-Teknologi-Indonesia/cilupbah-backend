@@ -19,19 +19,22 @@ class TikTokProductService
     protected ChannelShopRepository $shopRepository;
     protected ChannelProductRepository $productRepository;
     protected TikTokImageUploader $imageUploader;
+    protected ChannelStockResolver $stockResolver;
 
     public function __construct(
         TikTokClient $client,
         TikTokProductMapper $mapper,
         ChannelShopRepository $shopRepository,
         ChannelProductRepository $productRepository,
-        TikTokImageUploader $imageUploader
+        TikTokImageUploader $imageUploader,
+        ChannelStockResolver $stockResolver
     ) {
         $this->client = $client;
         $this->mapper = $mapper;
         $this->shopRepository = $shopRepository;
         $this->productRepository = $productRepository;
         $this->imageUploader = $imageUploader;
+        $this->stockResolver = $stockResolver;
     }
 
     public function pushProduct(string $productId, string $shopId)
@@ -72,11 +75,15 @@ class TikTokProductService
             $videoId = $this->imageUploader->uploadVideo($productVideo->url, $accessToken);
         }
 
+        // Stok dikirim dari sistem kita ke channel (bukan diimpor dari channel).
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $variants);
+
         $internalProduct = (array)$product;
-        $internalProduct['variants'] = $variants->map(function ($v) use ($media, $accessToken) {
+        $internalProduct['variants'] = $variants->map(function ($v) use ($media, $accessToken, $stockByVariant) {
             $variantArr = (array)$v;
             $options = $this->productRepository->getVariantOptions($v->id);
             $variantArr['options'] = array_map(fn($opt) => (array)$opt, $options);
+            $variantArr['stock'] = $stockByVariant[$v->id] ?? 0;
 
             $variantImage = $media->first(fn ($m) => ($m->variant_id ?? null) === $v->id && $m->media_type === 'image');
             if ($variantImage) {
@@ -458,6 +465,35 @@ class TikTokProductService
         } while ($pageToken && $pages < 5 && count($results) < 200);
 
         return $results;
+    }
+
+    /**
+     * Ambil URL gambar utama satu produk (Download Satuan — lazy thumbnail).
+     * Endpoint search tidak mengembalikan gambar, jadi pakai detail produk.
+     */
+    public function getProductImage(string $shopId, string $externalProductId): ?string
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (!$shop || !$shop->access_token) {
+            return null;
+        }
+
+        $accessToken = $shop->access_token;
+        $path        = "/product/202309/products/{$externalProductId}";
+        $queries     = ['shop_cipher' => $shop->shop_cipher ?? ''];
+
+        try {
+            $res = $this->client->request('GET', $path, $queries, [], $accessToken);
+        } catch (TokenExpiredException $e) {
+            $accessToken = $this->refreshShopToken($shop);
+            $res = $this->client->request('GET', $path, $queries, [], $accessToken);
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        $img = $res['data']['main_images'][0] ?? null;
+
+        return $img['urls'][0] ?? $img['uri'] ?? null;
     }
 
     public function pullProductById(string $shopId, string $externalProductId): bool

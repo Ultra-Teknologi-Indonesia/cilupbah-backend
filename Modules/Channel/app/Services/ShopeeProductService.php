@@ -247,6 +247,15 @@ class ShopeeProductService
         return $count;
     }
 
+    /** Ambil URL gambar utama satu produk Shopee (Download Satuan — lazy thumbnail). */
+    public function getProductImage(string $shopId, string $externalProductId): ?string
+    {
+        $shop = $this->requireShop($shopId);
+        $item = $this->fetchBaseInfo($shop, [$externalProductId])[0] ?? null;
+
+        return $item['image']['image_url_list'][0] ?? null;
+    }
+
     /** Tarik satu produk Shopee by item_id (Download Satuan). */
     public function pullProductById(string $shopId, string $externalProductId): bool
     {

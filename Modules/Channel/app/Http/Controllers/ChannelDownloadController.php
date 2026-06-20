@@ -108,6 +108,30 @@ class ChannelDownloadController extends Controller
         return $this->successResponse($items, 'Pencarian produk channel berhasil');
     }
 
+    #[OA\Get(
+        path: "/api/v1/{channel}/download/product-image",
+        summary: "Ambil URL gambar utama satu produk channel (lazy thumbnail)",
+        tags: ["Channel Download"]
+    )]
+    #[OA\Parameter(name: "channel", in: "path", required: true, schema: new OA\Schema(type: "string"))]
+    #[OA\Parameter(name: "shop_id", in: "query", required: true, schema: new OA\Schema(type: "string"))]
+    #[OA\Parameter(name: "external_product_id", in: "query", required: true, schema: new OA\Schema(type: "string"))]
+    public function productImage(Request $request, string $channel): JsonResponse
+    {
+        $data = $request->validate([
+            'shop_id' => 'required|string',
+            'external_product_id' => 'required|string',
+        ]);
+
+        try {
+            $image = $this->downloadService->getProductImage($channel, $data['shop_id'], $data['external_product_id']);
+        } catch (\Throwable $e) {
+            $image = null;
+        }
+
+        return $this->successResponse(['image' => $image], 'Gambar produk channel');
+    }
+
     #[OA\Post(
         path: "/api/v1/{channel}/download-product",
         summary: "Download satu produk dari marketplace by external id (Download Satuan)",
