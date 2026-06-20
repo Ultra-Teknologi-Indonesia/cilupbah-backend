@@ -320,9 +320,11 @@ class ShopeeProductService
     /** Satu halaman get_item_list. */
     protected function fetchItemList(object $shop, int $offset, int $pageSize): array
     {
+        // item_status WAJIB di get_item_list Shopee; tanpa ini API menolak ("item_status is required").
         $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/product/get_item_list', [
             'offset' => $offset,
             'page_size' => $pageSize,
+            'item_status' => 'NORMAL',
         ], $token, $shop->shop_id));
 
         return $res['response'] ?? [];
