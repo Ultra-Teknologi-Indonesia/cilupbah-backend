@@ -11,5 +11,10 @@ class CategoryChannelMapping extends Model
     protected $fillable = [
         'category_id',
         'channel_category_id',
+        'is_pull_default',
+    ];
+
+    protected $casts = [
+        'is_pull_default' => 'boolean',
     ];
 }

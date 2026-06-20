@@ -19,7 +19,7 @@ class ProductResource extends JsonResource
             'is_active' => $this->is_active,
             'primary_image' => $this->primaryImageUrl(),
             'images' => $this->whenLoaded('media', fn () => $this->media
-                ->filter(fn ($m) => ($m->media_type ?? 'image') === 'image' && $m->url)
+                ->filter(fn ($m) => $m->variant_id === null && ($m->media_type ?? 'image') === 'image' && $m->url)
                 ->sortByDesc('is_primary')
                 ->map(fn ($m) => ['url' => $m->url, 'is_primary' => (bool) $m->is_primary])
                 ->values()),

@@ -27,7 +27,7 @@ class ChannelDownloadTest extends TestCase
             'services.tiktok.base_url' => 'https://open-api.tiktokglobalshop.com',
         ]);
 
-        DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Cat']);
+        DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Belum Dikategorikan', 'is_active' => true]);
 
         ChannelShop::create([
             'shop_id' => 'SHOP-DL-1',

@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\DB;
 
 class TikTokToInternalProductMapper
 {
+    protected const TIKTOK_CDN_PREFIX = 'https://p16-oec-ttp.tiktokcdn-us.com/';
+
     public function map(array $tiktokProduct, string $shopId): array
     {
         $tiktokCategoryId = $tiktokProduct['category_id']
@@ -38,13 +40,31 @@ class TikTokToInternalProductMapper
         $internal['variants'] = [];
         $internal['media'] = [];
 
+        $seenUrls = [];
         if (!empty($tiktokProduct['main_images'])) {
             foreach ($tiktokProduct['main_images'] as $idx => $img) {
+                $url = $this->normalizeImageUrl($img['urls'][0] ?? $img['uri'] ?? '');
+                if (!$url || isset($seenUrls[$url])) {
+                    continue;
+                }
+                $seenUrls[$url] = true;
                 $internal['media'][] = [
                     'media_type' => 'image',
-                    'url' => $img['urls'][0] ?? $img['uri'] ?? '',
-                    'is_primary' => $idx === 0,
-                    'sort_order' => $idx,
+                    'url' => $url,
+                    'is_primary' => count($internal['media']) === 0,
+                    'sort_order' => count($internal['media']),
+                ];
+            }
+        }
+
+        if (!empty($tiktokProduct['video']) && !empty($tiktokProduct['video']['url'])) {
+            $videoUrl = $this->normalizeImageUrl($tiktokProduct['video']['url']);
+            if ($videoUrl) {
+                $internal['media'][] = [
+                    'media_type' => 'video',
+                    'url' => $videoUrl,
+                    'is_primary' => false,
+                    'sort_order' => count($internal['media']),
                 ];
             }
         }
@@ -122,6 +142,23 @@ class TikTokToInternalProductMapper
         return $internal;
     }
 
+    protected function normalizeImageUrl(?string $url): ?string
+    {
+        if (!$url || $url === '') {
+            return null;
+        }
+
+        if (preg_match('#^https?://#i', $url)) {
+            return $url;
+        }
+
+        if (str_starts_with($url, 'tos-')) {
+            return self::TIKTOK_CDN_PREFIX . $url;
+        }
+
+        return null;
+    }
+
     protected function resolveSkuImage(array $salesAttributes): ?string
     {
         foreach ($salesAttributes as $attr) {
@@ -130,7 +167,8 @@ class TikTokToInternalProductMapper
                 continue;
             }
 
-            $url = $img['url_list'][0] ?? $img['uri'] ?? null;
+            $raw = $img['url_list'][0] ?? $img['uri'] ?? null;
+            $url = $this->normalizeImageUrl($raw);
             if ($url) {
                 return $url;
             }
@@ -141,10 +179,22 @@ class TikTokToInternalProductMapper
 
     protected function resolveCategoryId(string $shopId, ?string $tiktokCategoryId): int
     {
-        $fallback = fn () => (int) DB::table('categories')
-            ->whereNull('parent_id')
-            ->orderBy('id')
-            ->value('id');
+        $fallback = function () {
+            $id = DB::table('categories')
+                ->where('name', 'Belum Dikategorikan')
+                ->value('id');
+
+            if ($id) {
+                return (int) $id;
+            }
+
+            return (int) DB::table('categories')->insertGetId([
+                'name' => 'Belum Dikategorikan',
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        };
 
         if (!$tiktokCategoryId) {
             return $fallback();
@@ -158,12 +208,14 @@ class TikTokToInternalProductMapper
             return $fallback();
         }
 
-        $categoryId = DB::table('category_channel_mappings')
+        $mapping = DB::table('category_channel_mappings')
             ->join('channel_categories', 'channel_categories.id', '=', 'category_channel_mappings.channel_category_id')
             ->where('channel_categories.channel_id', $channelId)
             ->where('channel_categories.external_id', (string) $tiktokCategoryId)
-            ->value('category_channel_mappings.category_id');
+            ->orderByDesc('category_channel_mappings.is_pull_default')
+            ->select('category_channel_mappings.category_id')
+            ->first();
 
-        return $categoryId ? (int) $categoryId : $fallback();
+        return $mapping ? (int) $mapping->category_id : $fallback();
     }
 }

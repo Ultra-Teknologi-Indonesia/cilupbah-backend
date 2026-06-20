@@ -64,6 +64,7 @@ class Category extends Model
     public function channelCategories(): BelongsToMany
     {
         return $this->belongsToMany(ChannelCategory::class, 'category_channel_mappings')
+            ->withPivot('id', 'is_pull_default')
             ->withTimestamps();
     }
 }

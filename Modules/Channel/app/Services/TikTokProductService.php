@@ -459,7 +459,7 @@ class TikTokProductService
                     'external_product_id' => (string) ($item['id'] ?? ''),
                     'name'                => $title,
                     'seller_sku'          => $sellerSku,
-                    'image'               => $item['main_images'][0]['thumb_urls'][0] ?? ($item['main_images'][0]['uri'] ?? null),
+                    'image'               => $this->normalizeTikTokImageUrl($item['main_images'][0]['thumb_urls'][0] ?? ($item['main_images'][0]['uri'] ?? null)),
                     'shop_id'             => $shopId,
                     'shop_name'           => $shop->shop_name ?? null,
                     'channel_code'        => 'tiktok',
@@ -495,7 +495,7 @@ class TikTokProductService
 
         $img = $res['data']['main_images'][0] ?? null;
 
-        return $img['urls'][0] ?? $img['uri'] ?? null;
+        return $this->normalizeTikTokImageUrl($img['urls'][0] ?? $img['uri'] ?? null);
     }
 
     protected function fetchProductDetail(object $shop, string $externalProductId, string &$accessToken): ?array
@@ -1171,5 +1171,22 @@ class TikTokProductService
         }
 
         return $result;
+    }
+
+    protected function normalizeTikTokImageUrl(?string $url): ?string
+    {
+        if (!$url || $url === '') {
+            return null;
+        }
+
+        if (preg_match('#^https?://#i', $url)) {
+            return $url;
+        }
+
+        if (str_starts_with($url, 'tos-')) {
+            return 'https://p16-oec-ttp.tiktokcdn-us.com/' . $url;
+        }
+
+        return null;
     }
 }

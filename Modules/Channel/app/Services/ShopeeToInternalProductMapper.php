@@ -176,12 +176,14 @@ class ShopeeToInternalProductMapper
             return $fallback();
         }
 
-        $categoryId = DB::table('category_channel_mappings')
+        $mapping = DB::table('category_channel_mappings')
             ->join('channel_categories', 'channel_categories.id', '=', 'category_channel_mappings.channel_category_id')
             ->where('channel_categories.channel_id', $channelId)
             ->where('channel_categories.external_id', (string) $shopeeCategoryId)
-            ->value('category_channel_mappings.category_id');
+            ->orderByDesc('category_channel_mappings.is_pull_default')
+            ->select('category_channel_mappings.category_id')
+            ->first();
 
-        return $categoryId ?: $fallback();
+        return $mapping ? (int) $mapping->category_id : $fallback();
     }
 }
