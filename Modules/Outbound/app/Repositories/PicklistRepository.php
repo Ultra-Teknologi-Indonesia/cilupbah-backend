@@ -12,6 +12,9 @@ class PicklistRepository
     public function getAllPaginated(int $limit = 10)
     {
         return QueryBuilder::for(Picklist::class)
+            ->withCount('items')
+            ->withSum('items', 'qty_ordered')
+            ->withSum('items', 'qty_picked')
             ->with(['location:id,location_name,location_code', 'picker:id,name,email'])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
@@ -28,6 +31,7 @@ class PicklistRepository
     {
         return Picklist::with([
             'items.product:id,sku,product_id',
+            'items.product.product:id,name',
             'items.bin:id,bin_final_code',
             'items.order:id,salesorder_no,customer_name',
             'location:id,location_name,location_code',
