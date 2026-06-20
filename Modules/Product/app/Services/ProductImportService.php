@@ -3,6 +3,7 @@
 namespace Modules\Product\Services;
 
 use Illuminate\Support\Facades\DB;
+use Modules\Product\Models\Product;
 use Modules\Product\Repositories\ProductImportRepository;
 
 class ProductImportService
@@ -28,6 +29,10 @@ class ProductImportService
                 'length' => $row['package_length'] ?? 0,
                 'width' => $row['package_width'] ?? 0,
                 'height' => $row['package_height'] ?? 0,
+                // Produk hasil import langsung berstatus Master (siap pakai),
+                // konsisten dengan default kolom products.status.
+                'status' => Product::STATUS_MASTER,
+                'is_active' => true,
             ]);
 
             $sku = $row['item_code'];
@@ -86,7 +91,7 @@ class ProductImportService
         return $this->repository->findOrCreateBrandByName($brandName);
     }
 
-    protected function processMedia(int $productId, array $row)
+    protected function processMedia(string $productId, array $row)
     {
         $imageUrls = [
             $row['image_url1'] ?? null,

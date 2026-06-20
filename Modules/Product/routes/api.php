@@ -162,6 +162,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('products/import/template/bundle', [\Modules\Product\Http\Controllers\ProductImportController::class, 'downloadBundleTemplate']);
     Route::post('products/import/single', [\Modules\Product\Http\Controllers\ProductImportController::class, 'importSingle']);
     Route::post('products/import/bundle', [\Modules\Product\Http\Controllers\ProductImportController::class, 'importBundle']);
+    Route::get('products/import/batches', [\Modules\Product\Http\Controllers\ProductImportController::class, 'batches']);
+    Route::get('products/import/batches/{batch}', [\Modules\Product\Http\Controllers\ProductImportController::class, 'show'])->whereUuid('batch');
+    Route::get('products/import/batches/{batch}/errors', [\Modules\Product\Http\Controllers\ProductImportController::class, 'errors'])->whereUuid('batch');
+    Route::get('products/import/batches/{batch}/errors/download', [\Modules\Product\Http\Controllers\ProductImportController::class, 'downloadErrors'])->whereUuid('batch');
 
     Route::get('inventory/items/by-sku/{sku}', [ProductController::class, 'showBySku']);
     Route::get('inventory/item-bundles', [ProductController::class, 'bundles']);
