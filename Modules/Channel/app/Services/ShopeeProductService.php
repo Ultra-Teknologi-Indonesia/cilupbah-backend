@@ -348,6 +348,7 @@ class ShopeeProductService
 
         $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/product/get_item_base_info', [
             'item_id_list' => implode(',', $itemIds),
+            'need_complete_description' => true,
         ], $token, $shop->shop_id));
 
         return $res['response']['item_list'] ?? [];

@@ -181,7 +181,7 @@ class ProductRepository
     {
         return QueryBuilder::for(ProductVariant::class)
             ->where('product_id', $productId)
-            ->with('options')
+            ->with(['options', 'media'])
             ->withSum('inventories', 'available')
             ->allowedSearch('sku')
             ->allowedFilters(

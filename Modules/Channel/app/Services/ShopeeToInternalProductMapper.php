@@ -14,7 +14,7 @@ class ShopeeToInternalProductMapper
         $internal = [
             'category_id' => $this->resolveCategoryId($shopId, $shopeeItem['category_id'] ?? null),
             'name' => $shopeeItem['item_name'] ?? 'Shopee Product',
-            'description' => $shopeeItem['description'] ?? '',
+            'description' => $this->resolveDescription($shopeeItem),
             'condition' => strtoupper((string) ($shopeeItem['condition'] ?? 'NEW')) === 'USED' ? 'USED' : 'NEW',
             'is_draft' => strtoupper((string) ($shopeeItem['item_status'] ?? '')) !== 'NORMAL',
             'is_active' => true,
@@ -34,7 +34,9 @@ class ShopeeToInternalProductMapper
             ];
         }
 
-        $internal['variants'] = $this->mapVariants($shopeeItem);
+        $tierVariation = $shopeeItem['tier_variation'] ?? [];
+        $internal['variation_types'] = $this->mapVariationTypes($tierVariation);
+        $internal['variants'] = $this->mapVariants($shopeeItem, $tierVariation);
 
         if (empty($internal['variants'])) {
             $internal['variants'][] = [
@@ -49,10 +51,24 @@ class ShopeeToInternalProductMapper
         return $internal;
     }
 
-    protected function mapVariants(array $shopeeItem): array
+    /** Tier variation Shopee → daftar tipe variasi internal (mis. Warna, Tipe HP). */
+    protected function mapVariationTypes(array $tierVariation): array
+    {
+        $types = [];
+        foreach ($tierVariation as $i => $tier) {
+            $name = $tier['name'] ?? null;
+            if (! $name) {
+                continue;
+            }
+            $types[] = ['name' => $name, 'sort_order' => $i];
+        }
+
+        return $types;
+    }
+
+    protected function mapVariants(array $shopeeItem, array $tierVariation): array
     {
         $variants = [];
-        $tierVariation = $shopeeItem['tier_variation'] ?? [];
 
         foreach ($shopeeItem['model_list'] ?? [] as $model) {
             $sku = ! empty($model['model_sku'])
@@ -68,6 +84,23 @@ class ShopeeToInternalProductMapper
                 'is_active' => true,
             ];
 
+            // Opsi varian: tier_index memetakan model ke option_list tiap tier.
+            $options = [];
+            foreach ($model['tier_index'] ?? [] as $tierPos => $optIdx) {
+                $tier = $tierVariation[$tierPos] ?? null;
+                if (! $tier || empty($tier['name'])) {
+                    continue;
+                }
+                $optName = $tier['option_list'][$optIdx]['option'] ?? null;
+                if ($optName === null || $optName === '') {
+                    continue;
+                }
+                $options[] = ['name' => $tier['name'], 'value' => $optName];
+            }
+            if ($options) {
+                $variant['options'] = $options;
+            }
+
             $imageUrl = $this->resolveModelImage($tierVariation, $model);
             if ($imageUrl) {
                 $variant['media'] = [[
@@ -82,6 +115,25 @@ class ShopeeToInternalProductMapper
         }
 
         return $variants;
+    }
+
+    /** Shopee description: tipe "normal" di field description, "extended" di description_info. */
+    protected function resolveDescription(array $shopeeItem): string
+    {
+        $desc = (string) ($shopeeItem['description'] ?? '');
+        if ($desc !== '') {
+            return $desc;
+        }
+
+        $fields = $shopeeItem['description_info']['extended_description']['field_list'] ?? [];
+        $parts = [];
+        foreach ($fields as $field) {
+            if (($field['field_type'] ?? '') === 'text' && ! empty($field['text'])) {
+                $parts[] = $field['text'];
+            }
+        }
+
+        return implode("\n\n", $parts);
     }
 
     /** Gambar varian Shopee ada di opsi tier_variation, dipetakan via tier_index model. */

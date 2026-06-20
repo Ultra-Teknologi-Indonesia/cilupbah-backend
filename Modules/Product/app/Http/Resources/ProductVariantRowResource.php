@@ -15,6 +15,12 @@ class ProductVariantRowResource extends JsonResource
             'barcode' => $this->barcode,
             'sell_price' => $this->sell_price,
             'is_active' => (bool) $this->is_active,
+            'image' => $this->whenLoaded('media', function () {
+                $images = $this->media->filter(fn ($m) => ($m->media_type ?? 'image') === 'image' && $m->url);
+                $primary = $images->firstWhere('is_primary', true) ?? $images->first();
+
+                return $primary->url ?? null;
+            }),
             'options' => $this->whenLoaded('options', fn () => $this->options
                 ->map(fn ($o) => [
                     'attribute_id' => $o->attribute_id,

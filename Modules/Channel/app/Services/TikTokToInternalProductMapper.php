@@ -46,6 +46,8 @@ class TikTokToInternalProductMapper
             }
         }
 
+        $variationTypeOrder = [];
+
         if (!empty($tiktokProduct['skus'])) {
             foreach ($tiktokProduct['skus'] as $skuData) {
                 $sku = !empty($skuData['seller_sku'])
@@ -70,6 +72,23 @@ class TikTokToInternalProductMapper
                     'is_active' => true,
                 ];
 
+                // Opsi varian TikTok ada di sales_attributes (name + value_name).
+                $options = [];
+                foreach ($skuData['sales_attributes'] ?? [] as $attr) {
+                    $name = $attr['name'] ?? null;
+                    $value = $attr['value_name'] ?? null;
+                    if (! $name || $value === null || $value === '') {
+                        continue;
+                    }
+                    $options[] = ['name' => $name, 'value' => $value];
+                    if (! in_array($name, $variationTypeOrder, true)) {
+                        $variationTypeOrder[] = $name;
+                    }
+                }
+                if ($options) {
+                    $variant['options'] = $options;
+                }
+
                 $imageUrl = $this->resolveSkuImage($skuData['sales_attributes'] ?? []);
                 if ($imageUrl) {
                     $variant['media'] = [[
@@ -82,6 +101,12 @@ class TikTokToInternalProductMapper
 
                 $internal['variants'][] = $variant;
             }
+
+            $internal['variation_types'] = array_map(
+                fn ($name, $i) => ['name' => $name, 'sort_order' => $i],
+                $variationTypeOrder,
+                array_keys($variationTypeOrder)
+            );
         } else {
             $internal['variants'][] = [
                 'sku' => 'TK-' . $tiktokProduct['id'],

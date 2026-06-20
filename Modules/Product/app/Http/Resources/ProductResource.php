@@ -86,10 +86,24 @@ class ProductResource extends JsonResource
                     ])->values();
             }),
             'variants' => $this->whenLoaded('variants', function () {
-                return $this->variants->map(function ($variant) {
+                $variantImages = $this->resource->relationLoaded('media')
+                    ? $this->media
+                        ->filter(fn ($m) => $m->variant_id && ($m->media_type ?? 'image') === 'image' && $m->url)
+                        ->groupBy('variant_id')
+                    : collect();
+
+                return $this->variants->map(function ($variant) use ($variantImages) {
+                    $imgs = $variantImages->get($variant->id);
+                    $variantImage = null;
+                    if ($imgs && $imgs->isNotEmpty()) {
+                        $primary = $imgs->firstWhere('is_primary', true) ?? $imgs->first();
+                        $variantImage = $primary->url ?? null;
+                    }
+
                     $data = [
                         'id' => $variant->id,
                         'sku' => $variant->sku,
+                        'image' => $variantImage,
                         'options' => $variant->relationLoaded('options')
                             ? $variant->options->map(fn ($o) => [
                                 'attribute_id' => $o->attribute_id,
