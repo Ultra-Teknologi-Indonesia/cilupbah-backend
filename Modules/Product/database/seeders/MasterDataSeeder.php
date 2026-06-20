@@ -12,7 +12,6 @@ class MasterDataSeeder extends Seeder
     private array $externalToInternalCat = [];
     private array $externalToChannelCatUuid = [];
 
-    // Phase B lookups
     private array $attrKeyToInternalId = [];
     private array $optionKeyToInternalId = [];
     private array $channelAttrExtToUuid = [];
@@ -58,7 +57,6 @@ class MasterDataSeeder extends Seeder
             ]
         );
 
-        // --- Phase B: Attributes ---
         $attributesJson = json_decode(
             file_get_contents(module_path('Product', 'database/data/tiktok_category_attributes.json')),
             true
@@ -223,10 +221,6 @@ class MasterDataSeeder extends Seeder
         $this->command->info('    → ' . count($rows) . ' mappings created.');
     }
 
-    // =========================================================================
-    // Phase B: Attributes
-    // =========================================================================
-
     private function makeAttrKey(string $name, string $type): string
     {
         return mb_strtolower($name) . '|' . $type;
@@ -237,9 +231,6 @@ class MasterDataSeeder extends Seeder
         return $tiktokType === 'SALES_PROPERTY' ? 'sales' : 'spec';
     }
 
-    /**
-     * B1: First pass — collect unique attributes + merged options.
-     */
     private function collectUniqueAttributes(array $categories): array
     {
         $this->command->info('  B1: Collecting unique attributes...');
@@ -283,9 +274,6 @@ class MasterDataSeeder extends Seeder
         $this->command->info('  B2: Attribute tables already truncated in A1, skipping...');
     }
 
-    /**
-     * B2: Seed internal attributes (deduplicated).
-     */
     private function seedInternalAttributes(array $uniqueAttrs): void
     {
         $this->command->info('  B2: Seeding internal attributes...');
@@ -304,9 +292,6 @@ class MasterDataSeeder extends Seeder
         $this->command->info('    → ' . count($this->attrKeyToInternalId) . ' internal attributes seeded.');
     }
 
-    /**
-     * B3: Seed internal attribute_options (deduplicated across categories).
-     */
     private function seedInternalAttributeOptions(array $uniqueAttrs): void
     {
         $this->command->info('  B3: Seeding internal attribute options...');
@@ -338,7 +323,6 @@ class MasterDataSeeder extends Seeder
             DB::table('attribute_options')->insert($batch);
         }
 
-        // Build lookup: "attrId|lowercaseValue" → option id
         DB::table('attribute_options')
             ->select('id', 'attribute_id', 'value')
             ->orderBy('id')
@@ -352,9 +336,6 @@ class MasterDataSeeder extends Seeder
         $this->command->info("    → {$count} internal options seeded.");
     }
 
-    /**
-     * B4: Seed channel_attributes (one per category×attribute in JSON).
-     */
     private function seedChannelAttributes(array $categories): void
     {
         $this->command->info('  B4: Seeding channel attributes...');
@@ -371,7 +352,7 @@ class MasterDataSeeder extends Seeder
 
             foreach ($cat['attributes'] as $attr) {
                 $uuid = Uuid::uuid7()->toString();
-                // Key: "catExtId|attrExtId" for later lookup
+
                 $this->channelAttrExtToUuid[$catExtId . '|' . $attr['id']] = $uuid;
 
                 $batch[] = [
@@ -401,9 +382,6 @@ class MasterDataSeeder extends Seeder
         $this->command->info("    → {$count} channel attributes seeded.");
     }
 
-    /**
-     * B5: Seed channel_attribute_options.
-     */
     private function seedChannelAttributeOptions(array $categories): void
     {
         $this->command->info('  B5: Seeding channel attribute options...');
@@ -448,9 +426,6 @@ class MasterDataSeeder extends Seeder
         $this->command->info("    → {$count} channel attribute options seeded.");
     }
 
-    /**
-     * B6: Seed category_attributes pivot (internal category ↔ internal attribute).
-     */
     private function seedCategoryAttributesPivot(array $categories): void
     {
         $this->command->info('  B6: Seeding category_attributes pivot...');
@@ -507,9 +482,6 @@ class MasterDataSeeder extends Seeder
         $this->command->info("    → {$count} category↔attribute pivots created.");
     }
 
-    /**
-     * B7: Seed attribute_channel_mappings (internal attr ↔ channel attr).
-     */
     private function seedAttributeChannelMappings(array $categories): void
     {
         $this->command->info('  B7: Seeding attribute ↔ channel mappings...');
@@ -551,9 +523,6 @@ class MasterDataSeeder extends Seeder
         $this->command->info("    → {$count} attribute mappings created.");
     }
 
-    /**
-     * B8: Seed attribute_option_channel_mappings.
-     */
     private function seedAttributeOptionChannelMappings(array $categories): void
     {
         $this->command->info('  B8: Seeding attribute option ↔ channel mappings...');

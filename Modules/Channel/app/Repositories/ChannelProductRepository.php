@@ -75,10 +75,6 @@ class ChannelProductRepository
         return optional($this->getChannelCategoryInfoByInternal($categoryId, $channelId))->external_id;
     }
 
-    /**
-     * Resolve the mapped channel category for an internal category, preferring a leaf
-     * (most specific) category. Returns {external_id, is_leaf} or null.
-     */
     public function getChannelCategoryInfoByInternal(string $categoryId, string $channelId): ?object
     {
         $category = \Modules\Product\Models\Category::with([
@@ -99,10 +95,6 @@ class ChannelProductRepository
         ];
     }
 
-    /**
-     * Look up a channel category directly by its primary key (e.g. the leaf chosen in a draft).
-     * Returns {external_id, is_leaf} or null.
-     */
     public function getChannelCategoryInfoById(string $channelCategoryId): ?object
     {
         return DB::table('channel_categories')

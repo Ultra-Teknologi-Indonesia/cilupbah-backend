@@ -25,8 +25,7 @@ class ProductPantauanRepository
 
         $query = QueryBuilder::for(Product::class)
             ->with(['category', 'media', 'channelValidations.channel'])
-            // Jumlah toko aktif tempat produk sudah tersinkron (1 mapping per toko),
-            // dihitung lewat withCount sehingga tidak perlu raw SQL.
+
             ->withCount(['channelMappings as synced_shop_count' => fn ($q) => $q->where('sync_status', '<>', ProductChannelMapping::STATUS_DEACTIVATED)])
             ->allowedSearch('name', 'sku')
             ->allowedFilters(
@@ -50,8 +49,6 @@ class ProductPantauanRepository
 
         $paginator = $query->paginate(request('per_page', 25))->appends(request()->query());
 
-        // Turunkan not_uploaded_count = total toko aktif - toko tersinkron, di PHP
-        // (menghindari aritmetika di dalam kueri).
         $paginator->getCollection()->each(function (Product $product) use ($activeShopCount) {
             $product->not_uploaded_count = $activeShopCount - (int) $product->synced_shop_count;
         });
@@ -63,8 +60,7 @@ class ProductPantauanRepository
     {
         switch ($lens) {
             case 'belum_upload':
-                // Produk yang tersinkron ke kurang dari seluruh toko aktif
-                // (1 mapping per toko, jadi count mapping non-deactivated = jumlah toko).
+
                 $query->whereHas(
                     'channelMappings',
                     fn ($q) => $q->where('sync_status', '<>', ProductChannelMapping::STATUS_DEACTIVATED),
@@ -74,29 +70,27 @@ class ProductPantauanRepository
                 break;
 
             case 'harga':
-                // Harga Tidak Cocok: status termaterialisasi di product_channel_validations
-                // (synced_price marketplace <> coalesce(override_price, sell_price)).
+
                 $this->whereMismatch($query, 'price_status');
                 break;
 
             case 'sku':
-                // SKU Tidak Cocok: channel_seller_sku marketplace <> SKU master.
+
                 $this->whereMismatch($query, 'sku_status');
                 break;
 
             case 'atribut':
-                // Atribut Tidak Cocok: validasi skema kategori marketplace
-                // (ChannelListingValidator) — termaterialisasi per produk × channel.
+
                 $this->whereMismatch($query, 'attribute_status');
                 break;
 
             case 'gagal_upload':
                 $query->where(function ($w) {
-                    // (a) ada log upload yang gagal
+
                     $w->whereHas('syncLogs', fn ($q) => $q
                         ->where('action', ProductSyncLog::ACTION_UPLOAD)
                         ->where('status', ProductSyncLog::STATUS_FAILED))
-                    // (b) prediktif: multi-varian tanpa variant_options sama sekali
+
                     ->orWhere(fn ($p) => $p
                         ->has('variants', '>', 1)
                         ->whereDoesntHave('variants', fn ($v) => $v->has('options')));

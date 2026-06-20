@@ -29,7 +29,7 @@ class TikTokToInternalProductMapper
         }
 
         if (isset($tiktokProduct['package_weight'])) {
-            // Internal disimpan dalam KILOGRAM (sama dengan yang dikirim saat push).
+
             $w = (float) ($tiktokProduct['package_weight']['value'] ?? 0);
             $unit = strtoupper((string) ($tiktokProduct['package_weight']['unit'] ?? 'KILOGRAM'));
             $internal['weight'] = $unit === 'GRAM' ? $w / 1000 : $w;
@@ -75,7 +75,6 @@ class TikTokToInternalProductMapper
                     'is_active' => true,
                 ];
 
-                // Opsi varian TikTok ada di sales_attributes (name + value_name).
                 $options = [];
                 foreach ($skuData['sales_attributes'] ?? [] as $attr) {
                     $name = $attr['name'] ?? null;
@@ -123,7 +122,6 @@ class TikTokToInternalProductMapper
         return $internal;
     }
 
-    /** Gambar varian TikTok tersimpan di sales_attributes[].sku_img. */
     protected function resolveSkuImage(array $salesAttributes): ?string
     {
         foreach ($salesAttributes as $attr) {

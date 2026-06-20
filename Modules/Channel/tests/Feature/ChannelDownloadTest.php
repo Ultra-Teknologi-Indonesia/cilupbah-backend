@@ -52,13 +52,13 @@ class ChannelDownloadTest extends TestCase
         ];
 
         Http::fake([
-            // Detail per produk (dipakai pull untuk opsi varian, gambar, deskripsi).
+
             '*/products/TIKTOK-PROD-1*' => Http::response([
                 'code' => 0,
                 'message' => 'Success',
                 'data' => $detail,
             ], 200),
-            // Enumerasi id produk.
+
             '*products/search*' => Http::response([
                 'code' => 0,
                 'message' => 'Success',

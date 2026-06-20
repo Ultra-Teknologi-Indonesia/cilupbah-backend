@@ -9,9 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('product_channel_mappings', function (Blueprint $table) {
-            // Mempercepat lookup "sudah diunduh?" (flagDownloaded) dan upsert mapping
-            // saat download: WHERE channel_shop_id = ? AND external_product_id IN/= ?.
-            // Postgres tidak membuat index FK otomatis, jadi tambahkan composite.
+
             $table->index(['channel_shop_id', 'external_product_id'], 'pcm_shop_external_idx');
         });
     }

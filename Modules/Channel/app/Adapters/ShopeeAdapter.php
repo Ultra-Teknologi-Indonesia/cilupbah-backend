@@ -13,10 +13,6 @@ use Modules\Channel\Services\ShopeeProductMapper;
 use Modules\Channel\Services\ShopeeToInternalProductMapper;
 use Modules\Product\Models\Product;
 
-/**
- * Adapter produk Shopee (v2). Gambar di-upload ke media space (ShopeeMediaUploader)
- * untuk memperoleh image_id sebelum add_item.
- */
 class ShopeeAdapter implements MarketplaceAdapterInterface
 {
     public function __construct(
@@ -179,19 +175,16 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
     {
         $product->loadMissing('variants.options', 'media');
 
-        // Stok dikirim dari sistem kita ke channel (bukan diimpor dari channel).
         $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
 
         $images = $product->media->where('media_type', 'image');
 
-        // Gambar level-produk: media tanpa variant_id (fallback ke semua bila tak ada yang khusus produk).
         $productImageUrls = $images->whereNull('variant_id')->sortBy('sort_order')->pluck('url')->values()->all();
         if (empty($productImageUrls)) {
             $productImageUrls = $images->sortBy('sort_order')->pluck('url')->values()->all();
         }
         $imageIds = $this->mediaUploader->uploadFromUrls($productImageUrls);
 
-        // Gambar per varian → image_id untuk dipasang pada opsi tier_variation.
         $variantImageIdById = [];
         foreach ($images->whereNotNull('variant_id')->sortBy('sort_order')->groupBy('variant_id') as $variantId => $group) {
             $url = $group->first()->url ?? null;

@@ -4,13 +4,9 @@ namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
 
-/**
- * Upload gambar produk internal ke media space Shopee → image_id.
- * Cache url → image_id per-instance agar gambar yang sama (produk + varian) tidak diupload ganda.
- */
 class ShopeeMediaUploader
 {
-    /** @var array<string, string|null> */
+
     private array $cache = [];
 
     public function __construct(
@@ -18,10 +14,6 @@ class ShopeeMediaUploader
         protected ChannelMediaResolver $resolver,
     ) {}
 
-    /**
-     * @param  string[]  $urls
-     * @return string[]  daftar image_id (urut; URL yang gagal dilewati)
-     */
     public function uploadFromUrls(array $urls): array
     {
         $ids = [];

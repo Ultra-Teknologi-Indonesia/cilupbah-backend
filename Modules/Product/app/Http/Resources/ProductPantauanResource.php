@@ -25,10 +25,6 @@ class ProductPantauanResource extends JsonResource
         ];
     }
 
-    /**
-     * Rincian status Tidak Cocok (atribut/harga/sku) per channel, dari
-     * tabel materialized product_channel_validations.
-     */
     protected function mismatches(): array
     {
         if (! $this->relationLoaded('channelValidations')) {

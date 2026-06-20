@@ -88,7 +88,6 @@ class ChannelDownloadService
         return $this->flagDownloaded($shopId, $results);
     }
 
-    /** Tandai produk channel yang sudah pernah diunduh (punya channel mapping). */
     protected function flagDownloaded(string $shopId, array $results): array
     {
         if (empty($results)) {

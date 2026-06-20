@@ -168,15 +168,6 @@ class TikTokClient
         return $response->json();
     }
 
-    /**
-     * Ambil detail banyak produk secara paralel (Http::pool), dibatasi rate limit
-     * per detik. Jauh lebih cepat dari satu-per-satu yang latency-bound.
-     *
-     * @param  string[]  $productIds
-     * @return array<string, array>  map [product_id => data]
-     *
-     * @throws TokenExpiredException bila token kedaluwarsa (agar pemanggil refresh + retry)
-     */
     public function getProductDetailsBatch(array $productIds, string $shopCipher, string $accessToken): array
     {
         $productIds = array_values(array_unique(array_filter(array_map('strval', $productIds))));
@@ -228,7 +219,6 @@ class TikTokClient
                 }
             }
 
-            // Hormati batas ~N request/detik: jeda setelah tiap chunk penuh (kecuali terakhir).
             if (count($chunk) >= $limit && $ci < count($chunks) - 1) {
                 usleep(1_000_000);
             }

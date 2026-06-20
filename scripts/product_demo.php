@@ -1,14 +1,8 @@
 <?php
 
-/**
- * Script demo: Create 10 internal products, push to TikTok, pull from TikTok
- */
-
 define('API_BASE', 'http://localhost:8000');
 define('TOKEN', '019ea5bc-60b7-7233-9edf-a863ad523398|WVzwFUsWpmDGYTCAJH77z5cQcDs0cgfZSywUQ5Jb50d5d162');
 define('TIKTOK_SHOP_ID', '7494685794425930858');
-
-// ─── helper ──────────────────────────────────────────────────────────────────
 
 function api(string $method, string $path, array $body = []): array
 {
@@ -49,14 +43,12 @@ function log_ok(string $msg): void  { echo "  ✓ $msg\n"; }
 function log_err(string $msg): void { echo "  ✗ $msg\n"; }
 function log_info(string $msg): void { echo "    $msg\n"; }
 
-// ─── product definitions ──────────────────────────────────────────────────────
-
 $products = [
-    // 1. Single variant – no variant options (plain SKU)
+
     [
         'name'        => 'Wardah Lightening Serum Vitamin C',
         'description' => 'Serum wajah dengan kandungan Vitamin C 10% yang mencerahkan dan meratakan warna kulit secara alami. Cocok untuk semua jenis kulit, bebas paraben.',
-        'category_id' => 3,   // Serum
+        'category_id' => 3,   
         'brand_id'    => null,
         'weight'      => 0.08,
         'length'      => 4.0, 'width' => 4.0, 'height' => 12.0,
@@ -70,11 +62,10 @@ $products = [
         ],
     ],
 
-    // 2. Single variant – with wholesale prices
     [
         'name'        => 'Emina Sun Battle SPF35 PA+++ Sunscreen',
         'description' => 'Sunscreen ringan berbasis air dengan SPF35 PA+++ untuk perlindungan optimal dari sinar UVA dan UVB. Tekstur cair, tidak berminyak, cocok untuk pemakaian sehari-hari.',
-        'category_id' => 5,   // Sunscreen
+        'category_id' => 5,   
         'brand_id'    => null,
         'weight'      => 0.09,
         'length'      => 5.0, 'width' => 5.0, 'height' => 14.0,
@@ -95,11 +86,10 @@ $products = [
         ],
     ],
 
-    // 3. Multi variant – 3 shades (Warna)
     [
         'name'        => 'Maybelline Fit Me Matte + Poreless Foundation',
         'description' => 'Foundation matte dengan formula micro-powder yang menyerap minyak berlebih dan mengecilkan tampilan pori. Memberikan tampilan kulit halus, segar, dan tahan lama hingga 12 jam.',
-        'category_id' => 16,  // Foundation
+        'category_id' => 16,  
         'brand_id'    => null,
         'weight'      => 0.12,
         'length'      => 4.0, 'width' => 4.0, 'height' => 15.0,
@@ -109,7 +99,7 @@ $products = [
             ['url' => 'https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?w=800&h=800&fit=crop&q=80', 'media_type' => 'image', 'is_primary' => false, 'sort_order' => 2],
         ],
         'variation_types' => [
-            ['attribute_id' => 49, 'sort_order' => 1], // Warna
+            ['attribute_id' => 49, 'sort_order' => 1], 
         ],
         'variants' => [
             ['sku' => 'MAYB-FMF-110', 'sell_price' => 129000, 'is_active' => true, 'options' => [['attribute_id' => 49, 'value' => 'Ivory 110']]],
@@ -118,11 +108,10 @@ $products = [
         ],
     ],
 
-    // 4. Single variant – basic body lotion
     [
         'name'        => 'Scarlett Whitening Bright Glow Body Lotion',
         'description' => 'Lotion tubuh pemutih dengan kandungan Glutathione dan Vitamin E yang mencerahkan serta melembutkan kulit. Aroma parfum tahan lama sepanjang hari.',
-        'category_id' => 11,  // Lotion
+        'category_id' => 11,  
         'brand_id'    => null,
         'weight'      => 0.25,
         'length'      => 6.0, 'width' => 6.0, 'height' => 18.0,
@@ -135,11 +124,10 @@ $products = [
         ],
     ],
 
-    // 5. Multi variant – 3 types (Varian)
     [
         'name'        => 'MS Glow Sheet Mask Perawatan Intensif',
         'description' => 'Sheet mask premium berbahan essence serum tinggi untuk perawatan wajah intensif. Formula unik yang menyesuaikan kebutuhan kulit: cerahkan, atasi jerawat, atau hidrasi mendalam.',
-        'category_id' => 7,   // Masker Wajah
+        'category_id' => 7,   
         'brand_id'    => null,
         'weight'      => 0.03,
         'length'      => 20.0, 'width' => 14.0, 'height' => 1.0,
@@ -148,7 +136,7 @@ $products = [
             ['url' => 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=800&h=800&fit=crop&q=80', 'media_type' => 'image', 'is_primary' => true, 'sort_order' => 1],
         ],
         'variation_types' => [
-            ['attribute_id' => 47, 'sort_order' => 1], // Varian
+            ['attribute_id' => 47, 'sort_order' => 1], 
         ],
         'variants' => [
             ['sku' => 'MSG-MASK-BRIGHT', 'sell_price' => 25000, 'is_active' => true, 'options' => [['attribute_id' => 47, 'value' => 'Brightening']]],
@@ -157,11 +145,10 @@ $products = [
         ],
     ],
 
-    // 6. Single variant – toner
     [
         'name'        => 'Somethinc Hyaluronic Acid Toner 2% + B5',
         'description' => 'Toner dengan konsentrasi Hyaluronic Acid 2% yang dikombinasikan Vitamin B5 untuk hidrasi kulit mendalam. Formula ringan yang cepat meresap dan membuat kulit terasa kenyal seharian.',
-        'category_id' => 6,   // Toner
+        'category_id' => 6,   
         'brand_id'    => null,
         'weight'      => 0.18,
         'length'      => 5.0, 'width' => 5.0, 'height' => 16.0,
@@ -183,11 +170,10 @@ $products = [
         ],
     ],
 
-    // 7. Multi variant – 4 lip colors
     [
         'name'        => 'Implora Matte Lipstick Long-Lasting',
         'description' => 'Lipstik matte lokal dengan pigmen tinggi dan daya tahan 8 jam. Formula lembab tidak membuat bibir kering, mudah diaplikasikan dengan sekali usap.',
-        'category_id' => 15,  // Lipstik
+        'category_id' => 15,  
         'brand_id'    => null,
         'weight'      => 0.02,
         'length'      => 2.0, 'width' => 2.0, 'height' => 8.0,
@@ -196,7 +182,7 @@ $products = [
             ['url' => 'https://images.unsplash.com/photo-1586495777744-4e6232bf2fd7?w=800&h=800&fit=crop&q=80', 'media_type' => 'image', 'is_primary' => true, 'sort_order' => 1],
         ],
         'variation_types' => [
-            ['attribute_id' => 49, 'sort_order' => 1], // Warna
+            ['attribute_id' => 49, 'sort_order' => 1], 
         ],
         'variants' => [
             ['sku' => 'IMP-MATTE-01RV', 'sell_price' => 29000, 'is_active' => true, 'options' => [['attribute_id' => 49, 'value' => '01 Red Velvet']]],
@@ -206,11 +192,10 @@ $products = [
         ],
     ],
 
-    // 8. Single variant – basic soap (no wholesale, no options)
     [
         'name'        => 'NASA Natural Milk Whitening Soap',
         'description' => 'Sabun mandi pemutih alami dengan kandungan susu dan ekstrak tanaman herbal pilihan. Kulit terasa bersih, lembut, dan cerah secara bertahap. Dermatologically tested.',
-        'category_id' => 10,  // Sabun Mandi
+        'category_id' => 10,  
         'brand_id'    => null,
         'weight'      => 0.15,
         'length'      => 8.0, 'width' => 6.0, 'height' => 3.0,
@@ -223,11 +208,10 @@ $products = [
         ],
     ],
 
-    // 9. Multi variant – 3 concealer shades (Ukuran + Warna)
     [
         'name'        => 'Emina Bare With Me Concealer',
         'description' => 'Concealer cair dengan coverage medium-to-full yang dapat di-blend sempurna untuk menutup kantung mata, noda gelap, dan bekas jerawat. Tahan air dan long lasting.',
-        'category_id' => 17,  // Bedak
+        'category_id' => 17,  
         'brand_id'    => null,
         'weight'      => 0.05,
         'length'      => 3.0, 'width' => 3.0, 'height' => 10.0,
@@ -237,7 +221,7 @@ $products = [
             ['url' => 'https://images.unsplash.com/photo-1512496015851-a90fb38ba796?w=800&h=800&fit=crop&q=80', 'media_type' => 'image', 'is_primary' => false, 'sort_order' => 2],
         ],
         'variation_types' => [
-            ['attribute_id' => 49, 'sort_order' => 1], // Warna
+            ['attribute_id' => 49, 'sort_order' => 1], 
         ],
         'variants' => [
             ['sku' => 'EMN-CONC-01PORC', 'sell_price' => 55000, 'is_active' => true, 'options' => [['attribute_id' => 49, 'value' => '01 Porcelain']]],
@@ -246,11 +230,10 @@ $products = [
         ],
     ],
 
-    // 10. Consignment – body scrub
     [
         'name'           => 'Mustika Ratu Lulur Tubuh Kunyit Putih',
         'description'    => 'Lulur tradisional Indonesia dengan bahan alami kunyit putih yang mencerahkan dan menghaluskan kulit. Mengangkat sel kulit mati secara lembut, meninggalkan kulit halus bercahaya. Produk titipan/konsinyasi.',
-        'category_id'    => 12,  // Scrub
+        'category_id'    => 12,  
         'brand_id'       => null,
         'weight'         => 0.2,
         'length'         => 10.0, 'width' => 8.0, 'height' => 5.0,
@@ -265,8 +248,6 @@ $products = [
         ],
     ],
 ];
-
-// ─── STEP 1: Create products ──────────────────────────────────────────────────
 
 log_step("STEP 1: Creating 10 internal products");
 
@@ -306,8 +287,6 @@ if (empty($createdIds)) {
     die("\nTidak ada produk yang berhasil dibuat. Proses dihentikan.\n");
 }
 
-// ─── STEP 2: Push ke TikTok ──────────────────────────────────────────────────
-
 log_step("STEP 2: Pushing " . count($createdIds) . " products to TikTok (shop: " . TIKTOK_SHOP_ID . ")");
 
 $pushedIds     = [];
@@ -335,8 +314,6 @@ foreach ($createdIds as $productId) {
 
 echo "\nTotal pushed: " . count($pushedIds) . "/" . count($createdIds) . "\n";
 
-// ─── STEP 3: Pull dari TikTok ─────────────────────────────────────────────────
-
 log_step("STEP 3: Pulling products from TikTok (semua produk di luar yang baru dibuat)");
 
 $res  = api('POST', '/api/v1/tiktok/auto-sync/pull-products');
@@ -354,8 +331,6 @@ if (ok($code)) {
     log_err("Pull GAGAL (HTTP {$code})");
     log_info(json_encode($res, JSON_PRETTY_PRINT));
 }
-
-// ─── SUMMARY ─────────────────────────────────────────────────────────────────
 
 log_step("SUMMARY");
 echo "  Produk dibuat   : " . count($createdIds)  . "/" . count($products)  . "\n";

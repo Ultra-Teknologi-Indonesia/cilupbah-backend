@@ -98,9 +98,6 @@ class ShopeeWebhookController extends Controller
 
             $payload = json_decode($rawBody, true);
 
-            // Shopee verification message (code 0) — accept regardless of signature
-            // so the initial "Set Push" verification passes. Signature validation
-            // is "technically optional" per Shopee docs.
             if (is_array($payload) && ($payload['code'] ?? -1) === 0 && isset($payload['data']['verify_info'])) {
                 $signatureOk = $this->isValidSignature($request, $rawBody);
                 Log::info('Shopee push verification message', [
@@ -180,10 +177,6 @@ class ShopeeWebhookController extends Controller
         return true;
     }
 
-    /**
-     * Behind a reverse proxy $request->url() may return the internal URL.
-     * Fallback chain: SHOPEE_PUSH_URL → SHOPEE_REDIRECT_URI → $request->url()
-     */
     protected function resolvePushUrl(Request $request): string
     {
         $pushUrl = (string) config('services.shopee.push_url');
@@ -243,7 +236,6 @@ class ShopeeWebhookController extends Controller
                     ->toArray(),
             ];
 
-            // Keep last 50 entries
             $entries = array_slice($entries, -50);
 
             file_put_contents($logFile, json_encode($entries, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));

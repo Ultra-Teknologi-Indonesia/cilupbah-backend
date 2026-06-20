@@ -78,8 +78,7 @@ Route::prefix('v1/lazada')->group(function () {
 Route::prefix('v1/shopee')->group(function () {
     Route::get('auth', [\Modules\Channel\Http\Controllers\ShopeeAuthController::class, 'redirect'])->name('shopee.auth');
     Route::get('callback', [\Modules\Channel\Http\Controllers\ShopeeAuthController::class, 'callback'])->name('shopee.callback');
-    // Shopee Push Partner mengirim test push & event push (POST) ke URL callback yang didaftarkan.
-    // Tanpa route POST ini, push akan kena 405 Method Not Allowed (bukan 2xx) → "Failed Verification".
+
     Route::post('callback', [\Modules\Channel\Http\Controllers\ShopeeWebhookController::class, 'handle'])->name('shopee.callback.push');
 
     Route::get('webhook', [\Modules\Channel\Http\Controllers\ShopeeWebhookController::class, 'verify'])->name('shopee.webhook.verify');

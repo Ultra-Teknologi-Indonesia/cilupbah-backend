@@ -140,7 +140,6 @@ class ChannelVariantImageTest extends TestCase
 
         $uploader = new ShopeeMediaUploader(app(ShopeeClient::class), $resolver);
 
-        // URL sama dipanggil dua kali → upload sekali, sisanya dari cache.
         $ids = $uploader->uploadFromUrls(['https://img.test/a.jpg', 'https://img.test/a.jpg']);
 
         $this->assertSame(['sg-img-1', 'sg-img-1'], $ids);

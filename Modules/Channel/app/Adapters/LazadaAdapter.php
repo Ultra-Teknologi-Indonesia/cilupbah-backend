@@ -170,18 +170,15 @@ class LazadaAdapter implements MarketplaceAdapterInterface
 
         $product->loadMissing('variants.options', 'media');
 
-        // Stok dikirim dari sistem kita ke channel (bukan diimpor dari channel).
         $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
 
         $images = $product->media->where('media_type', 'image');
 
-        // Gambar level-produk: media tanpa variant_id (fallback ke semua bila tak ada yang khusus produk).
         $imageUrls = $images->whereNull('variant_id')->sortBy('sort_order')->pluck('url')->values()->all();
         if (empty($imageUrls)) {
             $imageUrls = $images->sortBy('sort_order')->pluck('url')->values()->all();
         }
 
-        // Gambar per varian (Lazada menerima URL langsung, tanpa pre-upload).
         $variantImageById = [];
         foreach ($images->whereNotNull('variant_id')->sortBy('sort_order')->groupBy('variant_id') as $variantId => $group) {
             $url = $group->first()->url ?? null;

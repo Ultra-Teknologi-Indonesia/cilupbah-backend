@@ -44,7 +44,6 @@ class ShopeeProductPullTest extends TestCase
         ]);
     }
 
-    /** Item dengan satu varian (has_model + model_list). */
     private function fakeWithModels(): void
     {
         Http::fake([
@@ -108,7 +107,6 @@ class ShopeeProductPullTest extends TestCase
         $this->assertEquals('Kaos Shopee', $product->name);
         $this->assertNotNull($product->category_id, 'kategori harus ter-resolve (fallback bila perlu)');
 
-        // Gambar produk tersimpan ke product_media (url-based, level produk).
         $media = DB::table('product_media')
             ->where('product_id', $product->id)
             ->whereNull('variant_id')
@@ -130,7 +128,6 @@ class ShopeeProductPullTest extends TestCase
         $this->assertEquals('777100', $pvcm->external_sku_id);
         $this->assertEquals('VAR-A', $pvcm->channel_seller_sku);
 
-        // Gambar per varian tersimpan ke product_media dengan variant_id (sinkron varian↔gambar).
         $variantMedia = DB::table('product_media')
             ->where('product_id', $product->id)
             ->where('variant_id', $variant->id)
@@ -165,7 +162,6 @@ class ShopeeProductPullTest extends TestCase
 
         $this->assertTrue($ok);
 
-        // Item tanpa varian → mapper membuat varian fallback "SHP-{item_id}".
         $variant = DB::table('product_variants')->where('sku', 'SHP-555200')->first();
         $this->assertNotNull($variant);
 

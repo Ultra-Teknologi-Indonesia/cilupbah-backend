@@ -13,7 +13,6 @@ return new class extends Migration
             $table->uuid('product_id');
             $table->uuid('channel_id');
 
-            // ok = lolos, mismatch = tidak cocok, na = belum bisa dinilai (mis. skema channel belum di-ingest)
             $table->enum('attribute_status', ['ok', 'mismatch', 'na'])->default('na');
             $table->json('attribute_issues')->nullable();
 

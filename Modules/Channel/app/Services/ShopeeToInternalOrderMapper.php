@@ -15,9 +15,6 @@ class ShopeeToInternalOrderMapper
         'cancelled' => 'CANCELLED',
     ];
 
-    /**
-     * @param array $shopeeOrder respons get_order_detail (item_list sudah embedded).
-     */
     public function map(array $shopeeOrder, string $shopId): array
     {
         $items = $this->mapItems($shopeeOrder['item_list'] ?? []);
@@ -64,7 +61,7 @@ class ShopeeToInternalOrderMapper
                 : null,
             'payment_method' => $shopeeOrder['payment_method'] ?? null,
             'payment_method_name' => $shopeeOrder['payment_method'] ?? null,
-            'tracking_number' => $shopeeOrder['tracking_number'] ?? null, // di-enrich ShopeeOrderService via get_tracking_number.
+            'tracking_number' => $shopeeOrder['tracking_number'] ?? null, 
             'shipping_provider' => $shopeeOrder['shipping_carrier'] ?? null,
             'buyer_message' => $shopeeOrder['message_to_seller'] ?? null,
             'seller_note' => $shopeeOrder['note'] ?? null,

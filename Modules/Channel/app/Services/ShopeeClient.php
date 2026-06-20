@@ -10,7 +10,7 @@ use Modules\Channel\Helpers\ShopeeSignature;
 
 class ShopeeClient
 {
-    /** Kode error Shopee yang menandakan access token kedaluwarsa/invalid. */
+
     protected const TOKEN_ERROR_CODES = ['error_auth', 'invalid_access_token', 'error_token_expired', 'access_token_error'];
 
     protected string $partnerId;
@@ -28,10 +28,6 @@ class ShopeeClient
         }
     }
 
-    /**
-     * Bangun URL otorisasi yang dibuka seller untuk memberi izin akses APP.
-     * State (anti-CSRF) disisipkan ke redirect URI — Shopee meneruskan query redirect apa adanya.
-     */
     public function getAuthUrl(string $redirectUri, string $state = ''): string
     {
         $path = '/api/v2/shop/auth_partner';
@@ -53,10 +49,6 @@ class ShopeeClient
         return $this->host . $path . '?' . $query;
     }
 
-    /**
-     * Tukar authorization code menjadi access/refresh token.
-     * Shopee butuh shop_id bersama code (berbeda dari Lazada yang hanya code).
-     */
     public function getAccessToken(string $code, string $shopId): array
     {
         return $this->publicPost('/api/v2/auth/token/get', [
@@ -75,10 +67,6 @@ class ShopeeClient
         ]);
     }
 
-    /**
-     * Panggil API level-shop Shopee (butuh access_token + shop_id pada signature).
-     * Melempar TokenExpiredException bila token kedaluwarsa agar caller bisa refresh & retry.
-     */
     public function request(string $method, string $apiPath, array $params, string $accessToken, string $shopId): array
     {
         $timestamp = time();
@@ -122,10 +110,6 @@ class ShopeeClient
         return $data;
     }
 
-    /**
-     * Upload gambar ke media space Shopee (Public API, multipart form-data).
-     * Mengembalikan image_id untuk dipakai pada add_item (image.image_id_list / tier image).
-     */
     public function uploadImage(string $contents, string $filename = 'image.jpg'): ?string
     {
         $path = '/api/v2/media_space/upload_image';

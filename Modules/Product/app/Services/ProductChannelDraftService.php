@@ -91,13 +91,6 @@ class ProductChannelDraftService
         return ['uploaded' => $uploaded, 'skipped' => $skipped];
     }
 
-    /**
-     * Gate kesiapan upload: blokir produk yang STRUKTURNYA pasti ditolak channel,
-     * yaitu produk multi-varian tanpa atribut variasi (penyebab error TikTok
-     * "sale attribute ... should not be empty"). Isu yang lebih lunak (mis.
-     * pemetaan kategori) tidak diblokir di sini karena kategori channel di-resolve
-     * dari draft (channel_category_id), bukan dari master.
-     */
     private function assertReadyForUpload(ProductChannelDraft $draft): void
     {
         $product = Product::find($draft->product_id);

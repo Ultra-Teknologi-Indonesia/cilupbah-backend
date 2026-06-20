@@ -9,21 +9,11 @@ use Modules\Channel\Services\ChannelListingValidator;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelValidation;
 
-/**
- * Menghitung & memateralisasi status "Tidak Cocok" (atribut/harga/sku) per (produk × channel)
- * ke tabel product_channel_validations, agar lens pantauan cukup membaca kolom terindeks.
- *
- * Sumber kebenaran:
- *  - atribut : ChannelListingValidator::validate() (validasi skema kategori marketplace)
- *  - harga   : product_variant_channel_mappings.synced_price vs coalesce(override_price, sell_price)
- *  - sku     : product_variant_channel_mappings.channel_seller_sku vs product_variants.sku
- */
 class ProductChannelValidationService
 {
-    /** Channel yang sudah terintegrasi (Shopee ditunda). */
+
     public const IN_SCOPE_CHANNELS = ['tiktok', 'lazada'];
 
-    /** Issue code yang dihitung sebagai "Atribut Tidak Cocok" (kategori dikecualikan). */
     private const ATTRIBUTE_ISSUE_CODES = [
         'variation_attribute_missing',
         'attribute_unmapped',
@@ -41,7 +31,6 @@ class ProductChannelValidationService
             'channelMappings.variantMappings',
         ]);
 
-        // Kelompokkan mapping per channel (lewat toko), hanya channel in-scope & aktif.
         $mappingsByChannel = $product->channelMappings
             ->filter(fn ($m) => $m->channelShop !== null)
             ->groupBy(fn ($m) => $m->channelShop->channel_id);
@@ -78,7 +67,6 @@ class ProductChannelValidationService
                 $keep[] = $channel->id;
             }
 
-            // Bersihkan baris untuk channel yang sudah tidak relevan lagi.
             ProductChannelValidation::query()
                 ->where('product_id', $product->id)
                 ->whereNotIn('channel_id', $keep ?: ['-'])
@@ -86,9 +74,6 @@ class ProductChannelValidationService
         });
     }
 
-    /**
-     * @return array{0:string,1:array}
-     */
     private function attributeStatus(Product $product, Channel $channel): array
     {
         $issues = $this->validator->validate($product, $channel->code);
@@ -102,8 +87,6 @@ class ProductChannelValidationService
             return [ProductChannelValidation::STATUS_MISMATCH, $relevant];
         }
 
-        // Tanpa issue: hanya bisa dipastikan "ok" bila skema atribut channel sudah di-ingest.
-        // Bila belum (mis. TikTok belum sync skema), tandai "na" agar tidak false-negative.
         return [
             $this->channelSchemaIngested($channel->id)
                 ? ProductChannelValidation::STATUS_OK
@@ -112,10 +95,6 @@ class ProductChannelValidationService
         ];
     }
 
-    /**
-     * @param  Collection  $mappings  product_channel_mappings untuk channel ini
-     * @return array{0:string,1:array}
-     */
     private function priceStatus(Product $product, Collection $mappings): array
     {
         $issues = [];
@@ -148,9 +127,6 @@ class ProductChannelValidationService
         return $this->resolveStatus($hasData, $issues);
     }
 
-    /**
-     * @return array{0:string,1:array}
-     */
     private function skuStatus(Product $product, Collection $mappings): array
     {
         $issues = [];
@@ -181,16 +157,12 @@ class ProductChannelValidationService
         return $this->resolveStatus($hasData, $issues);
     }
 
-    /**
-     * @return array{0:string,1:array}
-     */
     private function resolveStatus(bool $hasData, array $issues): array
     {
         if (! empty($issues)) {
             return [ProductChannelValidation::STATUS_MISMATCH, $issues];
         }
 
-        // Tidak ada data sinkron sama sekali → belum bisa dinilai.
         return [
             $hasData ? ProductChannelValidation::STATUS_OK : ProductChannelValidation::STATUS_NA,
             [],

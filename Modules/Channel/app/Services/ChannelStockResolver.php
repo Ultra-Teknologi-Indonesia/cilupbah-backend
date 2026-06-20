@@ -5,19 +5,9 @@ namespace Modules\Channel\Services;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Models\ChannelShop;
 
-/**
- * Resolusi stok tersedia (available) SISTEM KITA per varian untuk satu toko channel.
- *
- * Arah stok = sistem kita → channel (saat naikkan/push & sinkron), BUKAN sebaliknya.
- * Sumber: inventories.available pada lokasi gudang yang dipetakan ke toko (channel_warehouses).
- * Bila toko belum dipetakan ke gudang → 0 (sama dengan perilaku syncPriceAndStock).
- */
 class ChannelStockResolver
 {
-    /**
-     * @param  iterable  $variants  koleksi ProductVariant (punya ->id)
-     * @return array<string,int>  variantId => available qty (>= 0)
-     */
+
     public function availableByVariant(ChannelShop $shop, iterable $variants): array
     {
         $variantIds = collect($variants)->pluck('id')->filter()->values()->all();

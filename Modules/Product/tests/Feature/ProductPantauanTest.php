@@ -88,7 +88,7 @@ class ProductPantauanTest extends TestCase
 
     public function test_harga_lists_price_divergent_products(): void
     {
-        // Harga marketplace (synced_price) berbeda dari harga efektif master.
+
         $divergent = $this->product('Harga Beda');
         $v1 = ProductVariant::create(['product_id' => $divergent->id, 'sku' => 'HB-1', 'sell_price' => 100000, 'is_active' => true]);
         $mA = $this->mapTo($divergent, $this->shopA, 'HB-A');
@@ -266,8 +266,7 @@ class ProductPantauanTest extends TestCase
 
     public function test_atribut_lens_flags_multivariant_without_variation_attributes(): void
     {
-        // Kasus ASUS: produk multi-varian tanpa atribut variasi → ditolak channel
-        // ("sale attribute kosong"). Validator menandai variation_attribute_missing.
+
         $attrId = DB::table('attributes')->insertGetId([
             'name' => 'Ukuran', 'type' => 'sales', 'created_at' => now(), 'updated_at' => now(),
         ]);
@@ -291,7 +290,7 @@ class ProductPantauanTest extends TestCase
         $response->assertStatus(200);
         $names = collect($response->json('data'))->pluck('product_name')->all();
         $this->assertContains('Atribut Kurang', $names);
-        // 'Atribut Lengkap' punya opsi & skema TikTok belum di-ingest → status 'na', tidak terdaftar.
+
         $this->assertNotContains('Atribut Lengkap', $names);
 
         $row = collect($response->json('data'))->firstWhere('product_name', 'Atribut Kurang');

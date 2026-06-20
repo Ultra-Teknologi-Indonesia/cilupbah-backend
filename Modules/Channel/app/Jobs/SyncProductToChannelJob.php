@@ -74,9 +74,6 @@ class SyncProductToChannelJob implements ShouldQueue
 
         $channelCode = $shop->channel->code ?? 'tiktok';
 
-        // Pertahanan berlapis: produk multi-varian tanpa atribut variasi pasti
-        // ditolak channel (sale attribute kosong). Hentikan lebih awal dengan
-        // pesan jelas, tanpa retry, alih-alih membiarkan channel menolaknya.
         if (in_array($this->action, ['push', 'update'], true)
             && app(ChannelListingValidator::class)->lacksVariationAttributes($product)) {
             $message = "Produk multi-varian tanpa atribut variasi — wajib diisi sebelum upload ke {$channelCode}.";
@@ -200,10 +197,6 @@ class SyncProductToChannelJob implements ShouldQueue
         }
     }
 
-    /**
-     * Perbarui status Tidak Cocok (atribut/harga/sku) untuk produk ini setelah
-     * status mapping / data sinkron berubah. Dijalankan async; idempotent.
-     */
     protected function refreshChannelValidation(): void
     {
         RecomputeProductChannelValidationJob::dispatch($this->productId)->afterCommit();

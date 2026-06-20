@@ -12,10 +12,6 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Product\Models\ProductChannelMapping;
 
-/**
- * Validasi + routing push Shopee.
- * Order event → tarik order tunggal ke SalesOrder. Item event masih log (fase produk).
- */
 class ProcessShopeeWebhook implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -23,7 +19,6 @@ class ProcessShopeeWebhook implements ShouldQueue
     public int $tries = 3;
     public array $backoff = [10, 60, 300];
 
-    // Kode tipe push Shopee Open Platform v2.
     private const PUSH_SHOP_AUTHORIZED = 1;
     private const PUSH_SHOP_DEAUTHORIZED = 2;
     private const PUSH_ORDER_STATUS = 3;

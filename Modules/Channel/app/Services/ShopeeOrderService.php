@@ -9,7 +9,7 @@ use Modules\Sales\Services\SalesOrderService;
 
 class ShopeeOrderService
 {
-    /** Field detail order yang diminta dari Shopee (response_optional_fields). */
+
     private const DETAIL_FIELDS = 'recipient_address,item_list,total_amount,buyer_username,payment_method,estimated_shipping_fee,shipping_carrier,note,message_to_seller,pay_time,cancel_reason';
 
     public function __construct(
@@ -66,11 +66,6 @@ class ShopeeOrderService
         return 1;
     }
 
-    /**
-     * Ambil daftar order_sn dalam window waktu (paginasi cursor Shopee).
-     *
-     * @return string[]
-     */
     protected function fetchOrderSns(object $shop, int $timeFrom): array
     {
         $orderSns = [];
@@ -101,10 +96,6 @@ class ShopeeOrderService
         return $orderSns;
     }
 
-    /**
-     * @param string[] $orderSns maksimal 50 per panggilan.
-     * @return array<int, array> daftar order detail.
-     */
     protected function fetchOrderDetails(object $shop, array $orderSns): array
     {
         if (empty($orderSns)) {
@@ -127,7 +118,6 @@ class ShopeeOrderService
         return $orders;
     }
 
-    /** Tracking number Shopee tidak ada di order detail — ditarik terpisah hanya untuk status yang relevan. */
     protected function resolveTrackingNumber(object $shop, string $orderSn, string $status): ?string
     {
         if ($orderSn === '' || ! in_array(strtoupper($status), ['PROCESSED', 'SHIPPED', 'TO_CONFIRM_RECEIVE', 'COMPLETED'], true)) {
@@ -145,7 +135,6 @@ class ShopeeOrderService
         }
     }
 
-    /** Alasan pembatalan Shopee adalah enum tetap (tidak ada API). */
     public function getCancelReasons(): array
     {
         return [
@@ -165,9 +154,6 @@ class ShopeeOrderService
         return $res['response']['logistics_channel_list'] ?? [];
     }
 
-    /**
-     * Terima & kirim order: tentukan metode dari get_shipping_parameter lalu ship_order.
-     */
     public function shipOrder(string $shopId, string $orderSn): array
     {
         $shop = $this->requireShop($shopId);
@@ -177,7 +163,6 @@ class ShopeeOrderService
         $info = $param['response'] ?? [];
         $body = ['order_sn' => $orderSn];
 
-        // Shopee mengembalikan info_needed: gunakan dropoff bila tersedia, jika tidak pickup.
         if (! empty($info['dropoff'])) {
             $body['dropoff'] = (object) [];
         } else {
@@ -216,7 +201,6 @@ class ShopeeOrderService
         return ['order_sn' => $orderSn, 'cancelled' => empty($res['error']), 'response' => $res['response'] ?? []];
     }
 
-    /** @return array<int, array{item_id:int, model_id:int}> */
     protected function orderItemList(object $shop, string $orderSn): array
     {
         $details = $this->fetchOrderDetails($shop, [$orderSn]);

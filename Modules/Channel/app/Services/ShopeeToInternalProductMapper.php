@@ -4,14 +4,11 @@ namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\DB;
 
-/**
- * Item Shopee (get_item_base_info) → array internal Product untuk download/listing.
- */
 class ShopeeToInternalProductMapper
 {
     public function map(array $shopeeItem, string $shopId): array
     {
-        // Shopee: weight (kg) di field item-level, dimensi (cm) di object `dimension`.
+
         $dimension = $shopeeItem['dimension'] ?? [];
 
         $internal = [
@@ -58,7 +55,6 @@ class ShopeeToInternalProductMapper
         return $internal;
     }
 
-    /** Tier variation Shopee → daftar tipe variasi internal (mis. Warna, Tipe HP). */
     protected function mapVariationTypes(array $tierVariation): array
     {
         $types = [];
@@ -91,7 +87,6 @@ class ShopeeToInternalProductMapper
                 'is_active' => true,
             ];
 
-            // Opsi varian: tier_index memetakan model ke option_list tiap tier.
             $options = [];
             foreach ($model['tier_index'] ?? [] as $tierPos => $optIdx) {
                 $tier = $tierVariation[$tierPos] ?? null;
@@ -124,7 +119,6 @@ class ShopeeToInternalProductMapper
         return $variants;
     }
 
-    /** Shopee description: tipe "normal" di field description, "extended" di description_info. */
     protected function resolveDescription(array $shopeeItem): string
     {
         $desc = (string) ($shopeeItem['description'] ?? '');
@@ -143,7 +137,6 @@ class ShopeeToInternalProductMapper
         return implode("\n\n", $parts);
     }
 
-    /** Gambar varian Shopee ada di opsi tier_variation, dipetakan via tier_index model. */
     protected function resolveModelImage(array $tierVariation, array $model): ?string
     {
         $tierIndex = $model['tier_index'][0] ?? null;

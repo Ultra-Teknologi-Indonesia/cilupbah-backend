@@ -75,7 +75,7 @@ class ChannelListingValidator
                 ->value('attribute_id');
 
             if (! $internalAttrId) {
-                // Non-sale-prop attributes with options are auto-injected by buildUploadConfig (Layer 3).
+
                 $hasOptions = ! $ca->is_sale_prop && DB::table('channel_attribute_options')
                     ->where('channel_attribute_id', $ca->id)
                     ->exists();

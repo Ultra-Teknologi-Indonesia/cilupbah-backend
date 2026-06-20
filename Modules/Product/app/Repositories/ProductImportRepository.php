@@ -11,13 +11,12 @@ use Modules\Product\Models\ProductVariant;
 
 class ProductImportRepository
 {
-    /** Upsert produk berdasarkan nama; mengembalikan id produk. */
+
     public function upsertProductByName(string $name, array $data): string
     {
         return (string) Product::updateOrCreate(['name' => $name], $data)->id;
     }
 
-    /** Upsert varian berdasarkan SKU; mengembalikan id varian. */
     public function upsertVariantBySku(string $sku, array $data): string
     {
         return (string) ProductVariant::updateOrCreate(['sku' => $sku], $data)->id;
@@ -56,7 +55,6 @@ class ProductImportRepository
         return ProductMedia::where('product_id', $productId)->exists();
     }
 
-    /** @param  array<int, array<string, mixed>>  $rows */
     public function insertMedia(array $rows): void
     {
         foreach ($rows as $row) {

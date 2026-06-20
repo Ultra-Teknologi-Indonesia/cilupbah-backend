@@ -48,14 +48,12 @@ class TikTokAdapter implements MarketplaceAdapterInterface
     {
         $images = $product->media->where('media_type', 'image');
 
-        // Gambar level-produk: media tanpa variant_id (fallback ke semua bila tak ada yang khusus produk).
         $productImageUrls = $images->whereNull('variant_id')->sortBy('sort_order')->pluck('url')->values()->all();
         if (empty($productImageUrls)) {
             $productImageUrls = $images->sortBy('sort_order')->pluck('url')->values()->all();
         }
         $imageUris = empty($productImageUrls) ? [] : $this->imageUploader->uploadFromUrls($productImageUrls, $shop->access_token);
 
-        // Gambar per varian: upload satu per satu agar bisa dipetakan variant_id → uri.
         $variantUriById = [];
         foreach ($images->whereNotNull('variant_id')->sortBy('sort_order')->groupBy('variant_id') as $variantId => $group) {
             $url = $group->first()->url ?? null;
@@ -68,7 +66,6 @@ class TikTokAdapter implements MarketplaceAdapterInterface
             }
         }
 
-        // Stok dikirim dari sistem kita ke channel (bukan diimpor dari channel).
         $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
 
         $internalProductArray = $product->toArray();

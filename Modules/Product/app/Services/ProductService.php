@@ -191,6 +191,7 @@ class ProductService
                 ?? $this->writeRepository->productIdByVariantSku($sku);
 
             if ($productId) {
+                unset($data['category_id']);
                 return $this->updateProduct($productId, $data);
             }
         }

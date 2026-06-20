@@ -7,14 +7,6 @@ use Illuminate\Support\Facades\DB;
 use Modules\Product\Models\ProductVariant;
 use Ramsey\Uuid\Uuid;
 
-/**
- * Semua operasi tulis (CRUD) produk untuk ProductService.
- *
- * Catatan arsitektur: kueri di sini sengaja mempertahankan logika asli
- * (mis. lookup yang mengabaikan soft-delete lewat DB facade, pembentukan
- * id uuid7 toString vs getHex) agar perilaku tidak berubah. Sesuai agents.md
- * §1, akses DB memang harus berada di repository; tidak ada raw query.
- */
 class ProductWriteRepository
 {
     public function accountIdByMappingKey(string $mappingKey): ?string

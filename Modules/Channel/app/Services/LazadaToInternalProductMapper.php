@@ -70,7 +70,6 @@ class LazadaToInternalProductMapper
         return $internal;
     }
 
-    /** Gambar per-SKU Lazada → struktur media internal. */
     protected function variantMedia(array $images): array
     {
         $media = [];

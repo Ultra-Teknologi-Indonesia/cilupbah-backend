@@ -128,8 +128,6 @@ class CategoryService
         return $this->getCategoryById($categoryId)->load('channelCategories.channel');
     }
 
-    // --- System category management ---
-
     public function getSystemCategories(): Collection
     {
         return $this->repository->getSystemCategories();

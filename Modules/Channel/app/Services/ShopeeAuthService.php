@@ -9,7 +9,7 @@ use Modules\Channel\Repositories\ChannelShopRepository;
 
 class ShopeeAuthService
 {
-    /** Refresh token Shopee berlaku 30 hari. */
+
     private const REFRESH_TOKEN_TTL_SECONDS = 2592000;
 
     public function __construct(
@@ -17,11 +17,6 @@ class ShopeeAuthService
         protected ChannelShopRepository $shopRepository,
     ) {}
 
-    /**
-     * Tukar code+shop_id menjadi token dan simpan toko Shopee.
-     *
-     * @return array{shop_id: string, shop_name: string}
-     */
     public function handleCallback(string $code, string $shopId): array
     {
         $token = $this->client->getAccessToken($code, $shopId);
@@ -35,7 +30,6 @@ class ShopeeAuthService
 
         $channelId = Channel::where('code', 'shopee')->value('id');
 
-        // Shopee memakai 'expire_in' (detik, ±4 jam) untuk access token.
         $expireIn = (int) ($token['expire_in'] ?? $token['expires_in'] ?? 0);
         $tokenExpiresAt = $expireIn > 0 ? now()->addSeconds($expireIn) : null;
         $refreshExpiresAt = now()->addSeconds(self::REFRESH_TOKEN_TTL_SECONDS);
@@ -133,18 +127,12 @@ class ShopeeAuthService
         ];
     }
 
-    /**
-     * Refresh proaktif access token yang mendekati kedaluwarsa.
-     * Access token Shopee hanya 4 jam → dijadwalkan per jam dengan window pendek (default 2 jam).
-     *
-     * @return array{refreshed: int, failed: int, skipped: int}
-     */
     public function refreshExpiringTokens(int $hours = 2): array
     {
         $summary = ['refreshed' => 0, 'failed' => 0, 'skipped' => 0];
 
         foreach ($this->shopRepository->getShopsByChannelCode('shopee') as $shop) {
-            // Refresh token Shopee berlaku 30 hari; jika sudah lewat, toko harus dihubungkan ulang.
+
             $refreshTokenValid = $shop->refresh_token
                 && (! $shop->refresh_token_expires_at || $shop->refresh_token_expires_at->isFuture());
 
@@ -197,7 +185,6 @@ class ShopeeAuthService
             return 'expired';
         }
 
-        // Access token Shopee hanya 4 jam; anggap "expiring_soon" bila < 1 jam.
         if ($shop->token_expires_at->lt(now()->addHour())) {
             return 'expiring_soon';
         }

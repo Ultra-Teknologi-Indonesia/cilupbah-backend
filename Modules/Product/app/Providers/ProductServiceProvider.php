@@ -29,7 +29,6 @@ class ProductServiceProvider extends ModuleServiceProvider
     {
         $schedule->job(new PruneUploadHistoriesJob())->daily();
 
-        // Rekonsiliasi berkala status Tidak Cocok (jaring pengaman bila event terlewat).
         $schedule->command('products:recompute-validation --queue')
             ->hourly()
             ->withoutOverlapping();
