@@ -31,6 +31,7 @@ class ChannelProductListingResource extends JsonResource
             'channel_code' => $channel->code ?? null,
             'channel_url' => $url,
             'sync_status' => $this->sync_status,
+            'error_message' => $this->error_message,
             'has_product_data' => count($connections) > 0,
             'product' => $connections,
         ];

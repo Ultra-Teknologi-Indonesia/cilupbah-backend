@@ -309,14 +309,7 @@ class ShopeeProductService
 
     protected function fetchItemList(object $shop, int $offset, int $pageSize): array
     {
-
-        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/product/get_item_list', [
-            'offset' => $offset,
-            'page_size' => $pageSize,
-            'item_status' => 'NORMAL',
-        ], $token, $shop->shop_id));
-
-        return $res['response'] ?? [];
+        return $this->fetchItemListByStatus($shop, $offset, $pageSize, 'NORMAL');
     }
 
     protected function fetchBaseInfo(object $shop, array $itemIds): array
@@ -460,6 +453,52 @@ class ShopeeProductService
 
             return $fn($fresh->access_token);
         }
+    }
+
+    /**
+     * @return array<string, array{status: string, reason: string|null}>
+     */
+    public function fetchProductStatuses(string $shopId): array
+    {
+        $shop = $this->requireShop($shopId);
+        $statuses = [];
+
+        foreach (['NORMAL', 'BANNED', 'DELETED', 'UNLIST'] as $itemStatus) {
+            $offset = 0;
+            $pageSize = 100;
+
+            do {
+                $list = $this->fetchItemListByStatus($shop, $offset, $pageSize, $itemStatus);
+                $items = $list['item'] ?? [];
+
+                foreach ($items as $item) {
+                    $extId = (string) ($item['item_id'] ?? '');
+                    if ($extId === '') {
+                        continue;
+                    }
+                    $statuses[$extId] = [
+                        'status' => strtolower($itemStatus),
+                        'reason' => null,
+                    ];
+                }
+
+                $hasNext = (bool) ($list['has_next_page'] ?? false);
+                $offset = (int) ($list['next_offset'] ?? ($offset + $pageSize));
+            } while ($hasNext);
+        }
+
+        return $statuses;
+    }
+
+    protected function fetchItemListByStatus(object $shop, int $offset, int $pageSize, string $itemStatus): array
+    {
+        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/product/get_item_list', [
+            'offset' => $offset,
+            'page_size' => $pageSize,
+            'item_status' => $itemStatus,
+        ], $token, $shop->shop_id));
+
+        return $res['response'] ?? [];
     }
 
     protected function requireShop(string $shopId): object

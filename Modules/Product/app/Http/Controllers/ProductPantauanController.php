@@ -19,7 +19,7 @@ class ProductPantauanController extends Controller
     public function index(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'lens' => 'nullable|in:belum_upload,harga,sku,atribut,gagal_upload,persyaratan',
+            'lens' => 'nullable|in:belum_upload,harga,sku,atribut,gagal_upload,persyaratan,direview,ditolak',
             'search' => 'nullable|string',
             'per_page' => 'nullable|integer|min:1|max:200',
             'page' => 'nullable|integer|min:1',

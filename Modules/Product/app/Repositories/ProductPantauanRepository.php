@@ -53,6 +53,17 @@ class ProductPantauanRepository
             $product->not_uploaded_count = $activeShopCount - (int) $product->synced_shop_count;
         });
 
+        if (in_array($lens, ['direview', 'ditolak'])) {
+            $targetStatus = $lens === 'direview'
+                ? ProductChannelMapping::STATUS_IN_REVIEW
+                : ProductChannelMapping::STATUS_REJECTED;
+
+            $paginator->getCollection()->load([
+                'channelMappings' => fn ($q) => $q->where('sync_status', $targetStatus)
+                    ->with('channelShop.channel'),
+            ]);
+        }
+
         return $paginator;
     }
 
@@ -108,6 +119,14 @@ class ProductPantauanRepository
                             ->whereNotNull('cc.rules');
                     });
                 }
+                break;
+
+            case 'direview':
+                $query->whereHas('channelMappings', fn ($q) => $q->where('sync_status', ProductChannelMapping::STATUS_IN_REVIEW));
+                break;
+
+            case 'ditolak':
+                $query->whereHas('channelMappings', fn ($q) => $q->where('sync_status', ProductChannelMapping::STATUS_REJECTED));
                 break;
 
             default:

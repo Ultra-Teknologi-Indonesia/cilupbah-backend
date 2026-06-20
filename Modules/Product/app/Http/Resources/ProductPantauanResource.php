@@ -22,6 +22,15 @@ class ProductPantauanResource extends JsonResource
             'last_upload_error' => $this->last_upload_error ?? null,
             'mismatches' => $this->mismatches(),
             'requirements_summary' => $this->requirementsSummary(),
+            'review_channels' => $this->when($this->relationLoaded('channelMappings'), function () {
+                return $this->channelMappings->map(fn ($m) => [
+                    'channel_code' => $m->channelShop?->channel?->code,
+                    'shop_name' => $m->channelShop?->shop_name,
+                    'sync_status' => $m->sync_status,
+                    'error_message' => $m->error_message,
+                    'reviewed_at' => $m->reviewed_at?->toIso8601String(),
+                ])->values()->all();
+            }),
         ];
     }
 

@@ -109,8 +109,12 @@ class ProcessShopeeWebhook implements ShouldQueue
 
         if (in_array($status, ['normal', 'active'], true)) {
             $mapping->markApproved();
-        } elseif (in_array($status, ['banned', 'deleted', 'unlist'], true)) {
-            $mapping->markRejected('Shopee item status: ' . $status);
+        } elseif ($status === 'banned') {
+            $mapping->markRejected('Shopee item banned: ' . ($data['ban_reason'] ?? $status));
+        } elseif (in_array($status, ['deleted', 'unlist'], true)) {
+            $mapping->update([
+                'sync_status' => ProductChannelMapping::STATUS_DEACTIVATED,
+            ]);
         } else {
             Log::info('Shopee item event diterima.', ['shop_id' => $shopId, 'item_id' => $itemId, 'status' => $status]);
         }
