@@ -29,7 +29,10 @@ class TikTokToInternalProductMapper
         }
 
         if (isset($tiktokProduct['package_weight'])) {
-            $internal['weight'] = $tiktokProduct['package_weight']['value'] ?? 0;
+            // Internal disimpan dalam KILOGRAM (sama dengan yang dikirim saat push).
+            $w = (float) ($tiktokProduct['package_weight']['value'] ?? 0);
+            $unit = strtoupper((string) ($tiktokProduct['package_weight']['unit'] ?? 'KILOGRAM'));
+            $internal['weight'] = $unit === 'GRAM' ? $w / 1000 : $w;
         }
 
         $internal['variants'] = [];
