@@ -117,15 +117,7 @@ class CategoryService
                 ->pluck('channel_categories.id');
 
             $category->channelCategories()->detach($existingToRemove);
-
-            $attachData = [];
-            foreach ($channelCategoryIds as $ccId) {
-                $hasOther = DB::table('category_channel_mappings')
-                    ->where('channel_category_id', $ccId)
-                    ->exists();
-                $attachData[$ccId] = ['is_pull_default' => !$hasOther];
-            }
-            $category->channelCategories()->attach($attachData);
+            $category->channelCategories()->attach($channelCategoryIds);
         });
 
         return $category->load('channelCategories');
@@ -234,8 +226,6 @@ class CategoryService
                 $channels["{$ch->code}_category_name"] = $mapped
                     ? $this->buildChannelCategoryFullName($mapped)
                     : null;
-                $channels["{$ch->code}_mapping_id"] = $mapped?->pivot?->id;
-                $channels["{$ch->code}_is_pull_default"] = (bool) ($mapped?->pivot?->is_pull_default ?? false);
             }
 
             return array_merge([
@@ -292,26 +282,6 @@ class CategoryService
 
         $parent->update(['is_enabled' => true]);
         $this->enableParentsRecursive($parent->parent_id);
-    }
-
-    public function togglePullDefault(int $mappingId): array
-    {
-        $mapping = \Modules\Product\Models\CategoryChannelMapping::findOrFail($mappingId);
-
-        $newValue = !$mapping->is_pull_default;
-
-        if ($newValue) {
-            \Modules\Product\Models\CategoryChannelMapping::where('channel_category_id', $mapping->channel_category_id)
-                ->where('id', '!=', $mapping->id)
-                ->update(['is_pull_default' => false]);
-        }
-
-        $mapping->update(['is_pull_default' => $newValue]);
-
-        return [
-            'id' => $mapping->id,
-            'is_pull_default' => $newValue,
-        ];
     }
 
     private function disableOrphanedParents(?int $parentId): void

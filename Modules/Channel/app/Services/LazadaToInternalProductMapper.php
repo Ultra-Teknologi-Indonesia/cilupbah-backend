@@ -119,9 +119,10 @@ class LazadaToInternalProductMapper
 
         $mapping = DB::table('category_channel_mappings')
             ->join('channel_categories', 'channel_categories.id', '=', 'category_channel_mappings.channel_category_id')
+            ->join('categories', 'categories.id', '=', 'category_channel_mappings.category_id')
             ->where('channel_categories.channel_id', $channelId)
             ->where('channel_categories.external_id', (string) $lazadaCategoryId)
-            ->orderByDesc('category_channel_mappings.is_pull_default')
+            ->orderBy('categories.is_leaf', 'desc')
             ->select('category_channel_mappings.category_id')
             ->first();
 

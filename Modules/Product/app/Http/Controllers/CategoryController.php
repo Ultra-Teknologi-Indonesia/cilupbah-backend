@@ -150,13 +150,4 @@ class CategoryController extends Controller
         return $this->successPaginatedResponse($mappings, 'Berhasil mengambil daftar mapping kategori');
     }
 
-    public function togglePullDefault(Request $request, int $mappingId): JsonResponse
-    {
-        try {
-            $result = $this->categoryService->togglePullDefault($mappingId);
-            return $this->successResponse($result, 'Default pull berhasil diperbarui');
-        } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
-        }
-    }
 }

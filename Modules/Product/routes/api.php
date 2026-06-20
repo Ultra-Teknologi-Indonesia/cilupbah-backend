@@ -131,7 +131,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('categories/enable', [CategoryController::class, 'enableCategories']);
     Route::post('categories/disable', [CategoryController::class, 'disableCategories']);
     Route::get('categories/mapping', [CategoryController::class, 'mappingList']);
-    Route::patch('categories/mapping/{mappingId}/pull-default', [CategoryController::class, 'togglePullDefault'])->whereNumber('mappingId');
     Route::get('categories/search', [CategoryController::class, 'search']);
 
     Route::apiResource('categories', CategoryController::class)->names('category')->where(['category' => '[0-9]+']);
