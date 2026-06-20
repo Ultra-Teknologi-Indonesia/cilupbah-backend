@@ -75,7 +75,6 @@ class TikTokProductService
             $videoId = $this->imageUploader->uploadVideo($productVideo->url, $accessToken);
         }
 
-        // Stok dikirim dari sistem kita ke channel (bukan diimpor dari channel).
         $stockByVariant = $this->stockResolver->availableByVariant($shop, $variants);
 
         $internalProduct = (array)$product;
@@ -253,11 +252,6 @@ class TikTokProductService
         return $config;
     }
 
-    /**
-     * Resolve the TikTok channel category to upload to, preferring the leaf category
-     * the user explicitly selected in the product channel draft, then falling back to
-     * the internal-category mapping (also preferring a leaf). Returns {external_id, is_leaf}.
-     */
     private function resolveChannelCategory($product, $shop): ?object
     {
         $draft = \Modules\Product\Models\ProductChannelDraft::where('product_id', $product->id)
@@ -343,8 +337,6 @@ class TikTokProductService
             $products = $res['data']['products'];
             $ids      = array_values(array_filter(array_map(fn ($p) => (string) ($p['id'] ?? ''), $products)));
 
-            // Endpoint search ringkas; ambil detail (opsi varian, gambar, deskripsi)
-            // untuk semua produk halaman ini secara PARALEL — jauh lebih cepat.
             try {
                 $details = $this->client->getProductDetailsBatch($ids, $shopCipher, $accessToken);
             } catch (TokenExpiredException $e) {
@@ -354,9 +346,9 @@ class TikTokProductService
 
             foreach ($products as $item) {
                 try {
-                    // Pakai detail; fallback ke ringkasan search bila detail gagal.
+
                     $detail       = $details[(string) ($item['id'] ?? '')] ?? $item;
-                    $internalData = $mapper->map($detail, $shopId);
+                    $internalData = app(ChannelAssetImporter::class)->import($mapper->map($detail, $shopId));
                     $insertedId   = $productService->upsertFromChannel($internalData);
 
                     if ($insertedId) {
@@ -481,10 +473,6 @@ class TikTokProductService
         return $results;
     }
 
-    /**
-     * Ambil URL gambar utama satu produk (Download Satuan — lazy thumbnail).
-     * Endpoint search tidak mengembalikan gambar, jadi pakai detail produk.
-     */
     public function getProductImage(string $shopId, string $externalProductId): ?string
     {
         $shop = $this->shopRepository->findByShopId($shopId);
@@ -510,10 +498,6 @@ class TikTokProductService
         return $img['urls'][0] ?? $img['uri'] ?? null;
     }
 
-    /**
-     * Detail lengkap satu produk TikTok. Endpoint search hanya ringkas — detail
-     * berisi skus.sales_attributes (opsi varian), sku_img (gambar varian), dan deskripsi.
-     */
     protected function fetchProductDetail(object $shop, string $externalProductId, string &$accessToken): ?array
     {
         $path    = "/product/202309/products/{$externalProductId}";
@@ -547,7 +531,7 @@ class TikTokProductService
             return false;
         }
 
-        $internalData = $mapper->map($detail, $shopId);
+        $internalData = app(ChannelAssetImporter::class)->import($mapper->map($detail, $shopId));
         $insertedId   = $productService->upsertFromChannel($internalData);
 
         if (!$insertedId) {
@@ -1042,7 +1026,6 @@ class TikTokProductService
         return $failCount;
     }
 
-    /** Tarik seluruh pohon kategori TikTok → channel_categories. */
     public function syncCategoryTree(string $shopId): int
     {
         $shop = $this->shopRepository->findByShopId($shopId);

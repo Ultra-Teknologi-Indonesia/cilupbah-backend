@@ -10,14 +10,6 @@ use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Product\Models\ProductSyncLog;
 use Ramsey\Uuid\Uuid;
 
-/**
- * Sinkronisasi metadata produk Shopee dari Shopee Open API v2:
- * - kategori (get_category) → channel_categories
- * - atribut per kategori (get_attributes) → channel_attributes (+ options)
- * - varian/model per item (get_model_list)
- *
- * Pola mengikuti TikTok/Lazada (channel_categories/channel_attributes + updateOrCreate).
- */
 class ShopeeProductService
 {
     public function __construct(
@@ -27,7 +19,6 @@ class ShopeeProductService
         protected ChannelProductRepository $productRepository,
     ) {}
 
-    /** Tarik seluruh pohon kategori Shopee → channel_categories. */
     public function syncCategoryTree(string $shopId): int
     {
         $shop = $this->requireShop($shopId);
@@ -77,7 +68,6 @@ class ShopeeProductService
         return $count;
     }
 
-    /** Tarik atribut untuk satu kategori Shopee → channel_attributes (+ options). */
     public function syncCategoryAttributes(string $shopId, string $categoryExtId): int
     {
         $shop = $this->requireShop($shopId);
@@ -111,7 +101,7 @@ class ShopeeProductService
                 'is_required' => (bool) ($attr['is_mandatory'] ?? false),
                 'is_multiple' => in_array($inputType, ['multiple_select', 'multiple_selection_combo_box'], true)
                     || (strtolower((string) ($attr['format_type'] ?? '')) === 'qualitative' && ($attr['is_multiple'] ?? false)),
-                'is_sale_prop' => false, // Shopee: variasi memakai tier_variation, bukan atribut.
+                'is_sale_prop' => false, 
                 'updated_at' => now(),
             ];
 
@@ -166,7 +156,6 @@ class ShopeeProductService
         return $count;
     }
 
-    /** Sinkron atribut untuk semua kategori Shopee yang sudah dipetakan. */
     public function syncAllMappedCategoryAttributes(string $shopId): array
     {
         $channelId = $this->channelId();
@@ -185,7 +174,6 @@ class ShopeeProductService
         return $result;
     }
 
-    /** Ambil daftar varian/model sebuah item Shopee (get_model_list). */
     public function getModelList(string $shopId, string $itemId): array
     {
         $shop = $this->requireShop($shopId);
@@ -198,10 +186,6 @@ class ShopeeProductService
         ];
     }
 
-    /**
-     * Tarik semua produk toko Shopee → tabel produk internal (status 'download') + channel mapping.
-     * Alur: get_item_list (paginasi offset) → get_item_base_info (≤50/batch) → get_model_list utk item ber-varian.
-     */
     public function pullProducts(string $shopId): int
     {
         $shop = $this->requireShop($shopId);
@@ -247,7 +231,6 @@ class ShopeeProductService
         return $count;
     }
 
-    /** Ambil URL gambar utama satu produk Shopee (Download Satuan — lazy thumbnail). */
     public function getProductImage(string $shopId, string $externalProductId): ?string
     {
         $shop = $this->requireShop($shopId);
@@ -256,7 +239,6 @@ class ShopeeProductService
         return $item['image']['image_url_list'][0] ?? null;
     }
 
-    /** Tarik satu produk Shopee by item_id (Download Satuan). */
     public function pullProductById(string $shopId, string $externalProductId): bool
     {
         $shop = $this->requireShop($shopId);
@@ -284,7 +266,6 @@ class ShopeeProductService
         return true;
     }
 
-    /** Cari produk di toko Shopee (Download Satuan) — ringkasan tanpa persist. */
     public function searchProducts(string $shopId, string $query): array
     {
         $shop = $this->requireShop($shopId);
@@ -326,10 +307,9 @@ class ShopeeProductService
         return $results;
     }
 
-    /** Satu halaman get_item_list. */
     protected function fetchItemList(object $shop, int $offset, int $pageSize): array
     {
-        // item_status WAJIB di get_item_list Shopee; tanpa ini API menolak ("item_status is required").
+
         $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/product/get_item_list', [
             'offset' => $offset,
             'page_size' => $pageSize,
@@ -339,7 +319,6 @@ class ShopeeProductService
         return $res['response'] ?? [];
     }
 
-    /** Info dasar untuk sekumpulan item_id (≤50 per Shopee). */
     protected function fetchBaseInfo(object $shop, array $itemIds): array
     {
         if (empty($itemIds)) {
@@ -354,7 +333,6 @@ class ShopeeProductService
         return $res['response']['item_list'] ?? [];
     }
 
-    /** Lengkapi item ber-varian dengan model_list dari get_model_list. */
     protected function hydrateModels(object $shop, array $item): array
     {
         if (empty($item['has_model'])) {
@@ -369,7 +347,7 @@ class ShopeeProductService
         try {
             $modelList = $this->getModelList($shop->shop_id, $itemId);
             $item['model_list'] = $modelList['models'] ?? [];
-            // tier_variation menyimpan gambar per opsi → dipakai mapper untuk gambar per varian.
+
             $item['tier_variation'] = $modelList['tier_variation'] ?? [];
         } catch (\Throwable $e) {
             Log::warning("Shopee get_model_list gagal item {$itemId}: " . $e->getMessage());
@@ -378,10 +356,10 @@ class ShopeeProductService
         return $item;
     }
 
-    /** Map + upsert satu item Shopee ke produk internal + channel mapping. */
     protected function persistItem(object $shop, string $shopId, array $item, ShopeeToInternalProductMapper $mapper, $productService): bool
     {
-        $insertedId = $productService->upsertFromChannel($mapper->map($item, $shopId));
+        $internalData = app(ChannelAssetImporter::class)->import($mapper->map($item, $shopId));
+        $insertedId = $productService->upsertFromChannel($internalData);
         if (! $insertedId) {
             return false;
         }
@@ -397,7 +375,7 @@ class ShopeeProductService
         $models = $item['model_list'] ?? [];
 
         if (empty($models)) {
-            // Item tanpa varian → mapper membuat satu varian fallback SKU "SHP-{item_id}".
+
             $sku = 'SHP-' . ($item['item_id'] ?? '');
             $variant = $this->productRepository->getVariantByProductIdAndSku((string) $insertedId, $sku);
             if ($variant) {
@@ -435,7 +413,6 @@ class ShopeeProductService
         return true;
     }
 
-    /** Ambil daftar item_id dari respons get_item_list. */
     protected function extractItemIds(array $list): array
     {
         return array_values(array_filter(array_map(

@@ -313,7 +313,7 @@ class LazadaProductService
         $productService = app(\Modules\Product\Services\ProductService::class);
 
         try {
-            $internalData = $this->inboundMapper->map($item, $shopId);
+            $internalData = app(ChannelAssetImporter::class)->import($this->inboundMapper->map($item, $shopId));
             $insertedId = $productService->upsertFromChannel($internalData);
         } catch (\Throwable $e) {
             Log::error('Lazada: gagal re-sync produk ' . $itemId . ': ' . $e->getMessage());
@@ -424,7 +424,7 @@ class LazadaProductService
 
             foreach ($products as $item) {
                 try {
-                    $internalData = $this->inboundMapper->map($item, $shopId);
+                    $internalData = app(ChannelAssetImporter::class)->import($this->inboundMapper->map($item, $shopId));
                     $insertedId = $productService->upsertFromChannel($internalData);
 
                     if ($insertedId) {

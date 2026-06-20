@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Upload;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class UploadService
@@ -21,6 +22,21 @@ class UploadService
         return $this->media->add($upload, $file, self::COLLECTION, [
             'original_name' => $file->getClientOriginalName(),
         ]);
+    }
+
+    public function storeFromUrl(string $url, ?string $uploadedBy = null): ?Media
+    {
+        try {
+            $upload = Upload::create(['uploaded_by' => $uploadedBy]);
+
+            return $upload
+                ->addMediaFromUrl($url)
+                ->toMediaCollection(self::COLLECTION);
+        } catch (\Throwable $e) {
+            Log::warning("UploadService storeFromUrl gagal untuk {$url}: {$e->getMessage()}");
+
+            return null;
+        }
     }
 
     public function replace(string $uuid, UploadedFile $file): ?Media
