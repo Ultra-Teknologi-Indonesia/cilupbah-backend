@@ -117,7 +117,15 @@ class CategoryService
                 ->pluck('channel_categories.id');
 
             $category->channelCategories()->detach($existingToRemove);
-            $category->channelCategories()->attach($channelCategoryIds);
+
+            $attachData = [];
+            foreach ($channelCategoryIds as $ccId) {
+                $hasOther = DB::table('category_channel_mappings')
+                    ->where('channel_category_id', $ccId)
+                    ->exists();
+                $attachData[$ccId] = ['is_pull_default' => !$hasOther];
+            }
+            $category->channelCategories()->attach($attachData);
         });
 
         return $category->load('channelCategories');
