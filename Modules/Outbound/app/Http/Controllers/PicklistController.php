@@ -57,7 +57,7 @@ class PicklistController extends Controller
         $limit = $request->query('limit', 10);
         $data = $this->picklistService->getAllPaginated($limit);
 
-        return response()->json(['success' => true, 'data' => $data]);
+        return $this->successPaginatedResponse($data);
     }
 
     #[OA\Post(
@@ -134,7 +134,7 @@ class PicklistController extends Controller
         $limit = $request->query('limit', 10);
         $data = $this->picklistService->getItems($id, $limit);
 
-        return response()->json(['success' => true, 'data' => $data]);
+        return $this->successPaginatedResponse($data);
     }
 
     #[OA\Post(
