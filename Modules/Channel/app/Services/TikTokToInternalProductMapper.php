@@ -208,15 +208,28 @@ class TikTokToInternalProductMapper
             return $fallback();
         }
 
-        $mapping = DB::table('category_channel_mappings')
+        $mappings = DB::table('category_channel_mappings')
             ->join('channel_categories', 'channel_categories.id', '=', 'category_channel_mappings.channel_category_id')
             ->join('categories', 'categories.id', '=', 'category_channel_mappings.category_id')
             ->where('channel_categories.channel_id', $channelId)
             ->where('channel_categories.external_id', (string) $tiktokCategoryId)
-            ->orderBy('categories.is_leaf', 'desc')
-            ->select('category_channel_mappings.category_id')
-            ->first();
+            ->select('category_channel_mappings.category_id', 'categories.is_leaf')
+            ->get();
 
-        return $mapping ? (int) $mapping->category_id : $fallback();
+        if ($mappings->isEmpty()) {
+            return $fallback();
+        }
+
+        $leaves = $mappings->where('is_leaf', true);
+
+        if ($leaves->count() === 1) {
+            return (int) $leaves->first()->category_id;
+        }
+
+        if ($leaves->count() > 1) {
+            return $fallback();
+        }
+
+        return (int) $mappings->first()->category_id;
     }
 }
