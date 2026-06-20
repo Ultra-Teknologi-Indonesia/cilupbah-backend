@@ -340,11 +340,22 @@ class TikTokProductService
                 break;
             }
 
-            foreach ($res['data']['products'] as $item) {
+            $products = $res['data']['products'];
+            $ids      = array_values(array_filter(array_map(fn ($p) => (string) ($p['id'] ?? ''), $products)));
+
+            // Endpoint search ringkas; ambil detail (opsi varian, gambar, deskripsi)
+            // untuk semua produk halaman ini secara PARALEL — jauh lebih cepat.
+            try {
+                $details = $this->client->getProductDetailsBatch($ids, $shopCipher, $accessToken);
+            } catch (TokenExpiredException $e) {
+                $accessToken = $this->refreshShopToken($shop);
+                $details = $this->client->getProductDetailsBatch($ids, $shopCipher, $accessToken);
+            }
+
+            foreach ($products as $item) {
                 try {
-                    // Endpoint search ringkas; ambil detail agar opsi varian, gambar
-                    // varian, dan deskripsi ikut terunduh.
-                    $detail       = $this->fetchProductDetail($shop, (string) ($item['id'] ?? ''), $accessToken) ?? $item;
+                    // Pakai detail; fallback ke ringkasan search bila detail gagal.
+                    $detail       = $details[(string) ($item['id'] ?? '')] ?? $item;
                     $internalData = $mapper->map($detail, $shopId);
                     $insertedId   = $productService->upsertFromChannel($internalData);
 
