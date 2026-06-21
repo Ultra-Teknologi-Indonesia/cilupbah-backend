@@ -53,6 +53,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::get('raise-products', [RaiseProductController::class, 'index']);
     Route::get('raise-products/{id}', [RaiseProductController::class, 'show'])->whereUuid('id');
+    Route::get('raise-products/{id}/history', [RaiseProductController::class, 'history'])->whereUuid('id');
     Route::post('raise-products', [RaiseProductController::class, 'store']);
     Route::post('raise-products/{id}/raise', [RaiseProductController::class, 'raise'])->whereUuid('id');
     Route::post('raise-products/{id}/products', [RaiseProductController::class, 'addProduct'])->whereUuid('id');

@@ -5,6 +5,7 @@ namespace Modules\Product\Services;
 use DomainException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Modules\Channel\Services\ShopeeProductService;
 use Modules\Product\Jobs\RaiseProductJob;
 use Modules\Product\Models\RaiseProduct;
 use Modules\Product\Models\RaiseProductDetail;
@@ -12,7 +13,10 @@ use Modules\Product\Repositories\RaiseProductRepository;
 
 class RaiseProductService
 {
-    public function __construct(private RaiseProductRepository $repository) {}
+    public function __construct(
+        private RaiseProductRepository $repository,
+        private ShopeeProductService $shopee,
+    ) {}
 
     public function paginate(): LengthAwarePaginator
     {
@@ -117,15 +121,52 @@ class RaiseProductService
         return $this->repository->find($raiseProductId);
     }
 
+    public function paginateHistory(string $id): LengthAwarePaginator
+    {
+        return $this->repository->paginateHistory($id);
+    }
+
     public function executeRaise(string $raiseProductId, ?array $detailIds = null): void
     {
         $details = $this->repository->detailsToRaise($raiseProductId, $detailIds);
 
-        foreach ($details as $detail) {
-            $channel = $detail->channelMapping?->channelShop?->channel;
-            $channelName = $channel->name ?? 'marketplace';
+        if ($details->isEmpty()) {
+            return;
+        }
 
-            $this->repository->markRaiseResult($detail, true, "Produk sudah diterapkan di {$channelName}");
+        $channel = $details->first()->channelMapping?->channelShop?->channel;
+
+        if (! $channel || $channel->code !== 'shopee') {
+            foreach ($details as $detail) {
+                $this->repository->markRaiseResult($detail, false, 'Channel belum didukung untuk naikkan produk');
+            }
+
+            return;
+        }
+
+        $shopId = $details->first()->channelMapping->channelShop->shop_id;
+        $extIdToDetails = $details->groupBy(fn ($d) => $d->channelMapping->external_product_id);
+        $extIds = $extIdToDetails->keys()->all();
+
+        try {
+            $results = $this->shopee->boostItem($shopId, $extIds);
+        } catch (\Exception $e) {
+            foreach ($details as $detail) {
+                $this->repository->markRaiseResult($detail, false, 'Gagal menghubungi Shopee: '.$e->getMessage());
+            }
+
+            return;
+        }
+
+        foreach ($extIdToDetails as $extId => $group) {
+            $result = $results[(string) $extId] ?? ['success' => false, 'reason' => 'Tidak ada respons'];
+            foreach ($group as $detail) {
+                $this->repository->markRaiseResult(
+                    $detail,
+                    $result['success'],
+                    $result['success'] ? 'Produk berhasil dinaikkan di Shopee' : ($result['reason'] ?? 'Gagal tanpa alasan')
+                );
+            }
         }
     }
 }
