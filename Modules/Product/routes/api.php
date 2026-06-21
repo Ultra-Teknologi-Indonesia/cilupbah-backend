@@ -149,7 +149,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('categories/{category}/attributes', [\Modules\Product\Http\Controllers\CategoryFormAttributeController::class, 'store'])->whereNumber('category');
     Route::delete('categories/{category}/attributes/{attribute}', [\Modules\Product\Http\Controllers\CategoryFormAttributeController::class, 'destroy'])->whereNumber('category')->whereNumber('attribute');
 
-    Route::apiResource('brands', BrandController::class)->names('brand')->where(['brand' => '[0-9]+']);
+    Route::get('brands', [BrandController::class, 'index'])->name('brand.index');
     Route::apiResource('attributes', AttributeController::class)->names('attribute')->where(['attribute' => '[0-9]+']);
     Route::post('attributes/{attribute}/map-channel', [AttributeController::class, 'mapChannel'])->whereNumber('attribute');
     Route::post('attributes/options/{option}/map-channel', [AttributeController::class, 'mapOptionChannel'])->whereNumber('option');

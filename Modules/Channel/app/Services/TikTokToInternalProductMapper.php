@@ -3,6 +3,7 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class TikTokToInternalProductMapper
 {
@@ -121,6 +122,15 @@ class TikTokToInternalProductMapper
                         'is_primary' => true,
                         'sort_order' => 0,
                     ]];
+                } elseif (! $skuImg) {
+                    Log::channel('warning')->info('TikTok SKU image not found', [
+                        'sku' => $sku,
+                        'product_title' => $tiktokProduct['title'] ?? null,
+                        'sales_attributes_keys' => array_map(
+                            fn ($a) => array_keys($a),
+                            $skuData['sales_attributes'] ?? []
+                        ),
+                    ]);
                 }
 
                 $internal['variants'][] = $variant;
@@ -146,10 +156,38 @@ class TikTokToInternalProductMapper
 
     protected function extractSkuImage(array $skuData): ?string
     {
+        // 1. Check sales_attributes[].sku_img (v2 API)
         foreach ($skuData['sales_attributes'] ?? [] as $attr) {
-            $uri = $attr['sku_img']['uri']
-                ?? $attr['sku_img']['url_list'][0]
+            $img = $attr['sku_img'] ?? null;
+            if (! $img) {
+                continue;
+            }
+
+            $uri = $img['uri']
+                ?? $img['url_list'][0]
+                ?? $img['thumb_url_list'][0]
+                ?? $img['urls'][0]
                 ?? null;
+            if ($uri) {
+                return $this->normalizeImageUrl($uri);
+            }
+        }
+
+        // 2. Check representative_sku_image at SKU level
+        $rep = $skuData['representative_sku_image'] ?? null;
+        if ($rep) {
+            $uri = $rep['uri'] ?? $rep['url_list'][0] ?? $rep['urls'][0] ?? null;
+            if ($uri) {
+                return $this->normalizeImageUrl($uri);
+            }
+        }
+
+        // 3. Check sku_img directly on the SKU object (some API versions)
+        $directImg = $skuData['sku_img'] ?? null;
+        if ($directImg) {
+            $uri = is_string($directImg)
+                ? $directImg
+                : ($directImg['uri'] ?? $directImg['url_list'][0] ?? $directImg['urls'][0] ?? null);
             if ($uri) {
                 return $this->normalizeImageUrl($uri);
             }
