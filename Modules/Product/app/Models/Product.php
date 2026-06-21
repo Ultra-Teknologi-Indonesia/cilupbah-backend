@@ -158,6 +158,11 @@ class Product extends Model
         return $this->belongsTo(\Modules\Finance\Models\Account::class, 'cogs_account_id');
     }
 
+    public function specifications(): HasMany
+    {
+        return $this->hasMany(ProductSpecification::class);
+    }
+
     public function archivedBy(): BelongsTo
     {
         return $this->belongsTo(\App\Models\User::class, 'archived_by');

@@ -47,6 +47,7 @@ class ProductController extends Controller
         'cogsAccount',
         'channelMappings.channelShop.channel',
         'archivedBy',
+        'specifications.attributeOption',
     ];
 
     protected ProductService $productService;

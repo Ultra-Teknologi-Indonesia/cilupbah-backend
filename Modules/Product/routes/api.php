@@ -176,7 +176,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inventory/items/channel-category-attributes', [\Modules\Product\Http\Controllers\ChannelAttributeController::class, 'all']);
 
     Route::get('inventory/categories/category-map/{id}', [CategoryController::class, 'channelMap'])->whereNumber('id');
-    Route::get('inventory/categories/{channel_id}/store-categories/{store_id}', [ChannelCategoryController::class, 'storeCategories']);
+    // Categories are global per channel, not per store — use index() instead
+    // Route::get('inventory/categories/{channel_id}/store-categories/{store_id}', [ChannelCategoryController::class, 'storeCategories']);
 
     Route::get('variations', [VariantController::class, 'index']);
     Route::delete('inventory/items/item-variant', [VariantController::class, 'destroy']);

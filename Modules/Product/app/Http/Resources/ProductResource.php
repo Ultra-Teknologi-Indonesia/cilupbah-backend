@@ -73,6 +73,11 @@ class ProductResource extends JsonResource
                 'inventory' => $this->accountInfo('inventoryAccount'),
                 'cogs' => $this->accountInfo('cogsAccount'),
             ],
+            'specifications' => $this->whenLoaded('specifications', fn () => $this->specifications->map(fn ($s) => [
+                'attribute_id' => $s->attribute_id,
+                'attribute_option_id' => $s->attribute_option_id,
+                'value' => $s->text_value ?? ($s->relationLoaded('attributeOption') && $s->attributeOption ? $s->attributeOption->value : null),
+            ])->values()),
             'channel_mappings' => $this->whenLoaded('channelMappings', function () {
                 return $this->channelMappings->map(function ($mapping) {
                     $shop = $mapping->relationLoaded('channelShop') ? $mapping->channelShop : null;
