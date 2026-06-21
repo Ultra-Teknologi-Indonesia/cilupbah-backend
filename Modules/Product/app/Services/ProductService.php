@@ -686,6 +686,7 @@ class ProductService
             ]);
 
             $productData['status'] = $data['status'] ?? Product::STATUS_MASTER;
+            $productData['verified_at'] = $data['verified_at'] ?? null;
 
             $productData['sales_account_id'] = $this->resolveAccountId($data['sales_account_id'] ?? null, AccountMappingKey::SALES_REVENUE);
             $productData['sales_return_account_id'] = $this->resolveAccountId($data['sales_return_account_id'] ?? null, AccountMappingKey::SALES_RETURN);

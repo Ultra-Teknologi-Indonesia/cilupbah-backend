@@ -10,7 +10,7 @@ class ProductLifecycleService
     public function approve(Product $product, ?string $userId = null): Product
     {
         if ($product->status === Product::STATUS_MASTER) {
-            throw new \DomainException('Produk sudah berstatus Master');
+            return $product;
         }
 
         if ($product->status === Product::STATUS_ARCHIVED) {

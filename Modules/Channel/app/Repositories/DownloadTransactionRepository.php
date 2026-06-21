@@ -42,7 +42,7 @@ class DownloadTransactionRepository
     {
         return QueryBuilder::for(\Modules\Product\Models\Product::class)
             ->whereIn('status', [
-                \Modules\Product\Models\Product::STATUS_DOWNLOAD,
+                \Modules\Product\Models\Product::STATUS_MASTER,
             ])
             ->whereHas('channelMappings', fn ($query) => $query->where('channel_shop_id', $channelShopId))
             ->with([

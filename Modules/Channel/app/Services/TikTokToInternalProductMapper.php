@@ -21,7 +21,8 @@ class TikTokToInternalProductMapper
             'is_draft' => ($tiktokProduct['status'] ?? null) !== 'ACTIVATE',
             'is_active' => true,
 
-            'status' => 'download',
+            'status' => 'master',
+            'verified_at' => now(),
         ];
 
         if (isset($tiktokProduct['package_dimensions'])) {
