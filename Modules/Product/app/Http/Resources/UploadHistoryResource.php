@@ -24,7 +24,7 @@ class UploadHistoryResource extends JsonResource
             'success' => $success,
             'status_message' => $this->statusMessage(),
             'can_reupload' => $this->status === ProductSyncLog::STATUS_FAILED,
-            'max' => $shop->shop_name ?? null,
+            'shop_name' => $shop->shop_name ?? null,
             'channel_code' => $channel->code ?? null,
             'channel_name' => $channel->name ?? null,
             'channel_id' => $shop->channel_id ?? null,
