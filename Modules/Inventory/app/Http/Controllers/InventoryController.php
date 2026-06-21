@@ -167,6 +167,22 @@ class InventoryController extends Controller
         return $this->successPaginatedResponse($items, 'Daftar item to-stock berhasil diambil.');
     }
 
+    public function itemsOnStock(Request $request): JsonResponse
+    {
+        $limit = $request->query('limit', 200);
+
+        $items = QueryBuilder::for(Inventory::class)
+            ->with(['product:id,sku,product_id', 'product.product:id,name', 'bin:id,bin_final_code'])
+            ->allowedFilters(
+                AllowedFilter::exact('location_id'),
+                AllowedFilter::partial('sku', 'product.sku'),
+            )
+            ->where('available', '>', 0)
+            ->paginate($limit);
+
+        return $this->successPaginatedResponse($items, 'Daftar item on-stock berhasil diambil.');
+    }
+
     #[OA\Get(
         path: '/api/v1/inventory/stock-products',
         summary: 'Get all stock products grouped by product',

@@ -20,7 +20,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inventory/activity', [InventoryController::class, 'movements'])->name('inventory.activity.index');
 
     Route::get('inventory/items/to-stock', [InventoryController::class, 'itemsToStock'])->name('inventory.items.toStock');
-    Route::get('inventory/items/item-on-stock', [InventoryController::class, 'itemsToStock'])->name('inventory.items.itemOnStock');
+    Route::get('inventory/items/item-on-stock', [InventoryController::class, 'itemsOnStock'])->name('inventory.items.itemOnStock');
     Route::get('inventory/items/to-sell/{locationId}', [InventoryController::class, 'toSell'])->name('inventory.items.toSell');
     Route::get('inventory/items/to-sales-return', [InventoryController::class, 'toSalesReturn'])->name('inventory.items.toSalesReturn');
     Route::get('inventory/items/{id}/batch-number', [InventoryController::class, 'batchNumbers'])->name('inventory.items.batchNumber');
