@@ -231,14 +231,6 @@ class ShopeeProductService
         return $count;
     }
 
-    public function getProductImage(string $shopId, string $externalProductId): ?string
-    {
-        $shop = $this->requireShop($shopId);
-        $item = $this->fetchBaseInfo($shop, [$externalProductId])[0] ?? null;
-
-        return $item['image']['image_url_list'][0] ?? null;
-    }
-
     public function pullProductById(string $shopId, string $externalProductId): bool
     {
         $shop = $this->requireShop($shopId);

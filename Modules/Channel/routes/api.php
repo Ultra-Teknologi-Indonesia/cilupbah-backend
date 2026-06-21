@@ -111,6 +111,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1/{channel}')->group(function () {
     Route::post('download', [\Modules\Channel\Http\Controllers\ChannelDownloadController::class, 'download']);
     Route::post('download/bulk', [\Modules\Channel\Http\Controllers\ChannelDownloadController::class, 'downloadBulk']);
     Route::get('download/search', [\Modules\Channel\Http\Controllers\ChannelDownloadController::class, 'search']);
-    Route::get('download/product-image', [\Modules\Channel\Http\Controllers\ChannelDownloadController::class, 'productImage']);
+
     Route::post('download-product', [\Modules\Channel\Http\Controllers\ChannelDownloadController::class, 'downloadProduct']);
 });

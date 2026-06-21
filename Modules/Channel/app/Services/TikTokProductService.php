@@ -476,31 +476,6 @@ class TikTokProductService
         return $results;
     }
 
-    public function getProductImage(string $shopId, string $externalProductId): ?string
-    {
-        $shop = $this->shopRepository->findByShopId($shopId);
-        if (!$shop || !$shop->access_token) {
-            return null;
-        }
-
-        $accessToken = $shop->access_token;
-        $path        = "/product/202309/products/{$externalProductId}";
-        $queries     = ['shop_cipher' => $shop->shop_cipher ?? ''];
-
-        try {
-            $res = $this->client->request('GET', $path, $queries, [], $accessToken);
-        } catch (TokenExpiredException $e) {
-            $accessToken = $this->refreshShopToken($shop);
-            $res = $this->client->request('GET', $path, $queries, [], $accessToken);
-        } catch (\Throwable $e) {
-            return null;
-        }
-
-        $img = $res['data']['main_images'][0] ?? null;
-
-        return $this->normalizeTikTokImageUrl($img['urls'][0] ?? $img['uri'] ?? null);
-    }
-
     protected function fetchProductDetail(object $shop, string $externalProductId, string &$accessToken): ?array
     {
         $path    = "/product/202309/products/{$externalProductId}";

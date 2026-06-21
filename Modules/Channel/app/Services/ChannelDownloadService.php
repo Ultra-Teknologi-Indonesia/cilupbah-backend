@@ -121,17 +121,6 @@ class ChannelDownloadService
         }, $results);
     }
 
-    public function getProductImage(string $channel, string $shopId, string $externalProductId): ?string
-    {
-        $this->assertSupported($channel);
-
-        return match (strtolower($channel)) {
-            'tiktok' => app(TikTokProductService::class)->getProductImage($shopId, $externalProductId),
-            'shopee' => app(ShopeeProductService::class)->getProductImage($shopId, $externalProductId),
-            default => null,
-        };
-    }
-
     public function downloadProduct(string $channel, string $shopId, string $externalProductId): bool
     {
         $this->assertSupported($channel);
