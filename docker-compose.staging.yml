@@ -13,8 +13,9 @@ services:
     environment:
       - APP_ENV=staging
       - APP_DEBUG=false
+    # PostgreSQL now runs natively on the host (not in Docker).
+    # The app reaches it via the docker0 gateway IP (DB_HOST=172.17.0.1 in .env).
     depends_on:
-      - db
       - redis
     restart: unless-stopped
 
@@ -31,7 +32,6 @@ services:
       - APP_ENV=staging
       - APP_DEBUG=false
     depends_on:
-      - db
       - redis
     restart: unless-stopped
 
@@ -42,17 +42,5 @@ services:
     volumes:
       - staging_redisdata:/data
 
-  db:
-    container_name: cilupbah-staging-db
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: cilupbah
-    volumes:
-      - staging_pgdata:/var/lib/postgresql/data
-    restart: unless-stopped
-
 volumes:
-  staging_pgdata:
   staging_redisdata:

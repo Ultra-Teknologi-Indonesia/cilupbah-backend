@@ -100,7 +100,7 @@ class InboundDatabaseSeeder extends Seeder
             'is_active'   => true,
         ]);
 
-        ProductVariant::firstOrCreate(['sku' => 'LAPTOP-001-8GB'], [
+        $variant1 = ProductVariant::firstOrCreate(['sku' => 'LAPTOP-001-8GB'], [
             'product_id' => $product1->id,
             'sell_price'  => 7500000,
             'is_active'   => true,
@@ -112,7 +112,7 @@ class InboundDatabaseSeeder extends Seeder
             'is_active'   => true,
         ]);
 
-        ProductVariant::firstOrCreate(['sku' => 'MOUSE-001-BLK'], [
+        $variant2 = ProductVariant::firstOrCreate(['sku' => 'MOUSE-001-BLK'], [
             'product_id' => $product2->id,
             'sell_price'  => 1299000,
             'is_active'   => true,
@@ -124,15 +124,15 @@ class InboundDatabaseSeeder extends Seeder
             'is_active'   => true,
         ]);
 
-        ProductVariant::firstOrCreate(['sku' => 'KBD-001-RED'], [
+        $variant3 = ProductVariant::firstOrCreate(['sku' => 'KBD-001-RED'], [
             'product_id' => $product3->id,
             'sell_price'  => 1150000,
             'is_active'   => true,
         ]);
 
-        foreach ([$product1, $product2, $product3] as $product) {
+        foreach ([$variant1, $variant2, $variant3] as $variant) {
             Inventory::firstOrCreate([
-                'item_id'     => $product->id,
+                'item_id'     => $variant->id,
                 'location_id' => $warehouse2->id,
                 'bin_id'      => null,
                 'batch_no'    => '',
@@ -182,12 +182,12 @@ class InboundDatabaseSeeder extends Seeder
         ]);
 
         PurchaseOrderItem::firstOrCreate(
-            ['purchase_order_id' => $po->id, 'item_id' => $product1->id],
+            ['purchase_order_id' => $po->id, 'item_id' => $variant1->id],
             ['qty' => 10, 'received_qty' => 0, 'unit_price' => 7500000, 'subtotal' => 75000000]
         );
 
         PurchaseOrderItem::firstOrCreate(
-            ['purchase_order_id' => $po->id, 'item_id' => $product2->id],
+            ['purchase_order_id' => $po->id, 'item_id' => $variant2->id],
             ['qty' => 20, 'received_qty' => 0, 'unit_price' => 1299000, 'subtotal' => 25980000]
         );
 
@@ -202,7 +202,7 @@ class InboundDatabaseSeeder extends Seeder
         ]);
 
         InboundItem::firstOrCreate(
-            ['inbound_id' => $inbound->id, 'item_id' => $product3->id],
+            ['inbound_id' => $inbound->id, 'item_id' => $variant3->id],
             ['expected_qty' => 50, 'received_qty' => 0, 'putaway_qty' => 0, 'discrepancy_qty' => 0]
         );
 
