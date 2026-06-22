@@ -10,8 +10,6 @@ use Modules\Inventory\Http\Controllers\StockOpnameController;
 use Modules\Inventory\Http\Controllers\StockRevaluationController;
 use Modules\Inventory\Http\Controllers\PromotionController;
 use Modules\Inventory\Http\Controllers\PriceListController;
-use Modules\Inventory\Http\Controllers\PriceController;
-use Modules\Inventory\Http\Controllers\PriceAdjustmentController;
 use Modules\Inventory\Http\Controllers\BundleController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
@@ -44,20 +42,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inventory/internal-price-list', [PriceListController::class, 'index'])->name('inventory.priceList.index');
     Route::post('inventory/price-list', [PriceListController::class, 'update'])->name('inventory.priceList.update');
     Route::post('inventory/items/prices', [PriceListController::class, 'pricesByIds'])->name('inventory.items.prices');
-
-    Route::get('prices/online', [PriceController::class, 'online'])->name('prices.online');
-    Route::get('prices/offline', [PriceController::class, 'offline'])->name('prices.offline');
-    Route::put('prices/online', [PriceController::class, 'updateOnline'])->name('prices.online.update');
-    Route::put('prices/offline', [PriceController::class, 'updateOffline'])->name('prices.offline.update');
-
-    Route::prefix('prices/adjustments')->group(function () {
-        Route::get('/', [PriceAdjustmentController::class, 'index'])->name('prices.adjustments.index');
-        Route::post('/', [PriceAdjustmentController::class, 'store'])->name('prices.adjustments.store');
-        Route::get('/{id}', [PriceAdjustmentController::class, 'show'])->name('prices.adjustments.show');
-        Route::post('/{id}/apply', [PriceAdjustmentController::class, 'apply'])->name('prices.adjustments.apply');
-        Route::post('/{id}/cancel', [PriceAdjustmentController::class, 'cancel'])->name('prices.adjustments.cancel');
-        Route::delete('/{id}', [PriceAdjustmentController::class, 'destroy'])->name('prices.adjustments.destroy');
-    });
 
     Route::get('inventory/promotions', [PromotionController::class, 'index'])->name('inventory.promotions.index');
     Route::post('inventory/promotions', [PromotionController::class, 'store'])->name('inventory.promotions.store');
