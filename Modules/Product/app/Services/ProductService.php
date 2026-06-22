@@ -14,7 +14,10 @@ use Modules\Channel\Services\ChannelListingValidator;
 use Modules\Finance\Support\AccountMappingKey;
 use Modules\Inventory\Models\Inventory;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductVariant;
+use Modules\Product\Models\Attribute;
 use Modules\Product\Repositories\ProductRepository;
+use Modules\Product\Repositories\ProductWriteRepository;
 
 class ProductService
 {
@@ -30,6 +33,7 @@ class ProductService
 
     public function __construct(
         private readonly ProductRepository $repository,
+        private readonly ProductWriteRepository $writeRepository,
         private readonly \App\Services\UploadService $uploadService,
     ) {
     }
@@ -62,29 +66,12 @@ class ProductService
             return $given;
         }
 
-        return DB::table('account_mappings')->where('key', $mappingKey)->value('account_id');
+        return $this->writeRepository->accountIdByMappingKey($mappingKey);
     }
 
     private function taxRate($taxId): float
     {
-        return (float) (DB::table('taxes')->where('id', $taxId)->value('rate') ?? 0);
-    }
-
-    private function syncUnlimitedShops(string $variantId, array $shopIds): void
-    {
-        $rows = [];
-        foreach (array_unique($shopIds) as $shopId) {
-            $rows[] = [
-                'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
-                'variant_id' => $variantId,
-                'channel_shop_id' => $shopId,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ];
-        }
-        if ($rows) {
-            DB::table('variant_unlimited_shops')->insert($rows);
-        }
+        return $this->writeRepository->taxRate($taxId);
     }
 
     public function resolveChannelShopId(string $shopId): ?string
@@ -114,6 +101,9 @@ class ProductService
 
     public function createOrUpdateBundle(array $data): Product
     {
+        $this->guardBundleComposition($data['components']);
+        $this->guardBundleConversion($data['id'] ?? null);
+
         $attributes = [
             'name' => $data['name'],
             'sku' => $data['sku'] ?? null,
@@ -123,6 +113,36 @@ class ProductService
         ];
 
         return $this->repository->saveBundle($data['id'] ?? null, $attributes, $data['components']);
+    }
+
+    private function guardBundleComposition(array $components): void
+    {
+        $variantIds = array_values(array_filter(array_column($components, 'variant_id')));
+
+        if ($this->repository->variantIdsFromBundleProducts($variantIds) !== []) {
+            throw new DomainException(
+                'Komponen bundle tidak boleh berisi produk bundle (bundle-in-bundle tidak diizinkan).'
+            );
+        }
+    }
+
+    private function guardBundleConversion(?string $productId): void
+    {
+        if ($productId === null) {
+            return;
+        }
+
+        if ($this->repository->currentIsBundle($productId) === true) {
+            return;
+        }
+
+        $reason = $this->repository->transactionLockReason($productId);
+
+        if ($reason !== null) {
+            throw new DomainException(
+                "Produk tidak dapat diubah menjadi bundle karena {$reason}."
+            );
+        }
     }
 
     public function deleteProduct(Product $product): void
@@ -138,24 +158,43 @@ class ProductService
             );
         }
 
-        $product->delete();
+        DB::transaction(function () use ($product) {
+            $product->variants()->delete();
+            $product->delete();
+        });
+    }
+
+    public function bulkDelete(array $ids): array
+    {
+        $success = 0;
+        $errors = [];
+
+        foreach ($ids as $id) {
+            $product = Product::find($id);
+            if (!$product) {
+                $errors[] = "Produk {$id} tidak ditemukan";
+                continue;
+            }
+            try {
+                $this->deleteProduct($product);
+                $success++;
+            } catch (DomainException $e) {
+                $errors[] = "{$product->name}: {$e->getMessage()}";
+            }
+        }
+
+        return ['success' => $success, 'failed' => count($errors), 'errors' => $errors];
     }
 
     public function upsertFromChannel(array $data)
     {
         $sku = $data['sku'] ?? ($data['variants'][0]['sku'] ?? null);
         if ($sku) {
-            $existingProduct = DB::table('products')->where('sku', $sku)->first();
-            $productId = $existingProduct ? $existingProduct->id : null;
-
-            if (!$productId) {
-                $variant = DB::table('product_variants')->where('sku', $sku)->first();
-                if ($variant) {
-                    $productId = $variant->product_id;
-                }
-            }
+            $productId = $this->writeRepository->productIdBySku($sku)
+                ?? $this->writeRepository->productIdByVariantSku($sku);
 
             if ($productId) {
+                unset($data['category_id']);
                 return $this->updateProduct($productId, $data);
             }
         }
@@ -166,7 +205,7 @@ class ProductService
     public function updateProduct(string $productId, array $data)
     {
         if (array_key_exists('specifications', $data) || array_key_exists('variation_types', $data)) {
-            $categoryId = $data['category_id'] ?? DB::table('products')->where('id', $productId)->value('category_id');
+            $categoryId = $data['category_id'] ?? $this->writeRepository->productCategoryId($productId);
             $this->assertCategoryAttributes($categoryId ? (int) $categoryId : null, $data, array_key_exists('specifications', $data));
         }
 
@@ -174,7 +213,7 @@ class ProductService
             $productData = Arr::only($data, [
                 'name', 'sku', 'description', 'category_id', 'brand_id', 'search_keyword',
                 'order_type', 'indent_days', 'condition', 'status',
-                'weight', 'length', 'width', 'height', 'is_active', 'is_cod_allowed',
+                'weight', 'weight_unit', 'length', 'width', 'height', 'is_active', 'is_cod_allowed',
                 'is_bundle', 'is_consignment', 'package_contents',
                 'is_stored', 'is_sold', 'is_purchased', 'purchase_lead_time',
             ]);
@@ -189,18 +228,14 @@ class ProductService
             }
 
             if (!empty($productData)) {
-                $productData['updated_at'] = now();
-                DB::table('products')->where('id', $productId)->update($productData);
+                $this->writeRepository->updateProductRow($productId, $productData);
             }
 
             if (array_key_exists('media', $data)) {
-                DB::table('product_media')
-                    ->where('product_id', $productId)
-                    ->whereNull('variant_id')
-                    ->delete();
+                $this->writeRepository->deleteProductLevelMedia($productId);
 
                 if (!empty($data['media'])) {
-                    DB::table('product_media')->insert(array_map(
+                    $this->writeRepository->insertMedia(array_map(
                         fn ($m) => $this->buildMediaRow($m, $productId, null),
                         $data['media']
                     ));
@@ -217,35 +252,33 @@ class ProductService
                     $variantData = Arr::only($variant, [
                         'sell_price', 'buy_price', 'barcode', 'is_active',
                         'sales_tax_id', 'purchase_tax_id', 'min_stock', 'safe_stock',
+                        'weight', 'length', 'width', 'height',
                     ]);
                     if (!empty($variant['sales_tax_id'])) {
                         $variantData['tax_rate'] = $this->taxRate($variant['sales_tax_id']);
                     }
                     $variantData['updated_at'] = now();
 
-                    $existingVariant = DB::table('product_variants')
-                        ->where('product_id', $productId)
-                        ->where('sku', $variant['sku'])
-                        ->first();
+                    $existingVariant = $this->writeRepository->findVariantByProductAndSku($productId, $variant['sku']);
 
                     if ($existingVariant) {
-                        DB::table('product_variants')->where('id', $existingVariant->id)->update($variantData);
+                        $this->writeRepository->updateVariantRow($existingVariant->id, $variantData);
                         $variantId = $existingVariant->id;
                     } else {
-                        DB::table('product_variants')->insert(array_merge($variantData, [
+                        $this->writeRepository->insertVariantRow(array_merge($variantData, [
                             'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
                             'product_id' => $productId,
                             'sku' => $variant['sku'],
                             'created_at' => now(),
                         ]));
-                        $variantId = DB::table('product_variants')->where('product_id', $productId)->where('sku', $variant['sku'])->value('id');
+                        $variantId = $this->writeRepository->variantIdByProductAndSku($productId, $variant['sku']);
                     }
 
                     if (array_key_exists('media', $variant)) {
-                        DB::table('product_media')->where('variant_id', $variantId)->delete();
+                        $this->writeRepository->deleteVariantMedia($variantId);
 
                         if (!empty($variant['media'])) {
-                            DB::table('product_media')->insert(array_map(
+                            $this->writeRepository->insertMedia(array_map(
                                 fn ($m) => $this->buildMediaRow($m, $productId, $variantId),
                                 $variant['media']
                             ));
@@ -254,56 +287,15 @@ class ProductService
 
                     if (!empty($variant['channel_prices'])) {
                         foreach ($variant['channel_prices'] as $cp) {
-                            $channelShopId = $cp['channel_shop_id'];
-
-                            $pcm = DB::table('product_channel_mappings')
-                                ->where('product_id', $productId)
-                                ->where('channel_shop_id', $channelShopId)
-                                ->first();
-
-                            if (!$pcm) {
-                                $pcmId = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();
-                                DB::table('product_channel_mappings')->insert([
-                                    'id' => $pcmId,
-                                    'product_id' => $productId,
-                                    'channel_shop_id' => $channelShopId,
-                                    'sync_status' => 'pending',
-                                    'created_at' => now(),
-                                    'updated_at' => now(),
-                                ]);
-                            } else {
-                                $pcmId = $pcm->id;
-                            }
-
-                            $pvcm = DB::table('product_variant_channel_mappings')
-                                ->where('product_channel_mapping_id', $pcmId)
-                                ->where('variant_id', $variantId)
-                                ->first();
-
-                            if ($pvcm) {
-                                DB::table('product_variant_channel_mappings')
-                                    ->where('id', $pvcm->id)
-                                    ->update([
-                                        'override_price' => $cp['price'],
-                                        'updated_at' => now(),
-                                    ]);
-                            } else {
-                                DB::table('product_variant_channel_mappings')->insert([
-                                    'id' => \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString(),
-                                    'product_channel_mapping_id' => $pcmId,
-                                    'variant_id' => $variantId,
-                                    'override_price' => $cp['price'],
-                                    'created_at' => now(),
-                                    'updated_at' => now(),
-                                ]);
-                            }
+                            $pcmId = $this->writeRepository->findOrCreateProductChannelMapping($productId, $cp['channel_shop_id']);
+                            $this->writeRepository->upsertVariantChannelOverridePrice($pcmId, $variantId, $cp['price']);
                         }
                     }
 
                     if (array_key_exists('unlimited_shop_ids', $variant)) {
-                        DB::table('variant_unlimited_shops')->where('variant_id', $variantId)->delete();
+                        $this->writeRepository->deleteUnlimitedShops($variantId);
                         if (!empty($variant['unlimited_shop_ids'])) {
-                            $this->syncUnlimitedShops($variantId, $variant['unlimited_shop_ids']);
+                            $this->writeRepository->syncUnlimitedShops($variantId, $variant['unlimited_shop_ids']);
                         }
                     }
                 }
@@ -328,17 +320,11 @@ class ProductService
         $types = $data['variation_types'] ?? [];
         $payloadVariants = $data['variants'] ?? [];
 
-        $existingTypes = DB::table('product_variation_types')
-            ->where('product_id', $productId)->pluck('attribute_id')
-            ->map(fn ($v) => (int) $v)->all();
+        $existingTypes = $this->writeRepository->variationTypeAttributeIds($productId);
 
-        $activeVariants = DB::table('product_variants')
-            ->where('product_id', $productId)->where('is_active', true)
-            ->get(['id', 'sku', 'sell_price']);
+        $activeVariants = $this->writeRepository->activeVariants($productId);
 
-        $optRows = DB::table('variant_options')
-            ->whereIn('variant_id', $activeVariants->pluck('id')->all() ?: ['00000000-0000-0000-0000-000000000000'])
-            ->get(['variant_id', 'attribute_id', 'value']);
+        $optRows = $this->writeRepository->variantOptionsFor($activeVariants->pluck('id')->all());
 
         $setByVariant = [];   
         $existingValues = []; 
@@ -398,14 +384,14 @@ class ProductService
                 $upd = $this->variantUpdatableFields($v);
                 if ($upd) {
                     $upd['updated_at'] = now();
-                    DB::table('product_variants')->where('id', $existingByKey[$key]->id)->update($upd);
+                    $this->writeRepository->updateVariantRow($existingByKey[$key]->id, $upd);
                 }
                 continue;
             }
 
             $price = $v['sell_price'] ?? $this->ancestorPrice($opts, $activeVariants, $setByVariant);
             $variantId = \Ramsey\Uuid\Uuid::uuid7()->toString();
-            DB::table('product_variants')->insert(array_merge(
+            $this->writeRepository->insertVariantRow(array_merge(
                 $this->variantUpdatableFields($v),
                 [
                     'id' => $variantId,
@@ -418,29 +404,26 @@ class ProductService
                 ]
             ));
             foreach ($opts as $o) {
-                DB::table('variant_options')->insert([
+                $this->writeRepository->insertVariantOptions([[
                     'variant_id' => $variantId,
                     'attribute_id' => (int) $o['attribute_id'],
                     'value' => (string) $o['value'],
                     'created_at' => now(),
                     'updated_at' => now(),
-                ]);
+                ]]);
             }
         }
 
         foreach ($existingByKey as $key => $av) {
             if (! isset($desired[$key])) {
-                DB::table('product_variants')->where('id', $av->id)
-                    ->update(['is_active' => false, 'superseded_at' => now(), 'updated_at' => now()]);
+                $this->writeRepository->supersedeVariant($av->id);
             }
         }
 
         foreach ($types as $t) {
             $attrId = (int) $t['attribute_id'];
-            $exists = DB::table('product_variation_types')
-                ->where('product_id', $productId)->where('attribute_id', $attrId)->exists();
-            if (! $exists) {
-                DB::table('product_variation_types')->insert([
+            if (! $this->writeRepository->variationTypeExists($productId, $attrId)) {
+                $this->writeRepository->insertVariationType([
                     'product_id' => $productId,
                     'attribute_id' => $attrId,
                     'sort_order' => $t['sort_order'] ?? 0,
@@ -456,6 +439,7 @@ class ProductService
         $f = Arr::only($v, [
             'buy_price', 'barcode', 'is_active',
             'sales_tax_id', 'purchase_tax_id', 'min_stock', 'safe_stock',
+            'weight', 'length', 'width', 'height',
         ]);
         if (array_key_exists('sell_price', $v) && $v['sell_price'] !== null) {
             $f['sell_price'] = $v['sell_price'];
@@ -490,7 +474,7 @@ class ProductService
 
     private function generateVariantSku(string $productId, array $opts): string
     {
-        $base = DB::table('products')->where('id', $productId)->value('sku') ?: ('PRD-' . substr($productId, 0, 8));
+        $base = $this->writeRepository->productSku($productId) ?: ('PRD-' . substr($productId, 0, 8));
         $parts = [$base];
         foreach ($opts as $o) {
             $parts[] = preg_replace('/[^A-Za-z0-9]+/', '-', (string) $o['value']);
@@ -499,7 +483,7 @@ class ProductService
 
         $candidate = $sku;
         $i = 1;
-        while (DB::table('product_variants')->where('sku', $candidate)->exists()) {
+        while ($this->writeRepository->variantSkuExists($candidate)) {
             $candidate = $sku . '-' . (++$i);
         }
 
@@ -508,10 +492,10 @@ class ProductService
 
     private function syncSpecifications(string $productId, array $specs): void
     {
-        DB::table('product_specifications')->where('product_id', $productId)->delete();
+        $this->writeRepository->deleteSpecifications($productId);
         if (empty($specs)) { return; }
 
-        DB::table('product_specifications')->insert(array_map(static fn ($s) => [
+        $this->writeRepository->insertSpecifications(array_map(static fn ($s) => [
             'product_id' => $productId,
             'attribute_id' => $s['attribute_id'],
             'attribute_option_id' => $s['attribute_option_id'] ?? null,
@@ -521,15 +505,52 @@ class ProductService
         ], $specs));
     }
 
+    public function bulkUpdateVariants(Product $product, string $action, array $ids): array
+    {
+        $variants = $this->writeRepository->variantsForBulk($product->id, $ids);
+
+        if ($variants->isEmpty()) {
+            throw new DomainException('Tidak ada varian yang cocok untuk produk ini.');
+        }
+
+        if ($action !== 'delete') {
+            $this->writeRepository->setVariantsActive($variants->pluck('id')->all(), $action === 'activate');
+
+            return ['affected' => $variants->count()];
+        }
+
+        $total = $this->writeRepository->countVariants($product->id);
+        if ($variants->count() >= $total) {
+            throw new DomainException('Tidak bisa menghapus semua varian; produk butuh minimal 1 varian.');
+        }
+
+        $blocked = [];
+        $deletable = [];
+        foreach ($variants as $v) {
+            $listed = $this->writeRepository->variantHasChannelMapping($v->id);
+            $hasStock = $this->writeRepository->variantHasInventory($v->id);
+            if ($listed || $hasStock) {
+                $blocked[] = $v->sku;
+            } else {
+                $deletable[] = $v->id;
+            }
+        }
+
+        if (empty($deletable)) {
+            throw new DomainException('Varian sudah ter-listing di channel atau punya stok — tidak bisa dihapus: ' . implode(', ', $blocked));
+        }
+
+        $this->writeRepository->deleteVariants($deletable);
+
+        return ['deleted' => count($deletable), 'blocked' => $blocked];
+    }
+
     private function propagateVariantChangeToChannels(string $productId): void
     {
-        $mappings = DB::table('product_channel_mappings')
-            ->where('product_id', $productId)
-            ->where('sync_status', '!=', 'pending')
-            ->get(['channel_shop_id']);
+        $channelShopIds = $this->writeRepository->channelShopIdsForActiveMappings($productId);
 
-        foreach ($mappings as $m) {
-            SyncProductToChannelJob::dispatch($productId, $m->channel_shop_id, 'update');
+        foreach ($channelShopIds as $channelShopId) {
+            SyncProductToChannelJob::dispatch($productId, $channelShopId, 'update');
         }
     }
 
@@ -576,11 +597,7 @@ class ProductService
             return;
         }
 
-        $catAttrs = DB::table('category_attributes as cga')
-            ->join('attributes as a', 'a.id', '=', 'cga.attribute_id')
-            ->where('cga.category_id', $categoryId)
-            ->get(['cga.attribute_id', 'cga.is_required', 'a.type', 'a.name'])
-            ->keyBy('attribute_id');
+        $catAttrs = $this->writeRepository->categoryAttributesForValidation($categoryId);
 
         if ($catAttrs->isEmpty()) {
             return; 
@@ -624,8 +641,40 @@ class ProductService
         }
     }
 
+    private function resolveCustomAttributes(array &$data): void
+    {
+        $nameToId = [];
+
+        foreach ($data['variation_types'] ?? [] as $i => $vt) {
+            if (!empty($vt['attribute_id'])) continue;
+            $name = $vt['name'] ?? null;
+            if (!$name) continue;
+
+            if (!isset($nameToId[$name])) {
+                $attr = Attribute::create(['name' => $name, 'type' => 'sales']);
+                $nameToId[$name] = $attr->id;
+            }
+            $data['variation_types'][$i]['attribute_id'] = $nameToId[$name];
+        }
+
+        foreach ($data['variants'] ?? [] as $vi => $variant) {
+            foreach ($variant['options'] ?? [] as $oi => $opt) {
+                if (!empty($opt['attribute_id'])) continue;
+                $name = $opt['name'] ?? null;
+                if (!$name) continue;
+
+                if (!isset($nameToId[$name])) {
+                    $attr = Attribute::create(['name' => $name, 'type' => 'sales']);
+                    $nameToId[$name] = $attr->id;
+                }
+                $data['variants'][$vi]['options'][$oi]['attribute_id'] = $nameToId[$name];
+            }
+        }
+    }
+
     public function createProduct(array $data)
     {
+        $this->resolveCustomAttributes($data);
         $this->assertVariationConstraints($data);
         $this->assertCategoryAttributes($data['category_id'] ?? null, $data, true);
 
@@ -633,13 +682,14 @@ class ProductService
             $productData = Arr::only($data, [
                 'category_id', 'brand_id', 'name', 'sku', 'description',
                 'order_type', 'indent_days',
-                'weight', 'length', 'width', 'height', 'is_active',
+                'weight', 'weight_unit', 'length', 'width', 'height', 'is_active',
                 'is_bundle', 'is_consignment',
                 'is_stored', 'is_sold', 'is_purchased',
                 'purchase_lead_time', 'package_contents',
             ]);
 
             $productData['status'] = $data['status'] ?? Product::STATUS_MASTER;
+            $productData['verified_at'] = $data['verified_at'] ?? null;
 
             $productData['sales_account_id'] = $this->resolveAccountId($data['sales_account_id'] ?? null, AccountMappingKey::SALES_REVENUE);
             $productData['sales_return_account_id'] = $this->resolveAccountId($data['sales_return_account_id'] ?? null, AccountMappingKey::SALES_RETURN);
@@ -647,7 +697,7 @@ class ProductService
             $productData['cogs_account_id'] = $this->resolveAccountId($data['cogs_account_id'] ?? null, AccountMappingKey::COGS);
 
             $productId = \Ramsey\Uuid\Uuid::uuid7()->toString();
-            DB::table('products')->insert(array_merge($productData, [
+            $this->writeRepository->insertProductRow(array_merge($productData, [
                 'id' => $productId,
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -664,7 +714,7 @@ class ProductService
                         'updated_at' => now(),
                     ];
                 }, $data['specifications']);
-                DB::table('product_specifications')->insert($specs);
+                $this->writeRepository->insertSpecifications($specs);
             }
 
             if (!empty($data['media'])) {
@@ -672,7 +722,7 @@ class ProductService
                     fn ($m) => $this->buildMediaRow($m, $productId, null),
                     $data['media']
                 );
-                DB::table('product_media')->insert($media);
+                $this->writeRepository->insertMedia($media);
             }
 
             if (!empty($data['variation_types'])) {
@@ -685,7 +735,7 @@ class ProductService
                         'updated_at' => now(),
                     ];
                 }, $data['variation_types']);
-                DB::table('product_variation_types')->insert($varTypes);
+                $this->writeRepository->insertVariationTypes($varTypes);
             }
 
             if (!empty($data['variants'])) {
@@ -693,6 +743,7 @@ class ProductService
                     $variantData = Arr::only($variant, [
                         'sku', 'barcode', 'buy_price', 'sell_price', 'is_active',
                         'sales_tax_id', 'purchase_tax_id', 'min_stock', 'safe_stock',
+                        'weight', 'length', 'width', 'height',
                     ]);
 
                     if (!empty($variant['sales_tax_id'])) {
@@ -700,7 +751,7 @@ class ProductService
                     }
 
                     $variantId = \Ramsey\Uuid\Uuid::uuid7()->toString();
-                    DB::table('product_variants')->insert(array_merge($variantData, [
+                    $this->writeRepository->insertVariantRow(array_merge($variantData, [
                         'id' => $variantId,
                         'product_id' => $productId,
                         'created_at' => now(),
@@ -708,7 +759,7 @@ class ProductService
                     ]));
 
                     if (!empty($variant['unlimited_shop_ids'])) {
-                        $this->syncUnlimitedShops($variantId, $variant['unlimited_shop_ids']);
+                        $this->writeRepository->syncUnlimitedShops($variantId, $variant['unlimited_shop_ids']);
                     }
 
                     if (!empty($variant['options'])) {
@@ -721,7 +772,7 @@ class ProductService
                                 'updated_at' => now(),
                             ];
                         }, $variant['options']);
-                        DB::table('variant_options')->insert($options);
+                        $this->writeRepository->insertVariantOptions($options);
                     }
 
                     if (!empty($variant['media'])) {
@@ -729,7 +780,7 @@ class ProductService
                             fn ($m) => $this->buildMediaRow($m, $productId, $variantId),
                             $variant['media']
                         );
-                        DB::table('product_media')->insert($vMedia);
+                        $this->writeRepository->insertMedia($vMedia);
                     }
 
                     if (!empty($variant['wholesale_prices'])) {
@@ -743,40 +794,13 @@ class ProductService
                                 'updated_at' => now(),
                             ];
                         }, $variant['wholesale_prices']);
-                        DB::table('product_wholesale_prices')->insert($wholesales);
+                        $this->writeRepository->insertWholesalePrices($wholesales);
                     }
 
                     if (!empty($variant['channel_prices'])) {
                         foreach ($variant['channel_prices'] as $cp) {
-                            $channelShopId = $cp['channel_shop_id'];
-
-                            $pcm = DB::table('product_channel_mappings')
-                                ->where('product_id', $productId)
-                                ->where('channel_shop_id', $channelShopId)
-                                ->first();
-
-                            if (!$pcm) {
-                                $pcmId = \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString();
-                                DB::table('product_channel_mappings')->insert([
-                                    'id' => $pcmId,
-                                    'product_id' => $productId,
-                                    'channel_shop_id' => $channelShopId,
-                                    'sync_status' => 'pending',
-                                    'created_at' => now(),
-                                    'updated_at' => now(),
-                                ]);
-                            } else {
-                                $pcmId = $pcm->id;
-                            }
-
-                            DB::table('product_variant_channel_mappings')->insert([
-                                'id' => \Ramsey\Uuid\Uuid::uuid7()->getHex()->toString(),
-                                'product_channel_mapping_id' => $pcmId,
-                                'variant_id' => $variantId,
-                                'override_price' => $cp['price'],
-                                'created_at' => now(),
-                                'updated_at' => now(),
-                            ]);
+                            $pcmId = $this->writeRepository->findOrCreateProductChannelMapping($productId, $cp['channel_shop_id']);
+                            $this->writeRepository->insertVariantChannelOverridePrice($pcmId, $variantId, $cp['price']);
                         }
                     }
                 }

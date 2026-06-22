@@ -110,6 +110,7 @@ class ChannelProductTest extends TestCase
             'name' => 'New Tiktok Product ' . rand(1000, 9999),
             'description' => 'Test description',
             'is_active' => true,
+            'media' => [['url' => 'https://img.test/a.jpg', 'media_type' => 'image']],
             'variants' => [
                 [
                     'sku' => 'TEST-SKU-VAR-' . rand(1000, 9999),
@@ -181,9 +182,10 @@ class ChannelProductTest extends TestCase
         $response->assertStatus(200);
         $this->assertSoftDeleted('products', ['id' => $this->testProduct->id]);
 
-        Queue::assertPushed(SyncProductToChannelJob::class, function ($job) {
-            return $job->action === 'delete'
-                && $job->channelShopId === $this->shop->id;
+        // Sesuai perilaku Jubelio: hapus produk di internal TIDAK menghapus
+        // listing di marketplace — tidak boleh ada job 'delete' yang dikirim.
+        Queue::assertNotPushed(SyncProductToChannelJob::class, function ($job) {
+            return $job->action === 'delete';
         });
     }
 

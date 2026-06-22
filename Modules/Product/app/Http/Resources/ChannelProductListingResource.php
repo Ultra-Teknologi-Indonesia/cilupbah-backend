@@ -22,14 +22,17 @@ class ChannelProductListingResource extends JsonResource
         $connections = $this->connections($shop, $channel);
 
         return [
+            'mapping_id' => $this->id,
             'channel_group_id' => $this->external_product_id,
             'store_id' => $this->channel_shop_id,
+            'shop_id' => $shop->shop_id ?? null,
             'item_group_name' => $this->relationLoaded('product') ? ($this->product->name ?? null) : null,
             'min' => $shop->shop_name ?? null,
             'channel_id' => $shop->channel_id ?? null,
             'channel_code' => $channel->code ?? null,
             'channel_url' => $url,
             'sync_status' => $this->sync_status,
+            'error_message' => $this->error_message,
             'has_product_data' => count($connections) > 0,
             'product' => $connections,
         ];

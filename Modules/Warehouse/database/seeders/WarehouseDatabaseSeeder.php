@@ -10,20 +10,38 @@ class WarehouseDatabaseSeeder extends Seeder
     public function run(): void
     {
 
-        if (DB::table('locations')->where('location_code', 'WH-PUSAT')->exists()) {
-            return;
+        if (! DB::table('locations')->where('location_code', 'WH-PUSAT')->exists()) {
+            $this->insertLocationWithDefaultBin([
+                'location_code' => 'WH-PUSAT',
+                'location_name' => 'Gudang Pusat',
+                'location_type' => 'Gudang',
+                'is_warehouse' => true,
+                'is_system' => true,
+                'is_locked' => false,
+            ]);
         }
 
+        if (! DB::table('locations')->where('location_code', \Modules\Warehouse\Models\Location::SYSTEM_TRANSIT_CODE)->exists()) {
+            $this->insertLocationWithDefaultBin([
+                'location_code' => \Modules\Warehouse\Models\Location::SYSTEM_TRANSIT_CODE,
+                'location_name' => 'Transit',
+                'location_type' => 'Lokasi (Non Gudang)',
+                'is_warehouse' => false,
+                'is_system' => true,
+                'is_locked' => true,
+            ]);
+        }
+    }
+
+    private function insertLocationWithDefaultBin(array $attributes): void
+    {
         $locationId = \Ramsey\Uuid\Uuid::uuid7()->toString();
-        DB::table('locations')->insert([
+
+        DB::table('locations')->insert(array_merge([
             'id' => $locationId,
-            'location_code' => 'WH-PUSAT',
-            'location_name' => 'Gudang Pusat',
-            'location_type' => 'Gudang',
             'address' => null,
             'village_id' => null,
             'post_code' => null,
-            'is_warehouse' => true,
             'is_multi_origin' => false,
             'default_warehouse_user' => null,
             'is_active' => true,
@@ -32,7 +50,7 @@ class WarehouseDatabaseSeeder extends Seeder
             'is_fbs' => null,
             'created_at' => now(),
             'updated_at' => now(),
-        ]);
+        ], $attributes));
 
         DB::table('location_bins')->insert([
             'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),

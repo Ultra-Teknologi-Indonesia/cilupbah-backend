@@ -3,11 +3,16 @@
 namespace Modules\Product\Tests\Feature;
 
 use Tests\TestCase;
+use Modules\Channel\Jobs\SyncProductToChannelJob;
+use Modules\Channel\Models\Channel;
+use Modules\Channel\Models\ChannelShop;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\ProductMedia;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 
 class ProductLifecycleTest extends TestCase
 {
@@ -135,6 +140,36 @@ class ProductLifecycleTest extends TestCase
 
         $response->assertStatus(422);
         $response->assertJsonPath('message', 'Produk sudah dalam status Arsip');
+    }
+
+    public function test_archive_does_not_push_to_marketplace()
+    {
+        $product = $this->makeProduct(Product::STATUS_MASTER);
+
+        $channel = Channel::create(['code' => 'tiktok', 'name' => 'Tiktok', 'is_active' => true]);
+        $shop = ChannelShop::create([
+            'channel_id' => $channel->id,
+            'shop_id' => 'SHOP-tiktok',
+            'shop_name' => 'Toko tiktok',
+            'is_active' => true,
+        ]);
+        ProductChannelMapping::create([
+            'product_id' => $product->id,
+            'channel_shop_id' => $shop->id,
+            'external_product_id' => 'TT123',
+            'sync_status' => ProductChannelMapping::STATUS_SYNCED,
+        ]);
+
+        Queue::fake();
+
+        $response = $this->postJson("/api/v1/products/{$product->id}/archive", ['reason' => 'Stok habis']);
+
+        $response->assertStatus(200);
+        $this->assertSame('archived', $product->fresh()->status);
+
+        // Kebijakan Jubelio: arsip internal TIDAK menyentuh marketplace — meski
+        // produk punya mapping channel yang sudah ter-sync.
+        Queue::assertNotPushed(SyncProductToChannelJob::class);
     }
 
     public function test_restore_archived_to_master()

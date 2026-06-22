@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Modules\Product\Http\Resources\CategoryResource;
 use Modules\Product\Services\CategoryService;
 
@@ -43,7 +44,7 @@ class CategoryController extends Controller
             $category = $this->categoryService->createCategory($validated);
             return $this->successResponse(new CategoryResource($category), 'Kategori berhasil dibuat', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            return $this->errorResponse($e->getMessage(), 422);
         }
     }
 
@@ -105,6 +106,127 @@ class CategoryController extends Controller
             return $this->successResponse(new CategoryResource($category), 'Berhasil mengambil pemetaan kategori ke channel');
         } catch (\Throwable $e) {
             return $this->errorResponse('Kategori tidak ditemukan', 404);
+        }
+    }
+
+    public function systemCategories(Request $request): JsonResponse
+    {
+        $categories = $this->categoryService->getSystemCategories();
+        return $this->successResponse(CategoryResource::collection($categories), 'Berhasil mengambil daftar kategori sistem');
+    }
+
+    public function enableCategories(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'required|integer|exists:categories,id',
+        ]);
+
+        try {
+            $count = $this->categoryService->enableSystemCategories($validated['ids']);
+            return $this->successResponse(['enabled_count' => $count], "Berhasil mengaktifkan {$count} kategori");
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function disableCategories(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'required|integer|exists:categories,id',
+        ]);
+
+        try {
+            $count = $this->categoryService->disableSystemCategories($validated['ids']);
+            return $this->successResponse(['disabled_count' => $count], "Berhasil menonaktifkan {$count} kategori");
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function mappingList(Request $request): JsonResponse
+    {
+        $mappings = $this->categoryService->getMappingList();
+        return $this->successPaginatedResponse($mappings, 'Berhasil mengambil daftar mapping kategori');
+    }
+
+    public function attributeMapping(int $id): JsonResponse
+    {
+        try {
+            $data = $this->categoryService->getAttributeMappingList($id);
+            return $this->successResponse($data, 'Berhasil mengambil daftar mapping atribut');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 404);
+        }
+    }
+
+    public function variationMapping(int $id): JsonResponse
+    {
+        try {
+            $data = $this->categoryService->getVariationMappingList($id);
+            return $this->successResponse($data, 'Berhasil mengambil daftar mapping variasi');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 404);
+        }
+    }
+
+    public function storeAttributeMapping(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'attribute_id' => 'required|integer|exists:attributes,id',
+            'channel_attribute_id' => 'required|uuid|exists:channel_attributes,id',
+        ]);
+
+        try {
+            DB::table('attribute_channel_mappings')->updateOrInsert(
+                [
+                    'attribute_id' => $validated['attribute_id'],
+                    'channel_attribute_id' => $validated['channel_attribute_id'],
+                ],
+                ['updated_at' => now(), 'created_at' => now()]
+            );
+            return $this->successResponse(null, 'Berhasil memetakan atribut ke channel');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 500);
+        }
+    }
+
+    public function removeAttributeMapping(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'attribute_id' => 'required|integer|exists:attributes,id',
+            'channel_attribute_id' => 'required|uuid|exists:channel_attributes,id',
+        ]);
+
+        try {
+            DB::table('attribute_channel_mappings')
+                ->where('attribute_id', $validated['attribute_id'])
+                ->where('channel_attribute_id', $validated['channel_attribute_id'])
+                ->delete();
+            return $this->successResponse(null, 'Berhasil menghapus mapping atribut');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 500);
+        }
+    }
+
+    public function availableChannelAttributes(Request $request, int $id): JsonResponse
+    {
+        $request->validate([
+            'channel_id' => 'required|uuid',
+            'type' => 'required|in:spec,sales',
+        ]);
+
+        try {
+            $isSaleProp = $request->query('type') === 'sales';
+            $data = $this->categoryService->getAvailableChannelAttributes(
+                $id,
+                $request->query('channel_id'),
+                $isSaleProp
+            );
+            return $this->successResponse($data, 'Berhasil mengambil channel attributes');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 404);
         }
     }
 }

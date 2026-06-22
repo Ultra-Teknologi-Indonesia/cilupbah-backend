@@ -167,4 +167,63 @@ class TikTokClient
 
         return $response->json();
     }
+
+    public function getProductDetailsBatch(array $productIds, string $shopCipher, string $accessToken): array
+    {
+        $productIds = array_values(array_unique(array_filter(array_map('strval', $productIds))));
+        if (empty($productIds)) {
+            return [];
+        }
+
+        $limit  = max(1, (int) config('channel.api_rate_limit_per_second', 8));
+        $chunks = array_chunk($productIds, $limit);
+        $out    = [];
+
+        foreach ($chunks as $ci => $chunk) {
+            $responses = Http::pool(function ($pool) use ($chunk, $shopCipher, $accessToken) {
+                $requests = [];
+                foreach ($chunk as $pid) {
+                    $path    = "/product/202309/products/{$pid}";
+                    $queries = [
+                        'app_key'      => $this->appKey,
+                        'timestamp'    => time(),
+                        'access_token' => $accessToken,
+                        'shop_cipher'  => $shopCipher,
+                    ];
+                    $queries['sign'] = $this->generateSignature($path, $queries, null, false, 'GET');
+                    $url = $this->baseUrl . $path . '?' . http_build_query($queries);
+
+                    $requests[] = $pool->as($pid)
+                        ->withHeaders(['x-tts-access-token' => $accessToken])
+                        ->get($url);
+                }
+
+                return $requests;
+            });
+
+            foreach ($chunk as $pid) {
+                $resp = $responses[$pid] ?? null;
+                if (! $resp) {
+                    continue;
+                }
+
+                $data = $resp->json();
+                $code = isset($data['code']) ? (int) $data['code'] : null;
+
+                if (in_array($code, [40100, 40102, 40103], true)) {
+                    throw new TokenExpiredException($shopCipher, $data['message'] ?? 'Access token expired');
+                }
+
+                if ($code === 0 && isset($data['data'])) {
+                    $out[$pid] = $data['data'];
+                }
+            }
+
+            if (count($chunk) >= $limit && $ci < count($chunks) - 1) {
+                usleep(1_000_000);
+            }
+        }
+
+        return $out;
+    }
 }

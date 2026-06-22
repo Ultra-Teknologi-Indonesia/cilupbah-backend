@@ -3,9 +3,12 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class TikTokToInternalProductMapper
 {
+    protected const TIKTOK_CDN_PREFIX = 'https://p16-oec-ttp.tiktokcdn-us.com/';
+
     public function map(array $tiktokProduct, string $shopId): array
     {
         $tiktokCategoryId = $tiktokProduct['category_id']
@@ -19,7 +22,8 @@ class TikTokToInternalProductMapper
             'is_draft' => ($tiktokProduct['status'] ?? null) !== 'ACTIVATE',
             'is_active' => true,
 
-            'status' => 'download',
+            'status' => 'master',
+            'verified_at' => now(),
         ];
 
         if (isset($tiktokProduct['package_dimensions'])) {
@@ -29,22 +33,46 @@ class TikTokToInternalProductMapper
         }
 
         if (isset($tiktokProduct['package_weight'])) {
-            $internal['weight'] = $tiktokProduct['package_weight']['value'] ?? 0;
+
+            $w = (float) ($tiktokProduct['package_weight']['value'] ?? 0);
+            $unit = strtoupper((string) ($tiktokProduct['package_weight']['unit'] ?? 'KILOGRAM'));
+            $internal['weight'] = $unit === 'GRAM' ? $w / 1000 : $w;
         }
 
         $internal['variants'] = [];
         $internal['media'] = [];
 
+        $seenUrls = [];
         if (!empty($tiktokProduct['main_images'])) {
             foreach ($tiktokProduct['main_images'] as $idx => $img) {
+                $url = $this->normalizeImageUrl($img['urls'][0] ?? $img['uri'] ?? '');
+                if (!$url || isset($seenUrls[$url])) {
+                    continue;
+                }
+                $seenUrls[$url] = true;
                 $internal['media'][] = [
                     'media_type' => 'image',
-                    'url' => $img['urls'][0] ?? $img['uri'] ?? '',
-                    'is_primary' => $idx === 0,
-                    'sort_order' => $idx,
+                    'url' => $url,
+                    'is_primary' => count($internal['media']) === 0,
+                    'sort_order' => count($internal['media']),
                 ];
             }
         }
+
+        if (!empty($tiktokProduct['video']) && !empty($tiktokProduct['video']['url'])) {
+            $videoUrl = $this->normalizeImageUrl($tiktokProduct['video']['url']);
+            if ($videoUrl) {
+                $internal['media'][] = [
+                    'media_type' => 'video',
+                    'url' => $videoUrl,
+                    'is_primary' => false,
+                    'sort_order' => count($internal['media']),
+                ];
+            }
+        }
+
+        $variationTypeOrder = [];
+        $mainImageUrls = array_keys($seenUrls);
 
         if (!empty($tiktokProduct['skus'])) {
             foreach ($tiktokProduct['skus'] as $skuData) {
@@ -62,14 +90,57 @@ class TikTokToInternalProductMapper
                     $qty = $skuData['inventory'][0]['quantity'] ?? 0;
                 }
 
-                $internal['variants'][] = [
+                $variant = [
                     'sku' => $sku,
                     'sell_price' => $price,
                     'buy_price' => $price,
                     'weight' => $internal['weight'] ?? 0,
                     'is_active' => true,
                 ];
+
+                $options = [];
+                foreach ($skuData['sales_attributes'] ?? [] as $attr) {
+                    $name = $attr['name'] ?? null;
+                    $value = $attr['value_name'] ?? null;
+                    if (! $name || $value === null || $value === '') {
+                        continue;
+                    }
+                    $options[] = ['name' => $name, 'value' => $value];
+                    if (! in_array($name, $variationTypeOrder, true)) {
+                        $variationTypeOrder[] = $name;
+                    }
+                }
+                if ($options) {
+                    $variant['options'] = $options;
+                }
+
+                $skuImg = $this->extractSkuImage($skuData);
+                if ($skuImg && !in_array($skuImg, $mainImageUrls, true)) {
+                    $variant['media'] = [[
+                        'media_type' => 'image',
+                        'url' => $skuImg,
+                        'is_primary' => true,
+                        'sort_order' => 0,
+                    ]];
+                } elseif (! $skuImg) {
+                    Log::channel('warning')->info('TikTok SKU image not found', [
+                        'sku' => $sku,
+                        'product_title' => $tiktokProduct['title'] ?? null,
+                        'sales_attributes_keys' => array_map(
+                            fn ($a) => array_keys($a),
+                            $skuData['sales_attributes'] ?? []
+                        ),
+                    ]);
+                }
+
+                $internal['variants'][] = $variant;
             }
+
+            $internal['variation_types'] = array_map(
+                fn ($name, $i) => ['name' => $name, 'sort_order' => $i],
+                $variationTypeOrder,
+                array_keys($variationTypeOrder)
+            );
         } else {
             $internal['variants'][] = [
                 'sku' => 'TK-' . $tiktokProduct['id'],
@@ -83,12 +154,84 @@ class TikTokToInternalProductMapper
         return $internal;
     }
 
+    protected function extractSkuImage(array $skuData): ?string
+    {
+        // 1. Check sales_attributes[].sku_img (v2 API)
+        foreach ($skuData['sales_attributes'] ?? [] as $attr) {
+            $img = $attr['sku_img'] ?? null;
+            if (! $img) {
+                continue;
+            }
+
+            $uri = $img['uri']
+                ?? $img['url_list'][0]
+                ?? $img['thumb_url_list'][0]
+                ?? $img['urls'][0]
+                ?? null;
+            if ($uri) {
+                return $this->normalizeImageUrl($uri);
+            }
+        }
+
+        // 2. Check representative_sku_image at SKU level
+        $rep = $skuData['representative_sku_image'] ?? null;
+        if ($rep) {
+            $uri = $rep['uri'] ?? $rep['url_list'][0] ?? $rep['urls'][0] ?? null;
+            if ($uri) {
+                return $this->normalizeImageUrl($uri);
+            }
+        }
+
+        // 3. Check sku_img directly on the SKU object (some API versions)
+        $directImg = $skuData['sku_img'] ?? null;
+        if ($directImg) {
+            $uri = is_string($directImg)
+                ? $directImg
+                : ($directImg['uri'] ?? $directImg['url_list'][0] ?? $directImg['urls'][0] ?? null);
+            if ($uri) {
+                return $this->normalizeImageUrl($uri);
+            }
+        }
+
+        return null;
+    }
+
+    protected function normalizeImageUrl(?string $url): ?string
+    {
+        if (!$url || $url === '') {
+            return null;
+        }
+
+        if (preg_match('#^https?://#i', $url)) {
+            return $url;
+        }
+
+        if (str_starts_with($url, 'tos-')) {
+            return self::TIKTOK_CDN_PREFIX . $url;
+        }
+
+        return null;
+    }
+
+
     protected function resolveCategoryId(string $shopId, ?string $tiktokCategoryId): int
     {
-        $fallback = fn () => (int) DB::table('categories')
-            ->whereNull('parent_id')
-            ->orderBy('id')
-            ->value('id');
+        $fallback = function () {
+            $id = DB::table('categories')
+                ->where('name', 'Belum Dikategorikan')
+                ->value('id');
+
+            if ($id) {
+                return (int) $id;
+            }
+
+            return (int) DB::table('categories')->insertGetId([
+                'name' => 'Belum Dikategorikan',
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        };
 
         if (!$tiktokCategoryId) {
             return $fallback();
@@ -102,12 +245,28 @@ class TikTokToInternalProductMapper
             return $fallback();
         }
 
-        $categoryId = DB::table('category_channel_mappings')
+        $mappings = DB::table('category_channel_mappings')
             ->join('channel_categories', 'channel_categories.id', '=', 'category_channel_mappings.channel_category_id')
+            ->join('categories', 'categories.id', '=', 'category_channel_mappings.category_id')
             ->where('channel_categories.channel_id', $channelId)
             ->where('channel_categories.external_id', (string) $tiktokCategoryId)
-            ->value('category_channel_mappings.category_id');
+            ->select('category_channel_mappings.category_id', 'categories.is_leaf')
+            ->get();
 
-        return $categoryId ? (int) $categoryId : $fallback();
+        if ($mappings->isEmpty()) {
+            return $fallback();
+        }
+
+        $leaves = $mappings->where('is_leaf', true);
+
+        if ($leaves->count() === 1) {
+            return (int) $leaves->first()->category_id;
+        }
+
+        if ($leaves->count() > 1) {
+            return $fallback();
+        }
+
+        return (int) $mappings->first()->category_id;
     }
 }

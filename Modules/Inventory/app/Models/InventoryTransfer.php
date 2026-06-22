@@ -14,6 +14,7 @@ class InventoryTransfer extends Model
 
     protected $fillable = [
         'transfer_number',
+        'receive_number',
         'source_location_id',
         'destination_location_id',
         'status',

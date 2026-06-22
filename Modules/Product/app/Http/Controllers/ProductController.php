@@ -10,8 +10,12 @@ use Modules\Product\Http\Requests\ItemIdsRequest;
 use Modules\Product\Http\Requests\StoreBundleRequest;
 use Modules\Product\Http\Requests\UpdateProductRequest;
 use Modules\Product\Http\Resources\ProductPriceResource;
+use Modules\Product\Http\Resources\ProductChannelListingResource;
+use Modules\Product\Http\Resources\ProductChannelPriceResource;
+use Modules\Product\Http\Resources\ProductPriceBookResource;
 use Modules\Product\Http\Resources\ProductResource;
 use Modules\Product\Http\Resources\ProductStockResource;
+use Modules\Product\Http\Resources\ProductVariantRowResource;
 use Modules\Product\Models\Product;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Product\Services\ProductService;
@@ -29,6 +33,11 @@ class ProductController extends Controller
         'variants.purchaseTax',
         'variants.unlimitedShops',
         'variants.inventories',
+        'variants.options',
+        'bundleItems.component.product:id,name',
+        'bundleItems.component.options',
+        'bundleItems.component.inventories',
+        'variationTypes.attribute',
         'media',
         'category',
         'brand',
@@ -38,6 +47,7 @@ class ProductController extends Controller
         'cogsAccount',
         'channelMappings.channelShop.channel',
         'archivedBy',
+        'specifications.attributeOption',
     ];
 
     protected ProductService $productService;
@@ -268,6 +278,47 @@ class ProductController extends Controller
         return $this->runLifecycle($id, fn (Product $product) => $this->lifecycleService->restore($product), 'Produk berhasil dipulihkan ke Master');
     }
 
+    public function bulkArchive(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1|max:50',
+            'ids.*' => 'uuid|exists:products,id',
+            'reason' => 'nullable|string|max:255',
+        ]);
+
+        $result = $this->lifecycleService->bulkArchive(
+            $validated['ids'],
+            $validated['reason'] ?? null,
+            $request->user()?->id
+        );
+
+        return $this->successResponse($result, "{$result['success']} produk berhasil diarsipkan");
+    }
+
+    public function bulkRestore(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1|max:50',
+            'ids.*' => 'uuid|exists:products,id',
+        ]);
+
+        $result = $this->lifecycleService->bulkRestore($validated['ids']);
+
+        return $this->successResponse($result, "{$result['success']} produk berhasil dipulihkan");
+    }
+
+    public function bulkDelete(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1|max:50',
+            'ids.*' => 'uuid|exists:products,id',
+        ]);
+
+        $result = $this->productService->bulkDelete($validated['ids']);
+
+        return $this->successResponse($result, "{$result['success']} produk berhasil dihapus");
+    }
+
     private function runLifecycle($id, callable $action, string $message): JsonResponse
     {
         $product = $this->findProduct($id);
@@ -323,13 +374,151 @@ class ProductController extends Controller
     public function storeBundle(StoreBundleRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $product = $this->productService->createOrUpdateBundle($data);
+
+        try {
+            $product = $this->productService->createOrUpdateBundle($data);
+        } catch (\DomainException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
         $isUpdate = isset($data['id']);
 
         return $this->successResponse(
             ['product_id' => $product->id],
             $isUpdate ? 'Bundle produk berhasil diperbarui' : 'Bundle produk berhasil dibuat',
             $isUpdate ? 200 : 201,
+        );
+    }
+
+    #[OA\Get(
+        path: '/api/v1/products/{id}/variants',
+        summary: 'Daftar varian produk (paginasi + search + sort)',
+        tags: ['Products'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'search', in: 'query', required: false, description: 'Cari SKU / nilai opsi', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'sku | sell_price | stock (awali - untuk desc)', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'OK'),
+            new OA\Response(response: 404, description: 'Produk tidak ditemukan'),
+        ]
+    )]
+    public function variants(Request $request, $id): JsonResponse
+    {
+        $product = $this->findProduct($id);
+        if (! $product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        return $this->successPaginatedResponse(
+            ProductVariantRowResource::collection($this->productRepository->paginateVariants($product->id)),
+            'Daftar varian berhasil diambil.'
+        );
+    }
+
+    public function bulkVariants(Request $request, $id): JsonResponse
+    {
+        $product = $this->findProduct($id);
+        if (! $product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        $data = $request->validate([
+            'action' => 'required|in:activate,deactivate,delete',
+            'variant_ids' => 'required|array|min:1',
+            'variant_ids.*' => 'uuid',
+        ]);
+
+        try {
+            $result = $this->productService->bulkUpdateVariants($product, $data['action'], $data['variant_ids']);
+        } catch (\DomainException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
+        return $this->successResponse($result, 'Aksi massal varian berhasil.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/products/{id}/channel-listings',
+        summary: 'Listing channel per varian (paginasi + filter channel)',
+        tags: ['Products'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'channel', in: 'query', required: false, description: 'Kode channel (mis. lazada)', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'include_unlisted', in: 'query', required: false, description: 'Sertakan varian tanpa listing (default false)', schema: new OA\Schema(type: 'boolean')),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'OK'),
+            new OA\Response(response: 404, description: 'Produk tidak ditemukan'),
+        ]
+    )]
+    public function channelListings(Request $request, $id): JsonResponse
+    {
+        $product = $this->findProduct($id);
+        if (! $product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        return $this->successPaginatedResponse(
+            ProductChannelListingResource::collection($this->productRepository->paginateListedVariants($product->id)),
+            'Daftar listing channel berhasil diambil.'
+        );
+    }
+
+    #[OA\Get(
+        path: '/api/v1/products/{id}/channel-prices',
+        summary: 'Harga channel per varian (internal + override per toko)',
+        tags: ['Products'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'channel', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'include_unlisted', in: 'query', required: false, schema: new OA\Schema(type: 'boolean')),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'OK'),
+            new OA\Response(response: 404, description: 'Produk tidak ditemukan'),
+        ]
+    )]
+    public function channelPrices(Request $request, $id): JsonResponse
+    {
+        $product = $this->findProduct($id);
+        if (! $product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        return $this->successPaginatedResponse(
+            ProductChannelPriceResource::collection($this->productRepository->paginateListedVariants($product->id)),
+            'Harga channel berhasil diambil.'
+        );
+    }
+
+    #[OA\Get(
+        path: '/api/v1/products/{id}/price-book',
+        summary: 'Buku harga (grosir) per varian',
+        tags: ['Products'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'OK'),
+            new OA\Response(response: 404, description: 'Produk tidak ditemukan'),
+        ]
+    )]
+    public function priceBook(Request $request, $id): JsonResponse
+    {
+        $product = $this->findProduct($id);
+        if (! $product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        return $this->successPaginatedResponse(
+            ProductPriceBookResource::collection($this->productRepository->paginatePriceBook($product->id)),
+            'Buku harga berhasil diambil.'
         );
     }
 

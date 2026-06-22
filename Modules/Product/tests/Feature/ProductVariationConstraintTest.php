@@ -39,6 +39,7 @@ class ProductVariationConstraintTest extends TestCase
             'name' => 'Kaos Polos',
             'sku' => 'KAOS-01',
             'category_id' => $this->category->id,
+            'media' => [['url' => 'https://img.test/a.jpg', 'media_type' => 'image']],
             'variants' => [[
                 'sku' => 'KAOS-VAR-01',
                 'sell_price' => 50000,

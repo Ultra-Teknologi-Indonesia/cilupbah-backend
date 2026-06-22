@@ -13,6 +13,11 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Adapters\AdapterFactory;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ChannelListingValidator;
+use Modules\Channel\Services\LazadaAuthService;
+use Modules\Channel\Services\ShopeeAuthService;
+use Modules\Channel\Services\TikTokAuthService;
+use Modules\Product\Jobs\RecomputeProductChannelValidationJob;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductSyncLog;
@@ -27,12 +32,14 @@ class SyncProductToChannelJob implements ShouldQueue
     public string $productId;
     public string $channelShopId;
     public string $action;
+    public ?array $attributeMapping;
 
-    public function __construct(string $productId, string $channelShopId, string $action)
+    public function __construct(string $productId, string $channelShopId, string $action, ?array $attributeMapping = null)
     {
         $this->productId = $productId;
         $this->channelShopId = $channelShopId;
         $this->action = $action;
+        $this->attributeMapping = $attributeMapping;
 
         $this->onQueue(config('queue.names.channel_sync'));
     }
@@ -69,6 +76,22 @@ class SyncProductToChannelJob implements ShouldQueue
         }
 
         $channelCode = $shop->channel->code ?? 'tiktok';
+
+        $shop = $this->ensureFreshToken($shop, $channelCode);
+
+        if (in_array($this->action, ['push', 'update'], true)
+            && app(ChannelListingValidator::class)->lacksVariationAttributes($product)) {
+            $message = "Produk multi-varian tanpa atribut variasi — wajib diisi sebelum upload ke {$channelCode}.";
+            $mapping = ProductChannelMapping::firstOrCreate([
+                'product_id' => $this->productId,
+                'channel_shop_id' => $this->channelShopId,
+            ]);
+            $mapping->markAsFailed($message);
+            $this->recordUploadResult(false, $message);
+            $this->refreshChannelValidation();
+
+            return;
+        }
 
         $circuitKey = "circuit_breaker:{$channelCode}";
         if (Cache::has($circuitKey)) {
@@ -107,14 +130,14 @@ class SyncProductToChannelJob implements ShouldQueue
                     if ($externalId) {
                         $result = $adapter->updateProduct($product, $shop, $externalId);
                     } else {
-                        $result = $adapter->pushProduct($product, $shop);
+                        $result = $adapter->pushProduct($product, $shop, $this->attributeMapping);
                     }
                     break;
                 case 'update':
                     if ($externalId) {
                         $result = $adapter->updateProduct($product, $shop, $externalId);
                     } else {
-                        $result = $adapter->pushProduct($product, $shop);
+                        $result = $adapter->pushProduct($product, $shop, $this->attributeMapping);
                     }
                     break;
                 case 'delete':
@@ -158,6 +181,8 @@ class SyncProductToChannelJob implements ShouldQueue
                 if ($this->action === 'delete') {
                     $mapping->delete();
                 }
+
+                $this->refreshChannelValidation();
             } else {
                 $message = $result['message'] ?? 'Gagal mengeksekusi aksi';
                 $mapping->markAsFailed($message);
@@ -170,10 +195,50 @@ class SyncProductToChannelJob implements ShouldQueue
         } catch (\Exception $e) {
             $mapping->markAsFailed($e->getMessage());
             $this->recordUploadResult(false, $e->getMessage());
+            $this->refreshChannelValidation();
             $this->handleFailure($channelCode);
 
             throw $e;
         }
+    }
+
+    protected function ensureFreshToken(ChannelShop $shop, string $channelCode): ChannelShop
+    {
+        if (! $shop->token_expires_at || $shop->token_expires_at->isFuture()) {
+            return $shop;
+        }
+
+        $authServices = [
+            'shopee' => ShopeeAuthService::class,
+            'tiktok' => TikTokAuthService::class,
+            'lazada' => LazadaAuthService::class,
+        ];
+
+        $serviceClass = $authServices[$channelCode] ?? null;
+
+        if (! $serviceClass) {
+            return $shop;
+        }
+
+        try {
+            app($serviceClass)->refreshStoreToken($shop->id);
+            Log::info("Token refreshed before sync", ['shop_id' => $shop->shop_id, 'channel' => $channelCode]);
+
+            return $shop->fresh();
+        } catch (\Throwable $e) {
+            Log::warning("Token refresh gagal sebelum sync, lanjut dengan token lama", [
+                'shop_id' => $shop->shop_id,
+                'channel' => $channelCode,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $shop;
+        }
+    }
+
+    protected function refreshChannelValidation(): void
+    {
+        RecomputeProductChannelValidationJob::dispatch($this->productId)->afterCommit();
     }
 
     protected function recordUploadResult(bool $success, ?string $message, ?array $response = null): void
@@ -223,11 +288,26 @@ class SyncProductToChannelJob implements ShouldQueue
 
             $variant = $product->variants->where('sku', $skuData['seller_sku'])->first();
             if ($variant) {
+                $attributes = [
+                    'external_sku_id' => $skuData['id'] ?? null,
+                    'channel_seller_sku' => $skuData['seller_sku'],
+                ];
+
+                $sale = $skuData['sales_attributes'][0] ?? null;
+                if (is_array($sale)) {
+                    $saleId = $sale['attribute_id'] ?? $sale['id'] ?? null;
+                    $saleName = $sale['attribute_name'] ?? $sale['name'] ?? null;
+                    if ($saleId !== null) {
+                        $attributes['sales_attribute_id'] = (string) $saleId;
+                    }
+                    if ($saleName !== null) {
+                        $attributes['sales_attribute_name'] = (string) $saleName;
+                    }
+                }
+
                 $mapping->variantMappings()->updateOrCreate(
                     ['variant_id' => $variant->id],
-                    [
-                        'external_sku_id' => $skuData['id'],
-                    ]
+                    $attributes
                 );
             }
         }

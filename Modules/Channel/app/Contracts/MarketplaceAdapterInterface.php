@@ -10,7 +10,7 @@ interface MarketplaceAdapterInterface
 
     public function getChannelCode(): string;
 
-    public function pushProduct(Product $product, ChannelShop $shop): array;
+    public function pushProduct(Product $product, ChannelShop $shop, ?array $attributeMapping = null): array;
 
     public function updateProduct(Product $product, ChannelShop $shop, string $externalProductId): array;
 

@@ -41,7 +41,7 @@ class ChannelAttributeService
         }
     }
 
-    protected function syncTikTokAttributes(Channel $channel, ChannelCategory $category): void
+    public function syncTikTokAttributes(Channel $channel, ChannelCategory $category): void
     {
         $shop = \Modules\Channel\Models\ChannelShop::where('channel_id', $channel->id)->first();
         if (!$shop || !$shop->access_token) {
@@ -50,6 +50,10 @@ class ChannelAttributeService
 
         $client = app(TikTokClient::class);
         $queries = ['category_version' => 'v2'];
+
+        if ($shop->shop_cipher) {
+            $queries['shop_cipher'] = $shop->shop_cipher;
+        }
 
         try {
             $res = $client->request(
@@ -74,8 +78,10 @@ class ChannelAttributeService
                     ],
                     [
                         'name' => $attr['name'],
-                        'is_required' => $attr['is_required'] ?? false,
+                        'is_required' => $attr['is_requried'] ?? $attr['is_required'] ?? false,
                         'is_multiple' => $attr['is_multiple_selection'] ?? false,
+                        'is_sale_prop' => ($attr['type'] ?? null) === 'SALES_PROPERTY'
+                            || ($attr['is_sale_prop'] ?? false),
                     ]
                 );
 

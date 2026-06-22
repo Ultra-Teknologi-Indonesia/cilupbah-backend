@@ -6,11 +6,14 @@ use DomainException;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ChannelListingValidator;
+use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelDraft;
 use Modules\Product\Models\ProductSyncLog;
 
 class ProductChannelDraftService
 {
+    public function __construct(private ChannelListingValidator $validator) {}
 
     public function upsertDraft(string $productId, string $shopId, array $data, ?string $userId = null): ProductChannelDraft
     {
@@ -52,6 +55,8 @@ class ProductChannelDraftService
                 throw new DomainException('Draft yang dibatalkan tidak dapat di-upload.');
             }
 
+            $this->assertReadyForUpload($draft);
+
             $log = ProductSyncLog::record([
                 'product_id' => $draft->product_id,
                 'channel_shop_id' => $draft->channel_shop_id,
@@ -59,7 +64,9 @@ class ProductChannelDraftService
                 'status' => ProductSyncLog::STATUS_PENDING,
             ]);
 
-            SyncProductToChannelJob::dispatch($draft->product_id, $draft->channel_shop_id, 'push')->afterCommit();
+            $attributeMapping = $draft->attribute_mapping;
+
+            SyncProductToChannelJob::dispatch($draft->product_id, $draft->channel_shop_id, 'push', $attributeMapping)->afterCommit();
 
             $draft->delete();
 
@@ -82,6 +89,21 @@ class ProductChannelDraftService
         }
 
         return ['uploaded' => $uploaded, 'skipped' => $skipped];
+    }
+
+    private function assertReadyForUpload(ProductChannelDraft $draft): void
+    {
+        $product = Product::find($draft->product_id);
+        if (! $product) {
+            throw new DomainException('Produk tidak ditemukan.');
+        }
+
+        if ($this->validator->lacksVariationAttributes($product)) {
+            $channelCode = ChannelShop::with('channel')->find($draft->channel_shop_id)?->channel?->code ?? 'channel';
+            throw new DomainException(
+                "Produk multi-varian tanpa atribut variasi — wajib diisi sebelum upload ke {$channelCode}."
+            );
+        }
     }
 
     protected function requireChannelShopId(string $shopId): string

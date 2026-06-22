@@ -16,6 +16,8 @@ use Modules\Product\Http\Controllers\MasterFeedController;
 use Modules\Product\Http\Controllers\ReviewFeedController;
 use Modules\Product\Http\Controllers\ArchiveFeedController;
 use Modules\Product\Http\Controllers\ChannelProductListingController;
+use Modules\Product\Http\Controllers\ProductPantauanController;
+use Modules\Product\Http\Controllers\ProductUploadListingController;
 use Modules\Product\Http\Controllers\RaiseProductController;
 use Modules\Product\Http\Controllers\VariantController;
 use Modules\Product\Http\Controllers\PriceListController;
@@ -47,8 +49,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('products/channel-products', [ChannelProductListingController::class, 'index']);
     Route::get('products/channel-products/{id}', [ChannelProductListingController::class, 'show'])->whereUuid('id');
 
+    Route::get('products/pantauan', [ProductPantauanController::class, 'index']);
+
     Route::get('raise-products', [RaiseProductController::class, 'index']);
     Route::get('raise-products/{id}', [RaiseProductController::class, 'show'])->whereUuid('id');
+    Route::get('raise-products/{id}/history', [RaiseProductController::class, 'history'])->whereUuid('id');
     Route::post('raise-products', [RaiseProductController::class, 'store']);
     Route::post('raise-products/{id}/raise', [RaiseProductController::class, 'raise'])->whereUuid('id');
     Route::post('raise-products/{id}/products', [RaiseProductController::class, 'addProduct'])->whereUuid('id');
@@ -83,6 +88,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('products/merge/unhide', [ProductMergeController::class, 'unhide']);
     });
 
+    Route::post('products/bulk-archive', [ProductController::class, 'bulkArchive']);
+    Route::post('products/bulk-restore', [ProductController::class, 'bulkRestore']);
+    Route::post('products/bulk-delete', [ProductController::class, 'bulkDelete']);
+
     Route::apiResource('products', ProductController::class)->names('product')
         ->where(['product' => '[\da-fA-F]{8}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{12}']);
 
@@ -90,6 +99,18 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('products/{id}/archive', [ProductController::class, 'archive'])->whereUuid('id');
     Route::post('products/{id}/restore', [ProductController::class, 'restore'])->whereUuid('id');
 
+    Route::get('products/{id}/variants', [ProductController::class, 'variants'])->whereUuid('id');
+    Route::post('products/{id}/variants/bulk', [ProductController::class, 'bulkVariants'])->whereUuid('id');
+
+    Route::get('products/{id}/channel-listings', [ProductController::class, 'channelListings'])->whereUuid('id');
+
+    Route::get('products/{id}/upload-listing', [ProductUploadListingController::class, 'index'])->whereUuid('id');
+    Route::post('products/{id}/upload-listing/match', [ProductUploadListingController::class, 'match'])->whereUuid('id');
+
+    Route::get('products/{id}/channel-prices', [ProductController::class, 'channelPrices'])->whereUuid('id');
+    Route::get('products/{id}/price-book', [ProductController::class, 'priceBook'])->whereUuid('id');
+
+    Route::get('products/{id}/channel-drafts/required-attributes', [ProductChannelDraftController::class, 'requiredAttributes'])->whereUuid('id');
     Route::get('products/{id}/channel-drafts', [ProductChannelDraftController::class, 'index'])->whereUuid('id');
     Route::post('products/{id}/channel-drafts', [ProductChannelDraftController::class, 'store'])->whereUuid('id');
     Route::put('products/{id}/channel-drafts/{draft}', [ProductChannelDraftController::class, 'update'])->whereUuid('id')->whereUuid('draft');
@@ -101,15 +122,32 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::delete('upload-histories/{id}', [ProductSyncLogController::class, 'destroy'])->whereUuid('id');
     Route::get('download-histories', [ProductSyncLogController::class, 'downloadHistories']);
 
+    Route::post('channel-monitor/refresh', [ChannelMonitorController::class, 'refresh']);
     Route::get('channel-monitor', [ChannelMonitorController::class, 'index']);
     Route::get('channel-monitor/summary', [ChannelMonitorController::class, 'summary']);
     Route::get('channel-monitor/{shop_id}', [ChannelMonitorController::class, 'detail']);
     Route::get('channel-monitor/{shop_id}/products', [ChannelMonitorController::class, 'products']);
 
+    Route::get('categories/system', [CategoryController::class, 'systemCategories']);
+    Route::post('categories/enable', [CategoryController::class, 'enableCategories']);
+    Route::post('categories/disable', [CategoryController::class, 'disableCategories']);
+    Route::get('categories/mapping', [CategoryController::class, 'mappingList']);
+
+
     Route::apiResource('categories', CategoryController::class)->names('category')->where(['category' => '[0-9]+']);
     Route::post('categories/{category}/map-channel', [CategoryController::class, 'mapChannel'])->whereNumber('category');
 
+    Route::get('categories/{category}/attribute-mapping', [CategoryController::class, 'attributeMapping'])->whereNumber('category');
+    Route::post('categories/{category}/attribute-mapping', [CategoryController::class, 'storeAttributeMapping'])->whereNumber('category');
+    Route::delete('categories/{category}/attribute-mapping', [CategoryController::class, 'removeAttributeMapping'])->whereNumber('category');
+    Route::get('categories/{category}/variation-mapping', [CategoryController::class, 'variationMapping'])->whereNumber('category');
+    Route::post('categories/{category}/variation-mapping', [CategoryController::class, 'storeAttributeMapping'])->whereNumber('category');
+    Route::delete('categories/{category}/variation-mapping', [CategoryController::class, 'removeAttributeMapping'])->whereNumber('category');
+    Route::get('categories/{category}/available-channel-attributes', [CategoryController::class, 'availableChannelAttributes'])->whereNumber('category');
+
     Route::get('categories/{category}/form-attributes', [\Modules\Product\Http\Controllers\CategoryFormAttributeController::class, 'show'])->whereNumber('category')->name('category.form-attributes');
+    Route::post('categories/{category}/attributes', [\Modules\Product\Http\Controllers\CategoryFormAttributeController::class, 'store'])->whereNumber('category');
+    Route::delete('categories/{category}/attributes/{attribute}', [\Modules\Product\Http\Controllers\CategoryFormAttributeController::class, 'destroy'])->whereNumber('category')->whereNumber('attribute');
 
     Route::apiResource('brands', BrandController::class)->names('brand')->where(['brand' => '[0-9]+']);
     Route::apiResource('attributes', AttributeController::class)->names('attribute')->where(['attribute' => '[0-9]+']);
@@ -125,6 +163,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('products/import/template/bundle', [\Modules\Product\Http\Controllers\ProductImportController::class, 'downloadBundleTemplate']);
     Route::post('products/import/single', [\Modules\Product\Http\Controllers\ProductImportController::class, 'importSingle']);
     Route::post('products/import/bundle', [\Modules\Product\Http\Controllers\ProductImportController::class, 'importBundle']);
+    Route::get('products/import/batches', [\Modules\Product\Http\Controllers\ProductImportController::class, 'batches']);
+    Route::get('products/import/batches/{batch}', [\Modules\Product\Http\Controllers\ProductImportController::class, 'show'])->whereUuid('batch');
+    Route::get('products/import/batches/{batch}/errors', [\Modules\Product\Http\Controllers\ProductImportController::class, 'errors'])->whereUuid('batch');
+    Route::get('products/import/batches/{batch}/errors/download', [\Modules\Product\Http\Controllers\ProductImportController::class, 'downloadErrors'])->whereUuid('batch');
 
     Route::get('inventory/items/by-sku/{sku}', [ProductController::class, 'showBySku']);
     Route::get('inventory/item-bundles', [ProductController::class, 'bundles']);
@@ -135,7 +177,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inventory/items/channel-category-attributes', [\Modules\Product\Http\Controllers\ChannelAttributeController::class, 'all']);
 
     Route::get('inventory/categories/category-map/{id}', [CategoryController::class, 'channelMap'])->whereNumber('id');
-    Route::get('inventory/categories/{channel_id}/store-categories/{store_id}', [ChannelCategoryController::class, 'storeCategories']);
+    // Categories are global per channel, not per store — use index() instead
+    // Route::get('inventory/categories/{channel_id}/store-categories/{store_id}', [ChannelCategoryController::class, 'storeCategories']);
 
     Route::get('variations', [VariantController::class, 'index']);
     Route::delete('inventory/items/item-variant', [VariantController::class, 'destroy']);

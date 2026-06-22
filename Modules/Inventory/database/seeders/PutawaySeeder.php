@@ -60,7 +60,7 @@ class PutawaySeeder extends Seeder
             try {
                 $staff->assignRole('warehouse_staff');
             } catch (\Exception $e) {
-                // role belum ada, skip
+
             }
         }
 

@@ -7,10 +7,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ProductVariant extends Model
 {
     use HasUuid7;
+    use SoftDeletes;
     protected $fillable = [
         'product_id',
         'sku',
@@ -25,6 +27,10 @@ class ProductVariant extends Model
         'min_stock',
         'safe_stock',
         'sequence_item',
+        'weight',
+        'length',
+        'width',
+        'height',
     ];
 
     protected $casts = [
@@ -36,6 +42,10 @@ class ProductVariant extends Model
         'min_stock' => 'integer',
         'safe_stock' => 'integer',
         'sequence_item' => 'integer',
+        'weight' => 'decimal:2',
+        'length' => 'decimal:2',
+        'width' => 'decimal:2',
+        'height' => 'decimal:2',
     ];
 
     public function salesTax(): BelongsTo
@@ -76,6 +86,11 @@ class ProductVariant extends Model
     public function options(): HasMany
     {
         return $this->hasMany(VariantOption::class, 'variant_id');
+    }
+
+    public function media(): HasMany
+    {
+        return $this->hasMany(ProductMedia::class, 'variant_id');
     }
 
     public function wholesalePrices(): HasMany

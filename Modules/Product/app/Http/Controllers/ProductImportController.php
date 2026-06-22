@@ -3,67 +3,155 @@
 namespace Modules\Product\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
-use Modules\Product\Imports\ProductImport;
-use Modules\Product\Imports\BundleImport;
-use Modules\Product\Services\ProductImportService;
-use App\Traits\ApiResponse;
+use Modules\Product\Exports\BundleTemplateExport;
+use Modules\Product\Exports\ImportErrorReportExport;
+use Modules\Product\Exports\ProductTemplateExport;
+use Modules\Product\Jobs\ProcessProductImportJob;
+use Modules\Product\Models\ProductImportBatch;
+use Modules\Product\Services\ImportBatchService;
 
 class ProductImportController extends Controller
 {
     use ApiResponse;
 
-    protected ProductImportService $importService;
-
-    public function __construct(ProductImportService $importService)
-    {
-        $this->importService = $importService;
-    }
+    public function __construct(private ImportBatchService $batchService) {}
 
     public function importSingle(Request $request)
     {
-        $request->validate([
-            'file' => 'required|file|mimes:xlsx,xls,csv'
-        ]);
-
-        try {
-            Excel::import(new ProductImport($this->importService), $request->file('file'));
-            return $this->successResponse(null, 'Import produk biasa berhasil dilakukan.');
-        } catch (\Exception $e) {
-            return $this->errorResponse('Gagal melakukan import produk: ' . $e->getMessage(), 500);
-        }
+        return $this->queueImport($request, ProductImportBatch::TYPE_SINGLE);
     }
 
     public function importBundle(Request $request)
     {
+        return $this->queueImport($request, ProductImportBatch::TYPE_BUNDLE);
+    }
+
+    private function queueImport(Request $request, string $type)
+    {
         $request->validate([
-            'file' => 'required|file|mimes:xlsx,xls,csv'
+            'file' => 'required|file|mimes:xlsx,xls,csv|max:20480',
         ]);
 
-        try {
-            Excel::import(new BundleImport($this->importService), $request->file('file'));
-            return $this->successResponse(null, 'Import produk bundle berhasil dilakukan.');
-        } catch (\Exception $e) {
-            return $this->errorResponse('Gagal melakukan import bundle: ' . $e->getMessage(), 500);
+        $batch = $this->batchService->createFromUpload(
+            $request->file('file'),
+            $type,
+            $request->user()?->id
+        );
+
+        ProcessProductImportJob::dispatch($batch->id);
+
+        return $this->successResponse(
+            $this->batchPayload($batch),
+            'File diterima. Import sedang diproses di latar belakang.',
+            202
+        );
+    }
+
+    public function batches(Request $request)
+    {
+        $query = ProductImportBatch::query()->latest();
+
+        if ($type = $request->query('type')) {
+            $query->where('type', $type);
         }
+        if ($state = $request->query('state')) {
+            $query->where('state', $state);
+        }
+
+        $paginator = $query->paginate((int) $request->query('per_page', 25))->appends($request->query());
+
+        return $this->successResponse(
+            collect($paginator->items())->map(fn ($b) => $this->batchPayload($b))->all(),
+            'Daftar batch import',
+            200,
+            [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+            ]
+        );
+    }
+
+    public function show(string $batch)
+    {
+        $model = ProductImportBatch::find($batch);
+        if (! $model) {
+            return $this->errorResponse('Batch tidak ditemukan', 404);
+        }
+
+        return $this->successResponse($this->batchPayload($model), 'Detail batch import');
+    }
+
+    public function errors(Request $request, string $batch)
+    {
+        $model = ProductImportBatch::find($batch);
+        if (! $model) {
+            return $this->errorResponse('Batch tidak ditemukan', 404);
+        }
+
+        $paginator = $model->errors()->orderBy('row_number')
+            ->paginate((int) $request->query('per_page', 50))->appends($request->query());
+
+        return $this->successResponse(
+            collect($paginator->items())->map(fn ($e) => [
+                'row_number' => $e->row_number,
+                'attribute' => $e->attribute,
+                'message' => $e->message,
+                'row_snapshot' => $e->row_snapshot,
+            ])->all(),
+            'Daftar error batch import',
+            200,
+            [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+            ]
+        );
+    }
+
+    public function downloadErrors(string $batch)
+    {
+        $model = ProductImportBatch::find($batch);
+        if (! $model) {
+            return $this->errorResponse('Batch tidak ditemukan', 404);
+        }
+
+        return Excel::download(
+            new ImportErrorReportExport($model),
+            "import-errors-{$model->batch_no}.xlsx"
+        );
     }
 
     public function downloadSingleTemplate()
     {
-        $path = base_path('template_import_productv2.xlsx');
-        if (!file_exists($path)) {
-            return $this->errorResponse('Template tidak ditemukan', 404);
-        }
-        return response()->download($path, 'Template_Import_Product.xlsx');
+        return Excel::download(new ProductTemplateExport(), 'Template_Import_Product.xlsx');
     }
 
     public function downloadBundleTemplate()
     {
-        $path = base_path('template_import_bundle.xlsx');
-        if (!file_exists($path)) {
-            return $this->errorResponse('Template tidak ditemukan', 404);
-        }
-        return response()->download($path, 'Template_Import_Bundle.xlsx');
+        return Excel::download(new BundleTemplateExport(), 'Template_Import_Bundle.xlsx');
+    }
+
+    private function batchPayload(ProductImportBatch $batch): array
+    {
+        return [
+            'id' => $batch->id,
+            'batch_no' => $batch->batch_no,
+            'type' => $batch->type,
+            'state' => $batch->state,
+            'original_filename' => $batch->original_filename,
+            'total_rows' => $batch->total_rows,
+            'processed_rows' => $batch->processed_rows,
+            'success_rows' => $batch->success_rows,
+            'failed_rows' => $batch->failed_rows,
+            'progress_percent' => $batch->progress_percent,
+            'error_message' => $batch->error_message,
+            'created_at' => $batch->created_at,
+        ];
     }
 }

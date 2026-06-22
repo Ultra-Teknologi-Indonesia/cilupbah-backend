@@ -31,14 +31,6 @@ class ChannelCategoryController extends Controller
         return $this->successPaginatedResponse(ChannelCategoryResource::collection($categories), 'Berhasil mengambil daftar kategori channel');
     }
 
-    public function storeCategories(Request $request, string $channelId, string $storeId): JsonResponse
-    {
-        if ($request->query('paginate')) {
-            $categories = $this->service->getPaginated($channelId);
-            return $this->successPaginatedResponse(ChannelCategoryResource::collection($categories), 'Berhasil mengambil kategori toko per channel');
-        }
-
-        $categories = $this->service->getAll($channelId);
-        return $this->successResponse(ChannelCategoryResource::collection($categories), 'Berhasil mengambil kategori toko per channel');
-    }
+    // storeCategories removed: channel categories are global per marketplace,
+    // not per individual store. Use index() with channelId instead.
 }

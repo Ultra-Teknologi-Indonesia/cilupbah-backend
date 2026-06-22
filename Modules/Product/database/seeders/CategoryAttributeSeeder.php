@@ -18,8 +18,8 @@ class CategoryAttributeSeeder extends Seeder
         }
 
         foreach ($categories as $category) {
-            if (is_null($category->parent_id)) {
-
+            $hasChildren = $categories->contains(fn ($c) => $c->parent_id === $category->id);
+            if (! $hasChildren) {
                 $category->attributes()->syncWithoutDetaching(
                     $attributes->pluck('id')->toArray()
                 );

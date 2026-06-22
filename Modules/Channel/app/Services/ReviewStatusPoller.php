@@ -11,6 +11,7 @@ class ReviewStatusPoller
     public function __construct(
         protected TikTokProductService $tiktok,
         protected LazadaProductService $lazada,
+        protected ShopeeProductService $shopee,
     ) {}
 
     public function pollAll(): array
@@ -19,7 +20,7 @@ class ReviewStatusPoller
 
         ChannelShop::with('channel')
             ->whereNull('disconnected_at')
-            ->whereHas('channel', fn ($q) => $q->whereIn('code', ['tiktok', 'lazada']))
+            ->whereHas('channel', fn ($q) => $q->whereIn('code', ['tiktok', 'lazada', 'shopee']))
             ->each(function (ChannelShop $shop) use (&$summary) {
                 $r = $this->pollShop($shop);
                 $summary['shops']++;
@@ -39,6 +40,7 @@ class ReviewStatusPoller
             $statuses = match ($code) {
                 'tiktok' => $this->tiktok->fetchProductStatuses($shop->shop_id),
                 'lazada' => $this->lazada->fetchProductStatuses($shop->shop_id),
+                'shopee' => $this->shopee->fetchProductStatuses($shop->shop_id),
                 default => [],
             };
         } catch (\Throwable $e) {
@@ -99,6 +101,15 @@ class ReviewStatusPoller
                 in_array($raw, ['approved', 'active'], true) => ProductChannelMapping::STATUS_SYNCED,
                 in_array($raw, ['pending', 'reviewing', 'pending_qc'], true) => ProductChannelMapping::STATUS_IN_REVIEW,
                 in_array($raw, ['rejected', 'suspended', 'deleted', 'inactive'], true) => ProductChannelMapping::STATUS_REJECTED,
+                default => null,
+            };
+        }
+
+        if ($code === 'shopee') {
+            return match ($raw) {
+                'normal' => ProductChannelMapping::STATUS_SYNCED,
+                'banned' => ProductChannelMapping::STATUS_REJECTED,
+                'deleted', 'unlist' => ProductChannelMapping::STATUS_DEACTIVATED,
                 default => null,
             };
         }

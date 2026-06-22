@@ -4,6 +4,8 @@ namespace Modules\Channel\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Modules\Product\Models\ProductChannelMapping;
 
 use App\Traits\HasUuid7;
 
@@ -45,5 +47,10 @@ class ChannelShop extends Model
     public function channel(): BelongsTo
     {
         return $this->belongsTo(Channel::class);
+    }
+
+    public function productMappings(): HasMany
+    {
+        return $this->hasMany(ProductChannelMapping::class);
     }
 }

@@ -19,6 +19,14 @@ class ChannelMonitorController extends Controller
         protected ChannelMonitorService $monitorService,
     ) {}
 
+    public function refresh(Request $request): JsonResponse
+    {
+        $result = app(\Modules\Channel\Services\ChannelReconcileService::class)
+            ->reconcileAllActive($request->user()?->id);
+
+        return $this->successResponse($result, 'Penyegaran data channel diantrekan', 202);
+    }
+
     #[OA\Get(
         path: '/api/v1/channel-monitor',
         summary: 'Pantauan — list produk yang live di channel beserta status sync',

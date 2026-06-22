@@ -4,9 +4,11 @@ namespace Modules\Channel\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Services\TikTokProductService;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Product\Services\CategoryAttributeSyncService;
 use App\Traits\ApiResponse;
 
 class TikTokSyncApiController extends Controller
@@ -185,6 +187,53 @@ class TikTokSyncApiController extends Controller
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 500);
         }
+    }
+
+    public function syncCategories(Request $request, TikTokProductService $productService)
+    {
+        $validated = $request->validate(['shop_id' => ['required', 'string']]);
+
+        try {
+            $count = $productService->syncCategoryTree($validated['shop_id']);
+        } catch (\Throwable $e) {
+            return $this->errorResponse('Gagal sinkron kategori TikTok: ' . $e->getMessage(), 422);
+        }
+
+        return $this->successResponse(['synced' => $count], "{$count} kategori TikTok disinkronkan.");
+    }
+
+    public function syncCategoryAttributes(Request $request, TikTokProductService $productService)
+    {
+        $validated = $request->validate([
+            'shop_id' => 'required|string',
+            'category_id' => 'nullable|string',
+        ]);
+
+        try {
+            if (! empty($validated['category_id'])) {
+                $count = $productService->syncCategoryAttributes($validated['shop_id'], $validated['category_id']);
+
+                app(CategoryAttributeSyncService::class)->materializeAllMapped();
+                Artisan::queue('products:recompute-validation', ['--queue' => true]);
+
+                return $this->successResponse(
+                    ['synced' => $count, 'category_id' => $validated['category_id']],
+                    "{$count} atribut TikTok disinkronkan."
+                );
+            }
+
+            $results = $productService->syncAllMappedCategoryAttributes($validated['shop_id']);
+
+            app(CategoryAttributeSyncService::class)->materializeAllMapped();
+            Artisan::queue('products:recompute-validation', ['--queue' => true]);
+        } catch (\Throwable $e) {
+            return $this->errorResponse('Gagal sinkron atribut TikTok: ' . $e->getMessage(), 422);
+        }
+
+        return $this->successResponse(
+            ['categories' => $results, 'total' => array_sum($results)],
+            array_sum($results) . ' atribut dari ' . count($results) . ' kategori disinkronkan.'
+        );
     }
 
     public function cancelProduct(Request $request, TikTokOrderService $orderService)

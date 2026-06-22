@@ -47,6 +47,17 @@ class UserController extends Controller
         );
     }
 
+    public function lookup(Request $request): JsonResponse
+    {
+        $result = $this->userService->getUserLookup(
+            $request->query('q'),
+            max(1, (int) $request->query('page', 1)),
+            max(1, (int) $request->query('pageSize', 50)),
+        );
+
+        return response()->json($result);
+    }
+
     #[OA\Get(
         path: '/api/v1/users/export',
         summary: 'Export all users to Excel',

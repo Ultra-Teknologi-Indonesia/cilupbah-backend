@@ -6,9 +6,11 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Contracts\MarketplaceAdapterInterface;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ChannelStockResolver;
 use Modules\Channel\Services\TikTokClient;
 use Modules\Channel\Services\TikTokImageUploader;
 use Modules\Channel\Services\TikTokProductMapper;
+use Modules\Channel\Services\TikTokProductService;
 use Modules\Channel\Services\TikTokToInternalProductMapper;
 use Modules\Product\Models\Product;
 
@@ -18,17 +20,23 @@ class TikTokAdapter implements MarketplaceAdapterInterface
     protected TikTokProductMapper $outboundMapper;
     protected TikTokToInternalProductMapper $inboundMapper;
     protected TikTokImageUploader $imageUploader;
+    protected TikTokProductService $productService;
+    protected ChannelStockResolver $stockResolver;
 
     public function __construct(
         TikTokClient $client,
         TikTokProductMapper $outboundMapper,
         TikTokToInternalProductMapper $inboundMapper,
-        TikTokImageUploader $imageUploader
+        TikTokImageUploader $imageUploader,
+        TikTokProductService $productService,
+        ChannelStockResolver $stockResolver
     ) {
         $this->client = $client;
         $this->outboundMapper = $outboundMapper;
         $this->inboundMapper = $inboundMapper;
         $this->imageUploader = $imageUploader;
+        $this->productService = $productService;
+        $this->stockResolver = $stockResolver;
     }
 
     public function getChannelCode(): string
@@ -36,15 +44,42 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         return 'tiktok';
     }
 
-    public function pushProduct(Product $product, ChannelShop $shop): array
+    public function pushProduct(Product $product, ChannelShop $shop, ?array $attributeMapping = null): array
     {
-        $imageUrls = $product->media->where('media_type', 'image')->pluck('url')->all();
-        $imageUris = empty($imageUrls) ? [] : $this->imageUploader->uploadFromUrls($imageUrls, $shop->access_token);
+        $images = $product->media->where('media_type', 'image');
+
+        $productImageUrls = $images->whereNull('variant_id')->sortBy('sort_order')->pluck('url')->values()->all();
+        if (empty($productImageUrls)) {
+            $productImageUrls = $images->sortBy('sort_order')->pluck('url')->values()->all();
+        }
+        $imageUris = empty($productImageUrls) ? [] : $this->imageUploader->uploadFromUrls($productImageUrls, $shop->access_token);
+
+        $variantUriById = [];
+        foreach ($images->whereNotNull('variant_id')->sortBy('sort_order')->groupBy('variant_id') as $variantId => $group) {
+            $url = $group->first()->url ?? null;
+            if (! $url) {
+                continue;
+            }
+            $uri = $this->imageUploader->uploadFromUrls([$url], $shop->access_token)[0] ?? null;
+            if ($uri) {
+                $variantUriById[$variantId] = $uri;
+            }
+        }
+
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
 
         $internalProductArray = $product->toArray();
-        $internalProductArray['variants'] = $product->variants->toArray();
+        $internalProductArray['variants'] = $product->variants->map(function ($variant) use ($variantUriById, $stockByVariant) {
+            $arr = $variant->toArray();
+            if (! empty($variantUriById[$variant->id])) {
+                $arr['image_uri'] = $variantUriById[$variant->id];
+            }
+            $arr['stock'] = $stockByVariant[$variant->id] ?? 0;
 
-        $config = config('channel.tiktok_defaults', []);
+            return $arr;
+        })->all();
+
+        $config = $this->productService->buildUploadConfig($product, $shop, null, $attributeMapping);
 
         $payload = $this->outboundMapper->map($internalProductArray, $imageUris, $config);
 
@@ -76,11 +111,32 @@ class TikTokAdapter implements MarketplaceAdapterInterface
 
     public function updateProduct(Product $product, ChannelShop $shop, string $externalProductId): array
     {
-        $internalProductArray = $product->toArray();
-        $internalProductArray['variants'] = $product->variants->toArray();
+        $images = $product->media->where('media_type', 'image');
 
-        $config = config('channel.tiktok_defaults', []);
-        $payload = $this->outboundMapper->map($internalProductArray, [], $config);
+        $productImageUrls = $images->whereNull('variant_id')->sortBy('sort_order')->pluck('url')->values()->all();
+        if (empty($productImageUrls)) {
+            $productImageUrls = $images->sortBy('sort_order')->pluck('url')->values()->all();
+        }
+        $imageUris = empty($productImageUrls) ? [] : $this->imageUploader->uploadFromUrls($productImageUrls, $shop->access_token);
+
+        $variantUriById = [];
+        foreach ($images->whereNotNull('variant_id')->sortBy('sort_order')->groupBy('variant_id') as $variantId => $group) {
+            $url = $group->first()->url ?? null;
+            if (! $url) {
+                continue;
+            }
+            $uri = $this->imageUploader->uploadFromUrls([$url], $shop->access_token)[0] ?? null;
+            if ($uri) {
+                $variantUriById[$variantId] = $uri;
+            }
+        }
+
+        $internalProductArray = $product->toArray();
+        $internalProductArray['variants'] = $this->buildUpdateVariants($product, $shop, $externalProductId, $variantUriById);
+
+        $config = $this->productService->buildUploadConfig($product, $shop);
+        $config['mode'] = 'update';
+        $payload = $this->outboundMapper->map($internalProductArray, $imageUris, $config);
         $payload['product_id'] = $externalProductId;
 
         try {
@@ -98,6 +154,89 @@ class TikTokAdapter implements MarketplaceAdapterInterface
                 'success' => false,
                 'message' => $e->getMessage(),
             ];
+        }
+    }
+
+    protected function buildUpdateVariants(Product $product, ChannelShop $shop, string $externalProductId, array $variantUriById = []): array
+    {
+
+        $stored = [];
+        foreach ($product->variants as $variant) {
+            $mapping = $variant->channelMappings->first(function ($m) use ($shop) {
+                return $m->channelMapping && $m->channelMapping->channel_shop_id === $shop->id;
+            });
+            if ($mapping) {
+                $stored[$variant->sku] = [
+                    'external_sku_id'      => $mapping->external_sku_id,
+                    'sales_attribute_id'   => $mapping->sales_attribute_id,
+                    'sales_attribute_name' => $mapping->sales_attribute_name,
+                ];
+            }
+        }
+
+        $needsBackfill = $product->variants->contains(function ($variant) use ($stored) {
+            return empty($stored[$variant->sku]['sales_attribute_id']);
+        });
+
+        if ($needsBackfill) {
+            $detail = $this->getProductDetail($shop, $externalProductId);
+            foreach ($detail['data']['skus'] ?? [] as $remoteSku) {
+                $sellerSku = $remoteSku['seller_sku'] ?? null;
+                if ($sellerSku === null) {
+                    continue;
+                }
+                $sale = $remoteSku['sales_attributes'][0] ?? null;
+                $stored[$sellerSku] = [
+                    'external_sku_id'      => $stored[$sellerSku]['external_sku_id'] ?? ($remoteSku['id'] ?? null),
+                    'sales_attribute_id'   => is_array($sale) ? ($sale['attribute_id'] ?? $sale['id'] ?? null) : null,
+                    'sales_attribute_name' => is_array($sale) ? ($sale['attribute_name'] ?? $sale['name'] ?? null) : null,
+                ];
+            }
+        }
+
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
+
+        $variants = [];
+        foreach ($product->variants as $variant) {
+            $row = $variant->toArray();
+            $meta = $stored[$variant->sku] ?? [];
+
+            $row['stock'] = $stockByVariant[$variant->id] ?? 0;
+
+            if (!empty($variantUriById[$variant->id])) {
+                $row['image_uri'] = $variantUriById[$variant->id];
+            }
+
+            if (!empty($meta['external_sku_id'])) {
+                $row['external_sku_id'] = $meta['external_sku_id'];
+            }
+            if (!empty($meta['sales_attribute_id'])) {
+                $row['sales_attributes'] = [[
+                    'attribute_id'   => $meta['sales_attribute_id'],
+                    'attribute_name' => $meta['sales_attribute_name'] ?? null,
+                    'custom_value'   => $variant->sku,
+                ]];
+            }
+
+            $variants[] = $row;
+        }
+
+        return $variants;
+    }
+
+    public function getProductDetail(ChannelShop $shop, string $externalProductId): ?array
+    {
+        try {
+            return $this->client->request(
+                'GET',
+                "/product/202309/products/{$externalProductId}",
+                ['shop_cipher' => $shop->shop_cipher ?? ''],
+                [],
+                $shop->access_token
+            );
+        } catch (\Exception $e) {
+            Log::warning("TikTok getProductDetail error: " . $e->getMessage());
+            return null;
         }
     }
 

@@ -27,7 +27,7 @@ class ChannelDownloadTest extends TestCase
             'services.tiktok.base_url' => 'https://open-api.tiktokglobalshop.com',
         ]);
 
-        DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Cat']);
+        DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Belum Dikategorikan', 'is_active' => true]);
 
         ChannelShop::create([
             'shop_id' => 'SHOP-DL-1',
@@ -35,28 +35,34 @@ class ChannelDownloadTest extends TestCase
             'is_active' => true,
         ]);
 
+        $detail = [
+            'id' => 'TIKTOK-PROD-1',
+            'title' => 'Downloaded Phone',
+            'status' => 'ACTIVATE',
+            'description' => 'Deskripsi produk',
+            'skus' => [
+                [
+                    'id' => 'SKU-EXT-1',
+                    'seller_sku' => 'DL-SKU-1',
+                    'price' => ['tax_exclusive_price' => 10000],
+                    'inventory' => [['quantity' => 5]],
+                ],
+            ],
+            'main_images' => [['urls' => ['https://img/1.jpg']]],
+        ];
+
         Http::fake([
+
+            '*/products/TIKTOK-PROD-1*' => Http::response([
+                'code' => 0,
+                'message' => 'Success',
+                'data' => $detail,
+            ], 200),
+
             '*products/search*' => Http::response([
                 'code' => 0,
                 'message' => 'Success',
-                'data' => [
-                    'products' => [
-                        [
-                            'id' => 'TIKTOK-PROD-1',
-                            'title' => 'Downloaded Phone',
-                            'status' => 'ACTIVATE',
-                            'skus' => [
-                                [
-                                    'id' => 'SKU-EXT-1',
-                                    'seller_sku' => 'DL-SKU-1',
-                                    'price' => ['tax_exclusive_price' => 10000],
-                                    'inventory' => [['quantity' => 5]],
-                                ],
-                            ],
-                            'main_images' => [['urls' => ['https://img/1.jpg']]],
-                        ],
-                    ],
-                ],
+                'data' => ['products' => [['id' => 'TIKTOK-PROD-1', 'title' => 'Downloaded Phone']]],
             ], 200),
         ]);
     }
@@ -124,7 +130,7 @@ class ChannelDownloadTest extends TestCase
 
     public function test_download_unsupported_channel_returns_422()
     {
-        $response = $this->postJson('/api/v1/shopee/download', ['shop_id' => 'SHOP-DL-1']);
+        $response = $this->postJson('/api/v1/blibli/download', ['shop_id' => 'SHOP-DL-1']);
         $response->assertStatus(422);
         $response->assertJsonPath('status', 'error');
     }

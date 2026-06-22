@@ -32,9 +32,12 @@ class DatabaseSeeder extends Seeder
         $this->call(\Modules\Tax\Database\Seeders\TaxDatabaseSeeder::class);
 
         $this->call(\Modules\Product\Database\Seeders\CategorySeeder::class);
+        $this->call(\Modules\Product\Database\Seeders\DefaultCategorySeeder::class);
         $this->call(\Modules\Product\Database\Seeders\BrandSeeder::class);
 
-        $this->call(\Modules\Inbound\Database\Seeders\InboundDatabaseSeeder::class);
+        // Demo products (LAPTOP/MOUSE/KBD) + their PO/inbound/inventory removed —
+        // real products come from channel sync, not seeding.
+        // $this->call(\Modules\Inbound\Database\Seeders\InboundDatabaseSeeder::class);
         $this->call(\Modules\Inventory\Database\Seeders\InventoryDatabaseSeeder::class);
 
         if (app()->environment(['local', 'staging'])) {

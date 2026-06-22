@@ -313,7 +313,7 @@ class LazadaProductService
         $productService = app(\Modules\Product\Services\ProductService::class);
 
         try {
-            $internalData = $this->inboundMapper->map($item, $shopId);
+            $internalData = app(ChannelAssetImporter::class)->import($this->inboundMapper->map($item, $shopId));
             $insertedId = $productService->upsertFromChannel($internalData);
         } catch (\Throwable $e) {
             Log::error('Lazada: gagal re-sync produk ' . $itemId . ': ' . $e->getMessage());
@@ -333,6 +333,67 @@ class LazadaProductService
         );
 
         return true;
+    }
+
+    public function searchProducts(string $shopId, string $query): array
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            return [];
+        }
+
+        $needle  = trim(mb_strtolower($query));
+        $results = [];
+        $offset  = 0;
+        $limit   = 50;
+        $pages   = 0;
+
+        do {
+            $params = ['filter' => 'all', 'offset' => $offset, 'limit' => $limit];
+            if ($needle !== '') {
+                $params['search'] = $query;
+            }
+
+            try {
+                $res = $this->client->request('GET', '/products/get', $params, $shop->access_token);
+            } catch (TokenExpiredException $e) {
+                $this->authService->refreshStoreToken((string) $shop->id);
+                $shop = $this->shopRepository->findByShopId($shopId);
+                $res = $this->client->request('GET', '/products/get', $params, $shop->access_token);
+            }
+
+            $products = $res['data']['products'] ?? [];
+
+            foreach ($products as $item) {
+                $name      = (string) ($item['attributes']['name'] ?? '');
+                $sellerSku = null;
+                foreach ($item['skus'] ?? [] as $sku) {
+                    if (! empty($sku['SellerSku'])) {
+                        $sellerSku = $sku['SellerSku'];
+                        break;
+                    }
+                }
+
+                if ($needle !== '' && ! str_contains(mb_strtolower($name . ' ' . (string) $sellerSku), $needle)) {
+                    continue;
+                }
+
+                $results[] = [
+                    'external_product_id' => (string) ($item['item_id'] ?? ''),
+                    'name'                => $name,
+                    'seller_sku'          => $sellerSku,
+                    'image'               => $item['images'][0] ?? null,
+                    'shop_id'             => $shopId,
+                    'shop_name'           => $shop->shop_name ?? null,
+                    'channel_code'        => 'lazada',
+                ];
+            }
+
+            $offset += $limit;
+            $pages++;
+        } while (count($products) === $limit && $pages < 5 && count($results) < 200);
+
+        return $results;
     }
 
     public function pullProducts(string $shopId): int
@@ -363,7 +424,7 @@ class LazadaProductService
 
             foreach ($products as $item) {
                 try {
-                    $internalData = $this->inboundMapper->map($item, $shopId);
+                    $internalData = app(ChannelAssetImporter::class)->import($this->inboundMapper->map($item, $shopId));
                     $insertedId = $productService->upsertFromChannel($internalData);
 
                     if ($insertedId) {
@@ -371,7 +432,8 @@ class LazadaProductService
                             (string) $insertedId,
                             $shopId,
                             (string) ($item['item_id'] ?? ''),
-                            'synced'
+                            'synced',
+                            (! empty($item['attributes']) && is_array($item['attributes'])) ? $item['attributes'] : null
                         );
 
                         foreach ($item['skus'] ?? [] as $skuData) {
@@ -388,7 +450,9 @@ class LazadaProductService
                                 $this->productRepository->upsertVariantChannelMapping(
                                     $pcmId,
                                     $variant->id,
-                                    isset($skuData['SkuId']) ? (string) $skuData['SkuId'] : null
+                                    isset($skuData['SkuId']) ? (string) $skuData['SkuId'] : null,
+                                    $skuData['SellerSku'] ?? null,
+                                    $skuData['price'] ?? null
                                 );
                             }
                         }
@@ -415,5 +479,76 @@ class LazadaProductService
         } while (count($products) === $limit);
 
         return $count;
+    }
+
+    public function reconcileChannelData(string $shopId): int
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            throw new \Exception("Toko Lazada tidak ditemukan atau belum terhubung: {$shopId}");
+        }
+
+        $channelShopId = $shop->id;
+        $updated = 0;
+        $offset = 0;
+        $limit = 50;
+
+        do {
+            $params = ['filter' => 'all', 'offset' => $offset, 'limit' => $limit];
+
+            try {
+                $res = $this->client->request('GET', '/products/get', $params, $shop->access_token);
+            } catch (TokenExpiredException $e) {
+                $this->authService->refreshStoreToken((string) $shop->id);
+                $shop = $this->shopRepository->findByShopId($shopId);
+                $res = $this->client->request('GET', '/products/get', $params, $shop->access_token);
+            }
+
+            $products = $res['data']['products'] ?? [];
+
+            foreach ($products as $item) {
+                $mapping = \Modules\Product\Models\ProductChannelMapping::where('external_product_id', (string) ($item['item_id'] ?? ''))
+                    ->where('channel_shop_id', $channelShopId)
+                    ->first();
+
+                if (! $mapping) {
+                    continue;
+                }
+
+                $attrs = (! empty($item['attributes']) && is_array($item['attributes'])) ? $item['attributes'] : null;
+                $canonical = \Modules\Channel\Repositories\ChannelProductRepository::canonicalAttributes($attrs);
+                $mapping->update([
+                    'channel_attributes' => $canonical !== null ? json_decode($canonical, true) : null,
+                ]);
+
+                foreach ($item['skus'] ?? [] as $skuData) {
+                    if (empty($skuData['SkuId'])) {
+                        continue;
+                    }
+                    $vm = \Modules\Product\Models\ProductVariantChannelMapping::where('product_channel_mapping_id', $mapping->id)
+                        ->where('external_sku_id', (string) $skuData['SkuId'])
+                        ->first();
+                    if (! $vm) {
+                        continue;
+                    }
+                    $vmUpdate = [];
+                    if (! empty($skuData['SellerSku'])) {
+                        $vmUpdate['channel_seller_sku'] = $skuData['SellerSku'];
+                    }
+                    if (isset($skuData['price'])) {
+                        $vmUpdate['synced_price'] = $skuData['price'];
+                    }
+                    if ($vmUpdate) {
+                        $vm->update($vmUpdate);
+                    }
+                }
+
+                $updated++;
+            }
+
+            $offset += $limit;
+        } while (count($products) === $limit);
+
+        return $updated;
     }
 }

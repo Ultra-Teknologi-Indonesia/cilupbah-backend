@@ -76,11 +76,60 @@ class ProductCreateFullParityTest extends TestCase
             'sku' => 'PRD-RB-01',
             'category_id' => $this->category->id,
             'brand_id' => $this->brand->id,
+            'media' => [['url' => 'https://img.test/a.jpg', 'media_type' => 'image']],
             'variants' => [[
                 'sku' => 'RB-VAR-01',
                 'sell_price' => 89000,
             ]],
         ], $overrides);
+    }
+
+    public function test_create_without_image_is_rejected(): void
+    {
+        $this->postJson('/api/v1/products', $this->basePayload(['media' => []]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('media');
+    }
+
+    public function test_create_with_video_only_is_rejected(): void
+    {
+        $this->postJson('/api/v1/products', $this->basePayload([
+            'media' => [['url' => 'https://img.test/clip.mp4', 'media_type' => 'video']],
+        ]))->assertStatus(422)->assertJsonValidationErrors('media');
+    }
+
+    public function test_create_rejects_more_than_9_images(): void
+    {
+        $images = array_map(
+            fn ($i) => ['url' => "https://img.test/{$i}.jpg", 'media_type' => 'image'],
+            range(1, 10)
+        );
+        $this->postJson('/api/v1/products', $this->basePayload(['media' => $images]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('media');
+    }
+
+    public function test_create_rejects_more_than_1_video(): void
+    {
+        $this->postJson('/api/v1/products', $this->basePayload([
+            'media' => [
+                ['url' => 'https://img.test/a.jpg', 'media_type' => 'image'],
+                ['url' => 'https://img.test/v1.mp4', 'media_type' => 'video'],
+                ['url' => 'https://img.test/v2.mp4', 'media_type' => 'video'],
+            ],
+        ]))->assertStatus(422)->assertJsonValidationErrors('media');
+    }
+
+    public function test_create_allows_9_images_and_1_video(): void
+    {
+        $media = array_map(
+            fn ($i) => ['url' => "https://img.test/{$i}.jpg", 'media_type' => 'image'],
+            range(1, 9)
+        );
+        $media[] = ['url' => 'https://img.test/clip.mp4', 'media_type' => 'video'];
+
+        $this->postJson('/api/v1/products', $this->basePayload(['sku' => 'PRD-9IMG', 'media' => $media]))
+            ->assertCreated();
     }
 
     public function test_minimal_create_succeeds_as_master(): void

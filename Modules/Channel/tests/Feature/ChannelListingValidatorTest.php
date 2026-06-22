@@ -52,7 +52,7 @@ class ChannelListingValidatorTest extends TestCase
         ]);
     }
 
-    private function addRequiredBrandAttribute(bool $mapInternal = true, bool $withOptions = true): void
+    private function addRequiredBrandAttribute(bool $mapInternal = true, bool $withOptions = true, bool $isSaleProp = false): void
     {
         $this->brandChannelAttrId = Uuid::uuid7()->toString();
         DB::table('channel_attributes')->insert([
@@ -62,6 +62,7 @@ class ChannelListingValidatorTest extends TestCase
             'name' => 'Brand',
             'is_required' => true,
             'is_multiple' => false,
+            'is_sale_prop' => $isSaleProp,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -148,13 +149,22 @@ class ChannelListingValidatorTest extends TestCase
             ->assertJsonPath('data.issues.0.code', 'attribute_missing');
     }
 
-    public function test_required_attribute_unmapped_to_internal(): void
+    public function test_required_sale_prop_unmapped_to_internal(): void
     {
-        $this->addRequiredBrandAttribute(mapInternal: false);
+        $this->addRequiredBrandAttribute(mapInternal: false, isSaleProp: true);
         $this->validate($this->makeProduct(brandValue: 'Nike'))
             ->assertOk()
             ->assertJsonPath('data.ready', false)
             ->assertJsonPath('data.issues.0.code', 'attribute_unmapped');
+    }
+
+    public function test_required_non_sale_prop_with_options_skips_unmapped(): void
+    {
+        $this->addRequiredBrandAttribute(mapInternal: false);
+        $this->validate($this->makeProduct(brandValue: 'Nike'))
+            ->assertOk()
+            ->assertJsonPath('data.ready', true)
+            ->assertJsonCount(0, 'data.issues');
     }
 
     public function test_value_not_in_closed_options(): void

@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Contracts\MarketplaceAdapterInterface;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ChannelStockResolver;
 use Modules\Channel\Services\LazadaClient;
 use Modules\Channel\Services\LazadaProductMapper;
 use Modules\Channel\Services\LazadaToInternalProductMapper;
@@ -17,6 +18,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         protected LazadaClient $client,
         protected LazadaProductMapper $outboundMapper,
         protected LazadaToInternalProductMapper $inboundMapper,
+        protected ChannelStockResolver $stockResolver,
     ) {}
 
     public function getChannelCode(): string
@@ -24,9 +26,9 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         return 'lazada';
     }
 
-    public function pushProduct(Product $product, ChannelShop $shop): array
+    public function pushProduct(Product $product, ChannelShop $shop, ?array $attributeMapping = null): array
     {
-        $payload = $this->buildProductPayload($product);
+        $payload = $this->buildProductPayload($product, $shop);
 
         try {
             $res = $this->client->request('POST', '/product/create', [
@@ -54,7 +56,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
 
     public function updateProduct(Product $product, ChannelShop $shop, string $externalProductId): array
     {
-        $payload = $this->buildProductPayload($product);
+        $payload = $this->buildProductPayload($product, $shop);
         $payload['Request']['Product']['ItemId'] = $externalProductId;
 
         try {
@@ -163,20 +165,38 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         return $this->inboundMapper->map($channelData, $shopId);
     }
 
-    protected function buildProductPayload(Product $product): array
+    protected function buildProductPayload(Product $product, ChannelShop $shop): array
     {
 
-        $product->loadMissing('variants.options');
+        $product->loadMissing('variants.options', 'media');
 
-        $internal = $product->toArray();
-        $internal['variants'] = $product->variants->toArray();
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
 
-        $imageUrls = [];
-        foreach ($product->media ?? [] as $media) {
-            if (! empty($media->url)) {
-                $imageUrls[] = $media->url;
+        $images = $product->media->where('media_type', 'image');
+
+        $imageUrls = $images->whereNull('variant_id')->sortBy('sort_order')->pluck('url')->values()->all();
+        if (empty($imageUrls)) {
+            $imageUrls = $images->sortBy('sort_order')->pluck('url')->values()->all();
+        }
+
+        $variantImageById = [];
+        foreach ($images->whereNotNull('variant_id')->sortBy('sort_order')->groupBy('variant_id') as $variantId => $group) {
+            $url = $group->first()->url ?? null;
+            if ($url) {
+                $variantImageById[$variantId] = $url;
             }
         }
+
+        $internal = $product->toArray();
+        $internal['variants'] = $product->variants->map(function ($variant) use ($variantImageById, $stockByVariant) {
+            $arr = $variant->toArray();
+            if (! empty($variantImageById[$variant->id])) {
+                $arr['image_url'] = $variantImageById[$variant->id];
+            }
+            $arr['stock'] = $stockByVariant[$variant->id] ?? 0;
+
+            return $arr;
+        })->all();
 
         return $this->outboundMapper->map($internal, $imageUrls, config('channel.lazada_defaults', []));
     }

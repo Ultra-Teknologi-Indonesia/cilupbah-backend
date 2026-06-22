@@ -31,6 +31,7 @@ class UploadHistoryRepository
             })
             ->allowedSearch('products.name', 'products.sku')
             ->allowedFilters(
+                AllowedFilter::callback('product_id', fn ($query, $value) => $query->where('product_sync_logs.product_id', $value)),
                 AllowedFilter::callback('status', fn ($query, $value) => $query->where('product_sync_logs.status', $value)),
                 AllowedFilter::callback('channel', fn ($query, $value) => $query->whereHas('channelShop.channel', fn ($channel) => $channel->where('code', $value))),
                 AllowedFilter::callback('shop_id', fn ($query, $value) => $query->whereHas('channelShop', fn ($shop) => $shop->where('shop_id', $value))),

@@ -18,6 +18,23 @@ class ProductResource extends JsonResource
             'status' => $this->status,
             'is_active' => $this->is_active,
             'primary_image' => $this->primaryImageUrl(),
+            'images' => $this->whenLoaded('media', fn () => $this->media
+                ->filter(fn ($m) => $m->variant_id === null && ($m->media_type ?? 'image') === 'image' && $m->url)
+                ->sortByDesc('is_primary')
+                ->map(fn ($m) => ['url' => $m->url, 'is_primary' => (bool) $m->is_primary])
+                ->values()),
+            // Media produk-level (image + video) lengkap dengan uuid & urutan,
+            // dipakai editor media untuk add/hapus/urutkan/pilih utama.
+            'media' => $this->whenLoaded('media', fn () => $this->media
+                ->filter(fn ($m) => $m->variant_id === null && $m->url)
+                ->sortBy('sort_order')
+                ->map(fn ($m) => [
+                    'uuid' => $m->media_uuid,
+                    'url' => $m->url,
+                    'media_type' => $m->media_type ?? 'image',
+                    'is_primary' => (bool) $m->is_primary,
+                    'sort_order' => (int) $m->sort_order,
+                ])->values()),
             'price_range' => $this->priceRange(),
             'channels_count' => $this->when(
                 $this->resource->relationLoaded('channelMappings'),
@@ -32,6 +49,10 @@ class ProductResource extends JsonResource
                 'name' => $this->brand->name,
             ] : null),
             'is_bundle' => $this->is_bundle,
+            'product_type' => $this->productType(),
+            'total_variants' => $this->totalVariants(),
+            'bundle_components' => $this->whenLoaded('bundleItems', fn () => $this->bundleComponents()),
+            'bundle_stock' => $this->whenLoaded('bundleItems', fn () => \Modules\Product\Support\BundleStock::derive($this->resource)),
             'is_consignment' => $this->is_consignment,
             'is_stored' => $this->is_stored,
             'is_sold' => $this->is_sold,
@@ -42,6 +63,7 @@ class ProductResource extends JsonResource
             'purchase_lead_time' => $this->purchase_lead_time,
             'package_contents' => $this->package_contents,
             'weight' => $this->weight,
+            'weight_unit' => $this->weight_unit ?? 'kg',
             'length' => $this->length,
             'width' => $this->width,
             'height' => $this->height,
@@ -51,6 +73,11 @@ class ProductResource extends JsonResource
                 'inventory' => $this->accountInfo('inventoryAccount'),
                 'cogs' => $this->accountInfo('cogsAccount'),
             ],
+            'specifications' => $this->whenLoaded('specifications', fn () => $this->specifications->map(fn ($s) => [
+                'attribute_id' => $s->attribute_id,
+                'attribute_option_id' => $s->attribute_option_id,
+                'value' => $s->text_value ?? ($s->relationLoaded('attributeOption') && $s->attributeOption ? $s->attributeOption->value : null),
+            ])->values()),
             'channel_mappings' => $this->whenLoaded('channelMappings', function () {
                 return $this->channelMappings->map(function ($mapping) {
                     $shop = $mapping->relationLoaded('channelShop') ? $mapping->channelShop : null;
@@ -67,11 +94,40 @@ class ProductResource extends JsonResource
                     ];
                 });
             }),
+            'variation_types' => $this->whenLoaded('variationTypes', function () {
+                return $this->variationTypes
+                    ->sortBy('sort_order')
+                    ->map(fn ($vt) => [
+                        'attribute_id' => $vt->attribute_id,
+                        'name' => ($vt->relationLoaded('attribute') && $vt->attribute) ? $vt->attribute->name : null,
+                        'sort_order' => $vt->sort_order,
+                    ])->values();
+            }),
             'variants' => $this->whenLoaded('variants', function () {
-                return $this->variants->map(function ($variant) {
+                $variantImages = $this->resource->relationLoaded('media')
+                    ? $this->media
+                        ->filter(fn ($m) => $m->variant_id && ($m->media_type ?? 'image') === 'image' && $m->url)
+                        ->groupBy('variant_id')
+                    : collect();
+
+                return $this->variants->map(function ($variant) use ($variantImages) {
+                    $imgs = $variantImages->get($variant->id);
+                    $variantImage = null;
+                    if ($imgs && $imgs->isNotEmpty()) {
+                        $primary = $imgs->firstWhere('is_primary', true) ?? $imgs->first();
+                        $variantImage = $primary->url ?? null;
+                    }
+
                     $data = [
                         'id' => $variant->id,
                         'sku' => $variant->sku,
+                        'image' => $variantImage,
+                        'options' => $variant->relationLoaded('options')
+                            ? $variant->options->map(fn ($o) => [
+                                'attribute_id' => $o->attribute_id,
+                                'value' => $o->value,
+                            ])->values()
+                            : [],
                         'barcode' => $variant->barcode,
                         'buy_price' => $variant->buy_price,
                         'sell_price' => $variant->sell_price,
@@ -79,6 +135,10 @@ class ProductResource extends JsonResource
                         'min_stock' => $variant->min_stock,
                         'safe_stock' => $variant->safe_stock,
                         'is_active' => $variant->is_active,
+                        'weight' => $variant->weight,
+                        'length' => $variant->length,
+                        'width' => $variant->width,
+                        'height' => $variant->height,
                         'sales_tax' => ($variant->relationLoaded('salesTax') && $variant->salesTax) ? [
                             'id' => $variant->salesTax->id,
                             'name' => $variant->salesTax->name,
@@ -125,6 +185,53 @@ class ProductResource extends JsonResource
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];
+    }
+
+    protected function totalVariants(): ?int
+    {
+        if ($this->resource->relationLoaded('variants')) {
+            return $this->variants->count();
+        }
+
+        return $this->variants_count !== null ? (int) $this->variants_count : null;
+    }
+
+    protected function productType(): string
+    {
+        if ($this->is_bundle) {
+            return 'bundle';
+        }
+
+        return ($this->totalVariants() ?? 1) > 1 ? 'variant' : 'single';
+    }
+
+    protected function bundleComponents(): \Illuminate\Support\Collection
+    {
+        return $this->bundleItems->map(function ($item) {
+            $variant = $item->relationLoaded('component') ? $item->component : null;
+
+            return [
+                'component_variant_id' => $item->component_variant_id,
+                'qty' => (int) $item->qty,
+                'sku' => $variant->sku ?? null,
+                'product' => ($variant && $variant->relationLoaded('product') && $variant->product) ? [
+                    'id' => $variant->product->id,
+                    'name' => $variant->product->name,
+                ] : null,
+                'variation_values' => ($variant && $variant->relationLoaded('options'))
+                    ? $variant->options->map(fn ($o) => [
+                        'attribute_id' => $o->attribute_id,
+                        'value' => $o->value,
+                    ])->values()
+                    : [],
+                'stock' => ($variant && $variant->relationLoaded('inventories')) ? [
+                    'on_hand' => (int) $variant->inventories->sum('on_hand'),
+                    'reserved' => (int) $variant->inventories->sum('reserved'),
+                    'on_order' => (int) $variant->inventories->sum('on_order'),
+                    'available' => (int) $variant->inventories->sum('available'),
+                ] : null,
+            ];
+        })->values();
     }
 
     protected function primaryImageUrl(): ?string

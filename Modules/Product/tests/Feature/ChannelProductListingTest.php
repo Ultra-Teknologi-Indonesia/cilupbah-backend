@@ -103,6 +103,7 @@ class ChannelProductListingTest extends TestCase
             'data' => [[
                 'channel_group_id',
                 'store_id',
+                'shop_id',
                 'item_group_name',
                 'min',
                 'channel_id',
@@ -127,6 +128,7 @@ class ChannelProductListingTest extends TestCase
         $item = $response->json('data.0');
         $this->assertSame('TT-GROUP-1', $item['channel_group_id']);
         $this->assertSame($this->tiktokShop->id, $item['store_id']);
+        $this->assertSame('SHOP-TT', $item['shop_id']);
         $this->assertSame('Magnetic Case', $item['item_group_name']);
         $this->assertSame('Cilupbah ID Mall', $item['min']);
         $this->assertSame('tiktok', $item['channel_code']);
@@ -258,5 +260,84 @@ class ChannelProductListingTest extends TestCase
     {
         $this->getJson('/api/v1/products/channel-products/00000000-0000-0000-0000-000000000000')
             ->assertStatus(404);
+    }
+
+    public function test_search_matches_product_sku(): void
+    {
+        $product = Product::create([
+            'name' => 'Casing Polos',
+            'sku' => 'ZEBRA123',
+            'category_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+        ]);
+        ProductChannelMapping::create([
+            'product_id' => $product->id,
+            'channel_shop_id' => $this->tiktokShop->id,
+            'external_product_id' => 'TT-SKU',
+            'sync_status' => 'synced',
+        ]);
+        $this->seedListing($this->tiktokShop, 'Produk Lain', 'TT-OTHER');
+
+        $response = $this->getJson('/api/v1/products/channel-products?search=ZEBRA123');
+
+        $response->assertStatus(200);
+        $names = collect($response->json('data'))->pluck('item_group_name')->all();
+        $this->assertContains('Casing Polos', $names);
+        $this->assertNotContains('Produk Lain', $names);
+    }
+
+    private function seedPriced(string $name, string $ext, int $sellPrice, ?int $override): void
+    {
+        $product = Product::create([
+            'name' => $name,
+            'category_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+        ]);
+        $mapping = ProductChannelMapping::create([
+            'product_id' => $product->id,
+            'channel_shop_id' => $this->tiktokShop->id,
+            'external_product_id' => $ext,
+            'sync_status' => 'synced',
+        ]);
+        $variant = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => "V-{$ext}",
+            'sell_price' => $sellPrice,
+            'is_active' => true,
+        ]);
+        ProductVariantChannelMapping::create([
+            'product_channel_mapping_id' => $mapping->id,
+            'variant_id' => $variant->id,
+            'external_sku_id' => "C-{$ext}",
+            'override_price' => $override,
+        ]);
+    }
+
+    public function test_filter_min_price_uses_effective_price(): void
+    {
+        $this->seedPriced('Murah', 'CHEAP', 50000, null);      
+        $this->seedPriced('Mahal', 'PRICEY', 80000, 300000);   
+
+        $response = $this->getJson('/api/v1/products/channel-products?filter[min_price]=100000');
+
+        $response->assertStatus(200);
+        $names = collect($response->json('data'))->pluck('item_group_name')->all();
+        $this->assertContains('Mahal', $names);
+        $this->assertNotContains('Murah', $names);
+    }
+
+    public function test_filter_max_price_uses_effective_price(): void
+    {
+        $this->seedPriced('Murah', 'CHEAP', 50000, null);
+        $this->seedPriced('Mahal', 'PRICEY', 80000, 300000);
+
+        $response = $this->getJson('/api/v1/products/channel-products?filter[max_price]=100000');
+
+        $response->assertStatus(200);
+        $names = collect($response->json('data'))->pluck('item_group_name')->all();
+        $this->assertContains('Murah', $names);
+        $this->assertNotContains('Mahal', $names);
     }
 }

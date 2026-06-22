@@ -33,6 +33,23 @@ class MasterFeedRepository
                 AllowedFilter::callback('category_id', function ($query, $value) {
                     $query->whereIn('category_id', $this->categoryWithDescendants($value));
                 }),
+
+                AllowedFilter::callback('type', function ($query, $value) {
+                    match ($value) {
+                        'bundle' => $query->where('is_bundle', true),
+                        'konsinyasi' => $query->where('is_consignment', true),
+                        'pre_order' => $query->where('order_type', 'PREORDER'),
+                        'satuan' => $query->where('is_bundle', false)
+                            ->where('is_consignment', false)
+                            ->where(fn ($q) => $q->where('order_type', '<>', 'PREORDER')->orWhereNull('order_type')),
+                        default => null,
+                    };
+                }),
+
+                AllowedFilter::callback('min_price', fn ($query, $value) => $query->whereHas('variants', fn ($q) => $q->where('sell_price', '>=', $value))),
+                AllowedFilter::callback('max_price', fn ($query, $value) => $query->whereHas('variants', fn ($q) => $q->where('sell_price', '<=', $value))),
+
+                AllowedFilter::callback('channel', fn ($query, $value) => $query->whereHas('channelMappings.channelShop.channel', fn ($q) => $q->where('code', $value))),
             )
             ->allowedSorts('name', 'created_at', 'updated_at')
             ->defaultSort('-updated_at')

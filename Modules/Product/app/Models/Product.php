@@ -22,7 +22,6 @@ class Product extends Model
     public const STATUS_ARCHIVED = 'archived';
 
     public const STATUSES = [
-        self::STATUS_DOWNLOAD,
         self::STATUS_MASTER,
         self::STATUS_ARCHIVED,
     ];
@@ -37,6 +36,7 @@ class Product extends Model
         'order_type',
         'indent_days',
         'weight',
+        'weight_unit',
         'length',
         'width',
         'height',
@@ -112,6 +112,16 @@ class Product extends Model
         return $this->hasMany(ProductChannelMapping::class);
     }
 
+    public function channelValidations(): HasMany
+    {
+        return $this->hasMany(ProductChannelValidation::class);
+    }
+
+    public function syncLogs(): HasMany
+    {
+        return $this->hasMany(ProductSyncLog::class);
+    }
+
     public function media(): HasMany
     {
         return $this->hasMany(ProductMedia::class);
@@ -145,6 +155,11 @@ class Product extends Model
     public function cogsAccount(): BelongsTo
     {
         return $this->belongsTo(\Modules\Finance\Models\Account::class, 'cogs_account_id');
+    }
+
+    public function specifications(): HasMany
+    {
+        return $this->hasMany(ProductSpecification::class);
     }
 
     public function archivedBy(): BelongsTo

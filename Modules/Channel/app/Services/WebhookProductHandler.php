@@ -60,6 +60,19 @@ class WebhookProductHandler
             foreach ($data['skus'] as $skuData) {
                 $variantMapping = $mapping->variantMappings()->where('external_sku_id', $skuData['id'])->first();
                 if ($variantMapping) {
+
+                    $update = [];
+                    if (!empty($skuData['seller_sku'])) {
+                        $update['channel_seller_sku'] = $skuData['seller_sku'];
+                    }
+                    $price = $skuData['price']['tax_exclusive_price'] ?? $skuData['price']['sale_price'] ?? null;
+                    if ($price !== null) {
+                        $update['synced_price'] = $price;
+                    }
+                    if ($update) {
+                        $variantMapping->update($update);
+                    }
+
                     $newStock = (int) ($skuData['inventory'][0]['quantity'] ?? 0);
 
                     if ($newStock !== $variantMapping->synced_stock) {

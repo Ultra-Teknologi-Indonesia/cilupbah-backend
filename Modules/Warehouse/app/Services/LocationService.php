@@ -77,6 +77,15 @@ class LocationService
                 return null;
             }
 
+            if ($location->is_locked) {
+                throw new \DomainException('Lokasi sistem terkunci dan tidak dapat diedit.');
+            }
+
+            if ($location->is_system) {
+                $data['is_active'] = true;
+                unset($data['is_system'], $data['is_locked']);
+            }
+
             if (! empty($data)) {
                 $this->locationRepository->update($id, $data);
             }
@@ -148,6 +157,10 @@ class LocationService
             $location = $this->locationRepository->findById($id);
             if (! $location) {
                 return false;
+            }
+
+            if ($location->is_system) {
+                throw new \DomainException('Lokasi sistem tidak dapat dihapus.');
             }
 
             $hasInventory = \Modules\Inventory\Models\Inventory::where('location_id', $id)->exists();

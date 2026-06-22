@@ -43,6 +43,38 @@ class UserManagementApiTest extends TestCase
             ->assertJsonPath('data.0.id', $picker->id);
     }
 
+    public function test_systemsetting_users_lookup_accessible_without_view_user_permission(): void
+    {
+        $plain = User::factory()->create();
+
+        $this->actingAs($plain, 'sanctum')
+            ->getJson('/api/v1/users')
+            ->assertStatus(403);
+
+        $this->actingAs($plain, 'sanctum')
+            ->getJson('/api/v1/systemsetting/users?pageSize=10&page=1')
+            ->assertStatus(200)
+            ->assertJsonStructure([
+                'data' => [['user_id', 'email', 'last_login', 'is_owner']],
+                'totalCount',
+            ]);
+    }
+
+    public function test_systemsetting_users_lookup_filters_by_q(): void
+    {
+        $owner = User::factory()->create(['email' => 'owner-unik@example.com']);
+        $owner->assignRole('owner');
+        User::factory()->create(['email' => 'lainnya@example.com']);
+
+        $res = $this->actingAs($this->owner, 'sanctum')
+            ->getJson('/api/v1/systemsetting/users?q=owner-unik')
+            ->assertStatus(200)
+            ->assertJsonPath('totalCount', 1);
+
+        $this->assertSame('owner-unik@example.com', $res->json('data.0.email'));
+        $this->assertTrue($res->json('data.0.is_owner'));
+    }
+
     public function test_show_returns_user_detail(): void
     {
         $target = User::factory()->create();

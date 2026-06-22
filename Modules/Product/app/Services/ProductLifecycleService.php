@@ -10,7 +10,7 @@ class ProductLifecycleService
     public function approve(Product $product, ?string $userId = null): Product
     {
         if ($product->status === Product::STATUS_MASTER) {
-            throw new \DomainException('Produk sudah berstatus Master');
+            return $product;
         }
 
         if ($product->status === Product::STATUS_ARCHIVED) {
@@ -62,6 +62,42 @@ class ProductLifecycleService
         ]);
 
         return $product;
+    }
+
+    public function bulkArchive(array $ids, ?string $reason = null, ?string $userId = null): array
+    {
+        return $this->runBulk($ids, function (Product $product) use ($reason, $userId) {
+            $this->archive($product, $reason, $userId);
+        });
+    }
+
+    public function bulkRestore(array $ids): array
+    {
+        return $this->runBulk($ids, function (Product $product) {
+            $this->restore($product);
+        });
+    }
+
+    private function runBulk(array $ids, callable $action): array
+    {
+        $success = 0;
+        $errors = [];
+
+        foreach ($ids as $id) {
+            $product = Product::find($id);
+            if (!$product) {
+                $errors[] = "Produk {$id} tidak ditemukan";
+                continue;
+            }
+            try {
+                $action($product);
+                $success++;
+            } catch (\DomainException $e) {
+                $errors[] = "{$product->name}: {$e->getMessage()}";
+            }
+        }
+
+        return ['success' => $success, 'failed' => count($errors), 'errors' => $errors];
     }
 
     protected function assertReadyForMaster(Product $product): void

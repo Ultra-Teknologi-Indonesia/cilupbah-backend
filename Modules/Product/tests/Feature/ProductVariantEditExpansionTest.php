@@ -35,6 +35,7 @@ class ProductVariantEditExpansionTest extends TestCase
             'name' => 'iPhone 17',
             'sku' => 'IP17',
             'category_id' => $this->category->id,
+            'media' => [['url' => 'https://img.test/a.jpg', 'media_type' => 'image']],
             'variation_types' => [['attribute_id' => $this->warna->id, 'sort_order' => 0]],
             'variants' => [
                 ['sku' => 'IP17-BLUE', 'sell_price' => $price, 'is_active' => true,

@@ -17,14 +17,46 @@ class LocationResource extends JsonResource
             'address' => $this->address,
             'post_code' => $this->post_code,
             'village_id' => $this->village_id,
+            'phone' => $this->phone,
+            'email' => $this->email,
+            'coordinate' => $this->coordinate,
+            'default_warehouse_user' => $this->default_warehouse_user,
             'is_warehouse' => $this->is_warehouse,
             'is_multi_origin' => $this->is_multi_origin,
             'is_active' => $this->is_active,
+            'is_system' => $this->is_system,
+            'is_locked' => $this->is_locked,
             'is_fbl' => $this->is_fbl,
             'is_tcb' => $this->is_tcb,
             'is_fbs' => $this->is_fbs,
             'is_pos' => $this->is_pos,
-            'village' => $this->whenLoaded('village'),
+            'village' => $this->whenLoaded('village', function () {
+                $village = $this->village;
+                if (! $village) {
+                    return null;
+                }
+
+                $district = $village->district;
+                $city = $district?->city;
+                $province = $city?->province;
+
+                return [
+                    'id' => $village->id,
+                    'nama' => $village->nama,
+                    'district' => $district ? [
+                        'id' => $district->id,
+                        'nama' => $district->nama,
+                        'city' => $city ? [
+                            'id' => $city->id,
+                            'nama' => $city->nama,
+                            'province' => $province ? [
+                                'id' => $province->id,
+                                'nama' => $province->nama,
+                            ] : null,
+                        ] : null,
+                    ] : null,
+                ];
+            }),
             'zones' => $this->whenLoaded('zones'),
             'bins' => $this->whenLoaded('bins'),
             'channel_warehouses' => $this->whenLoaded('channelWarehouses'),

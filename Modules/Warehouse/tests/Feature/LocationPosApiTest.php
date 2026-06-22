@@ -76,6 +76,8 @@ class LocationPosApiTest extends TestCase
             'location_code' => 'POS-01',
             'location_name' => 'Toko Pusat',
             'location_type' => 'OUTLET',
+            'phone' => '+628123456789',
+            'email' => 'pos@test.com',
             'is_active' => true,
             'is_pos' => true,
         ];

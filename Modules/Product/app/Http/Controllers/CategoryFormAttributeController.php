@@ -4,63 +4,89 @@ namespace Modules\Product\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
-use Illuminate\Support\Collection;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Modules\Product\Models\Attribute;
+use Modules\Product\Models\CategoryAttribute;
+use Modules\Product\Repositories\CategoryAttributeRepository;
 
 class CategoryFormAttributeController extends Controller
 {
     use ApiResponse;
 
+    public function __construct(private CategoryAttributeRepository $repository) {}
+
     public function show($categoryId)
     {
-        $category = DB::table('categories')->where('id', $categoryId)->first();
-        if (! $category) {
+        $categoryId = (int) $categoryId;
+
+        if (! $this->repository->exists($categoryId)) {
             return $this->errorResponse('Kategori tidak ditemukan', 404);
         }
 
-        if (DB::table('categories')->where('parent_id', $categoryId)->exists()) {
+        if (! $this->repository->isLeaf($categoryId)) {
             return $this->errorResponse('Pilih kategori paling spesifik (kategori tanpa sub-kategori).', 422);
         }
 
-        $catAttrs = DB::table('category_attributes as cga')
-            ->join('attributes as a', 'a.id', '=', 'cga.attribute_id')
-            ->where('cga.category_id', $categoryId)
-            ->get(['a.id', 'a.name', 'a.type', 'cga.is_required']);
+        return $this->successResponse(
+            $this->repository->formAttributes($categoryId),
+            'Atribut form kategori berhasil diambil.'
+        );
+    }
 
-        $attrIds = $catAttrs->pluck('id')->all() ?: [-1];
+    public function store(Request $request, int $categoryId): JsonResponse
+    {
+        if (! $this->repository->exists($categoryId)) {
+            return $this->errorResponse('Kategori tidak ditemukan', 404);
+        }
 
-        $options = DB::table('attribute_options')
-            ->whereIn('attribute_id', $attrIds)
-            ->get(['id', 'attribute_id', 'value'])
-            ->groupBy('attribute_id');
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'type' => 'required|in:sales,spec',
+        ]);
 
-        $channelStatus = DB::table('attribute_channel_mappings as m')
-            ->join('channel_attributes as ca', 'ca.id', '=', 'm.channel_attribute_id')
-            ->join('channel_categories as cc', 'cc.id', '=', 'ca.channel_category_id')
-            ->join('channels as ch', 'ch.id', '=', 'cc.channel_id')
-            ->whereIn('m.attribute_id', $attrIds)
-            ->get(['m.attribute_id', 'ch.code', 'ca.is_required'])
-            ->groupBy('attribute_id');
+        $result = DB::transaction(function () use ($validated, $categoryId) {
+            $attribute = Attribute::create([
+                'name' => $validated['name'],
+                'type' => $validated['type'],
+            ]);
 
-        $build = function ($a) use ($options, $channelStatus) {
-            $channels = [];
-            foreach ($channelStatus->get($a->id, collect()) as $row) {
-                $channels[$row->code] = ['mapped' => true, 'required' => (bool) $row->is_required];
+            CategoryAttribute::create([
+                'category_id' => $categoryId,
+                'attribute_id' => $attribute->id,
+                'is_required' => true,
+            ]);
+
+            return $attribute;
+        });
+
+        return $this->successResponse($result, 'Atribut berhasil ditambahkan ke kategori', 201);
+    }
+
+    public function destroy(int $categoryId, int $attributeId): JsonResponse
+    {
+        if (! $this->repository->exists($categoryId)) {
+            return $this->errorResponse('Kategori tidak ditemukan', 404);
+        }
+
+        $link = CategoryAttribute::where('category_id', $categoryId)
+            ->where('attribute_id', $attributeId)
+            ->first();
+
+        if (! $link) {
+            return $this->errorResponse('Atribut tidak ditemukan di kategori ini', 404);
+        }
+
+        DB::transaction(function () use ($link, $attributeId) {
+            $link->delete();
+
+            $stillUsed = CategoryAttribute::where('attribute_id', $attributeId)->exists();
+            if (! $stillUsed) {
+                Attribute::where('id', $attributeId)->delete();
             }
+        });
 
-            return [
-                'attribute_id' => (int) $a->id,
-                'name' => $a->name,
-                'is_required' => (bool) $a->is_required,
-                'options' => ($options->get($a->id, collect()))
-                    ->map(fn ($o) => ['id' => (int) $o->id, 'value' => $o->value])->values(),
-                'channels' => (object) $channels,
-            ];
-        };
-
-        return $this->successResponse([
-            'specifications' => $catAttrs->where('type', 'spec')->map($build)->values(),
-            'variant_types' => $catAttrs->where('type', 'sales')->map($build)->values(),
-        ], 'Atribut form kategori berhasil diambil.');
+        return $this->successResponse(null, 'Atribut berhasil dihapus dari kategori');
     }
 }

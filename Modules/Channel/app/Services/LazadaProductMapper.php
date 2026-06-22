@@ -3,6 +3,7 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\DB;
+use Modules\Channel\Support\DescriptionFormatter;
 
 class LazadaProductMapper
 {
@@ -25,13 +26,14 @@ class LazadaProductMapper
 
             $skus[] = array_filter([
                 'SellerSku' => $variant['sku'],
-                'quantity' => 0,
+                'quantity' => (int) ($variant['stock'] ?? 0),
                 'price' => (float) ($variant['sell_price'] ?? 0),
-                'package_weight' => (float) ($variant['weight'] ?? $product['weight'] ?? 0.1) ?: 0.1,
+                'package_weight' => \Modules\Channel\Support\WeightConverter::toKg($variant['weight'] ?? $product['weight'] ?? 0.1, $product['weight_unit'] ?? 'kg') ?: 0.1,
                 'package_length' => (float) ($product['length'] ?? 0) ?: null,
                 'package_width' => (float) ($product['width'] ?? 0) ?: null,
                 'package_height' => (float) ($product['height'] ?? 0) ?: null,
                 'SaleProp' => $saleProps ?: null,
+                'Images' => ! empty($variant['image_url']) ? [$variant['image_url']] : null,
             ], fn ($v) => $v !== null);
         }
 
@@ -42,7 +44,7 @@ class LazadaProductMapper
                     'Images' => $imageUrls ? ['Image' => array_values($imageUrls)] : null,
                     'Attributes' => [
                         'name' => $product['name'] ?? 'Produk',
-                        'description' => $product['description'] ?? ($product['name'] ?? ''),
+                        'description' => DescriptionFormatter::toHtml($product['description'] ?? '') ?: ($product['name'] ?? ''),
                         'brand' => $config['brand'] ?? 'No Brand',
                     ],
                     'Skus' => ['Sku' => $skus],

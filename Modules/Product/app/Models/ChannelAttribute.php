@@ -18,11 +18,13 @@ class ChannelAttribute extends Model
         'name',
         'is_required',
         'is_multiple',
+        'is_sale_prop',
     ];
 
     protected $casts = [
         'is_required' => 'boolean',
         'is_multiple' => 'boolean',
+        'is_sale_prop' => 'boolean',
     ];
 
     public function channelCategory(): BelongsTo

@@ -158,6 +158,32 @@ class TikTokOrderService
             ->all();
     }
 
+    public function getCancelReasonsLive(string $shopId): array
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (!$shop || !$shop->access_token) {
+            throw new \Exception("No access token found for shop: {$shopId}");
+        }
+
+        $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
+
+        $res = $this->client->request('GET', '/return_refund/202309/reject_reasons', $queries, [], $shop->access_token);
+
+        $reasons = $res['data']['reasons'] ?? [];
+
+        return array_values(array_filter(array_map(static function ($r) {
+            $key = $r['name'] ?? $r['key'] ?? null;
+            if ($key === null) {
+                return null;
+            }
+
+            return [
+                'key'   => (string) $key,
+                'label' => (string) ($r['text'] ?? $r['label'] ?? $key),
+            ];
+        }, $reasons)));
+    }
+
     public function cancelProduct(string $orderId, string $reason): array
     {
         $order = $this->orderRepository->findOrderBySalesOrderNo($orderId);

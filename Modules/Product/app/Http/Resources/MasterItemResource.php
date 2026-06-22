@@ -121,7 +121,13 @@ class MasterItemResource extends JsonResource
             return [];
         }
 
-        return $this->channelMappings->map(function ($mapping) {
+        return $this->channelMappings->filter(function ($mapping) {
+            if (! $mapping->external_product_id && in_array($mapping->sync_status, ['failed', 'pending'])) {
+                return false;
+            }
+
+            return true;
+        })->map(function ($mapping) {
             $shop = $mapping->relationLoaded('channelShop') ? $mapping->channelShop : null;
             $channel = ($shop && $shop->relationLoaded('channel')) ? $shop->channel : null;
 
@@ -174,15 +180,13 @@ class MasterItemResource extends JsonResource
 
     protected function variantThumbnail($variant): ?string
     {
-        if ($this->resource->relationLoaded('media')) {
-            $variantMedia = $this->media->where('variant_id', $variant->id);
-            $primary = $variantMedia->firstWhere('is_primary', true) ?? $variantMedia->first();
-
-            if ($primary) {
-                return $primary->url;
-            }
+        if (! $this->resource->relationLoaded('media')) {
+            return null;
         }
 
-        return $this->productThumbnail();
+        $variantMedia = $this->media->where('variant_id', $variant->id);
+        $primary = $variantMedia->firstWhere('is_primary', true) ?? $variantMedia->first();
+
+        return $primary->url ?? null;
     }
 }

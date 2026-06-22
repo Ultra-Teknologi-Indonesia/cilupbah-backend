@@ -72,15 +72,35 @@ class ChannelProductRepository
 
     public function getChannelCategoryExternalId(string $categoryId, string $channelId): ?string
     {
+        return optional($this->getChannelCategoryInfoByInternal($categoryId, $channelId))->external_id;
+    }
+
+    public function getChannelCategoryInfoByInternal(string $categoryId, string $channelId): ?object
+    {
         $category = \Modules\Product\Models\Category::with([
-            'channelCategories' => fn ($q) => $q->where('channel_id', $channelId),
+            'channelCategories' => fn ($q) => $q->where('channel_id', $channelId)->orderByDesc('is_leaf'),
         ])->find($categoryId);
 
-        if ($category && $category->channelCategories->isNotEmpty()) {
-            return $category->channelCategories->first()->external_id;
+        if (! $category || $category->channelCategories->isEmpty()) {
+            return null;
         }
 
-        return null;
+        $chosen = $category->channelCategories->firstWhere('is_leaf', true)
+            ?? $category->channelCategories->first();
+
+        return (object) [
+            'id' => $chosen->id,
+            'external_id' => $chosen->external_id,
+            'is_leaf' => (bool) $chosen->is_leaf,
+        ];
+    }
+
+    public function getChannelCategoryInfoById(string $channelCategoryId): ?object
+    {
+        return DB::table('channel_categories')
+            ->where('id', $channelCategoryId)
+            ->select('id', 'external_id', 'is_leaf')
+            ->first();
     }
 
     public function getProductSpecifications(string $productId)
@@ -106,6 +126,26 @@ class ChannelProductRepository
     public function getChannelAttributeOption(string $id)
     {
         return DB::table('channel_attribute_options')->where('id', $id)->first();
+    }
+
+    public function getSalesAttributeMap(string $channelCategoryId): array
+    {
+        return DB::table('channel_attributes as ca')
+            ->join('attribute_channel_mappings as m', 'm.channel_attribute_id', '=', 'ca.id')
+            ->where('ca.channel_category_id', $channelCategoryId)
+            ->where('ca.is_sale_prop', true)
+            ->pluck('ca.external_id', 'm.attribute_id')
+            ->all();
+    }
+
+    public function getSalePropNameMap(string $channelCategoryId): array
+    {
+        return DB::table('channel_attributes')
+            ->where('channel_category_id', $channelCategoryId)
+            ->where('is_sale_prop', true)
+            ->get(['external_id', 'name'])
+            ->mapWithKeys(fn ($a) => [mb_strtolower($a->name) => $a->external_id])
+            ->all();
     }
 
     public function getChannelWarehouseByStore(string $shopId)
@@ -145,7 +185,8 @@ class ChannelProductRepository
         string $productId,
         string $shopId,
         ?string $externalProductId = null,
-        string $syncStatus = 'synced'
+        string $syncStatus = 'synced',
+        ?array $channelAttributes = null
     ): string {
         $channelShop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
         if (!$channelShop) {
@@ -153,6 +194,7 @@ class ChannelProductRepository
         }
 
         $now = now();
+        $attributesJson = self::canonicalAttributes($channelAttributes);
 
         $existing = DB::table('product_channel_mappings')
             ->where('product_id', $productId)
@@ -169,6 +211,9 @@ class ChannelProductRepository
             if ($externalProductId !== null) {
                 $update['external_product_id'] = $externalProductId;
             }
+            if ($attributesJson !== null) {
+                $update['channel_attributes'] = $attributesJson;
+            }
 
             DB::table('product_channel_mappings')
                 ->where('id', $existing->id)
@@ -183,6 +228,7 @@ class ChannelProductRepository
             'product_id'          => $productId,
             'channel_shop_id'     => $channelShop->id,
             'external_product_id' => $externalProductId,
+            'channel_attributes'  => $attributesJson,
             'sync_status'         => $syncStatus,
             'last_synced_at'      => $now,
             'created_at'          => $now,
@@ -192,10 +238,29 @@ class ChannelProductRepository
         return $pcmId;
     }
 
+    public static function canonicalAttributes(?array $attributes): ?string
+    {
+        if (empty($attributes)) {
+            return null;
+        }
+
+        $normalized = [];
+        foreach ($attributes as $key => $value) {
+            $normalized[(string) $key] = is_array($value) ? implode(', ', $value) : (string) $value;
+        }
+        ksort($normalized);
+
+        return json_encode($normalized);
+    }
+
     public function upsertVariantChannelMapping(
         string $pcmId,
         string $variantId,
-        ?string $externalSkuId = null
+        ?string $externalSkuId = null,
+        ?string $channelSellerSku = null,
+        $syncedPrice = null,
+        ?string $salesAttributeId = null,
+        ?string $salesAttributeName = null
     ): void {
         $now = now();
 
@@ -209,6 +274,18 @@ class ChannelProductRepository
             if ($externalSkuId !== null) {
                 $update['external_sku_id'] = $externalSkuId;
             }
+            if ($channelSellerSku !== null) {
+                $update['channel_seller_sku'] = $channelSellerSku;
+            }
+            if ($syncedPrice !== null) {
+                $update['synced_price'] = $syncedPrice;
+            }
+            if ($salesAttributeId !== null) {
+                $update['sales_attribute_id'] = $salesAttributeId;
+            }
+            if ($salesAttributeName !== null) {
+                $update['sales_attribute_name'] = $salesAttributeName;
+            }
             DB::table('product_variant_channel_mappings')
                 ->where('id', $existing->id)
                 ->update($update);
@@ -220,8 +297,28 @@ class ChannelProductRepository
             'product_channel_mapping_id' => $pcmId,
             'variant_id'                 => $variantId,
             'external_sku_id'            => $externalSkuId,
+            'channel_seller_sku'         => $channelSellerSku,
+            'synced_price'               => $syncedPrice,
+            'sales_attribute_id'         => $salesAttributeId,
+            'sales_attribute_name'       => $salesAttributeName,
             'created_at'                 => $now,
             'updated_at'                 => $now,
         ]);
+    }
+
+    public function getVariantChannelMappings(string $productId, string $shopId): array
+    {
+        $channelShop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
+        if (!$channelShop) {
+            return [];
+        }
+
+        return DB::table('product_variant_channel_mappings as pvcm')
+            ->join('product_channel_mappings as pcm', 'pcm.id', '=', 'pvcm.product_channel_mapping_id')
+            ->where('pcm.product_id', $productId)
+            ->where('pcm.channel_shop_id', $channelShop->id)
+            ->get(['pvcm.variant_id', 'pvcm.external_sku_id', 'pvcm.sales_attribute_id', 'pvcm.sales_attribute_name'])
+            ->keyBy('variant_id')
+            ->all();
     }
 }

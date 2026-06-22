@@ -160,4 +160,22 @@ class RaiseProductRepository
             ->paginate(request('per_page', 10))
             ->appends(request()->query());
     }
+
+    public function paginateHistory(string $raiseProductId): LengthAwarePaginator
+    {
+        return QueryBuilder::for(RaiseProductDetail::class)
+            ->select('raise_product_details.*')
+            ->where('raise_product_details.raise_product_id', $raiseProductId)
+            ->whereNotNull('raise_product_details.is_success')
+            ->leftJoin('product_channel_mappings', 'product_channel_mappings.id', '=', 'raise_product_details.product_channel_mapping_id')
+            ->leftJoin('products', 'products.id', '=', 'product_channel_mappings.product_id')
+            ->with(self::DETAIL_RELATIONS)
+            ->allowedSearch('products.name')
+            ->allowedSorts(
+                AllowedSort::field('end_time', 'raise_product_details.end_time'),
+            )
+            ->defaultSort('-raise_product_details.end_time')
+            ->paginate(request('per_page', 25))
+            ->appends(request()->query());
+    }
 }

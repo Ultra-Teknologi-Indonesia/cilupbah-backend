@@ -134,6 +134,27 @@ class RaiseProductController extends Controller
         return $this->successResponse(null, 'Produk dilepas dari data naikkan');
     }
 
+    public function history(Request $request, string $id): JsonResponse
+    {
+        try {
+            $this->service->find($id);
+        } catch (ModelNotFoundException) {
+            return $this->errorResponse('Data naikkan produk tidak ditemukan', 404);
+        }
+
+        $history = $this->service->paginateHistory($id);
+
+        $items = $history->getCollection()
+            ->map(fn ($detail) => (new RaiseProductDetailResource($detail))->resolve($request))
+            ->values()
+            ->all();
+
+        return $this->successPaginatedResponse(
+            $history->setCollection(collect($items)),
+            'Get raise product history success'
+        );
+    }
+
     public function raise(Request $request, string $id): JsonResponse
     {
         $validated = $request->validate([

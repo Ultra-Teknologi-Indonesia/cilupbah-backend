@@ -46,7 +46,7 @@ class CreateProductRequest extends FormRequest
             'height' => 'nullable|numeric|min:0',
             'package_contents' => 'nullable|string|max:2000',
 
-            'media' => 'nullable|array|max:10',
+            'media' => 'required|array|min:1|max:10',
             'media.*.media_uuid' => 'required_without:media.*.url|bail|uuid|exists:media,uuid',
             'media.*.url' => 'required_without:media.*.media_uuid|string',
             'media.*.media_type' => 'nullable|in:image,video',
@@ -59,7 +59,8 @@ class CreateProductRequest extends FormRequest
             'specifications.*.text_value' => 'nullable|string',
 
             'variation_types' => 'nullable|array|max:2',
-            'variation_types.*.attribute_id' => 'required|bail|integer|distinct|exists:attributes,id',
+            'variation_types.*.attribute_id' => 'nullable|bail|integer|distinct|exists:attributes,id',
+            'variation_types.*.name' => 'nullable|string|max:100',
             'variation_types.*.sort_order' => 'nullable|integer|min:0',
 
             'variants' => 'required|array|min:1',
@@ -72,12 +73,17 @@ class CreateProductRequest extends FormRequest
             'variants.*.min_stock' => 'nullable|integer|min:0',
             'variants.*.safe_stock' => 'nullable|integer|min:0',
             'variants.*.is_active' => 'nullable|boolean',
+            'variants.*.weight' => 'nullable|numeric|min:0',
+            'variants.*.length' => 'nullable|numeric|min:0',
+            'variants.*.width' => 'nullable|numeric|min:0',
+            'variants.*.height' => 'nullable|numeric|min:0',
 
             'variants.*.unlimited_shop_ids' => 'nullable|array',
             'variants.*.unlimited_shop_ids.*' => 'uuid|distinct|exists:channel_shops,id',
 
             'variants.*.options' => 'nullable|array',
-            'variants.*.options.*.attribute_id' => 'required|bail|integer|exists:attributes,id',
+            'variants.*.options.*.attribute_id' => 'nullable|bail|integer|exists:attributes,id',
+            'variants.*.options.*.name' => 'nullable|string|max:100',
             'variants.*.options.*.value' => 'required|string',
 
             'variants.*.media' => 'nullable|array',
@@ -101,6 +107,45 @@ class CreateProductRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $v) {
+
+            foreach ((array) $this->input('variation_types', []) as $i => $vt) {
+                if (empty($vt['attribute_id']) && empty($vt['name'])) {
+                    $v->errors()->add("variation_types.$i.attribute_id", 'Attribute ID atau nama jenis varian wajib diisi.');
+                }
+            }
+
+            foreach ((array) $this->input('variants', []) as $vi => $variant) {
+                foreach ((array) ($variant['options'] ?? []) as $oi => $opt) {
+                    if (empty($opt['attribute_id']) && empty($opt['name'])) {
+                        $v->errors()->add("variants.$vi.options.$oi.attribute_id", 'Attribute ID atau nama opsi varian wajib diisi.');
+                    }
+                }
+            }
+
+            $categoryId = $this->input('category_id');
+            if ($categoryId !== null && $v->errors()->has('category_id') === false) {
+                $repo = app(\Modules\Product\Repositories\CategoryAttributeRepository::class);
+                if (! $repo->isLeaf((int) $categoryId)) {
+                    $v->errors()->add(
+                        'category_id',
+                        'Pilih kategori paling spesifik: Kategori → Sub-Kategori → Jenis Produk wajib dipilih.'
+                    );
+                }
+            }
+
+            $media = collect((array) $this->input('media', []))->filter(fn ($m) => is_array($m));
+            $images = $media->filter(fn ($m) => ($m['media_type'] ?? 'image') !== 'video');
+            $videos = $media->filter(fn ($m) => ($m['media_type'] ?? 'image') === 'video');
+
+            if ($images->isEmpty()) {
+                $v->errors()->add('media', 'Minimal 1 foto produk wajib diunggah.');
+            }
+            if ($images->count() > 9) {
+                $v->errors()->add('media', 'Maksimal 9 foto produk.');
+            }
+            if ($videos->count() > 1) {
+                $v->errors()->add('media', 'Maksimal 1 video produk.');
+            }
 
             foreach ((array) $this->input('variants', []) as $i => $variant) {
                 $min = $variant['min_stock'] ?? null;
@@ -129,6 +174,9 @@ class CreateProductRequest extends FormRequest
             'inventory_account_id.exists' => 'Akun Persediaan harus akun bertipe aset (asset).',
             'cogs_account_id.exists' => 'Akun HPP harus akun bertipe beban (expense).',
             'indent_days.required_if' => 'Lama indent wajib diisi untuk produk Pre-Order.',
+            'media.required' => 'Minimal 1 foto produk wajib diunggah.',
+            'media.min' => 'Minimal 1 foto produk wajib diunggah.',
+            'media.max' => 'Maksimal 9 foto dan 1 video produk (total 10 media).',
         ];
     }
 }

@@ -15,9 +15,19 @@ class ChannelListingValidator
 
     public function validate(Product $product, string $channelCode): array
     {
+
+        $issues = [];
+        if ($this->lacksVariationAttributes($product)) {
+            $issues[] = $this->issue(
+                'variation_attribute_missing',
+                null,
+                "Produk multi-varian tanpa atribut variasi — wajib diisi sebelum upload ke {$channelCode}."
+            );
+        }
+
         $channelId = DB::table('channels')->where('code', $channelCode)->value('id');
         if (! $channelId) {
-            return [$this->issue('category_unmapped', null, "Channel {$channelCode} belum tersedia.")];
+            return array_merge($issues, [$this->issue('category_unmapped', null, "Channel {$channelCode} belum tersedia.")]);
         }
 
         $channelCategory = DB::table('category_channel_mappings as m')
@@ -28,32 +38,31 @@ class ChannelListingValidator
             ->first();
 
         if (! $channelCategory) {
-            return [$this->issue(
+            return array_merge($issues, [$this->issue(
                 'category_unmapped',
                 null,
                 "Kategori produk belum dipetakan ke {$channelCode}."
-            )];
+            )]);
         }
 
         if ($channelCategory->deprecated_at !== null) {
-            return [$this->issue(
+            return array_merge($issues, [$this->issue(
                 'category_deprecated',
                 $channelCategory->name,
                 "Kategori {$channelCode} '{$channelCategory->name}' sudah tidak berlaku — petakan ulang."
-            )];
+            )]);
         }
 
         $required = DB::table('channel_attributes')
             ->where('channel_category_id', $channelCategory->id)
             ->where('is_required', true)
-            ->get(['id', 'external_id', 'name']);
+            ->get(['id', 'external_id', 'name', 'is_sale_prop']);
 
         if ($required->isEmpty()) {
-            return [];
+            return $issues;
         }
 
-        $productValues = $this->collectProductValues($product->id); 
-        $issues = [];
+        $productValues = $this->collectProductValues($product->id);
 
         foreach ($required as $ca) {
 
@@ -66,11 +75,18 @@ class ChannelListingValidator
                 ->value('attribute_id');
 
             if (! $internalAttrId) {
-                $issues[] = $this->issue(
-                    'attribute_unmapped',
-                    $ca->name,
-                    "Atribut wajib '{$ca->name}' belum dipetakan ke atribut internal."
-                );
+
+                $hasOptions = ! $ca->is_sale_prop && DB::table('channel_attribute_options')
+                    ->where('channel_attribute_id', $ca->id)
+                    ->exists();
+
+                if (! $hasOptions) {
+                    $issues[] = $this->issue(
+                        'attribute_unmapped',
+                        $ca->name,
+                        "Atribut wajib '{$ca->name}' belum dipetakan ke atribut internal."
+                    );
+                }
                 continue;
             }
 
@@ -108,6 +124,24 @@ class ChannelListingValidator
         }
 
         return $issues;
+    }
+
+    public function lacksVariationAttributes(Product $product): bool
+    {
+        $variantCount = DB::table('product_variants')
+            ->where('product_id', $product->id)
+            ->count();
+
+        if ($variantCount <= 1) {
+            return false;
+        }
+
+        $hasAnyOptions = DB::table('variant_options as vo')
+            ->join('product_variants as pv', 'pv.id', '=', 'vo.variant_id')
+            ->where('pv.product_id', $product->id)
+            ->exists();
+
+        return ! $hasAnyOptions;
     }
 
     private function collectProductValues(string $productId): array

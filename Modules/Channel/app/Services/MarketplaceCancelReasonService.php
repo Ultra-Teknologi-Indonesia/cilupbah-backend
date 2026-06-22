@@ -10,6 +10,8 @@ class MarketplaceCancelReasonService
 
     public const SUPPORTED = [self::TIKTOK, self::LAZADA, self::SHOPEE];
 
+    public const LIVE_CAPABLE = [self::TIKTOK, self::LAZADA];
+
     private const CATALOG = [
         self::TIKTOK => [
             ['key' => 'seller_cancel_reason_out_of_stock', 'label' => 'Stok habis'],
@@ -55,5 +57,35 @@ class MarketplaceCancelReasonService
     public function isValidReason(string $marketplace, string $key): bool
     {
         return in_array($key, $this->keys($marketplace), true);
+    }
+
+    public function isLiveCapable(string $marketplace): bool
+    {
+        return in_array(strtolower($marketplace), self::LIVE_CAPABLE, true);
+    }
+
+    public function normalize(array $raw): array
+    {
+        $out = [];
+
+        foreach ($raw as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $key = $item['key'] ?? $item['reason_key'] ?? $item['reason_id'] ?? $item['code'] ?? $item['id'] ?? null;
+            $label = $item['label'] ?? $item['name'] ?? $item['reason_name'] ?? $item['text'] ?? $item['reason'] ?? $item['message'] ?? null;
+
+            if ($key === null && $label === null) {
+                continue;
+            }
+
+            $out[] = [
+                'key'   => (string) ($key ?? $label),
+                'label' => (string) ($label ?? $key),
+            ];
+        }
+
+        return $out;
     }
 }

@@ -47,7 +47,7 @@ class UpdateProductRequest extends FormRequest
             'inventory_account_id' => ['sometimes', 'nullable', 'uuid', Rule::exists('accounts', 'id')->where('account_type', 'asset')],
             'cogs_account_id' => ['sometimes', 'nullable', 'uuid', Rule::exists('accounts', 'id')->where('account_type', 'expense')],
 
-            'media' => 'sometimes|array',
+            'media' => 'sometimes|array|min:1|max:10',
             'media.*.media_uuid' => 'required_without:media.*.url|bail|uuid|exists:media,uuid',
             'media.*.url' => 'required_without:media.*.media_uuid|string',
             'media.*.media_type' => 'nullable|in:image,video',
@@ -77,6 +77,10 @@ class UpdateProductRequest extends FormRequest
             'variants.*.min_stock' => 'sometimes|nullable|integer|min:0',
             'variants.*.safe_stock' => 'sometimes|nullable|integer|min:0',
             'variants.*.is_active' => 'sometimes|boolean',
+            'variants.*.weight' => 'sometimes|nullable|numeric|min:0',
+            'variants.*.length' => 'sometimes|nullable|numeric|min:0',
+            'variants.*.width' => 'sometimes|nullable|numeric|min:0',
+            'variants.*.height' => 'sometimes|nullable|numeric|min:0',
             'variants.*.unlimited_shop_ids' => 'sometimes|nullable|array',
             'variants.*.unlimited_shop_ids.*' => 'uuid|distinct|exists:channel_shops,id',
             'variants.*.channel_prices' => 'sometimes|nullable|array',
@@ -90,5 +94,40 @@ class UpdateProductRequest extends FormRequest
             'variants.*.media.*.is_primary' => 'nullable|boolean',
             'variants.*.media.*.sort_order' => 'nullable|integer',
         ];
+    }
+
+    public function withValidator(\Illuminate\Contracts\Validation\Validator $validator): void
+    {
+        $validator->after(function ($v) {
+
+            if ($this->has('category_id') && $v->errors()->has('category_id') === false) {
+                $categoryId = $this->input('category_id');
+                if ($categoryId !== null) {
+                    $repo = app(\Modules\Product\Repositories\CategoryAttributeRepository::class);
+                    if (! $repo->isLeaf((int) $categoryId)) {
+                        $v->errors()->add(
+                            'category_id',
+                            'Pilih kategori paling spesifik: Kategori → Sub-Kategori → Jenis Produk wajib dipilih.'
+                        );
+                    }
+                }
+            }
+
+            if ($this->has('media')) {
+                $media = collect((array) $this->input('media', []))->filter(fn ($m) => is_array($m));
+                $images = $media->filter(fn ($m) => ($m['media_type'] ?? 'image') !== 'video');
+                $videos = $media->filter(fn ($m) => ($m['media_type'] ?? 'image') === 'video');
+
+                if ($images->isEmpty()) {
+                    $v->errors()->add('media', 'Minimal 1 foto produk wajib diunggah.');
+                }
+                if ($images->count() > 9) {
+                    $v->errors()->add('media', 'Maksimal 9 foto produk.');
+                }
+                if ($videos->count() > 1) {
+                    $v->errors()->add('media', 'Maksimal 1 video produk.');
+                }
+            }
+        });
     }
 }

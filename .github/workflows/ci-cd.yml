@@ -71,8 +71,7 @@ jobs:
               docker rm -f \
                 cilupbah-staging \
                 cilupbah-staging-horizon \
-                cilupbah-staging-redis \
-                cilupbah-staging-db 2>/dev/null || true
+                cilupbah-staging-redis 2>/dev/null || true
               docker network rm cilupbah_default 2>/dev/null || true
             }
 
@@ -113,9 +112,10 @@ jobs:
               || { echo "❌ Container not running after deploy!"; exit 1; }
 
             # ── Run Migrations (single source of truth) ─────────────
-            # Incremental only — the staging DB volume is persistent and is
-            # never wiped/freshed. A migration failure trips the ERR trap and
-            # rolls the deploy back.
+            # Incremental only — PostgreSQL runs natively on the host (outside
+            # Docker), so its data persists across deploys and is never
+            # wiped/freshed. A migration failure trips the ERR trap and rolls
+            # the deploy back.
             echo "Running database migrations..."
             docker exec cilupbah-staging php artisan migrate --force || { echo "❌ Migration failed!"; exit 1; }
 

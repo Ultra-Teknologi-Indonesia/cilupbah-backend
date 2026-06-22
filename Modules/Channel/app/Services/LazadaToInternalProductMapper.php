@@ -17,7 +17,8 @@ class LazadaToInternalProductMapper
             'condition' => 'NEW',
             'is_draft' => strtolower((string) ($lazadaProduct['status'] ?? '')) !== 'active',
             'is_active' => true,
-            'status' => 'download',
+            'status' => 'master',
+            'verified_at' => now(),
         ];
 
         $internal['media'] = [];
@@ -41,13 +42,20 @@ class LazadaToInternalProductMapper
 
             $price = (float) ($skuData['special_price'] ?? 0) ?: (float) ($skuData['price'] ?? 0);
 
-            $internal['variants'][] = [
+            $variant = [
                 'sku' => $sku,
                 'sell_price' => $price,
                 'buy_price' => $price,
                 'weight' => (float) ($skuData['package_weight'] ?? 0),
                 'is_active' => strtolower((string) ($skuData['Status'] ?? 'active')) === 'active',
             ];
+
+            $variant['media'] = $this->variantMedia($skuData['Images'] ?? []);
+            if (empty($variant['media'])) {
+                unset($variant['media']);
+            }
+
+            $internal['variants'][] = $variant;
         }
 
         if (empty($internal['variants'])) {
@@ -61,6 +69,24 @@ class LazadaToInternalProductMapper
         $internal['sku'] = $internal['variants'][0]['sku'] ?? null;
 
         return $internal;
+    }
+
+    protected function variantMedia(array $images): array
+    {
+        $media = [];
+        foreach (array_values($images) as $idx => $url) {
+            if (! $url) {
+                continue;
+            }
+            $media[] = [
+                'media_type' => 'image',
+                'url' => $url,
+                'is_primary' => $idx === 0,
+                'sort_order' => $idx,
+            ];
+        }
+
+        return $media;
     }
 
     protected function resolveCategoryId(string $shopId, $lazadaCategoryId)
@@ -92,12 +118,28 @@ class LazadaToInternalProductMapper
             return $fallback();
         }
 
-        $categoryId = DB::table('category_channel_mappings')
+        $mappings = DB::table('category_channel_mappings')
             ->join('channel_categories', 'channel_categories.id', '=', 'category_channel_mappings.channel_category_id')
+            ->join('categories', 'categories.id', '=', 'category_channel_mappings.category_id')
             ->where('channel_categories.channel_id', $channelId)
             ->where('channel_categories.external_id', (string) $lazadaCategoryId)
-            ->value('category_channel_mappings.category_id');
+            ->select('category_channel_mappings.category_id', 'categories.is_leaf')
+            ->get();
 
-        return $categoryId ?: $fallback();
+        if ($mappings->isEmpty()) {
+            return $fallback();
+        }
+
+        $leaves = $mappings->where('is_leaf', true);
+
+        if ($leaves->count() === 1) {
+            return (int) $leaves->first()->category_id;
+        }
+
+        if ($leaves->count() > 1) {
+            return $fallback();
+        }
+
+        return (int) $mappings->first()->category_id;
     }
 }
