@@ -16,5 +16,6 @@
     "AI": true,
     "Tax": true,
     "Purchase": true,
-    "Sales": true
+    "Sales": true,
+    "IssueTracker": true
 }

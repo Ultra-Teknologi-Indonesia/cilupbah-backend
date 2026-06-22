@@ -1,0 +1,11 @@
+{
+    "name": "IssueTracker",
+    "alias": "issue-tracker",
+    "description": "Client-facing issue tracker for reporting bugs and feature requests",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\IssueTracker\\Providers\\IssueTrackerServiceProvider"
+    ],
+    "files": []
+}

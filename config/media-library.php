@@ -140,7 +140,7 @@ return [
         'generate_responsive_images' => GenerateResponsiveImagesJob::class,
     ],
 
-    'media_downloader' => DefaultDownloader::class,
+    'media_downloader' => \App\Services\MediaDownloader::class,
 
     'media_downloader_ssl' => env('MEDIA_DOWNLOADER_SSL', true),
 

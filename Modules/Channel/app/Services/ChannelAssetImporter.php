@@ -3,6 +3,7 @@
 namespace Modules\Channel\Services;
 
 use App\Services\UploadService;
+use Illuminate\Support\Facades\Log;
 
 class ChannelAssetImporter
 {
@@ -41,6 +42,12 @@ class ChannelAssetImporter
                 $this->cache[$url] = $media
                     ? ['url' => $media->getUrl(), 'media_uuid' => $media->uuid]
                     : null;
+
+                if (! $media) {
+                    Log::warning('ChannelAssetImporter: gagal upload ke S3, fallback ke URL asli', [
+                        'url' => $url,
+                    ]);
+                }
             }
 
             $resolved = $this->cache[$url];

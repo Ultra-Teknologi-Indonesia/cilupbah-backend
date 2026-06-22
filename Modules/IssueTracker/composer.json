@@ -1,0 +1,18 @@
+{
+    "name": "nwidart/issue-tracker",
+    "description": "Client-facing issue tracker module",
+    "authors": [],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {}
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\IssueTracker\\": "app/",
+            "Modules\\IssueTracker\\Database\\Factories\\": "database/factories/",
+            "Modules\\IssueTracker\\Database\\Seeders\\": "database/seeders/"
+        }
+    }
+}

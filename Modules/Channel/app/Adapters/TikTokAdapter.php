@@ -111,12 +111,32 @@ class TikTokAdapter implements MarketplaceAdapterInterface
 
     public function updateProduct(Product $product, ChannelShop $shop, string $externalProductId): array
     {
+        $images = $product->media->where('media_type', 'image');
+
+        $productImageUrls = $images->whereNull('variant_id')->sortBy('sort_order')->pluck('url')->values()->all();
+        if (empty($productImageUrls)) {
+            $productImageUrls = $images->sortBy('sort_order')->pluck('url')->values()->all();
+        }
+        $imageUris = empty($productImageUrls) ? [] : $this->imageUploader->uploadFromUrls($productImageUrls, $shop->access_token);
+
+        $variantUriById = [];
+        foreach ($images->whereNotNull('variant_id')->sortBy('sort_order')->groupBy('variant_id') as $variantId => $group) {
+            $url = $group->first()->url ?? null;
+            if (! $url) {
+                continue;
+            }
+            $uri = $this->imageUploader->uploadFromUrls([$url], $shop->access_token)[0] ?? null;
+            if ($uri) {
+                $variantUriById[$variantId] = $uri;
+            }
+        }
+
         $internalProductArray = $product->toArray();
-        $internalProductArray['variants'] = $this->buildUpdateVariants($product, $shop, $externalProductId);
+        $internalProductArray['variants'] = $this->buildUpdateVariants($product, $shop, $externalProductId, $variantUriById);
 
         $config = $this->productService->buildUploadConfig($product, $shop);
         $config['mode'] = 'update';
-        $payload = $this->outboundMapper->map($internalProductArray, [], $config);
+        $payload = $this->outboundMapper->map($internalProductArray, $imageUris, $config);
         $payload['product_id'] = $externalProductId;
 
         try {
@@ -137,7 +157,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         }
     }
 
-    protected function buildUpdateVariants(Product $product, ChannelShop $shop, string $externalProductId): array
+    protected function buildUpdateVariants(Product $product, ChannelShop $shop, string $externalProductId, array $variantUriById = []): array
     {
 
         $stored = [];
@@ -182,6 +202,10 @@ class TikTokAdapter implements MarketplaceAdapterInterface
             $meta = $stored[$variant->sku] ?? [];
 
             $row['stock'] = $stockByVariant[$variant->id] ?? 0;
+
+            if (!empty($variantUriById[$variant->id])) {
+                $row['image_uri'] = $variantUriById[$variant->id];
+            }
 
             if (!empty($meta['external_sku_id'])) {
                 $row['external_sku_id'] = $meta['external_sku_id'];
