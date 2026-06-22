@@ -4,6 +4,7 @@ namespace Modules\Warehouse\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Modules\Warehouse\Services\LocationBinService;
 use Modules\Warehouse\Http\Requests\GenerateLocationBinRequest;
 use Modules\Warehouse\Http\Requests\StoreLocationBinRequest;
@@ -188,5 +189,24 @@ class LocationBinController extends Controller
         }
 
         return $this->successResponse($result, 'Bin berhasil di-generate', 201);
+    }
+
+    public function bulkUpdate(Request $request, string $locationId): JsonResponse
+    {
+        $validated = $request->validate([
+            'bins' => 'required|array|min:1',
+            'bins.*.id' => 'required|uuid',
+            'bins.*.max_qty' => 'required|integer|min:0',
+            'bins.*.is_stock_acknowledged' => 'required|boolean',
+            'bins.*.is_large_bin' => 'required|boolean',
+            'bins.*.category' => 'nullable|string|max:255',
+        ]);
+
+        try {
+            $updated = $this->binService->bulkUpdate($locationId, $validated['bins']);
+            return $this->successResponse(['updated' => $updated], 'Rak berhasil diperbarui.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
     }
 }

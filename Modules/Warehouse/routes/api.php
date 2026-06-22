@@ -23,6 +23,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('locations/{locationId}/bins', [LocationBinController::class, 'index'])->whereUuid('locationId')->name('warehouse.bins.index');
     Route::post('locations/{locationId}/bins/preview', [LocationBinController::class, 'preview'])->whereUuid('locationId')->name('warehouse.bins.preview');
     Route::post('locations/{locationId}/bins/generate', [LocationBinController::class, 'generate'])->whereUuid('locationId')->name('warehouse.bins.generate');
+    Route::put('locations/{locationId}/bins/bulk', [LocationBinController::class, 'bulkUpdate'])->whereUuid('locationId')->name('warehouse.bins.bulk-update');
     Route::get('locations/{locationId}/default-bin', [LocationBinController::class, 'defaultBin'])->whereUuid('locationId')->name('warehouse.bins.default');
 
     Route::post('bins', [LocationBinController::class, 'store'])->name('warehouse.bins.store');

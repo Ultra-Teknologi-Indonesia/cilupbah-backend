@@ -26,10 +26,15 @@ class LocationBin extends Model
         'bin_final_code',
         'max_qty',
         'is_inbound',
+        'is_stock_acknowledged',
+        'is_large_bin',
+        'category',
     ];
 
     protected $casts = [
         'is_inbound' => 'boolean',
+        'is_stock_acknowledged' => 'boolean',
+        'is_large_bin' => 'boolean',
     ];
 
     public function location(): BelongsTo
