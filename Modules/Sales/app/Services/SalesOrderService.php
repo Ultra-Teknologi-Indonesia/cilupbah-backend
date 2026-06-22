@@ -88,13 +88,38 @@ class SalesOrderService
         return $this->orderRepository->bulkDeleteCancelled($ids);
     }
 
+    public function moveToReadyToProcess(array $orderIds): int
+    {
+        return DB::transaction(function () use ($orderIds) {
+            $count = 0;
+            $orders = SalesOrder::with('items')
+                ->whereIn('id', $orderIds)
+                ->where('status', 'reserved')
+                ->where(function ($q) {
+                    $q->where('has_stock_issue', true)
+                      ->orWhere('pick_failed', true);
+                })
+                ->get();
+
+            foreach ($orders as $order) {
+                $order->update([
+                    'has_stock_issue' => false,
+                    'pick_failed'     => false,
+                ]);
+                $count++;
+            }
+
+            return $count;
+        });
+    }
+
     public function markAsComplete(array $orderIds): int
     {
         return DB::transaction(function () use ($orderIds) {
             $count = 0;
             $orders = SalesOrder::with('items')
                 ->whereIn('id', $orderIds)
-                ->where('status', 'packed')
+                ->whereIn('status', ['packed', 'reserved'])
                 ->get();
 
             foreach ($orders as $order) {

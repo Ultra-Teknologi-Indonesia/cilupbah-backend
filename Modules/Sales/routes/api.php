@@ -75,6 +75,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('sales/orders/failed', [SalesOrderController::class, 'failed'])->name('sales.orders.failed');
     Route::get('sales/orders/returned-list', [SalesOrderController::class, 'returnedList'])->name('sales.orders.returned-list');
     Route::post('sales/orders/delete-canceled', [SalesOrderController::class, 'deleteCanceled'])->name('sales.orders.delete-canceled');
+    Route::post('sales/orders/move-to-ready', [SalesOrderController::class, 'moveToReadyToProcess'])->name('sales.orders.move-to-ready');
     Route::post('sales/orders/mark-as-complete', [SalesOrderController::class, 'markAsComplete'])->name('sales.orders.mark-as-complete');
     Route::post('sales/orders/save-airwaybill', [SalesOrderController::class, 'saveAirwaybill'])->name('sales.orders.save-airwaybill');
     Route::post('sales/orders/save-received-date', [SalesOrderController::class, 'saveReceivedDate'])->name('sales.orders.save-received-date');

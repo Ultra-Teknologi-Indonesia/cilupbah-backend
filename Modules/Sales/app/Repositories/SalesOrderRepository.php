@@ -27,7 +27,6 @@ class SalesOrderRepository
                 AllowedFilter::exact('source'),
                 AllowedFilter::exact('channel_shop_id'),
                 AllowedFilter::exact('location_id'),
-                AllowedFilter::custom('search', new FuzzyFilter('salesorder_no,customer_name')),
             )
             ->allowedSorts(...self::ORDER_SORTS)
             ->defaultSort('-created_at');
@@ -60,11 +59,17 @@ class SalesOrderRepository
 
         if ($q = request('q')) {
             if (request('search_by', 'order') === 'sku') {
+                // SKU mode is a structured filter on the related sales_order_items table —
+                // outside the allowedSearch FTS macro's scope (own-table columns only).
                 $query->whereHas('items', fn ($sub) => $sub->where('sku', 'like', "%{$q}%")
                     ->orWhere('description', 'like', "%{$q}%"));
             } else {
-                $query->where(fn ($sub) => $sub->where('salesorder_no', 'like', "%{$q}%")
-                    ->orWhere('customer_name', 'like', "%{$q}%"));
+                // Free-text order/customer search via the global FTS macro (standard #4).
+                // The macro reads request()->query('search'); the Pesanan FE sends ?q=,
+                // so write straight into the query bag (merge() would land in the wrong
+                // input source for JSON requests).
+                request()->query->set('search', $q);
+                $query->allowedSearch('salesorder_no', 'customer_name');
             }
         }
 

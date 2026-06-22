@@ -295,8 +295,9 @@ class GagalDownloadFlowTest extends TestCase
         $user = User::factory()->create();
         $this->seedVariant('SKU-IDX-A');
         $this->seedVariant('SKU-IDX-B');
-        $this->service->upsertFromChannel($this->channelOrderData('IDX-A', 'SKU-IDX-A'));
+        $idA = $this->service->upsertFromChannel($this->channelOrderData('IDX-A', 'SKU-IDX-A'));
         $this->service->upsertFromChannel($this->channelOrderData('IDX-B', 'SKU-IDX-B'));
+        DB::table('sales_orders')->where('id', $idA)->update(['customer_name' => 'Zulkarnain']);
 
         // sort_by/sort_dir must still drive ordering (translated to Spatie sort).
         $sorted = $this->actingAs($user, 'sanctum')
@@ -305,10 +306,26 @@ class GagalDownloadFlowTest extends TestCase
         $nos = array_column($sorted->json('data'), 'salesorder_no');
         $this->assertSame($nos, collect($nos)->sort()->values()->all(), 'urutan harus naik by salesorder_no');
 
-        // q search by order number.
-        $search = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?q=IDX-A');
+        // Free-text search (q -> ?search= -> allowedSearch FTS macro) on customer name.
+        $search = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?q=Zulkarnain');
         $search->assertStatus(200);
         $this->assertCount(1, $search->json('data'));
         $this->assertSame('IDX-A', $search->json('data.0.salesorder_no'));
+    }
+
+    public function test_index_sku_search_filters_by_item_sku(): void
+    {
+        $user = User::factory()->create();
+        $this->seedVariant('KAOS-MERAH');
+        $this->seedVariant('CELANA-BIRU');
+        $this->service->upsertFromChannel($this->channelOrderData('SKU-1', 'KAOS-MERAH'));
+        $this->service->upsertFromChannel($this->channelOrderData('SKU-2', 'CELANA-BIRU'));
+
+        $res = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/sales?search_by=sku&q=KAOS-MERAH');
+
+        $res->assertStatus(200);
+        $this->assertCount(1, $res->json('data'));
+        $this->assertSame('SKU-1', $res->json('data.0.salesorder_no'));
     }
 }

@@ -389,6 +389,31 @@ class SalesOrderController extends Controller
     }
 
     #[OA\Post(
+        path: '/api/v1/sales/orders/move-to-ready',
+        summary: 'Move orders back to ready-to-process (from empty-stock or failed-pick)',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['order_ids'],
+            properties: [
+                new OA\Property(property: 'order_ids', type: 'array', items: new OA\Items(type: 'string')),
+            ]
+        )),
+        responses: [new OA\Response(response: 200, description: 'Orders moved to ready-to-process')]
+    )]
+    public function moveToReadyToProcess(Request $request)
+    {
+        $validated = $request->validate([
+            'order_ids'   => 'required|array|min:1',
+            'order_ids.*' => 'required|bail|uuid|exists:sales_orders,id',
+        ]);
+
+        $count = $this->orderService->moveToReadyToProcess($validated['order_ids']);
+
+        return $this->successResponse(['moved' => $count], "{$count} order berhasil dipindahkan ke siap proses");
+    }
+
+    #[OA\Post(
         path: '/api/v1/sales/orders/mark-as-complete',
         summary: 'Mark orders as complete (shipped)',
         security: [['bearerAuth' => []]],
