@@ -35,6 +35,22 @@ services:
       - redis
     restart: unless-stopped
 
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: staging-superapp-prod
+    container_name: cilupbah-staging-scheduler
+    entrypoint: ["php", "artisan", "schedule:work"]
+    volumes:
+      - /var/www/cilupbah:/var/www/html
+    environment:
+      - APP_ENV=staging
+      - APP_DEBUG=false
+    depends_on:
+      - redis
+    restart: unless-stopped
+
   redis:
     container_name: cilupbah-staging-redis
     image: redis:7-alpine
