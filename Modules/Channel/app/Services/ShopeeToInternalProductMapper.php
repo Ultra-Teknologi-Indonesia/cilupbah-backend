@@ -39,6 +39,19 @@ class ShopeeToInternalProductMapper
             ];
         }
 
+        foreach ($shopeeItem['video_info'] ?? [] as $video) {
+            $videoUrl = $video['video_url'] ?? null;
+            if (! $videoUrl) {
+                continue;
+            }
+            $internal['media'][] = [
+                'media_type' => 'video',
+                'url' => $videoUrl,
+                'is_primary' => false,
+                'sort_order' => count($internal['media']),
+            ];
+        }
+
         $tierVariation = $shopeeItem['tier_variation'] ?? [];
         $internal['variation_types'] = $this->mapVariationTypes($tierVariation);
         $internal['variants'] = $this->mapVariants($shopeeItem, $tierVariation);

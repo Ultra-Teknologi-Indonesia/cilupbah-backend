@@ -158,7 +158,10 @@ class ProductService
             );
         }
 
-        $product->delete();
+        DB::transaction(function () use ($product) {
+            $product->variants()->delete();
+            $product->delete();
+        });
     }
 
     public function bulkDelete(array $ids): array
