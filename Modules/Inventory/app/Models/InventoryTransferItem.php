@@ -16,11 +16,18 @@ class InventoryTransferItem extends Model
         'item_id',
         'qty',
         'received_qty',
+        'rejected_qty',
+        'condition',
+        'item_notes',
         'source_bin_id',
         'destination_bin_id',
         'batch_no',
         'serial_no',
     ];
+
+    const CONDITION_GOOD     = 'GOOD';
+    const CONDITION_DAMAGED  = 'DAMAGED';
+    const CONDITION_REJECTED = 'REJECTED';
 
     public function transfer(): BelongsTo
     {

@@ -149,10 +149,9 @@ class InventoryService
                 'transfer_number'          => $transferNumber,
                 'source_location_id'       => $data['source_location_id'],
                 'destination_location_id'  => $data['destination_location_id'],
-                'status'                   => InventoryTransfer::STATUS_IN_TRANSIT,
+                'status'                   => InventoryTransfer::STATUS_DRAFT,
                 'notes'                    => $data['notes'] ?? null,
                 'created_by'               => $data['created_by'],
-                'shipped_at'               => now(),
             ]);
 
             foreach ($data['items'] as $itemData) {
@@ -174,12 +173,13 @@ class InventoryService
                     $itemData['serial_no'] ?? ''
                 );
 
-                if (! $sourceInventory || $sourceInventory->on_hand < $itemData['qty']) {
-                    $current = $sourceInventory ? $sourceInventory->on_hand : 0;
+                if (! $sourceInventory || $sourceInventory->available < $itemData['qty']) {
+                    $current = $sourceInventory ? $sourceInventory->available : 0;
                     throw new \Exception("Stok tidak mencukupi di lokasi asal (tersedia: {$current}, diminta: {$itemData['qty']}).");
                 }
 
-                $sourceInventory->on_hand -= $itemData['qty'];
+                $sourceInventory->reserved += $itemData['qty'];
+                $sourceInventory->available -= $itemData['qty'];
                 $this->inventoryRepository->updateStock($sourceInventory);
 
                 $this->movementRepository->create([
@@ -222,6 +222,122 @@ class InventoryService
         });
     }
 
+    public function approveTransfer(string $transferId, array $data): InventoryTransfer
+    {
+        return DB::transaction(function () use ($transferId, $data) {
+            $transfer = $this->transferRepository->findByIdForUpdate($transferId);
+
+            if (! $transfer) {
+                throw new \Exception('Transfer tidak ditemukan.');
+            }
+
+            if ($transfer->status !== InventoryTransfer::STATUS_DRAFT) {
+                throw new \Exception("Transfer berstatus {$transfer->status}, tidak bisa di-approve.");
+            }
+
+            $transfer->update([
+                'status'      => InventoryTransfer::STATUS_APPROVED,
+                'approved_by' => $data['approved_by'],
+                'assigned_to' => $data['assigned_to'],
+                'approved_at' => now(),
+            ]);
+
+            return $this->transferRepository->findById($transferId);
+        });
+    }
+
+    public function cancelTransfer(string $transferId, array $data): InventoryTransfer
+    {
+        return DB::transaction(function () use ($transferId, $data) {
+            $transfer = $this->transferRepository->findByIdForUpdate($transferId);
+
+            if (! $transfer) {
+                throw new \Exception('Transfer tidak ditemukan.');
+            }
+
+            if (! in_array($transfer->status, [InventoryTransfer::STATUS_DRAFT, InventoryTransfer::STATUS_APPROVED])) {
+                throw new \Exception("Transfer berstatus {$transfer->status}, tidak bisa dibatalkan.");
+            }
+
+            foreach ($transfer->items as $item) {
+                $sourceInventory = $this->inventoryRepository->findExactForUpdate(
+                    $item->item_id,
+                    $transfer->source_location_id,
+                    $item->source_bin_id,
+                    $item->batch_no,
+                    $item->serial_no,
+                );
+
+                if ($sourceInventory) {
+                    $sourceInventory->reserved -= $item->qty;
+                    $sourceInventory->available += $item->qty;
+                    $this->inventoryRepository->updateStock($sourceInventory);
+                }
+            }
+
+            $transfer->update([
+                'status'        => InventoryTransfer::STATUS_CANCELLED,
+                'cancelled_by'  => $data['cancelled_by'],
+                'cancel_reason' => $data['cancel_reason'] ?? null,
+                'cancelled_at'  => now(),
+            ]);
+
+            return $this->transferRepository->findById($transferId);
+        });
+    }
+
+    public function shipTransfer(string $transferId, array $data): InventoryTransfer
+    {
+        return DB::transaction(function () use ($transferId, $data) {
+            $transfer = $this->transferRepository->findByIdForUpdate($transferId);
+
+            if (! $transfer) {
+                throw new \Exception('Transfer tidak ditemukan.');
+            }
+
+            if ($transfer->status !== InventoryTransfer::STATUS_APPROVED) {
+                throw new \Exception("Transfer berstatus {$transfer->status}, tidak bisa dikirim.");
+            }
+
+            foreach ($transfer->items as $item) {
+                $sourceInventory = $this->inventoryRepository->findExactForUpdate(
+                    $item->item_id,
+                    $transfer->source_location_id,
+                    $item->source_bin_id,
+                    $item->batch_no,
+                    $item->serial_no,
+                );
+
+                if (! $sourceInventory) {
+                    throw new \Exception("Stok tidak ditemukan untuk item {$item->item_id}.");
+                }
+
+                $sourceInventory->reserved -= $item->qty;
+                $sourceInventory->on_hand -= $item->qty;
+                $this->inventoryRepository->updateStock($sourceInventory);
+
+                $this->movementRepository->create([
+                    'item_id'            => $item->item_id,
+                    'location_id'        => $transfer->source_location_id,
+                    'bin_id'             => $item->source_bin_id,
+                    'transaction_number' => $transfer->transfer_number,
+                    'source'             => 'TRANSFER_OUT',
+                    'qty'                => -$item->qty,
+                    'balance'            => $sourceInventory->on_hand,
+                    'transaction_date'   => now(),
+                    'created_by'         => $data['shipped_by'] ?? $transfer->assigned_to,
+                ]);
+            }
+
+            $transfer->update([
+                'status'     => InventoryTransfer::STATUS_IN_TRANSIT,
+                'shipped_at' => now(),
+            ]);
+
+            return $this->transferRepository->findById($transferId);
+        });
+    }
+
     public function transferIn(string $transferId, array $data): InventoryTransfer
     {
         return DB::transaction(function () use ($transferId, $data) {
@@ -235,10 +351,19 @@ class InventoryService
                 throw new \Exception("Transfer berstatus {$transfer->status}, tidak bisa di-receive.");
             }
 
+            $receivedItems = collect($data['items'] ?? []);
             [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
 
             foreach ($transfer->items as $item) {
-                $qty = $item->qty;
+                $receivedData = $receivedItems->firstWhere('item_id', $item->item_id);
+                $receivedQty  = $receivedData['received_qty'] ?? $item->qty;
+                $rejectedQty  = $receivedData['rejected_qty'] ?? 0;
+                $condition    = $receivedData['condition'] ?? 'GOOD';
+                $itemNotes    = $receivedData['notes'] ?? null;
+
+                if ($receivedQty > $item->qty) {
+                    throw new \Exception("Qty diterima ({$receivedQty}) melebihi qty kirim ({$item->qty}).");
+                }
 
                 $transitInventory = $this->inventoryRepository->findExactForUpdate(
                     $item->item_id,
@@ -248,50 +373,55 @@ class InventoryService
                     $item->serial_no,
                 );
 
-                if (! $transitInventory || $transitInventory->on_hand < $qty) {
-                    $current = $transitInventory ? $transitInventory->on_hand : 0;
-                    throw new \Exception("Stok di lokasi transit tidak mencukupi (tersedia: {$current}, diminta: {$qty}).");
+                if ($transitInventory) {
+                    $deductQty = min($receivedQty, $transitInventory->on_hand);
+                    $transitInventory->on_hand -= $deductQty;
+                    $this->inventoryRepository->updateStock($transitInventory);
+
+                    $this->movementRepository->create([
+                        'item_id'            => $item->item_id,
+                        'location_id'        => $transitLocationId,
+                        'bin_id'             => $transitBinId,
+                        'transaction_number' => $transfer->transfer_number,
+                        'source'             => 'TRANSIT_OUT',
+                        'qty'                => -$deductQty,
+                        'balance'            => $transitInventory->on_hand,
+                        'transaction_date'   => now(),
+                        'created_by'         => $data['received_by'],
+                    ]);
                 }
 
-                $transitInventory->on_hand -= $qty;
-                $this->inventoryRepository->updateStock($transitInventory);
-
-                $this->movementRepository->create([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $transitLocationId,
-                    'bin_id'             => $transitBinId,
-                    'transaction_number' => $transfer->transfer_number,
-                    'source'             => 'TRANSIT_OUT',
-                    'qty'                => -$qty,
-                    'balance'            => $transitInventory->on_hand,
-                    'transaction_date'   => now(),
-                    'created_by'         => $data['received_by'],
+                $item->update([
+                    'received_qty' => $receivedQty,
+                    'rejected_qty' => $rejectedQty,
+                    'condition'    => $condition,
+                    'item_notes'   => $itemNotes,
                 ]);
 
-                $destInventory = $this->inventoryRepository->findOrCreateForUpdate(
-                    $item->item_id,
-                    $transfer->destination_location_id,
-                    $item->destination_bin_id,
-                    $item->batch_no,
-                    $item->serial_no,
-                );
+                if ($receivedQty > 0) {
+                    $destInventory = $this->inventoryRepository->findOrCreateForUpdate(
+                        $item->item_id,
+                        $transfer->destination_location_id,
+                        $item->destination_bin_id,
+                        $item->batch_no,
+                        $item->serial_no,
+                    );
 
-                $destInventory->on_hand += $qty;
-                $this->inventoryRepository->updateStock($destInventory);
+                    $destInventory->on_hand += $receivedQty;
+                    $this->inventoryRepository->updateStock($destInventory);
 
-                $this->movementRepository->create([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $transfer->destination_location_id,
-                    'bin_id'             => $item->destination_bin_id,
-                    'transaction_number' => $transfer->transfer_number,
-                    'source'             => 'TRANSFER_IN',
-                    'qty'                => $qty,
-                    'balance'            => $destInventory->on_hand,
-                    'transaction_date'   => now(),
-                    'created_by'         => $data['received_by'],
-                ]);
-
-                $this->transferRepository->updateItemReceivedQty($item->id, $qty);
+                    $this->movementRepository->create([
+                        'item_id'            => $item->item_id,
+                        'location_id'        => $transfer->destination_location_id,
+                        'bin_id'             => $item->destination_bin_id,
+                        'transaction_number' => $transfer->transfer_number,
+                        'source'             => 'TRANSFER_IN',
+                        'qty'                => $receivedQty,
+                        'balance'            => $destInventory->on_hand,
+                        'transaction_date'   => now(),
+                        'created_by'         => $data['received_by'],
+                    ]);
+                }
             }
 
             $receiveNumber = 'TRFI-' . now()->format('Ymd') . '-' . Str::upper(Str::random(4));
@@ -304,19 +434,23 @@ class InventoryService
             ]);
 
             $inboundService = app(InboundService::class);
-            $inboundItems = $transfer->items->map(fn ($item) => [
-                'item_id'      => $item->item_id,
-                'expected_qty' => $item->qty,
-            ])->toArray();
+            $inboundItems = $transfer->items
+                ->filter(fn ($item) => $item->received_qty > 0)
+                ->map(fn ($item) => [
+                    'item_id'      => $item->item_id,
+                    'expected_qty' => $item->received_qty,
+                ])->values()->toArray();
 
-            $inboundService->receiveFromTransfer([
-                'location_id'      => $transfer->destination_location_id,
-                'reference_number' => $receiveNumber,
-                'source_id'        => $transfer->id,
-                'expected_date'    => now()->toDateString(),
-                'created_by'       => $data['received_by'],
-                'items'            => $inboundItems,
-            ]);
+            if (! empty($inboundItems)) {
+                $inboundService->receiveFromTransfer([
+                    'location_id'      => $transfer->destination_location_id,
+                    'reference_number' => $receiveNumber,
+                    'source_id'        => $transfer->id,
+                    'expected_date'    => now()->toDateString(),
+                    'created_by'       => $data['received_by'],
+                    'items'            => $inboundItems,
+                ]);
+            }
 
             return $this->transferRepository->findById($transferId);
         });

@@ -226,7 +226,7 @@ class PicklistSeeder extends Seeder
                     };
                     $qtyPicked = min($qtyPicked, $qtyOrdered);
 
-                    $bin = $bins[($i + $orderItem->id) % count($bins)];
+                    $bin = $bins[($i + crc32($orderItem->id)) % count($bins)];
 
                     PicklistItem::firstOrCreate(
                         [
