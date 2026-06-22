@@ -102,4 +102,9 @@ class ProductVariant extends Model
     {
         return $this->hasMany(ProductBundle::class, 'bundle_variant_id');
     }
+
+    public function locationPrices(): HasMany
+    {
+        return $this->hasMany(\Modules\Inventory\Models\VariantLocationPrice::class, 'variant_id');
+    }
 }
