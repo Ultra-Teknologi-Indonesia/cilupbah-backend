@@ -265,4 +265,50 @@ class GagalDownloadFlowTest extends TestCase
         $item = DB::table('sales_order_items')->where('id', $itemId)->first();
         $this->assertNotNull($item->item_id);
     }
+
+    public function test_index_failed_tab_lists_unmapped_order_via_http(): void
+    {
+        $user = User::factory()->create();
+        $this->service->upsertFromChannel($this->channelOrderData('GD-IDX', 'SKU-ASING'));
+
+        $failed = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?tab=failed');
+        $failed->assertStatus(200);
+        $this->assertCount(1, $failed->json('data'));
+
+        $ready = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?tab=ready-to-process');
+        $ready->assertStatus(200);
+        $this->assertCount(0, $ready->json('data'));
+    }
+
+    public function test_index_defaults_to_ten_per_page(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales');
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('meta.per_page', 10);
+    }
+
+    public function test_index_supports_legacy_sort_and_search_params(): void
+    {
+        $user = User::factory()->create();
+        $this->seedVariant('SKU-IDX-A');
+        $this->seedVariant('SKU-IDX-B');
+        $this->service->upsertFromChannel($this->channelOrderData('IDX-A', 'SKU-IDX-A'));
+        $this->service->upsertFromChannel($this->channelOrderData('IDX-B', 'SKU-IDX-B'));
+
+        // sort_by/sort_dir must still drive ordering (translated to Spatie sort).
+        $sorted = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/sales?sort_by=salesorder_no&sort_dir=asc');
+        $sorted->assertStatus(200);
+        $nos = array_column($sorted->json('data'), 'salesorder_no');
+        $this->assertSame($nos, collect($nos)->sort()->values()->all(), 'urutan harus naik by salesorder_no');
+
+        // q search by order number.
+        $search = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?q=IDX-A');
+        $search->assertStatus(200);
+        $this->assertCount(1, $search->json('data'));
+        $this->assertSame('IDX-A', $search->json('data.0.salesorder_no'));
+    }
 }

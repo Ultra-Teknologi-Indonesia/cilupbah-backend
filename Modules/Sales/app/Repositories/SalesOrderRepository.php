@@ -11,10 +11,29 @@ use App\Filters\FuzzyFilter;
 
 class SalesOrderRepository
 {
+    private const ORDER_SORTS = ['created_at', 'transaction_date', 'grand_total', 'salesorder_no'];
+
     public function getPaginatedOrders()
     {
-        $query = SalesOrder::with(['items', 'location:id,location_name']);
+        // Translate the FE's sort_by/sort_dir into Spatie's `sort` param so sorting is
+        // driven by allowedSorts/defaultSort (keeps the existing FE contract working).
+        if ($legacySort = $this->mapLegacySort()) {
+            request()->merge(['sort' => $legacySort]);
+        }
 
+        $query = QueryBuilder::for(SalesOrder::class)
+            ->with(['items', 'location:id,location_name'])
+            ->allowedFilters(
+                AllowedFilter::exact('source'),
+                AllowedFilter::exact('channel_shop_id'),
+                AllowedFilter::exact('location_id'),
+                AllowedFilter::custom('search', new FuzzyFilter('salesorder_no,customer_name')),
+            )
+            ->allowedSorts(...self::ORDER_SORTS)
+            ->defaultSort('-created_at');
+
+        // Custom params kept for the Pesanan FE contract — not expressible as plain Spatie
+        // filters (derived tabs, dual-mode search, date range, content-type aggregates).
         $tab = request('tab');
         if ($tab && $tab !== 'all') {
             $query = $this->applyTabScope($query, $tab);
@@ -35,15 +54,12 @@ class SalesOrderRepository
         if ($dateTo = request('date_to')) {
             $query->whereDate('transaction_date', '<=', $dateTo);
         }
-
         if ($contentType = request('content_type')) {
             $query = $this->applyContentTypeFilter($query, $contentType);
         }
 
-        $q = request('q');
-        $searchBy = request('search_by', 'order');
-        if ($q) {
-            if ($searchBy === 'sku') {
+        if ($q = request('q')) {
+            if (request('search_by', 'order') === 'sku') {
                 $query->whereHas('items', fn ($sub) => $sub->where('sku', 'like', "%{$q}%")
                     ->orWhere('description', 'like', "%{$q}%"));
             } else {
@@ -52,18 +68,20 @@ class SalesOrderRepository
             }
         }
 
-        $sortBy = request('sort_by', 'created_at');
-        $sortDir = request('sort_dir', 'desc');
-        $allowed = ['created_at', 'transaction_date', 'grand_total', 'salesorder_no'];
-        if (in_array($sortBy, $allowed)) {
-            $query->orderBy($sortBy, $sortDir === 'asc' ? 'asc' : 'desc');
-        } else {
-            $query->orderBy('created_at', 'desc');
+        return $query
+            ->paginate(request('per_page', 10))
+            ->appends(request()->query());
+    }
+
+    protected function mapLegacySort(): ?string
+    {
+        $sortBy = request('sort_by');
+
+        if (! $sortBy || ! in_array($sortBy, self::ORDER_SORTS, true)) {
+            return null;
         }
 
-        return $query
-            ->paginate(request('per_page', 20))
-            ->appends(request()->query());
+        return (request('sort_dir', 'desc') === 'asc' ? '' : '-') . $sortBy;
     }
 
     public function getTabCounts(): array
@@ -341,6 +359,16 @@ class SalesOrderRepository
     protected function itemKey(?string $sku, mixed $price): string
     {
         return ($sku ?? '') . '|' . number_format((float) $price, 2, '.', '');
+    }
+
+    public function variantIdBySku(?string $sku): ?string
+    {
+        return $sku ? DB::table('product_variants')->where('sku', $sku)->value('id') : null;
+    }
+
+    public function variantExists(string $variantId): bool
+    {
+        return DB::table('product_variants')->where('id', $variantId)->exists();
     }
 
     protected function resolveVariantIdsBySku(array $items): array

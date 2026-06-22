@@ -564,8 +564,6 @@ class SalesOrderController extends Controller
 
         $order = $this->orderService->downloadOrderItem($order, $itemId, $validated['variant_id'] ?? null);
 
-        $order->load(['items', 'location:id,location_name']);
-
         return $this->successResponse(new SalesOrderResource($order), 'Produk berhasil di-download dan dipetakan');
     }
 }

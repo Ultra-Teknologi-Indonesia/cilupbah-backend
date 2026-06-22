@@ -367,7 +367,7 @@ class SalesOrderService
         $item = $order->items()->whereKey($orderItemId)->firstOrFail();
 
         if ($item->item_id) {
-            return $order->fresh('items');
+            return $this->freshOrderWithItems($order);
         }
 
         // Jubelio-style "Download": when the buyer's product isn't in master yet and no
@@ -388,15 +388,12 @@ class SalesOrderService
             }
 
             if ($variantId !== null) {
-                $exists = DB::table('product_variants')->where('id', $variantId)->exists();
-                if (! $exists) {
+                if (! $this->orderRepository->variantExists($variantId)) {
                     throw new ProductNotMappableException($item->sku);
                 }
                 $resolvedVariantId = $variantId;
             } else {
-                $resolvedVariantId = $item->sku
-                    ? DB::table('product_variants')->where('sku', $item->sku)->value('id')
-                    : null;
+                $resolvedVariantId = $this->orderRepository->variantIdBySku($item->sku);
             }
 
             if (! $resolvedVariantId) {
@@ -417,12 +414,17 @@ class SalesOrderService
             SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
         }
 
-        return $order->fresh('items');
+        return $this->freshOrderWithItems($order);
+    }
+
+    private function freshOrderWithItems(SalesOrder $order): SalesOrder
+    {
+        return $order->fresh(['items', 'location:id,location_name']);
     }
 
     private function skuExistsInMaster(?string $sku): bool
     {
-        return $sku ? DB::table('product_variants')->where('sku', $sku)->exists() : false;
+        return $this->orderRepository->variantIdBySku($sku) !== null;
     }
 
     /**
