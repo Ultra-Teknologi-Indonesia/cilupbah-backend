@@ -94,6 +94,13 @@ class SalesOrderResource extends JsonResource
             'buyer_message' => $this->buyer_message,
             'seller_note'   => $this->seller_note,
 
+            'location_id'   => $this->location_id,
+            'location_name' => $this->whenLoaded('location', fn () => $this->location?->location_name),
+            'total_qty'     => $this->whenLoaded('items', fn () => $this->items->sum('qty_in_base'), 0),
+            'total_sku'     => $this->whenLoaded('items', fn () => $this->items->count(), 0),
+            'cancel_requested_at'    => $this->cancel_requested_at,
+            'cancel_request_reason'  => $this->cancel_request_reason,
+
             'items' => SalesOrderItemResource::collection($this->whenLoaded('items')),
 
             'created_at' => $this->created_at,

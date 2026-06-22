@@ -99,13 +99,18 @@ class SalesOrderController extends Controller
     {
         if ($request->wantsJson() || $request->is('api/*')) {
             $orders = $this->orderService->getPaginatedOrders();
-            $orders->getCollection()->transform(function($order) {
+            $orders->getCollection()->transform(function ($order) {
                 return new SalesOrderResource($order);
             });
             return $this->successPaginatedResponse($orders);
         }
 
         return view('sales::index');
+    }
+
+    public function counts()
+    {
+        return $this->successResponse($this->orderService->getTabCounts());
     }
 
     public function create()

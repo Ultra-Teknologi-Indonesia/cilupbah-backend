@@ -38,6 +38,11 @@ class SalesOrderService
         return $this->orderRepository->getPaginatedOrders();
     }
 
+    public function getTabCounts(): array
+    {
+        return $this->orderRepository->getTabCounts();
+    }
+
     public function getOrderById($id)
     {
         return $this->orderRepository->getOrderById($id);

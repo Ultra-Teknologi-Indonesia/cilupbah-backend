@@ -7,9 +7,9 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Modules\Channel\Services\TikTokProductService;
+use Modules\Channel\Jobs\SyncStockToChannelsJob;
+use Modules\Product\Models\ProductVariant;
 use Modules\Sales\Models\SalesOrder;
 
 class SyncStockJob implements ShouldQueue
@@ -26,7 +26,7 @@ class SyncStockJob implements ShouldQueue
         $this->onQueue(config('queue.names.stock_sync'));
     }
 
-    public function handle(TikTokProductService $tikTokProductService): void
+    public function handle(): void
     {
         $skus = collect($this->skuList)->filter()->unique()->values();
 
@@ -45,30 +45,23 @@ class SyncStockJob implements ShouldQueue
             return;
         }
 
-        $activeShops = DB::table('channel_shops')
-            ->where('is_active', true)
-            ->whereNotNull('access_token')
-            ->get();
+        $variantIds = ProductVariant::whereIn('sku', $skus)->pluck('id');
 
-        foreach ($activeShops as $shop) {
-            foreach ($skus as $sku) {
-                try {
-                    $tikTokProductService->syncInventoryBySku($sku, $shop->shop_id);
+        if ($variantIds->isEmpty()) {
+            Log::warning('SyncStockJob: no variants found for SKUs', [
+                'order_id' => $this->orderId,
+                'skus'     => $skus->all(),
+            ]);
+            return;
+        }
 
-                    Log::info("SyncStockJob: synced {$sku} to shop {$shop->shop_name}", [
-                        'order_id' => $this->orderId,
-                        'shop_id'  => $shop->shop_id,
-                        'sku'      => $sku,
-                    ]);
-                } catch (\Throwable $e) {
-                    Log::error("SyncStockJob: failed to sync {$sku} to shop {$shop->shop_name}", [
-                        'order_id'  => $this->orderId,
-                        'shop_id'   => $shop->shop_id,
-                        'sku'       => $sku,
-                        'exception' => $e->getMessage(),
-                    ]);
-                }
-            }
+        foreach ($variantIds as $variantId) {
+            SyncStockToChannelsJob::dispatch($variantId);
+
+            Log::info('SyncStockJob: dispatched channel sync for variant', [
+                'order_id'   => $this->orderId,
+                'variant_id' => $variantId,
+            ]);
         }
     }
 }

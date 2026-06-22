@@ -64,9 +64,18 @@ class CancelChannelOrderJob implements ShouldQueue
 
     private function cancelOnShopee(SalesOrder $order): void
     {
+        $shopeeOrderService = app(\Modules\Channel\Services\ShopeeOrderService::class);
 
-        Log::info("CancelChannelOrderJob: Shopee cancel not implemented yet", [
+        $shopeeOrderService->cancelOrder(
+            $order->channel_shop_id,
+            $order->salesorder_no,
+            $this->cancelReason,
+        );
+
+        Log::info("CancelChannelOrderJob: cancelled on Shopee", [
             'salesorder_no' => $order->salesorder_no,
+            'shop_id'       => $order->channel_shop_id,
+            'reason'        => $this->cancelReason,
         ]);
     }
 

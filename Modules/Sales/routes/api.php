@@ -81,6 +81,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('sales/orders/set-as-paid', [SalesOrderController::class, 'setAsPaid'])->name('sales.orders.set-as-paid');
     Route::post('sales/request-awb-order', [SalesOrderController::class, 'requestAwb'])->name('sales.request-awb-order');
     Route::get('sales/unfullfilled', [SalesOrderController::class, 'unfulfilled'])->name('sales.unfulfilled');
+    Route::get('sales/counts', [SalesOrderController::class, 'counts'])->name('sales.counts');
 
     Route::get('sales', [SalesOrderController::class, 'index'])->name('sales.index');
     Route::post('sales', [SalesOrderController::class, 'store'])->name('sales.store');

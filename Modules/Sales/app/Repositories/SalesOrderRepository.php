@@ -13,23 +13,109 @@ class SalesOrderRepository
 {
     public function getPaginatedOrders()
     {
-        return QueryBuilder::for(SalesOrder::class)
-            ->allowedSearch('customer_name', 'salesorder_no')
-            ->allowedFilters(
-                AllowedFilter::exact('status'),
-                'channel_status',
-                'source',
-                'is_paid',
-                'is_active'
-            )
-            ->allowedSorts(
-                'created_at',
-                'transaction_date',
-                'grand_total'
-            )
-            ->allowedIncludes('items')
-            ->paginate(request('per_page', 10))
+        $query = SalesOrder::with(['items', 'location:id,location_name']);
+
+        $tab = request('tab');
+        if ($tab && $tab !== 'all') {
+            $query = $this->applyTabScope($query, $tab);
+        }
+
+        if ($channel = request('channel')) {
+            $query->where('source', $channel);
+        }
+        if ($storeId = request('store_id')) {
+            $query->where('channel_shop_id', $storeId);
+        }
+        if ($locationId = request('location_id')) {
+            $query->where('location_id', $locationId);
+        }
+        if ($dateFrom = request('date_from')) {
+            $query->whereDate('transaction_date', '>=', $dateFrom);
+        }
+        if ($dateTo = request('date_to')) {
+            $query->whereDate('transaction_date', '<=', $dateTo);
+        }
+
+        if ($contentType = request('content_type')) {
+            $query = $this->applyContentTypeFilter($query, $contentType);
+        }
+
+        $q = request('q');
+        $searchBy = request('search_by', 'order');
+        if ($q) {
+            if ($searchBy === 'sku') {
+                $query->whereHas('items', fn ($sub) => $sub->where('sku', 'like', "%{$q}%")
+                    ->orWhere('description', 'like', "%{$q}%"));
+            } else {
+                $query->where(fn ($sub) => $sub->where('salesorder_no', 'like', "%{$q}%")
+                    ->orWhere('customer_name', 'like', "%{$q}%"));
+            }
+        }
+
+        $sortBy = request('sort_by', 'created_at');
+        $sortDir = request('sort_dir', 'desc');
+        $allowed = ['created_at', 'transaction_date', 'grand_total', 'salesorder_no'];
+        if (in_array($sortBy, $allowed)) {
+            $query->orderBy($sortBy, $sortDir === 'asc' ? 'asc' : 'desc');
+        } else {
+            $query->orderBy('created_at', 'desc');
+        }
+
+        return $query
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
+    }
+
+    public function getTabCounts(): array
+    {
+        $base = SalesOrder::query();
+
+        return [
+            'all'              => (clone $base)->count(),
+            'unpaid'           => (clone $base)->where('status', 'pending')->where('is_paid', false)->count(),
+            'failed'           => (clone $base)->whereNotNull('source')->where('status', 'pending')->where('is_canceled', true)->count(),
+            'ready-to-process' => (clone $base)->where('status', 'reserved')
+                ->whereDoesntHave('picklistItems')->count(),
+            'empty-stock'      => (clone $base)->where('status', 'reserved')
+                ->whereHas('items', fn ($q) => $q->whereHas('inventory', fn ($inv) => $inv->where('available', '<=', 0)))
+                ->count(),
+            'failed-pick'      => (clone $base)->where('status', 'reserved')
+                ->whereHas('picklistItems', fn ($q) => $q->whereHas('picklist', fn ($p) => $p->where('status', 'FAILED')))
+                ->count(),
+            'request-cancel'   => (clone $base)->whereNotNull('cancel_requested_at')
+                ->whereNotIn('status', ['cancelled'])->count(),
+            'cancelled'        => (clone $base)->where('status', 'cancelled')->count(),
+            'returned'         => (clone $base)->whereHas('returns')->count(),
+        ];
+    }
+
+    protected function applyTabScope($query, string $tab)
+    {
+        return match ($tab) {
+            'unpaid'           => $query->where('status', 'pending')->where('is_paid', false),
+            'failed'           => $query->whereNotNull('source')->where('status', 'pending')->where('is_canceled', true),
+            'ready-to-process' => $query->where('status', 'reserved')->whereDoesntHave('picklistItems'),
+            'empty-stock'      => $query->where('status', 'reserved')
+                ->whereHas('items', fn ($q) => $q->whereHas('inventory', fn ($inv) => $inv->where('available', '<=', 0))),
+            'failed-pick'      => $query->where('status', 'reserved')
+                ->whereHas('picklistItems', fn ($q) => $q->whereHas('picklist', fn ($p) => $p->where('status', 'FAILED'))),
+            'request-cancel'   => $query->whereNotNull('cancel_requested_at')->whereNotIn('status', ['cancelled']),
+            'cancelled'        => $query->where('status', 'cancelled'),
+            'returned'         => $query->whereHas('returns'),
+            default            => $query,
+        };
+    }
+
+    protected function applyContentTypeFilter($query, string $contentType)
+    {
+        return match ($contentType) {
+            'combo'       => $query->whereHas('items', fn ($q) => $q, '>', 1),
+            'single_1qty' => $query->has('items', '=', 1)
+                ->whereHas('items', fn ($q) => $q->where('qty_in_base', 1)),
+            'single_nqty' => $query->has('items', '=', 1)
+                ->whereHas('items', fn ($q) => $q->where('qty_in_base', '>', 1)),
+            default       => $query,
+        };
     }
 
     public function getCancelledOrders(int $limit = 10)
