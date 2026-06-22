@@ -32,6 +32,7 @@ class DatabaseSeeder extends Seeder
         $this->call(\Modules\Tax\Database\Seeders\TaxDatabaseSeeder::class);
 
         $this->call(\Modules\Product\Database\Seeders\CategorySeeder::class);
+        $this->call(\Modules\Product\Database\Seeders\DefaultCategorySeeder::class);
         $this->call(\Modules\Product\Database\Seeders\BrandSeeder::class);
 
         // Demo products (LAPTOP/MOUSE/KBD) + their PO/inbound/inventory removed —

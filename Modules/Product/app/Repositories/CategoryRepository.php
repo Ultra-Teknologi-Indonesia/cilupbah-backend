@@ -46,6 +46,10 @@ class CategoryRepository
             $query->where('is_enabled', true);
         }
 
+        if (! request()->has('filter.parent_id')) {
+            $query->whereNull('parent_id');
+        }
+
         return $query->get();
     }
 
