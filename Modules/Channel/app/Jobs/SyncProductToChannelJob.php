@@ -14,6 +14,9 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Adapters\AdapterFactory;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ChannelListingValidator;
+use Modules\Channel\Services\LazadaAuthService;
+use Modules\Channel\Services\ShopeeAuthService;
+use Modules\Channel\Services\TikTokAuthService;
 use Modules\Product\Jobs\RecomputeProductChannelValidationJob;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
@@ -73,6 +76,8 @@ class SyncProductToChannelJob implements ShouldQueue
         }
 
         $channelCode = $shop->channel->code ?? 'tiktok';
+
+        $shop = $this->ensureFreshToken($shop, $channelCode);
 
         if (in_array($this->action, ['push', 'update'], true)
             && app(ChannelListingValidator::class)->lacksVariationAttributes($product)) {
@@ -194,6 +199,40 @@ class SyncProductToChannelJob implements ShouldQueue
             $this->handleFailure($channelCode);
 
             throw $e;
+        }
+    }
+
+    protected function ensureFreshToken(ChannelShop $shop, string $channelCode): ChannelShop
+    {
+        if (! $shop->token_expires_at || $shop->token_expires_at->isFuture()) {
+            return $shop;
+        }
+
+        $authServices = [
+            'shopee' => ShopeeAuthService::class,
+            'tiktok' => TikTokAuthService::class,
+            'lazada' => LazadaAuthService::class,
+        ];
+
+        $serviceClass = $authServices[$channelCode] ?? null;
+
+        if (! $serviceClass) {
+            return $shop;
+        }
+
+        try {
+            app($serviceClass)->refreshStoreToken($shop->id);
+            Log::info("Token refreshed before sync", ['shop_id' => $shop->shop_id, 'channel' => $channelCode]);
+
+            return $shop->fresh();
+        } catch (\Throwable $e) {
+            Log::warning("Token refresh gagal sebelum sync, lanjut dengan token lama", [
+                'shop_id' => $shop->shop_id,
+                'channel' => $channelCode,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $shop;
         }
     }
 
