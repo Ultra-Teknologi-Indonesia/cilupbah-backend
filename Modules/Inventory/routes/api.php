@@ -79,6 +79,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inventory/transfers/out-finished', [InventoryTransactionController::class, 'finishedList'])->name('inventory.transfers.outFinished');
     Route::get('inventory/transfers', [InventoryTransactionController::class, 'transfersList'])->name('inventory.transfers.index');
     Route::post('inventory/transfers', [InventoryTransactionController::class, 'transferOut'])->name('inventory.transferOut');
+    Route::post('inventory/transfers/draft', [InventoryTransactionController::class, 'createDraft'])->name('inventory.transfers.createDraft');
+    Route::patch('inventory/transfers/{id}', [InventoryTransactionController::class, 'updateDraft'])->name('inventory.transfers.updateDraft');
+    Route::post('inventory/transfers/{id}/items', [InventoryTransactionController::class, 'addDraftItem'])->name('inventory.transfers.addDraftItem');
+    Route::patch('inventory/transfers/{id}/items/{itemId}', [InventoryTransactionController::class, 'updateDraftItem'])->name('inventory.transfers.updateDraftItem');
+    Route::delete('inventory/transfers/{id}/items/{itemId}', [InventoryTransactionController::class, 'removeDraftItem'])->name('inventory.transfers.removeDraftItem');
     Route::get('inventory/transfers/{id}', [InventoryTransactionController::class, 'transferShow'])->name('inventory.transfers.show');
     Route::delete('inventory/transfers/{id}', [InventoryTransactionController::class, 'transferDestroy'])->name('inventory.transfers.destroy');
     Route::post('inventory/transfers/{id}/approve', [InventoryTransactionController::class, 'approveTransfer'])->name('inventory.transfers.approve');

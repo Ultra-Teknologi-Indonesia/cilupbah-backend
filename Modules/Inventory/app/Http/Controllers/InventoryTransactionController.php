@@ -384,6 +384,82 @@ class InventoryTransactionController extends Controller
         return $this->successPaginatedResponse($transfers, 'Daftar transfer keluar (dalam perjalanan).');
     }
 
+    public function createDraft(\Illuminate\Http\Request $request): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'created_by' => 'required|string|max:100',
+                'source_location_id' => 'nullable|uuid|exists:locations,id',
+                'destination_location_id' => 'nullable|uuid|exists:locations,id',
+                'notes' => 'nullable|string',
+            ]);
+
+            $result = $this->inventoryService->createDraft($validated);
+            return $this->successResponse($result, 'Draft transfer berhasil dibuat.', 201);
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function updateDraft(\Illuminate\Http\Request $request, string $id): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'source_location_id' => 'nullable|uuid|exists:locations,id',
+                'destination_location_id' => 'nullable|uuid|exists:locations,id',
+                'notes' => 'nullable|string',
+            ]);
+
+            $result = $this->inventoryService->updateDraft($id, $validated);
+            return $this->successResponse($result, 'Draft transfer berhasil diperbarui.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function addDraftItem(\Illuminate\Http\Request $request, string $id): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'item_id' => 'required|uuid|exists:product_variants,id',
+                'qty' => 'required|integer|min:1',
+                'source_bin_id' => 'nullable|uuid|exists:location_bins,id',
+                'destination_bin_id' => 'nullable|uuid|exists:location_bins,id',
+                'batch_no' => 'nullable|string|max:100',
+                'serial_no' => 'nullable|string|max:100',
+            ]);
+
+            $result = $this->inventoryService->addDraftItem($id, $validated);
+            return $this->successResponse($result, 'Item berhasil ditambahkan ke draft.', 201);
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function updateDraftItem(\Illuminate\Http\Request $request, string $transferId, string $itemId): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'qty' => 'required|integer|min:1',
+            ]);
+
+            $result = $this->inventoryService->updateDraftItemQty($transferId, $itemId, $validated['qty']);
+            return $this->successResponse($result, 'Qty item berhasil diperbarui.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function removeDraftItem(string $transferId, string $itemId): JsonResponse
+    {
+        try {
+            $this->inventoryService->removeDraftItem($transferId, $itemId);
+            return $this->successResponse(null, 'Item berhasil dihapus dari draft.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
     #[OA\Post(
         path: '/api/v1/inventory/putaway',
         summary: 'Putaway inventory stock',
