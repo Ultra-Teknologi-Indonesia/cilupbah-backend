@@ -180,15 +180,13 @@ class MasterItemResource extends JsonResource
 
     protected function variantThumbnail($variant): ?string
     {
-        if ($this->resource->relationLoaded('media')) {
-            $variantMedia = $this->media->where('variant_id', $variant->id);
-            $primary = $variantMedia->firstWhere('is_primary', true) ?? $variantMedia->first();
-
-            if ($primary) {
-                return $primary->url;
-            }
+        if (! $this->resource->relationLoaded('media')) {
+            return null;
         }
 
-        return $this->productThumbnail();
+        $variantMedia = $this->media->where('variant_id', $variant->id);
+        $primary = $variantMedia->firstWhere('is_primary', true) ?? $variantMedia->first();
+
+        return $primary->url ?? null;
     }
 }
