@@ -34,8 +34,9 @@ class SalesOrderRepository
         // Custom params kept for the Pesanan FE contract — not expressible as plain Spatie
         // filters (derived tabs, dual-mode search, date range, content-type aggregates).
         $tab = request('tab');
+        $sub = request('sub');
         if ($tab && $tab !== 'all') {
-            $query = $this->applyTabScope($query, $tab);
+            $query = $this->applyTabScope($query, $tab, $sub);
         }
 
         if ($channel = request('channel')) {
@@ -102,15 +103,20 @@ class SalesOrderRepository
             'ready-to-process' => (clone $base)->where('status', 'reserved')
                 ->whereDoesntHave('picklistItems')
                 ->whereDoesntHave('items', $this->unmappedItemsConstraint())->count(),
+            'in-transit'       => (clone $base)->where('status', 'shipped')
+                ->whereNull('received_date')->count(),
+            'completed'        => (clone $base)->where('status', 'shipped')
+                ->whereNotNull('received_date')->count(),
             'empty-stock'      => (clone $base)->where('status', 'reserved')
                 ->whereHas('items', fn ($q) => $q->whereHas('inventory', fn ($inv) => $inv->where('available', '<=', 0)))
                 ->count(),
             'failed-pick'      => (clone $base)->where('status', 'reserved')
                 ->whereHas('picklistItems', fn ($q) => $q->whereHas('picklist', fn ($p) => $p->where('status', 'FAILED')))
                 ->count(),
-            'request-cancel'   => (clone $base)->whereNotNull('cancel_requested_at')
-                ->whereNotIn('status', ['cancelled'])->count(),
-            'cancelled'        => (clone $base)->where('status', 'cancelled')->count(),
+            'cancellation'     => (clone $base)->where(fn ($q) => $q
+                ->where('status', 'cancelled')
+                ->orWhere(fn ($q2) => $q2->whereNotNull('cancel_requested_at')->where('status', '!=', 'cancelled'))
+            )->count(),
             'returned'         => (clone $base)->whereHas('returns')->count(),
         ];
     }
@@ -125,7 +131,7 @@ class SalesOrderRepository
         return fn ($q) => $q->whereNull('item_id');
     }
 
-    protected function applyTabScope($query, string $tab)
+    protected function applyTabScope($query, string $tab, ?string $sub = null)
     {
         return match ($tab) {
             'unpaid'           => $query->where('status', 'pending')->where('is_paid', false),
@@ -135,14 +141,37 @@ class SalesOrderRepository
             'ready-to-process' => $query->where('status', 'reserved')
                 ->whereDoesntHave('picklistItems')
                 ->whereDoesntHave('items', $this->unmappedItemsConstraint()),
+            'in-transit'       => $query->where('status', 'shipped')->whereNull('received_date'),
+            'completed'        => $query->where('status', 'shipped')->whereNotNull('received_date'),
             'empty-stock'      => $query->where('status', 'reserved')
                 ->whereHas('items', fn ($q) => $q->whereHas('inventory', fn ($inv) => $inv->where('available', '<=', 0))),
             'failed-pick'      => $query->where('status', 'reserved')
                 ->whereHas('picklistItems', fn ($q) => $q->whereHas('picklist', fn ($p) => $p->where('status', 'FAILED'))),
-            'request-cancel'   => $query->whereNotNull('cancel_requested_at')->whereNotIn('status', ['cancelled']),
-            'cancelled'        => $query->where('status', 'cancelled'),
-            'returned'         => $query->whereHas('returns'),
+            'cancellation'     => $this->applyCancellationSubScope($query, $sub),
+            'returned'         => $this->applyReturnSubScope($query, $sub),
             default            => $query,
+        };
+    }
+
+    protected function applyCancellationSubScope($query, ?string $sub)
+    {
+        return match ($sub) {
+            'pending'   => $query->whereNotNull('cancel_requested_at')->where('status', '!=', 'cancelled'),
+            'cancelled' => $query->where('status', 'cancelled'),
+            default     => $query->where(fn ($q) => $q
+                ->where('status', 'cancelled')
+                ->orWhere(fn ($q2) => $q2->whereNotNull('cancel_requested_at')->where('status', '!=', 'cancelled'))
+            ),
+        };
+    }
+
+    protected function applyReturnSubScope($query, ?string $sub)
+    {
+        return match ($sub) {
+            'pending'  => $query->whereHas('returns', fn ($q) => $q->where('status', 'PENDING')),
+            'accepted' => $query->whereHas('returns', fn ($q) => $q->whereIn('status', ['ACCEPTED', 'COMPLETED'])),
+            'rejected' => $query->whereHas('returns', fn ($q) => $q->where('status', 'REJECTED')),
+            default    => $query->whereHas('returns'),
         };
     }
 

@@ -513,36 +513,14 @@ class ProductService
             throw new DomainException('Tidak ada varian yang cocok untuk produk ini.');
         }
 
-        if ($action !== 'delete') {
-            $this->writeRepository->setVariantsActive($variants->pluck('id')->all(), $action === 'activate');
-
-            return ['affected' => $variants->count()];
-        }
-
         $total = $this->writeRepository->countVariants($product->id);
         if ($variants->count() >= $total) {
             throw new DomainException('Tidak bisa menghapus semua varian; produk butuh minimal 1 varian.');
         }
 
-        $blocked = [];
-        $deletable = [];
-        foreach ($variants as $v) {
-            $listed = $this->writeRepository->variantHasChannelMapping($v->id);
-            $hasStock = $this->writeRepository->variantHasInventory($v->id);
-            if ($listed || $hasStock) {
-                $blocked[] = $v->sku;
-            } else {
-                $deletable[] = $v->id;
-            }
-        }
+        $this->writeRepository->deleteVariants($variants->pluck('id')->all());
 
-        if (empty($deletable)) {
-            throw new DomainException('Varian sudah ter-listing di channel atau punya stok — tidak bisa dihapus: ' . implode(', ', $blocked));
-        }
-
-        $this->writeRepository->deleteVariants($deletable);
-
-        return ['deleted' => count($deletable), 'blocked' => $blocked];
+        return ['deleted' => $variants->count()];
     }
 
     private function propagateVariantChangeToChannels(string $productId): void

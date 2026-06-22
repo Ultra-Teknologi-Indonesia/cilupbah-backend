@@ -591,4 +591,46 @@ class SalesOrderController extends Controller
 
         return $this->successResponse(new SalesOrderResource($order), 'Produk berhasil di-download dan dipetakan');
     }
+
+    #[OA\Post(
+        path: '/api/v1/sales/{id}/accept-cancel',
+        summary: 'Accept a cancel request and cancel the order',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Cancel request accepted'),
+            new OA\Response(response: 404, description: 'Order not found'),
+            new OA\Response(response: 422, description: 'No pending cancel request'),
+        ]
+    )]
+    public function acceptCancelRequest(string $id)
+    {
+        $order = $this->orderService->acceptCancelRequest($id);
+
+        return $this->successResponse(new SalesOrderResource($order), 'Pembatalan pesanan diterima');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/sales/{id}/reject-cancel',
+        summary: 'Reject a cancel request and keep the order active',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Cancel request rejected'),
+            new OA\Response(response: 404, description: 'Order not found'),
+            new OA\Response(response: 422, description: 'No pending cancel request'),
+        ]
+    )]
+    public function rejectCancelRequest(string $id)
+    {
+        $order = $this->orderService->rejectCancelRequest($id);
+
+        return $this->successResponse(new SalesOrderResource($order), 'Permintaan pembatalan ditolak');
+    }
 }

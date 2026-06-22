@@ -426,7 +426,7 @@ class ProductController extends Controller
         }
 
         $data = $request->validate([
-            'action' => 'required|in:activate,deactivate,delete',
+            'action' => 'required|in:delete',
             'variant_ids' => 'required|array|min:1',
             'variant_ids.*' => 'uuid',
         ]);

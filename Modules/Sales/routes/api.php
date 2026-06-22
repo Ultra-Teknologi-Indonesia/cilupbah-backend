@@ -80,6 +80,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('sales/orders/save-airwaybill', [SalesOrderController::class, 'saveAirwaybill'])->name('sales.orders.save-airwaybill');
     Route::post('sales/orders/save-received-date', [SalesOrderController::class, 'saveReceivedDate'])->name('sales.orders.save-received-date');
     Route::post('sales/orders/set-as-paid', [SalesOrderController::class, 'setAsPaid'])->name('sales.orders.set-as-paid');
+    Route::post('sales/orders/{id}/accept-cancel', [SalesOrderController::class, 'acceptCancelRequest'])->whereUuid('id')->name('sales.orders.accept-cancel');
+    Route::post('sales/orders/{id}/reject-cancel', [SalesOrderController::class, 'rejectCancelRequest'])->whereUuid('id')->name('sales.orders.reject-cancel');
     Route::post('sales/request-awb-order', [SalesOrderController::class, 'requestAwb'])->name('sales.request-awb-order');
     Route::get('sales/unfullfilled', [SalesOrderController::class, 'unfulfilled'])->name('sales.unfulfilled');
     Route::get('sales/counts', [SalesOrderController::class, 'counts'])->name('sales.counts');

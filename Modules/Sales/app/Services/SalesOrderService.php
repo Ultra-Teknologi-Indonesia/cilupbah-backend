@@ -16,6 +16,8 @@ use Modules\Sales\Jobs\SyncStockJob;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderItem;
 use Modules\Sales\Repositories\SalesOrderRepository;
+use Modules\Outbound\Models\Picklist;
+use Modules\Outbound\Models\PicklistItem;
 
 class SalesOrderService
 {
@@ -91,26 +93,74 @@ class SalesOrderService
     public function moveToReadyToProcess(array $orderIds): int
     {
         return DB::transaction(function () use ($orderIds) {
-            $count = 0;
-            $orders = SalesOrder::with('items')
-                ->whereIn('id', $orderIds)
+            $orders = SalesOrder::whereIn('id', $orderIds)
                 ->where('status', 'reserved')
-                ->where(function ($q) {
-                    $q->where('has_stock_issue', true)
-                      ->orWhere('pick_failed', true);
-                })
                 ->get();
 
+            $count = 0;
             foreach ($orders as $order) {
-                $order->update([
-                    'has_stock_issue' => false,
-                    'pick_failed'     => false,
-                ]);
+                PicklistItem::where('order_id', $order->id)
+                    ->whereHas('picklist', fn ($q) => $q->whereIn('status', [
+                        Picklist::STATUS_DRAFT,
+                        Picklist::STATUS_FAILED,
+                    ]))
+                    ->delete();
+
                 $count++;
             }
 
             return $count;
         });
+    }
+
+    public function acceptCancelRequest(string $orderId): SalesOrder
+    {
+        $order = SalesOrder::findOrFail($orderId);
+
+        if (! $order->cancel_requested_at) {
+            throw new \InvalidArgumentException('Pesanan ini tidak memiliki permintaan pembatalan.');
+        }
+
+        if ($order->status === 'cancelled') {
+            throw new InvalidStatusTransitionException($order->status, 'cancelled');
+        }
+
+        return DB::transaction(function () use ($order) {
+            $this->applyStockTransition($order, 'cancelled');
+
+            $order->update([
+                'status'        => 'cancelled',
+                'is_canceled'   => true,
+                'cancel_reason' => $order->cancel_request_reason ?? 'seller_cancel_reason_other',
+            ]);
+
+            Cache::forget($this->idempotencyKey($order->source, $order->salesorder_no));
+
+            if ($order->source) {
+                CancelChannelOrderJob::dispatch($order->id)->onQueue(config('queue.names.channel_sync'));
+            }
+
+            SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
+
+            return $order->fresh();
+        });
+    }
+
+    public function rejectCancelRequest(string $orderId): SalesOrder
+    {
+        $order = SalesOrder::findOrFail($orderId);
+
+        if (! $order->cancel_requested_at) {
+            throw new \InvalidArgumentException('Pesanan ini tidak memiliki permintaan pembatalan.');
+        }
+
+        $order->update([
+            'cancel_requested_at'     => null,
+            'cancel_request_reason'   => null,
+            'cancel_requested_by'     => null,
+        ]);
+
+        return $order->fresh();
     }
 
     public function markAsComplete(array $orderIds): int
