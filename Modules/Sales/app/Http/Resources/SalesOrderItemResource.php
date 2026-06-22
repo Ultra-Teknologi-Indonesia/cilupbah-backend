@@ -31,6 +31,7 @@ class SalesOrderItemResource extends JsonResource
         return [
             'id'                 => $this->id,
             'item_id'            => $this->item_id,
+            'is_mapped'          => $this->item_id !== null,
             'channel_product_id' => $this->channel_product_id,
             'sku'                => $this->sku,
             'description'        => $this->description,

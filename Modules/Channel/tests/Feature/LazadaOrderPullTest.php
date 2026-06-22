@@ -104,7 +104,7 @@ class LazadaOrderPullTest extends TestCase
 
         $response->assertStatus(200)->assertJsonPath('data.count', 1);
 
-        $order = SalesOrder::where('salesorder_no', '900123')->first();
+        $order = SalesOrder::where('salesorder_no', 'LZ-900123')->first();
         $this->assertNotNull($order);
         $this->assertEquals('lazada', $order->source);
         $this->assertEquals('pending', $order->status);          
@@ -124,7 +124,7 @@ class LazadaOrderPullTest extends TestCase
         $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/lazada/sync/pull', ['shop_id' => 'LZ-100'])->assertStatus(200);
         $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/lazada/sync/pull', ['shop_id' => 'LZ-100'])->assertStatus(200);
 
-        $this->assertEquals(1, SalesOrder::where('salesorder_no', '900123')->count());
+        $this->assertEquals(1, SalesOrder::where('salesorder_no', 'LZ-900123')->count());
     }
 
     public function test_paid_order_reserves_stock_via_official_path(): void
@@ -154,7 +154,7 @@ class LazadaOrderPullTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('data.count', 1);
 
-        $order = SalesOrder::where('salesorder_no', '900123')->first();
+        $order = SalesOrder::where('salesorder_no', 'LZ-900123')->first();
         $this->assertEquals('reserved', $order->status);
 
         $inventory->refresh();
@@ -170,7 +170,7 @@ class LazadaOrderPullTest extends TestCase
             ->postJson('/api/v1/lazada/sync/pull', ['shop_id' => 'LZ-100'])
             ->assertStatus(200);
 
-        $order = SalesOrder::where('salesorder_no', '900123')->first();
+        $order = SalesOrder::where('salesorder_no', 'LZ-900123')->first();
         $this->assertEquals('cancelled', $order->status);
         $this->assertTrue((bool) $order->is_canceled);
     }

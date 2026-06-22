@@ -10,9 +10,11 @@ use Modules\Sales\Exceptions\DuplicateOrderException;
 use Modules\Sales\Exceptions\InsufficientStockException;
 use Modules\Sales\Exceptions\InvalidStatusTransitionException;
 use Modules\Sales\Exceptions\LocationNotConfiguredException;
+use Modules\Sales\Exceptions\ProductNotMappableException;
 use Modules\Sales\Jobs\CancelChannelOrderJob;
 use Modules\Sales\Jobs\SyncStockJob;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Models\SalesOrderItem;
 use Modules\Sales\Repositories\SalesOrderRepository;
 
 class SalesOrderService
@@ -26,7 +28,15 @@ class SalesOrderService
         'cancelled' => [],
     ];
 
-    private const IDEMPOTENCY_TTL = 172800; 
+    private const IDEMPOTENCY_TTL = 172800;
+
+    private const CHANNEL_PREFIX = [
+        'tiktok'     => 'TT',
+        'shopee'     => 'SP',
+        'lazada'     => 'LZ',
+        'tokopedia'  => 'TP',
+        'blibli'     => 'BL',
+    ];
 
     public function __construct(
         protected SalesOrderRepository $orderRepository,
@@ -144,11 +154,40 @@ class SalesOrderService
         return "order:done:{$marketplace}:{$salesOrderNo}";
     }
 
+    public function generateSalesOrderNo(?string $source, ?string $channelOrderNo = null): array
+    {
+        if ($source && isset(self::CHANNEL_PREFIX[$source]) && $channelOrderNo) {
+            $prefix = self::CHANNEL_PREFIX[$source];
+
+            return [
+                'salesorder_no'  => "{$prefix}-{$channelOrderNo}",
+                'channel_order_no' => $channelOrderNo,
+                'so_sequence'    => null,
+            ];
+        }
+
+        $sequence = DB::table('sales_orders')->max('so_sequence') ?? 0;
+        $sequence++;
+
+        return [
+            'salesorder_no'  => 'SO-' . str_pad($sequence, 5, '0', STR_PAD_LEFT),
+            'channel_order_no' => null,
+            'so_sequence'    => $sequence,
+        ];
+    }
+
     public function createOrder(array $validated): SalesOrder
     {
-        $marketplace = $validated['source'] ?? 'manual';
+        $source = $validated['source'] ?? null;
+
+        if (empty($validated['salesorder_no'])) {
+            $numbering = $this->generateSalesOrderNo($source, $validated['channel_order_no'] ?? null);
+            $validated = array_merge($validated, $numbering);
+        }
+
+        $marketplace = $source ?: 'manual';
         $marketplaceOrderId = $validated['salesorder_no'];
-        $idempotencyKey = $this->idempotencyKey($validated['source'] ?? null, $marketplaceOrderId);
+        $idempotencyKey = $this->idempotencyKey($source, $marketplaceOrderId);
 
         if (Cache::has($idempotencyKey)) {
             throw new DuplicateOrderException($marketplace, $marketplaceOrderId);
@@ -305,10 +344,130 @@ class SalesOrderService
         });
     }
 
+    /**
+     * "Download" / bind an order item whose product is not yet in Master Produk.
+     *
+     * Mirrors Jubelio's "Download" on the Gagal Download tab:
+     *   1. If an explicit $variantId is given → bind to it (manual mapping).
+     *   2. Else if the SKU already exists in master → bind by SKU.
+     *   3. Else pull the product from its marketplace channel into master
+     *      (best-effort, via ChannelDownloadService) then bind by SKU.
+     * After binding, stock is reserved when the order is already reserved, so the
+     * order automatically leaves "Gagal Download" and re-enters the normal queue
+     * (both tabs are derived from item_id, not a stored flag).
+     *
+     * Idempotent: an already-mapped item is a no-op so double-clicks don't double-reserve.
+     */
+    public function downloadOrderItem(SalesOrder $order, string $orderItemId, ?string $variantId = null): SalesOrder
+    {
+        if ($order->status === 'cancelled') {
+            throw new ProductNotMappableException();
+        }
+
+        $item = $order->items()->whereKey($orderItemId)->firstOrFail();
+
+        if ($item->item_id) {
+            return $order->fresh('items');
+        }
+
+        // Jubelio-style "Download": when the buyer's product isn't in master yet and no
+        // variant was hand-picked, try to pull it from the marketplace first. Best-effort
+        // and outside the locking transaction (it does its own external I/O + writes).
+        if ($variantId === null && ! $this->skuExistsInMaster($item->sku)) {
+            $this->attemptChannelProductPull($order, $item);
+        }
+
+        $mutated = DB::transaction(function () use ($order, $orderItemId, $variantId) {
+            $lockedOrder = SalesOrder::whereKey($order->id)->lockForUpdate()->firstOrFail();
+
+            /** @var SalesOrderItem $item */
+            $item = $lockedOrder->items()->whereKey($orderItemId)->lockForUpdate()->firstOrFail();
+
+            if ($item->item_id) {
+                return false;
+            }
+
+            if ($variantId !== null) {
+                $exists = DB::table('product_variants')->where('id', $variantId)->exists();
+                if (! $exists) {
+                    throw new ProductNotMappableException($item->sku);
+                }
+                $resolvedVariantId = $variantId;
+            } else {
+                $resolvedVariantId = $item->sku
+                    ? DB::table('product_variants')->where('sku', $item->sku)->value('id')
+                    : null;
+            }
+
+            if (! $resolvedVariantId) {
+                throw new ProductNotMappableException($item->sku);
+            }
+
+            $item->update(['item_id' => $resolvedVariantId]);
+
+            if ($lockedOrder->status === 'reserved') {
+                $item->refresh();
+                $this->reserveStockForItem($lockedOrder, $item, $this->isManualSource($lockedOrder->source));
+            }
+
+            return true;
+        });
+
+        if ($mutated) {
+            SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
+        }
+
+        return $order->fresh('items');
+    }
+
+    private function skuExistsInMaster(?string $sku): bool
+    {
+        return $sku ? DB::table('product_variants')->where('sku', $sku)->exists() : false;
+    }
+
+    /**
+     * Best-effort pull of an order item's product from its marketplace channel into
+     * master. Any failure (unsupported/unknown channel, shop not connected, product
+     * gone, API error) is swallowed: the order simply stays in "Gagal Download" and the
+     * caller raises ProductNotMappableException so the operator can map it manually.
+     */
+    private function attemptChannelProductPull(SalesOrder $order, SalesOrderItem $item): void
+    {
+        $channel = $order->source;
+        $shopId = $order->channel_shop_id;
+        $externalProductId = $item->channel_product_id;
+
+        if (! $channel || ! $shopId || ! $externalProductId) {
+            return;
+        }
+
+        try {
+            app(\Modules\Channel\Services\ChannelDownloadService::class)
+                ->downloadProduct($channel, $shopId, $externalProductId);
+        } catch (\Throwable $e) {
+            Log::info('Auto-download produk dari channel gagal saat memproses order item', [
+                'order_id'            => $order->id,
+                'order_item_id'       => $item->id,
+                'channel'             => $channel,
+                'channel_shop_id'     => $shopId,
+                'channel_product_id'  => $externalProductId,
+                'error'               => $e->getMessage(),
+            ]);
+        }
+    }
+
     public function upsertFromChannel(array $orderData): ?string
     {
         $channelStatus = $orderData['channel_status'] ?? 'UNKNOWN';
         $mappedStatus = $this->mapChannelStatusToInternal($channelStatus);
+
+        if (! empty($orderData['channel_order_no']) && empty($orderData['salesorder_no'])) {
+            $numbering = $this->generateSalesOrderNo(
+                $orderData['source'] ?? null,
+                $orderData['channel_order_no']
+            );
+            $orderData['salesorder_no'] = $numbering['salesorder_no'];
+        }
 
         try {
             DB::beginTransaction();
@@ -455,21 +614,26 @@ class SalesOrderService
     private function reserveStockForOrder(SalesOrder $order, bool $enforce = true): void
     {
         foreach ($order->items as $item) {
-            if (! $item->item_id) {
-                continue;
-            }
-
-            $locationId = $this->resolveLocationId($order);
-
-            $this->stockService->reserve(
-                $item->sku ?? "item:{$item->item_id}",
-                $item->item_id,
-                $locationId,
-                $item->qty_in_base,
-                $order->salesorder_no,
-                $enforce,
-            );
+            $this->reserveStockForItem($order, $item, $enforce);
         }
+    }
+
+    private function reserveStockForItem(SalesOrder $order, SalesOrderItem $item, bool $enforce = true): void
+    {
+        if (! $item->item_id) {
+            return;
+        }
+
+        $locationId = $this->resolveLocationId($order);
+
+        $this->stockService->reserve(
+            $item->sku ?? "item:{$item->item_id}",
+            $item->item_id,
+            $locationId,
+            $item->qty_in_base,
+            $order->salesorder_no,
+            $enforce,
+        );
     }
 
     private function pickStockForOrder(SalesOrder $order): void

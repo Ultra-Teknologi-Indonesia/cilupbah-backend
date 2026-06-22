@@ -134,7 +134,7 @@ class LazadaWebhookTest extends TestCase
 
         (new ProcessLazadaWebhook($this->orderPayload()))->handle(app(\Modules\Channel\Services\LazadaOrderService::class), app(\Modules\Channel\Services\LazadaProductService::class), app(\Modules\Channel\Services\LazadaAuthService::class));
 
-        $order = SalesOrder::where('salesorder_no', '900123')->first();
+        $order = SalesOrder::where('salesorder_no', 'LZ-900123')->first();
         $this->assertNotNull($order);
         $this->assertEquals('lazada', $order->source);
     }

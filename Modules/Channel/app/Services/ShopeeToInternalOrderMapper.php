@@ -31,7 +31,7 @@ class ShopeeToInternalOrderMapper
         $isPaid = $shopeeStatus !== 'unpaid';
 
         return [
-            'salesorder_no' => (string) ($shopeeOrder['order_sn'] ?? ''),
+            'channel_order_no' => (string) ($shopeeOrder['order_sn'] ?? ''),
             'channel_shop_id' => $shopId,
             'customer_name' => $shopeeOrder['buyer_username'] ?? ($address['name'] ?? 'Shopee Buyer'),
             'transaction_date' => $this->parseTimestamp($shopeeOrder['create_time'] ?? null),

@@ -110,7 +110,7 @@ class LazadaOrderOpsTest extends TestCase
         Http::assertSent(fn ($r) => str_contains($r->url(), '/order/cancel') && ($r['order_item_id'] ?? null) === '111');
         Http::assertSent(fn ($r) => str_contains($r->url(), '/order/cancel') && ($r['order_item_id'] ?? null) === '112');
 
-        $order = SalesOrder::where('salesorder_no', '900123')->first();
+        $order = SalesOrder::where('salesorder_no', 'LZ-900123')->first();
         $this->assertNotNull($order);
         $this->assertEquals('cancelled', $order->status);
     }

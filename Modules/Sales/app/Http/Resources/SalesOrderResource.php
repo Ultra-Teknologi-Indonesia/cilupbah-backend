@@ -58,6 +58,7 @@ class SalesOrderResource extends JsonResource
         return [
             'id'              => $this->id,
             'salesorder_no'   => $this->salesorder_no,
+            'channel_order_no'=> $this->channel_order_no,
             'source'          => $this->source,
             'channel_shop_id' => $this->channel_shop_id,
             'customer_name'   => $this->customer_name,
@@ -98,6 +99,7 @@ class SalesOrderResource extends JsonResource
             'location_name' => $this->whenLoaded('location', fn () => $this->location?->location_name),
             'total_qty'     => $this->whenLoaded('items', fn () => $this->items->sum('qty_in_base'), 0),
             'total_sku'     => $this->whenLoaded('items', fn () => $this->items->count(), 0),
+            'has_unmapped_items' => $this->whenLoaded('items', fn () => $this->items->contains(fn ($item) => $item->item_id === null), false),
             'cancel_requested_at'    => $this->cancel_requested_at,
             'cancel_request_reason'  => $this->cancel_request_reason,
 

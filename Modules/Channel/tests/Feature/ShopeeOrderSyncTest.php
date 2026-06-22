@@ -64,7 +64,7 @@ class ShopeeOrderSyncTest extends TestCase
 
         $internal = $mapper->map($this->orderDetail(['order_status' => 'READY_TO_SHIP']), '778899');
 
-        $this->assertEquals('2606SHOPEE01', $internal['salesorder_no']);
+        $this->assertEquals('2606SHOPEE01', $internal['channel_order_no']);
         $this->assertEquals('shopee', $internal['source']);
         $this->assertEquals('AWAITING_SHIPMENT', $internal['channel_status']);
         $this->assertTrue($internal['is_paid']);
@@ -92,9 +92,10 @@ class ShopeeOrderSyncTest extends TestCase
 
         $this->assertEquals(1, $count);
 
-        $order = SalesOrder::where('salesorder_no', '2606SHOPEE01')->with('items')->first();
+        $order = SalesOrder::where('salesorder_no', 'SP-2606SHOPEE01')->with('items')->first();
         $this->assertNotNull($order);
         $this->assertEquals('shopee', $order->source);
+        $this->assertEquals('2606SHOPEE01', $order->channel_order_no);
         $this->assertCount(1, $order->items);
     }
 
@@ -115,6 +116,6 @@ class ShopeeOrderSyncTest extends TestCase
 
         (new ProcessShopeeWebhook($payload))->handle(app(ShopeeOrderService::class));
 
-        $this->assertNotNull(SalesOrder::where('salesorder_no', '2606SHOPEE01')->first());
+        $this->assertNotNull(SalesOrder::where('salesorder_no', 'SP-2606SHOPEE01')->first());
     }
 }

@@ -40,7 +40,7 @@ class LazadaToInternalOrderMapper
         $isPaid = ! in_array($lazadaStatus, ['unpaid', 'failed'], true);
 
         return [
-            'salesorder_no' => (string) ($lazadaOrder['order_id'] ?? $lazadaOrder['order_number'] ?? ''),
+            'channel_order_no' => (string) ($lazadaOrder['order_id'] ?? $lazadaOrder['order_number'] ?? ''),
             'channel_shop_id' => $shopId,
             'customer_name' => $customerName,
             'transaction_date' => $this->parseDate($lazadaOrder['created_at'] ?? null),

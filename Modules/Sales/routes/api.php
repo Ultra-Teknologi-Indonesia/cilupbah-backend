@@ -83,6 +83,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('sales/unfullfilled', [SalesOrderController::class, 'unfulfilled'])->name('sales.unfulfilled');
     Route::get('sales/counts', [SalesOrderController::class, 'counts'])->name('sales.counts');
 
+    Route::post('sales/{id}/items/{itemId}/download', [SalesOrderController::class, 'downloadOrderItem'])
+        ->whereUuid('id')->whereUuid('itemId')->name('sales.orders.items.download');
+
     Route::get('sales', [SalesOrderController::class, 'index'])->name('sales.index');
     Route::post('sales', [SalesOrderController::class, 'store'])->name('sales.store');
     Route::get('sales/{id}', [SalesOrderController::class, 'show'])->whereUuid('id')->name('sales.show');

@@ -73,9 +73,12 @@ class SalesOrderRepository
         return [
             'all'              => (clone $base)->count(),
             'unpaid'           => (clone $base)->where('status', 'pending')->where('is_paid', false)->count(),
-            'failed'           => (clone $base)->whereNotNull('source')->where('status', 'pending')->where('is_canceled', true)->count(),
+            'failed'           => (clone $base)->whereNotNull('source')
+                ->where('status', '!=', 'cancelled')
+                ->whereHas('items', $this->unmappedItemsConstraint())->count(),
             'ready-to-process' => (clone $base)->where('status', 'reserved')
-                ->whereDoesntHave('picklistItems')->count(),
+                ->whereDoesntHave('picklistItems')
+                ->whereDoesntHave('items', $this->unmappedItemsConstraint())->count(),
             'empty-stock'      => (clone $base)->where('status', 'reserved')
                 ->whereHas('items', fn ($q) => $q->whereHas('inventory', fn ($inv) => $inv->where('available', '<=', 0)))
                 ->count(),
@@ -89,12 +92,26 @@ class SalesOrderRepository
         ];
     }
 
+    /**
+     * Constraint for an order that still has at least one un-downloaded item
+     * (channel SKU not yet mapped to a Master Produk variant → item_id IS NULL).
+     * Shared between the list scope and the tab counts so they never diverge.
+     */
+    protected function unmappedItemsConstraint(): \Closure
+    {
+        return fn ($q) => $q->whereNull('item_id');
+    }
+
     protected function applyTabScope($query, string $tab)
     {
         return match ($tab) {
             'unpaid'           => $query->where('status', 'pending')->where('is_paid', false),
-            'failed'           => $query->whereNotNull('source')->where('status', 'pending')->where('is_canceled', true),
-            'ready-to-process' => $query->where('status', 'reserved')->whereDoesntHave('picklistItems'),
+            'failed'           => $query->whereNotNull('source')
+                ->where('status', '!=', 'cancelled')
+                ->whereHas('items', $this->unmappedItemsConstraint()),
+            'ready-to-process' => $query->where('status', 'reserved')
+                ->whereDoesntHave('picklistItems')
+                ->whereDoesntHave('items', $this->unmappedItemsConstraint()),
             'empty-stock'      => $query->where('status', 'reserved')
                 ->whereHas('items', fn ($q) => $q->whereHas('inventory', fn ($inv) => $inv->where('available', '<=', 0))),
             'failed-pick'      => $query->where('status', 'reserved')
@@ -214,6 +231,7 @@ class SalesOrderRepository
 
         $orderRow = [
             'salesorder_no'       => $orderData['salesorder_no'],
+            'channel_order_no'    => $orderData['channel_order_no'] ?? null,
             'channel_shop_id'     => $orderData['channel_shop_id'],
             'customer_name'       => $orderData['customer_name'],
             'transaction_date'    => $orderData['transaction_date'],

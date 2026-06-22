@@ -10,6 +10,7 @@ use Modules\Sales\Exceptions\InvalidReturnStateException;
 use Modules\Sales\Exceptions\InvalidStatusTransitionException;
 use Modules\Sales\Exceptions\LocationNotConfiguredException;
 use Modules\Sales\Exceptions\PaymentExceedsInvoiceException;
+use Modules\Sales\Exceptions\ProductNotMappableException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -45,6 +46,7 @@ return Application::configure(basePath: dirname(__DIR__))
                     || $e instanceof InvalidStatusTransitionException
                     || $e instanceof LocationNotConfiguredException
                     || $e instanceof PaymentExceedsInvoiceException
+                    || $e instanceof ProductNotMappableException
                     || $e instanceof CannotDeleteActiveOrderException) {
                     return response()->json([
                         'status' => 'error',

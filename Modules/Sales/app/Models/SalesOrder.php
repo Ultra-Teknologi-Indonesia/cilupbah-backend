@@ -17,6 +17,8 @@ class SalesOrder extends Model
 
     protected $fillable = [
         'salesorder_no',
+        'channel_order_no',
+        'so_sequence',
         'channel_shop_id',
         'customer_name',
         'transaction_date',

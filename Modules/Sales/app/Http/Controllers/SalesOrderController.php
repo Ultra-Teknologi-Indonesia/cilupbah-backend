@@ -144,7 +144,8 @@ class SalesOrderController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'salesorder_no'       => 'required|string',
+            'salesorder_no'       => 'nullable|string',
+            'channel_order_no'    => 'nullable|string',
             'channel_shop_id'     => 'nullable|string',
             'customer_name'       => 'required|string|max:255',
             'transaction_date'    => 'nullable|date',
@@ -536,5 +537,35 @@ class SalesOrderController extends Controller
         $orders = $this->orderService->getUnfulfilledOrders($limit);
 
         return $this->successPaginatedResponse($orders, 'Daftar order belum fulfill');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/sales/{id}/items/{itemId}/download',
+        summary: 'Download/bind an un-mapped order item to a Master Produk variant',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'itemId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Item mapped successfully'),
+            new OA\Response(response: 404, description: 'Order or item not found'),
+            new OA\Response(response: 422, description: 'Product not yet in Master Produk'),
+        ]
+    )]
+    public function downloadOrderItem(Request $request, $id, $itemId)
+    {
+        $order = SalesOrder::findOrFail($id);
+
+        $validated = $request->validate([
+            'variant_id' => 'nullable|uuid|exists:product_variants,id',
+        ]);
+
+        $order = $this->orderService->downloadOrderItem($order, $itemId, $validated['variant_id'] ?? null);
+
+        $order->load(['items', 'location:id,location_name']);
+
+        return $this->successResponse(new SalesOrderResource($order), 'Produk berhasil di-download dan dipetakan');
     }
 }

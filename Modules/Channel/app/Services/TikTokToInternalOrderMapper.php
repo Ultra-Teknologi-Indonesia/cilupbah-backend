@@ -41,7 +41,7 @@ class TikTokToInternalOrderMapper
             || in_array($tiktokOrder['status'] ?? '', ['AWAITING_SHIPMENT', 'SHIPPED', 'DELIVERED', 'COMPLETED']);
 
         return [
-            'salesorder_no'      => $tiktokOrder['id'] ?? '',
+            'channel_order_no'   => $tiktokOrder['id'] ?? '',
             'channel_shop_id'    => $shopId,
             'customer_name'      => $tiktokOrder['buyer_email'] ?? ($tiktokOrder['buyer_nickname'] ?? 'TikTok Buyer'),
             'transaction_date'   => isset($tiktokOrder['create_time']) ? date('Y-m-d H:i:s', $tiktokOrder['create_time']) : now(),
