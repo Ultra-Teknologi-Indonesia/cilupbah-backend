@@ -20,7 +20,14 @@ class InventoryTransferRepository
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('source_location_id'),
-                AllowedFilter::exact('destination_location_id')
+                AllowedFilter::exact('destination_location_id'),
+                AllowedFilter::callback('search', function ($query, $value) {
+                    $query->where(function ($q) use ($value) {
+                        $q->where('transfer_number', 'ILIKE', "%{$value}%")
+                          ->orWhereHas('sourceLocation', fn($loc) => $loc->where('location_name', 'ILIKE', "%{$value}%"))
+                          ->orWhereHas('destinationLocation', fn($loc) => $loc->where('location_name', 'ILIKE', "%{$value}%"));
+                    });
+                })
             )
             ->allowedSorts('transfer_number', 'created_at', 'shipped_at')
             ->defaultSort('-created_at');

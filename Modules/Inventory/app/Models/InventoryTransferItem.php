@@ -23,7 +23,13 @@ class InventoryTransferItem extends Model
         'destination_bin_id',
         'batch_no',
         'serial_no',
+        'sync_status',
+        'sync_error',
     ];
+
+    const SYNC_PENDING = 'PENDING';
+    const SYNC_SYNCED  = 'SYNCED';
+    const SYNC_FAILED  = 'FAILED';
 
     const CONDITION_GOOD     = 'GOOD';
     const CONDITION_DAMAGED  = 'DAMAGED';

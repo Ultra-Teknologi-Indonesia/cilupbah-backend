@@ -13,6 +13,8 @@ use Modules\Inbound\Services\InboundService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Inventory\Models\InventoryTransferItem;
+use Modules\Inventory\Jobs\SyncTransferDraftItemJob;
 
 class InventoryService
 {
@@ -456,7 +458,7 @@ class InventoryService
         });
     }
 
-    protected function resolveTransitLocation(): array
+    public function resolveTransitLocation(): array
     {
         $transit = Location::firstOrCreate(
             ['location_code' => Location::SYSTEM_TRANSIT_CODE],
@@ -577,5 +579,149 @@ class InventoryService
                 'target'             => $targetInventory->fresh(),
             ];
         });
+    }
+
+    public function createDraft(array $data): InventoryTransfer
+    {
+        $transferNumber = 'TRFO-' . now()->format('Ymd') . '-' . Str::upper(Str::random(4));
+
+        $transfer = $this->transferRepository->create([
+            'transfer_number' => $transferNumber,
+            'source_location_id' => $data['source_location_id'] ?? null,
+            'destination_location_id' => $data['destination_location_id'] ?? null,
+            'status' => InventoryTransfer::STATUS_DRAFT,
+            'notes' => $data['notes'] ?? null,
+            'created_by' => $data['created_by'],
+        ]);
+
+        return $this->transferRepository->findById($transfer->id);
+    }
+
+    public function updateDraft(string $transferId, array $data): InventoryTransfer
+    {
+        $transfer = $this->transferRepository->findByIdForUpdate($transferId);
+
+        if (!$transfer) {
+            throw new \Exception('Transfer tidak ditemukan.');
+        }
+
+        if ($transfer->status !== InventoryTransfer::STATUS_DRAFT) {
+            throw new \Exception("Hanya transfer DRAFT yang bisa diubah.");
+        }
+
+        $updateData = [];
+        if (array_key_exists('source_location_id', $data)) {
+            $updateData['source_location_id'] = $data['source_location_id'];
+        }
+        if (array_key_exists('destination_location_id', $data)) {
+            $updateData['destination_location_id'] = $data['destination_location_id'];
+        }
+        if (array_key_exists('notes', $data)) {
+            $updateData['notes'] = $data['notes'];
+        }
+
+        if (!empty($updateData)) {
+            $transfer->update($updateData);
+        }
+
+        return $this->transferRepository->findById($transferId);
+    }
+
+    public function addDraftItem(string $transferId, array $data): InventoryTransferItem
+    {
+        $transfer = $this->transferRepository->findByIdForUpdate($transferId);
+
+        if (!$transfer) {
+            throw new \Exception('Transfer tidak ditemukan.');
+        }
+
+        if ($transfer->status !== InventoryTransfer::STATUS_DRAFT) {
+            throw new \Exception("Hanya transfer DRAFT yang bisa ditambah item.");
+        }
+
+        $item = $this->transferRepository->createItem([
+            'inventory_transfer_id' => $transfer->id,
+            'item_id' => $data['item_id'],
+            'qty' => $data['qty'],
+            'source_bin_id' => $data['source_bin_id'] ?? null,
+            'destination_bin_id' => $data['destination_bin_id'] ?? null,
+            'batch_no' => $data['batch_no'] ?? '',
+            'serial_no' => $data['serial_no'] ?? '',
+            'sync_status' => InventoryTransferItem::SYNC_PENDING,
+        ]);
+
+        SyncTransferDraftItemJob::dispatch(
+            $item->id,
+            SyncTransferDraftItemJob::ACTION_RESERVE,
+            $data['qty'],
+            $transfer->transfer_number,
+            $transfer->created_by,
+        );
+
+        return $item->load(['product:id,sku,product_id', 'sourceBin:id,bin_final_code', 'destinationBin:id,bin_final_code']);
+    }
+
+    public function updateDraftItemQty(string $transferId, string $itemId, int $newQty): InventoryTransferItem
+    {
+        $transfer = $this->transferRepository->findByIdForUpdate($transferId);
+
+        if (!$transfer) {
+            throw new \Exception('Transfer tidak ditemukan.');
+        }
+
+        if ($transfer->status !== InventoryTransfer::STATUS_DRAFT) {
+            throw new \Exception("Hanya transfer DRAFT yang bisa diubah item-nya.");
+        }
+
+        $item = InventoryTransferItem::where('id', $itemId)
+            ->where('inventory_transfer_id', $transferId)
+            ->firstOrFail();
+
+        $oldQty = $item->qty;
+        $delta = $newQty - $oldQty;
+
+        $item->update([
+            'qty' => $newQty,
+            'sync_status' => InventoryTransferItem::SYNC_PENDING,
+        ]);
+
+        if ($delta !== 0) {
+            SyncTransferDraftItemJob::dispatch(
+                $item->id,
+                SyncTransferDraftItemJob::ACTION_ADJUST,
+                $delta,
+                $transfer->transfer_number,
+                $transfer->created_by,
+            );
+        }
+
+        return $item->fresh()->load(['product:id,sku,product_id', 'sourceBin:id,bin_final_code']);
+    }
+
+    public function removeDraftItem(string $transferId, string $itemId): void
+    {
+        $transfer = $this->transferRepository->findByIdForUpdate($transferId);
+
+        if (!$transfer) {
+            throw new \Exception('Transfer tidak ditemukan.');
+        }
+
+        if ($transfer->status !== InventoryTransfer::STATUS_DRAFT) {
+            throw new \Exception("Hanya transfer DRAFT yang bisa dihapus item-nya.");
+        }
+
+        $item = InventoryTransferItem::where('id', $itemId)
+            ->where('inventory_transfer_id', $transferId)
+            ->firstOrFail();
+
+        $qty = $item->qty;
+
+        SyncTransferDraftItemJob::dispatch(
+            $item->id,
+            SyncTransferDraftItemJob::ACTION_RELEASE,
+            $qty,
+            $transfer->transfer_number,
+            $transfer->created_by,
+        );
     }
 }
