@@ -128,7 +128,51 @@ class InventoryTransactionController extends Controller
     {
         try {
             $result = $this->inventoryService->transferOut($request->validated());
-            return $this->successResponse($result, 'Transfer Out berhasil dibuat, barang sedang dalam perjalanan (Transit).');
+            return $this->successResponse($result, 'Transfer Out berhasil dibuat sebagai draft.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function approveTransfer(\Illuminate\Http\Request $request, string $id): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'approved_by' => 'required|string',
+                'assigned_to' => 'required|string',
+            ]);
+
+            $result = $this->inventoryService->approveTransfer($id, $validated);
+            return $this->successResponse($result, 'Transfer berhasil di-approve dan pekerja telah di-assign.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function cancelTransfer(\Illuminate\Http\Request $request, string $id): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'cancelled_by' => 'required|string',
+                'cancel_reason' => 'nullable|string',
+            ]);
+
+            $result = $this->inventoryService->cancelTransfer($id, $validated);
+            return $this->successResponse($result, 'Transfer berhasil dibatalkan.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function shipTransfer(\Illuminate\Http\Request $request, string $id): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'shipped_by' => 'nullable|string',
+            ]);
+
+            $result = $this->inventoryService->shipTransfer($id, $validated);
+            return $this->successResponse($result, 'Transfer berhasil dikirim, barang dalam perjalanan.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -288,6 +332,22 @@ class InventoryTransactionController extends Controller
         $transfers = $this->inventoryService->getTransfersPaginated(['status' => 'RECEIVED'], $limit);
 
         return $this->successPaginatedResponse($transfers, 'Daftar transfer yang sudah selesai diterima.');
+    }
+
+    public function draftList(\Illuminate\Http\Request $request): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+        $transfers = $this->inventoryService->getTransfersPaginated(['status' => 'DRAFT'], $limit);
+
+        return $this->successPaginatedResponse($transfers, 'Daftar transfer draft (menunggu approval).');
+    }
+
+    public function approvedList(\Illuminate\Http\Request $request): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+        $transfers = $this->inventoryService->getTransfersPaginated(['status' => 'APPROVED'], $limit);
+
+        return $this->successPaginatedResponse($transfers, 'Daftar transfer approved (siap dikirim).');
     }
 
     public function transfersIn(\Illuminate\Http\Request $request): JsonResponse

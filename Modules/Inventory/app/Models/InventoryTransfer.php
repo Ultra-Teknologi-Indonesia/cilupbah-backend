@@ -19,26 +19,36 @@ class InventoryTransfer extends Model
         'status',
         'notes',
         'created_by',
+        'approved_by',
+        'assigned_to',
         'received_by',
+        'cancelled_by',
+        'cancel_reason',
         'shipped_at',
+        'approved_at',
         'received_at',
+        'cancelled_at',
         'printed_by',
         'printed_at',
     ];
 
     protected $casts = [
-        'shipped_at'  => 'datetime',
-        'received_at' => 'datetime',
-        'printed_at'  => 'datetime',
+        'shipped_at'   => 'datetime',
+        'approved_at'  => 'datetime',
+        'received_at'  => 'datetime',
+        'cancelled_at' => 'datetime',
+        'printed_at'   => 'datetime',
     ];
 
     const STATUS_DRAFT      = 'DRAFT';
+    const STATUS_APPROVED   = 'APPROVED';
     const STATUS_IN_TRANSIT = 'IN_TRANSIT';
     const STATUS_RECEIVED   = 'RECEIVED';
     const STATUS_CANCELLED  = 'CANCELLED';
 
     const STATUSES = [
         self::STATUS_DRAFT,
+        self::STATUS_APPROVED,
         self::STATUS_IN_TRANSIT,
         self::STATUS_RECEIVED,
         self::STATUS_CANCELLED,
