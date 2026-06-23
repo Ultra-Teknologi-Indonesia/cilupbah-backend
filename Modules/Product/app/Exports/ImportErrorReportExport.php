@@ -25,7 +25,6 @@ class ImportErrorReportExport implements FromQuery, WithHeadings, WithMapping
         return ['Baris', 'Kolom', 'Pesan Error'];
     }
 
-    /** @param ProductImportError $row */
     public function map($row): array
     {
         return [

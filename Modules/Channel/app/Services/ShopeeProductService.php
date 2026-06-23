@@ -448,9 +448,6 @@ class ShopeeProductService
         }
     }
 
-    /**
-     * @return array<string, array{status: string, reason: string|null}>
-     */
     public function fetchProductStatuses(string $shopId): array
     {
         $shop = $this->requireShop($shopId);
@@ -494,15 +491,11 @@ class ShopeeProductService
         return $res['response'] ?? [];
     }
 
-    /**
-     * @return array<string, array{success: bool, reason: string|null}>
-     */
     public function boostItem(string $shopId, array $itemIds): array
     {
         $shop = $this->requireShop($shopId);
         $results = [];
 
-        // Shopee allows max 5 items per boost call
         foreach (array_chunk($itemIds, 5) as $chunk) {
             $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/api/v2/product/boost_item', [
                 'item_id_list' => array_map('intval', $chunk),

@@ -47,6 +47,11 @@ class OutboundFulfillmentService
             $shopId = (string) ($order->channel_shop_id ?? '');
             $channelOrderNo = (string) ($order->channel_order_no ?? '');
 
+            if ($source === 'tiktok' && strtoupper((string) $order->fulfillment_type) === 'FULFILLMENT_BY_TIKTOK') {
+                $results[] = $this->result($order, 'failed', 'TikTok: order ini FULFILLMENT_BY_TIKTOK (FBT) — RTS dikelola oleh TikTok, bukan seller.');
+                continue;
+            }
+
             try {
                 switch ($source) {
                     case 'shopee':

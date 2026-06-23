@@ -23,8 +23,7 @@ class ProductResource extends JsonResource
                 ->sortByDesc('is_primary')
                 ->map(fn ($m) => ['url' => $m->url, 'is_primary' => (bool) $m->is_primary])
                 ->values()),
-            // Media produk-level (image + video) lengkap dengan uuid & urutan,
-            // dipakai editor media untuk add/hapus/urutkan/pilih utama.
+
             'media' => $this->whenLoaded('media', fn () => $this->media
                 ->filter(fn ($m) => $m->variant_id === null && $m->url)
                 ->sortBy('sort_order')

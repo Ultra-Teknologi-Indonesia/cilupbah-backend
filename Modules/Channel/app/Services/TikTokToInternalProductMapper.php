@@ -156,7 +156,7 @@ class TikTokToInternalProductMapper
 
     protected function extractSkuImage(array $skuData): ?string
     {
-        // 1. Check sales_attributes[].sku_img (v2 API)
+
         foreach ($skuData['sales_attributes'] ?? [] as $attr) {
             $img = $attr['sku_img'] ?? null;
             if (! $img) {
@@ -173,7 +173,6 @@ class TikTokToInternalProductMapper
             }
         }
 
-        // 2. Check representative_sku_image at SKU level
         $rep = $skuData['representative_sku_image'] ?? null;
         if ($rep) {
             $uri = $rep['uri'] ?? $rep['url_list'][0] ?? $rep['urls'][0] ?? null;
@@ -182,7 +181,6 @@ class TikTokToInternalProductMapper
             }
         }
 
-        // 3. Check sku_img directly on the SKU object (some API versions)
         $directImg = $skuData['sku_img'] ?? null;
         if ($directImg) {
             $uri = is_string($directImg)
@@ -212,7 +210,6 @@ class TikTokToInternalProductMapper
 
         return null;
     }
-
 
     protected function resolveCategoryId(string $shopId, ?string $tiktokCategoryId): int
     {

@@ -7,11 +7,6 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;
 use Maatwebsite\Excel\Concerns\WithTitle;
 
-/**
- * Template import produk satuan: 1 sheet data (header = key parser) + 1 sheet
- * Petunjuk. Header sengaja memakai key snake_case agar cocok dengan
- * WithHeadingRow saat import.
- */
 class ProductTemplateExport implements WithMultipleSheets
 {
     public const COLUMNS = [

@@ -16,8 +16,8 @@ class TikTokOrderService
     protected ChannelOrderRepository $orderRepository;
 
     public function __construct(
-        TikTokClient $client, 
-        TikTokToInternalOrderMapper $mapper, 
+        TikTokClient $client,
+        TikTokToInternalOrderMapper $mapper,
         OrderService $orderService,
         ChannelShopRepository $shopRepository,
         ChannelOrderRepository $orderRepository
@@ -29,42 +29,54 @@ class TikTokOrderService
         $this->orderRepository = $orderRepository;
     }
 
+    // ─── Pull / Sync ────────────────────────────────────────────────
+
     public function pullOrders(string $shopId): int
     {
         $shop = $this->shopRepository->findByShopId($shopId);
-        if (!$shop || !$shop->access_token) {
+        if (! $shop || ! $shop->access_token) {
             throw new \Exception("No access token found for shop: {$shopId}");
         }
 
         $accessToken = $shop->access_token;
         $shopCipher = $shop->shop_cipher ?? '';
 
-        $queries = [
-            'shop_cipher' => $shopCipher,
-            'page_size' => 100,
-        ];
-
-        $body = [
-            'sort_by' => 'CREATE_TIME',
-            'sort_type' => 'DESC'
-        ];
-
-        $res = $this->client->request('POST', '/order/202309/orders/search', $queries, $body, $accessToken);
-
-        if (!isset($res['data']['orders'])) {
-            return 0; 
-        }
-
         $count = 0;
-        foreach ($res['data']['orders'] as $item) {
-            try {
-                $internalData = $this->mapper->map($item, $shopId);
-                $this->orderService->upsertFromChannel($internalData);
-                $count++;
-            } catch (\Exception $e) {
-                Log::error("Failed to pull order {$item['id']}: " . $e->getMessage());
+        $nextPageToken = '';
+
+        do {
+            $queries = [
+                'shop_cipher' => $shopCipher,
+                'page_size'   => 100,
+            ];
+
+            $body = [
+                'sort_by'   => 'CREATE_TIME',
+                'sort_type' => 'DESC',
+            ];
+
+            if ($nextPageToken !== '') {
+                $body['next_page_token'] = $nextPageToken;
             }
-        }
+
+            $res = $this->client->request('POST', '/order/202309/orders/search', $queries, $body, $accessToken);
+
+            if (! isset($res['data']['orders'])) {
+                break;
+            }
+
+            foreach ($res['data']['orders'] as $item) {
+                try {
+                    $internalData = $this->mapper->map($item, $shopId);
+                    $this->orderService->upsertFromChannel($internalData);
+                    $count++;
+                } catch (\Exception $e) {
+                    Log::error("Failed to pull order {$item['id']}: " . $e->getMessage());
+                }
+            }
+
+            $nextPageToken = $res['data']['next_page_token'] ?? '';
+        } while ($nextPageToken !== '');
 
         return $count;
     }
@@ -72,22 +84,19 @@ class TikTokOrderService
     public function pullOrderById(string $shopId, string $orderId): ?int
     {
         $shop = $this->shopRepository->findByShopId($shopId);
-        if (!$shop || !$shop->access_token) {
+        if (! $shop || ! $shop->access_token) {
             throw new \Exception("No access token found for shop: {$shopId}");
         }
 
-        $accessToken = $shop->access_token;
-        $shopCipher = $shop->shop_cipher ?? '';
-
         $queries = [
-            'shop_cipher' => $shopCipher,
-            'ids' => $orderId,
+            'shop_cipher' => $shop->shop_cipher ?? '',
+            'ids'         => $orderId,
         ];
 
-        $res = $this->client->request('GET', '/order/202309/orders', $queries, [], $accessToken);
+        $res = $this->client->request('GET', '/order/202309/orders', $queries, [], $shop->access_token);
 
-        if (!isset($res['data']['orders']) || empty($res['data']['orders'])) {
-            return 0; 
+        if (! isset($res['data']['orders']) || empty($res['data']['orders'])) {
+            return 0;
         }
 
         $count = 0;
@@ -104,10 +113,12 @@ class TikTokOrderService
         return $count;
     }
 
+    // ─── Accept / Create Package ────────────────────────────────────
+
     public function acceptOrder(string $shopId, string $orderId): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);
-        if (!$shop || !$shop->access_token) {
+        if (! $shop || ! $shop->access_token) {
             throw new \Exception("No access token found for shop: {$shopId}");
         }
 
@@ -129,22 +140,12 @@ class TikTokOrderService
         return $res;
     }
 
-    /**
-     * Mark a TikTok order's package(s) as Ready To Ship (RTS).
-     *
-     * TikTok Shop requires shipping at the *package* level. A package must exist
-     * before it can be shipped (created via the same endpoint acceptOrder() uses:
-     * POST /fulfillment/202309/packages). The local SalesOrder does not persist
-     * package_id, so we resolve packages live from the order detail; if none
-     * exists yet we attempt to create one, then re-fetch.
-     *
-     * Returns a structured result; on a recoverable problem (e.g. no package_id
-     * resolvable) it returns ['shipped' => false, ...] rather than throwing.
-     */
-    public function readyToShip(string $shopId, string $orderId): array
+    // ─── Ready To Ship (RTS) ────────────────────────────────────────
+
+    public function readyToShip(string $shopId, string $orderId, ?array $handover = null): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);
-        if (!$shop || !$shop->access_token) {
+        if (! $shop || ! $shop->access_token) {
             throw new \Exception("No access token found for shop: {$shopId}");
         }
 
@@ -172,11 +173,22 @@ class TikTokOrderService
 
             foreach ($packageIds as $packageId) {
                 try {
+                    $shipBody = ['order_id' => $orderId];
+
+                    if ($handover) {
+                        if (! empty($handover['tracking_number'])) {
+                            $shipBody['tracking_number'] = $handover['tracking_number'];
+                        }
+                        if (! empty($handover['shipping_provider_id'])) {
+                            $shipBody['shipping_provider_id'] = $handover['shipping_provider_id'];
+                        }
+                    }
+
                     $res = $this->client->request(
                         'POST',
                         "/fulfillment/202309/packages/{$packageId}/ship",
                         $queries,
-                        ['order_id' => $orderId],
+                        $shipBody,
                         $shop->access_token
                     );
 
@@ -193,14 +205,22 @@ class TikTokOrderService
                 }
             }
 
+            $someOk = collect($results)->contains('shipped', true);
+
             if ($allOk) {
                 $this->orderRepository->updateOrderStatusByOrderNo($orderId, 'AWAITING_COLLECTION');
+            } elseif ($someOk) {
+                $this->orderRepository->updateOrderStatusByOrderNo($orderId, 'PARTIALLY_SHIPPING');
             }
+
+            $this->fetchAndStoreTracking($shop, $orderId, $queries);
 
             return [
                 'order_id' => $orderId,
                 'shipped'  => $allOk,
-                'message'  => $allOk ? 'RTS berhasil.' : 'Sebagian package gagal di-RTS.',
+                'message'  => $allOk
+                    ? 'RTS berhasil.'
+                    : ($someOk ? 'Sebagian package berhasil, sebagian gagal (PARTIALLY_SHIPPING).' : 'Semua package gagal di-RTS.'),
                 'packages' => $results,
             ];
         } catch (\Throwable $e) {
@@ -214,84 +234,137 @@ class TikTokOrderService
         }
     }
 
-    /**
-     * Resolve the package_id(s) for an order. Fetches order detail; if no package
-     * exists, attempts to create one (mirrors acceptOrder) then re-fetches.
-     *
-     * @return array<int,string>
-     */
-    protected function resolvePackageIds(object $shop, string $orderId, array $queries): array
-    {
-        $ids = $this->fetchPackageIds($shop, $orderId, $queries);
+    // ─── Shipping Documents / Labels ────────────────────────────────
 
-        if (!empty($ids)) {
-            return $ids;
-        }
-
-        // No package yet — try to create one, then re-fetch. acceptOrder() bypasses
-        // "invalid params" (package already exists), so do the same here.
-        try {
-            $this->client->request('POST', '/fulfillment/202309/packages', $queries, ['order_id' => $orderId], $shop->access_token);
-        } catch (\Throwable $e) {
-            if (strpos($e->getMessage(), 'invalid params') === false) {
-                Log::warning('TikTok RTS: gagal membuat package sebelum RTS', [
-                    'order_id' => $orderId,
-                    'error'    => $e->getMessage(),
-                ]);
-            }
-        }
-
-        return $this->fetchPackageIds($shop, $orderId, $queries);
-    }
-
-    /**
-     * @return array<int,string>
-     */
-    protected function fetchPackageIds(object $shop, string $orderId, array $queries): array
-    {
-        $detailQueries = array_merge($queries, ['ids' => $orderId]);
-
-        $res = $this->client->request('GET', '/order/202309/orders', $detailQueries, [], $shop->access_token);
-
-        $orders = $res['data']['orders'] ?? [];
-        $ids = [];
-
-        foreach ($orders as $order) {
-            foreach ($order['packages'] ?? [] as $package) {
-                $pid = $package['id'] ?? null;
-                if ($pid !== null && $pid !== '') {
-                    $ids[] = (string) $pid;
-                }
-            }
-        }
-
-        return array_values(array_unique($ids));
-    }
-
-    public function declineOrder(string $shopId, string $orderId, string $reason): array
+    public function getShippingDocument(string $shopId, string $packageId, string $documentType = 'SHIPPING_LABEL'): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);
-        if (!$shop || !$shop->access_token) {
+        if (! $shop || ! $shop->access_token) {
+            throw new \Exception("No access token found for shop: {$shopId}");
+        }
+
+        $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
+        $body = [
+            'package_id'    => $packageId,
+            'document_type' => $documentType,
+        ];
+
+        return $this->client->request('POST', '/fulfillment/202309/packages/shipping_documents', $queries, $body, $shop->access_token);
+    }
+
+    public function getShippingLabel(string $shopId, string $packageId): array
+    {
+        return $this->getShippingDocument($shopId, $packageId, 'SHIPPING_LABEL');
+    }
+
+    public function getPackingList(string $shopId, string $packageId): array
+    {
+        return $this->getShippingDocument($shopId, $packageId, 'PACKING_LIST');
+    }
+
+    public function getPackageDetail(string $shopId, string $packageId): array
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            throw new \Exception("No access token found for shop: {$shopId}");
+        }
+
+        $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
+
+        return $this->client->request('GET', "/fulfillment/202309/packages/{$packageId}", $queries, [], $shop->access_token);
+    }
+
+    // ─── Buyer Cancellation ─────────────────────────────────────────
+
+    public function acceptBuyerCancellation(string $shopId, string $orderId): array
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
             throw new \Exception("No access token found for shop: {$shopId}");
         }
 
         $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
         $body = [
             'order_id' => $orderId,
-            'cancel_reason_key' => $reason,
-            'cancel_reason' => $reason
         ];
 
-        $res = $this->client->request('POST', "/return_refund/202309/cancellations", $queries, $body, $shop->access_token);
+        $res = $this->client->request('POST', '/return_refund/202309/cancellations/approve', $queries, $body, $shop->access_token);
 
         $this->orderRepository->updateOrderStatusByOrderNo($orderId, 'CANCELLED');
 
         return $res;
     }
 
+    public function rejectBuyerCancellation(string $shopId, string $orderId): array
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            throw new \Exception("No access token found for shop: {$shopId}");
+        }
+
+        $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
+        $body = [
+            'order_id' => $orderId,
+        ];
+
+        $res = $this->client->request('POST', '/return_refund/202309/cancellations/reject', $queries, $body, $shop->access_token);
+
+        return $res;
+    }
+
+    // ─── Seller Cancel / Decline ────────────────────────────────────
+
+    public function declineOrder(string $shopId, string $orderId, string $reason): array
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            throw new \Exception("No access token found for shop: {$shopId}");
+        }
+
+        $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
+        $body = [
+            'order_id'           => $orderId,
+            'cancel_reason_key'  => $reason,
+            'cancel_reason'      => $reason,
+        ];
+
+        $res = $this->client->request('POST', '/return_refund/202309/cancellations', $queries, $body, $shop->access_token);
+
+        $this->orderRepository->updateOrderStatusByOrderNo($orderId, 'CANCELLED');
+
+        return $res;
+    }
+
+    public function cancelProduct(string $orderId, string $reason): array
+    {
+        $order = $this->orderRepository->findOrderBySalesOrderNo($orderId);
+        if (! $order) {
+            throw new \Exception('Pesanan tidak ditemukan di sistem lokal');
+        }
+
+        if (! in_array($order->channel_status, ['ON_HOLD', 'AWAITING_SHIPMENT'])) {
+            throw new \Exception("Pembatalan ditolak. Status pesanan saat ini adalah {$order->channel_status}. Hanya berlaku untuk ON_HOLD dan AWAITING_SHIPMENT.");
+        }
+
+        $shop = $this->shopRepository->findByShopId($order->channel_shop_id);
+        if (! $shop || ! $shop->access_token) {
+            throw new \Exception("No access token found for shop: {$order->channel_shop_id}");
+        }
+
+        $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
+        $body = [
+            'order_id'           => $orderId,
+            'cancel_reason_key'  => $reason,
+            'cancel_reason'      => $reason,
+        ];
+
+        return $this->client->request('POST', '/return_refund/202309/cancellations', $queries, $body, $shop->access_token);
+    }
+
+    // ─── Cancel Reasons ─────────────────────────────────────────────
+
     public function getCancelReasons(): array
     {
-
         return collect(app(MarketplaceCancelReasonService::class)->for(MarketplaceCancelReasonService::TIKTOK))
             ->pluck('label', 'key')
             ->all();
@@ -300,7 +373,7 @@ class TikTokOrderService
     public function getCancelReasonsLive(string $shopId): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);
-        if (!$shop || !$shop->access_token) {
+        if (! $shop || ! $shop->access_token) {
             throw new \Exception("No access token found for shop: {$shopId}");
         }
 
@@ -323,31 +396,85 @@ class TikTokOrderService
         }, $reasons)));
     }
 
-    public function cancelProduct(string $orderId, string $reason): array
+    // ─── Internal Helpers ───────────────────────────────────────────
+
+    protected function resolvePackageIds(object $shop, string $orderId, array $queries): array
     {
-        $order = $this->orderRepository->findOrderBySalesOrderNo($orderId);
-        if (!$order) {
-            throw new \Exception('Pesanan tidak ditemukan di sistem lokal');
+        $ids = $this->fetchPackageIds($shop, $orderId, $queries);
+
+        if (! empty($ids)) {
+            return $ids;
         }
 
-        if (!in_array($order->channel_status, ['ON_HOLD', 'AWAITING_SHIPMENT'])) {
-            throw new \Exception("Pembatalan ditolak. Status pesanan saat ini adalah {$order->channel_status}. Hanya berlaku untuk ON_HOLD dan AWAITING_SHIPMENT.");
+        try {
+            $this->client->request('POST', '/fulfillment/202309/packages', $queries, ['order_id' => $orderId], $shop->access_token);
+        } catch (\Throwable $e) {
+            if (strpos($e->getMessage(), 'invalid params') === false) {
+                Log::warning('TikTok RTS: gagal membuat package sebelum RTS', [
+                    'order_id' => $orderId,
+                    'error'    => $e->getMessage(),
+                ]);
+            }
         }
 
-        $shop = $this->shopRepository->findByShopId($order->channel_shop_id);
-        if (!$shop || !$shop->access_token) {
-            throw new \Exception("No access token found for shop: {$order->channel_shop_id}");
+        return $this->fetchPackageIds($shop, $orderId, $queries);
+    }
+
+    protected function fetchPackageIds(object $shop, string $orderId, array $queries): array
+    {
+        $detailQueries = array_merge($queries, ['ids' => $orderId]);
+
+        $res = $this->client->request('GET', '/order/202309/orders', $detailQueries, [], $shop->access_token);
+
+        $orders = $res['data']['orders'] ?? [];
+        $ids = [];
+
+        foreach ($orders as $order) {
+            foreach ($order['packages'] ?? [] as $package) {
+                $pid = $package['id'] ?? null;
+                if ($pid !== null && $pid !== '') {
+                    $ids[] = (string) $pid;
+                }
+            }
         }
 
-        $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
-        $body = [
-            'order_id' => $orderId,
-            'cancel_reason_key' => $reason,
-            'cancel_reason' => $reason
-        ];
+        return array_values(array_unique($ids));
+    }
 
-        $res = $this->client->request('POST', "/return_refund/202309/cancellations", $queries, $body, $shop->access_token);
+    protected function fetchAndStoreTracking(object $shop, string $orderId, array $queries): void
+    {
+        try {
+            $detailQueries = array_merge($queries, ['ids' => $orderId]);
+            $res = $this->client->request('GET', '/order/202309/orders', $detailQueries, [], $shop->access_token);
 
-        return $res;
+            $orders = $res['data']['orders'] ?? [];
+            if (empty($orders)) {
+                return;
+            }
+
+            $order = $orders[0];
+            $packages = $order['packages'] ?? [];
+
+            $trackingNumber = null;
+            $shippingProvider = null;
+
+            foreach ($packages as $pkg) {
+                $tn = $pkg['tracking_number'] ?? null;
+                if ($tn !== null && $tn !== '') {
+                    $trackingNumber = (string) $tn;
+                    $shippingProvider = $pkg['shipping_provider_name'] ?? $pkg['shipping_provider'] ?? null;
+                    break;
+                }
+            }
+
+            if ($trackingNumber) {
+                $this->orderRepository->updateTrackingByOrderNo($orderId, $trackingNumber, $shippingProvider);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('TikTok: gagal fetch tracking post-RTS', [
+                'order_id' => $orderId,
+                'error'    => $e->getMessage(),
+            ]);
+        }
     }
 }

@@ -207,13 +207,9 @@ class SyncTransferDraftItemJob implements ShouldQueue
         InventoryRepository $inventoryRepository,
         InventoryMovementRepository $movementRepository,
     ): void {
-        // Item may already be deleted; we still need to release the stock
-        // We stored enough info in constructor to do so
-        // But we need the transfer info. Try to get it from the item or use stored data.
 
         if (!$item) {
-            // Item was already deleted, cannot determine stock location.
-            // Release was handled before deletion in the service method.
+
             return;
         }
 

@@ -31,6 +31,4 @@ class ChannelCategoryController extends Controller
         return $this->successPaginatedResponse(ChannelCategoryResource::collection($categories), 'Berhasil mengambil daftar kategori channel');
     }
 
-    // storeCategories removed: channel categories are global per marketplace,
-    // not per individual store. Use index() with channelId instead.
 }

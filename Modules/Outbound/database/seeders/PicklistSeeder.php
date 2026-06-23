@@ -57,14 +57,12 @@ class PicklistSeeder extends Seeder
             try {
                 $staff->assignRole('warehouse_staff');
             } catch (\Exception $e) {
-                // role belum ada, skip
+
             }
         }
 
         $variants = [$laptop, $mouse, $keyboard];
         $bins = [$bin1, $bin2];
-
-        // --- Create 15 SalesOrders with 1-3 items each ---
 
         $customerNames = [
             'Pelanggan 1', 'Toko ABC', 'CV Maju Jaya', 'PT Sentosa', 'Pelanggan 5',
@@ -80,7 +78,7 @@ class PicklistSeeder extends Seeder
             $dayOffset = (int) (($s - 1) / 2);
             $createdAt = now()->subDays($dayOffset)->subMinutes($s * 11);
 
-            $itemCount = ($s % 3) + 1; // 1 to 3 items
+            $itemCount = ($s % 3) + 1; 
             $subTotal = 0;
             $orderItemsData = [];
 
@@ -149,8 +147,6 @@ class PicklistSeeder extends Seeder
             $salesOrderItems[$order->id] = $createdItems;
         }
 
-        // --- Create 30 Picklists with mixed statuses ---
-
         $statuses = [
             Picklist::STATUS_DRAFT,
             Picklist::STATUS_IN_PROGRESS,
@@ -175,7 +171,7 @@ class PicklistSeeder extends Seeder
         for ($i = 1; $i <= 30; $i++) {
             $seq = str_pad($i, 4, '0', STR_PAD_LEFT);
             $dayOffset = (int) (($i - 1) / 3);
-            $dayOffset = min($dayOffset, 13); // max 14 days back
+            $dayOffset = min($dayOffset, 13); 
             $createdAt = now()->subDays($dayOffset)->subMinutes($i * 7);
 
             $statusIdx = $i % 3;
@@ -205,7 +201,6 @@ class PicklistSeeder extends Seeder
                 $picklistData
             );
 
-            // Assign 1-2 sales orders per picklist
             $orderIdx1 = ($i - 1) % count($salesOrders);
             $orderIdx2 = ($i) % count($salesOrders);
             $assignedOrders = [$salesOrders[$orderIdx1]];

@@ -4,10 +4,6 @@ namespace Modules\Product\Exports;
 
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;
 
-/**
- * Template import produk bundle: 1 sheet data + 1 sheet Petunjuk.
- * Reuse TemplateDataSheet & TemplateInstructionSheet dari ProductTemplateExport.
- */
 class BundleTemplateExport implements WithMultipleSheets
 {
     public const COLUMNS = ['item_code', 'sku_composition', 'qty'];

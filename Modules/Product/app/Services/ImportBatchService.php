@@ -13,9 +13,6 @@ class ImportBatchService
     public const DISK = 'local';
     public const DIR = 'imports/products';
 
-    /**
-     * Simpan file upload & buat batch baru berstatus queued.
-     */
     public function createFromUpload(UploadedFile $file, string $type, ?string $userId): ProductImportBatch
     {
         $path = $file->store(self::DIR, self::DISK);
@@ -35,11 +32,6 @@ class ImportBatchService
         $batch->update(['state' => ProductImportBatch::STATE_PROCESSING]);
     }
 
-    /**
-     * Catat error baris (batch insert).
-     *
-     * @param  array<int, array{row_number:int, attribute:?string, message:string, row_snapshot:?array}>  $errors
-     */
     public function recordErrors(ProductImportBatch $batch, array $errors): void
     {
         foreach (array_chunk($errors, 500) as $chunk) {
@@ -57,9 +49,6 @@ class ImportBatchService
         }
     }
 
-    /**
-     * Finalisasi batch dengan jumlah akhir + tentukan state.
-     */
     public function finalize(ProductImportBatch $batch, int $total, int $success, int $failed): void
     {
         $state = $failed > 0

@@ -25,7 +25,6 @@ class ProductImportTest extends TestCase
         $this->withoutMiddleware();
     }
 
-    /** Buat file xlsx nyata dari headings+rows lalu bungkus sebagai UploadedFile. */
     private function makeUpload(array $headings, array $rows, string $name = 'import.xlsx'): UploadedFile
     {
         $export = new class($headings, $rows) implements FromArray, WithHeadings {
@@ -44,10 +43,10 @@ class ProductImportTest extends TestCase
     {
         $headings = ['item_group_name', 'item_code', 'sell_price', 'category', 'brand'];
         $rows = [
-            ['Kaos Polos', 'KP-HITAM-M', 75000, 'Fashion', 'Cilupbah'],   // valid
-            ['Kaos Polos', 'KP-PUTIH-L', 80000, 'Fashion', 'Cilupbah'],   // valid (varian ke-2)
-            ['Celana', '', 50000, 'Fashion', 'Cilupbah'],                 // invalid: item_code kosong
-            ['Topi', 'TP-1', 'bukan-angka', 'Fashion', 'Cilupbah'],       // invalid: sell_price non-numerik
+            ['Kaos Polos', 'KP-HITAM-M', 75000, 'Fashion', 'Cilupbah'],   
+            ['Kaos Polos', 'KP-PUTIH-L', 80000, 'Fashion', 'Cilupbah'],   
+            ['Celana', '', 50000, 'Fashion', 'Cilupbah'],                 
+            ['Topi', 'TP-1', 'bukan-angka', 'Fashion', 'Cilupbah'],       
         ];
 
         $file = $this->makeUpload($headings, $rows);
@@ -58,21 +57,18 @@ class ProductImportTest extends TestCase
         $batchId = $response->json('data.id');
         $this->assertNotNull($batchId);
 
-        // Queue sync → job sudah jalan. Ambil state final dari DB.
         $batch = ProductImportBatch::find($batchId);
         $this->assertSame(ProductImportBatch::STATE_DONE_WITH_ERRORS, $batch->state);
         $this->assertSame(4, $batch->total_rows);
         $this->assertSame(2, $batch->success_rows);
         $this->assertSame(2, $batch->failed_rows);
 
-        // Produk valid masuk, berstatus master.
         $this->assertDatabaseHas('products', ['name' => 'Kaos Polos', 'status' => Product::STATUS_MASTER]);
         $this->assertDatabaseHas('product_variants', ['sku' => 'KP-HITAM-M']);
         $this->assertDatabaseHas('product_variants', ['sku' => 'KP-PUTIH-L']);
-        // Dua baris nama sama => satu produk.
+
         $this->assertSame(1, Product::where('name', 'Kaos Polos')->count());
 
-        // Error tercatat dengan baris & kolom.
         $this->assertDatabaseHas('product_import_errors', ['import_batch_id' => $batchId, 'attribute' => 'item_code']);
         $this->assertDatabaseHas('product_import_errors', ['import_batch_id' => $batchId, 'attribute' => 'sell_price']);
     }
@@ -106,8 +102,8 @@ class ProductImportTest extends TestCase
         $file = $this->makeUpload(
             ['item_code', 'sku_composition', 'qty'],
             [
-                ['BUNDLE-A', 'COMP-1', 2],    // valid
-                ['BUNDLE-A', 'NOPE', 1],      // invalid: komponen tidak ada
+                ['BUNDLE-A', 'COMP-1', 2],    
+                ['BUNDLE-A', 'NOPE', 1],      
             ]
         );
 

@@ -142,14 +142,20 @@ class LocationBinService
         return DB::transaction(function () use ($locationId, $bins) {
             $updated = 0;
             foreach ($bins as $binData) {
+                $payload = [
+                    'max_qty' => $binData['max_qty'],
+                    'is_stock_acknowledged' => $binData['is_stock_acknowledged'],
+                    'is_large_bin' => $binData['is_large_bin'],
+                    'category' => $binData['category'] ?? null,
+                ];
+
+                if (array_key_exists('bin_final_code', $binData)) {
+                    $payload['bin_final_code'] = $binData['bin_final_code'];
+                }
+
                 $affected = LocationBin::where('location_id', $locationId)
                     ->where('id', $binData['id'])
-                    ->update([
-                        'max_qty' => $binData['max_qty'],
-                        'is_stock_acknowledged' => $binData['is_stock_acknowledged'],
-                        'is_large_bin' => $binData['is_large_bin'],
-                        'category' => $binData['category'] ?? null,
-                    ]);
+                    ->update($payload);
                 $updated += $affected;
             }
             return $updated;

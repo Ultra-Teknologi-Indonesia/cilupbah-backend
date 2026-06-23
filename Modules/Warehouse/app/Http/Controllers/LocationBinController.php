@@ -196,6 +196,7 @@ class LocationBinController extends Controller
         $validated = $request->validate([
             'bins' => 'required|array|min:1',
             'bins.*.id' => 'required|uuid',
+            'bins.*.bin_final_code' => 'required|string|max:255',
             'bins.*.max_qty' => 'required|integer|min:0',
             'bins.*.is_stock_acknowledged' => 'required|boolean',
             'bins.*.is_large_bin' => 'required|boolean',
@@ -205,6 +206,8 @@ class LocationBinController extends Controller
         try {
             $updated = $this->binService->bulkUpdate($locationId, $validated['bins']);
             return $this->successResponse(['updated' => $updated], 'Rak berhasil diperbarui.');
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+            return $this->errorResponse('Kode rak harus unik dalam satu lokasi. Ada kode yang duplikat.', 422);
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }

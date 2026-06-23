@@ -17,4 +17,19 @@ class ChannelOrderRepository
             ->where('salesorder_no', $orderNo)
             ->update(['status' => $status]);
     }
+
+    public function updateTrackingByOrderNo(string $orderNo, string $trackingNumber, ?string $shippingProvider = null): int
+    {
+        $update = ['tracking_number' => $trackingNumber];
+        if ($shippingProvider !== null) {
+            $update['shipping_provider'] = $shippingProvider;
+        }
+
+        return DB::table('sales_orders')
+            ->where(function ($q) use ($orderNo) {
+                $q->where('salesorder_no', $orderNo)
+                  ->orWhere('channel_order_no', $orderNo);
+            })
+            ->update($update);
+    }
 }

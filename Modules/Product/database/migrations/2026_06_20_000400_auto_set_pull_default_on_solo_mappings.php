@@ -7,7 +7,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // For each channel_category_id that has exactly 1 mapping, set is_pull_default = true
+
         $soloIds = DB::table('category_channel_mappings')
             ->select('channel_category_id')
             ->groupBy('channel_category_id')

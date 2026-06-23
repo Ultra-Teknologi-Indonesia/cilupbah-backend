@@ -38,10 +38,6 @@ class GagalDownloadFlowTest extends TestCase
         ]);
     }
 
-    /**
-     * Create a Master Produk variant (+ inventory) for a SKU. Simulates the product
-     * being present/downloaded into Master Produk so it can be bound.
-     */
     protected function seedVariant(string $sku, int $onHand = 10): string
     {
         $categoryId = DB::table('categories')->insertGetId([
@@ -130,17 +126,15 @@ class GagalDownloadFlowTest extends TestCase
 
     public function test_channel_order_with_unknown_sku_is_kept_but_unmapped(): void
     {
-        // SKU 'SKU-ASING' has no Master Produk variant.
+
         $orderId = $this->service->upsertFromChannel($this->channelOrderData('GD-1', 'SKU-ASING'));
 
         $order = $this->freshOrder($orderId);
 
-        // Order is NOT rejected — it exists with the item kept and item_id null.
         $this->assertNotNull($order);
         $this->assertCount(1, $order->items);
         $this->assertNull($order->items->first()->item_id, 'SKU asing harus tetap tersimpan tanpa item_id');
 
-        // No stock reserved anywhere for the un-mapped item.
         $this->assertSame(0, DB::table('inventory_movements')->where('source', 'ORDER_RESERVE')->count());
     }
 
@@ -160,7 +154,6 @@ class GagalDownloadFlowTest extends TestCase
         $order = $this->freshOrder($orderId);
         $itemId = $order->items->first()->id;
 
-        // Operator "downloads" the product into Master Produk, then binds.
         $variantId = $this->seedVariant('SKU-DOWNLOAD');
 
         $this->service->downloadOrderItem($order, $itemId);
@@ -168,11 +161,9 @@ class GagalDownloadFlowTest extends TestCase
         $item = DB::table('sales_order_items')->where('id', $itemId)->first();
         $this->assertSame($variantId, $item->item_id, 'item harus terpetakan ke variant master');
 
-        // Stock reserved for the now-mapped item.
         $inv = DB::table('inventories')->where('item_id', $variantId)->where('location_id', $this->locationId)->first();
         $this->assertSame(2, $inv->reserved, 'stok harus ter-reserve setelah download');
 
-        // Tab transition: leaves Gagal Download, enters Siap Proses.
         $counts = $this->repository->getTabCounts();
         $this->assertSame(0, $counts['failed']);
         $this->assertSame(1, $counts['ready-to-process']);
@@ -184,8 +175,6 @@ class GagalDownloadFlowTest extends TestCase
         $order = $this->freshOrder($orderId);
         $itemId = $order->items->first()->id;
 
-        // Product is NOT in master yet. Simulate the marketplace "Download": the channel
-        // service pulls it into master (creates the variant) and returns true.
         $this->mock(ChannelDownloadService::class, function ($mock) {
             $mock->shouldReceive('downloadProduct')
                 ->once()
@@ -212,7 +201,6 @@ class GagalDownloadFlowTest extends TestCase
         $order = $this->freshOrder($orderId);
         $itemId = $order->items->first()->id;
 
-        // Channel pull fails (product gone / shop error): order must stay in Gagal Download.
         $this->mock(ChannelDownloadService::class, function ($mock) {
             $mock->shouldReceive('downloadProduct')
                 ->andThrow(new \RuntimeException('Produk tidak ditemukan'));
@@ -222,7 +210,7 @@ class GagalDownloadFlowTest extends TestCase
             $this->service->downloadOrderItem($order, $itemId);
             $this->fail('Seharusnya melempar ProductNotMappableException');
         } catch (ProductNotMappableException $e) {
-            // expected
+
         }
 
         $counts = $this->repository->getTabCounts();
@@ -238,7 +226,7 @@ class GagalDownloadFlowTest extends TestCase
         $variantId = $this->seedVariant('SKU-IDEMP');
 
         $this->service->downloadOrderItem($order, $itemId);
-        // Second call should be a no-op (already mapped) — no extra reservation.
+
         $this->service->downloadOrderItem($this->freshOrder($orderId), $itemId);
 
         $inv = DB::table('inventories')->where('item_id', $variantId)->first();
@@ -299,14 +287,12 @@ class GagalDownloadFlowTest extends TestCase
         $this->service->upsertFromChannel($this->channelOrderData('IDX-B', 'SKU-IDX-B'));
         DB::table('sales_orders')->where('id', $idA)->update(['customer_name' => 'Zulkarnain']);
 
-        // sort_by/sort_dir must still drive ordering (translated to Spatie sort).
         $sorted = $this->actingAs($user, 'sanctum')
             ->getJson('/api/v1/sales?sort_by=salesorder_no&sort_dir=asc');
         $sorted->assertStatus(200);
         $nos = array_column($sorted->json('data'), 'salesorder_no');
         $this->assertSame($nos, collect($nos)->sort()->values()->all(), 'urutan harus naik by salesorder_no');
 
-        // Free-text search (q -> ?search= -> allowedSearch FTS macro) on customer name.
         $search = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?q=Zulkarnain');
         $search->assertStatus(200);
         $this->assertCount(1, $search->json('data'));

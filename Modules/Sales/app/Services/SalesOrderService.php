@@ -564,7 +564,9 @@ class SalesOrderService
             'UNPAID', 'ON_HOLD'                       => 'pending',
             'AWAITING_SHIPMENT', 'READY_TO_SHIP'      => 'reserved',
             'RETRY_SHIP'                              => 'reserved',
-            'AWAITING_COLLECTION', 'PROCESSED', 'IN_TRANSIT' => 'packed',
+            'AWAITING_COLLECTION', 'PROCESSED'        => 'packed',
+            'PARTIALLY_SHIPPING'                      => 'packed',
+            'IN_TRANSIT'                              => 'shipped',
             'SHIPPED', 'TO_CONFIRM_RECEIVE'           => 'shipped',
             'DELIVERED', 'COMPLETED'                  => 'shipped',
 

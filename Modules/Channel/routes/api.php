@@ -25,8 +25,7 @@ Route::prefix('v1/tiktok')->group(function () {
     Route::get('callback', [\Modules\Channel\Http\Controllers\TikTokAuthController::class, 'callback'])->name('tiktok.callback');
 
     Route::middleware('auth:sanctum')->group(function () {
-        Route::get('cancel-reasons', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'getCancelReasons'])->name('tiktok.cancel-reasons');
-        Route::post('cancel-product', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'cancelProduct'])->name('tiktok.cancel-product');
+        Route::get('cancel-reasons', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'cancelReasons'])->name('tiktok.cancel-reasons');
 
         Route::get('stores', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'index'])->name('tiktok.stores.index');
         Route::get('stores/{id}', [\Modules\Channel\Http\Controllers\TikTokStoreController::class, 'show'])->whereUuid('id')->name('tiktok.stores.show');
@@ -39,6 +38,11 @@ Route::prefix('v1/tiktok')->group(function () {
         Route::post('sync/pull', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pullOrders'])->name('tiktok.sync.pull');
         Route::post('sync/accept', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'acceptOrder'])->name('tiktok.sync.accept');
         Route::post('sync/decline', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'declineOrder'])->name('tiktok.sync.decline');
+        Route::post('sync/ship', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'shipOrder'])->name('tiktok.sync.ship');
+        Route::match(['get', 'post'], 'sync/awb', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'airwayBill'])->name('tiktok.sync.awb');
+        Route::get('sync/packages', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'packages'])->name('tiktok.sync.packages');
+        Route::post('sync/handle-buyer-cancel', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'handleBuyerCancel'])->name('tiktok.sync.handle-buyer-cancel');
+        Route::post('sync/cancel', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'cancelOrder'])->name('tiktok.sync.cancel');
         Route::post('sync/categories', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'syncCategories'])->name('tiktok.sync.categories');
         Route::post('sync/category-attributes', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'syncCategoryAttributes'])->name('tiktok.sync.category-attributes');
         Route::post('sync/products/push', [\Modules\Channel\Http\Controllers\TikTokSyncApiController::class, 'pushProduct'])->name('tiktok.sync.products.push');

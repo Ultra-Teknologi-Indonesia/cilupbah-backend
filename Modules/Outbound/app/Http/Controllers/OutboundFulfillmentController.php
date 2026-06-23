@@ -289,8 +289,6 @@ class OutboundFulfillmentController extends Controller
 
         $query = User::query();
 
-        // Users are linked to a warehouse via `warehouse_id`. If a location is
-        // supplied, scope to that warehouse; otherwise return all active users.
         if ($request->filled('location_id')) {
             $query->where('warehouse_id', $request->query('location_id'));
         }

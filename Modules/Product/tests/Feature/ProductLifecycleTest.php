@@ -167,8 +167,6 @@ class ProductLifecycleTest extends TestCase
         $response->assertStatus(200);
         $this->assertSame('archived', $product->fresh()->status);
 
-        // Kebijakan Jubelio: arsip internal TIDAK menyentuh marketplace — meski
-        // produk punya mapping channel yang sudah ter-sync.
         Queue::assertNotPushed(SyncProductToChannelJob::class);
     }
 

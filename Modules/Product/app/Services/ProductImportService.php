@@ -29,8 +29,7 @@ class ProductImportService
                 'length' => $row['package_length'] ?? 0,
                 'width' => $row['package_width'] ?? 0,
                 'height' => $row['package_height'] ?? 0,
-                // Produk hasil import langsung berstatus Master (siap pakai),
-                // konsisten dengan default kolom products.status.
+
                 'status' => Product::STATUS_MASTER,
                 'is_active' => true,
             ]);

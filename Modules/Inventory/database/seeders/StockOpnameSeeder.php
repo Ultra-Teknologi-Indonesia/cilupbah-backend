@@ -56,14 +56,13 @@ class StockOpnameSeeder extends Seeder
             try {
                 $staff->assignRole('warehouse_staff');
             } catch (\Exception $e) {
-                // role belum ada, skip
+
             }
         }
 
         $variants = [$laptop, $mouse, $keyboard];
         $bins = [$bin1, $bin2];
 
-        // Status distribution: ~6 DRAFT, ~6 IN_PROGRESS, ~5 FINALIZED, ~3 CANCELLED
         $statusMap = [
             1  => StockOpname::STATUS_DRAFT,
             2  => StockOpname::STATUS_DRAFT,
@@ -125,7 +124,7 @@ class StockOpnameSeeder extends Seeder
 
         for ($i = 1; $i <= 20; $i++) {
             $seq = str_pad($i, 4, '0', STR_PAD_LEFT);
-            $dayOffset = (int) (($i - 1) * 14 / 20); // spread across 14 days
+            $dayOffset = (int) (($i - 1) * 14 / 20); 
             $createdAt = now()->subDays($dayOffset)->subMinutes($i * 11);
 
             $status = $statusMap[$i];
@@ -140,12 +139,10 @@ class StockOpnameSeeder extends Seeder
                 'updated_at' => $createdAt,
             ];
 
-            // IN_PROGRESS and FINALIZED have process_by
             if (in_array($status, [StockOpname::STATUS_IN_PROGRESS, StockOpname::STATUS_FINALIZED])) {
                 $opnameData['process_by'] = $staff->name;
             }
 
-            // FINALIZED has finalized_by and finalized_at
             if ($status === StockOpname::STATUS_FINALIZED) {
                 $opnameData['finalized_by'] = $staff->name;
                 $opnameData['finalized_at'] = $createdAt->copy()->addHours(3);
@@ -156,8 +153,7 @@ class StockOpnameSeeder extends Seeder
                 $opnameData
             );
 
-            // Each opname gets 3-8 items
-            $itemCount = ($i % 6) + 3; // cycles 3,4,5,6,7,8
+            $itemCount = ($i % 6) + 3; 
 
             $itemRows = [];
             $now = now();
@@ -165,7 +161,7 @@ class StockOpnameSeeder extends Seeder
             for ($j = 0; $j < $itemCount; $j++) {
                 $variant = $variants[($i + $j) % count($variants)];
                 $bin = $bins[($i + $j) % count($bins)];
-                $qtySystem = (($i + $j) % 10 + 1) * 5; // 5 to 50
+                $qtySystem = (($i + $j) % 10 + 1) * 5; 
                 $batchNo = $batchNos[($i + $j) % count($batchNos)];
                 $serialNo = $variant->sku === 'LAPTOP-001-8GB'
                     ? $serialNos[($i + $j) % count($serialNos)]
@@ -181,7 +177,7 @@ class StockOpnameSeeder extends Seeder
                 $countedAt = null;
 
                 if ($status === StockOpname::STATUS_FINALIZED) {
-                    // All items counted
+
                     $diff = [0, 0, 0, -1, 1, -2, 0, 2, -3, 0];
                     $qtyDiff = $diff[($i + $j) % count($diff)];
                     $qtyActual = $qtySystem + $qtyDiff;
@@ -192,9 +188,9 @@ class StockOpnameSeeder extends Seeder
                         $reason = $differenceReasons[abs($i + $j) % count($differenceReasons)];
                     }
                 } elseif ($status === StockOpname::STATUS_IN_PROGRESS) {
-                    // Some items counted, some still pending
+
                     if ($j < (int) ($itemCount * 0.6)) {
-                        // counted items
+
                         $diff = [0, -1, 0, 1, -2, 0];
                         $qtyDiff = $diff[($i + $j) % count($diff)];
                         $qtyActual = $qtySystem + $qtyDiff;
@@ -205,9 +201,9 @@ class StockOpnameSeeder extends Seeder
                             $reason = $differenceReasons[abs($i + $j) % count($differenceReasons)];
                         }
                     }
-                    // remaining items: qty_actual, qty_difference, counted_by, counted_at stay null
+
                 } elseif ($status === StockOpname::STATUS_CANCELLED) {
-                    // Cancelled: some may have been partially counted
+
                     if ($j < 2 && $i % 2 === 0) {
                         $qtyActual = $qtySystem;
                         $qtyDifference = 0;
@@ -215,7 +211,6 @@ class StockOpnameSeeder extends Seeder
                         $countedAt = $createdAt->copy()->addMinutes(45);
                     }
                 }
-                // DRAFT: all qty_actual, qty_difference, reason, counted_by, counted_at stay null
 
                 $itemRows[] = [
                     'id' => Uuid::uuid7()->toString(),
@@ -236,7 +231,6 @@ class StockOpnameSeeder extends Seeder
                 ];
             }
 
-            // Batch insert items (skip if opname already existed with items)
             if ($opname->wasRecentlyCreated) {
                 StockOpnameItem::insert($itemRows);
             }

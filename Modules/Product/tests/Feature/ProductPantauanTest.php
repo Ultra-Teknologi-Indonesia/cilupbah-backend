@@ -175,8 +175,7 @@ class ProductPantauanTest extends TestCase
 
     public function test_shopee_is_in_scope_and_flags_price_mismatch(): void
     {
-        // shopB = channel Shopee (lihat setUp). Sebelum Shopee masuk
-        // IN_SCOPE_CHANNELS, recompute melewati mismatch ini.
+
         $divergent = $this->product('Shopee Harga Beda');
         $v = ProductVariant::create(['product_id' => $divergent->id, 'sku' => 'SHP-HB-1', 'sell_price' => 100000, 'is_active' => true]);
         $m = $this->mapTo($divergent, $this->shopB, 'SHP-HB');

@@ -182,8 +182,6 @@ class ChannelProductTest extends TestCase
         $response->assertStatus(200);
         $this->assertSoftDeleted('products', ['id' => $this->testProduct->id]);
 
-        // Sesuai perilaku Jubelio: hapus produk di internal TIDAK menghapus
-        // listing di marketplace — tidak boleh ada job 'delete' yang dikirim.
         Queue::assertNotPushed(SyncProductToChannelJob::class, function ($job) {
             return $job->action === 'delete';
         });
