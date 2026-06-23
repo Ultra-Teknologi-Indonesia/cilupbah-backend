@@ -15,8 +15,7 @@ class SalesOrderRepository
 
     public function getPaginatedOrders()
     {
-        // Translate the FE's sort_by/sort_dir into Spatie's `sort` param so sorting is
-        // driven by allowedSorts/defaultSort (keeps the existing FE contract working).
+
         if ($legacySort = $this->mapLegacySort()) {
             request()->merge(['sort' => $legacySort]);
         }
@@ -31,8 +30,6 @@ class SalesOrderRepository
             ->allowedSorts(...self::ORDER_SORTS)
             ->defaultSort('-created_at');
 
-        // Custom params kept for the Pesanan FE contract — not expressible as plain Spatie
-        // filters (derived tabs, dual-mode search, date range, content-type aggregates).
         $tab = request('tab');
         $sub = request('sub');
         if ($tab && $tab !== 'all') {
@@ -60,15 +57,11 @@ class SalesOrderRepository
 
         if ($q = request('q')) {
             if (request('search_by', 'order') === 'sku') {
-                // SKU mode is a structured filter on the related sales_order_items table —
-                // outside the allowedSearch FTS macro's scope (own-table columns only).
+
                 $query->whereHas('items', fn ($sub) => $sub->where('sku', 'like', "%{$q}%")
                     ->orWhere('description', 'like', "%{$q}%"));
             } else {
-                // Free-text order/customer search via the global FTS macro (standard #4).
-                // The macro reads request()->query('search'); the Pesanan FE sends ?q=,
-                // so write straight into the query bag (merge() would land in the wrong
-                // input source for JSON requests).
+
                 request()->query->set('search', $q);
                 $query->allowedSearch('salesorder_no', 'customer_name');
             }
@@ -121,11 +114,6 @@ class SalesOrderRepository
         ];
     }
 
-    /**
-     * Constraint for an order that still has at least one un-downloaded item
-     * (channel SKU not yet mapped to a Master Produk variant → item_id IS NULL).
-     * Shared between the list scope and the tab counts so they never diverge.
-     */
     protected function unmappedItemsConstraint(): \Closure
     {
         return fn ($q) => $q->whereNull('item_id');
@@ -301,10 +289,12 @@ class SalesOrderRepository
             'shipping_post_code'  => $orderData['shipping_post_code'],
             'shipping_country'    => $orderData['shipping_country'],
             'channel_status'      => $orderData['channel_status'],
+            'channel_fulfillment_status' => $orderData['channel_fulfillment_status'] ?? ($existing->channel_fulfillment_status ?? null),
             'status'              => $orderData['status'],
             'is_paid'             => $orderData['is_paid'],
             'is_canceled'         => $orderData['is_canceled'] ?? false,
             'cancel_reason'       => $orderData['cancel_reason'] ?? null,
+            'cancel_requested_at' => $orderData['cancel_requested_at'] ?? ($existing->cancel_requested_at ?? null),
             'payment_method'      => $orderData['payment_method'],
             'payment_method_name' => $orderData['payment_method_name'] ?? null,
             'tracking_number'     => $orderData['tracking_number'] ?? null,

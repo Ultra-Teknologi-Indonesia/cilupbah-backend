@@ -2,16 +2,21 @@
 
 namespace Modules\Channel\Services;
 
+use Illuminate\Support\Facades\Log;
+
 class ShopeeToInternalOrderMapper
 {
+
     protected const STATUS_MAP = [
         'unpaid' => 'UNPAID',
         'ready_to_ship' => 'AWAITING_SHIPMENT',
-        'processed' => 'AWAITING_COLLECTION',
-        'retry_ship' => 'AWAITING_COLLECTION',
-        'shipped' => 'IN_TRANSIT',
-        'to_confirm_receive' => 'IN_TRANSIT',
-        'completed' => 'DELIVERED',
+        'processed' => 'PROCESSED',
+        'retry_ship' => 'RETRY_SHIP',
+        'shipped' => 'SHIPPED',
+        'to_confirm_receive' => 'TO_CONFIRM_RECEIVE',
+        'completed' => 'COMPLETED',
+        'in_cancel' => 'IN_CANCEL',
+        'to_return' => 'TO_RETURN',
         'cancelled' => 'CANCELLED',
     ];
 
@@ -20,7 +25,17 @@ class ShopeeToInternalOrderMapper
         $items = $this->mapItems($shopeeOrder['item_list'] ?? []);
 
         $shopeeStatus = strtolower((string) ($shopeeOrder['order_status'] ?? 'unpaid'));
-        $channelStatus = self::STATUS_MAP[$shopeeStatus] ?? 'UNPAID';
+        $channelStatus = self::STATUS_MAP[$shopeeStatus] ?? null;
+        if ($channelStatus === null) {
+
+            Log::warning("Shopee: order_status tidak dikenal '{$shopeeStatus}' untuk order " . ($shopeeOrder['order_sn'] ?? ''));
+            $channelStatus = strtoupper($shopeeStatus);
+        }
+
+        $fulfillmentStatus = $shopeeOrder['package_list'][0]['logistics_status']
+            ?? ($shopeeOrder['logistics_status'] ?? null);
+
+        $isCancelOrReturn = in_array($channelStatus, ['IN_CANCEL', 'TO_RETURN'], true);
 
         $address = $shopeeOrder['recipient_address'] ?? [];
 
@@ -59,6 +74,8 @@ class ShopeeToInternalOrderMapper
             'cancel_reason' => $channelStatus === 'CANCELLED'
                 ? ($shopeeOrder['cancel_reason'] ?? null)
                 : null,
+            'cancel_requested_at' => $isCancelOrReturn ? (string) now() : null,
+            'channel_fulfillment_status' => $fulfillmentStatus,
             'payment_method' => $shopeeOrder['payment_method'] ?? null,
             'payment_method_name' => $shopeeOrder['payment_method'] ?? null,
             'tracking_number' => $shopeeOrder['tracking_number'] ?? null, 

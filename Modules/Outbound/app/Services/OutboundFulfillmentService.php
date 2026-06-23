@@ -25,17 +25,6 @@ class OutboundFulfillmentService
         protected LazadaOrderService $lazadaOrderService,
     ) {}
 
-    /**
-     * Omnichannel "Siap Dikirim" (Ready To Ship) dispatcher.
-     *
-     * For each order, switch on the lowercase `source` and call the matching
-     * marketplace ship/pack endpoint. Manual/other sources are marked ready
-     * locally with no channel call. Every order is isolated in its own
-     * try/catch so a single failure never aborts the batch.
-     *
-     * @param  array<int,string|int>  $orderIds
-     * @return array<int,array{order_id:mixed,salesorder_no:?string,source:?string,status:string,message:string}>
-     */
     public function readyToShip(array $orderIds): array
     {
         $results = [];
@@ -62,8 +51,13 @@ class OutboundFulfillmentService
                 switch ($source) {
                     case 'shopee':
                         $this->assertChannelRefs($source, $shopId, $channelOrderNo);
-                        $this->shopeeOrderService->shipOrder($shopId, $channelOrderNo);
-                        $results[] = $this->result($order, 'success', 'Shopee: berhasil dikirim (RTS).');
+                        $ship = $this->shopeeOrderService->shipOrder($shopId, $channelOrderNo);
+                        if (!empty($ship['shipped'])) {
+                            $results[] = $this->result($order, 'success', 'Shopee: berhasil dikirim (RTS).');
+                        } else {
+                            $err = is_array($ship) ? ($ship['error'] ?? null) : null;
+                            $results[] = $this->result($order, 'failed', 'Shopee: gagal ship_order' . ($err ? " ({$err})" : '') . '.');
+                        }
                         break;
 
                     case 'tiktok':
@@ -83,7 +77,7 @@ class OutboundFulfillmentService
                         break;
 
                     default:
-                        // Manual / non-marketplace order: mark ready-to-ship locally only.
+
                         $order->update(['status' => 'ready-to-ship']);
                         $results[] = $this->result($order, 'skipped', 'Order manual/non-marketplace: ditandai siap dikirim secara lokal.');
                         break;

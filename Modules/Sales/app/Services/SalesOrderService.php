@@ -419,20 +419,6 @@ class SalesOrderService
         });
     }
 
-    /**
-     * "Download" / bind an order item whose product is not yet in Master Produk.
-     *
-     * Mirrors Jubelio's "Download" on the Gagal Download tab:
-     *   1. If an explicit $variantId is given → bind to it (manual mapping).
-     *   2. Else if the SKU already exists in master → bind by SKU.
-     *   3. Else pull the product from its marketplace channel into master
-     *      (best-effort, via ChannelDownloadService) then bind by SKU.
-     * After binding, stock is reserved when the order is already reserved, so the
-     * order automatically leaves "Gagal Download" and re-enters the normal queue
-     * (both tabs are derived from item_id, not a stored flag).
-     *
-     * Idempotent: an already-mapped item is a no-op so double-clicks don't double-reserve.
-     */
     public function downloadOrderItem(SalesOrder $order, string $orderItemId, ?string $variantId = null): SalesOrder
     {
         if ($order->status === 'cancelled') {
@@ -445,9 +431,6 @@ class SalesOrderService
             return $this->freshOrderWithItems($order);
         }
 
-        // Jubelio-style "Download": when the buyer's product isn't in master yet and no
-        // variant was hand-picked, try to pull it from the marketplace first. Best-effort
-        // and outside the locking transaction (it does its own external I/O + writes).
         if ($variantId === null && ! $this->skuExistsInMaster($item->sku)) {
             $this->attemptChannelProductPull($order, $item);
         }
@@ -455,7 +438,6 @@ class SalesOrderService
         $mutated = DB::transaction(function () use ($order, $orderItemId, $variantId) {
             $lockedOrder = SalesOrder::whereKey($order->id)->lockForUpdate()->firstOrFail();
 
-            /** @var SalesOrderItem $item */
             $item = $lockedOrder->items()->whereKey($orderItemId)->lockForUpdate()->firstOrFail();
 
             if ($item->item_id) {
@@ -502,12 +484,6 @@ class SalesOrderService
         return $this->orderRepository->variantIdBySku($sku) !== null;
     }
 
-    /**
-     * Best-effort pull of an order item's product from its marketplace channel into
-     * master. Any failure (unsupported/unknown channel, shop not connected, product
-     * gone, API error) is swallowed: the order simply stays in "Gagal Download" and the
-     * caller raises ProductNotMappableException so the operator can map it manually.
-     */
     private function attemptChannelProductPull(SalesOrder $order, SalesOrderItem $item): void
     {
         $channel = $order->source;
@@ -585,12 +561,16 @@ class SalesOrderService
     private function mapChannelStatusToInternal(string $channelStatus): string
     {
         return match ($channelStatus) {
-            'UNPAID', 'ON_HOLD'                => 'pending',
-            'AWAITING_SHIPMENT'                => 'reserved',
-            'AWAITING_COLLECTION', 'IN_TRANSIT' => 'packed',
-            'DELIVERED', 'COMPLETED'           => 'shipped',
-            'CANCELLED'                        => 'cancelled',
-            default                            => 'pending',
+            'UNPAID', 'ON_HOLD'                       => 'pending',
+            'AWAITING_SHIPMENT', 'READY_TO_SHIP'      => 'reserved',
+            'RETRY_SHIP'                              => 'reserved',
+            'AWAITING_COLLECTION', 'PROCESSED', 'IN_TRANSIT' => 'packed',
+            'SHIPPED', 'TO_CONFIRM_RECEIVE'           => 'shipped',
+            'DELIVERED', 'COMPLETED'                  => 'shipped',
+
+            'IN_CANCEL', 'TO_RETURN'                  => 'pending',
+            'CANCELLED'                               => 'cancelled',
+            default                                   => 'pending',
         };
     }
 

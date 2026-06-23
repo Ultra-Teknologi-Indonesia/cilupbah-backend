@@ -44,6 +44,7 @@ class SalesOrder extends Model
         'cancel_requested_at',
         'cancel_requested_by',
         'channel_status',
+        'channel_fulfillment_status',
         'payment_method',
         'payment_method_name',
         'tracking_number',

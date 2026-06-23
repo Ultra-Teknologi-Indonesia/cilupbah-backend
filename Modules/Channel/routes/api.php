@@ -96,6 +96,13 @@ Route::prefix('v1/shopee')->group(function () {
         Route::post('auto-sync/pull-orders', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'pullOrdersAll'])->name('shopee.sync.pull-all');
 
         Route::post('sync/ship', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'shipOrder'])->name('shopee.sync.ship');
+        Route::post('sync/mass-ship', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'massShipOrder'])->name('shopee.sync.mass-ship');
+        Route::match(['get', 'post'], 'sync/awb', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'airwayBill'])->name('shopee.sync.awb');
+        Route::get('sync/packages', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'packages'])->name('shopee.sync.packages');
+        Route::post('sync/update-shipping', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'updateShipping'])->name('shopee.sync.update-shipping');
+        Route::post('sync/handle-buyer-cancel', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'handleBuyerCancel'])->name('shopee.sync.handle-buyer-cancel');
+        Route::post('sync/split', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'splitOrder'])->name('shopee.sync.split');
+        Route::post('sync/unsplit', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'unsplitOrder'])->name('shopee.sync.unsplit');
         Route::post('sync/cancel', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'cancelOrder'])->name('shopee.sync.cancel');
         Route::get('cancel-reasons', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'cancelReasons'])->name('shopee.cancel-reasons');
         Route::get('logistics', [\Modules\Channel\Http\Controllers\ShopeeSyncApiController::class, 'logistics'])->name('shopee.logistics');

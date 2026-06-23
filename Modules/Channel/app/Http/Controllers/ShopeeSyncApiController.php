@@ -79,14 +79,197 @@ class ShopeeSyncApiController extends Controller
         $validated = $request->validate([
             'shop_id' => ['required', 'string'],
             'order_sn' => ['required', 'string'],
+            'method' => ['nullable', 'string', 'in:pickup,dropoff,non_integrated'],
+            'address_id' => ['nullable'],
+            'pickup_time_id' => ['nullable'],
+            'tracking_number' => ['nullable', 'string'],
+            'branch_id' => ['nullable'],
+            'sender_real_name' => ['nullable', 'string'],
         ]);
 
+        $opts = array_filter(
+            $request->only(['method', 'address_id', 'pickup_time_id', 'tracking_number', 'branch_id', 'sender_real_name']),
+            fn ($v) => $v !== null
+        );
+
         try {
-            $result = $this->orderService->shipOrder($validated['shop_id'], $validated['order_sn']);
+            $result = $this->orderService->shipOrder($validated['shop_id'], $validated['order_sn'], $opts);
+
+            if (empty($result['shipped'])) {
+                return $this->errorResponse('Gagal mengirim order: ' . ($result['error'] ?? 'unknown'), 422, $result);
+            }
 
             return $this->successResponse($result, 'Order Shopee berhasil dikirim.');
         } catch (\Throwable $e) {
             return $this->errorResponse('Gagal mengirim order: ' . $e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Post(path: '/api/v1/shopee/sync/mass-ship', summary: 'Kirim massal order Shopee', tags: ['Shopee'])]
+    public function massShipOrder(Request $request)
+    {
+        $validated = $request->validate([
+            'shop_id' => ['required', 'string'],
+            'order_sns' => ['required', 'array', 'min:1'],
+            'order_sns.*' => ['required', 'string'],
+            'method' => ['nullable', 'string', 'in:pickup,dropoff,non_integrated'],
+            'address_id' => ['nullable'],
+            'pickup_time_id' => ['nullable'],
+            'branch_id' => ['nullable'],
+            'sender_real_name' => ['nullable', 'string'],
+        ]);
+
+        $opts = array_filter(
+            $request->only(['method', 'address_id', 'pickup_time_id', 'branch_id', 'sender_real_name']),
+            fn ($v) => $v !== null
+        );
+
+        try {
+            $result = $this->orderService->massShipOrder($validated['shop_id'], $validated['order_sns'], $opts);
+
+            return $this->successResponse($result, 'Kirim massal Shopee diproses.');
+        } catch (\Throwable $e) {
+            return $this->errorResponse('Gagal kirim massal: ' . $e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Get(path: '/api/v1/shopee/sync/awb', summary: 'Cetak / ambil air waybill Shopee', tags: ['Shopee'])]
+    public function airwayBill(Request $request)
+    {
+        $validated = $request->validate([
+            'shop_id' => ['required', 'string'],
+            'order_sn' => ['required', 'string'],
+            'doc_type' => ['nullable', 'string'],
+        ]);
+
+        try {
+            $result = $this->orderService->getAirwayBill(
+                $validated['shop_id'],
+                $validated['order_sn'],
+                $validated['doc_type'] ?? 'NORMAL_AIR_WAYBILL'
+            );
+
+            if (empty($result['ready'])) {
+                return $this->errorResponse('AWB belum siap: ' . ($result['error'] ?? 'unknown'), 422, $result);
+            }
+
+            return $this->successResponse($result, 'Air waybill Shopee siap.');
+        } catch (\Throwable $e) {
+            return $this->errorResponse('Gagal ambil AWB: ' . $e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Get(path: '/api/v1/shopee/sync/packages', summary: 'Cari daftar paket Shopee', tags: ['Shopee'])]
+    public function packages(Request $request)
+    {
+        $validated = $request->validate([
+            'shop_id' => ['required', 'string'],
+            'package_status' => ['nullable', 'integer'],
+            'cursor' => ['nullable', 'string'],
+            'page_size' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'logistics_channel_id' => ['nullable', 'integer'],
+        ]);
+
+        $opts = array_filter(
+            $request->only(['package_status', 'cursor', 'page_size', 'logistics_channel_id']),
+            fn ($v) => $v !== null
+        );
+
+        try {
+            return $this->successResponse($this->orderService->searchPackageList($validated['shop_id'], $opts), 'Daftar paket Shopee.');
+        } catch (\Throwable $e) {
+            return $this->errorResponse('Gagal ambil daftar paket: ' . $e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Post(path: '/api/v1/shopee/sync/update-shipping', summary: 'Retry pengiriman order Shopee', tags: ['Shopee'])]
+    public function updateShipping(Request $request)
+    {
+        $validated = $request->validate([
+            'shop_id' => ['required', 'string'],
+            'order_sn' => ['required', 'string'],
+            'address_id' => ['required'],
+            'pickup_time_id' => ['required'],
+        ]);
+
+        try {
+            $result = $this->orderService->updateShippingOrder($validated['shop_id'], $validated['order_sn'], [
+                'address_id' => $validated['address_id'],
+                'pickup_time_id' => $validated['pickup_time_id'],
+            ]);
+
+            if (empty($result['updated'])) {
+                return $this->errorResponse('Gagal retry pengiriman: ' . ($result['error'] ?? 'unknown'), 422, $result);
+            }
+
+            return $this->successResponse($result, 'Pengiriman Shopee diperbarui.');
+        } catch (\Throwable $e) {
+            return $this->errorResponse('Gagal retry pengiriman: ' . $e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Post(path: '/api/v1/shopee/sync/handle-buyer-cancel', summary: 'Tanggapi permintaan batal pembeli Shopee', tags: ['Shopee'])]
+    public function handleBuyerCancel(Request $request)
+    {
+        $validated = $request->validate([
+            'shop_id' => ['required', 'string'],
+            'order_sn' => ['required', 'string'],
+            'operation' => ['required', 'string', 'in:ACCEPT,REJECT'],
+        ]);
+
+        try {
+            $result = $this->orderService->handleBuyerCancellation($validated['shop_id'], $validated['order_sn'], $validated['operation']);
+
+            if (empty($result['handled'])) {
+                return $this->errorResponse('Gagal menanggapi pembatalan: ' . ($result['error'] ?? 'unknown'), 422, $result);
+            }
+
+            return $this->successResponse($result, 'Permintaan pembatalan pembeli ditanggapi.');
+        } catch (\Throwable $e) {
+            return $this->errorResponse('Gagal menanggapi pembatalan: ' . $e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Post(path: '/api/v1/shopee/sync/split', summary: 'Pisah order Shopee', tags: ['Shopee'])]
+    public function splitOrder(Request $request)
+    {
+        $validated = $request->validate([
+            'shop_id' => ['required', 'string'],
+            'order_sn' => ['required', 'string'],
+            'package_list' => ['required', 'array', 'min:1'],
+        ]);
+
+        try {
+            $result = $this->orderService->splitOrder($validated['shop_id'], $validated['order_sn'], $validated['package_list']);
+
+            if (empty($result['split'])) {
+                return $this->errorResponse('Gagal memisah order: ' . ($result['error'] ?? 'unknown'), 422, $result);
+            }
+
+            return $this->successResponse($result, 'Order Shopee dipisah.');
+        } catch (\Throwable $e) {
+            return $this->errorResponse('Gagal memisah order: ' . $e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Post(path: '/api/v1/shopee/sync/unsplit', summary: 'Gabung kembali order Shopee', tags: ['Shopee'])]
+    public function unsplitOrder(Request $request)
+    {
+        $validated = $request->validate([
+            'shop_id' => ['required', 'string'],
+            'order_sn' => ['required', 'string'],
+        ]);
+
+        try {
+            $result = $this->orderService->unsplitOrder($validated['shop_id'], $validated['order_sn']);
+
+            if (empty($result['unsplit'])) {
+                return $this->errorResponse('Gagal menggabung order: ' . ($result['error'] ?? 'unknown'), 422, $result);
+            }
+
+            return $this->successResponse($result, 'Order Shopee digabung kembali.');
+        } catch (\Throwable $e) {
+            return $this->errorResponse('Gagal menggabung order: ' . $e->getMessage(), 422);
         }
     }
 
