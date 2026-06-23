@@ -222,6 +222,90 @@ class SalesOrderService
         return ['order_id' => $order->id, 'status' => 'requested'];
     }
 
+    public function getShippingLabel(SalesOrder $order, string $docType = 'shipping_label'): array
+    {
+        $source = $order->source;
+        $shopId = $order->channel_shop_id;
+        $channelOrderNo = $order->channel_order_no;
+
+        if (! $source || ! $shopId || ! $channelOrderNo) {
+            throw new \InvalidArgumentException('Pesanan ini bukan dari marketplace atau data channel tidak lengkap.');
+        }
+
+        if ($source === 'tiktok') {
+            $tikTokService = app(\Modules\Channel\Services\TikTokOrderService::class);
+            $shopRepo = app(\Modules\Channel\Repositories\ChannelShopRepository::class);
+            $shop = $shopRepo->findByShopId($shopId);
+
+            if (! $shop || ! $shop->access_token) {
+                throw new \RuntimeException('Token akses TikTok Shop tidak ditemukan.');
+            }
+
+            $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
+            $detailQueries = array_merge($queries, ['ids' => $channelOrderNo]);
+            $tikTokClient = app(\Modules\Channel\Services\TikTokClient::class);
+            $res = $tikTokClient->request('GET', '/order/202309/orders', $detailQueries, [], $shop->access_token);
+
+            $packageId = null;
+            foreach (($res['data']['orders'] ?? []) as $o) {
+                foreach ($o['packages'] ?? [] as $pkg) {
+                    if (! empty($pkg['id'])) {
+                        $packageId = (string) $pkg['id'];
+                        break 2;
+                    }
+                }
+            }
+
+            if (! $packageId) {
+                throw new \RuntimeException('Package ID tidak ditemukan untuk pesanan TikTok ini.');
+            }
+
+            $result = $tikTokService->getShippingLabel($shopId, $packageId);
+            $docUrl = $result['data']['doc_url'] ?? ($result['data']['document_url'] ?? null);
+
+            if ($docUrl) {
+                return [
+                    'type' => 'url',
+                    'url' => $docUrl,
+                    'source' => 'tiktok',
+                ];
+            }
+
+            return [
+                'type' => 'raw',
+                'data' => $result,
+                'source' => 'tiktok',
+            ];
+        }
+
+        if ($source === 'shopee') {
+            $shopeeService = app(\Modules\Channel\Services\ShopeeOrderService::class);
+            $shopeeDocType = $docType === 'shipping_label' ? 'NORMAL_AIR_WAYBILL' : 'NORMAL_AIR_WAYBILL';
+            $result = $shopeeService->getAirwayBill($shopId, $channelOrderNo, $shopeeDocType);
+
+            if (! empty($result['ready']) && ! empty($result['document_base64'])) {
+                return [
+                    'type' => 'base64',
+                    'content_type' => $result['content_type'] ?? 'application/pdf',
+                    'document_base64' => $result['document_base64'],
+                    'source' => 'shopee',
+                ];
+            }
+
+            if (! empty($result['error'])) {
+                throw new \RuntimeException($result['message'] ?? $result['error']);
+            }
+
+            return [
+                'type' => 'raw',
+                'data' => $result,
+                'source' => 'shopee',
+            ];
+        }
+
+        throw new \InvalidArgumentException("Channel '{$source}' belum mendukung cetak resi otomatis.");
+    }
+
     private function idempotencyKey(?string $source, string $salesOrderNo): string
     {
         $marketplace = $source ?: 'manual';

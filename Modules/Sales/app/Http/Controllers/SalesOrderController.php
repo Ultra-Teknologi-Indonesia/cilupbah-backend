@@ -633,4 +633,66 @@ class SalesOrderController extends Controller
 
         return $this->successResponse(new SalesOrderResource($order), 'Permintaan pembatalan ditolak');
     }
+
+    #[OA\Get(
+        path: '/api/v1/sales/{id}/shipping-label',
+        summary: 'Get shipping label / AWB document from marketplace channel',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'doc_type', in: 'query', required: false, schema: new OA\Schema(type: 'string', default: 'shipping_label')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Shipping label retrieved'),
+            new OA\Response(response: 404, description: 'Order not found'),
+            new OA\Response(response: 422, description: 'Channel not supported or missing data'),
+        ]
+    )]
+    public function getShippingLabel(string $id, Request $request)
+    {
+        $order = SalesOrder::findOrFail($id);
+        $docType = $request->query('doc_type', 'shipping_label');
+
+        try {
+            $result = $this->orderService->getShippingLabel($order, $docType);
+
+            return $this->successResponse($result, 'Shipping label berhasil diambil');
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        } catch (\RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+    }
+
+    #[OA\Put(
+        path: '/api/v1/sales/{id}/relocate',
+        summary: 'Change the warehouse/location for an order',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['location_id'],
+            properties: [
+                new OA\Property(property: 'location_id', type: 'string', format: 'uuid'),
+            ]
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'Order relocated successfully'),
+            new OA\Response(response: 404, description: 'Order not found'),
+        ]
+    )]
+    public function relocate(string $id, Request $request)
+    {
+        $validated = $request->validate([
+            'location_id' => 'required|bail|uuid|exists:locations,id',
+        ]);
+
+        $order = SalesOrder::findOrFail($id);
+        $order = $this->orderService->relocateOrder($order, $validated['location_id']);
+
+        return $this->successResponse(new SalesOrderResource($order), 'Lokasi pengambilan pesanan berhasil diubah');
+    }
 }
