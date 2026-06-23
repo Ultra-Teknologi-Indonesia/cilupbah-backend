@@ -713,19 +713,34 @@ class SalesOrderService
         }
 
         if ($previousStatus === null) {
-            if ($finalStatus === 'reserved') {
-                $this->reserveStockForOrder($order, false);
-                return true;
+            // Reserve stock for any new order — including UNPAID/pending —
+            // so marketplace orders immediately book inventory.
+            $this->reserveStockForOrder($order, false);
+
+            // If the order arrived beyond 'reserved', apply subsequent transitions.
+            $toRank = self::STATUS_RANK[$finalStatus] ?? 0;
+            for ($rank = 2; $rank <= $toRank; $rank++) {
+                match ($rank) {
+                    2       => $this->pickStockForOrder($order),
+                    4       => $this->shipStockForOrder($order),
+                    default => null,
+                };
             }
 
-            return false;
+            return true;
         }
 
         if ($previousStatus === 'cancelled') {
             return false;
         }
 
+        // Stock was already reserved at 'pending', so treat it as rank 1
+        // to avoid double-reserving on pending → reserved transition.
         $fromRank = self::STATUS_RANK[$previousStatus] ?? 0;
+        if ($previousStatus === 'pending') {
+            $fromRank = 1;
+        }
+
         $toRank = self::STATUS_RANK[$finalStatus] ?? -1;
 
         if ($toRank <= $fromRank) {
@@ -736,10 +751,10 @@ class SalesOrderService
 
         for ($rank = $fromRank + 1; $rank <= $toRank; $rank++) {
             match ($rank) {
-                1       => $this->reserveStockForOrder($order, false), 
-                2       => $this->pickStockForOrder($order),           
-                4       => $this->shipStockForOrder($order),           
-                default => null,                                       
+                1       => $this->reserveStockForOrder($order, false),
+                2       => $this->pickStockForOrder($order),
+                4       => $this->shipStockForOrder($order),
+                default => null,
             };
 
             if ($rank !== 3) {
@@ -842,7 +857,7 @@ class SalesOrderService
 
     private function releaseStockForStatus(SalesOrder $order, ?string $status): bool
     {
-        if (! in_array($status, ['reserved', 'picked', 'packed'], true)) {
+        if (! in_array($status, ['pending', 'reserved', 'picked', 'packed'], true)) {
             return false;
         }
 
@@ -855,7 +870,7 @@ class SalesOrderService
 
             $locationId = $this->resolveLocationId($order);
 
-            if ($status === 'reserved') {
+            if (in_array($status, ['pending', 'reserved'], true)) {
                 $this->stockService->cancel(
                     $item->sku ?? "item:{$item->item_id}",
                     $item->item_id,
