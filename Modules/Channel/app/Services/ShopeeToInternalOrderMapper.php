@@ -41,7 +41,11 @@ class ShopeeToInternalOrderMapper
 
         $subTotal = array_sum(array_column($items, 'amount'));
         $shippingFee = (float) ($shopeeOrder['estimated_shipping_fee'] ?? 0);
-        $grandTotal = isset($shopeeOrder['total_amount']) ? (float) $shopeeOrder['total_amount'] : ($subTotal + $shippingFee);
+        // grand_total = nilai komersial order. Shopee mengembalikan total_amount = 0 untuk
+        // order yang dibatalkan; pakai angka channel hanya bila > 0, jika tidak turunkan dari
+        // komponen agar nilai order tidak hilang saat cancel/pra-bayar.
+        $channelTotal = isset($shopeeOrder['total_amount']) ? (float) $shopeeOrder['total_amount'] : 0;
+        $grandTotal = $channelTotal > 0 ? $channelTotal : ($subTotal + $shippingFee);
 
         $isPaid = $shopeeStatus !== 'unpaid';
 

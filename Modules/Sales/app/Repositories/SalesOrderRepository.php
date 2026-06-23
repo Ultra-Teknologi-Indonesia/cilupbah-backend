@@ -280,7 +280,12 @@ class SalesOrderRepository
             'total_tax'           => $orderData['total_tax'],
             'shipping_cost'       => $orderData['shipping_cost'],
             'insurance_cost'      => $orderData['insurance_cost'],
-            'grand_total'         => $orderData['grand_total'],
+            // Jangan timpa nilai order yang sudah > 0 dengan 0 (mis. sync ulang order yang
+            // baru dibatalkan, di mana channel mengembalikan total = 0). Nilai komersial
+            // order dipertahankan; status batal tetap tercermin di is_canceled/status.
+            'grand_total'         => ($existing && (float) $orderData['grand_total'] <= 0)
+                ? (float) $existing->grand_total
+                : $orderData['grand_total'],
             'shipping_full_name'  => $orderData['shipping_full_name'],
             'shipping_phone'      => $orderData['shipping_phone'],
             'shipping_address'    => $orderData['shipping_address'],

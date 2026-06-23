@@ -60,18 +60,30 @@ class TikTokToInternalOrderMapper
             && ! empty($tiktokOrder['cancel_request_initiator'])
             && $tiktokOrder['cancel_request_initiator'] === 'BUYER';
 
+        $subTotal     = isset($payment['original_total_product_price']) ? (float) $payment['original_total_product_price'] : 0;
+        $totalDisc    = isset($payment['seller_discount']) ? (float) $payment['seller_discount'] : 0;
+        $totalTax     = isset($payment['tax']) ? (float) $payment['tax'] : 0;
+        $shippingCost = isset($payment['original_shipping_fee']) ? (float) $payment['original_shipping_fee'] : 0;
+        $insurance    = isset($payment['shipping_insurance_fee']) ? (float) $payment['shipping_insurance_fee'] : 0;
+        // grand_total = nilai komersial order; pakai total_amount channel hanya bila > 0,
+        // jika 0/absen (order cancelled atau blok payment belum ada) turunkan dari komponen.
+        $channelTotal = isset($payment['total_amount']) ? (float) $payment['total_amount'] : 0;
+        $grandTotal   = $channelTotal > 0
+            ? $channelTotal
+            : ($subTotal - $totalDisc + $totalTax + $shippingCost + $insurance);
+
         return [
             'channel_order_no'   => (string) ($tiktokOrder['id'] ?? ''),
             'channel_shop_id'    => $shopId,
             'customer_name'      => $tiktokOrder['buyer_email'] ?? ($tiktokOrder['buyer_nickname'] ?? 'TikTok Buyer'),
             'transaction_date'   => isset($tiktokOrder['create_time']) ? date('Y-m-d H:i:s', $tiktokOrder['create_time']) : now(),
 
-            'sub_total'          => isset($payment['original_total_product_price']) ? (float) $payment['original_total_product_price'] : 0,
-            'total_disc'         => isset($payment['seller_discount']) ? (float) $payment['seller_discount'] : 0,
-            'total_tax'          => isset($payment['tax']) ? (float) $payment['tax'] : 0,
-            'shipping_cost'      => isset($payment['original_shipping_fee']) ? (float) $payment['original_shipping_fee'] : 0,
-            'insurance_cost'     => isset($payment['shipping_insurance_fee']) ? (float) $payment['shipping_insurance_fee'] : 0,
-            'grand_total'        => isset($payment['total_amount']) ? (float) $payment['total_amount'] : 0,
+            'sub_total'          => $subTotal,
+            'total_disc'         => $totalDisc,
+            'total_tax'          => $totalTax,
+            'shipping_cost'      => $shippingCost,
+            'insurance_cost'     => $insurance,
+            'grand_total'        => $grandTotal,
 
             'shipping_full_name' => $address['name'] ?? null,
             'shipping_phone'     => $address['phone_number'] ?? null,

@@ -50,7 +50,11 @@ class LazadaToInternalOrderMapper
             'total_tax' => $taxTotal,
             'shipping_cost' => $shippingFee,
             'insurance_cost' => 0,
-            'grand_total' => isset($lazadaOrder['price']) ? (float) $lazadaOrder['price'] : ($subTotal + $shippingFee - $voucher),
+            // grand_total = nilai komersial order; pakai angka channel hanya bila > 0,
+            // jika 0/absen (mis. order cancelled) turunkan dari komponen.
+            'grand_total' => (isset($lazadaOrder['price']) && (float) $lazadaOrder['price'] > 0)
+                ? (float) $lazadaOrder['price']
+                : ($subTotal + $taxTotal + $shippingFee - $voucher),
 
             'shipping_full_name' => trim(($address['first_name'] ?? '') . ' ' . ($address['last_name'] ?? '')) ?: null,
             'shipping_phone' => $address['phone'] ?? null,
