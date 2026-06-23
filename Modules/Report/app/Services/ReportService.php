@@ -119,7 +119,40 @@ class ReportService
             return $this->wrapSingle($query->findOrFail($id), 'invoice');
         }
 
-        return $this->wrapCollection($query->paginate($filters['limit'] ?? 20), 'invoice');
+        $result = $this->wrapCollection($query->paginate($filters['limit'] ?? 20), 'invoice');
+
+        // Fallback: jika tidak ada SalesInvoice untuk order_ids, generate dari SalesOrder
+        if (empty($result['data']) && ! empty($orderIds)) {
+            $orders = SalesOrder::with('items:id,order_id,sku,description,qty_in_base,price,amount,disc_amount,tax_amount')
+                ->whereIn('id', $orderIds)
+                ->get();
+
+            $result['data'] = $orders->map(fn ($order) => [
+                'invoice_number' => 'INV-' . $order->salesorder_no,
+                'invoice_date'   => $order->transaction_date ?? now()->toDateString(),
+                'status'         => $order->is_paid ? 'PAID' : 'OPEN',
+                'customer_name'  => $order->customer_name,
+                'total_amount'   => $order->grand_total,
+                'paid_amount'    => $order->is_paid ? $order->grand_total : 0,
+                'order'          => [
+                    'id'              => $order->id,
+                    'salesorder_no'   => $order->salesorder_no,
+                    'customer_name'   => $order->customer_name,
+                    'shipping_full_name' => $order->shipping_full_name,
+                    'shipping_address'   => $order->shipping_address,
+                    'shipping_city'      => $order->shipping_city,
+                ],
+                'items' => $order->items->map(fn ($item) => [
+                    'sku'         => $item->sku,
+                    'description' => $item->description,
+                    'qty_in_base' => $item->qty_in_base,
+                    'price'       => $item->price,
+                    'amount'      => $item->amount ?: ($item->qty_in_base * $item->price),
+                ])->toArray(),
+            ])->toArray();
+        }
+
+        return $result;
     }
 
     public function consignReport(array $filters): array
