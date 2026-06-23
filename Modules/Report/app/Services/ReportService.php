@@ -99,10 +99,20 @@ class ReportService
 
     public function invoiceReport(array $filters): array
     {
+        $orderIds = $filters['order_ids'] ?? null;
+        if (is_string($orderIds)) {
+            $orderIds = array_filter(array_map('trim', explode(',', $orderIds)), fn ($v) => $v !== '');
+        } elseif (is_array($orderIds)) {
+            $orderIds = array_filter($orderIds, fn ($v) => $v !== null && $v !== '');
+        } else {
+            $orderIds = null;
+        }
+
         $query = SalesInvoice::with(['items', 'order:id,salesorder_no,customer_name,shipping_full_name,shipping_address,shipping_city', 'location:id,location_name,location_code'])
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
             ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('invoice_date', '>=', $v))
             ->when($filters['date_to'] ?? null, fn ($q, $v) => $q->whereDate('invoice_date', '<=', $v))
+            ->when(! empty($orderIds), fn ($q) => $q->whereIn('order_id', $orderIds))
             ->orderByDesc('invoice_date');
 
         if ($id = $filters['id'] ?? null) {
