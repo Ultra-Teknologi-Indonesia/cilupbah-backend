@@ -3,6 +3,8 @@
 namespace Modules\Outbound\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
+use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Outbound\Services\OutboundFulfillmentService;
@@ -11,6 +13,8 @@ use OpenApi\Attributes as OA;
 #[OA\Tag(name: 'Outbound - Fulfillment', description: 'API Endpoints for Outbound Fulfillment Queue Views')]
 class OutboundFulfillmentController extends Controller
 {
+    use ApiResponse;
+
     public function __construct(
         protected OutboundFulfillmentService $fulfillmentService,
     ) {}
@@ -230,5 +234,77 @@ class OutboundFulfillmentController extends Controller
         }
 
         return response()->json(['success' => true, 'data' => $order]);
+    }
+
+    #[OA\Post(
+        path: '/api/v1/outbound/orders/ready-to-ship',
+        summary: 'Mark orders as Ready To Ship (Siap Dikirim) across channels',
+        description: 'Omnichannel dispatcher. For each order, ships/packs via its marketplace (shopee/tiktok/lazada) or marks ready locally for manual orders. Per-order results are returned; one failure never aborts the batch.',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Fulfillment'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['order_ids'],
+                properties: [
+                    new OA\Property(property: 'order_ids', type: 'array', items: new OA\Items(type: 'string')),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Success (per-order results)'),
+            new OA\Response(response: 422, description: 'Validation error'),
+        ]
+    )]
+    public function readyToShip(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'order_ids' => 'required|array|min:1',
+            'order_ids.*' => 'required|string|exists:sales_orders,id',
+        ]);
+
+        $results = $this->fulfillmentService->readyToShip($validated['order_ids']);
+
+        return $this->successResponse($results, 'Proses Siap Dikirim selesai.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/outbound/pickers',
+        summary: 'List warehouse users eligible as pickers',
+        description: 'Returns active users. When location_id is provided, filters to users assigned to that warehouse/location.',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Fulfillment'],
+        parameters: [
+            new OA\Parameter(name: 'location_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+        ]
+    )]
+    public function pickers(Request $request): JsonResponse
+    {
+        $request->validate([
+            'location_id' => 'nullable|string',
+        ]);
+
+        $query = User::query();
+
+        // Users are linked to a warehouse via `warehouse_id`. If a location is
+        // supplied, scope to that warehouse; otherwise return all active users.
+        if ($request->filled('location_id')) {
+            $query->where('warehouse_id', $request->query('location_id'));
+        }
+
+        $pickers = $query
+            ->orderBy('name')
+            ->get(['id', 'name', 'email'])
+            ->map(fn (User $u) => [
+                'id'    => $u->id,
+                'name'  => $u->name,
+                'email' => $u->email,
+            ])
+            ->values();
+
+        return $this->successResponse($pickers, 'Daftar picker.');
     }
 }

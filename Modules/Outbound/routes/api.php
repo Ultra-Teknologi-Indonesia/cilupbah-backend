@@ -16,6 +16,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('orders/move-to-ready-to-process', [OutboundFulfillmentController::class, 'moveToReadyToProcess'])->name('outbound.orders.move-to-ready-to-process');
     Route::post('orders/change-location', [OutboundFulfillmentController::class, 'changeLocation'])->name('outbound.orders.change-location');
     Route::post('orders/request-cancel', [OutboundFulfillmentController::class, 'requestCancelOrder'])->name('outbound.orders.request-cancel');
+    Route::post('orders/ready-to-ship', [OutboundFulfillmentController::class, 'readyToShip'])->name('outbound.orders.ready-to-ship');
+    Route::get('pickers', [OutboundFulfillmentController::class, 'pickers'])->name('outbound.pickers.index');
     Route::get('orders/{stage}', [OutboundFulfillmentController::class, 'ordersByStage'])->name('outbound.orders.stage');
 
     Route::get('picklists/on-picking', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('on-picking', $request))->name('outbound.picklists.on-picking');

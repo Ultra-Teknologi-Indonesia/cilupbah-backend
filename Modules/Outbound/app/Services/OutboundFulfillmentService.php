@@ -11,12 +11,117 @@ use Modules\Inventory\Models\Inventory;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Channel\Services\TikTokOrderService;
+use Modules\Channel\Services\LazadaOrderService;
 
 class OutboundFulfillmentService
 {
     public function __construct(
         protected \Modules\Sales\Services\SalesOrderService $orderService,
+        protected ShopeeOrderService $shopeeOrderService,
+        protected TikTokOrderService $tiktokOrderService,
+        protected LazadaOrderService $lazadaOrderService,
     ) {}
+
+    /**
+     * Omnichannel "Siap Dikirim" (Ready To Ship) dispatcher.
+     *
+     * For each order, switch on the lowercase `source` and call the matching
+     * marketplace ship/pack endpoint. Manual/other sources are marked ready
+     * locally with no channel call. Every order is isolated in its own
+     * try/catch so a single failure never aborts the batch.
+     *
+     * @param  array<int,string|int>  $orderIds
+     * @return array<int,array{order_id:mixed,salesorder_no:?string,source:?string,status:string,message:string}>
+     */
+    public function readyToShip(array $orderIds): array
+    {
+        $results = [];
+
+        foreach ($orderIds as $orderId) {
+            $order = Order::find($orderId);
+
+            if (!$order) {
+                $results[] = [
+                    'order_id'      => $orderId,
+                    'salesorder_no' => null,
+                    'source'        => null,
+                    'status'        => 'failed',
+                    'message'       => 'Order tidak ditemukan.',
+                ];
+                continue;
+            }
+
+            $source = strtolower((string) $order->source);
+            $shopId = (string) ($order->channel_shop_id ?? '');
+            $channelOrderNo = (string) ($order->channel_order_no ?? '');
+
+            try {
+                switch ($source) {
+                    case 'shopee':
+                        $this->assertChannelRefs($source, $shopId, $channelOrderNo);
+                        $this->shopeeOrderService->shipOrder($shopId, $channelOrderNo);
+                        $results[] = $this->result($order, 'success', 'Shopee: berhasil dikirim (RTS).');
+                        break;
+
+                    case 'tiktok':
+                        $this->assertChannelRefs($source, $shopId, $channelOrderNo);
+                        $rts = $this->tiktokOrderService->readyToShip($shopId, $channelOrderNo);
+                        if (!empty($rts['shipped'])) {
+                            $results[] = $this->result($order, 'success', $rts['message'] ?? 'TikTok: RTS berhasil.');
+                        } else {
+                            $results[] = $this->result($order, 'failed', $rts['message'] ?? 'TikTok: RTS gagal.');
+                        }
+                        break;
+
+                    case 'lazada':
+                        $this->assertChannelRefs($source, $shopId, $channelOrderNo);
+                        $this->lazadaOrderService->packOrder($shopId, $channelOrderNo);
+                        $results[] = $this->result($order, 'success', 'Lazada: berhasil di-pack & RTS.');
+                        break;
+
+                    default:
+                        // Manual / non-marketplace order: mark ready-to-ship locally only.
+                        $order->update(['status' => 'ready-to-ship']);
+                        $results[] = $this->result($order, 'skipped', 'Order manual/non-marketplace: ditandai siap dikirim secara lokal.');
+                        break;
+                }
+            } catch (\Throwable $e) {
+                Log::error('readyToShip dispatcher gagal untuk order', [
+                    'order_id'         => $order->id,
+                    'salesorder_no'    => $order->salesorder_no,
+                    'source'           => $source,
+                    'channel_shop_id'  => $shopId,
+                    'channel_order_no' => $channelOrderNo,
+                    'error'            => $e->getMessage(),
+                ]);
+
+                $results[] = $this->result($order, 'failed', $e->getMessage());
+            }
+        }
+
+        return $results;
+    }
+
+    private function assertChannelRefs(string $source, string $shopId, string $channelOrderNo): void
+    {
+        if ($shopId === '' || $channelOrderNo === '') {
+            throw new \Exception(ucfirst($source) . ': channel_shop_id atau channel_order_no kosong, tidak bisa kirim ke marketplace.');
+        }
+    }
+
+    private function result(Order $order, string $status, string $message): array
+    {
+        return [
+            'order_id'      => $order->id,
+            'salesorder_no' => $order->salesorder_no,
+            'source'        => $order->source,
+            'status'        => $status,
+            'message'       => $message,
+        ];
+    }
 
     public function getOrdersByStage(string $stage, int $limit = 10)
     {
@@ -28,7 +133,7 @@ class OutboundFulfillmentService
             'failed-pick' => $this->failedPick(),
             'on-packing' => $this->onPacking(),
             'finish-pack' => $this->finishPack(),
-            'ready-to-ship' => $this->readyToShip(),
+            'ready-to-ship' => $this->readyToShipStage(),
             'shipped' => $this->shipped(),
             'empty-stock' => $this->emptyStock(),
             'request-cancel' => $this->pendingCancelRequests(),
@@ -217,7 +322,7 @@ class OutboundFulfillmentService
             ->whereDoesntHave('shipmentOrders');
     }
 
-    private function readyToShip()
+    private function readyToShipStage()
     {
         return Order::where('status', 'packed')
             ->whereHas('shipmentOrders', function ($q) {

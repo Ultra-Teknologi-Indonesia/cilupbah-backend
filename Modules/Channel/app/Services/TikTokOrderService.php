@@ -129,6 +129,145 @@ class TikTokOrderService
         return $res;
     }
 
+    /**
+     * Mark a TikTok order's package(s) as Ready To Ship (RTS).
+     *
+     * TikTok Shop requires shipping at the *package* level. A package must exist
+     * before it can be shipped (created via the same endpoint acceptOrder() uses:
+     * POST /fulfillment/202309/packages). The local SalesOrder does not persist
+     * package_id, so we resolve packages live from the order detail; if none
+     * exists yet we attempt to create one, then re-fetch.
+     *
+     * Returns a structured result; on a recoverable problem (e.g. no package_id
+     * resolvable) it returns ['shipped' => false, ...] rather than throwing.
+     */
+    public function readyToShip(string $shopId, string $orderId): array
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (!$shop || !$shop->access_token) {
+            throw new \Exception("No access token found for shop: {$shopId}");
+        }
+
+        $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
+
+        try {
+            $packageIds = $this->resolvePackageIds($shop, $orderId, $queries);
+
+            if (empty($packageIds)) {
+                Log::warning('TikTok RTS: no package_id resolvable for order', [
+                    'shop_id'  => $shopId,
+                    'order_id' => $orderId,
+                ]);
+
+                return [
+                    'order_id' => $orderId,
+                    'shipped'  => false,
+                    'message'  => 'Tidak ada package_id yang dapat di-resolve untuk order ini. Pastikan order sudah AWAITING_SHIPMENT dan package sudah dibuat.',
+                    'packages' => [],
+                ];
+            }
+
+            $results = [];
+            $allOk = true;
+
+            foreach ($packageIds as $packageId) {
+                try {
+                    $res = $this->client->request(
+                        'POST',
+                        "/fulfillment/202309/packages/{$packageId}/ship",
+                        $queries,
+                        ['order_id' => $orderId],
+                        $shop->access_token
+                    );
+
+                    $results[] = ['package_id' => $packageId, 'shipped' => true, 'response' => $res['data'] ?? []];
+                } catch (\Throwable $e) {
+                    $allOk = false;
+                    Log::error('TikTok RTS: gagal ship package', [
+                        'shop_id'    => $shopId,
+                        'order_id'   => $orderId,
+                        'package_id' => $packageId,
+                        'error'      => $e->getMessage(),
+                    ]);
+                    $results[] = ['package_id' => $packageId, 'shipped' => false, 'message' => $e->getMessage()];
+                }
+            }
+
+            if ($allOk) {
+                $this->orderRepository->updateOrderStatusByOrderNo($orderId, 'AWAITING_COLLECTION');
+            }
+
+            return [
+                'order_id' => $orderId,
+                'shipped'  => $allOk,
+                'message'  => $allOk ? 'RTS berhasil.' : 'Sebagian package gagal di-RTS.',
+                'packages' => $results,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('TikTok RTS: gagal', [
+                'shop_id'  => $shopId,
+                'order_id' => $orderId,
+                'error'    => $e->getMessage(),
+            ]);
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Resolve the package_id(s) for an order. Fetches order detail; if no package
+     * exists, attempts to create one (mirrors acceptOrder) then re-fetches.
+     *
+     * @return array<int,string>
+     */
+    protected function resolvePackageIds(object $shop, string $orderId, array $queries): array
+    {
+        $ids = $this->fetchPackageIds($shop, $orderId, $queries);
+
+        if (!empty($ids)) {
+            return $ids;
+        }
+
+        // No package yet — try to create one, then re-fetch. acceptOrder() bypasses
+        // "invalid params" (package already exists), so do the same here.
+        try {
+            $this->client->request('POST', '/fulfillment/202309/packages', $queries, ['order_id' => $orderId], $shop->access_token);
+        } catch (\Throwable $e) {
+            if (strpos($e->getMessage(), 'invalid params') === false) {
+                Log::warning('TikTok RTS: gagal membuat package sebelum RTS', [
+                    'order_id' => $orderId,
+                    'error'    => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $this->fetchPackageIds($shop, $orderId, $queries);
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    protected function fetchPackageIds(object $shop, string $orderId, array $queries): array
+    {
+        $detailQueries = array_merge($queries, ['ids' => $orderId]);
+
+        $res = $this->client->request('GET', '/order/202309/orders', $detailQueries, [], $shop->access_token);
+
+        $orders = $res['data']['orders'] ?? [];
+        $ids = [];
+
+        foreach ($orders as $order) {
+            foreach ($order['packages'] ?? [] as $package) {
+                $pid = $package['id'] ?? null;
+                if ($pid !== null && $pid !== '') {
+                    $ids[] = (string) $pid;
+                }
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
     public function declineOrder(string $shopId, string $orderId, string $reason): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);
