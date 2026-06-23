@@ -139,7 +139,7 @@ class OutboundFulfillmentService
             default => throw new \Exception("Stage '{$stage}' tidak dikenal."),
         };
 
-        return QueryBuilder::for($query->with(['items', 'items.product.media', 'items.product.product.media']))
+        return QueryBuilder::for($query->with(['items', 'items.product.media', 'items.product.product.media', 'location:id,location_name,location_code']))
             ->allowedFilters(
                 AllowedFilter::partial('q', 'salesorder_no'),
                 AllowedFilter::exact('source'),
