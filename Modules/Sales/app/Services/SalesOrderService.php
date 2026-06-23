@@ -272,6 +272,15 @@ class SalesOrderService
             $order = DB::transaction(function () use ($validated) {
                 $order = SalesOrder::create(array_merge($validated, ['status' => 'pending']));
 
+                if (! $order->location_id) {
+                    try {
+                        $locationId = $this->resolveLocationId($order);
+                        $order->update(['location_id' => $locationId]);
+                    } catch (\Exception $e) {
+                        // No location configured yet.
+                    }
+                }
+
                 if (! empty($validated['items'])) {
                     $this->orderRepository->syncOrderItems($order->id, $validated['items']);
                 }
@@ -535,6 +544,15 @@ class SalesOrderService
             $orderData['status'] = $finalStatus;
 
             $order = $this->orderRepository->upsertOrderBySalesOrderNo($orderData['salesorder_no'], $orderData);
+
+            if (! $order->location_id) {
+                try {
+                    $locationId = $this->resolveLocationId($order);
+                    $order->update(['location_id' => $locationId]);
+                } catch (\Exception $e) {
+                    // No location configured yet — continue without assignment.
+                }
+            }
 
             if (isset($orderData['items']) && is_array($orderData['items'])) {
                 $this->orderRepository->syncOrderItems($order->id, $orderData['items']);
