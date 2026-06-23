@@ -49,6 +49,7 @@ return [
         'partner_id' => env('SHOPEE_PARTNER_ID'),
         'partner_key' => env('SHOPEE_PARTNER_KEY'),
         'push_partner_key' => env('SHOPEE_PUSH_PARTNER_KEY'),
+        'verify_push_signature' => env('SHOPEE_VERIFY_PUSH_SIGNATURE', true),
         'redirect_uri' => env('SHOPEE_REDIRECT_URI'),
         'push_url' => env('SHOPEE_PUSH_URL'),
         'host' => env('SHOPEE_HOST', 'https://partner.shopeemobile.com'),

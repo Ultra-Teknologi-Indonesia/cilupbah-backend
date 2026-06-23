@@ -24,6 +24,12 @@ class ProcessShopeeWebhook implements ShouldQueue
     private const PUSH_ORDER_STATUS = 3;
     private const PUSH_TRACKING_NO = 4;
     private const PUSH_ITEM_UPDATE = 5;
+    private const PUSH_SHIPPING_DOC = 15;
+    private const PUSH_BOOKING_STATUS = 23;
+    private const PUSH_BOOKING_TRACKING_NO = 24;
+    private const PUSH_BOOKING_SHIPPING_DOC = 25;
+    private const PUSH_PACKAGE_FULFILLMENT = 30;
+    private const PUSH_COURIER_DELIVERY_BINDING = 37;
 
     public function __construct(
         public array $payload,
@@ -45,7 +51,14 @@ class ProcessShopeeWebhook implements ShouldQueue
 
         match ($code) {
             self::PUSH_SHOP_DEAUTHORIZED => $this->handleDeauthorized($shopId),
-            self::PUSH_ORDER_STATUS, self::PUSH_TRACKING_NO => $this->handleOrderEvent($orderService, $shopId, $data),
+            self::PUSH_ORDER_STATUS,
+            self::PUSH_TRACKING_NO,
+            self::PUSH_SHIPPING_DOC,
+            self::PUSH_BOOKING_STATUS,
+            self::PUSH_BOOKING_TRACKING_NO,
+            self::PUSH_BOOKING_SHIPPING_DOC,
+            self::PUSH_PACKAGE_FULFILLMENT,
+            self::PUSH_COURIER_DELIVERY_BINDING => $this->handleOrderEvent($orderService, $shopId, $data),
             self::PUSH_ITEM_UPDATE => $this->logItemEvent($shopId, $data),
             default => Log::info("Shopee webhook code {$code} belum ditangani — diabaikan.", ['shop_id' => $shopId]),
         };
