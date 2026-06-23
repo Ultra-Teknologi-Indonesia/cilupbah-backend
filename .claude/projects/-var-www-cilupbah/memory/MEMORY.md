@@ -1,0 +1,2 @@
+- [Staging DB access](staging-db-access.md) — external psql is blocked; query via `docker exec cilupbah-staging php artisan tinker`
+- [Shopee push config API](shopee-push-config-api.md) — set/get webhook config via API (`set_push_config_on`), bypass the stuck console
