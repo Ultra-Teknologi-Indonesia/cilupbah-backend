@@ -809,7 +809,7 @@ class SalesOrderService
             }
         }
 
-        $defaultLocation = DB::table('locations')->first();
+        $defaultLocation = DB::table('locations')->where('is_warehouse', true)->where('is_active', true)->first();
 
         if (! $defaultLocation) {
             throw new LocationNotConfiguredException($order->salesorder_no ?? 'unknown');
