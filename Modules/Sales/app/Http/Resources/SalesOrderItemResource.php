@@ -41,6 +41,7 @@ class SalesOrderItemResource extends JsonResource
             'disc_amount'        => (float) $this->disc_amount,
             'tax_amount'         => (float) $this->tax_amount,
             'amount'             => (float) $this->amount,
+            'image_url'          => $this->image_url,
         ];
     }
 }
