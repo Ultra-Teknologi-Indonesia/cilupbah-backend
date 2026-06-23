@@ -21,7 +21,7 @@ class SalesOrderRepository
         }
 
         $query = QueryBuilder::for(SalesOrder::class)
-            ->with(['items', 'location:id,location_name'])
+            ->with(['items.product.media', 'items.product.product.media', 'location:id,location_name'])
             ->allowedFilters(
                 AllowedFilter::exact('source'),
                 AllowedFilter::exact('channel_shop_id'),

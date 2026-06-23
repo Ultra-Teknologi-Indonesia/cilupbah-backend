@@ -31,6 +31,8 @@ class SalesOrderItem extends Model
         'tracking_no',
     ];
 
+    protected $appends = ['image_url'];
+
     public function order(): BelongsTo
     {
 
@@ -45,5 +47,30 @@ class SalesOrderItem extends Model
     public function inventory(): HasMany
     {
         return $this->hasMany(\Modules\Inventory\Models\Inventory::class, 'item_id', 'item_id');
+    }
+
+    public function getImageUrlAttribute(): ?string
+    {
+        $variant = $this->product;
+        if (! $variant) {
+            return null;
+        }
+
+        $variantMedia = $variant->media;
+        if ($variantMedia && $variantMedia->isNotEmpty()) {
+            $primary = $variantMedia->firstWhere('is_primary', true);
+            return $primary ? $primary->url : $variantMedia->first()->url;
+        }
+
+        $parentProduct = $variant->product;
+        if ($parentProduct) {
+            $productMedia = $parentProduct->media;
+            if ($productMedia && $productMedia->isNotEmpty()) {
+                $primary = $productMedia->firstWhere('is_primary', true);
+                return $primary ? $primary->url : $productMedia->first()->url;
+            }
+        }
+
+        return null;
     }
 }
