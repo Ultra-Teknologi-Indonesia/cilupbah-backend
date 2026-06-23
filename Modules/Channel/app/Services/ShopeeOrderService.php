@@ -10,7 +10,7 @@ use Modules\Sales\Services\SalesOrderService;
 class ShopeeOrderService
 {
 
-    private const DETAIL_FIELDS = 'recipient_address,item_list,total_amount,buyer_username,payment_method,estimated_shipping_fee,shipping_carrier,note,message_to_seller,pay_time,cancel_reason,package_list';
+    private const DETAIL_FIELDS = 'recipient_address,item_list,total_amount,buyer_user_id,buyer_username,payment_method,estimated_shipping_fee,actual_shipping_fee,actual_shipping_fee_confirmed,shipping_carrier,note,pay_time,cancel_reason,buyer_cancel_reason,cancel_by,package_list,fulfillment_flag,pickup_done_time,invoice_data,order_chargeable_weight_gram,dropshipper,dropshipper_phone,split_up,return_request_due_date';
 
     public function __construct(
         protected ShopeeClient $client,

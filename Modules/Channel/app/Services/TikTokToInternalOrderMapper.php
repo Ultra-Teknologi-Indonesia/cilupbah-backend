@@ -57,12 +57,24 @@ class TikTokToInternalOrderMapper
         $shippingType = $tiktokOrder['shipping_type'] ?? null;
 
         $isCancelRequested = $channelStatus === 'CANCELLED'
-            && ! empty($tiktokOrder['cancel_request_initiator'])
-            && $tiktokOrder['cancel_request_initiator'] === 'BUYER';
+            && ! empty($tiktokOrder['cancellation_initiator'])
+            && strtoupper($tiktokOrder['cancellation_initiator']) === 'BUYER';
+
+        $isCod = ! empty($tiktokOrder['is_cod'])
+            || stripos($tiktokOrder['payment_method_name'] ?? '', 'cod') !== false
+            || strtoupper($tiktokOrder['payment_method_code'] ?? '') === 'COD';
+
+        $priorityFulfillment = ! empty($tiktokOrder['is_replacement_order'])
+            || ($tiktokOrder['fulfillment_priority_level'] ?? 0) > 0;
+
+        $cancelInitiator = $channelStatus === 'CANCELLED'
+            ? ($tiktokOrder['cancellation_initiator'] ?? null)
+            : null;
 
         return [
             'channel_order_no'   => (string) ($tiktokOrder['id'] ?? ''),
             'channel_shop_id'    => $shopId,
+            'channel_buyer_id'   => isset($tiktokOrder['user_id']) ? (string) $tiktokOrder['user_id'] : null,
             'customer_name'      => $tiktokOrder['buyer_email'] ?? ($tiktokOrder['buyer_nickname'] ?? 'TikTok Buyer'),
             'transaction_date'   => isset($tiktokOrder['create_time']) ? date('Y-m-d H:i:s', $tiktokOrder['create_time']) : now(),
 
@@ -70,8 +82,10 @@ class TikTokToInternalOrderMapper
             'total_disc'         => isset($payment['seller_discount']) ? (float) $payment['seller_discount'] : 0,
             'total_tax'          => isset($payment['tax']) ? (float) $payment['tax'] : 0,
             'shipping_cost'      => isset($payment['original_shipping_fee']) ? (float) $payment['original_shipping_fee'] : 0,
+            'actual_shipping_fee' => isset($payment['shipping_fee']) ? (float) $payment['shipping_fee'] : null,
             'insurance_cost'     => isset($payment['shipping_insurance_fee']) ? (float) $payment['shipping_insurance_fee'] : 0,
             'grand_total'        => isset($payment['total_amount']) ? (float) $payment['total_amount'] : 0,
+            'order_weight_gram'  => null,
 
             'shipping_full_name' => $address['name'] ?? null,
             'shipping_phone'     => $address['phone_number'] ?? null,
@@ -86,9 +100,14 @@ class TikTokToInternalOrderMapper
             'status'                      => 'UNPAID',
             'is_paid'                     => $isPaid,
             'is_canceled'                 => $channelStatus === 'CANCELLED',
+            'is_cod'                      => $isCod,
+            'priority_fulfillment'        => $priorityFulfillment,
+            'is_split_order'              => strtoupper($tiktokOrder['split_or_combine_tag'] ?? '') === 'SPLIT',
 
             'cancel_reason'        => $channelStatus === 'CANCELLED' ? ($tiktokOrder['cancel_reason'] ?? null) : null,
+            'cancel_by'            => $cancelInitiator ? strtolower($cancelInitiator) : null,
             'cancel_requested_at'  => $isCancelRequested ? (string) now() : null,
+            'fulfillment_flag'     => $fulfillmentType,
             'payment_method'       => $tiktokOrder['payment_method_code'] ?? null,
             'payment_method_name'  => $tiktokOrder['payment_method_name'] ?? null,
             'tracking_number'      => $trackingNumber,
@@ -96,6 +115,10 @@ class TikTokToInternalOrderMapper
             'buyer_message'        => $tiktokOrder['buyer_message'] ?? null,
             'seller_note'          => $tiktokOrder['seller_note'] ?? null,
             'paid_time'            => ! empty($tiktokOrder['paid_time']) ? date('Y-m-d H:i:s', $tiktokOrder['paid_time']) : null,
+            'ship_by_date'         => ! empty($tiktokOrder['shipping_due_time']) ? date('Y-m-d H:i:s', $tiktokOrder['shipping_due_time'])
+                                        : (! empty($tiktokOrder['rts_sla_time']) ? date('Y-m-d H:i:s', $tiktokOrder['rts_sla_time']) : null),
+            'pickup_done_time'     => ! empty($tiktokOrder['collection_time']) ? date('Y-m-d H:i:s', $tiktokOrder['collection_time']) : null,
+            'channel_updated_at'   => ! empty($tiktokOrder['update_time']) ? date('Y-m-d H:i:s', $tiktokOrder['update_time']) : null,
             'source'               => 'tiktok',
 
             'fulfillment_type'     => $fulfillmentType,

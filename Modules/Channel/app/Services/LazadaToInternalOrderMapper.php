@@ -68,6 +68,7 @@ class LazadaToInternalOrderMapper
             'cancel_reason' => $channelStatus === 'CANCELLED'
                 ? ($lazadaOrder['reason'] ?? $lazadaOrder['cancel_reason'] ?? $orderItems[0]['reason'] ?? $orderItems[0]['reason_detail'] ?? null)
                 : null,
+            'cancel_by' => $channelStatus === 'CANCELLED' ? ($lazadaOrder['cancel_initiator'] ?? null) : null,
             'payment_method' => $lazadaOrder['payment_method'] ?? null,
             'payment_method_name' => $lazadaOrder['payment_method'] ?? null,
             'tracking_number' => $orderItems[0]['tracking_code'] ?? null,
@@ -75,7 +76,11 @@ class LazadaToInternalOrderMapper
             'buyer_message' => $lazadaOrder['remarks'] ?? null,
             'seller_note' => null,
             'paid_time' => $isPaid ? $this->parseDate($lazadaOrder['updated_at'] ?? $lazadaOrder['created_at'] ?? null) : null,
+            'ship_by_date' => $this->parseDateNullable($lazadaOrder['promised_shipping_time'] ?? $orderItems[0]['promised_shipping_time'] ?? null),
+            'channel_updated_at' => $this->parseDateNullable($lazadaOrder['updated_at'] ?? null),
             'source' => 'lazada',
+            'is_cod' => strtoupper($lazadaOrder['payment_method'] ?? '') === 'COD',
+            'priority_fulfillment' => false,
             'items' => $items,
         ];
     }
@@ -121,5 +126,16 @@ class LazadaToInternalOrderMapper
         $ts = strtotime($value);
 
         return $ts ? date('Y-m-d H:i:s', $ts) : (string) now();
+    }
+
+    protected function parseDateNullable(?string $value): ?string
+    {
+        if (! $value) {
+            return null;
+        }
+
+        $ts = strtotime($value);
+
+        return $ts ? date('Y-m-d H:i:s', $ts) : null;
     }
 }

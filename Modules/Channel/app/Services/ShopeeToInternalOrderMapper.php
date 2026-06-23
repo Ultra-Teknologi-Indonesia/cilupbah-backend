@@ -45,9 +45,12 @@ class ShopeeToInternalOrderMapper
 
         $isPaid = $shopeeStatus !== 'unpaid';
 
+        $isCod = ! empty($shopeeOrder['cod']);
+
         return [
             'channel_order_no' => (string) ($shopeeOrder['order_sn'] ?? ''),
             'channel_shop_id' => $shopId,
+            'channel_buyer_id' => isset($shopeeOrder['buyer_user_id']) ? (string) $shopeeOrder['buyer_user_id'] : null,
             'customer_name' => $shopeeOrder['buyer_username'] ?? ($address['name'] ?? 'Shopee Buyer'),
             'transaction_date' => $this->parseTimestamp($shopeeOrder['create_time'] ?? null),
 
@@ -55,8 +58,11 @@ class ShopeeToInternalOrderMapper
             'total_disc' => 0,
             'total_tax' => 0,
             'shipping_cost' => $shippingFee,
+            'actual_shipping_fee' => isset($shopeeOrder['actual_shipping_fee']) ? (float) $shopeeOrder['actual_shipping_fee'] : null,
+            'actual_shipping_fee_confirmed' => ! empty($shopeeOrder['actual_shipping_fee_confirmed']),
             'insurance_cost' => 0,
             'grand_total' => $grandTotal,
+            'order_weight_gram' => isset($shopeeOrder['order_chargeable_weight_gram']) ? (int) $shopeeOrder['order_chargeable_weight_gram'] : null,
 
             'shipping_full_name' => $address['name'] ?? null,
             'shipping_phone' => $address['phone'] ?? null,
@@ -65,24 +71,36 @@ class ShopeeToInternalOrderMapper
             'shipping_province' => $address['state'] ?? null,
             'shipping_post_code' => $address['zipcode'] ?? null,
             'shipping_country' => $address['region'] ?? null,
+            'dropshipper_name' => $shopeeOrder['dropshipper'] ?? null,
+            'dropshipper_phone' => $shopeeOrder['dropshipper_phone'] ?? null,
 
             'channel_status' => $channelStatus,
             'status' => 'UNPAID',
             'is_paid' => $isPaid,
             'is_canceled' => $channelStatus === 'CANCELLED',
+            'is_cod' => $isCod,
+            'priority_fulfillment' => false,
+            'is_split_order' => ! empty($shopeeOrder['split_up']),
 
             'cancel_reason' => $channelStatus === 'CANCELLED'
-                ? ($shopeeOrder['cancel_reason'] ?? null)
+                ? ($shopeeOrder['buyer_cancel_reason'] ?? $shopeeOrder['cancel_reason'] ?? null)
                 : null,
+            'cancel_by' => $shopeeOrder['cancel_by'] ?? null,
             'cancel_requested_at' => $isCancelOrReturn ? (string) now() : null,
             'channel_fulfillment_status' => $fulfillmentStatus,
+            'fulfillment_flag' => $shopeeOrder['fulfillment_flag'] ?? null,
+            'days_to_ship' => isset($shopeeOrder['days_to_ship']) ? (int) $shopeeOrder['days_to_ship'] : null,
             'payment_method' => $shopeeOrder['payment_method'] ?? null,
             'payment_method_name' => $shopeeOrder['payment_method'] ?? null,
-            'tracking_number' => $shopeeOrder['tracking_number'] ?? null, 
+            'tracking_number' => $shopeeOrder['tracking_number'] ?? null,
             'shipping_provider' => $shopeeOrder['shipping_carrier'] ?? null,
-            'buyer_message' => $shopeeOrder['message_to_seller'] ?? null,
+            'buyer_message' => $shopeeOrder['note'] ?? $shopeeOrder['message_to_seller'] ?? null,
             'seller_note' => $shopeeOrder['note'] ?? null,
             'paid_time' => $isPaid ? $this->parseTimestamp($shopeeOrder['pay_time'] ?? $shopeeOrder['create_time'] ?? null) : null,
+            'ship_by_date' => $this->parseTimestampNullable($shopeeOrder['ship_by_date'] ?? null),
+            'pickup_done_time' => $this->parseTimestampNullable($shopeeOrder['pickup_done_time'] ?? null),
+            'channel_updated_at' => $this->parseTimestampNullable($shopeeOrder['update_time'] ?? null),
+            'return_due_date' => $this->parseTimestampNullable($shopeeOrder['return_request_due_date'] ?? null),
             'source' => 'shopee',
             'items' => $items,
         ];
@@ -123,6 +141,15 @@ class ShopeeToInternalOrderMapper
     {
         if (! $value) {
             return (string) now();
+        }
+
+        return date('Y-m-d H:i:s', (int) $value);
+    }
+
+    protected function parseTimestampNullable(int|string|null $value): ?string
+    {
+        if (! $value) {
+            return null;
         }
 
         return date('Y-m-d H:i:s', (int) $value);
