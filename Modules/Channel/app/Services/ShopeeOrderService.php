@@ -403,7 +403,9 @@ class ShopeeOrderService
     {
         $shop = $this->requireShop($shopId);
 
-        return $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/api/v2/logistics/download_shipping_document', [
+        // download_shipping_document mengembalikan PDF biner — pakai requestBinary agar
+        // byte tidak hilang saat Shopee membalas stream (bukan base64-in-JSON).
+        return $this->callWithRefresh($shop, fn (string $token) => $this->client->requestBinary('/api/v2/logistics/download_shipping_document', [
             'shipping_document_type' => $docType,
             'order_list' => [['order_sn' => $orderSn]],
         ], $token, $shop->shop_id));
@@ -455,6 +457,19 @@ class ShopeeOrderService
 
         $download = $this->downloadShippingDocument($shopId, $orderSn, $docType);
 
+        // Kasus 1: stream PDF biner → encode base64 agar aman ditransport via JSON API.
+        if (! empty($download['binary'])) {
+            return [
+                'order_sn' => $orderSn,
+                'ready' => true,
+                'status' => 'READY',
+                'doc_type' => $docType,
+                'content_type' => $download['content_type'] ?? 'application/pdf',
+                'document_base64' => base64_encode((string) ($download['content'] ?? '')),
+            ];
+        }
+
+        // Kasus 2: Shopee membalas base64-in-JSON. Nama field persis perlu validasi sandbox.
         $payload = $download['response'] ?? $download;
 
         return [
@@ -462,6 +477,7 @@ class ShopeeOrderService
             'ready' => true,
             'status' => 'READY',
             'doc_type' => $docType,
+            'content_type' => 'application/pdf',
             'document' => $payload,
         ];
     }

@@ -110,6 +110,65 @@ class ShopeeClient
         return $data;
     }
 
+    /**
+     * Seperti request() POST, tapi mendukung response BINER (mis. PDF air waybill dari
+     * download_shipping_document). Shopee bisa membalas JSON (error / dokumen base64-in-JSON)
+     * ATAU stream biner. Kalau JSON → jalur error/token sama seperti request(). Kalau biner →
+     * kembalikan byte mentah yang dibungkus (caller yang meng-encode/menyimpan).
+     */
+    public function requestBinary(string $apiPath, array $params, string $accessToken, string $shopId): array
+    {
+        $timestamp = time();
+        $sign = ShopeeSignature::shopSign($this->partnerId, $apiPath, $timestamp, $accessToken, $shopId, $this->partnerKey);
+
+        $common = [
+            'partner_id' => $this->partnerId,
+            'timestamp' => $timestamp,
+            'access_token' => $accessToken,
+            'shop_id' => (int) $shopId,
+            'sign' => $sign,
+        ];
+
+        $this->throttle();
+
+        $url = $this->host . $apiPath . '?' . http_build_query($common);
+        $response = Http::asJson()->post($url, $params);
+
+        $contentType = strtolower((string) $response->header('Content-Type'));
+        $rawBody = (string) $response->body();
+
+        $looksJson = str_contains($contentType, 'application/json')
+            || (str_starts_with(ltrim($rawBody), '{') && json_decode($rawBody) !== null);
+
+        if ($looksJson) {
+            $data = $response->json() ?? [];
+            $error = (string) ($data['error'] ?? '');
+
+            if ($error !== '') {
+                Log::error('Shopee API Error', [
+                    'path' => $apiPath,
+                    'error' => $error,
+                    'message' => $data['message'] ?? null,
+                ]);
+
+                if (in_array($error, self::TOKEN_ERROR_CODES, true) || str_contains(strtolower($error), 'token')) {
+                    throw new TokenExpiredException($shopId, $data['message'] ?? 'Shopee access token expired');
+                }
+
+                throw new \Exception('Shopee API Error: ' . ($data['message'] ?? $error));
+            }
+
+            return $data;
+        }
+
+        return [
+            'binary' => true,
+            'content_type' => $contentType ?: 'application/octet-stream',
+            'content' => $rawBody,
+            'size' => strlen($rawBody),
+        ];
+    }
+
     public function uploadImage(string $contents, string $filename = 'image.jpg'): ?string
     {
         $path = '/api/v2/media_space/upload_image';
