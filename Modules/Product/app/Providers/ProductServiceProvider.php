@@ -6,6 +6,7 @@ use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Product\Console\Commands\PruneUploadHistories;
 use Modules\Product\Console\Commands\RecomputeChannelValidation;
+use Modules\Product\Console\Commands\RemirrorProductImages;
 use Modules\Product\Jobs\PruneUploadHistoriesJob;
 
 class ProductServiceProvider extends ModuleServiceProvider
@@ -18,6 +19,7 @@ class ProductServiceProvider extends ModuleServiceProvider
     protected array $commands = [
         PruneUploadHistories::class,
         RecomputeChannelValidation::class,
+        RemirrorProductImages::class,
     ];
 
     protected array $providers = [

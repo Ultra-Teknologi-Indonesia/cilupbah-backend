@@ -121,6 +121,44 @@ class ChannelVariantImageTest extends TestCase
         $this->assertArrayNotHasKey('media', $v2);
     }
 
+    public function test_tiktok_inbound_expands_bare_sku_uri_to_absolute_url(): void
+    {
+        // When TikTok only gives a bare object-storage `uri` (no url_list), the
+        // mapper must at least expand it into an absolute CDN URL.
+        $product = [
+            'title' => 'Kaos',
+            'skus' => [
+                ['seller_sku' => 'V1', 'sales_attributes' => [['sku_img' => ['uri' => 'tos-alisg-i-aphluv4xwc-sg/abc123']]]],
+            ],
+        ];
+
+        $internal = app(TikTokToInternalProductMapper::class)->map($product, 'SHOP-1');
+        $v1 = collect($internal['variants'])->firstWhere('sku', 'V1');
+
+        $this->assertSame(
+            'https://p16-oec-ttp.tiktokcdn-us.com/tos-alisg-i-aphluv4xwc-sg/abc123',
+            $v1['media'][0]['url']
+        );
+    }
+
+    public function test_tiktok_inbound_prefers_full_url_over_bare_uri(): void
+    {
+        $product = [
+            'title' => 'Kaos',
+            'skus' => [
+                ['seller_sku' => 'V1', 'sales_attributes' => [['sku_img' => [
+                    'uri' => 'tos-alisg-i-aphluv4xwc-sg/abc123',
+                    'url_list' => ['https://img/full-v1.jpg'],
+                ]]]],
+            ],
+        ];
+
+        $internal = app(TikTokToInternalProductMapper::class)->map($product, 'SHOP-1');
+        $v1 = collect($internal['variants'])->firstWhere('sku', 'V1');
+
+        $this->assertSame('https://img/full-v1.jpg', $v1['media'][0]['url']);
+    }
+
     public function test_shopee_media_uploader_uploads_once_and_caches(): void
     {
         config([

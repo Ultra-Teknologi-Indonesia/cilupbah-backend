@@ -4,11 +4,10 @@ namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Support\TikTokImageUrl;
 
 class TikTokToInternalProductMapper
 {
-    protected const TIKTOK_CDN_PREFIX = 'https://p16-oec-ttp.tiktokcdn-us.com/';
-
     public function map(array $tiktokProduct, string $shopId): array
     {
         $tiktokCategoryId = $tiktokProduct['category_id']
@@ -158,57 +157,50 @@ class TikTokToInternalProductMapper
     {
 
         foreach ($skuData['sales_attributes'] ?? [] as $attr) {
-            $img = $attr['sku_img'] ?? null;
-            if (! $img) {
-                continue;
-            }
-
-            $uri = $img['uri']
-                ?? $img['url_list'][0]
-                ?? $img['thumb_url_list'][0]
-                ?? $img['urls'][0]
-                ?? null;
-            if ($uri) {
-                return $this->normalizeImageUrl($uri);
+            $ref = $this->pickImageRef($attr['sku_img'] ?? null);
+            if ($ref) {
+                return $this->normalizeImageUrl($ref);
             }
         }
 
-        $rep = $skuData['representative_sku_image'] ?? null;
-        if ($rep) {
-            $uri = $rep['uri'] ?? $rep['url_list'][0] ?? $rep['urls'][0] ?? null;
-            if ($uri) {
-                return $this->normalizeImageUrl($uri);
-            }
+        $ref = $this->pickImageRef($skuData['representative_sku_image'] ?? null);
+        if ($ref) {
+            return $this->normalizeImageUrl($ref);
         }
 
         $directImg = $skuData['sku_img'] ?? null;
-        if ($directImg) {
-            $uri = is_string($directImg)
-                ? $directImg
-                : ($directImg['uri'] ?? $directImg['url_list'][0] ?? $directImg['urls'][0] ?? null);
-            if ($uri) {
-                return $this->normalizeImageUrl($uri);
-            }
+        if (is_string($directImg) && $directImg !== '') {
+            return $this->normalizeImageUrl($directImg);
+        }
+        $ref = $this->pickImageRef(is_array($directImg) ? $directImg : null);
+        if ($ref) {
+            return $this->normalizeImageUrl($ref);
         }
 
         return null;
     }
 
-    protected function normalizeImageUrl(?string $url): ?string
+    /**
+     * Prefer a full, fetchable URL over a bare object-storage `uri`. The raw
+     * `uri` lacks the CDN image template and is unreachable on its own, so it
+     * is only used as a last resort.
+     */
+    protected function pickImageRef(?array $img): ?string
     {
-        if (!$url || $url === '') {
+        if (! $img) {
             return null;
         }
 
-        if (preg_match('#^https?://#i', $url)) {
-            return $url;
-        }
+        return $img['url_list'][0]
+            ?? $img['thumb_url_list'][0]
+            ?? $img['urls'][0]
+            ?? $img['uri']
+            ?? null;
+    }
 
-        if (str_starts_with($url, 'tos-')) {
-            return self::TIKTOK_CDN_PREFIX . $url;
-        }
-
-        return null;
+    protected function normalizeImageUrl(?string $url): ?string
+    {
+        return TikTokImageUrl::ensureFetchable($url);
     }
 
     protected function resolveCategoryId(string $shopId, ?string $tiktokCategoryId): int

@@ -13,11 +13,14 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ChannelListingValidator;
 use Modules\Finance\Support\AccountMappingKey;
 use Modules\Inventory\Models\Inventory;
+use Modules\Product\Jobs\MirrorProductMediaJob;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
+use Modules\Product\Models\ProductMedia;
 use Modules\Product\Models\Attribute;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Product\Repositories\ProductWriteRepository;
+use Modules\Product\Support\InternalMediaUrl;
 
 class ProductService
 {
@@ -195,11 +198,37 @@ class ProductService
 
             if ($productId) {
                 unset($data['category_id']);
-                return $this->updateProduct($productId, $data);
+                $this->updateProduct($productId, $data);
+                $this->queueExternalMediaMirroring($productId);
+
+                return $productId;
             }
         }
 
-        return $this->createProduct($data);
+        $productId = $this->createProduct($data);
+        $this->queueExternalMediaMirroring($productId);
+
+        return $productId;
+    }
+
+    /**
+     * Channel downloads persist whatever image URL the importer produced — which
+     * may still be an external CDN URL when the synchronous S3 mirror failed.
+     * Queue a background re-mirror for every external row so the catalog ends up
+     * fully on our internal CDN. Idempotent and path-agnostic (covers create,
+     * update, and variation-structure media).
+     */
+    private function queueExternalMediaMirroring(string $productId): void
+    {
+        ProductMedia::query()
+            ->where('product_id', $productId)
+            ->whereNotNull('url')
+            ->get(['id', 'url'])
+            ->each(function ($row) {
+                if (InternalMediaUrl::isExternal($row->url)) {
+                    MirrorProductMediaJob::dispatch($row->id);
+                }
+            });
     }
 
     public function updateProduct(string $productId, array $data)
@@ -381,11 +410,13 @@ class ProductService
             $desired[$key] = true;
 
             if (isset($existingByKey[$key])) {
+                $variantId = $existingByKey[$key]->id;
                 $upd = $this->variantUpdatableFields($v);
                 if ($upd) {
                     $upd['updated_at'] = now();
-                    $this->writeRepository->updateVariantRow($existingByKey[$key]->id, $upd);
+                    $this->writeRepository->updateVariantRow($variantId, $upd);
                 }
+                $this->syncVariantMediaFromPayload($productId, $variantId, $v);
                 continue;
             }
 
@@ -412,6 +443,7 @@ class ProductService
                     'updated_at' => now(),
                 ]]);
             }
+            $this->syncVariantMediaFromPayload($productId, $variantId, $v);
         }
 
         foreach ($existingByKey as $key => $av) {
@@ -431,6 +463,28 @@ class ProductService
                     'updated_at' => now(),
                 ]);
             }
+        }
+    }
+
+    /**
+     * Refresh a variant's media from a channel payload. Without this, re-pulling
+     * an existing product through syncVariantStructure would never replace stale
+     * variant images (e.g. unreachable external URLs) with the freshly mapped,
+     * internally-mirrored ones.
+     */
+    private function syncVariantMediaFromPayload(string $productId, string $variantId, array $variant): void
+    {
+        if (! array_key_exists('media', $variant)) {
+            return;
+        }
+
+        $this->writeRepository->deleteVariantMedia($variantId);
+
+        if (! empty($variant['media'])) {
+            $this->writeRepository->insertMedia(array_map(
+                fn ($m) => $this->buildMediaRow($m, $productId, $variantId),
+                $variant['media']
+            ));
         }
     }
 
