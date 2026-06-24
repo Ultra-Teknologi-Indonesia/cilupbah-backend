@@ -109,7 +109,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('/', [StockRevaluationController::class, 'index'])->name('inventory.revaluations.index');
         Route::post('/', [StockRevaluationController::class, 'store'])->name('inventory.revaluations.store');
         Route::get('/{id}', [StockRevaluationController::class, 'show'])->name('inventory.revaluations.show');
-        Route::post('/{id}/approve', [StockRevaluationController::class, 'approve'])->name('inventory.revaluations.approve');
         Route::post('/{id}/cancel', [StockRevaluationController::class, 'cancel'])->name('inventory.revaluations.cancel');
     });
 

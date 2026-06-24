@@ -9,7 +9,7 @@ use Modules\Inventory\Services\StockRevaluationService;
 use Modules\Inventory\Http\Requests\StoreStockRevaluationRequest;
 use OpenApi\Attributes as OA;
 
-#[OA\Tag(name: 'Stock Revaluation', description: 'API Endpoints for Stock Revaluation')]
+#[OA\Tag(name: 'Amount Adjustment', description: 'API Endpoints for Penyesuaian Nilai (Amount Adjustment)')]
 class StockRevaluationController extends Controller
 {
     public function __construct(
@@ -18,16 +18,16 @@ class StockRevaluationController extends Controller
 
     #[OA\Get(
         path: '/api/v1/inventory/revaluations',
-        summary: 'Get list of stock revaluations',
+        summary: 'Get list of amount adjustments',
         security: [['bearerAuth' => []]],
-        tags: ['Stock Revaluation'],
+        tags: ['Amount Adjustment'],
         parameters: [
             new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
-            new OA\Parameter(name: 'filter[status]', in: 'query', required: false, schema: new OA\Schema(type: 'string', enum: ['DRAFT', 'APPROVED', 'CANCELLED'])),
+            new OA\Parameter(name: 'filter[status]', in: 'query', required: false, schema: new OA\Schema(type: 'string', enum: ['APPROVED', 'CANCELLED'])),
             new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
-            new OA\Response(response: 200, description: 'Daftar revaluasi berhasil diambil.'),
+            new OA\Response(response: 200, description: 'Daftar penyesuaian nilai berhasil diambil.'),
         ]
     )]
     public function index(Request $request): JsonResponse
@@ -35,14 +35,14 @@ class StockRevaluationController extends Controller
         $limit = $request->query('limit', 10);
         $revaluations = $this->revaluationService->getAllPaginated($limit);
 
-        return $this->successPaginatedResponse($revaluations, 'Daftar revaluasi berhasil diambil.');
+        return $this->successPaginatedResponse($revaluations, 'Daftar penyesuaian nilai berhasil diambil.');
     }
 
     #[OA\Post(
         path: '/api/v1/inventory/revaluations',
-        summary: 'Create a stock revaluation',
+        summary: 'Create amount adjustment (langsung apply, tanpa approval)',
         security: [['bearerAuth' => []]],
-        tags: ['Stock Revaluation'],
+        tags: ['Amount Adjustment'],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
             required: ['location_id', 'items'],
             properties: [
@@ -58,7 +58,7 @@ class StockRevaluationController extends Controller
             ]
         )),
         responses: [
-            new OA\Response(response: 201, description: 'Revaluasi berhasil dibuat.'),
+            new OA\Response(response: 201, description: 'Penyesuaian nilai berhasil, harga pokok diperbarui.'),
             new OA\Response(response: 422, description: 'Validation Error'),
         ]
     )]
@@ -70,7 +70,7 @@ class StockRevaluationController extends Controller
 
             $revaluation = $this->revaluationService->create($data);
 
-            return $this->successResponse($revaluation, 'Revaluasi berhasil dibuat.', 201);
+            return $this->successResponse($revaluation, 'Penyesuaian nilai berhasil, harga pokok diperbarui.', 201);
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -78,14 +78,14 @@ class StockRevaluationController extends Controller
 
     #[OA\Get(
         path: '/api/v1/inventory/revaluations/{id}',
-        summary: 'Get revaluation detail',
+        summary: 'Get amount adjustment detail',
         security: [['bearerAuth' => []]],
-        tags: ['Stock Revaluation'],
+        tags: ['Amount Adjustment'],
         parameters: [
             new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
-            new OA\Response(response: 200, description: 'Detail revaluasi berhasil diambil.'),
+            new OA\Response(response: 200, description: 'Detail penyesuaian nilai berhasil diambil.'),
             new OA\Response(response: 404, description: 'Tidak ditemukan.'),
         ]
     )]
@@ -94,51 +94,26 @@ class StockRevaluationController extends Controller
         try {
             $revaluation = $this->revaluationService->getById($id);
         } catch (\Illuminate\Database\QueryException $e) {
-            return $this->errorResponse('Dokumen revaluasi tidak ditemukan.', 404);
+            return $this->errorResponse('Dokumen penyesuaian nilai tidak ditemukan.', 404);
         }
 
         if (!$revaluation) {
-            return $this->errorResponse('Dokumen revaluasi tidak ditemukan.', 404);
+            return $this->errorResponse('Dokumen penyesuaian nilai tidak ditemukan.', 404);
         }
 
-        return $this->successResponse($revaluation, 'Detail revaluasi berhasil diambil.');
-    }
-
-    #[OA\Post(
-        path: '/api/v1/inventory/revaluations/{id}/approve',
-        summary: 'Approve revaluation and update avg_cost',
-        security: [['bearerAuth' => []]],
-        tags: ['Stock Revaluation'],
-        parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
-        ],
-        responses: [
-            new OA\Response(response: 200, description: 'Revaluasi berhasil di-approve, avg_cost diperbarui.'),
-            new OA\Response(response: 422, description: 'Validation Error'),
-        ]
-    )]
-    public function approve(Request $request, string $id): JsonResponse
-    {
-        try {
-            $approvedBy = $request->user()->name ?? $request->user()->email;
-            $revaluation = $this->revaluationService->approve($id, $approvedBy);
-
-            return $this->successResponse($revaluation, 'Revaluasi berhasil di-approve, avg_cost diperbarui.');
-        } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
-        }
+        return $this->successResponse($revaluation, 'Detail penyesuaian nilai berhasil diambil.');
     }
 
     #[OA\Post(
         path: '/api/v1/inventory/revaluations/{id}/cancel',
-        summary: 'Cancel a stock revaluation',
+        summary: 'Cancel an amount adjustment (rollback avg_cost)',
         security: [['bearerAuth' => []]],
-        tags: ['Stock Revaluation'],
+        tags: ['Amount Adjustment'],
         parameters: [
             new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
-            new OA\Response(response: 200, description: 'Revaluasi berhasil di-cancel.'),
+            new OA\Response(response: 200, description: 'Penyesuaian nilai berhasil dibatalkan.'),
             new OA\Response(response: 422, description: 'Validation Error'),
         ]
     )]
@@ -147,7 +122,7 @@ class StockRevaluationController extends Controller
         try {
             $revaluation = $this->revaluationService->cancel($id);
 
-            return $this->successResponse($revaluation, 'Revaluasi berhasil di-cancel.');
+            return $this->successResponse($revaluation, 'Penyesuaian nilai berhasil dibatalkan.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }

@@ -32,13 +32,15 @@ class StockRevaluationService
             $revaluation = $this->revaluationRepository->create([
                 'revaluation_no' => $revaluationNo,
                 'location_id'    => $data['location_id'],
-                'status'         => StockRevaluation::STATUS_DRAFT,
+                'status'         => StockRevaluation::STATUS_APPROVED,
                 'notes'          => $data['notes'] ?? null,
                 'created_by'     => $data['created_by'],
+                'approved_by'    => $data['created_by'],
+                'approved_at'    => now(),
             ]);
 
             foreach ($data['items'] as $itemData) {
-                $inventory = $this->inventoryRepository->findExact(
+                $inventory = $this->inventoryRepository->findOrCreateForUpdate(
                     $itemData['item_id'],
                     $data['location_id'],
                     $itemData['bin_id'] ?? null,
@@ -48,27 +50,30 @@ class StockRevaluationService
                     'stock_revaluation_id' => $revaluation->id,
                     'item_id'              => $itemData['item_id'],
                     'bin_id'               => $itemData['bin_id'] ?? null,
-                    'qty'                  => $inventory ? $inventory->on_hand : 0,
-                    'old_cost'             => $inventory ? $inventory->avg_cost : 0,
+                    'qty'                  => $inventory->on_hand,
+                    'old_cost'             => $inventory->avg_cost,
                     'new_cost'             => $itemData['new_cost'],
                 ]);
+
+                $inventory->avg_cost = $itemData['new_cost'];
+                $inventory->save();
             }
 
             return $this->revaluationRepository->findById($revaluation->id);
         });
     }
 
-    public function approve(string $id, string $approvedBy): StockRevaluation
+    public function cancel(string $id): StockRevaluation
     {
-        return DB::transaction(function () use ($id, $approvedBy) {
+        return DB::transaction(function () use ($id) {
             $revaluation = $this->revaluationRepository->findByIdForUpdate($id);
 
             if (!$revaluation) {
-                throw new \Exception('Dokumen revaluasi tidak ditemukan.');
+                throw new \Exception('Dokumen penyesuaian nilai tidak ditemukan.');
             }
 
-            if ($revaluation->status !== StockRevaluation::STATUS_DRAFT) {
-                throw new \Exception("Hanya dokumen DRAFT yang bisa di-approve (status: {$revaluation->status}).");
+            if ($revaluation->status === StockRevaluation::STATUS_CANCELLED) {
+                throw new \Exception('Dokumen sudah dibatalkan.');
             }
 
             foreach ($revaluation->items as $item) {
@@ -79,35 +84,14 @@ class StockRevaluationService
                 );
 
                 if ($inventory) {
-                    $inventory->avg_cost = $item->new_cost;
+                    $inventory->avg_cost = $item->old_cost;
                     $inventory->save();
                 }
             }
 
-            $revaluation->update([
-                'status'      => StockRevaluation::STATUS_APPROVED,
-                'approved_by' => $approvedBy,
-                'approved_at' => now(),
-            ]);
+            $revaluation->update(['status' => StockRevaluation::STATUS_CANCELLED]);
 
             return $this->revaluationRepository->findById($id);
         });
-    }
-
-    public function cancel(string $id): StockRevaluation
-    {
-        $revaluation = $this->revaluationRepository->findById($id);
-
-        if (!$revaluation) {
-            throw new \Exception('Dokumen revaluasi tidak ditemukan.');
-        }
-
-        if ($revaluation->status === StockRevaluation::STATUS_APPROVED) {
-            throw new \Exception('Dokumen yang sudah di-approve tidak bisa di-cancel.');
-        }
-
-        $revaluation->update(['status' => StockRevaluation::STATUS_CANCELLED]);
-
-        return $this->revaluationRepository->findById($id);
     }
 }
