@@ -15,4 +15,6 @@ Schedule::command('shopee:refresh-tokens')->hourly()->withoutOverlapping();
 
 Schedule::command('products:poll-review-status')->everyThirtyMinutes()->withoutOverlapping();
 
+Schedule::command('orders:sync-finance')->dailyAt('03:00')->withoutOverlapping();
+
 Schedule::command('horizon:snapshot')->everyFiveMinutes();

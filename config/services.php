@@ -33,6 +33,8 @@ return [
         'app_secret' => env('TIKTOK_APP_SECRET'),
         'redirect_uri' => env('TIKTOK_REDIRECT_URI'),
         'base_url' => env('TIKTOK_BASE_URL', 'https://open-api.tiktokglobalshop.com'),
+        // Path Finance "Get Order Statement Transactions" — verifikasi versi ke docs Partner.
+        'finance_statement_path' => env('TIKTOK_FINANCE_STATEMENT_PATH', '/finance/202309/orders/{order_id}/statement_transactions'),
     ],
 
     'lazada' => [

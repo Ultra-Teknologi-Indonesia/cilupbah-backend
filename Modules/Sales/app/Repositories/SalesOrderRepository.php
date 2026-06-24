@@ -318,6 +318,14 @@ class SalesOrderRepository
             'transaction_date'    => $orderData['transaction_date'],
             'sub_total'           => $orderData['sub_total'],
             'total_disc'          => $orderData['total_disc'],
+            // Voucher estimasi dari order detail. Jangan timpa bila fee sudah final
+            // (is_settled) — angka final hanya boleh ditulis lewat updateOrderFinance().
+            'seller_voucher'      => $existing && $existing->is_settled
+                ? $existing->seller_voucher
+                : ($orderData['seller_voucher'] ?? ($existing->seller_voucher ?? null)),
+            'platform_voucher'    => $existing && $existing->is_settled
+                ? $existing->platform_voucher
+                : ($orderData['platform_voucher'] ?? ($existing->platform_voucher ?? null)),
             'total_tax'           => $orderData['total_tax'],
             'shipping_cost'       => $orderData['shipping_cost'],
             'actual_shipping_fee' => $orderData['actual_shipping_fee'] ?? null,

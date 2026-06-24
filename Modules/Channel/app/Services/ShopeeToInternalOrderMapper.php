@@ -56,6 +56,9 @@ class ShopeeToInternalOrderMapper
 
             'sub_total' => $subTotal,
             'total_disc' => 0,
+            // Voucher/diskon Shopee tidak ada di order detail — diisi dari escrow saat settle.
+            'seller_voucher' => null,
+            'platform_voucher' => null,
             'total_tax' => 0,
             'shipping_cost' => $shippingFee,
             'actual_shipping_fee' => isset($shopeeOrder['actual_shipping_fee']) ? (float) $shopeeOrder['actual_shipping_fee'] : null,

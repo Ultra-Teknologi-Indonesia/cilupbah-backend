@@ -135,6 +135,21 @@ class ShopeeOrderService
         }
     }
 
+    /**
+     * Ambil rincian escrow (income) sebuah order — sumber data biaya admin, komisi,
+     * voucher, dan net settlement Shopee. Field final tersedia setelah order COMPLETED.
+     *
+     * Mengembalikan isi `response` (umumnya berisi `order_income`).
+     */
+    public function getEscrowDetail(string $shopId, string $orderSn): array
+    {
+        $shop = $this->requireShop($shopId);
+
+        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/payment/get_escrow_detail', ['order_sn' => $orderSn], $token, $shop->shop_id));
+
+        return $res['response'] ?? [];
+    }
+
     public function getCancelReasons(): array
     {
         return [

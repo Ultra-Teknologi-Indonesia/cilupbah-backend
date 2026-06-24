@@ -81,6 +81,9 @@ class TikTokToInternalOrderMapper
 
             'sub_total'          => isset($payment['original_total_product_price']) ? (float) $payment['original_total_product_price'] : 0,
             'total_disc'         => isset($payment['seller_discount']) ? (float) $payment['seller_discount'] : 0,
+            // Estimasi voucher dari order detail (final menyusul lewat Finance API saat settle).
+            'seller_voucher'     => isset($payment['seller_discount']) ? (float) $payment['seller_discount'] : null,
+            'platform_voucher'   => isset($payment['platform_discount']) ? (float) $payment['platform_discount'] : null,
             'total_tax'          => isset($payment['tax']) ? (float) $payment['tax'] : 0,
             'shipping_cost'      => isset($payment['original_shipping_fee']) ? (float) $payment['original_shipping_fee'] : 0,
             'actual_shipping_fee' => isset($payment['shipping_fee']) ? (float) $payment['shipping_fee'] : null,

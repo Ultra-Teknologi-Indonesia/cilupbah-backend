@@ -32,6 +32,26 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'grand_total', type: 'number', format: 'float', example: 112000),
 
         new OA\Property(
+            property: 'finance',
+            type: 'object',
+            description: 'Rincian keuangan. Field fee null = belum settle. is_settled=true berarti final dari escrow/finance channel.',
+            properties: [
+                new OA\Property(property: 'seller_voucher', type: 'number', format: 'float', nullable: true, example: 5000),
+                new OA\Property(property: 'platform_voucher', type: 'number', format: 'float', nullable: true, example: 3000),
+                new OA\Property(property: 'commission_fee', type: 'number', format: 'float', nullable: true, example: 2200),
+                new OA\Property(property: 'service_fee', type: 'number', format: 'float', nullable: true, example: 1100),
+                new OA\Property(property: 'transaction_fee', type: 'number', format: 'float', nullable: true, example: 800),
+                new OA\Property(property: 'affiliate_commission', type: 'number', format: 'float', nullable: true, example: null),
+                new OA\Property(property: 'seller_shipping_borne', type: 'number', format: 'float', nullable: true, example: 0),
+                new OA\Property(property: 'platform_shipping_rebate', type: 'number', format: 'float', nullable: true, example: 10000),
+                new OA\Property(property: 'settlement_amount', type: 'number', format: 'float', nullable: true, example: 98900),
+                new OA\Property(property: 'currency', type: 'string', example: 'IDR'),
+                new OA\Property(property: 'is_settled', type: 'boolean', example: false),
+                new OA\Property(property: 'synced_at', type: 'string', format: 'date-time', nullable: true, example: null),
+            ]
+        ),
+
+        new OA\Property(
             property: 'shipping',
             type: 'object',
             properties: [
@@ -81,6 +101,22 @@ class SalesOrderResource extends JsonResource
             'insurance_cost' => (float) $this->insurance_cost,
             'grand_total'    => (float) $this->grand_total,
 
+            // Null dipertahankan (bukan dipaksa 0) agar beda "belum settle" vs "nol".
+            'finance' => [
+                'seller_voucher'           => $this->floatOrNull($this->seller_voucher),
+                'platform_voucher'         => $this->floatOrNull($this->platform_voucher),
+                'commission_fee'           => $this->floatOrNull($this->commission_fee),
+                'service_fee'              => $this->floatOrNull($this->service_fee),
+                'transaction_fee'          => $this->floatOrNull($this->transaction_fee),
+                'affiliate_commission'     => $this->floatOrNull($this->affiliate_commission),
+                'seller_shipping_borne'    => $this->floatOrNull($this->seller_shipping_borne),
+                'platform_shipping_rebate' => $this->floatOrNull($this->platform_shipping_rebate),
+                'settlement_amount'        => $this->floatOrNull($this->settlement_amount),
+                'currency'                 => $this->fee_currency ?? 'IDR',
+                'is_settled'               => (bool) $this->is_settled,
+                'synced_at'                => $this->finance_synced_at,
+            ],
+
             'shipping' => [
                 'full_name'     => $this->shipping_full_name,
                 'phone'         => $this->shipping_phone,
@@ -109,5 +145,10 @@ class SalesOrderResource extends JsonResource
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];
+    }
+
+    private function floatOrNull($value): ?float
+    {
+        return $value === null ? null : (float) $value;
     }
 }

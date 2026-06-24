@@ -113,6 +113,43 @@ class TikTokOrderService
         return $count;
     }
 
+    // ─── Finance / Settlement ───────────────────────────────────────
+
+    /**
+     * Path Finance "Get Order Statement Transactions".
+     *
+     * CATATAN VERIFIKASI (Phase 0): versi/path persis dapat berubah antar rilis API
+     * TikTok Partner. Disentralisasi di sini + dapat di-override via config supaya
+     * mudah disesuaikan tanpa menyentuh logika sync.
+     */
+    protected function financeStatementPath(string $orderId): string
+    {
+        $template = config(
+            'services.tiktok.finance_statement_path',
+            '/finance/202309/orders/{order_id}/statement_transactions'
+        );
+
+        return str_replace('{order_id}', $orderId, $template);
+    }
+
+    /**
+     * Ambil statement/settlement sebuah order — sumber komisi, biaya, dan net seller.
+     * Mengembalikan isi `data`. Field final tersedia setelah order settle.
+     */
+    public function getOrderStatement(string $shopId, string $orderId): array
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            throw new \Exception("No access token found for shop: {$shopId}");
+        }
+
+        $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
+
+        $res = $this->client->request('GET', $this->financeStatementPath($orderId), $queries, [], $shop->access_token);
+
+        return $res['data'] ?? [];
+    }
+
     // ─── Accept / Create Package ────────────────────────────────────
 
     public function acceptOrder(string $shopId, string $orderId): array
