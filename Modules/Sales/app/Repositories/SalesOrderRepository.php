@@ -368,7 +368,6 @@ class SalesOrderRepository
                 'disc_amount' => $item['disc_amount'] ?? 0,
                 'tax_amount' => $item['tax_amount'] ?? 0,
                 'amount' => $item['amount'] ?? 0,
-                'image_url' => $item['image_url'] ?? null,
                 'updated_at' => now(),
             ];
 
