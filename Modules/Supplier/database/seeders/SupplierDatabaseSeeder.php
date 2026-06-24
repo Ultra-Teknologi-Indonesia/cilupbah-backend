@@ -29,6 +29,8 @@ class SupplierDatabaseSeeder extends Seeder
 
     private function seedMarketplaceContacts(): void
     {
+        $category = ContactCategory::where('name', 'Pelanggan Umum')->first();
+
         $shops = ChannelShop::with('channel')
             ->whereNull('disconnected_at')
             ->get();
@@ -40,10 +42,11 @@ class SupplierDatabaseSeeder extends Seeder
             Contact::firstOrCreate(
                 ['code' => $code],
                 [
-                    'name'      => $channelName . ' - ' . $shop->shop_name,
-                    'type'      => Contact::TYPE_SUPPLIER,
-                    'is_system' => true,
-                    'status'    => Contact::STATUS_ACTIVE,
+                    'name'        => $channelName . ' - ' . $shop->shop_name,
+                    'type'        => Contact::TYPE_BOTH,
+                    'category_id' => $category?->id,
+                    'is_system'   => true,
+                    'status'      => Contact::STATUS_ACTIVE,
                 ]
             );
         }
