@@ -32,30 +32,25 @@ class SupplierDatabaseSeeder extends Seeder
     {
         $category = ContactCategory::where('code', 'PLG-UMUM')->first();
 
-        // Clean up old per-shop contacts
+        // Delete ALL old system marketplace contacts and recreate per-channel
         Contact::where('is_system', true)
-            ->where('code', 'like', 'MP-%-________')
+            ->where('code', 'like', 'MP-%')
             ->delete();
 
-        // Create per-channel contacts
         $channels = Channel::whereHas('shops', function ($q) {
             $q->whereNull('disconnected_at');
         })->get();
 
         foreach ($channels as $channel) {
-            $code = 'MP-' . Str::upper($channel->code);
-
-            Contact::firstOrCreate(
-                ['code' => $code],
-                [
-                    'name'        => $channel->name,
-                    'type'        => Contact::TYPE_BOTH,
-                    'category_id' => $category?->id,
-                    'is_system'   => true,
-                    'is_company'  => true,
-                    'status'      => Contact::STATUS_ACTIVE,
-                ]
-            );
+            Contact::create([
+                'code'        => 'MP-' . Str::upper($channel->code),
+                'name'        => $channel->name,
+                'type'        => Contact::TYPE_BOTH,
+                'category_id' => $category?->id,
+                'is_system'   => true,
+                'is_company'  => true,
+                'status'      => Contact::STATUS_ACTIVE,
+            ]);
         }
     }
 }
