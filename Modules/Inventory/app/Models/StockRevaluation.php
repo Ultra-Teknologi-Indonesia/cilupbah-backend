@@ -26,8 +26,7 @@ class StockRevaluation extends Model
         'approved_at' => 'datetime',
     ];
 
-    const STATUS_DRAFT    = 'DRAFT';
-    const STATUS_APPROVED = 'APPROVED';
+    const STATUS_APPROVED  = 'APPROVED';
     const STATUS_CANCELLED = 'CANCELLED';
 
     public function location(): BelongsTo

@@ -17,13 +17,13 @@ class StockRevaluationController extends Controller
     ) {}
 
     #[OA\Get(
-        path: '/api/v1/inventory/revaluations',
+        path: '/api/v1/inventory/amount-adjustments',
         summary: 'Get list of amount adjustments',
         security: [['bearerAuth' => []]],
         tags: ['Amount Adjustment'],
         parameters: [
             new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
-            new OA\Parameter(name: 'filter[status]', in: 'query', required: false, schema: new OA\Schema(type: 'string', enum: ['APPROVED', 'CANCELLED'])),
+            new OA\Parameter(name: 'filter[status]', in: 'query', required: false, description: 'Filter by status', schema: new OA\Schema(type: 'string', enum: ['APPROVED', 'CANCELLED'])),
             new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
@@ -39,7 +39,7 @@ class StockRevaluationController extends Controller
     }
 
     #[OA\Post(
-        path: '/api/v1/inventory/revaluations',
+        path: '/api/v1/inventory/amount-adjustments',
         summary: 'Create amount adjustment (langsung apply, tanpa approval)',
         security: [['bearerAuth' => []]],
         tags: ['Amount Adjustment'],
@@ -77,7 +77,7 @@ class StockRevaluationController extends Controller
     }
 
     #[OA\Get(
-        path: '/api/v1/inventory/revaluations/{id}',
+        path: '/api/v1/inventory/amount-adjustments/{id}',
         summary: 'Get amount adjustment detail',
         security: [['bearerAuth' => []]],
         tags: ['Amount Adjustment'],
@@ -105,7 +105,7 @@ class StockRevaluationController extends Controller
     }
 
     #[OA\Post(
-        path: '/api/v1/inventory/revaluations/{id}/cancel',
+        path: '/api/v1/inventory/amount-adjustments/{id}/cancel',
         summary: 'Cancel an amount adjustment (rollback avg_cost)',
         security: [['bearerAuth' => []]],
         tags: ['Amount Adjustment'],

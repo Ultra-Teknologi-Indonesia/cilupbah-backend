@@ -105,11 +105,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         return response()->json(['success' => true, 'data' => $result, 'message' => 'Product berhasil di-set sebagai master.']);
     })->name('inventory.catalog.setMaster');
 
-    Route::prefix('inventory/revaluations')->group(function () {
-        Route::get('/', [StockRevaluationController::class, 'index'])->name('inventory.revaluations.index');
-        Route::post('/', [StockRevaluationController::class, 'store'])->name('inventory.revaluations.store');
-        Route::get('/{id}', [StockRevaluationController::class, 'show'])->name('inventory.revaluations.show');
-        Route::post('/{id}/cancel', [StockRevaluationController::class, 'cancel'])->name('inventory.revaluations.cancel');
+    Route::prefix('inventory/amount-adjustments')->group(function () {
+        Route::get('/', [StockRevaluationController::class, 'index'])->name('inventory.amountAdjustments.index');
+        Route::post('/', [StockRevaluationController::class, 'store'])->name('inventory.amountAdjustments.store');
+        Route::get('/{id}', [StockRevaluationController::class, 'show'])->name('inventory.amountAdjustments.show');
+        Route::post('/{id}/cancel', [StockRevaluationController::class, 'cancel'])->name('inventory.amountAdjustments.cancel');
     });
 
     Route::prefix('inventory/stock-opname')->group(function () {
