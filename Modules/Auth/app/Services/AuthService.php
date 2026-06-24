@@ -25,7 +25,8 @@ class AuthService
         $user->update(['last_login_at' => now()]);
 
         if ($request) {
-            $clientIp = $request->header('CF-Connecting-IP')
+            $clientIp = $request->header('X-Client-IP')
+                ?? $request->header('CF-Connecting-IP')
                 ?? $request->header('X-Forwarded-For')
                 ?? $request->ip()
                 ?? '';
