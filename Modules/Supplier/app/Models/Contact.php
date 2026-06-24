@@ -16,6 +16,7 @@ class Contact extends Model
         'company_name',
         'email',
         'phone',
+        'mobile',
         'address',
         'city',
         'province',
@@ -27,6 +28,11 @@ class Contact extends Model
         'status',
         'type',
         'category_id',
+        'is_system',
+    ];
+
+    protected $casts = [
+        'is_system' => 'boolean',
     ];
 
     const TYPE_CUSTOMER = 'CUSTOMER';

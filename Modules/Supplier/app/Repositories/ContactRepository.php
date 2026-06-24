@@ -18,6 +18,7 @@ class ContactRepository
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('type'),
                 AllowedFilter::exact('category_id'),
+                AllowedFilter::exact('is_system'),
                 AllowedFilter::custom('search', new FuzzyFilter('name,company_name,code,email'))
             )
             ->allowedSorts('name', 'code', 'type', 'created_at')
