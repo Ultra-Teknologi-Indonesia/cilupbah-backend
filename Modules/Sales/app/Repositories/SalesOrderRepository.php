@@ -340,6 +340,7 @@ class SalesOrderRepository
 
     public function syncOrderItems(string $orderId, array $items): void
     {
+        $items = $this->consolidateIncomingItems($items);
         $variantIdsBySku = $this->resolveVariantIdsBySku($items);
 
         $pools = [];
@@ -402,6 +403,28 @@ class SalesOrderRepository
     protected function itemKey(?string $sku, mixed $price): string
     {
         return ($sku ?? '') . '|' . number_format((float) $price, 2, '.', '');
+    }
+
+    protected function consolidateIncomingItems(array $items): array
+    {
+        $grouped = [];
+
+        foreach ($items as $item) {
+            $key = ($item['channel_product_id'] ?? '')
+                . '|' . ($item['sku'] ?? '')
+                . '|' . number_format((float) ($item['price'] ?? 0), 2, '.', '');
+
+            if (! isset($grouped[$key])) {
+                $grouped[$key] = $item;
+            } else {
+                $grouped[$key]['qty_in_base'] = ($grouped[$key]['qty_in_base'] ?? 1) + ($item['qty_in_base'] ?? 1);
+                $grouped[$key]['disc_amount'] = ($grouped[$key]['disc_amount'] ?? 0) + ($item['disc_amount'] ?? 0);
+                $grouped[$key]['tax_amount'] = ($grouped[$key]['tax_amount'] ?? 0) + ($item['tax_amount'] ?? 0);
+                $grouped[$key]['amount'] = ($grouped[$key]['amount'] ?? 0) + ($item['amount'] ?? 0);
+            }
+        }
+
+        return array_values($grouped);
     }
 
     public function variantIdBySku(?string $sku): ?string

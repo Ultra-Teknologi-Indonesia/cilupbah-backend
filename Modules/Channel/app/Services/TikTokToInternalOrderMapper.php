@@ -174,7 +174,7 @@ class TikTokToInternalOrderMapper
 
     protected function mapItems(array $lineItems): array
     {
-        $items = [];
+        $grouped = [];
 
         foreach ($lineItems as $li) {
             $qty = (int) ($li['quantity'] ?? 1);
@@ -189,21 +189,30 @@ class TikTokToInternalOrderMapper
             }
 
             $imageUrl = $li['sku_image']['url'] ?? $li['product_image']['url'] ?? null;
+            $sku = $li['seller_sku'] ?? null;
+            $key = ($li['product_id'] ?? '') . '|' . ($sku ?? '') . '|' . $price;
 
-            $items[] = [
-                'channel_product_id' => $li['product_id'] ?? null,
-                'sku'                => $li['seller_sku'] ?? null,
-                'description'        => trim(($li['product_name'] ?? '') . (isset($li['sku_name']) && $li['sku_name'] ? ' - ' . $li['sku_name'] : '')),
-                'qty_in_base'        => $qty,
-                'price'              => $price,
-                'disc'               => $disc,
-                'disc_amount'        => $disc * $qty,
-                'tax_amount'         => $taxAmount,
-                'amount'             => ($price * $qty) - ($disc * $qty),
-                'image_url'          => $imageUrl,
-            ];
+            if (! isset($grouped[$key])) {
+                $grouped[$key] = [
+                    'channel_product_id' => $li['product_id'] ?? null,
+                    'sku'                => $sku,
+                    'description'        => trim(($li['product_name'] ?? '') . (isset($li['sku_name']) && $li['sku_name'] ? ' - ' . $li['sku_name'] : '')),
+                    'qty_in_base'        => 0,
+                    'price'              => $price,
+                    'disc'               => $disc,
+                    'disc_amount'        => 0,
+                    'tax_amount'         => 0,
+                    'amount'             => 0,
+                    'image_url'          => $imageUrl,
+                ];
+            }
+
+            $grouped[$key]['qty_in_base'] += $qty;
+            $grouped[$key]['disc_amount'] += $disc * $qty;
+            $grouped[$key]['tax_amount'] += $taxAmount;
+            $grouped[$key]['amount'] += ($price * $qty) - ($disc * $qty);
         }
 
-        return $items;
+        return array_values($grouped);
     }
 }
