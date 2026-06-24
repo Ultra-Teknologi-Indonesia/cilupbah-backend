@@ -34,6 +34,10 @@ class SalesOrderRepository
         $sub = request('sub');
         if ($tab && $tab !== 'all') {
             $query = $this->applyTabScope($query, $tab, $sub);
+        } else {
+            // "Semua" / default listing must not surface quarantined
+            // Gagal Download orders — they live only in the failed tab.
+            $query = $this->scopeExcludeFailedDownload($query);
         }
 
         if ($channel = request('channel')) {
@@ -88,11 +92,9 @@ class SalesOrderRepository
         $base = SalesOrder::query();
 
         return [
-            'all'              => (clone $base)->count(),
+            'all'              => $this->scopeExcludeFailedDownload(clone $base)->count(),
             'unpaid'           => (clone $base)->where('status', 'pending')->where('is_paid', false)->count(),
-            'failed'           => (clone $base)->whereNotNull('source')
-                ->where('status', '!=', 'cancelled')
-                ->whereHas('items', $this->unmappedItemsConstraint())->count(),
+            'failed'           => $this->scopeFailedDownload(clone $base)->count(),
             'ready-to-process' => (clone $base)->where('status', 'reserved')
                 ->whereDoesntHave('picklistItems')
                 ->whereDoesntHave('items', $this->unmappedItemsConstraint())->count(),
@@ -119,13 +121,38 @@ class SalesOrderRepository
         return fn ($q) => $q->whereNull('item_id');
     }
 
+    /**
+     * "Gagal Download" scope: a channel order (has source) that is not cancelled
+     * and still has at least one unmapped item (product not yet downloaded /
+     * bound to a master variant). These orders are quarantined — they must only
+     * surface in the Gagal Download (failed) tab, never in the All listing.
+     */
+    protected function scopeFailedDownload($query)
+    {
+        return $query->whereNotNull('source')
+            ->where('status', '!=', 'cancelled')
+            ->whereHas('items', $this->unmappedItemsConstraint());
+    }
+
+    /**
+     * Inverse of scopeFailedDownload — everything except quarantined orders.
+     * Used by the "Semua" tab and the default listing so failed-download orders
+     * do not leak into the normal order stream.
+     */
+    protected function scopeExcludeFailedDownload($query)
+    {
+        return $query->where(fn ($q) => $q
+            ->whereNull('source')
+            ->orWhere('status', 'cancelled')
+            ->orWhereDoesntHave('items', $this->unmappedItemsConstraint())
+        );
+    }
+
     protected function applyTabScope($query, string $tab, ?string $sub = null)
     {
         return match ($tab) {
             'unpaid'           => $query->where('status', 'pending')->where('is_paid', false),
-            'failed'           => $query->whereNotNull('source')
-                ->where('status', '!=', 'cancelled')
-                ->whereHas('items', $this->unmappedItemsConstraint()),
+            'failed'           => $this->scopeFailedDownload($query),
             'ready-to-process' => $query->where('status', 'reserved')
                 ->whereDoesntHave('picklistItems')
                 ->whereDoesntHave('items', $this->unmappedItemsConstraint()),
