@@ -172,6 +172,29 @@ class TikTokToInternalOrderMapper
         return null;
     }
 
+    /**
+     * Resolve the order line item SKU.
+     *
+     * TikTok line items only carry a seller_sku when the seller assigned one in
+     * TikTok Shop. When it is empty we fall back to 'TK-<sku_id>' — the exact same
+     * format TikTokToInternalProductMapper uses for variant SKUs — so the item can
+     * still be matched to its local variant by SKU.
+     */
+    protected function resolveItemSku(array $lineItem): ?string
+    {
+        $sellerSku = $lineItem['seller_sku'] ?? null;
+        if (! empty($sellerSku)) {
+            return (string) $sellerSku;
+        }
+
+        $skuId = $lineItem['sku_id'] ?? null;
+        if (! empty($skuId)) {
+            return 'TK-' . $skuId;
+        }
+
+        return null;
+    }
+
     protected function mapItems(array $lineItems): array
     {
         $grouped = [];
@@ -189,7 +212,7 @@ class TikTokToInternalOrderMapper
             }
 
             $imageUrl = $li['sku_image']['url'] ?? $li['product_image']['url'] ?? null;
-            $sku = $li['seller_sku'] ?? null;
+            $sku = $this->resolveItemSku($li);
             $key = ($li['product_id'] ?? '') . '|' . ($sku ?? '') . '|' . $price;
 
             if (! isset($grouped[$key])) {
