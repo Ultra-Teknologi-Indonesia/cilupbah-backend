@@ -42,6 +42,7 @@ class InventoryTransfer extends Model
     ];
 
     const STATUS_DRAFT      = 'DRAFT';
+    const STATUS_PENDING    = 'PENDING';
     const STATUS_APPROVED   = 'APPROVED';
     const STATUS_IN_TRANSIT = 'IN_TRANSIT';
     const STATUS_RECEIVED   = 'RECEIVED';
@@ -49,6 +50,7 @@ class InventoryTransfer extends Model
 
     const STATUSES = [
         self::STATUS_DRAFT,
+        self::STATUS_PENDING,
         self::STATUS_APPROVED,
         self::STATUS_IN_TRANSIT,
         self::STATUS_RECEIVED,

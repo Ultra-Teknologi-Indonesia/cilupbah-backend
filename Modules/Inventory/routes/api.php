@@ -84,6 +84,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('inventory/transfers/{id}/items', [InventoryTransactionController::class, 'addDraftItem'])->name('inventory.transfers.addDraftItem');
     Route::patch('inventory/transfers/{id}/items/{itemId}', [InventoryTransactionController::class, 'updateDraftItem'])->name('inventory.transfers.updateDraftItem');
     Route::delete('inventory/transfers/{id}/items/{itemId}', [InventoryTransactionController::class, 'removeDraftItem'])->name('inventory.transfers.removeDraftItem');
+    Route::post('inventory/transfers/{id}/submit', [InventoryTransactionController::class, 'submitDraft'])->name('inventory.transfers.submitDraft');
     Route::get('inventory/transfers/{id}', [InventoryTransactionController::class, 'transferShow'])->name('inventory.transfers.show');
     Route::delete('inventory/transfers/{id}', [InventoryTransactionController::class, 'transferDestroy'])->name('inventory.transfers.destroy');
     Route::post('inventory/transfers/{id}/approve', [InventoryTransactionController::class, 'approveTransfer'])->name('inventory.transfers.approve');
