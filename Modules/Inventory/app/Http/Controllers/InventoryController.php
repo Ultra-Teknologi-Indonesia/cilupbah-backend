@@ -61,21 +61,54 @@ class InventoryController extends Controller
     )]
     public function stockItems(Request $request): JsonResponse
     {
-        $data = $this->inventoryService->getStockItems();
+        try {
+            $data = $this->inventoryService->getStockItems();
 
-        return $this->successResponse(
-            StockItemResource::collection($data->items()),
-            'Daftar stok inventory berhasil diambil.',
-            200,
-            [
-                'current_page' => $data->currentPage(),
-                'last_page' => $data->lastPage(),
-                'per_page' => $data->perPage(),
-                'total' => $data->total(),
-                'channels' => $this->inventoryService->getActiveChannels(),
-                'locations' => $this->inventoryService->getActiveLocations(),
-            ]
-        );
+            return $this->successResponse(
+                StockItemResource::collection($data->items()),
+                'Daftar stok inventory berhasil diambil.',
+                200,
+                [
+                    'current_page' => $data->currentPage(),
+                    'last_page' => $data->lastPage(),
+                    'per_page' => $data->perPage(),
+                    'total' => $data->total(),
+                    'channels' => $this->inventoryService->getActiveChannels(),
+                    'locations' => $this->inventoryService->getActiveLocations(),
+                ]
+            );
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $this->errorResponse('Gagal mengambil data stok: ' . $e->getMessage(), 500);
+        }
+    }
+
+    public function stockItemShow(string $itemId): JsonResponse
+    {
+        try {
+            $variant = \Modules\Product\Models\ProductVariant::query()
+                ->with([
+                    'product:id,name,sku,is_bundle,is_stored,brand_id',
+                    'product.brand:id,name',
+                    'product.media' => fn ($q) => $q->whereNull('variant_id')->orderBy('sort_order'),
+                    'media' => fn ($q) => $q->orderBy('sort_order'),
+                    'options.attribute:id,name',
+                    'inventories.location:id,location_name',
+                ])
+                ->findOrFail($itemId);
+
+            return $this->successResponse(
+                new StockItemResource($variant),
+                'Detail stok item berhasil diambil.'
+            );
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return $this->errorResponse('Item tidak ditemukan.', 404);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $this->errorResponse('Gagal mengambil detail stok: ' . $e->getMessage(), 500);
+        }
     }
 
     #[OA\Get(
