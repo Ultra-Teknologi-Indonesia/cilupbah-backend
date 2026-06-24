@@ -11,6 +11,12 @@ class CategorySeeder extends Seeder
 
     public function run(): void
     {
+        $existingCount = DB::table('categories')->where('source', 'system')->count();
+        if ($existingCount > 0) {
+            $this->command->info("CategorySeeder: {$existingCount} system categories already exist — skipping.");
+            return;
+        }
+
         $data = json_decode(
             file_get_contents(module_path('Product', 'database/data/tiktok_categories_l3.json')),
             true

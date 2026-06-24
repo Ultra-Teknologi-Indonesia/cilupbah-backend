@@ -11,6 +11,11 @@ class RegionDatabaseSeeder extends Seeder
 
     public function run(): void
     {
+        if (DB::table('provinces')->count() > 0) {
+            $this->command->info("Region data already seeded — skipping.");
+            return;
+        }
+
         $path = base_path('database/data/wilayah_indonesia.sql');
         if (!File::exists($path)) {
             $this->command->error("File $path not found.");
@@ -18,11 +23,6 @@ class RegionDatabaseSeeder extends Seeder
         }
 
         \Illuminate\Support\Facades\Schema::disableForeignKeyConstraints();
-
-        DB::table('villages')->delete();
-        DB::table('districts')->delete();
-        DB::table('cities')->delete();
-        DB::table('provinces')->delete();
 
         $this->command->info("Parsing and inserting from $path...");
 
