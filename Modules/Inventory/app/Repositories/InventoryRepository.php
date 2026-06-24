@@ -173,8 +173,8 @@ class InventoryRepository
                 AllowedFilter::callback('location_id', fn ($query, $value) => $query->whereHas('inventories', fn ($q) => $q->where('location_id', $value))
                 ),
             )
-            ->allowedSorts('product_variants.sku', 'product_variants.created_at')
-            ->defaultSort('product_variants.sku')
+            ->allowedSorts('product_variants.sku', 'product_variants.created_at', 'products.name')
+            ->defaultSort('products.name', 'product_variants.sku')
             ->paginate(request('per_page', 10))
             ->appends(request()->query());
     }
