@@ -25,9 +25,17 @@ class AuthService
         $user->update(['last_login_at' => now()]);
 
         if ($request) {
+            $clientIp = $request->header('CF-Connecting-IP')
+                ?? $request->header('X-Forwarded-For')
+                ?? $request->ip()
+                ?? '';
+            if (str_contains($clientIp, ',')) {
+                $clientIp = trim(explode(',', $clientIp)[0]);
+            }
+
             LoginHistory::recordLogin(
                 $user->id,
-                $request->ip() ?? '',
+                $clientIp,
                 $request->userAgent() ?? ''
             );
         }
