@@ -8,11 +8,11 @@ use Modules\Inbound\Services\InboundService;
 use Modules\Inventory\Repositories\InventoryRepository;
 use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 class PurchaseOrderService
 {
     use StockLockable;
+
     public function __construct(
         protected PurchaseOrderRepository $poRepository,
         protected InboundService $inboundService,
@@ -37,25 +37,53 @@ class PurchaseOrderService
     public function create(array $data): PurchaseOrder
     {
         return DB::transaction(function () use ($data) {
-            $data['po_number'] = $data['po_number'] ?? 'PO-' . now()->format('Ymd') . '-' . Str::upper(Str::random(4));
+            $data['po_number'] = $data['po_number'] ?? $this->poRepository->generatePoNumber();
             $data['status'] = PurchaseOrder::STATUS_DRAFT;
+            $data['created_by'] = auth()->user()?->name ?? 'system';
 
-            $totalAmount = 0;
-            foreach ($data['items'] as $item) {
-                $subtotal = $item['qty'] * ($item['unit_price'] ?? 0);
-                $totalAmount += $subtotal;
-            }
-            $data['total_amount'] = $totalAmount;
+            $totals = $this->calculateTotals($data['items'], $data['is_tax_included'] ?? false);
+            $data = array_merge($data, $totals);
 
             $po = $this->poRepository->create($data);
 
             foreach ($data['items'] as $itemData) {
                 $itemData['purchase_order_id'] = $po->id;
-                $itemData['subtotal'] = $itemData['qty'] * ($itemData['unit_price'] ?? 0);
+                $this->calculateItemAmounts($itemData);
                 $this->poRepository->createItem($itemData);
             }
 
             return $po->load('items.product:id,name,sku');
+        });
+    }
+
+    public function update(string $id, array $data): PurchaseOrder
+    {
+        return DB::transaction(function () use ($id, $data) {
+            $po = $this->poRepository->findById($id);
+
+            if (!$po) {
+                throw new \Exception('PO tidak ditemukan.');
+            }
+
+            if ($po->status !== PurchaseOrder::STATUS_DRAFT) {
+                throw new \Exception('Hanya PO berstatus DRAFT yang bisa diedit.');
+            }
+
+            $totals = $this->calculateTotals($data['items'] ?? [], $data['is_tax_included'] ?? false);
+            $data = array_merge($data, $totals);
+
+            $po->update($data);
+
+            if (isset($data['items'])) {
+                $po->items()->delete();
+                foreach ($data['items'] as $itemData) {
+                    $itemData['purchase_order_id'] = $po->id;
+                    $this->calculateItemAmounts($itemData);
+                    $this->poRepository->createItem($itemData);
+                }
+            }
+
+            return $this->getById($id);
         });
     }
 
@@ -64,7 +92,7 @@ class PurchaseOrderService
         return DB::transaction(function () use ($id) {
             $po = $this->poRepository->findByIdForUpdate($id);
 
-            if (! $po) {
+            if (!$po) {
                 throw new \Exception('PO tidak ditemukan.');
             }
 
@@ -88,11 +116,11 @@ class PurchaseOrderService
         return DB::transaction(function () use ($poId, $data) {
             $po = $this->poRepository->findByIdForUpdate($poId);
 
-            if (! $po) {
+            if (!$po) {
                 throw new \Exception('PO tidak ditemukan.');
             }
 
-            if (! $po->isReceivable()) {
+            if (!$po->isReceivable()) {
                 throw new \Exception("PO berstatus {$po->status}, tidak bisa di-receive.");
             }
 
@@ -101,7 +129,7 @@ class PurchaseOrderService
 
             foreach ($data['items'] as $receiveItem) {
                 $poItem = $poItemsDict->get($receiveItem['purchase_order_item_id']);
-                if (! $poItem) {
+                if (!$poItem) {
                     throw new \Exception("PO Item ID {$receiveItem['purchase_order_item_id']} tidak ditemukan.");
                 }
 
@@ -111,7 +139,6 @@ class PurchaseOrderService
                 }
 
                 $this->poRepository->updateItemReceivedQty($poItem->id, $receiveItem['qty']);
-
                 $this->adjustOnOrder($poItem->item_id, $po->location_id, -$receiveItem['qty']);
 
                 $inboundItems[] = [
@@ -142,27 +169,12 @@ class PurchaseOrderService
         });
     }
 
-    public function update(string $id, array $data): PurchaseOrder
-    {
-        $po = $this->poRepository->findById($id);
-
-        if (! $po) {
-            throw new \Exception('PO tidak ditemukan.');
-        }
-
-        if ($po->status !== PurchaseOrder::STATUS_DRAFT) {
-            throw new \Exception("Hanya PO berstatus DRAFT yang bisa diedit.");
-        }
-
-        return $this->poRepository->update($po, $data);
-    }
-
     public function cancel(string $id): PurchaseOrder
     {
         return DB::transaction(function () use ($id) {
             $po = $this->poRepository->findByIdForUpdate($id);
 
-            if (! $po) {
+            if (!$po) {
                 throw new \Exception('PO tidak ditemukan.');
             }
 
@@ -194,7 +206,7 @@ class PurchaseOrderService
     {
         $po = $this->poRepository->findById($id);
 
-        if (! $po) {
+        if (!$po) {
             throw new \Exception('PO tidak ditemukan.');
         }
 
@@ -203,6 +215,46 @@ class PurchaseOrderService
         }
 
         return $this->poRepository->delete($po);
+    }
+
+    private function calculateItemAmounts(array &$item): void
+    {
+        $price = $item['unit_price'] ?? 0;
+        $qty = $item['qty'] ?? 0;
+        $discPercent = $item['disc'] ?? 0;
+
+        $lineTotal = $price * $qty;
+        $item['disc_amount'] = round($lineTotal * $discPercent / 100, 2);
+        $item['tax_amount'] = $item['tax_amount'] ?? 0;
+        $item['amount'] = round($lineTotal - $item['disc_amount'] + $item['tax_amount'], 2);
+    }
+
+    private function calculateTotals(array $items, bool $isTaxIncluded): array
+    {
+        $subTotal = 0;
+        $totalDisc = 0;
+        $totalTax = 0;
+
+        foreach ($items as $item) {
+            $price = $item['unit_price'] ?? 0;
+            $qty = $item['qty'] ?? 0;
+            $discPercent = $item['disc'] ?? 0;
+
+            $lineTotal = $price * $qty;
+            $discAmount = round($lineTotal * $discPercent / 100, 2);
+            $taxAmount = $item['tax_amount'] ?? 0;
+
+            $subTotal += $lineTotal;
+            $totalDisc += $discAmount;
+            $totalTax += $taxAmount;
+        }
+
+        return [
+            'sub_total'    => round($subTotal, 2),
+            'total_disc'   => round($totalDisc, 2),
+            'total_tax'    => round($totalTax, 2),
+            'total_amount' => round($subTotal - $totalDisc + $totalTax, 2),
+        ];
     }
 
     private function adjustOnOrder(string $itemId, string $locationId, int $qty): void

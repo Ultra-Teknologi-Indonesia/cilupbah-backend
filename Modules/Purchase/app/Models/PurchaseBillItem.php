@@ -13,15 +13,25 @@ class PurchaseBillItem extends Model
 
     protected $fillable = [
         'purchase_bill_id',
+        'purchase_order_item_id',
         'item_id',
+        'description',
+        'unit',
         'qty',
         'unit_price',
-        'subtotal',
+        'disc',
+        'disc_amount',
+        'tax_id',
+        'tax_amount',
+        'amount',
     ];
 
     protected $casts = [
-        'unit_price' => 'decimal:2',
-        'subtotal'   => 'decimal:2',
+        'unit_price'  => 'decimal:2',
+        'amount'      => 'decimal:2',
+        'disc'        => 'decimal:2',
+        'disc_amount' => 'decimal:2',
+        'tax_amount'  => 'decimal:2',
     ];
 
     public function bill(): BelongsTo

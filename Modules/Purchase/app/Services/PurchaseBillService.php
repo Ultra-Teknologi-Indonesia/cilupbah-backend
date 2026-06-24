@@ -22,24 +22,28 @@ class PurchaseBillService
         return $this->billRepository->findById($id);
     }
 
-    public function createOrUpdate(array $data): PurchaseBill
+    public function create(array $data): PurchaseBill
     {
         return DB::transaction(function () use ($data) {
             $data['bill_number'] = $data['bill_number'] ?? $this->billRepository->generateBillNo();
-            $data['status'] = $data['status'] ?? PurchaseBill::STATUS_DRAFT;
+            $data['status'] = PurchaseBill::STATUS_OPEN;
+            $data['created_by'] = auth()->user()?->name ?? 'system';
+            $data['paid_amount'] = $data['payment_amount'] ?? 0;
 
-            $totalAmount = 0;
-            foreach (($data['items'] ?? []) as $item) {
-                $totalAmount += $item['qty'] * ($item['unit_price'] ?? 0);
+            $totals = $this->calculateTotals($data['items'] ?? [], $data['is_tax_included'] ?? false);
+            $data = array_merge($data, $totals);
+
+            if ($data['paid_amount'] >= $data['total_amount'] && $data['total_amount'] > 0) {
+                $data['status'] = PurchaseBill::STATUS_PAID;
+            } elseif ($data['paid_amount'] > 0) {
+                $data['status'] = PurchaseBill::STATUS_PARTIAL;
             }
-            $data['total_amount'] = $totalAmount;
-            $data['paid_amount'] = $data['paid_amount'] ?? 0;
 
             $bill = $this->billRepository->create($data);
 
             foreach (($data['items'] ?? []) as $itemData) {
                 $itemData['purchase_bill_id'] = $bill->id;
-                $itemData['subtotal'] = $itemData['qty'] * ($itemData['unit_price'] ?? 0);
+                $this->calculateItemAmounts($itemData);
                 $this->billRepository->createItem($itemData);
             }
 
@@ -47,14 +51,45 @@ class PurchaseBillService
         });
     }
 
+    public function update(string $id, array $data): PurchaseBill
+    {
+        return DB::transaction(function () use ($id, $data) {
+            $bill = $this->billRepository->findById($id);
+
+            if (!$bill) {
+                throw new \Exception('Tagihan tidak ditemukan.');
+            }
+
+            if (in_array($bill->status, [PurchaseBill::STATUS_PAID, PurchaseBill::STATUS_CANCELLED])) {
+                throw new \Exception('Tagihan berstatus ' . $bill->status . ' tidak bisa diedit.');
+            }
+
+            $totals = $this->calculateTotals($data['items'] ?? [], $data['is_tax_included'] ?? false);
+            $data = array_merge($data, $totals);
+
+            $bill->update($data);
+
+            if (isset($data['items'])) {
+                $bill->items()->delete();
+                foreach ($data['items'] as $itemData) {
+                    $itemData['purchase_bill_id'] = $bill->id;
+                    $this->calculateItemAmounts($itemData);
+                    $this->billRepository->createItem($itemData);
+                }
+            }
+
+            return $this->getById($id);
+        });
+    }
+
     public function delete(string $id): bool
     {
         $bill = $this->billRepository->findById($id);
-        if (! $bill) {
-            throw new \Exception('Bill tidak ditemukan.');
+        if (!$bill) {
+            throw new \Exception('Tagihan tidak ditemukan.');
         }
-        if ($bill->status !== PurchaseBill::STATUS_DRAFT) {
-            throw new \Exception('Hanya bill berstatus DRAFT yang bisa dihapus.');
+        if (in_array($bill->status, [PurchaseBill::STATUS_PAID])) {
+            throw new \Exception('Tagihan yang sudah lunas tidak bisa dihapus.');
         }
         return $this->billRepository->delete($bill);
     }
@@ -72,5 +107,45 @@ class PurchaseBillService
     public function getForReturn(int $limit = 10)
     {
         return $this->billRepository->getForReturn($limit);
+    }
+
+    private function calculateItemAmounts(array &$item): void
+    {
+        $price = $item['unit_price'] ?? 0;
+        $qty = $item['qty'] ?? 0;
+        $discPercent = $item['disc'] ?? 0;
+
+        $lineTotal = $price * $qty;
+        $item['disc_amount'] = round($lineTotal * $discPercent / 100, 2);
+        $item['tax_amount'] = $item['tax_amount'] ?? 0;
+        $item['amount'] = round($lineTotal - $item['disc_amount'] + $item['tax_amount'], 2);
+    }
+
+    private function calculateTotals(array $items, bool $isTaxIncluded): array
+    {
+        $subTotal = 0;
+        $totalDisc = 0;
+        $totalTax = 0;
+
+        foreach ($items as $item) {
+            $price = $item['unit_price'] ?? 0;
+            $qty = $item['qty'] ?? 0;
+            $discPercent = $item['disc'] ?? 0;
+
+            $lineTotal = $price * $qty;
+            $discAmount = round($lineTotal * $discPercent / 100, 2);
+            $taxAmount = $item['tax_amount'] ?? 0;
+
+            $subTotal += $lineTotal;
+            $totalDisc += $discAmount;
+            $totalTax += $taxAmount;
+        }
+
+        return [
+            'sub_total'    => round($subTotal, 2),
+            'total_disc'   => round($totalDisc, 2),
+            'total_tax'    => round($totalTax, 2),
+            'total_amount' => round($subTotal - $totalDisc + $totalTax, 2),
+        ];
     }
 }

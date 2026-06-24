@@ -5,7 +5,7 @@ namespace Modules\Purchase\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Modules\Supplier\Models\Supplier;
+use Modules\Supplier\Models\Contact;
 use Modules\Warehouse\Models\Location;
 use App\Traits\HasUuid7;
 
@@ -15,21 +15,31 @@ class PurchaseOrder extends Model
 
     protected $fillable = [
         'po_number',
-        'supplier_id',
+        'contact_id',
         'location_id',
         'status',
         'order_date',
         'expected_date',
-        'total_amount',
+        'ref_no',
         'payment_term',
+        'is_tax_included',
+        'sub_total',
+        'total_disc',
+        'total_tax',
+        'total_amount',
         'notes',
         'created_by',
     ];
 
     protected $casts = [
-        'order_date'    => 'date',
-        'expected_date' => 'date',
-        'total_amount'  => 'decimal:2',
+        'order_date'      => 'date',
+        'expected_date'   => 'date',
+        'total_amount'    => 'decimal:2',
+        'sub_total'       => 'decimal:2',
+        'total_disc'      => 'decimal:2',
+        'total_tax'       => 'decimal:2',
+        'is_tax_included' => 'boolean',
+        'payment_term'    => 'integer',
     ];
 
     const STATUS_DRAFT             = 'DRAFT';
@@ -46,9 +56,9 @@ class PurchaseOrder extends Model
         self::STATUS_CANCELLED,
     ];
 
-    public function supplier(): BelongsTo
+    public function contact(): BelongsTo
     {
-        return $this->belongsTo(Supplier::class);
+        return $this->belongsTo(Contact::class);
     }
 
     public function location(): BelongsTo
@@ -84,5 +94,15 @@ class PurchaseOrder extends Model
     public function scopeReceivable($query)
     {
         return $query->whereIn('status', [self::STATUS_OPEN, self::STATUS_PARTIAL_RECEIVED]);
+    }
+
+    public function scopeWhereDateFrom($query, $date)
+    {
+        return $query->where('order_date', '>=', $date);
+    }
+
+    public function scopeWhereDateTo($query, $date)
+    {
+        return $query->where('order_date', '<=', $date);
     }
 }

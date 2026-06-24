@@ -14,27 +14,40 @@ class PurchaseBill extends Model
     protected $fillable = [
         'bill_number',
         'purchase_order_id',
-        'supplier_id',
+        'contact_id',
         'location_id',
         'status',
         'bill_date',
         'due_date',
+        'ref_no',
+        'payment_term',
+        'is_tax_included',
+        'sub_total',
+        'total_disc',
+        'total_tax',
         'total_amount',
         'paid_amount',
+        'tag',
         'notes',
         'created_by',
     ];
 
     protected $casts = [
-        'bill_date'    => 'date',
-        'due_date'     => 'date',
-        'total_amount' => 'decimal:2',
-        'paid_amount'  => 'decimal:2',
+        'bill_date'       => 'date',
+        'due_date'        => 'date',
+        'total_amount'    => 'decimal:2',
+        'paid_amount'     => 'decimal:2',
+        'sub_total'       => 'decimal:2',
+        'total_disc'      => 'decimal:2',
+        'total_tax'       => 'decimal:2',
+        'is_tax_included' => 'boolean',
+        'payment_term'    => 'integer',
     ];
 
     const STATUS_DRAFT     = 'DRAFT';
     const STATUS_OPEN      = 'OPEN';
     const STATUS_PAID      = 'PAID';
+    const STATUS_PARTIAL   = 'PARTIAL';
     const STATUS_CANCELLED = 'CANCELLED';
 
     public function purchaseOrder(): BelongsTo
@@ -42,9 +55,9 @@ class PurchaseBill extends Model
         return $this->belongsTo(PurchaseOrder::class);
     }
 
-    public function supplier(): BelongsTo
+    public function contact(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Supplier\Models\Supplier::class);
+        return $this->belongsTo(\Modules\Supplier\Models\Contact::class);
     }
 
     public function location(): BelongsTo
@@ -60,5 +73,20 @@ class PurchaseBill extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(PurchasePayment::class);
+    }
+
+    public function scopeWhereDateFrom($query, $date)
+    {
+        return $query->where('bill_date', '>=', $date);
+    }
+
+    public function scopeWhereDateTo($query, $date)
+    {
+        return $query->where('bill_date', '<=', $date);
+    }
+
+    public function remainingAmount(): float
+    {
+        return max(0, $this->total_amount - $this->paid_amount);
     }
 }

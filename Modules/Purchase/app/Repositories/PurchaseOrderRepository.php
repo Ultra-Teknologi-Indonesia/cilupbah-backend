@@ -13,12 +13,14 @@ class PurchaseOrderRepository
     public function getAllPaginated(int $limit = 10)
     {
         return QueryBuilder::for(PurchaseOrder::class)
-            ->with(['supplier:id,name,code', 'location:id,location_name'])
+            ->with(['contact:id,name,code', 'location:id,location_name', 'bills:id,purchase_order_id,bill_number'])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
-                AllowedFilter::exact('supplier_id'),
+                AllowedFilter::exact('contact_id'),
                 AllowedFilter::exact('location_id'),
-                AllowedFilter::custom('search', new FuzzyFilter('po_number'))
+                AllowedFilter::custom('search', new FuzzyFilter('po_number')),
+                AllowedFilter::scope('date_from', 'whereDateFrom'),
+                AllowedFilter::scope('date_to', 'whereDateTo'),
             )
             ->allowedSorts('po_number', 'order_date', 'total_amount', 'created_at')
             ->defaultSort('-created_at')
@@ -29,7 +31,7 @@ class PurchaseOrderRepository
     {
         return QueryBuilder::for(PurchaseOrder::class)
             ->receivable()
-            ->with(['supplier:id,name,code', 'location:id,location_name', 'items.product:id,name,sku'])
+            ->with(['contact:id,name,code', 'location:id,location_name', 'items.product:id,name,sku'])
             ->allowedSorts('po_number', 'order_date', 'created_at')
             ->defaultSort('-created_at')
             ->paginate($limit);
@@ -37,7 +39,7 @@ class PurchaseOrderRepository
 
     public function findById(string $id): ?PurchaseOrder
     {
-        return PurchaseOrder::with(['supplier', 'location', 'items.product:id,name,sku'])
+        return PurchaseOrder::with(['contact', 'location', 'items.product:id,name,sku', 'bills:id,purchase_order_id,bill_number'])
             ->find($id);
     }
 
@@ -78,5 +80,16 @@ class PurchaseOrderRepository
     public function delete(PurchaseOrder $po): bool
     {
         return $po->delete();
+    }
+
+    public function generatePoNumber(): string
+    {
+        $prefix = 'PO-';
+        $last = PurchaseOrder::where('po_number', 'like', $prefix . '%')
+            ->orderByDesc('po_number')
+            ->value('po_number');
+
+        $seq = $last ? ((int) substr($last, strlen($prefix))) + 1 : 1;
+        return $prefix . str_pad($seq, 9, '0', STR_PAD_LEFT);
     }
 }

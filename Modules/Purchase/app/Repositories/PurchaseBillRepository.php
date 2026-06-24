@@ -14,12 +14,14 @@ class PurchaseBillRepository
     public function getAllPaginated(int $limit = 10)
     {
         return QueryBuilder::for(PurchaseBill::class)
-            ->with(['supplier:id,name,code', 'location:id,location_name', 'purchaseOrder:id,po_number'])
+            ->with(['contact:id,name,code', 'location:id,location_name', 'purchaseOrder:id,po_number'])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
-                AllowedFilter::exact('supplier_id'),
+                AllowedFilter::exact('contact_id'),
                 AllowedFilter::exact('location_id'),
-                AllowedFilter::custom('search', new FuzzyFilter('bill_number'))
+                AllowedFilter::custom('search', new FuzzyFilter('bill_number')),
+                AllowedFilter::scope('date_from', 'whereDateFrom'),
+                AllowedFilter::scope('date_to', 'whereDateTo'),
             )
             ->allowedSorts('bill_number', 'bill_date', 'due_date', 'total_amount', 'created_at')
             ->defaultSort('-created_at')
@@ -28,7 +30,7 @@ class PurchaseBillRepository
 
     public function findById(string $id): ?PurchaseBill
     {
-        return PurchaseBill::with(['supplier', 'location', 'purchaseOrder', 'items.product:id,name,sku', 'payments'])
+        return PurchaseBill::with(['contact', 'location', 'purchaseOrder', 'items.product:id,name,sku', 'payments'])
             ->find($id);
     }
 
@@ -47,6 +49,12 @@ class PurchaseBillRepository
         return PurchaseBillItem::create($data);
     }
 
+    public function update(PurchaseBill $bill, array $data): PurchaseBill
+    {
+        $bill->update($data);
+        return $bill->fresh();
+    }
+
     public function delete(PurchaseBill $bill): bool
     {
         return $bill->delete();
@@ -55,11 +63,11 @@ class PurchaseBillRepository
     public function getUnpaid(int $limit = 10)
     {
         return QueryBuilder::for(PurchaseBill::class)
-            ->whereIn('status', [PurchaseBill::STATUS_OPEN, PurchaseBill::STATUS_DRAFT])
+            ->whereIn('status', [PurchaseBill::STATUS_OPEN, PurchaseBill::STATUS_PARTIAL])
             ->whereColumn('paid_amount', '<', 'total_amount')
-            ->with(['supplier:id,name,code', 'location:id,location_name'])
+            ->with(['contact:id,name,code', 'location:id,location_name'])
             ->allowedFilters(
-                AllowedFilter::exact('supplier_id'),
+                AllowedFilter::exact('contact_id'),
                 AllowedFilter::custom('search', new FuzzyFilter('bill_number'))
             )
             ->allowedSorts('bill_date', 'due_date', 'total_amount', 'created_at')
@@ -70,10 +78,10 @@ class PurchaseBillRepository
     public function getOverdue(int $limit = 10)
     {
         return QueryBuilder::for(PurchaseBill::class)
-            ->whereIn('status', [PurchaseBill::STATUS_OPEN, PurchaseBill::STATUS_DRAFT])
+            ->whereIn('status', [PurchaseBill::STATUS_OPEN, PurchaseBill::STATUS_PARTIAL])
             ->whereColumn('paid_amount', '<', 'total_amount')
             ->where('due_date', '<', now()->toDateString())
-            ->with(['supplier:id,name,code', 'location:id,location_name'])
+            ->with(['contact:id,name,code', 'location:id,location_name'])
             ->allowedSorts('due_date', 'total_amount', 'created_at')
             ->defaultSort('due_date')
             ->paginate($limit);
@@ -83,10 +91,10 @@ class PurchaseBillRepository
     {
         return QueryBuilder::for(PurchaseBill::class)
             ->whereIn('status', [PurchaseBill::STATUS_OPEN, PurchaseBill::STATUS_PAID])
-            ->with(['supplier:id,name,code'])
-            ->select('id', 'bill_number', 'supplier_id', 'total_amount', 'bill_date')
+            ->with(['contact:id,name,code'])
+            ->select('id', 'bill_number', 'contact_id', 'total_amount', 'bill_date')
             ->allowedFilters(
-                AllowedFilter::exact('supplier_id'),
+                AllowedFilter::exact('contact_id'),
                 AllowedFilter::custom('search', new FuzzyFilter('bill_number'))
             )
             ->defaultSort('-created_at')
@@ -95,12 +103,12 @@ class PurchaseBillRepository
 
     public function generateBillNo(): string
     {
-        $prefix = 'BILL-' . now()->format('Ymd') . '-';
+        $prefix = 'BILL-';
         $last = PurchaseBill::where('bill_number', 'like', $prefix . '%')
             ->orderByDesc('bill_number')
             ->value('bill_number');
 
-        $seq = $last ? ((int) Str::afterLast($last, '-')) + 1 : 1;
-        return $prefix . str_pad($seq, 4, '0', STR_PAD_LEFT);
+        $seq = $last ? ((int) substr($last, strlen($prefix))) + 1 : 1;
+        return $prefix . str_pad($seq, 9, '0', STR_PAD_LEFT);
     }
 }
