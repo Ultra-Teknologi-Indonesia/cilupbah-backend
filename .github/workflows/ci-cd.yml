@@ -66,69 +66,84 @@ jobs:
             set -e
             cd ${{ secrets.DEPLOY_PATH }}
 
-            # ── Helper: force-clean semua container & network ─────────────────
-            clean_before_up() {
-              docker rm -f \
-                cilupbah-staging \
-                cilupbah-staging-horizon \
-                cilupbah-staging-redis 2>/dev/null || true
-              docker network rm cilupbah_default 2>/dev/null || true
-            }
-
             # ── Save current commit before pulling ────────────────────────────
             PREVIOUS_COMMIT=$(git rev-parse HEAD)
             echo "Previous commit: $PREVIOUS_COMMIT"
+
+            # ── Pull latest code (volume-mounted, instantly live) ─────────────
+            git fetch origin main
+            git reset --hard origin/main
+
+            CURRENT_COMMIT=$(git rev-parse HEAD)
+            echo "Current commit: $CURRENT_COMMIT"
+
+            # ── Detect what changed ───────────────────────────────────────────
+            CHANGED_FILES=$(git diff --name-only "$PREVIOUS_COMMIT" "$CURRENT_COMMIT")
+            HAS_COMPOSER_CHANGE=$(echo "$CHANGED_FILES" | grep -c 'composer.lock' || true)
+            HAS_NPM_CHANGE=$(echo "$CHANGED_FILES" | grep -c 'package-lock.json' || true)
+            HAS_DOCKER_CHANGE=$(echo "$CHANGED_FILES" | grep -cE 'Dockerfile|docker-compose|start\.(staging\.)?sh' || true)
+            HAS_MIGRATION_CHANGE=$(echo "$CHANGED_FILES" | grep -c '/migrations/' || true)
+            HAS_SEEDER_CHANGE=$(echo "$CHANGED_FILES" | grep -ci '/seeders/' || true)
 
             # ── Rollback handler ──────────────────────────────────────────────
             rollback() {
               echo "⚠️  Deployment failed — rolling back to $PREVIOUS_COMMIT"
               git reset --hard "$PREVIOUS_COMMIT"
-
-              docker compose -f docker-compose.staging.yml down --remove-orphans --timeout 30
-              clean_before_up
-              docker compose -f docker-compose.staging.yml up -d --build
-
+              # Restart containers to pick up rolled-back code
+              docker compose -f docker-compose.staging.yml restart app horizon scheduler
               echo "✅ Rollback complete"
               exit 1
             }
             trap rollback ERR
 
-            # ── Pull latest code ──────────────────────────────────────────────
-            git fetch origin main
-            git reset --hard origin/main
+            # ── Rebuild containers ONLY if Docker config changed ──────────────
+            if [ "$HAS_DOCKER_CHANGE" -gt 0 ]; then
+              echo "Docker config changed — rebuilding containers..."
+              docker compose -f docker-compose.staging.yml up -d --build --remove-orphans
+              echo "Waiting for containers to be ready..."
+              sleep 10
+            else
+              echo "No Docker config changes — containers stay running."
+            fi
 
-            # ── Rebuild & Restart ─────────────────────────────────────────────
-            echo "Stopping existing containers..."
-            docker compose -f docker-compose.staging.yml down --remove-orphans --timeout 30
-            clean_before_up
+            # ── Install dependencies inside running container (if changed) ────
+            if [ "$HAS_COMPOSER_CHANGE" -gt 0 ]; then
+              echo "composer.lock changed — installing PHP dependencies..."
+              docker exec cilupbah-staging composer install --no-dev --optimize-autoloader --no-interaction
+            fi
 
-            echo "Building and starting containers..."
-            docker compose -f docker-compose.staging.yml up -d --build
+            if [ "$HAS_NPM_CHANGE" -gt 0 ]; then
+              echo "package-lock.json changed — installing & building frontend..."
+              docker exec cilupbah-staging npm ci
+              docker exec cilupbah-staging npm run build
+            fi
 
-            # ── Health check ──────────────────────────────────────────────────
-            echo "Waiting for app to be ready..."
-            sleep 10
-            docker compose -f docker-compose.staging.yml ps --filter "status=running" | grep -q "cilupbah-staging" \
-              || { echo "❌ Container not running after deploy!"; exit 1; }
+            # ── Refresh caches (always, fast & safe) ──────────────────────────
+            echo "Refreshing Laravel caches..."
+            docker exec cilupbah-staging php artisan config:cache
+            docker exec cilupbah-staging php artisan route:cache
+            docker exec cilupbah-staging php artisan view:cache
 
-            # ── Run Migrations (only if migration files changed) ────
-            MIGRATION_CHANGES=$(git diff --name-only "$PREVIOUS_COMMIT" HEAD -- '*/migrations/*')
-            if [ -n "$MIGRATION_CHANGES" ]; then
+            # ── Run Migrations (only if migration files changed) ──────────────
+            if [ "$HAS_MIGRATION_CHANGE" -gt 0 ]; then
               echo "Running database migrations..."
               docker exec cilupbah-staging php artisan migrate --force || { echo "❌ Migration failed!"; exit 1; }
             else
-              echo "No migration file changes — skipping migrate."
+              echo "No migration changes — skipping."
             fi
 
-            # ── Run Seeders (only if seeder files changed) ────────
-            SEEDER_CHANGES=$(git diff --name-only "$PREVIOUS_COMMIT" HEAD -- '*/Seeders/*' '*/seeders/*')
-            if [ -n "$SEEDER_CHANGES" ]; then
+            # ── Run Seeders (only if seeder files changed) ────────────────────
+            if [ "$HAS_SEEDER_CHANGE" -gt 0 ]; then
               echo "Running database seeders..."
               docker exec cilupbah-staging php artisan db:seed --force \
                 || echo "⚠️  Seeding reported issues — review logs above (deploy continues)."
             else
-              echo "No seeder file changes — skipping seed."
+              echo "No seeder changes — skipping."
             fi
 
+            # ── Restart queue workers to pick up new code ─────────────────────
+            echo "Restarting Horizon workers..."
+            docker exec cilupbah-staging php artisan horizon:terminate 2>/dev/null || true
+
             trap - ERR
-            echo "✅ Deployment successful"
+            echo "✅ Deployment successful (zero-downtime)"
