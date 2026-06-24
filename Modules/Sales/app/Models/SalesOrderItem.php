@@ -5,6 +5,7 @@ namespace Modules\Sales\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
 
 use App\Traits\HasUuid7;
@@ -52,25 +53,39 @@ class SalesOrderItem extends Model
     public function getImageUrlAttribute(): ?string
     {
         $variant = $this->product;
-        if (! $variant) {
-            return null;
+        if ($variant) {
+            $url = $this->resolveMediaUrl($variant->media);
+            if ($url) {
+                return $url;
+            }
+
+            $parentProduct = $variant->product;
+            if ($parentProduct) {
+                $url = $this->resolveMediaUrl($parentProduct->media);
+                if ($url) {
+                    return $url;
+                }
+            }
         }
 
-        $variantMedia = $variant->media;
-        if ($variantMedia && $variantMedia->isNotEmpty()) {
-            $primary = $variantMedia->firstWhere('is_primary', true);
-            return $primary ? $primary->url : $variantMedia->first()->url;
-        }
-
-        $parentProduct = $variant->product;
-        if ($parentProduct) {
-            $productMedia = $parentProduct->media;
-            if ($productMedia && $productMedia->isNotEmpty()) {
-                $primary = $productMedia->firstWhere('is_primary', true);
-                return $primary ? $primary->url : $productMedia->first()->url;
+        if ($this->channel_product_id) {
+            $mapping = ProductChannelMapping::where('external_product_id', $this->channel_product_id)->first();
+            if ($mapping && $mapping->product) {
+                return $this->resolveMediaUrl($mapping->product->media);
             }
         }
 
         return null;
+    }
+
+    protected function resolveMediaUrl($media): ?string
+    {
+        if (! $media || $media->isEmpty()) {
+            return null;
+        }
+
+        $primary = $media->firstWhere('is_primary', true);
+
+        return $primary ? $primary->url : $media->first()->url;
     }
 }
