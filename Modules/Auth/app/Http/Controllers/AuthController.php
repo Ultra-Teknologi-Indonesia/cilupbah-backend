@@ -64,7 +64,7 @@ class AuthController extends Controller
     )]
     public function login(LoginRequest $request): JsonResponse
     {
-        $data = $this->authService->login($request->validated());
+        $data = $this->authService->login($request->validated(), $request);
 
         if (! $data) {
             return $this->errorResponse('Email atau kata sandi yang Anda masukkan salah.', 401);

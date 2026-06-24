@@ -2,6 +2,7 @@
 
 namespace Modules\Auth\Services;
 
+use App\Models\LoginHistory;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -184,6 +185,15 @@ class UserService
                 'action' => 'force_logged_out',
             ]);
         }
+    }
+
+    public function getLoginHistories(string $userId): LengthAwarePaginator
+    {
+        $user = $this->userRepository->findById($userId);
+
+        return LoginHistory::where('user_id', $user->id)
+            ->orderByDesc('created_at')
+            ->paginate((int) request()->query('page_size', 25));
     }
 
     public function getUserHistories(string $userId): LengthAwarePaginator|Collection

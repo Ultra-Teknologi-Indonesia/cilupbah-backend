@@ -2,7 +2,9 @@
 
 namespace Modules\Auth\Services;
 
+use App\Models\LoginHistory;
 use App\Models\User;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Modules\Auth\Repositories\UserRepository;
 
@@ -12,7 +14,7 @@ class AuthService
         protected UserRepository $userRepository
     ) {}
 
-    public function login(array $credentials): ?array
+    public function login(array $credentials, ?Request $request = null): ?array
     {
         $user = $this->userRepository->findByEmail($credentials['email']);
 
@@ -21,6 +23,14 @@ class AuthService
         }
 
         $user->update(['last_login_at' => now()]);
+
+        if ($request) {
+            LoginHistory::recordLogin(
+                $user->id,
+                $request->ip() ?? '',
+                $request->userAgent() ?? ''
+            );
+        }
 
         $user->load('roles', 'permissions');
         $token = $user->createToken('auth_token')->plainTextToken;

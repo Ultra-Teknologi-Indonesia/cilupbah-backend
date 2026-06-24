@@ -55,6 +55,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     });
 
     Route::middleware('role_or_permission:owner|view-user-history')->group(function () {
+        Route::get('/users/{id}/login-history', [UserController::class, 'loginHistory'])->whereUuid('id')->name('auth.users.login-history');
         Route::get('/users/{id}/histories', [UserController::class, 'histories'])->whereUuid('id')->name('auth.users.histories');
     });
 

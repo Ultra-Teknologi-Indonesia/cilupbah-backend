@@ -3,6 +3,7 @@
 namespace Modules\Auth\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\LoginHistoryResource;
 use App\Http\Resources\UserHistoryResource;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -287,6 +288,15 @@ class UserController extends Controller
             new OA\Response(response: 404, description: 'User not found')
         ]
     )]
+    public function loginHistory(string $id): JsonResponse
+    {
+        $histories = $this->userService->getLoginHistories($id);
+
+        return $this->successPaginatedResponse(
+            LoginHistoryResource::collection($histories)
+        );
+    }
+
     public function histories(string $id): JsonResponse
     {
         $histories = $this->userService->getUserHistories($id);
