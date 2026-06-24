@@ -12,6 +12,7 @@ use Modules\Inventory\Models\InventoryTransferItem;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Services\InventoryService;
+use Modules\Channel\Jobs\SyncStockToChannelsJob;
 use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
 
@@ -41,7 +42,12 @@ class SyncTransferDraftItemJob implements ShouldQueue
         $item = InventoryTransferItem::find($this->transferItemId);
 
         if ($this->action === self::ACTION_RELEASE) {
+            $shouldSync = $item?->sync_status === 'SYNCED';
+            $variantId = $item?->item_id;
             $this->handleRelease($item, $inventoryRepository, $movementRepository);
+            if ($shouldSync && $variantId !== null) {
+                SyncStockToChannelsJob::dispatch($variantId);
+            }
             return;
         }
 
@@ -63,6 +69,11 @@ class SyncTransferDraftItemJob implements ShouldQueue
                 };
             });
         });
+
+        // Source available berubah (reserve/adjust draft transfer) → sinkron ke channel.
+        if ($item->fresh()?->sync_status === 'SYNCED') {
+            SyncStockToChannelsJob::dispatch($item->item_id);
+        }
     }
 
     protected function handleReserve(

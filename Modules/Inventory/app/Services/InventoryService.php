@@ -11,6 +11,7 @@ use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Inbound\Services\InboundService;
+use Modules\Channel\Jobs\SyncStockToChannelsJob;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -25,6 +26,19 @@ class InventoryService
         protected InventoryTransferRepository $transferRepository,
     ) {}
 
+    /**
+     * Picu sinkronisasi stok ke semua channel terpetakan untuk tiap varian
+     * terdampak. Dipanggil SETELAH transaksi mutasi stok commit sehingga job
+     * membaca nilai available final. Job menghitung ulang available per channel
+     * saat eksekusi → aman & idempoten meski terdispatch ganda. Varian di-dedup.
+     */
+    private function notifyChannelStock(array $variantIds): void
+    {
+        foreach (array_values(array_unique(array_filter($variantIds))) as $variantId) {
+            SyncStockToChannelsJob::dispatch($variantId);
+        }
+    }
+
     public function getStockByItem(string $itemId): Collection
     {
         return $this->inventoryRepository->getByItem($itemId);
@@ -37,7 +51,7 @@ class InventoryService
 
     public function adjust(array $data): Inventory
     {
-        return DB::transaction(function () use ($data) {
+        $inventory = DB::transaction(function () use ($data) {
             $inventory = $this->inventoryRepository->findOrCreateForUpdate(
                 $data['item_id'],
                 $data['location_id'],
@@ -69,6 +83,10 @@ class InventoryService
 
             return $inventory->fresh();
         });
+
+        $this->notifyChannelStock([$data['item_id']]);
+
+        return $inventory;
     }
 
     public function putaway(array $data): Inventory
@@ -178,7 +196,7 @@ class InventoryService
 
     public function transferOut(array $data): InventoryTransfer
     {
-        return DB::transaction(function () use ($data) {
+        $transfer = DB::transaction(function () use ($data) {
             [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
             $transferNumber = 'TRFO-' . now()->format('Ymd') . '-' . Str::upper(Str::random(4));
 
@@ -256,6 +274,10 @@ class InventoryService
 
             return $this->transferRepository->findById($transfer->id);
         });
+
+        $this->notifyChannelStock(array_column($data['items'], 'item_id'));
+
+        return $transfer;
     }
 
     public function approveTransfer(string $transferId, array $data): InventoryTransfer
@@ -284,7 +306,7 @@ class InventoryService
 
     public function cancelTransfer(string $transferId, array $data): InventoryTransfer
     {
-        return DB::transaction(function () use ($transferId, $data) {
+        $transfer = DB::transaction(function () use ($transferId, $data) {
             $transfer = $this->transferRepository->findByIdForUpdate($transferId);
 
             if (! $transfer) {
@@ -319,11 +341,15 @@ class InventoryService
 
             return $this->transferRepository->findById($transferId);
         });
+
+        $this->notifyChannelStock($transfer->items->pluck('item_id')->all());
+
+        return $transfer;
     }
 
     public function shipTransfer(string $transferId, array $data): InventoryTransfer
     {
-        return DB::transaction(function () use ($transferId, $data) {
+        $transfer = DB::transaction(function () use ($transferId, $data) {
             $transfer = $this->transferRepository->findByIdForUpdate($transferId);
 
             if (! $transfer) {
@@ -371,11 +397,15 @@ class InventoryService
 
             return $this->transferRepository->findById($transferId);
         });
+
+        $this->notifyChannelStock($transfer->items->pluck('item_id')->all());
+
+        return $transfer;
     }
 
     public function transferIn(string $transferId, array $data): InventoryTransfer
     {
-        return DB::transaction(function () use ($transferId, $data) {
+        $transfer = DB::transaction(function () use ($transferId, $data) {
             $transfer = $this->transferRepository->findByIdForUpdate($transferId);
 
             if (! $transfer) {
@@ -489,6 +519,10 @@ class InventoryService
 
             return $this->transferRepository->findById($transferId);
         });
+
+        $this->notifyChannelStock($transfer->items->pluck('item_id')->all());
+
+        return $transfer;
     }
 
     public function resolveTransitLocation(): array
@@ -556,7 +590,7 @@ class InventoryService
 
     public function splitItem(array $data): array
     {
-        return DB::transaction(function () use ($data) {
+        $result = DB::transaction(function () use ($data) {
             $transactionNumber = 'SPL-' . now()->format('Ymd') . '-' . Str::upper(Str::random(4));
 
             $sourceInventory = $this->inventoryRepository->findExactForUpdate(
@@ -612,6 +646,10 @@ class InventoryService
                 'target'             => $targetInventory->fresh(),
             ];
         });
+
+        $this->notifyChannelStock([$data['source_item_id'], $data['target_item_id']]);
+
+        return $result;
     }
 
     public function createDraft(array $data): InventoryTransfer
