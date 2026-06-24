@@ -180,4 +180,17 @@ class ContactController extends Controller
         $categories = $this->contactService->getCategories();
         return $this->successResponse($categories, 'Daftar kategori kontak berhasil diambil');
     }
+
+    #[OA\Get(
+        path: '/api/v1/contact/account-payable',
+        summary: 'Get account payable options for contacts',
+        security: [['bearerAuth' => []]],
+        tags: ['Contacts'],
+        responses: [new OA\Response(response: 200, description: 'Successful operation')]
+    )]
+    public function accountPayableOptions(): JsonResponse
+    {
+        $options = $this->contactService->getAccountPayableOptions();
+        return $this->successResponse($options, 'Daftar akun hutang berhasil diambil');
+    }
 }

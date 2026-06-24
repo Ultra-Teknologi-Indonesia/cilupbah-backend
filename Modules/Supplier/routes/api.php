@@ -15,6 +15,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('contacts/{id}', [ContactController::class, 'show'])->name('contacts.show');
 
     Route::get('contact/category', [ContactController::class, 'categories'])->name('contact.category');
+    Route::get('contact/account-payable', [ContactController::class, 'accountPayableOptions'])->name('contact.account-payable');
 
     Route::apiResource('suppliers', SupplierController::class)->names('supplier');
 });

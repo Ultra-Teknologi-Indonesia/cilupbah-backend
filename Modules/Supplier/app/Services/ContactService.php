@@ -73,4 +73,12 @@ class ContactService
     {
         return $this->contactRepository->getAllCategories();
     }
+
+    public function getAccountPayableOptions(): array
+    {
+        return [
+            ['code' => '2-2000', 'name' => '2-2000 - Hutang Usaha'],
+            ['code' => '2-2002', 'name' => '2-2002 - Hutang Konsinyasi'],
+        ];
+    }
 }
