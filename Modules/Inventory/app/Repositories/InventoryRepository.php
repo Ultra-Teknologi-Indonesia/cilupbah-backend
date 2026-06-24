@@ -170,6 +170,7 @@ class InventoryRepository
             ->allowedFilters(
                 AllowedFilter::exact('product_id', 'product_variants.product_id'),
                 AllowedFilter::exact('brand_id', 'products.brand_id'),
+                AllowedFilter::exact('is_bundle', 'products.is_bundle'),
                 AllowedFilter::callback('location_id', fn ($query, $value) => $query->whereHas('inventories', fn ($q) => $q->where('location_id', $value))
                 ),
             )
