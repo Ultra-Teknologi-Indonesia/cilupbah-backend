@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -20,9 +21,8 @@ return new class extends Migration
             $table->decimal('longitude', 10, 7)->nullable()->after('latitude');
         });
 
-        Schema::table('contacts', function (Blueprint $table) {
-            $table->integer('payment_term')->nullable()->default(null)->change();
-        });
+        DB::statement("UPDATE contacts SET payment_term = NULL WHERE payment_term !~ '^[0-9]+$'");
+        DB::statement('ALTER TABLE contacts ALTER COLUMN payment_term DROP DEFAULT, ALTER COLUMN payment_term TYPE integer USING payment_term::integer, ALTER COLUMN payment_term DROP NOT NULL');
 
         Schema::table('contact_categories', function (Blueprint $table) {
             $table->string('code', 20)->nullable()->unique()->after('id');
