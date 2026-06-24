@@ -48,7 +48,8 @@ class TikTokToInternalOrderMapper
             ], true);
 
         $trackingNumber = $this->extractTracking($packages);
-        $shippingProvider = $this->extractShippingProvider($packages);
+        $shippingProvider = $this->extractShippingProvider($packages)
+            ?? $tiktokOrder['delivery_option_name'] ?? $tiktokOrder['shipping_provider'] ?? null;
 
         $fulfillmentStatus = $packages[0]['status'] ?? null;
 
