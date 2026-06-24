@@ -139,14 +139,15 @@ class InventoryService
 
     public function getActiveChannels(): array
     {
-        return ChannelShop::with('channel:id,name')
+        return ChannelShop::with('channel:id,code,name')
             ->where('is_active', true)
             ->get()
             ->map(fn ($shop) => [
+                'channel_id' => $shop->channel_id,
+                'channel_code' => $shop->channel?->code,
                 'channel_name' => $shop->channel?->name,
                 'store_name' => $shop->shop_name,
                 'store_id' => $shop->shop_id,
-                'channel_id' => $shop->channel_id,
             ])
             ->values()
             ->toArray();
