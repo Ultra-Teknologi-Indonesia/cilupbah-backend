@@ -3,8 +3,11 @@
 namespace Modules\Inventory\Repositories;
 
 use Modules\Inventory\Models\Inventory;
+use Modules\Product\Models\ProductVariant;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use Spatie\QueryBuilder\QueryBuilder;
+use Spatie\QueryBuilder\AllowedFilter;
 
 class InventoryRepository
 {
@@ -146,6 +149,34 @@ class InventoryRepository
             ->groupBy('batch_no', 'serial_no', 'expired_date', 'location_id', 'bin_id')
             ->with(['location:id,location_name', 'bin:id,bin_final_code'])
             ->get();
+    }
+
+    public function getStockItems(int $limit = 10)
+    {
+        return QueryBuilder::for(
+            ProductVariant::query()
+                ->join('products', 'products.id', '=', 'product_variants.product_id')
+                ->select('product_variants.*')
+        )
+            ->allowedSearch('product_variants.sku', 'products.name')
+            ->with([
+                'product:id,name,sku,is_bundle,is_stored,brand_id',
+                'product.brand:id,name',
+                'product.media' => fn ($q) => $q->whereNull('variant_id')->orderBy('sort_order'),
+                'media' => fn ($q) => $q->orderBy('sort_order'),
+                'options.attribute:id,name',
+                'inventories.location:id,location_name',
+            ])
+            ->allowedFilters(
+                AllowedFilter::exact('product_id', 'product_variants.product_id'),
+                AllowedFilter::exact('brand_id', 'products.brand_id'),
+                AllowedFilter::callback('location_id', fn ($query, $value) => $query->whereHas('inventories', fn ($q) => $q->where('location_id', $value))
+                ),
+            )
+            ->allowedSorts('product_variants.sku', 'product_variants.created_at')
+            ->defaultSort('product_variants.sku')
+            ->paginate(request('per_page', 10))
+            ->appends(request()->query());
     }
 
     public function getAvailableToSell(string $locationId, int $limit = 10)

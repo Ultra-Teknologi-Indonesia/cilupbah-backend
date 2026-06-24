@@ -9,6 +9,7 @@ use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryTransfer;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
+use Modules\Channel\Models\ChannelShop;
 use Modules\Inbound\Services\InboundService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -131,6 +132,39 @@ class InventoryService
         });
     }
 
+    public function getStockItems(int $limit = 10)
+    {
+        return $this->inventoryRepository->getStockItems($limit);
+    }
+
+    public function getActiveChannels(): array
+    {
+        return ChannelShop::with('channel:id,name')
+            ->where('is_active', true)
+            ->get()
+            ->map(fn ($shop) => [
+                'channel_name' => $shop->channel?->name,
+                'store_name' => $shop->shop_name,
+                'store_id' => $shop->shop_id,
+                'channel_id' => $shop->channel_id,
+            ])
+            ->values()
+            ->toArray();
+    }
+
+    public function getActiveLocations(): array
+    {
+        return Location::where('is_active', true)
+            ->select('id', 'location_name')
+            ->get()
+            ->map(fn ($loc) => [
+                'location_id' => $loc->id,
+                'location_name' => $loc->location_name,
+            ])
+            ->values()
+            ->toArray();
+    }
+
     public function getAllPaginated(int $limit = 10)
     {
         return $this->inventoryRepository->getAllPaginated($limit);
@@ -181,7 +215,6 @@ class InventoryService
                 }
 
                 $sourceInventory->reserved += $itemData['qty'];
-                $sourceInventory->available -= $itemData['qty'];
                 $this->inventoryRepository->updateStock($sourceInventory);
 
                 $this->movementRepository->create([
@@ -272,7 +305,6 @@ class InventoryService
 
                 if ($sourceInventory) {
                     $sourceInventory->reserved -= $item->qty;
-                    $sourceInventory->available += $item->qty;
                     $this->inventoryRepository->updateStock($sourceInventory);
                 }
             }

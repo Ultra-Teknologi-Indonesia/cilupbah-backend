@@ -10,6 +10,7 @@ use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Http\Requests\SplitItemRequest;
+use Modules\Inventory\Http\Resources\StockItemResource;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 use Illuminate\Support\Facades\DB;
@@ -39,6 +40,43 @@ class InventoryController extends Controller
         protected InventoryService $inventoryService,
         protected InventoryRepository $inventoryRepository,
     ) {}
+
+    #[OA\Get(
+        path: '/api/v1/inventory',
+        summary: 'Get stock items with channels, locations, and per-location breakdown',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        parameters: [
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'search', in: 'query', required: false, description: 'Search by SKU or product name', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[product_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
+            new OA\Parameter(name: 'filter[brand_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'Sort by: product_variants.sku, product_variants.created_at', schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar stok inventory berhasil diambil.'),
+            new OA\Response(response: 401, description: 'Unauthenticated'),
+        ]
+    )]
+    public function stockItems(Request $request): JsonResponse
+    {
+        $data = $this->inventoryService->getStockItems();
+
+        return $this->successResponse(
+            StockItemResource::collection($data->items()),
+            'Daftar stok inventory berhasil diambil.',
+            200,
+            [
+                'current_page' => $data->currentPage(),
+                'last_page' => $data->lastPage(),
+                'per_page' => $data->perPage(),
+                'total' => $data->total(),
+                'channels' => $this->inventoryService->getActiveChannels(),
+                'locations' => $this->inventoryService->getActiveLocations(),
+            ]
+        );
+    }
 
     #[OA\Get(
         path: '/api/v1/inventory/stocks',

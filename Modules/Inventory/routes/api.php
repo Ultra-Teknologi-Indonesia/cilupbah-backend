@@ -13,6 +13,7 @@ use Modules\Inventory\Http\Controllers\PriceListController;
 use Modules\Inventory\Http\Controllers\BundleController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
+    Route::get('inventory', [InventoryController::class, 'stockItems'])->name('inventory.index');
     Route::get('inventory/stocks', [InventoryController::class, 'index'])->name('inventory.stocks.index');
     Route::get('inventory/stocks/{itemId}', [InventoryController::class, 'show'])->name('inventory.stocks.show');
     Route::get('inventory/movements', [InventoryController::class, 'movements'])->name('inventory.movements.index');

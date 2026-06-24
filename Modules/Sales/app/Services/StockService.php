@@ -71,7 +71,7 @@ class StockService
                     throw new InsufficientStockException($sku, 0, $qty);
                 }
 
-                $available = $inventory->on_hand - $inventory->on_order - $inventory->reserved;
+                $available = $inventory->on_hand - $inventory->reserved;
 
                 if ($available < $qty) {
                     if ($enforce) {
