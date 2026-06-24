@@ -174,16 +174,38 @@ class GagalDownloadFlowTest extends TestCase
         $this->assertContains('GD-ALL-FAIL', $failedNos);
     }
 
-    public function test_cancelled_unmapped_order_still_appears_in_all_tab(): void
+    public function test_cancelled_unmapped_order_is_quarantined_to_failed_tab(): void
     {
-        // A cancelled order is not "gagal download" — it must remain in Semua.
+        // New rule: any order not bound to the internal master is quarantined to
+        // Gagal Download regardless of status — including cancelled. It must not
+        // appear in Semua nor in the Pembatalan tab.
         $orderId = $this->service->upsertFromChannel($this->channelOrderData('GD-CANCEL', 'SKU-ASING'));
         DB::table('sales_orders')->where('id', $orderId)->update(['status' => 'cancelled']);
 
         $counts = $this->repository->getTabCounts();
 
-        $this->assertSame(1, $counts['all'], 'order cancelled tetap masuk Semua');
-        $this->assertSame(0, $counts['failed'], 'order cancelled tidak dihitung sebagai gagal download');
+        $this->assertSame(0, $counts['all'], 'order unmapped cancelled tidak boleh muncul di Semua');
+        $this->assertSame(0, $counts['cancellation'], 'order unmapped cancelled tidak boleh muncul di Pembatalan');
+        $this->assertSame(1, $counts['failed'], 'order unmapped cancelled tetap masuk Gagal Download');
+    }
+
+    public function test_cancelled_unmapped_order_is_hidden_from_cancellation_tab_via_http(): void
+    {
+        $user = User::factory()->create();
+
+        $orderId = $this->service->upsertFromChannel($this->channelOrderData('GD-CANCEL-HTTP', 'SKU-ASING'));
+        DB::table('sales_orders')->where('id', $orderId)->update(['status' => 'cancelled']);
+
+        $cancellation = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?tab=cancellation');
+        $cancellation->assertStatus(200);
+        $this->assertNotContains(
+            'GD-CANCEL-HTTP',
+            array_column($cancellation->json('data'), 'salesorder_no'),
+            'order gagal download tidak boleh muncul di tab Pembatalan'
+        );
+
+        $failed = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?tab=failed');
+        $this->assertContains('GD-CANCEL-HTTP', array_column($failed->json('data'), 'salesorder_no'));
     }
 
     public function test_download_binds_item_reserves_stock_and_moves_to_ready_to_process(): void

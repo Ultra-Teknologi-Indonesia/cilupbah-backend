@@ -34,6 +34,12 @@ class SalesOrderRepository
         $sub = request('sub');
         if ($tab && $tab !== 'all') {
             $query = $this->applyTabScope($query, $tab, $sub);
+            // Quarantined Gagal Download orders only belong in the failed tab.
+            // Every other tab must hide orders not bound to the internal master,
+            // regardless of status.
+            if ($tab !== 'failed') {
+                $query = $this->scopeExcludeFailedDownload($query);
+            }
         } else {
             // "Semua" / default listing must not surface quarantined
             // Gagal Download orders — they live only in the failed tab.
@@ -89,31 +95,38 @@ class SalesOrderRepository
 
     public function getTabCounts(): array
     {
-        $base = SalesOrder::query();
-
         return [
-            'all'              => $this->scopeExcludeFailedDownload(clone $base)->count(),
-            'unpaid'           => (clone $base)->where('status', 'pending')->where('is_paid', false)->count(),
-            'failed'           => $this->scopeFailedDownload(clone $base)->count(),
-            'ready-to-process' => (clone $base)->where('status', 'reserved')
+            'all'              => $this->visibleOrders()->count(),
+            'unpaid'           => $this->visibleOrders()->where('status', 'pending')->where('is_paid', false)->count(),
+            'failed'           => $this->scopeFailedDownload(SalesOrder::query())->count(),
+            'ready-to-process' => $this->visibleOrders()->where('status', 'reserved')
                 ->whereDoesntHave('picklistItems')
                 ->whereDoesntHave('items', $this->unmappedItemsConstraint())->count(),
-            'in-transit'       => (clone $base)->where('status', 'shipped')
+            'in-transit'       => $this->visibleOrders()->where('status', 'shipped')
                 ->whereNull('received_date')->count(),
-            'completed'        => (clone $base)->where('status', 'shipped')
+            'completed'        => $this->visibleOrders()->where('status', 'shipped')
                 ->whereNotNull('received_date')->count(),
-            'empty-stock'      => (clone $base)->where('status', 'reserved')
+            'empty-stock'      => $this->visibleOrders()->where('status', 'reserved')
                 ->whereHas('items', fn ($q) => $q->whereHas('inventory', fn ($inv) => $inv->where('available', '<=', 0)))
                 ->count(),
-            'failed-pick'      => (clone $base)->where('status', 'reserved')
+            'failed-pick'      => $this->visibleOrders()->where('status', 'reserved')
                 ->whereHas('picklistItems', fn ($q) => $q->whereHas('picklist', fn ($p) => $p->where('status', 'FAILED')))
                 ->count(),
-            'cancellation'     => (clone $base)->where(fn ($q) => $q
+            'cancellation'     => $this->visibleOrders()->where(fn ($q) => $q
                 ->where('status', 'cancelled')
                 ->orWhere(fn ($q2) => $q2->whereNotNull('cancel_requested_at')->where('status', '!=', 'cancelled'))
             )->count(),
-            'returned'         => (clone $base)->whereHas('returns')->count(),
+            'returned'         => $this->visibleOrders()->whereHas('returns')->count(),
         ];
+    }
+
+    /**
+     * Base query for every tab except Gagal Download: excludes orders that are
+     * not bound to the internal master (quarantined channel orders).
+     */
+    protected function visibleOrders()
+    {
+        return $this->scopeExcludeFailedDownload(SalesOrder::query());
     }
 
     protected function unmappedItemsConstraint(): \Closure
@@ -122,28 +135,28 @@ class SalesOrderRepository
     }
 
     /**
-     * "Gagal Download" scope: a channel order (has source) that is not cancelled
-     * and still has at least one unmapped item (product not yet downloaded /
-     * bound to a master variant). These orders are quarantined — they must only
-     * surface in the Gagal Download (failed) tab, never in the All listing.
+     * "Gagal Download" scope: a channel order (has source) that still has at
+     * least one unmapped item (product not yet downloaded / bound to a master
+     * variant). Status is irrelevant — even a cancelled order that was never
+     * bound to the internal master is quarantined. These orders must only
+     * surface in the Gagal Download (failed) tab, never in any other tab.
      */
     protected function scopeFailedDownload($query)
     {
         return $query->whereNotNull('source')
-            ->where('status', '!=', 'cancelled')
             ->whereHas('items', $this->unmappedItemsConstraint());
     }
 
     /**
      * Inverse of scopeFailedDownload — everything except quarantined orders.
-     * Used by the "Semua" tab and the default listing so failed-download orders
-     * do not leak into the normal order stream.
+     * Applied to every tab except Gagal Download so that any order not bound to
+     * the internal master never leaks into the normal order stream, regardless
+     * of its status.
      */
     protected function scopeExcludeFailedDownload($query)
     {
         return $query->where(fn ($q) => $q
             ->whereNull('source')
-            ->orWhere('status', 'cancelled')
             ->orWhereDoesntHave('items', $this->unmappedItemsConstraint())
         );
     }
