@@ -29,10 +29,13 @@ class Contact extends Model
         'type',
         'category_id',
         'is_system',
+        'is_company',
+        'account_payable',
     ];
 
     protected $casts = [
-        'is_system' => 'boolean',
+        'is_system'  => 'boolean',
+        'is_company' => 'boolean',
     ];
 
     const TYPE_CUSTOMER = 'CUSTOMER';

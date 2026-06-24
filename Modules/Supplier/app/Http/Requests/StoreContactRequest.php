@@ -30,6 +30,8 @@ class StoreContactRequest extends FormRequest
             'status'         => 'nullable|string|in:active,inactive',
             'type'           => 'required|string|in:CUSTOMER,SUPPLIER,BOTH',
             'category_id'    => 'nullable|exists:contact_categories,id',
+            'is_company'     => 'nullable|boolean',
+            'account_payable' => 'nullable|string|max:50',
         ];
     }
 }
