@@ -21,8 +21,9 @@ return new class extends Migration
             $table->decimal('longitude', 10, 7)->nullable()->after('latitude');
         });
 
-        DB::statement("UPDATE contacts SET payment_term = NULL WHERE payment_term !~ '^[0-9]+$'");
-        DB::statement('ALTER TABLE contacts ALTER COLUMN payment_term DROP DEFAULT, ALTER COLUMN payment_term TYPE integer USING payment_term::integer, ALTER COLUMN payment_term DROP NOT NULL');
+        DB::statement('ALTER TABLE contacts ALTER COLUMN payment_term DROP NOT NULL, ALTER COLUMN payment_term DROP DEFAULT');
+        DB::statement("UPDATE contacts SET payment_term = NULL WHERE payment_term IS NULL OR payment_term !~ '^[0-9]+$'");
+        DB::statement('ALTER TABLE contacts ALTER COLUMN payment_term TYPE integer USING payment_term::integer');
 
         Schema::table('contact_categories', function (Blueprint $table) {
             $table->string('code', 20)->nullable()->unique()->after('id');
