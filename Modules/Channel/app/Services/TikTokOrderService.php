@@ -172,7 +172,7 @@ class TikTokOrderService
             }
         }
 
-        $this->orderRepository->updateOrderStatusByOrderNo($orderId, 'PROCESSING');
+        $this->resyncLocalOrder($shopId, $orderId);
 
         return $res;
     }
@@ -244,10 +244,11 @@ class TikTokOrderService
 
             $someOk = collect($results)->contains('shipped', true);
 
-            if ($allOk) {
-                $this->orderRepository->updateOrderStatusByOrderNo($orderId, 'AWAITING_COLLECTION');
-            } elseif ($someOk) {
-                $this->orderRepository->updateOrderStatusByOrderNo($orderId, 'PARTIALLY_SHIPPING');
+            // Tarik ulang order dari marketplace agar channel_status, status internal
+            // (lewat state machine), tracking, dan rekonsiliasi stok mengikuti kebenaran
+            // TikTok — konsisten dengan pola Shopee/Lazada.
+            if ($allOk || $someOk) {
+                $this->resyncLocalOrder($shopId, $orderId);
             }
 
             $this->fetchAndStoreTracking($shop, $orderId, $queries);
@@ -327,7 +328,7 @@ class TikTokOrderService
 
         $res = $this->client->request('POST', '/return_refund/202309/cancellations/approve', $queries, $body, $shop->access_token);
 
-        $this->orderRepository->updateOrderStatusByOrderNo($orderId, 'CANCELLED');
+        $this->resyncLocalOrder($shopId, $orderId);
 
         return $res;
     }
@@ -345,6 +346,10 @@ class TikTokOrderService
         ];
 
         $res = $this->client->request('POST', '/return_refund/202309/cancellations/reject', $queries, $body, $shop->access_token);
+
+        // Penolakan mengembalikan order ke alur fulfillment semula — resync agar
+        // status lokal mengikuti kondisi terbaru di TikTok.
+        $this->resyncLocalOrder($shopId, $orderId);
 
         return $res;
     }
@@ -367,7 +372,7 @@ class TikTokOrderService
 
         $res = $this->client->request('POST', '/return_refund/202309/cancellations', $queries, $body, $shop->access_token);
 
-        $this->orderRepository->updateOrderStatusByOrderNo($orderId, 'CANCELLED');
+        $this->resyncLocalOrder($shopId, $orderId);
 
         return $res;
     }
@@ -395,7 +400,11 @@ class TikTokOrderService
             'cancel_reason'      => $reason,
         ];
 
-        return $this->client->request('POST', '/return_refund/202309/cancellations', $queries, $body, $shop->access_token);
+        $res = $this->client->request('POST', '/return_refund/202309/cancellations', $queries, $body, $shop->access_token);
+
+        $this->resyncLocalOrder($order->channel_shop_id, $orderId);
+
+        return $res;
     }
 
     // ─── Cancel Reasons ─────────────────────────────────────────────
@@ -434,6 +443,21 @@ class TikTokOrderService
     }
 
     // ─── Internal Helpers ───────────────────────────────────────────
+
+    /**
+     * Tarik ulang satu order dari TikTok lalu upsert ke lokal. Menjadi sumber
+     * kebenaran status pasca aksi (RTS/accept/decline/cancel): channel_status,
+     * status internal (lewat state machine SalesOrderService), tracking, dan
+     * rekonsiliasi stok semuanya ikut diperbarui. Konsisten dengan Shopee/Lazada.
+     */
+    protected function resyncLocalOrder(string $shopId, string $orderId): void
+    {
+        try {
+            $this->pullOrderById($shopId, $orderId);
+        } catch (\Throwable $e) {
+            Log::warning("TikTok: resync order {$orderId} gagal pasca aksi: " . $e->getMessage());
+        }
+    }
 
     protected function resolvePackageIds(object $shop, string $orderId, array $queries): array
     {
