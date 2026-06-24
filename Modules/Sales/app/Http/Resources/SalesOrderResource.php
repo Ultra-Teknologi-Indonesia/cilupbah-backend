@@ -61,6 +61,7 @@ class SalesOrderResource extends JsonResource
             'channel_order_no'=> $this->channel_order_no,
             'source'          => $this->source,
             'channel_shop_id' => $this->channel_shop_id,
+            'shop_name'       => $this->whenLoaded('shop', fn () => $this->shop?->shop_name),
             'customer_name'   => $this->customer_name,
             'transaction_date'=> $this->transaction_date,
 

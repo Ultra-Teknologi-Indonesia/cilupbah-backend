@@ -119,6 +119,11 @@ class SalesOrder extends Model
         return $this->belongsTo(\Modules\Warehouse\Models\Location::class);
     }
 
+    public function shop(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Channel\Models\ChannelShop::class, 'channel_shop_id', 'shop_id');
+    }
+
     public function returns(): HasMany
     {
         return $this->hasMany(SalesReturn::class, 'order_id');
