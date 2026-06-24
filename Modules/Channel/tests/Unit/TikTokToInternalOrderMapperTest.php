@@ -50,4 +50,34 @@ class TikTokToInternalOrderMapperTest extends TestCase
 
         $this->assertNull($result['items'][0]['sku']);
     }
+
+    public function test_captures_seller_and_platform_voucher_estimates_from_payment(): void
+    {
+        $mapper = new TikTokToInternalOrderMapper();
+
+        $order = $this->order([
+            ['product_id' => '173', 'sku_id' => '999', 'seller_sku' => 'AG-17-BLU', 'quantity' => 1],
+        ]);
+        $order['payment'] = [
+            'seller_discount'   => 5000,
+            'platform_discount' => 3000,
+        ];
+
+        $result = $mapper->map($order, 'shop-1');
+
+        $this->assertSame(5000.0, $result['seller_voucher']);
+        $this->assertSame(3000.0, $result['platform_voucher']);
+    }
+
+    public function test_voucher_estimates_are_null_when_payment_absent(): void
+    {
+        $mapper = new TikTokToInternalOrderMapper();
+
+        $result = $mapper->map($this->order([
+            ['product_id' => '173', 'sku_id' => '999', 'seller_sku' => 'AG-17-BLU', 'quantity' => 1],
+        ]), 'shop-1');
+
+        $this->assertNull($result['seller_voucher']);
+        $this->assertNull($result['platform_voucher']);
+    }
 }

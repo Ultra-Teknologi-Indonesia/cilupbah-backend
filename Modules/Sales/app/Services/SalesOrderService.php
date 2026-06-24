@@ -711,6 +711,17 @@ class SalesOrderService
 
         $order->update($update);
 
+        // Audit trail per komponen fee (replace-on-write, idempoten). Tetap jalur
+        // keuangan murni — tidak menyentuh stok/status.
+        if (isset($finance['fee_lines']) && is_array($finance['fee_lines'])) {
+            $this->orderRepository->replaceOrderFeeLines(
+                $order->id,
+                $finance['fee_lines'],
+                (string) $order->source,
+                (bool) ($finance['is_settled'] ?? false),
+            );
+        }
+
         return $order->fresh();
     }
 

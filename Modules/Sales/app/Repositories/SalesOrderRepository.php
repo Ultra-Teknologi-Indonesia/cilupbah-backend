@@ -530,4 +530,43 @@ class SalesOrderRepository
             ]);
         }
     }
+
+    /**
+     * Ganti seluruh baris audit fee sebuah order (replace-on-write → idempoten).
+     *
+     * @param array<int,array{fee_type:string,channel_fee_code:?string,amount:float}> $lines
+     */
+    public function replaceOrderFeeLines(string $orderId, array $lines, string $source, bool $isSettled): void
+    {
+        DB::transaction(function () use ($orderId, $lines, $source, $isSettled) {
+            DB::table('sales_order_fee_lines')->where('order_id', $orderId)->delete();
+
+            if (empty($lines)) {
+                return;
+            }
+
+            $rows = [];
+            foreach ($lines as $line) {
+                if (! isset($line['fee_type'])) {
+                    continue;
+                }
+
+                $rows[] = [
+                    'id'               => \Ramsey\Uuid\Uuid::uuid7()->toString(),
+                    'order_id'         => $orderId,
+                    'fee_type'         => $line['fee_type'],
+                    'channel_fee_code' => $line['channel_fee_code'] ?? null,
+                    'amount'           => $line['amount'] ?? 0,
+                    'source'           => $source,
+                    'is_settled'       => $isSettled,
+                    'created_at'       => now(),
+                    'updated_at'       => now(),
+                ];
+            }
+
+            if (! empty($rows)) {
+                DB::table('sales_order_fee_lines')->insert($rows);
+            }
+        });
+    }
 }

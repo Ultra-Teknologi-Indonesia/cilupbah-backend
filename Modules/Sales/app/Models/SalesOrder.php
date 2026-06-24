@@ -113,6 +113,11 @@ class SalesOrder extends Model
         return $this->hasMany(SalesOrderItem::class, 'order_id');
     }
 
+    public function feeLines(): HasMany
+    {
+        return $this->hasMany(SalesOrderFeeLine::class, 'order_id');
+    }
+
     public function picklistItems(): HasMany
     {
         return $this->hasMany(\Modules\Outbound\Models\PicklistItem::class, 'order_id');

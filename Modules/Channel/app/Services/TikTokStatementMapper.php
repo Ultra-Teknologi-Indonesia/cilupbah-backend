@@ -55,7 +55,7 @@ class TikTokStatementMapper
             $platformVoucher += $this->abs($this->num($revenue, ['platform_discount', 'platform_voucher']));
         }
 
-        return [
+        $result = [
             'seller_voucher'       => $sellerVoucher ?: null,
             'platform_voucher'     => $platformVoucher ?: null,
             'commission_fee'       => $commission ?: null,
@@ -66,6 +66,43 @@ class TikTokStatementMapper
             'fee_currency'         => $currency,
             'is_settled'           => $hasSettlement,
         ];
+
+        // Audit trail: tiap komponen kanonik → nama field statement TikTok.
+        $result['fee_lines'] = $this->feeLines($result, [
+            'seller_voucher'       => 'seller_discount',
+            'platform_voucher'     => 'platform_discount',
+            'commission_fee'       => 'platform_commission',
+            'service_fee'          => 'sfp_service_fee',
+            'transaction_fee'      => 'transaction_fee',
+            'affiliate_commission' => 'affiliate_commission',
+            'settlement_amount'    => 'settlement_amount',
+        ]);
+
+        return $result;
+    }
+
+    /**
+     * Bentuk baris audit fee dari hasil kanonik: satu baris per komponen non-null.
+     *
+     * @param array<string,string> $map fee_type kanonik => nama field statement channel
+     */
+    private function feeLines(array $canonical, array $map): array
+    {
+        $lines = [];
+
+        foreach ($map as $feeType => $channelCode) {
+            if (($canonical[$feeType] ?? null) === null) {
+                continue;
+            }
+
+            $lines[] = [
+                'fee_type'         => $feeType,
+                'channel_fee_code' => $channelCode,
+                'amount'           => (float) $canonical[$feeType],
+            ];
+        }
+
+        return $lines;
     }
 
     /**
