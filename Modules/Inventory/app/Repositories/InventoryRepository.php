@@ -171,8 +171,14 @@ class InventoryRepository
                 AllowedFilter::exact('product_id', 'product_variants.product_id'),
                 AllowedFilter::exact('brand_id', 'products.brand_id'),
                 AllowedFilter::exact('is_bundle', 'products.is_bundle'),
-                AllowedFilter::callback('location_id', fn ($query, $value) => $query->whereHas('inventories', fn ($q) => $q->where('location_id', $value))
-                ),
+                AllowedFilter::callback('location_id', fn ($query, $value) => $query->whereHas('inventories', fn ($q) => $q->where('location_id', $value))),
+                AllowedFilter::callback('channel', fn ($query, $value) => $query->whereExists(function ($sub) use ($value) {
+                    $sub->select(DB::raw(1))
+                        ->from('sales_order_items')
+                        ->join('sales_orders', 'sales_orders.id', '=', 'sales_order_items.order_id')
+                        ->whereColumn('sales_order_items.item_id', 'product_variants.id')
+                        ->where('sales_orders.source', $value);
+                })),
             )
             ->allowedSorts('product_variants.sku', 'product_variants.created_at', 'products.name')
             ->defaultSort('products.name', 'product_variants.sku')
