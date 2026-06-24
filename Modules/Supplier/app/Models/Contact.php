@@ -17,12 +17,21 @@ class Contact extends Model
         'email',
         'phone',
         'mobile',
+        'fax',
         'address',
         'city',
         'province',
         'postal_code',
+        'shipping_address',
+        'shipping_province',
+        'shipping_postal_code',
+        'shipping_same_as_billing',
+        'latitude',
+        'longitude',
         'tax_id',
+        'nik',
         'contact_person',
+        'pic_title',
         'payment_term',
         'notes',
         'status',
@@ -34,8 +43,12 @@ class Contact extends Model
     ];
 
     protected $casts = [
-        'is_system'  => 'boolean',
-        'is_company' => 'boolean',
+        'is_system'              => 'boolean',
+        'is_company'             => 'boolean',
+        'shipping_same_as_billing' => 'boolean',
+        'payment_term'           => 'integer',
+        'latitude'               => 'decimal:7',
+        'longitude'              => 'decimal:7',
     ];
 
     const TYPE_CUSTOMER = 'CUSTOMER';

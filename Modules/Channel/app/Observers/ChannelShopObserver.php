@@ -16,22 +16,22 @@ class ChannelShopObserver
         }
 
         $shop->loadMissing('channel');
-        $channelName = $shop->channel?->name ?? 'Marketplace';
+        $channel = $shop->channel;
+        if (!$channel) {
+            return;
+        }
 
-        $contactName = $channelName . ' - ' . $shop->shop_name;
-        $code = 'MP-' . Str::upper(Str::substr($shop->channel?->code ?? 'mp', 0, 4)) . '-' . Str::upper(Str::substr($shop->shop_id, 0, 8));
-
-        $category = ContactCategory::where('name', 'Pelanggan Umum')->first();
+        $code = 'MP-' . Str::upper($channel->code);
+        $category = ContactCategory::where('code', 'PLG-UMUM')->first();
 
         Contact::firstOrCreate(
+            ['code' => $code],
             [
-                'code' => $code,
-            ],
-            [
-                'name'        => $contactName,
+                'name'        => $channel->name,
                 'type'        => Contact::TYPE_BOTH,
                 'category_id' => $category?->id,
                 'is_system'   => true,
+                'is_company'  => true,
                 'status'      => Contact::STATUS_ACTIVE,
             ]
         );

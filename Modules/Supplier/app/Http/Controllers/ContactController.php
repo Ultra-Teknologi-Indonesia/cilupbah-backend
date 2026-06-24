@@ -84,6 +84,16 @@ class ContactController extends Controller
             new OA\Response(response: 404, description: 'Contact tidak ditemukan'),
         ]
     )]
+    public function update(StoreContactRequest $request, string $id): JsonResponse
+    {
+        try {
+            $contact = $this->contactService->update($id, $request->validated());
+            return $this->successResponse($contact, 'Contact berhasil diperbarui');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 500);
+        }
+    }
+
     public function show(string $id): JsonResponse
     {
         $contact = $this->contactService->getById($id);

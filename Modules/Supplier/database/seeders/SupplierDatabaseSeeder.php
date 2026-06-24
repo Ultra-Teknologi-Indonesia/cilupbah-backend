@@ -4,6 +4,7 @@ namespace Modules\Supplier\Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
+use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Supplier\Models\Contact;
 use Modules\Supplier\Models\ContactCategory;
@@ -13,14 +14,14 @@ class SupplierDatabaseSeeder extends Seeder
     public function run(): void
     {
         $categories = [
-            ['name' => 'Pelanggan Umum', 'description' => 'Kategori pelanggan umum'],
-            ['name' => 'Reseller', 'description' => 'Kategori reseller'],
+            ['code' => 'PLG-UMUM', 'name' => 'Pelanggan Umum', 'description' => 'Kategori pelanggan umum'],
+            ['code' => 'RESELLER', 'name' => 'Reseller', 'description' => 'Kategori reseller'],
         ];
 
         foreach ($categories as $cat) {
-            ContactCategory::firstOrCreate(
+            ContactCategory::updateOrCreate(
                 ['name' => $cat['name']],
-                ['description' => $cat['description']]
+                ['code' => $cat['code'], 'description' => $cat['description']]
             );
         }
 
@@ -29,23 +30,29 @@ class SupplierDatabaseSeeder extends Seeder
 
     private function seedMarketplaceContacts(): void
     {
-        $category = ContactCategory::where('name', 'Pelanggan Umum')->first();
+        $category = ContactCategory::where('code', 'PLG-UMUM')->first();
 
-        $shops = ChannelShop::with('channel')
-            ->whereNull('disconnected_at')
-            ->get();
+        // Clean up old per-shop contacts
+        Contact::where('is_system', true)
+            ->where('code', 'like', 'MP-%-________')
+            ->delete();
 
-        foreach ($shops as $shop) {
-            $channelName = $shop->channel?->name ?? 'Marketplace';
-            $code = 'MP-' . Str::upper(Str::substr($shop->channel?->code ?? 'mp', 0, 4)) . '-' . Str::upper(Str::substr($shop->shop_id, 0, 8));
+        // Create per-channel contacts
+        $channels = Channel::whereHas('shops', function ($q) {
+            $q->whereNull('disconnected_at');
+        })->get();
+
+        foreach ($channels as $channel) {
+            $code = 'MP-' . Str::upper($channel->code);
 
             Contact::firstOrCreate(
                 ['code' => $code],
                 [
-                    'name'        => $channelName . ' - ' . $shop->shop_name,
+                    'name'        => $channel->name,
                     'type'        => Contact::TYPE_BOTH,
                     'category_id' => $category?->id,
                     'is_system'   => true,
+                    'is_company'  => true,
                     'status'      => Contact::STATUS_ACTIVE,
                 ]
             );

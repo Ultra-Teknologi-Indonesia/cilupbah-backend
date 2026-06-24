@@ -11,6 +11,7 @@ class ContactCategory extends Model
     use HasUuid7;
 
     protected $fillable = [
+        'code',
         'name',
         'description',
     ];
