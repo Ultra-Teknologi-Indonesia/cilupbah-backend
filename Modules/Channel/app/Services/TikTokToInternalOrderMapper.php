@@ -187,6 +187,8 @@ class TikTokToInternalOrderMapper
                 }
             }
 
+            $imageUrl = $li['sku_image']['url'] ?? $li['product_image']['url'] ?? null;
+
             $items[] = [
                 'channel_product_id' => $li['product_id'] ?? null,
                 'sku'                => $li['seller_sku'] ?? null,
@@ -197,6 +199,7 @@ class TikTokToInternalOrderMapper
                 'disc_amount'        => $disc * $qty,
                 'tax_amount'         => $taxAmount,
                 'amount'             => ($price * $qty) - ($disc * $qty),
+                'image_url'          => $imageUrl,
             ];
         }
 
