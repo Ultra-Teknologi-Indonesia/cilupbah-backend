@@ -401,6 +401,16 @@ class InventoryTransactionController extends Controller
         }
     }
 
+    public function submitDraft(string $id): JsonResponse
+    {
+        try {
+            $result = $this->inventoryService->submitDraft($id);
+            return $this->successResponse($result, 'Transfer berhasil diajukan untuk approval.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
     public function updateDraft(\Illuminate\Http\Request $request, string $id): JsonResponse
     {
         try {
