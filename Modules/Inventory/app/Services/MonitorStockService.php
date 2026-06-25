@@ -2,7 +2,9 @@
 
 namespace Modules\Inventory\Services;
 
+use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Inventory\Repositories\MonitorStockRepository;
+use Modules\Product\Models\ProductChannelMapping;
 
 class MonitorStockService
 {
@@ -59,5 +61,56 @@ class MonitorStockService
     public function estimatedStockOut(array $filters, int $windowDays = 30, int $thresholdDays = 30, int $perPage = 10)
     {
         return $this->repository->estimatedStockOut($filters, max(1, $windowDays), max(1, $thresholdDays), $perPage);
+    }
+
+    // ===================== Fase 4: Gagal Sync =====================
+
+    public function failedSync(array $filters, int $perPage = 10)
+    {
+        $query = ProductChannelMapping::failed()
+            ->with(['product', 'channelShop.channel']);
+
+        if (! empty($filters['search'])) {
+            $search = $filters['search'];
+            $query->whereHas('product', fn ($q) => $q->where('name', 'like', "%{$search}%")
+                ->orWhere('sku', 'like', "%{$search}%"));
+        }
+
+        if (! empty($filters['channel_shop_id'])) {
+            $query->where('channel_shop_id', $filters['channel_shop_id']);
+        }
+
+        return $query->orderByDesc('updated_at')->paginate($perPage);
+    }
+
+    public function retrySync(string $mappingId): ProductChannelMapping
+    {
+        $mapping = ProductChannelMapping::findOrFail($mappingId);
+
+        SyncProductToChannelJob::dispatch(
+            $mapping->product_id,
+            $mapping->channel_shop_id,
+            'sync_price_stock'
+        );
+
+        $mapping->markAsSyncing();
+
+        return $mapping->fresh();
+    }
+
+    public function retryBulkSync(array $ids): int
+    {
+        $mappings = ProductChannelMapping::whereIn('id', $ids)->failed()->get();
+
+        foreach ($mappings as $mapping) {
+            SyncProductToChannelJob::dispatch(
+                $mapping->product_id,
+                $mapping->channel_shop_id,
+                'sync_price_stock'
+            );
+            $mapping->markAsSyncing();
+        }
+
+        return $mappings->count();
     }
 }

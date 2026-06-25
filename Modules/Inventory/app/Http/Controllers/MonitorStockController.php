@@ -5,6 +5,7 @@ namespace Modules\Inventory\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Inventory\Http\Resources\FailedSyncResource;
 use Modules\Inventory\Http\Resources\MonitorAnalyticsResource;
 use Modules\Inventory\Http\Resources\MonitorStockResource;
 use Modules\Inventory\Services\MonitorStockService;
@@ -199,6 +200,80 @@ class MonitorStockController extends Controller
         return $this->successPaginatedResponse(
             MonitorAnalyticsResource::collection($data),
             'Daftar produk perkiraan habis berhasil diambil.'
+        );
+    }
+
+    // ===================== Fase 4: Gagal Sync =====================
+
+    #[OA\Get(
+        path: '/api/v1/inventory/monitor/failed-sync',
+        summary: 'Tab Gagal Sync (mapping channel berstatus failed)',
+        security: [['bearerAuth' => []]],
+        tags: ['Monitor Stok'],
+        parameters: [
+            new OA\Parameter(name: 'search', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'channel_shop_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [new OA\Response(response: 200, description: 'Daftar mapping gagal sync.')]
+    )]
+    public function failedSync(Request $request): JsonResponse
+    {
+        $filters = [
+            'search'          => $request->query('search'),
+            'channel_shop_id' => $request->query('channel_shop_id'),
+        ];
+        $data = $this->service->failedSync(array_filter($filters), $this->perPage($request));
+
+        return $this->successPaginatedResponse(
+            FailedSyncResource::collection($data),
+            'Daftar mapping gagal sync berhasil diambil.'
+        );
+    }
+
+    #[OA\Post(
+        path: '/api/v1/inventory/monitor/failed-sync/{id}/retry',
+        summary: 'Retry sinkronisasi satu mapping yang gagal',
+        security: [['bearerAuth' => []]],
+        tags: ['Monitor Stok'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [new OA\Response(response: 200, description: 'Retry berhasil dijadwalkan.')]
+    )]
+    public function retrySync(Request $request, string $id): JsonResponse
+    {
+        $mapping = $this->service->retrySync($id);
+
+        return $this->successResponse(
+            new FailedSyncResource($mapping),
+            'Retry sinkronisasi berhasil dijadwalkan.'
+        );
+    }
+
+    #[OA\Post(
+        path: '/api/v1/inventory/monitor/failed-sync/retry-bulk',
+        summary: 'Retry sinkronisasi beberapa mapping sekaligus',
+        security: [['bearerAuth' => []]],
+        tags: ['Monitor Stok'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['ids'],
+                properties: [new OA\Property(property: 'ids', type: 'array', items: new OA\Items(type: 'string'))]
+            )
+        ),
+        responses: [new OA\Response(response: 200, description: 'Retry bulk berhasil dijadwalkan.')]
+    )]
+    public function retryBulkSync(Request $request): JsonResponse
+    {
+        $request->validate(['ids' => 'required|array|min:1', 'ids.*' => 'string']);
+
+        $count = $this->service->retryBulkSync($request->input('ids'));
+
+        return $this->successResponse(
+            ['retried' => $count],
+            "{$count} mapping berhasil dijadwalkan untuk retry."
         );
     }
 }

@@ -63,6 +63,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('dead-stock', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'deadStock'])->name('inventory.monitor.deadStock');
         Route::get('fast-moving', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'fastMoving'])->name('inventory.monitor.fastMoving');
         Route::get('estimated-stock-out', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'estimatedStockOut'])->name('inventory.monitor.estimatedStockOut');
+        // Fase 4: gagal sync
+        Route::get('failed-sync', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'failedSync'])->name('inventory.monitor.failedSync');
+        Route::post('failed-sync/{id}/retry', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'retrySync'])->name('inventory.monitor.retrySync');
+        Route::post('failed-sync/retry-bulk', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'retryBulkSync'])->name('inventory.monitor.retryBulkSync');
     });
 
     Route::post('inventory/adjustments', [InventoryTransactionController::class, 'adjust'])->name('inventory.adjust');
