@@ -219,11 +219,7 @@ class MonitorStockController extends Controller
     )]
     public function failedSync(Request $request): JsonResponse
     {
-        $filters = [
-            'search'          => $request->query('search'),
-            'channel_shop_id' => $request->query('channel_shop_id'),
-        ];
-        $data = $this->service->failedSync(array_filter($filters), $this->perPage($request));
+        $data = $this->service->failedSync($this->perPage($request));
 
         return $this->successPaginatedResponse(
             FailedSyncResource::collection($data),

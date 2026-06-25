@@ -6,7 +6,10 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Support\AppliesStockMonitorFilters;
+use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
+use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\QueryBuilder;
 
 /**
  * Query analitik Monitor Stok (Fase 1–2): Stok Kosong, Menipis, Sedang Dibeli.
@@ -207,5 +210,24 @@ class MonitorStockRepository
             ->orderByRaw("COALESCE(inv.available, 0)::numeric * {$w} / NULLIF(COALESCE(sales.qty_sold, 0), 0) ASC");
 
         return $query->paginate($perPage)->appends(request()->query());
+    }
+
+    // ===================== Fase 4: Gagal Sync =====================
+
+    public function failedSync(int $perPage = 10): LengthAwarePaginator
+    {
+        return QueryBuilder::for(
+                ProductChannelMapping::failed()
+                    ->join('products', 'products.id', '=', 'product_channel_mappings.product_id')
+                    ->with(['product', 'channelShop.channel'])
+                    ->select('product_channel_mappings.*')
+            )
+            ->allowedSearch('products.name', 'products.sku')
+            ->allowedFilters([
+                AllowedFilter::exact('channel_shop_id'),
+            ])
+            ->defaultSort('-product_channel_mappings.updated_at')
+            ->paginate(request('per_page', $perPage))
+            ->appends(request()->query());
     }
 }
