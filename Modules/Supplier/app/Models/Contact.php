@@ -40,6 +40,18 @@ class Contact extends Model
         'is_system',
         'is_company',
         'account_payable',
+        'source',
+        'nationality',
+        'birth_date',
+        'is_dropshipper',
+        'is_reseller',
+        'tax_type',
+        'nik_photo_path',
+        'npwp_photo_path',
+        'npwp_use_different',
+        'npwp_name',
+        'npwp_address',
+        'salesman_id',
     ];
 
     protected $casts = [
@@ -49,6 +61,10 @@ class Contact extends Model
         'payment_term'           => 'integer',
         'latitude'               => 'decimal:7',
         'longitude'              => 'decimal:7',
+        'is_dropshipper'         => 'boolean',
+        'is_reseller'            => 'boolean',
+        'npwp_use_different'     => 'boolean',
+        'birth_date'             => 'date',
     ];
 
     const TYPE_CUSTOMER = 'CUSTOMER';
@@ -61,6 +77,11 @@ class Contact extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(ContactCategory::class, 'category_id');
+    }
+
+    public function salesman(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Supplier\Models\Salesman::class, 'salesman_id');
     }
 
     public function scopeCustomers($query)

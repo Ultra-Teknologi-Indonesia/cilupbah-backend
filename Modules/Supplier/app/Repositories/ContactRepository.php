@@ -13,7 +13,7 @@ class ContactRepository
     public function getAllPaginated(int $limit = 10)
     {
         return QueryBuilder::for(Contact::class)
-            ->with('category:id,name')
+            ->with(['category:id,name,code', 'salesman:id,name,code'])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('type'),
@@ -28,7 +28,7 @@ class ContactRepository
 
     public function findById(string $id): ?Contact
     {
-        return Contact::with('category')->find($id);
+        return Contact::with(['category', 'salesman'])->find($id);
     }
 
     public function create(array $data): Contact
@@ -51,9 +51,10 @@ class ContactRepository
     {
         return QueryBuilder::for(Contact::class)
             ->customers()
-            ->with('category:id,name')
+            ->with(['category:id,name,code', 'salesman:id,name,code'])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
+                AllowedFilter::exact('category_id'),
                 AllowedFilter::custom('search', new FuzzyFilter('name,company_name,code,email'))
             )
             ->allowedSorts('name', 'code', 'created_at')
@@ -92,5 +93,26 @@ class ContactRepository
     public function getAllCategories()
     {
         return ContactCategory::orderBy('name')->get();
+    }
+
+    public function findCategoryById(string $id): ?\Modules\Supplier\Models\ContactCategory
+    {
+        return ContactCategory::find($id);
+    }
+
+    public function createCategory(array $data): ContactCategory
+    {
+        return ContactCategory::create($data);
+    }
+
+    public function updateCategory(ContactCategory $category, array $data): ContactCategory
+    {
+        $category->update($data);
+        return $category->fresh();
+    }
+
+    public function deleteCategory(ContactCategory $category): bool
+    {
+        return $category->delete();
     }
 }

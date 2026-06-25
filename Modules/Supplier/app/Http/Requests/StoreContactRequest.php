@@ -41,6 +41,18 @@ class StoreContactRequest extends FormRequest
             'category_id'             => 'nullable|exists:contact_categories,id',
             'is_company'              => 'nullable|boolean',
             'account_payable'         => 'nullable|string|max:50',
+            'source'                  => 'nullable|string|max:50',
+            'nationality'             => 'nullable|string|max:100',
+            'birth_date'              => 'nullable|date',
+            'is_dropshipper'          => 'nullable|boolean',
+            'is_reseller'             => 'nullable|boolean',
+            'tax_type'                => 'nullable|string|in:NON_PKP,PKP',
+            'nik_photo_path'          => 'nullable|string|max:500',
+            'npwp_photo_path'         => 'nullable|string|max:500',
+            'npwp_use_different'      => 'nullable|boolean',
+            'npwp_name'               => 'nullable|string|max:255',
+            'npwp_address'            => 'nullable|string',
+            'salesman_id'             => 'nullable|exists:salesmen,id',
         ];
     }
 }

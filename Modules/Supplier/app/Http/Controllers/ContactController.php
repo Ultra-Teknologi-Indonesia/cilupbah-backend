@@ -191,6 +191,49 @@ class ContactController extends Controller
         return $this->successResponse($categories, 'Daftar kategori kontak berhasil diambil');
     }
 
+    public function storeCategory(Request $request): JsonResponse
+    {
+        try {
+            $request->validate([
+                'code' => 'required|string|max:20|unique:contact_categories,code',
+                'name' => 'required|string|max:100|unique:contact_categories,name',
+                'description' => 'nullable|string',
+                'type' => 'nullable|string|in:CUSTOMER,SUPPLIER,BOTH',
+            ]);
+            $category = $this->contactService->createCategory($request->all());
+            return $this->successResponse($category, 'Kategori berhasil ditambahkan');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function updateCategory(string $id, Request $request): JsonResponse
+    {
+        try {
+            $request->validate([
+                'code' => 'nullable|string|max:20|unique:contact_categories,code,' . $id,
+                'name' => 'nullable|string|max:100|unique:contact_categories,name,' . $id,
+                'description' => 'nullable|string',
+                'type' => 'nullable|string|in:CUSTOMER,SUPPLIER,BOTH',
+            ]);
+            $category = $this->contactService->updateCategory($id, $request->all());
+            return $this->successResponse($category, 'Kategori berhasil diperbarui');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function destroyCategory(Request $request): JsonResponse
+    {
+        try {
+            $request->validate(['id' => 'required|string']);
+            $this->contactService->deleteCategory($request->input('id'));
+            return $this->successResponse(null, 'Kategori berhasil dihapus');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
     #[OA\Get(
         path: '/api/v1/contact/account-payable',
         summary: 'Get account payable options for contacts',

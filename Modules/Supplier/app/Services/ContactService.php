@@ -74,6 +74,32 @@ class ContactService
         return $this->contactRepository->getAllCategories();
     }
 
+    public function createCategory(array $data): \Modules\Supplier\Models\ContactCategory
+    {
+        return $this->contactRepository->createCategory($data);
+    }
+
+    public function updateCategory(string $id, array $data): \Modules\Supplier\Models\ContactCategory
+    {
+        $category = $this->contactRepository->findCategoryById($id);
+        if (! $category) {
+            throw new \Exception('Kategori tidak ditemukan.');
+        }
+        return $this->contactRepository->updateCategory($category, $data);
+    }
+
+    public function deleteCategory(string $id): bool
+    {
+        $category = $this->contactRepository->findCategoryById($id);
+        if (! $category) {
+            throw new \Exception('Kategori tidak ditemukan.');
+        }
+        if ($category->contacts()->count() > 0) {
+            throw new \Exception('Kategori masih digunakan oleh ' . $category->contacts()->count() . ' kontak.');
+        }
+        return $this->contactRepository->deleteCategory($category);
+    }
+
     public function getAccountPayableOptions(): array
     {
         return [
