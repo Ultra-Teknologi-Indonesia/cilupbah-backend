@@ -21,6 +21,8 @@ class InventoryTransferRepository
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('source_location_id'),
                 AllowedFilter::exact('destination_location_id'),
+                AllowedFilter::callback('date_from', fn($query, $value) => $query->where('created_at', '>=', $value)),
+                AllowedFilter::callback('date_to', fn($query, $value) => $query->where('created_at', '<=', $value)),
                 AllowedFilter::callback('search', function ($query, $value) {
                     $query->where(function ($q) use ($value) {
                         $q->where('transfer_number', 'ILIKE', "%{$value}%")

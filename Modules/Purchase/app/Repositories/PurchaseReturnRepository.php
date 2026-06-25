@@ -19,6 +19,8 @@ class PurchaseReturnRepository
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('supplier_id'),
                 AllowedFilter::exact('location_id'),
+                AllowedFilter::callback('date_from', fn($query, $value) => $query->where('return_date', '>=', $value)),
+                AllowedFilter::callback('date_to', fn($query, $value) => $query->where('return_date', '<=', $value)),
                 AllowedFilter::custom('search', new FuzzyFilter('return_number'))
             )
             ->allowedSorts('return_number', 'return_date', 'total_amount', 'created_at')

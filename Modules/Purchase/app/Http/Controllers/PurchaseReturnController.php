@@ -94,6 +94,17 @@ class PurchaseReturnController extends Controller
         return $this->successResponse($return, 'Detail purchase return berhasil diambil');
     }
 
+    public function process(string $id, Request $request): JsonResponse
+    {
+        try {
+            $request->validate(['processed_by' => 'required|string']);
+            $return = $this->returnService->process($id, $request->input('processed_by'));
+            return $this->successResponse($return, 'Retur pembelian berhasil diproses');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
     #[OA\Get(
         path: '/api/v1/purchase/purchase-returns/unpaid',
         summary: 'Get unpaid purchase returns',

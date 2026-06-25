@@ -25,6 +25,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('purchase/purchase-returns/unpaid', [PurchaseReturnController::class, 'unpaid'])->name('purchase.returns.unpaid');
     Route::get('purchase/purchase-returns', [PurchaseReturnController::class, 'index'])->name('purchase.returns.index');
     Route::post('purchase/purchase-returns', [PurchaseReturnController::class, 'store'])->name('purchase.returns.store');
+    Route::post('purchase/purchase-returns/{id}/process', [PurchaseReturnController::class, 'process'])->name('purchase.returns.process');
     Route::get('purchase/purchase-returns/{id}', [PurchaseReturnController::class, 'show'])->name('purchase.returns.show');
     Route::delete('purchase', [PurchaseReturnController::class, 'destroy'])->name('purchase.returns.destroy');
 
