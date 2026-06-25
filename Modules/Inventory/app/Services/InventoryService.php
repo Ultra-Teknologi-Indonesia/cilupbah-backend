@@ -233,46 +233,15 @@ class InventoryService
                 throw new \Exception('Transfer tidak ditemukan.');
             }
 
-            if (! in_array($transfer->status, [InventoryTransfer::STATUS_DRAFT, InventoryTransfer::STATUS_PENDING])) {
+            if ($transfer->status !== InventoryTransfer::STATUS_IN_TRANSIT) {
                 throw new \Exception("Transfer berstatus {$transfer->status}, tidak bisa di-approve.");
             }
 
-            foreach ($transfer->items as $item) {
-                $sourceInventory = $this->inventoryRepository->findExactForUpdate(
-                    $item->item_id,
-                    $transfer->source_location_id,
-                    $item->source_bin_id,
-                    $item->batch_no,
-                    $item->serial_no,
-                );
-
-                if (! $sourceInventory) {
-                    throw new \Exception("Stok tidak ditemukan untuk item {$item->item_id}.");
-                }
-
-                $sourceInventory->reserved -= $item->qty;
-                $sourceInventory->on_hand -= $item->qty;
-                $this->inventoryRepository->updateStock($sourceInventory);
-
-                $this->movementRepository->create([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $transfer->source_location_id,
-                    'bin_id'             => $item->source_bin_id,
-                    'transaction_number' => $transfer->transfer_number,
-                    'source'             => 'TRANSFER_OUT',
-                    'qty'                => -$item->qty,
-                    'balance'            => $sourceInventory->on_hand,
-                    'transaction_date'   => now(),
-                    'created_by'         => $data['approved_by'],
-                ]);
-            }
-
             $transfer->update([
-                'status'      => InventoryTransfer::STATUS_IN_TRANSIT,
+                'status'      => InventoryTransfer::STATUS_CHECKING,
                 'approved_by' => $data['approved_by'],
                 'assigned_to' => $data['assigned_to'],
                 'approved_at' => now(),
-                'shipped_at'  => now(),
             ]);
 
             return $this->transferRepository->findById($transferId);
@@ -288,7 +257,7 @@ class InventoryService
                 throw new \Exception('Transfer tidak ditemukan.');
             }
 
-            if (! in_array($transfer->status, [InventoryTransfer::STATUS_DRAFT, InventoryTransfer::STATUS_PENDING, InventoryTransfer::STATUS_APPROVED])) {
+            if (! in_array($transfer->status, [InventoryTransfer::STATUS_DRAFT, InventoryTransfer::STATUS_IN_TRANSIT])) {
                 throw new \Exception("Transfer berstatus {$transfer->status}, tidak bisa dibatalkan.");
             }
 
@@ -380,7 +349,7 @@ class InventoryService
                 throw new \Exception('Transfer tidak ditemukan.');
             }
 
-            if ($transfer->status !== InventoryTransfer::STATUS_IN_TRANSIT) {
+            if ($transfer->status !== InventoryTransfer::STATUS_CHECKING) {
                 throw new \Exception("Transfer berstatus {$transfer->status}, tidak bisa di-receive.");
             }
 
@@ -649,8 +618,39 @@ class InventoryService
                 throw new \Exception("Minimal harus ada 1 barang untuk diajukan.");
             }
 
+            foreach ($transfer->items as $item) {
+                $sourceInventory = $this->inventoryRepository->findExactForUpdate(
+                    $item->item_id,
+                    $transfer->source_location_id,
+                    $item->source_bin_id,
+                    $item->batch_no,
+                    $item->serial_no,
+                );
+
+                if (! $sourceInventory) {
+                    throw new \Exception("Stok tidak ditemukan untuk item {$item->item_id}.");
+                }
+
+                $sourceInventory->reserved -= $item->qty;
+                $sourceInventory->on_hand -= $item->qty;
+                $this->inventoryRepository->updateStock($sourceInventory);
+
+                $this->movementRepository->create([
+                    'item_id'            => $item->item_id,
+                    'location_id'        => $transfer->source_location_id,
+                    'bin_id'             => $item->source_bin_id,
+                    'transaction_number' => $transfer->transfer_number,
+                    'source'             => 'TRANSFER_OUT',
+                    'qty'                => -$item->qty,
+                    'balance'            => $sourceInventory->on_hand,
+                    'transaction_date'   => now(),
+                    'created_by'         => $transfer->created_by,
+                ]);
+            }
+
             $transfer->update([
-                'status' => InventoryTransfer::STATUS_PENDING,
+                'status'    => InventoryTransfer::STATUS_IN_TRANSIT,
+                'shipped_at' => now(),
             ]);
 
             return $this->transferRepository->findById($transferId);
