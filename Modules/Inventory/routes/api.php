@@ -53,6 +53,18 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inventory/item-bundles', [BundleController::class, 'index'])->name('inventory.bundles.index');
     Route::post('inventory/items/bundle', [BundleController::class, 'store'])->name('inventory.bundles.store');
 
+    // Monitor Stok (Fase 1-2): Stok Kosong, Menipis, Sedang Dibeli
+    Route::prefix('inventory/monitor')->group(function () {
+        Route::get('summary', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'summary'])->name('inventory.monitor.summary');
+        Route::get('out-of-stock', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'outOfStock'])->name('inventory.monitor.outOfStock');
+        Route::get('low-stock', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'lowStock'])->name('inventory.monitor.lowStock');
+        Route::get('on-order', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'onOrder'])->name('inventory.monitor.onOrder');
+        // Fase 3: analitik penjualan
+        Route::get('dead-stock', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'deadStock'])->name('inventory.monitor.deadStock');
+        Route::get('fast-moving', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'fastMoving'])->name('inventory.monitor.fastMoving');
+        Route::get('estimated-stock-out', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'estimatedStockOut'])->name('inventory.monitor.estimatedStockOut');
+    });
+
     Route::post('inventory/adjustments', [InventoryTransactionController::class, 'adjust'])->name('inventory.adjust');
     Route::post('inventory/putaway', [InventoryTransactionController::class, 'putaway'])->name('inventory.putaway');
 

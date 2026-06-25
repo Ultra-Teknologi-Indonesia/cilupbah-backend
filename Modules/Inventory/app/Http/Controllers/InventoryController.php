@@ -493,27 +493,16 @@ class InventoryController extends Controller
     )]
     public function needRestock(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        // Diselaraskan ke Monitor Stok tab "Menipis" (ADR-202): membership available < min_stock,
+        // target restock = safe_stock (fallback min_stock), hanya produk is_stored, + filter standar.
+        $service = app(\Modules\Inventory\Services\MonitorStockService::class);
+        $perPage = (int) ($request->query('per_page') ?? $request->query('limit') ?? 10);
+        $data = $service->lowStock($service->filtersFrom($request->query()), $perPage);
 
-        $items = DB::table('product_variants')
-            ->where('product_variants.min_stock', '>', 0)
-            ->leftJoin('inventories', 'inventories.item_id', '=', 'product_variants.id')
-            ->join('products', 'products.id', '=', 'product_variants.product_id')
-            ->groupBy('product_variants.id', 'product_variants.sku', 'product_variants.min_stock', 'products.name')
-            ->havingRaw('COALESCE(SUM(inventories.available), 0) < product_variants.min_stock')
-            ->select(
-                'product_variants.id as item_id',
-                'product_variants.sku',
-                'product_variants.min_stock',
-                'products.name as product_name',
-                DB::raw('COALESCE(SUM(inventories.on_hand), 0) as total_on_hand'),
-                DB::raw('COALESCE(SUM(inventories.available), 0) as total_available'),
-                DB::raw('product_variants.min_stock - COALESCE(SUM(inventories.available), 0) as qty_to_restock'),
-            )
-            ->orderByDesc('qty_to_restock')
-            ->paginate($limit);
-
-        return $this->successPaginatedResponse($items, 'Daftar produk yang perlu restock berhasil diambil.');
+        return $this->successPaginatedResponse(
+            \Modules\Inventory\Http\Resources\MonitorStockResource::collection($data),
+            'Daftar produk yang perlu restock berhasil diambil.'
+        );
     }
 
     #[OA\Post(
