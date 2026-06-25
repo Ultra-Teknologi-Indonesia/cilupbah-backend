@@ -20,6 +20,12 @@ class InboundRepository
                 AllowedFilter::exact('type'),
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('source_type'),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->where('created_at', '>=', $value)),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->where('created_at', '<=', $value . ' 23:59:59')),
+                AllowedFilter::callback('search', fn ($query, $value) => $query->where(function ($q) use ($value) {
+                    $q->where('transaction_number', 'like', "%{$value}%")
+                      ->orWhere('reference_number', 'like', "%{$value}%");
+                })),
             )
             ->allowedSorts('expected_date', 'created_at')
             ->defaultSort('-created_at')
