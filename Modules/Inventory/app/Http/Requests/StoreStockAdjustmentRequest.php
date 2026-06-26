@@ -22,8 +22,6 @@ class StoreStockAdjustmentRequest extends FormRequest
             'items.*.item_id' => 'required|string|exists:product_variants,id',
             'items.*.bin_id' => 'nullable|string|exists:location_bins,id',
             'items.*.actual_qty' => 'required|integer|min:0',
-            'items.*.batch_no' => 'nullable|string|max:100',
-            'items.*.serial_no' => 'nullable|string|max:100',
             'items.*.notes' => 'nullable|string',
         ];
     }

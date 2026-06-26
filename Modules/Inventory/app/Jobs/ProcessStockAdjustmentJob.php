@@ -42,8 +42,6 @@ class ProcessStockAdjustmentJob implements ShouldQueue
                         $item->item_id,
                         $adjustment->location_id,
                         $item->bin_id,
-                        $item->batch_no ?? '',
-                        $item->serial_no ?? '',
                     );
 
                     $inventory->on_hand += $item->difference_qty;

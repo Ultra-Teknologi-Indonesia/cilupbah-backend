@@ -14,8 +14,6 @@ class StockAdjustmentItem extends Model
         'stock_adjustment_id',
         'item_id',
         'bin_id',
-        'batch_no',
-        'serial_no',
         'system_qty',
         'actual_qty',
         'difference_qty',

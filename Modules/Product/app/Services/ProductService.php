@@ -189,18 +189,33 @@ class ProductService
 
     public function upsertFromChannel(array $data)
     {
-        $sku = $data['sku'] ?? ($data['variants'][0]['sku'] ?? null);
-        if ($sku) {
-            $productId = $this->writeRepository->productIdBySku($sku)
-                ?? $this->writeRepository->productIdByVariantSku($sku);
+        $parentSku = $data['sku'] ?? null;
+        $productId = null;
 
-            if ($productId) {
-                unset($data['category_id']);
-                $this->updateProduct($productId, $data);
-                $this->queueExternalMediaMirroring($productId);
+        if ($parentSku) {
+            $productId = $this->writeRepository->productIdBySku($parentSku)
+                ?? $this->writeRepository->productIdByVariantSku($parentSku);
+        }
 
-                return $productId;
+        if (! $productId && ! empty($data['variants'])) {
+            foreach ($data['variants'] as $variant) {
+                $vSku = $variant['sku'] ?? null;
+                if ($vSku) {
+                    $productId = $this->writeRepository->productIdBySku($vSku)
+                        ?? $this->writeRepository->productIdByVariantSku($vSku);
+                    if ($productId) {
+                        break;
+                    }
+                }
             }
+        }
+
+        if ($productId) {
+            unset($data['category_id']);
+            $this->updateProduct($productId, $data);
+            $this->queueExternalMediaMirroring($productId);
+
+            return $productId;
         }
 
         $productId = $this->createProduct($data);

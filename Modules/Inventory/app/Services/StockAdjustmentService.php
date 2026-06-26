@@ -47,8 +47,6 @@ class StockAdjustmentService
                     $itemData['item_id'],
                     $data['location_id'],
                     $itemData['bin_id'] ?? null,
-                    $itemData['batch_no'] ?? '',
-                    $itemData['serial_no'] ?? ''
                 );
 
                 $systemQty = $inventory ? $inventory->on_hand : 0;
@@ -58,8 +56,6 @@ class StockAdjustmentService
                     'stock_adjustment_id' => $adjustment->id,
                     'item_id' => $itemData['item_id'],
                     'bin_id' => $itemData['bin_id'] ?? null,
-                    'batch_no' => $itemData['batch_no'] ?? null,
-                    'serial_no' => $itemData['serial_no'] ?? null,
                     'system_qty' => $systemQty,
                     'actual_qty' => $actualQty,
                     'difference_qty' => $actualQty - $systemQty,
