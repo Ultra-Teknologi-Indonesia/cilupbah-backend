@@ -227,6 +227,11 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         })->all();
 
         $config = config('channel.shopee_defaults', []);
+
+        if (empty($config['logistic_info'])) {
+            $config['logistic_info'] = $this->resolveLogistics($shop);
+        }
+
         $channelCategoryUuid = $this->resolveChannelCategoryUuid($product);
         if ($channelCategoryUuid) {
             $config['attribute_list'] = $this->buildAttributeList($product, $channelCategoryUuid);
@@ -234,6 +239,20 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         }
 
         return $this->outboundMapper->map($internal, $imageIds, $config);
+    }
+
+    protected function resolveLogistics(ChannelShop $shop): array
+    {
+        $res = $this->client->request('GET', '/api/v2/logistics/get_channel_list', [], $shop->access_token, $shop->shop_id);
+
+        return collect($res['response']['logistics_channel_list'] ?? [])
+            ->filter(fn ($l) => $l['enabled'] ?? false)
+            ->map(fn ($l) => [
+                'logistic_id' => (int) $l['logistics_channel_id'],
+                'enabled' => true,
+            ])
+            ->values()
+            ->all();
     }
 
     protected function resolveChannelCategoryUuid(Product $product): ?string
