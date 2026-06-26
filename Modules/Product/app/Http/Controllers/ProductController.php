@@ -40,7 +40,6 @@ class ProductController extends Controller
         'variationTypes.attribute',
         'media',
         'category',
-        'brand',
         'salesAccount',
         'salesReturnAccount',
         'inventoryAccount',
