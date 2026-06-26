@@ -99,9 +99,7 @@ class ProductController extends Controller
             ]);
         }
 
-        $isDownload = $request->boolean('is_download');
-
-        $products = $this->productRepository->paginateIndex($status, $isDownload);
+        $products = $this->productRepository->paginateIndex($status);
 
         return $this->successPaginatedResponse(ProductResource::collection($products), 'Get products success');
     }

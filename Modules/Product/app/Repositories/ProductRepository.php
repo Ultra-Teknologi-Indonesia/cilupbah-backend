@@ -151,17 +151,17 @@ class ProductRepository
             ->all();
     }
 
-    public function paginateIndex(?string $status = null, bool $isDownload = false): LengthAwarePaginator
+    public function paginateIndex(?string $status = null): LengthAwarePaginator
     {
         return QueryBuilder::for(Product::class)
             ->with(['variants', 'media', 'category', 'brand', 'channelMappings.channelShop.channel'])
             ->allowedSearch('name')
             ->allowedFilters(
-                AllowedFilter::exact('is_active')
+                AllowedFilter::exact('is_active'),
+                AllowedFilter::callback('is_download', fn ($query, $value) => $value ? $query->whereHas('channelMappings') : $query),
             )
             ->allowedSorts('name', 'created_at')
             ->when($status !== null, fn ($query) => $query->where('status', $status))
-            ->when($isDownload, fn ($query) => $query->whereHas('channelMappings'))
             ->paginate(request('per_page', 10))
             ->appends(request()->query());
     }
