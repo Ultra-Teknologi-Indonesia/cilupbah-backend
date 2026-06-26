@@ -3,6 +3,7 @@
 namespace Modules\Warehouse\Repositories;
 
 use Modules\Warehouse\Models\LocationZone;
+use Modules\Warehouse\Models\LocationBin;
 use Illuminate\Database\Eloquent\Collection;
 
 class LocationZoneRepository
@@ -38,6 +39,11 @@ class LocationZoneRepository
         return LocationZone::create($data);
     }
 
+    public function update(LocationZone $zone, array $data): bool
+    {
+        return $zone->update($data);
+    }
+
     public function updateName(LocationZone $zone, ?string $zoneName): void
     {
         if ($zone->zone_name !== $zoneName) {
@@ -45,12 +51,33 @@ class LocationZoneRepository
         }
     }
 
-    public function delete(string $id): bool
+    public function delete(LocationZone $zone): bool
     {
-        $zone = LocationZone::find($id);
-        if ($zone) {
-            return $zone->delete();
-        }
-        return false;
+        return $zone->delete();
+    }
+
+    public function assignBinsToZone(string $locationId, array $binIds, string $zoneId): int
+    {
+        return LocationBin::where('location_id', $locationId)
+            ->whereIn('id', $binIds)
+            ->whereNull('zone_id')
+            ->update(['zone_id' => $zoneId]);
+    }
+
+    public function reassignBinsToZone(string $locationId, array $binIds, string $zoneId): int
+    {
+        return LocationBin::where('location_id', $locationId)
+            ->whereIn('id', $binIds)
+            ->where(function ($q) use ($zoneId) {
+                $q->whereNull('zone_id')->orWhere('zone_id', $zoneId);
+            })
+            ->update(['zone_id' => $zoneId]);
+    }
+
+    public function clearBinsFromZone(string $locationId, string $zoneId): int
+    {
+        return LocationBin::where('location_id', $locationId)
+            ->where('zone_id', $zoneId)
+            ->update(['zone_id' => null]);
     }
 }
