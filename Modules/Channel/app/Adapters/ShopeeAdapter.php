@@ -246,7 +246,7 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         $res = $this->client->request('GET', '/api/v2/logistics/get_channel_list', [], $shop->access_token, $shop->shop_id);
 
         return collect($res['response']['logistics_channel_list'] ?? [])
-            ->filter(fn ($l) => $l['enabled'] ?? false)
+            ->filter(fn ($l) => ($l['enabled'] ?? false) && empty($l['is_instant'] ?? false))
             ->map(fn ($l) => [
                 'logistic_id' => (int) $l['logistics_channel_id'],
                 'enabled' => true,

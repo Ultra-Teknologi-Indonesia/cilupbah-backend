@@ -17,7 +17,7 @@ class ShopeeProductMapper
             'item_name' => $product['name'] ?? 'Produk',
             'description' => DescriptionFormatter::toHtml($product['description'] ?? '') ?: ($product['name'] ?? ''),
             'item_sku' => $itemSku,
-            'weight' => \Modules\Channel\Support\WeightConverter::toKg($product['weight'] ?? $config['weight'] ?? 0.1, $product['weight_unit'] ?? 'kg') ?: 0.1,
+            'weight' => \Modules\Channel\Support\WeightConverter::toKg($product['weight'] ?? $config['weight'] ?? 0.1, $product['weight_unit'] ?? 'gram') ?: 0.1,
             'dimension' => [
                 'package_length' => (int) ($product['length'] ?? $config['length'] ?? 10),
                 'package_width' => (int) ($product['width'] ?? $config['width'] ?? 10),
