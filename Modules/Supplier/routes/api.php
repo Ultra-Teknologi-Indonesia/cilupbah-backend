@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Modules\Supplier\Http\Controllers\SupplierController;
 use Modules\Supplier\Http\Controllers\ContactController;
+use Modules\Supplier\Http\Controllers\ContactImportController;
 use Modules\Supplier\Http\Controllers\SalesmanController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
@@ -13,6 +14,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('salesmen/{id}', [SalesmanController::class, 'show'])->name('salesmen.show');
     Route::put('salesmen/{id}', [SalesmanController::class, 'update'])->name('salesmen.update');
     Route::delete('salesmen', [SalesmanController::class, 'destroy'])->name('salesmen.destroy');
+
+    Route::get('contacts/import/template', [ContactImportController::class, 'downloadTemplate'])->name('contacts.import.template');
+    Route::post('contacts/import/validate', [ContactImportController::class, 'validate'])->name('contacts.import.validate');
+    Route::post('contacts/import/save', [ContactImportController::class, 'save'])->name('contacts.import.save');
 
     Route::get('contacts/customers', [ContactController::class, 'customers'])->name('contacts.customers');
     Route::get('contacts/suppliers', [ContactController::class, 'suppliers'])->name('contacts.suppliers');
