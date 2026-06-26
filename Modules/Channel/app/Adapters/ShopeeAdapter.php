@@ -299,7 +299,7 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
     protected function resolveTierVariationName(Product $product, string $channelCategoryUuid): ?string
     {
         $firstSalesOption = DB::table('product_variants as pv')
-            ->join('product_variant_options as pvo', 'pvo.variant_id', '=', 'pv.id')
+            ->join('variant_options as pvo', 'pvo.variant_id', '=', 'pv.id')
             ->where('pv.product_id', $product->id)
             ->whereNotNull('pvo.attribute_id')
             ->value('pvo.attribute_id');
