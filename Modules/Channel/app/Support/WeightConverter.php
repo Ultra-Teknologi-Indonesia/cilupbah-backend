@@ -9,6 +9,6 @@ class WeightConverter
     {
         $w = (float) ($weight ?? 0);
 
-        return strtolower((string) $unit) === 'gram' ? $w / 1000 : $w;
+        return in_array(strtolower((string) $unit), ['gram', 'g', 'gr']) ? $w / 1000 : $w;
     }
 }
