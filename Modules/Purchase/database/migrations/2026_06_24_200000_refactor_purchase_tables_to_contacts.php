@@ -9,6 +9,39 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // --- Migrate referenced suppliers into contacts table ---
+        $referencedSupplierIds = DB::table('purchase_orders')->pluck('supplier_id')
+            ->merge(DB::table('purchase_bills')->pluck('supplier_id'))
+            ->unique()
+            ->filter();
+
+        $existingContactIds = DB::table('contacts')->pluck('id');
+        $missingIds = $referencedSupplierIds->diff($existingContactIds);
+
+        if ($missingIds->isNotEmpty()) {
+            $suppliers = DB::table('suppliers')->whereIn('id', $missingIds)->get();
+            foreach ($suppliers as $supplier) {
+                DB::table('contacts')->insert([
+                    'id' => $supplier->id,
+                    'code' => $supplier->code,
+                    'name' => $supplier->name,
+                    'company_name' => $supplier->company_name,
+                    'email' => $supplier->email,
+                    'phone' => $supplier->phone,
+                    'address' => $supplier->address,
+                    'city' => $supplier->city,
+                    'tax_id' => $supplier->tax_id,
+                    'contact_person' => $supplier->contact_person,
+                    'payment_term' => $supplier->payment_term,
+                    'notes' => $supplier->notes,
+                    'status' => $supplier->status,
+                    'type' => 'SUPPLIER',
+                    'created_at' => $supplier->created_at,
+                    'updated_at' => $supplier->updated_at,
+                ]);
+            }
+        }
+
         // --- purchase_orders: supplier_id → contact_id + new fields ---
         Schema::table('purchase_orders', function (Blueprint $table) {
             $table->dropForeign(['supplier_id']);
