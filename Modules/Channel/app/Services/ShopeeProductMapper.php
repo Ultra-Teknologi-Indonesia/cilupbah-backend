@@ -68,7 +68,6 @@ class ShopeeProductMapper
                 'tier_index' => [$optionNames[$optionName]],
                 'model_sku' => $variant['sku'],
                 'original_price' => (float) ($variant['sell_price'] ?? 0),
-                'seller_stock' => [['stock_type' => 1, 'stock' => (int) ($variant['stock'] ?? 0)]],
             ];
         }
 

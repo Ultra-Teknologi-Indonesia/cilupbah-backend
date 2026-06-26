@@ -37,6 +37,8 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
             $itemId = $res['response']['item_id'] ?? null;
 
             if ($itemId) {
+                $this->updateStockAfterCreation($product, $shop, $itemId, $res['response']['model_list'] ?? []);
+
                 return [
                     'success' => true,
                     'external_product_id' => (string) $itemId,
@@ -110,6 +112,45 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
             Log::error('Shopee unlist error: ' . $e->getMessage());
 
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    protected function updateStockAfterCreation(Product $product, ChannelShop $shop, int $itemId, array $modelList): void
+    {
+        if (empty($modelList)) {
+            return;
+        }
+
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
+        $skuToStock = [];
+        foreach ($product->variants as $variant) {
+            $skuToStock[$variant->sku] = $stockByVariant[$variant->id] ?? 0;
+        }
+
+        $stockList = [];
+        foreach ($modelList as $model) {
+            $sku = $model['model_sku'] ?? '';
+            $modelId = $model['model_id'] ?? 0;
+            if (! $modelId) {
+                continue;
+            }
+            $stockList[] = [
+                'model_id' => (int) $modelId,
+                'seller_stock' => [['stock' => max(0, (int) ($skuToStock[$sku] ?? 0))]],
+            ];
+        }
+
+        if (empty($stockList)) {
+            return;
+        }
+
+        try {
+            $this->client->request('POST', '/api/v2/product/update_stock', [
+                'item_id' => $itemId,
+                'stock_list' => $stockList,
+            ], $shop->access_token, $shop->shop_id);
+        } catch (\Exception $e) {
+            Log::warning('Shopee post-creation stock update failed: ' . $e->getMessage());
         }
     }
 
