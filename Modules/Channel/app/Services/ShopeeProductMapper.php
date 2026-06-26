@@ -31,9 +31,8 @@ class ShopeeProductMapper
             $payload['attribute_list'] = $config['attribute_list'];
         }
 
-        if (! empty($config['brand_id'])) {
-            $payload['brand'] = ['brand_id' => (int) $config['brand_id']];
-        }
+        $brandId = $config['brand_id'] ?? $product['brand_id'] ?? 0;
+        $payload['brand'] = ['brand_id' => (int) $brandId];
 
         $variants = array_values(array_filter(
             $product['variants'] ?? [],
