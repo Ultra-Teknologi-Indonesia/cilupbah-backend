@@ -22,6 +22,8 @@ class Product extends Model
     public const STATUS_ARCHIVED = 'archived';
 
     public const STATUSES = [
+        self::STATUS_DOWNLOAD,
+        self::STATUS_IN_REVIEW,
         self::STATUS_MASTER,
         self::STATUS_ARCHIVED,
     ];
