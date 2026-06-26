@@ -74,7 +74,7 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
     {
         try {
             $payload = $this->buildProductPayload($product, $shop);
-            unset($payload['_model_list']);
+            unset($payload['_model_list'], $payload['_tier_variation']);
             $payload['item_id'] = (int) $externalProductId;
 
             $res = $this->client->request('POST', '/api/v2/product/update_item', $payload, $shop->access_token, $shop->shop_id);
@@ -229,7 +229,7 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         $config = config('channel.shopee_defaults', []);
 
         if (empty($config['logistic_info'])) {
-            $config['logistic_info'] = $this->resolveLogistics($shop);
+            $config['logistic_info'] = $this->resolveLogistics($shop, $product);
         }
 
         $channelCategoryUuid = $this->resolveChannelCategoryUuid($product);
@@ -241,21 +241,29 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         return $this->outboundMapper->map($internal, $imageIds, $config);
     }
 
-    protected function resolveLogistics(ChannelShop $shop): array
+    protected function resolveLogistics(ChannelShop $shop, Product $product): array
     {
         $res = $this->client->request('GET', '/api/v2/logistics/get_channel_list', [], $shop->access_token, $shop->shop_id);
 
-        $excluded = ['instant', 'same day', '2 jam', 'sameday'];
+        $weightKg = \Modules\Channel\Support\WeightConverter::toKg(
+            $product->weight ?? 0.1,
+            $product->weight_unit ?? 'kg'
+        ) ?: 0.1;
+
+        $length = (int) ($product->length ?? 10);
+        $width = (int) ($product->width ?? 10);
+        $height = (int) ($product->height ?? 10);
+
+        $instantEligible = $weightKg <= 20.0 && $length <= 50 && $width <= 50 && $height <= 50;
+        $instantKeywords = ['instant', 'same day', '2 jam', 'sameday'];
 
         return collect($res['response']['logistics_channel_list'] ?? [])
-            ->filter(function ($l) use ($excluded) {
-                if (! ($l['enabled'] ?? false)) {
-                    return false;
-                }
+            ->filter(fn ($l) => $l['enabled'] ?? false)
+            ->filter(function ($l) use ($instantEligible, $instantKeywords) {
                 $name = strtolower($l['logistics_channel_name'] ?? '');
-                foreach ($excluded as $keyword) {
+                foreach ($instantKeywords as $keyword) {
                     if (str_contains($name, $keyword)) {
-                        return false;
+                        return $instantEligible;
                     }
                 }
 
