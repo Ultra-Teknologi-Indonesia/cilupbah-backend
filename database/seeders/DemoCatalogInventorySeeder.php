@@ -7,6 +7,7 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Queue;
+use Modules\Channel\Database\Seeders\ShopeeCategorySchemaSeeder;
 use Modules\Inventory\Database\Seeders\InventoryHistorySeeder;
 use Modules\Product\Database\Seeders\ProductCatalogSeeder;
 
@@ -40,6 +41,10 @@ class DemoCatalogInventorySeeder extends Seeder
 
         $this->call(ProductCatalogSeeder::class);
         $this->call(InventoryHistorySeeder::class);
+
+        // Shopee category/attribute/variation schema, stored locally like TikTok
+        // (no live Shopee shop required). Syncable later via `shopee:sync-*`.
+        $this->call(ShopeeCategorySchemaSeeder::class);
 
         $this->command->info('DemoCatalogInventorySeeder complete.');
     }

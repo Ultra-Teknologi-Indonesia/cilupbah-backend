@@ -251,7 +251,7 @@ class InventoryHistorySeeder extends Seeder
 
         $items = [];
         $subTotal = 0;
-        foreach ($variants as $v) {
+        foreach ($this->restockSubset($variants) as $v) {
             $qty = $this->restockQty($v->buy_price);
             $unit = (int) $v->buy_price;
             $amount = $qty * $unit;
@@ -405,7 +405,7 @@ class InventoryHistorySeeder extends Seeder
 
         $subTotal = 0;
         $lines = [];
-        foreach ($variants as $v) {
+        foreach ($this->restockSubset($variants) as $v) {
             $qty = $this->restockQty($v->buy_price);
             $recv = $partial ? (int) floor($qty / 2) : 0;
             $unit = (int) $v->buy_price;
@@ -507,6 +507,22 @@ class InventoryHistorySeeder extends Seeder
     // ---------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------
+
+    /**
+     * A single restock PO realistically covers only a handful of phone-model
+     * variants, not the whole line-up. Returns a random subset so products with
+     * a large "Tipe HP" matrix don't generate an unbounded movement history.
+     */
+    private function restockSubset($variants)
+    {
+        $total = $variants->count();
+        if ($total <= 8) {
+            return $variants;
+        }
+        $take = random_int(6, min(16, $total));
+
+        return $variants->shuffle()->take($take);
+    }
 
     private function beginningQty(float $buyPrice): int
     {
