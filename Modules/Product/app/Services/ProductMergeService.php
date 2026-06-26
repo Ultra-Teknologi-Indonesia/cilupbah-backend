@@ -40,7 +40,7 @@ class ProductMergeService
                     'merged' => $master !== null,
                     'hidden' => isset($hiddenSet[$effName]),
                     'foto' => null,
-                    'vendor' => $p->brand->name ?? '',
+                    'vendor' => '',
                     'category' => $p->category->name ?? '',
                     'product_count' => 0,
                     'sku_count' => 0,
@@ -57,9 +57,6 @@ class ProductMergeService
                 if ($foto) {
                     $g['foto'] = $foto;
                 }
-            }
-            if (! $g['vendor'] && $p->brand) {
-                $g['vendor'] = $p->brand->name;
             }
             if (! $g['category'] && $p->category) {
                 $g['category'] = $p->category->name;
@@ -187,7 +184,7 @@ class ProductMergeService
             'id' => $p->id,
             'name' => $p->name,
             'sku' => $this->representativeSku($p),
-            'vendor' => $p->brand->name ?? null,
+            'vendor' => null,
         ])->all();
 
         $keyFn = function (array $p): ?string {
