@@ -20,7 +20,6 @@ class ProductMergeServiceTest extends TestCase
     {
         parent::setUp();
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Aksesoris']);
-        DB::table('brands')->insertOrIgnore(['id' => 1, 'name' => 'Generic']);
     }
 
     private function service(): ProductMergeService
@@ -33,7 +32,6 @@ class ProductMergeServiceTest extends TestCase
         $p = Product::create([
             'name' => $name,
             'category_id' => 1,
-            'brand_id' => 1,
             'status' => $status,
             'is_active' => true,
         ]);

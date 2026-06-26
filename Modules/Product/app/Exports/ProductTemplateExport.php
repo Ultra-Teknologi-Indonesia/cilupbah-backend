@@ -11,7 +11,7 @@ class ProductTemplateExport implements WithMultipleSheets
 {
     public const COLUMNS = [
         'item_group_name', 'item_code', 'sell_price', 'barcode',
-        'item_category_id', 'category', 'brand', 'description',
+        'item_category_id', 'category', 'description',
         'package_weight', 'package_length', 'package_width', 'package_height',
         'image_url1', 'image_url2', 'image_url3', 'image_url4', 'image_url5',
         'default_images',
@@ -21,7 +21,7 @@ class ProductTemplateExport implements WithMultipleSheets
     {
         $example = [[
             'Kaos Polos', 'KP-HITAM-M', 75000, '8991234567890',
-            null, 'Fashion Pria', 'Cilupbah', 'Kaos katun premium',
+            null, 'Fashion Pria', 'Kaos katun premium',
             0.2, 30, 25, 2,
             'https://contoh.com/img1.jpg', null, null, null, null,
             null,
@@ -35,7 +35,6 @@ class ProductTemplateExport implements WithMultipleSheets
             ['barcode', 'Tidak', 'Barcode varian.'],
             ['item_category_id', 'Tidak', 'ID kategori internal bila sudah tahu. Jika kosong, pakai kolom category.'],
             ['category', 'Tidak', 'Nama kategori; dibuat otomatis bila belum ada (default Uncategorized).'],
-            ['brand', 'Tidak', 'Nama brand; dibuat otomatis bila belum ada.'],
             ['description', 'Tidak', 'Deskripsi produk.'],
             ['package_weight', 'Tidak', 'Berat paket (angka).'],
             ['package_length', 'Tidak', 'Panjang paket (angka).'],

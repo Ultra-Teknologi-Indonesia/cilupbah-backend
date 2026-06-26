@@ -21,7 +21,6 @@ class CreateProductRequest extends FormRequest
 
             'sku' => 'nullable|string|max:50|unique:products,sku',
             'category_id' => 'required|bail|integer|exists:categories,id',
-            'brand_id' => 'nullable|bail|integer|exists:brands,id',
             'description' => 'nullable|string|max:10000',
             'is_bundle' => 'nullable|boolean',
             'is_consignment' => 'nullable|boolean',

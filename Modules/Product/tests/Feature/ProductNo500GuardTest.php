@@ -52,7 +52,6 @@ class ProductNo500GuardTest extends TestCase
             ['get', '/api/v1/categories/abc'],
             ['put', '/api/v1/categories/abc'],
             ['delete', '/api/v1/categories/abc'],
-            ['get', '/api/v1/brands/abc'],
             ['get', '/api/v1/attributes/abc'],
             ['post', '/api/v1/categories/abc/map-channel'],
             ['post', '/api/v1/attributes/abc/map-channel'],
@@ -76,11 +75,10 @@ class ProductNo500GuardTest extends TestCase
             ->postJson('/api/v1/products', [
                 'name' => 'Produk Uji',
                 'category_id' => 'abc',
-                'brand_id' => 'abc',
                 'variants' => [['sku' => 'SKU-GUARD-1', 'sell_price' => 1000]],
             ])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['category_id', 'brand_id']);
+            ->assertJsonValidationErrors(['category_id']);
 
         $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/categories', ['name' => 'Kategori Uji', 'parent_id' => 'abc'])

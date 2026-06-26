@@ -49,7 +49,7 @@ $products = [
         'name'        => 'Wardah Lightening Serum Vitamin C',
         'description' => 'Serum wajah dengan kandungan Vitamin C 10% yang mencerahkan dan meratakan warna kulit secara alami. Cocok untuk semua jenis kulit, bebas paraben.',
         'category_id' => 3,   
-        'brand_id'    => null,
+
         'weight'      => 0.08,
         'length'      => 4.0, 'width' => 4.0, 'height' => 12.0,
         'is_active'   => true,
@@ -66,7 +66,7 @@ $products = [
         'name'        => 'Emina Sun Battle SPF35 PA+++ Sunscreen',
         'description' => 'Sunscreen ringan berbasis air dengan SPF35 PA+++ untuk perlindungan optimal dari sinar UVA dan UVB. Tekstur cair, tidak berminyak, cocok untuk pemakaian sehari-hari.',
         'category_id' => 5,   
-        'brand_id'    => null,
+
         'weight'      => 0.09,
         'length'      => 5.0, 'width' => 5.0, 'height' => 14.0,
         'is_active'   => true,
@@ -90,7 +90,7 @@ $products = [
         'name'        => 'Maybelline Fit Me Matte + Poreless Foundation',
         'description' => 'Foundation matte dengan formula micro-powder yang menyerap minyak berlebih dan mengecilkan tampilan pori. Memberikan tampilan kulit halus, segar, dan tahan lama hingga 12 jam.',
         'category_id' => 16,  
-        'brand_id'    => null,
+
         'weight'      => 0.12,
         'length'      => 4.0, 'width' => 4.0, 'height' => 15.0,
         'is_active'   => true,
@@ -112,7 +112,7 @@ $products = [
         'name'        => 'Scarlett Whitening Bright Glow Body Lotion',
         'description' => 'Lotion tubuh pemutih dengan kandungan Glutathione dan Vitamin E yang mencerahkan serta melembutkan kulit. Aroma parfum tahan lama sepanjang hari.',
         'category_id' => 11,  
-        'brand_id'    => null,
+
         'weight'      => 0.25,
         'length'      => 6.0, 'width' => 6.0, 'height' => 18.0,
         'is_active'   => true,
@@ -128,7 +128,7 @@ $products = [
         'name'        => 'MS Glow Sheet Mask Perawatan Intensif',
         'description' => 'Sheet mask premium berbahan essence serum tinggi untuk perawatan wajah intensif. Formula unik yang menyesuaikan kebutuhan kulit: cerahkan, atasi jerawat, atau hidrasi mendalam.',
         'category_id' => 7,   
-        'brand_id'    => null,
+
         'weight'      => 0.03,
         'length'      => 20.0, 'width' => 14.0, 'height' => 1.0,
         'is_active'   => true,
@@ -149,7 +149,7 @@ $products = [
         'name'        => 'Somethinc Hyaluronic Acid Toner 2% + B5',
         'description' => 'Toner dengan konsentrasi Hyaluronic Acid 2% yang dikombinasikan Vitamin B5 untuk hidrasi kulit mendalam. Formula ringan yang cepat meresap dan membuat kulit terasa kenyal seharian.',
         'category_id' => 6,   
-        'brand_id'    => null,
+
         'weight'      => 0.18,
         'length'      => 5.0, 'width' => 5.0, 'height' => 16.0,
         'is_active'   => true,
@@ -174,7 +174,7 @@ $products = [
         'name'        => 'Implora Matte Lipstick Long-Lasting',
         'description' => 'Lipstik matte lokal dengan pigmen tinggi dan daya tahan 8 jam. Formula lembab tidak membuat bibir kering, mudah diaplikasikan dengan sekali usap.',
         'category_id' => 15,  
-        'brand_id'    => null,
+
         'weight'      => 0.02,
         'length'      => 2.0, 'width' => 2.0, 'height' => 8.0,
         'is_active'   => true,
@@ -196,7 +196,7 @@ $products = [
         'name'        => 'NASA Natural Milk Whitening Soap',
         'description' => 'Sabun mandi pemutih alami dengan kandungan susu dan ekstrak tanaman herbal pilihan. Kulit terasa bersih, lembut, dan cerah secara bertahap. Dermatologically tested.',
         'category_id' => 10,  
-        'brand_id'    => null,
+
         'weight'      => 0.15,
         'length'      => 8.0, 'width' => 6.0, 'height' => 3.0,
         'is_active'   => true,
@@ -212,7 +212,7 @@ $products = [
         'name'        => 'Emina Bare With Me Concealer',
         'description' => 'Concealer cair dengan coverage medium-to-full yang dapat di-blend sempurna untuk menutup kantung mata, noda gelap, dan bekas jerawat. Tahan air dan long lasting.',
         'category_id' => 17,  
-        'brand_id'    => null,
+
         'weight'      => 0.05,
         'length'      => 3.0, 'width' => 3.0, 'height' => 10.0,
         'is_active'   => true,
@@ -233,8 +233,7 @@ $products = [
     [
         'name'           => 'Mustika Ratu Lulur Tubuh Kunyit Putih',
         'description'    => 'Lulur tradisional Indonesia dengan bahan alami kunyit putih yang mencerahkan dan menghaluskan kulit. Mengangkat sel kulit mati secara lembut, meninggalkan kulit halus bercahaya. Produk titipan/konsinyasi.',
-        'category_id'    => 12,  
-        'brand_id'       => null,
+        'category_id'    => 12,
         'weight'         => 0.2,
         'length'         => 10.0, 'width' => 8.0, 'height' => 5.0,
         'is_active'      => true,

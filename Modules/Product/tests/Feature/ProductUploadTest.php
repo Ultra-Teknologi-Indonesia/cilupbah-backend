@@ -17,7 +17,6 @@ class ProductUploadTest extends TestCase
         $this->withoutMiddleware();
 
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Kamera']);
-        DB::table('brands')->insertOrIgnore(['id' => 1, 'name' => 'Sony']);
         DB::table('attributes')->insertOrIgnore([
             ['id' => 1, 'name' => 'Warna', 'type' => 'sales'],
             ['id' => 2, 'name' => 'Ukuran', 'type' => 'sales'],
@@ -28,7 +27,6 @@ class ProductUploadTest extends TestCase
     public function test_can_upload_internal_product()
     {
         $payload = [
-            "brand_id" => 1,
             "category_id" => 1,
             "name" => "Sony Alpha A6000 Kit 16-50mm",
             "sku" => "SONY-A6000-COPY-" . rand(1000, 9999),

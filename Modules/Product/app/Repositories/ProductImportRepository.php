@@ -2,7 +2,6 @@
 
 namespace Modules\Product\Repositories;
 
-use Modules\Product\Models\Brand;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductBundleItem;
@@ -43,11 +42,6 @@ class ProductImportRepository
     public function findOrCreateCategoryByName(string $name): int
     {
         return (int) Category::firstOrCreate(['name' => $name], ['is_active' => true])->id;
-    }
-
-    public function findOrCreateBrandByName(string $name): int
-    {
-        return (int) Brand::firstOrCreate(['name' => $name])->id;
     }
 
     public function hasMedia($productId): bool

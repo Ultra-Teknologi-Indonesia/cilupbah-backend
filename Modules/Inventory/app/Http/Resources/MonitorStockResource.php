@@ -26,7 +26,6 @@ class MonitorStockResource extends JsonResource
             'item_id'        => $this->id,
             'sku'            => $this->sku,
             'product_name'   => $this->product_name ?? $this->whenLoaded('product', fn () => $this->product?->name),
-            'brand_name'     => $this->whenLoaded('product', fn () => $this->product?->brand?->name),
             'variation_values' => $this->variationValues(),
             'thumbnail'      => $this->resolveThumbnail(),
             'min_stock'      => $minStock,

@@ -86,7 +86,6 @@ class ChannelProductController extends Controller
             type: "object",
             example: [
                 "shop_id" => "7494685794425930858",
-                "brand_id" => 1,
                 "category_id" => 1,
                 "name" => "Sepatu Bola Nike Mercurial Superfly",
                 "sku" => "SHOE-FB-NIKE-001",

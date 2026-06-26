@@ -6,7 +6,6 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Modules\Product\Models\Brand;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductBundleItem;
@@ -201,11 +200,6 @@ class ProductCatalogSeeder extends Seeder
         }
     }
 
-    private function brandId(string $name): int
-    {
-        return Brand::firstOrCreate(['name' => $name])->id;
-    }
-
     private function createProduct(array $e): void
     {
         $catName = $e['cat'];
@@ -225,7 +219,6 @@ class ProductCatalogSeeder extends Seeder
 
         $product = Product::create([
             'category_id' => $this->categoryIds[$catName],
-            'brand_id' => $this->brandId($e['brand']),
             'name' => $e['name'],
             'sku' => $sku,
             'description' => $e['desc'] ?? ($e['name'] . ' — produk aksesoris berkualitas untuk perangkat Anda.'),

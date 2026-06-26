@@ -30,7 +30,6 @@ class ProductService
         'variants.inventories',
         'media',
         'category',
-        'brand',
         'channelMappings.channelShop.channel',
     ];
 
@@ -111,7 +110,6 @@ class ProductService
             'name' => $data['name'],
             'sku' => $data['sku'] ?? null,
             'category_id' => $data['category_id'],
-            'brand_id' => $data['brand_id'] ?? null,
             'is_bundle' => true,
         ];
 
@@ -240,7 +238,7 @@ class ProductService
 
         $result = DB::transaction(function () use ($productId, $data) {
             $productData = Arr::only($data, [
-                'name', 'sku', 'description', 'category_id', 'brand_id', 'search_keyword',
+                'name', 'sku', 'description', 'category_id', 'search_keyword',
                 'order_type', 'indent_days', 'condition', 'status',
                 'weight', 'weight_unit', 'length', 'width', 'height', 'is_active', 'is_cod_allowed',
                 'is_bundle', 'is_consignment', 'package_contents',
@@ -712,7 +710,7 @@ class ProductService
 
         return DB::transaction(function () use ($data) {
             $productData = Arr::only($data, [
-                'category_id', 'brand_id', 'name', 'sku', 'description',
+                'category_id', 'name', 'sku', 'description',
                 'order_type', 'indent_days',
                 'weight', 'weight_unit', 'length', 'width', 'height', 'is_active',
                 'is_bundle', 'is_consignment', 'is_from_channel',

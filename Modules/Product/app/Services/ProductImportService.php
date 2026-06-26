@@ -16,13 +16,10 @@ class ProductImportService
 
             $categoryId = $this->resolveCategory($row['item_category_id'] ?? null, $row['category'] ?? '');
 
-            $brandId = $this->resolveBrand($row['brand'] ?? '');
-
             $productName = $row['item_group_name'] ?? 'Unnamed Product';
 
             $productId = $this->repository->upsertProductByName($productName, [
                 'category_id' => $categoryId,
-                'brand_id' => $brandId,
                 'name' => $productName,
                 'description' => $row['description'] ?? '',
                 'weight' => $row['package_weight'] ?? 0,
@@ -79,15 +76,6 @@ class ProductImportService
         }
 
         return $this->repository->findOrCreateCategoryByName($categoryName);
-    }
-
-    protected function resolveBrand($brandName)
-    {
-        if (empty($brandName)) {
-            return null;
-        }
-
-        return $this->repository->findOrCreateBrandByName($brandName);
     }
 
     protected function processMedia(string $productId, array $row)

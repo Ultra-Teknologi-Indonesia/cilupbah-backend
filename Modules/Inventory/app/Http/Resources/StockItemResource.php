@@ -18,7 +18,6 @@ class StockItemResource extends JsonResource
             'item_group_id' => $this->product_id,
             'is_bundle' => $this->whenLoaded('product', fn () => (bool) $this->product?->is_bundle, false),
             'variation_values' => $this->variationValues(),
-            'brand_name' => $this->whenLoaded('product', fn () => $this->product?->brand?->name),
             'stock_this' => $this->whenLoaded('product', fn () => (bool) $this->product?->is_stored, true),
             'average_cost' => $this->weightedAverageCost($inventories),
             'location_stocks' => $this->locationStocks($inventories),

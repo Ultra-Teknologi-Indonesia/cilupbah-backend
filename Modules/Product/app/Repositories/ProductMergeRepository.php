@@ -14,7 +14,6 @@ class ProductMergeRepository
         'variants:id,product_id,sku,sell_price',
         'media:id,product_id,url,is_primary,sort_order',
         'category:id,name',
-        'brand:id,name',
         'channelMappings:id,product_id,channel_shop_id',
         'channelMappings.channelShop:id,channel_id,shop_name',
         'channelMappings.channelShop.channel:id,name,code',
@@ -24,7 +23,7 @@ class ProductMergeRepository
     {
         return Product::query()
             ->where('status', Product::STATUS_MASTER)
-            ->select(['id', 'name', 'sku', 'category_id', 'brand_id'])
+            ->select(['id', 'name', 'sku', 'category_id'])
             ->with(self::CATALOG_RELATIONS)
             ->lazy();
     }

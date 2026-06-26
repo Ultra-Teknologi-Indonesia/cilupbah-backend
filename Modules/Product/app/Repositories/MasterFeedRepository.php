@@ -12,7 +12,6 @@ class MasterFeedRepository
 {
     private const RELATIONS = [
         'category',
-        'brand',
         'variationTypes.attribute',
         'variants.options.attribute',
         'variants.channelMappings.channelMapping.channelShop.channel',
@@ -28,8 +27,6 @@ class MasterFeedRepository
             ->with(self::RELATIONS)
             ->allowedSearch('name', 'sku')
             ->allowedFilters(
-                AllowedFilter::exact('brand_id'),
-
                 AllowedFilter::callback('category_id', function ($query, $value) {
                     $query->whereIn('category_id', $this->categoryWithDescendants($value));
                 }),
@@ -61,7 +58,7 @@ class MasterFeedRepository
     {
         $roots = array_filter(array_map('intval', (array) $values));
         if (empty($roots)) {
-            return [0]; 
+            return [0];
         }
 
         $childrenByParent = [];
@@ -93,8 +90,6 @@ class MasterFeedRepository
             ->with(self::RELATIONS)
             ->allowedSearch('name', 'sku')
             ->allowedFilters(
-                AllowedFilter::exact('brand_id'),
-
                 AllowedFilter::callback('category_id', function ($query, $value) {
                     $query->whereIn('category_id', $this->categoryWithDescendants($value));
                 }),

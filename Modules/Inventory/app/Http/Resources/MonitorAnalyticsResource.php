@@ -26,7 +26,6 @@ class MonitorAnalyticsResource extends JsonResource
             'item_id'        => $this->id,
             'sku'            => $this->sku,
             'product_name'   => $this->product_name ?? $this->whenLoaded('product', fn () => $this->product?->name),
-            'brand_name'     => $this->whenLoaded('product', fn () => $this->product?->brand?->name),
             'variation_values' => $this->variationValues(),
             'thumbnail'      => $this->resolveThumbnail(),
             'on_hand'        => (int) ($this->total_on_hand ?? 0),

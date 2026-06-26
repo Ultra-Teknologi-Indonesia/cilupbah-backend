@@ -10,7 +10,6 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Finance\Models\Account;
 use Modules\Finance\Support\AccountMappingKey;
 use Modules\Product\Models\Attribute;
-use Modules\Product\Models\Brand;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Tax\Models\Tax;
@@ -23,7 +22,6 @@ class ProductCreateFullParityTest extends TestCase
 
     protected User $user;
     protected Category $category;
-    protected Brand $brand;
     protected ChannelShop $shopA;
     protected ChannelShop $shopB;
     protected Account $revenue;
@@ -40,7 +38,6 @@ class ProductCreateFullParityTest extends TestCase
         $this->actingAs($this->user);
 
         $this->category = Category::create(['name' => 'Aksesoris']);
-        $this->brand = Brand::create(['name' => 'UltraFit']);
 
         $channel = Channel::create([
             'id' => Uuid::uuid7()->getHex()->toString(),
@@ -75,7 +72,6 @@ class ProductCreateFullParityTest extends TestCase
             'name' => 'Resistance Band',
             'sku' => 'PRD-RB-01',
             'category_id' => $this->category->id,
-            'brand_id' => $this->brand->id,
             'media' => [['url' => 'https://img.test/a.jpg', 'media_type' => 'image']],
             'variants' => [[
                 'sku' => 'RB-VAR-01',

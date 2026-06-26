@@ -30,14 +30,12 @@ class MasterFeedTest extends TestCase
         $this->withoutMiddleware();
 
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Casing']);
-        DB::table('brands')->insertOrIgnore(['id' => 1, 'name' => 'Cilupbah']);
 
         $this->warna = Attribute::create(['name' => 'Warna', 'type' => 'sales']);
 
         $this->master = Product::create([
             'name' => 'Softcase Rhombic',
             'category_id' => 1,
-            'brand_id' => 1,
             'status' => Product::STATUS_MASTER,
             'order_type' => 'PREORDER',
             'is_active' => true,
@@ -271,7 +269,6 @@ class MasterFeedTest extends TestCase
         $product = Product::create(array_merge([
             'name' => $name,
             'category_id' => 1,
-            'brand_id' => 1,
             'status' => Product::STATUS_MASTER,
             'is_active' => true,
             'is_bundle' => false,

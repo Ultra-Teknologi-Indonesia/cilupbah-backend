@@ -5,7 +5,6 @@ namespace Modules\Product\Tests\Feature;
 use Tests\TestCase;
 use App\Models\User;
 use Modules\Product\Models\Category;
-use Modules\Product\Models\Brand;
 use Modules\Product\Models\Product;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
@@ -19,7 +18,6 @@ class ProductE2ETest extends TestCase
 
     protected User $user;
     protected Category $category;
-    protected Brand $brand;
     protected ChannelShop $channelShop;
     protected string $testProductId;
 
@@ -33,11 +31,6 @@ class ProductE2ETest extends TestCase
         $this->category = Category::create([
             'id' => Uuid::uuid7()->getHex()->toString(),
             'name' => 'Kategori E2E'
-        ]);
-
-        $this->brand = Brand::create([
-            'id' => Uuid::uuid7()->getHex()->toString(),
-            'name' => 'Brand E2E'
         ]);
 
         $channel = Channel::create([
@@ -62,7 +55,6 @@ class ProductE2ETest extends TestCase
             'name' => 'Produk E2E Bundle',
             'sku' => 'E2E-PROD-01',
             'category_id' => $this->category->id,
-            'brand_id' => $this->brand->id,
             'description' => 'Deskripsi produk E2E',
             'weight' => 2.5,
             'length' => 10,

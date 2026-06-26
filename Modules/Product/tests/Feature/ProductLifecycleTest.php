@@ -25,7 +25,6 @@ class ProductLifecycleTest extends TestCase
         $this->withoutMiddleware();
 
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Cat']);
-        DB::table('brands')->insertOrIgnore(['id' => 1, 'name' => 'Brand']);
     }
 
     private function makeProduct(string $status, bool $withVariant = true, bool $withMedia = true): Product

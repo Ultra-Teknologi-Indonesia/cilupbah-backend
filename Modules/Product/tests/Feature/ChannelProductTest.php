@@ -40,7 +40,6 @@ class ChannelProductTest extends TestCase
         ]);
 
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Test Cat']);
-        DB::table('brands')->insertOrIgnore(['id' => 1, 'name' => 'Test Brand']);
 
         $this->shop = ChannelShop::create([
             'shop_id' => '12345',
@@ -57,7 +56,6 @@ class ChannelProductTest extends TestCase
         $this->testProduct = Product::create([
             'name' => 'Channel Test Product ' . Str::random(5),
             'category_id' => 1,
-            'brand_id' => 1,
             'description' => 'A test product for channel operations.',
             'weight' => 1.5,
             'length' => 12,
@@ -105,7 +103,6 @@ class ChannelProductTest extends TestCase
     {
         $payload = [
             'shop_id' => $this->secondaryShop->shop_id,
-            'brand_id' => 1,
             'category_id' => 1,
             'name' => 'New Tiktok Product ' . rand(1000, 9999),
             'description' => 'Test description',

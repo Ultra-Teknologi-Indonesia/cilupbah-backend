@@ -28,7 +28,7 @@ class MonitorStockRepository
 
     /**
      * Base builder: 1 baris per varian stored, dengan agregasi stok.
-     * @param  array{search?:string,brand_id?:string,category_id?:string,location_id?:string}  $filters
+     * @param  array{search?:string,category_id?:string,location_id?:string}  $filters
      */
     private function baseQuery(array $filters): Builder
     {
@@ -50,8 +50,7 @@ class MonitorStockRepository
             ->selectRaw('COALESCE(inv.available, 0) as total_available')
             ->selectRaw('COALESCE(inv.on_order, 0) as total_on_order')
             ->with([
-                'product:id,name,sku,is_bundle,is_stored,brand_id,category_id',
-                'product.brand:id,name',
+                'product:id,name,sku,is_bundle,is_stored,category_id',
                 'product.media' => fn ($q) => $q->whereNull('variant_id')->orderBy('sort_order'),
                 'media' => fn ($q) => $q->orderBy('sort_order'),
                 'options.attribute:id,name',

@@ -31,12 +31,10 @@ class UploadHistoryFeedTest extends TestCase
         $this->withoutMiddleware();
 
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Casing']);
-        DB::table('brands')->insertOrIgnore(['id' => 1, 'name' => 'Cilupbah']);
 
         $this->product = Product::create([
             'name' => 'Clear Candy Ring Magsafe',
             'category_id' => 1,
-            'brand_id' => 1,
             'status' => Product::STATUS_MASTER,
             'is_active' => true,
         ]);
@@ -215,7 +213,6 @@ class UploadHistoryFeedTest extends TestCase
         $other = Product::create([
             'name' => 'Produk Lain',
             'category_id' => 1,
-            'brand_id' => 1,
             'status' => Product::STATUS_MASTER,
             'is_active' => true,
         ]);

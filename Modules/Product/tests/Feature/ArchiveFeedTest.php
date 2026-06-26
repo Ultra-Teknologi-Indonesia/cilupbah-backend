@@ -32,7 +32,6 @@ class ArchiveFeedTest extends TestCase
         $this->withoutMiddleware();
 
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Casing']);
-        DB::table('brands')->insertOrIgnore(['id' => 1, 'name' => 'Cilupbah']);
 
         $this->warna = Attribute::create(['name' => 'Warna', 'type' => 'sales']);
         $this->archiver = User::factory()->create(['email' => 'archiver@cilupbah.id']);
@@ -40,7 +39,6 @@ class ArchiveFeedTest extends TestCase
         $this->archived = Product::create([
             'name' => 'Softcase Rhombic',
             'category_id' => 1,
-            'brand_id' => 1,
             'status' => Product::STATUS_ARCHIVED,
             'order_type' => 'PREORDER',
             'is_active' => false,

@@ -25,7 +25,6 @@ class ProductMergeApiTest extends TestCase
         $this->withoutMiddleware();
 
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Aksesoris']);
-        DB::table('brands')->insertOrIgnore(['id' => 1, 'name' => 'Generic']);
 
         $shopee = Channel::create(['code' => 'shopee', 'name' => 'Shopee', 'is_active' => true]);
         $tiktok = Channel::create(['code' => 'tiktok', 'name' => 'TikTok', 'is_active' => true]);
@@ -49,7 +48,6 @@ class ProductMergeApiTest extends TestCase
         $p = Product::create([
             'name' => $name,
             'category_id' => 1,
-            'brand_id' => 1,
             'status' => Product::STATUS_MASTER,
             'is_active' => true,
         ]);

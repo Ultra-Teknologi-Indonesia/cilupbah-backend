@@ -51,7 +51,6 @@ class InventoryController extends Controller
             new OA\Parameter(name: 'search', in: 'query', required: false, description: 'Search by SKU or product name', schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[product_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
-            new OA\Parameter(name: 'filter[brand_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'Sort by: product_variants.sku, product_variants.created_at', schema: new OA\Schema(type: 'string')),
         ],
         responses: [
@@ -89,8 +88,7 @@ class InventoryController extends Controller
         try {
             $variant = \Modules\Product\Models\ProductVariant::query()
                 ->with([
-                    'product:id,name,sku,is_bundle,is_stored,brand_id',
-                    'product.brand:id,name',
+                    'product:id,name,sku,is_bundle,is_stored',
                     'product.media' => fn ($q) => $q->whereNull('variant_id')->orderBy('sort_order'),
                     'media' => fn ($q) => $q->orderBy('sort_order'),
                     'options.attribute:id,name',
@@ -638,7 +636,7 @@ class InventoryController extends Controller
     public function bySku(string $sku): JsonResponse
     {
         $variant = \Modules\Product\Models\ProductVariant::where('sku', $sku)
-            ->with(['product:id,name,sku,category_id,brand_id,status,is_bundle', 'product.category:id,name', 'product.brand:id,name', 'inventories'])
+            ->with(['product:id,name,sku,category_id,status,is_bundle', 'product.category:id,name', 'inventories'])
             ->first();
 
         if (! $variant) {

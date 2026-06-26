@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Builder;
 trait AppliesStockMonitorFilters
 {
     /**
-     * @param  array{search?:string,brand_id?:string,category_id?:string}  $filters
+     * @param  array{search?:string,category_id?:string}  $filters
      */
     protected function applyCommonFilters(Builder $query, array $filters): Builder
     {
@@ -24,10 +24,6 @@ trait AppliesStockMonitorFilters
                 $q->where('product_variants.sku', 'like', $term)
                     ->orWhere('products.name', 'like', $term);
             });
-        }
-
-        if (! empty($filters['brand_id'])) {
-            $query->where('products.brand_id', $filters['brand_id']);
         }
 
         if (! empty($filters['category_id'])) {

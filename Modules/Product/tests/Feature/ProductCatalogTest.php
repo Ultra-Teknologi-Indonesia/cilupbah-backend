@@ -22,12 +22,10 @@ class ProductCatalogTest extends TestCase
         $this->withoutMiddleware();
 
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Kamera']);
-        DB::table('brands')->insertOrIgnore(['id' => 1, 'name' => 'Sony']);
 
         $this->masterProduct = Product::create([
             'name' => 'Master Camera',
             'category_id' => 1,
-            'brand_id' => 1,
             'description' => 'Master product',
             'status' => Product::STATUS_MASTER,
             'is_active' => true,
@@ -112,7 +110,6 @@ class ProductCatalogTest extends TestCase
         $this->assertEquals(100000, $response->json('data.price_range.min'));
         $this->assertEquals(250000, $response->json('data.price_range.max'));
         $response->assertJsonPath('data.category.name', 'Kamera');
-        $response->assertJsonPath('data.brand.name', 'Sony');
         $response->assertJsonPath('data.channels_count', 0);
         $response->assertJsonCount(2, 'data.variants');
     }

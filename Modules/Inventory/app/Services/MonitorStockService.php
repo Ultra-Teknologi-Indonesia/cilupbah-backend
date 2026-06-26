@@ -12,12 +12,11 @@ class MonitorStockService
         protected MonitorStockRepository $repository,
     ) {}
 
-    /** @return array{search?:string,brand_id?:string,category_id?:string,location_id?:string} */
+    /** @return array{search?:string,category_id?:string,location_id?:string} */
     public function filtersFrom(array $input): array
     {
         return array_filter([
             'search'      => $input['search'] ?? null,
-            'brand_id'    => $input['brand_id'] ?? null,
             'category_id' => $input['category_id'] ?? null,
             'location_id' => $input['location_id'] ?? null,
         ], fn ($v) => $v !== null && $v !== '');

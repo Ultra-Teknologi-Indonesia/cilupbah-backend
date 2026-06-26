@@ -22,7 +22,6 @@ class MasterItemResource extends JsonResource
             'sell_price' => $this->minSellPrice(),
             'item_category_id' => $this->category_id,
             'category_name' => $this->whenLoaded('category', fn () => $this->category?->name),
-            'brand_name' => $this->whenLoaded('brand', fn () => $this->brand?->name),
             'is_consignment' => (bool) $this->is_consignment,
             'variants' => $this->variantList(),
             'total_variants' => $this->resource->relationLoaded('variants') ? $this->variants->count() : 0,

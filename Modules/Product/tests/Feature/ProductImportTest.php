@@ -41,12 +41,12 @@ class ProductImportTest extends TestCase
 
     public function test_import_single_processes_valid_and_records_invalid(): void
     {
-        $headings = ['item_group_name', 'item_code', 'sell_price', 'category', 'brand'];
+        $headings = ['item_group_name', 'item_code', 'sell_price', 'category'];
         $rows = [
-            ['Kaos Polos', 'KP-HITAM-M', 75000, 'Fashion', 'Cilupbah'],   
-            ['Kaos Polos', 'KP-PUTIH-L', 80000, 'Fashion', 'Cilupbah'],   
-            ['Celana', '', 50000, 'Fashion', 'Cilupbah'],                 
-            ['Topi', 'TP-1', 'bukan-angka', 'Fashion', 'Cilupbah'],       
+            ['Kaos Polos', 'KP-HITAM-M', 75000, 'Fashion'],
+            ['Kaos Polos', 'KP-PUTIH-L', 80000, 'Fashion'],
+            ['Celana', '', 50000, 'Fashion'],
+            ['Topi', 'TP-1', 'bukan-angka', 'Fashion'],       
         ];
 
         $file = $this->makeUpload($headings, $rows);

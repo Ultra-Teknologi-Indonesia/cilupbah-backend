@@ -160,8 +160,7 @@ class InventoryRepository
         )
             ->allowedSearch('product_variants.sku', 'products.name')
             ->with([
-                'product:id,name,sku,is_bundle,is_stored,brand_id',
-                'product.brand:id,name',
+                'product:id,name,sku,is_bundle,is_stored',
                 'product.media' => fn ($q) => $q->whereNull('variant_id')->orderBy('sort_order'),
                 'media' => fn ($q) => $q->orderBy('sort_order'),
                 'options.attribute:id,name',
@@ -169,7 +168,6 @@ class InventoryRepository
             ])
             ->allowedFilters(
                 AllowedFilter::exact('product_id', 'product_variants.product_id'),
-                AllowedFilter::exact('brand_id', 'products.brand_id'),
                 AllowedFilter::exact('is_bundle', 'products.is_bundle'),
                 AllowedFilter::callback('location_id', fn ($query, $value) => $query->whereHas('inventories', fn ($q) => $q->where('location_id', $value))),
                 AllowedFilter::callback('channel', fn ($query, $value) => $query->whereExists(function ($sub) use ($value) {

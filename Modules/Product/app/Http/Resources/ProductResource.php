@@ -43,10 +43,6 @@ class ProductResource extends JsonResource
                 'id' => $this->category->id,
                 'name' => $this->category->name,
             ] : null),
-            'brand' => $this->whenLoaded('brand', fn () => $this->brand ? [
-                'id' => $this->brand->id,
-                'name' => $this->brand->name,
-            ] : null),
             'is_bundle' => $this->is_bundle,
             'product_type' => $this->productType(),
             'total_variants' => $this->totalVariants(),

@@ -31,7 +31,7 @@ class ProductRepository
     {
         return QueryBuilder::for(Product::class)
             ->where('is_bundle', true)
-            ->with(['variants', 'media', 'category', 'brand'])
+            ->with(['variants', 'media', 'category'])
             ->allowedSearch('name')
             ->allowedFilters(AllowedFilter::exact('is_active'))
             ->allowedSorts('name', 'created_at')
@@ -154,7 +154,7 @@ class ProductRepository
     public function paginateIndex(?string $status = null): LengthAwarePaginator
     {
         return QueryBuilder::for(Product::class)
-            ->with(['variants', 'media', 'category', 'brand', 'channelMappings.channelShop.channel'])
+            ->with(['variants', 'media', 'category', 'channelMappings.channelShop.channel'])
             ->allowedSearch('name')
             ->allowedFilters(
                 AllowedFilter::exact('is_active')
@@ -168,7 +168,7 @@ class ProductRepository
     public function paginateUploadable(string $channelShopId): LengthAwarePaginator
     {
         return QueryBuilder::for(Product::class)
-            ->with(['variants', 'media', 'category', 'brand'])
+            ->with(['variants', 'media', 'category'])
             ->where('status', Product::STATUS_MASTER)
             ->whereDoesntHave('channelMappings', fn ($query) => $query->where('channel_shop_id', $channelShopId))
             ->allowedSearch('name')
