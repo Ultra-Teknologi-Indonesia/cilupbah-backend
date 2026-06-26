@@ -40,6 +40,19 @@ class MasterFeedController extends Controller
         return $this->successPaginatedResponse($paginator, 'Get master items success');
     }
 
+    public function downloaded(Request $request): JsonResponse
+    {
+        $paginator = $this->service->paginateDownloaded(
+            $request->query('updated_since'),
+        );
+
+        $paginator->through(
+            fn (Product $product) => (new MasterItemResource($product))->resolve($request)
+        );
+
+        return $this->successPaginatedResponse($paginator, 'Get downloaded products success');
+    }
+
     public function show(Request $request, string $id): JsonResponse
     {
         try {

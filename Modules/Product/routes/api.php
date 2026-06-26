@@ -41,6 +41,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('products/master', [MasterFeedController::class, 'index']);
     Route::get('products/master/{id}', [MasterFeedController::class, 'show'])->whereUuid('id');
 
+    Route::get('products/downloaded', [MasterFeedController::class, 'downloaded']);
+
     Route::get('products/reviews', [ReviewFeedController::class, 'index']);
 
     Route::get('products/archives', [ArchiveFeedController::class, 'index']);

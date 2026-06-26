@@ -157,8 +157,7 @@ class ProductRepository
             ->with(['variants', 'media', 'category', 'brand', 'channelMappings.channelShop.channel'])
             ->allowedSearch('name')
             ->allowedFilters(
-                AllowedFilter::exact('is_active'),
-                AllowedFilter::callback('is_download', fn ($query, $value) => $value ? $query->whereHas('channelMappings') : $query),
+                AllowedFilter::exact('is_active')
             )
             ->allowedSorts('name', 'created_at')
             ->when($status !== null, fn ($query) => $query->where('status', $status))

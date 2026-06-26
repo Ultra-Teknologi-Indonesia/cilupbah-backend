@@ -15,6 +15,11 @@ class MasterFeedService
         return $this->repository->paginate($status ?? Product::STATUS_MASTER, $updatedSince);
     }
 
+    public function paginateDownloaded(?string $updatedSince = null): LengthAwarePaginator
+    {
+        return $this->repository->paginateDownloaded($updatedSince);
+    }
+
     public function find(string $id): Product
     {
         return $this->repository->find($id, Product::STATUS_MASTER);
