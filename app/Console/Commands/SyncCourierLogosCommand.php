@@ -10,49 +10,18 @@ use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\TikTokClient;
 use Modules\Outbound\Models\Courier;
+use Modules\Outbound\Services\CourierMappingService;
 
 class SyncCourierLogosCommand extends Command
 {
     protected $signature = 'courier:sync-logos {--channel=all : shopee|tiktok|lazada|all}';
     protected $description = 'Pull courier logos from connected marketplace channels and store to S3';
 
-    private array $codeAliases = [
-        'j&t express' => 'jnt',
-        'j&t' => 'jnt',
-        'jnt express' => 'jnt',
-        'jne' => 'jne',
-        'jne express' => 'jne',
-        'jne reguler' => 'jne',
-        'sicepat' => 'sicepat',
-        'si cepat' => 'sicepat',
-        'sicepat express' => 'sicepat',
-        'anteraja' => 'anteraja',
-        'ninja express' => 'ninja',
-        'ninja van' => 'ninja',
-        'ninja xpress' => 'ninja',
-        'shopee express' => 'spx',
-        'spx' => 'spx',
-        'spx express' => 'spx',
-        'spx standard' => 'spx',
-        'spx instant' => 'spx_instant',
-        'shopee xpress' => 'spx',
-        'id express' => 'idexpress',
-        'idx' => 'idexpress',
-        'lion parcel' => 'lionparcel',
-        'gosend' => 'gosend',
-        'grabexpress' => 'grabexpress',
-        'grab express' => 'grabexpress',
-        'grab' => 'grabexpress',
-        'pos indonesia' => 'pos',
-        'tiki' => 'tiki',
-        'sap express' => 'sap',
-        'sap' => 'sap',
-        'wahana' => 'wahana',
-        'rex' => 'rex',
-        'tiktok shipping' => 'tiktok_shipping',
-        'lazada logistics' => 'lazada_logistics',
-        'lex id' => 'lex',
-    ];
+    public function __construct(
+        private readonly CourierMappingService $mapper,
+    ) {
+        parent::__construct();
+    }
 
     public function handle(): int
     {
@@ -115,19 +84,27 @@ class SyncCourierLogosCommand extends Command
                 $logoUrl = $item['logistics_channel_logo'] ?? null;
                 $name = $item['logistics_channel_name'] ?? '';
 
-                if (! $logoUrl || ! $name) {
+                if (! $name) {
                     continue;
                 }
 
-                $code = $this->resolveCode($name);
-                $logos[] = [
-                    'code' => $code,
-                    'name' => $name,
-                    'logo_url' => $logoUrl,
-                    'source' => 'shopee',
-                ];
+                // Always record the master-data mapping (courier enumeration). Logo
+                // download is a separate, optional step — sandbox shops and some
+                // channels return providers without a logo URL.
+                $code = $this->mapper->resolveCode($name);
+                $this->mapper->record('shopee', $name, $item['logistics_channel_id'] ?? null);
 
-                $this->line("  ✓ {$name} → {$code}");
+                if ($logoUrl) {
+                    $logos[] = [
+                        'code' => $code,
+                        'name' => $name,
+                        'logo_url' => $logoUrl,
+                        'source' => 'shopee',
+                    ];
+                    $this->line("  ✓ {$name} → {$code}");
+                } else {
+                    $this->line("  ✗ {$name} → {$code} (tidak ada logo)");
+                }
             }
 
             return $logos;
@@ -163,7 +140,8 @@ class SyncCourierLogosCommand extends Command
                     continue;
                 }
 
-                $code = $this->resolveCode($name);
+                $code = $this->mapper->resolveCode($name);
+                $this->mapper->record('lazada', $name, $item['id'] ?? null);
 
                 if ($logoUrl) {
                     $logos[] = [
@@ -196,36 +174,64 @@ class SyncCourierLogosCommand extends Command
             return [];
         }
 
-        $this->info("Mengambil delivery options dari TikTok ({$shop->shop_name})...");
+        $this->info("Mengambil shipping providers dari TikTok ({$shop->shop_name})...");
 
         try {
             $client = app(TikTokClient::class);
-            $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
-            $res = $client->request('GET', '/fulfillment/202309/shipping_providers', $queries, [], $shop->access_token);
+            $cipher = $shop->shop_cipher ?? '';
+            $token = $shop->access_token;
+            $queries = ['shop_cipher' => $cipher];
 
-            $providers = $res['data']['shipping_providers'] ?? [];
+            // TikTok Shop Logistics API (v202309) exposes shipping providers via a
+            // warehouse -> delivery option -> shipping provider traversal. There is
+            // no single "list all providers" endpoint.
+            $whRes = $client->request('GET', '/logistics/202309/warehouses', $queries, [], $token);
+            $warehouses = $whRes['data']['warehouses'] ?? [];
+
             $logos = [];
+            $seen = [];
 
-            foreach ($providers as $item) {
-                $name = $item['shipping_provider_name'] ?? '';
-                $logoUrl = $item['logo_url'] ?? $item['logo'] ?? null;
-
-                if (! $name) {
+            foreach ($warehouses as $warehouse) {
+                $warehouseId = $warehouse['id'] ?? null;
+                if (! $warehouseId) {
                     continue;
                 }
 
-                $code = $this->resolveCode($name);
+                $doRes = $client->request('GET', "/logistics/202309/warehouses/{$warehouseId}/delivery_options", $queries, [], $token);
+                $deliveryOptions = $doRes['data']['delivery_options'] ?? [];
 
-                if ($logoUrl) {
-                    $logos[] = [
-                        'code' => $code,
-                        'name' => $name,
-                        'logo_url' => $logoUrl,
-                        'source' => 'tiktok',
-                    ];
-                    $this->line("  ✓ {$name} → {$code}");
-                } else {
-                    $this->line("  ✗ {$name} → tidak ada logo");
+                foreach ($deliveryOptions as $deliveryOption) {
+                    $deliveryOptionId = $deliveryOption['id'] ?? null;
+                    if (! $deliveryOptionId) {
+                        continue;
+                    }
+
+                    $spRes = $client->request('GET', "/logistics/202309/delivery_options/{$deliveryOptionId}/shipping_providers", $queries, [], $token);
+                    $providers = $spRes['data']['shipping_providers'] ?? [];
+
+                    foreach ($providers as $item) {
+                        $name = $item['name'] ?? $item['shipping_provider_name'] ?? '';
+                        if (! $name || isset($seen[$name])) {
+                            continue;
+                        }
+                        $seen[$name] = true;
+
+                        $code = $this->mapper->resolveCode($name);
+                        $this->mapper->record('tiktok', $name, $item['id'] ?? $item['shipping_provider_id'] ?? null);
+                        $logoUrl = $item['logo_url'] ?? $item['logo'] ?? null;
+
+                        if ($logoUrl) {
+                            $logos[] = [
+                                'code' => $code,
+                                'name' => $name,
+                                'logo_url' => $logoUrl,
+                                'source' => 'tiktok',
+                            ];
+                            $this->line("  ✓ {$name} → {$code}");
+                        } else {
+                            $this->line("  ✗ {$name} → tidak ada logo");
+                        }
+                    }
                 }
             }
 
@@ -234,23 +240,6 @@ class SyncCourierLogosCommand extends Command
             $this->error("Gagal ambil TikTok providers: {$e->getMessage()}");
             return [];
         }
-    }
-
-    private function resolveCode(string $name): string
-    {
-        $lower = strtolower(trim($name));
-
-        if (isset($this->codeAliases[$lower])) {
-            return $this->codeAliases[$lower];
-        }
-
-        foreach ($this->codeAliases as $keyword => $code) {
-            if (str_contains($lower, $keyword)) {
-                return $code;
-            }
-        }
-
-        return str_replace([' ', '.', '-'], '_', $lower);
     }
 
     private function downloadAndStore(string $code, string $name, string $logoUrl): bool
