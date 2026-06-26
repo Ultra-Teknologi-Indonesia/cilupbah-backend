@@ -40,7 +40,11 @@ class ShopeeProductMapper
         ));
 
         if (count($variants) > 1) {
-            [$payload['tier_variation'], $modelList] = $this->buildVariations($variants, $config['tier_variation_name'] ?? null);
+            [$tierVariation, $modelList] = $this->buildVariations($variants, $config['tier_variation_name'] ?? null);
+
+            $prices = array_column($variants, 'sell_price');
+            $payload['original_price'] = (float) (min($prices) ?: 0);
+            $payload['seller_stock'] = [['stock' => 0]];
         } else {
             $first = $variants[0] ?? [];
             $payload['price_info'] = [['current_price' => (float) ($first['sell_price'] ?? 0)]];
@@ -49,7 +53,8 @@ class ShopeeProductMapper
 
         $result = array_filter($payload, fn ($v) => $v !== null);
 
-        if (! empty($modelList)) {
+        if (! empty($tierVariation)) {
+            $result['_tier_variation'] = $tierVariation;
             $result['_model_list'] = $modelList;
         }
 

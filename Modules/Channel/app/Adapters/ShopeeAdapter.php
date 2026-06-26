@@ -33,8 +33,9 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         try {
             $payload = $this->buildProductPayload($product, $shop);
 
+            $tierVariation = $payload['_tier_variation'] ?? null;
             $modelList = $payload['_model_list'] ?? null;
-            unset($payload['_model_list']);
+            unset($payload['_tier_variation'], $payload['_model_list']);
 
             $res = $this->client->request('POST', '/api/v2/product/add_item', $payload, $shop->access_token, $shop->shop_id);
 
@@ -43,13 +44,14 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
             if ($itemId) {
                 $skus = [];
 
-                if ($modelList) {
-                    $addModelRes = $this->client->request('POST', '/api/v2/product/add_model', [
+                if ($tierVariation && $modelList) {
+                    $initRes = $this->client->request('POST', '/api/v2/product/init_tier_variation', [
                         'item_id' => $itemId,
-                        'model_list' => $modelList,
+                        'tier_variation' => $tierVariation,
+                        'model' => $modelList,
                     ], $shop->access_token, $shop->shop_id);
 
-                    $skus = $this->normalizeSkus($addModelRes['response']['model'] ?? []);
+                    $skus = $this->normalizeSkus($initRes['response']['model_list'] ?? $initRes['response']['model'] ?? []);
                 }
 
                 return [
