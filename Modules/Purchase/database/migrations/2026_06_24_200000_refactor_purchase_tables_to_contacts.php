@@ -21,6 +21,8 @@ return new class extends Migration
         if ($missingIds->isNotEmpty()) {
             $suppliers = DB::table('suppliers')->whereIn('id', $missingIds)->get();
             foreach ($suppliers as $supplier) {
+                $paymentTerm = preg_match('/(\d+)/', $supplier->payment_term ?? '', $m) ? (int) $m[1] : null;
+
                 DB::table('contacts')->insert([
                     'id' => $supplier->id,
                     'code' => $supplier->code,
@@ -32,7 +34,7 @@ return new class extends Migration
                     'city' => $supplier->city,
                     'tax_id' => $supplier->tax_id,
                     'contact_person' => $supplier->contact_person,
-                    'payment_term' => $supplier->payment_term,
+                    'payment_term' => $paymentTerm,
                     'notes' => $supplier->notes,
                     'status' => $supplier->status,
                     'type' => 'SUPPLIER',
