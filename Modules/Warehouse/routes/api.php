@@ -19,6 +19,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::apiResource('locations', LocationController::class)->names('warehouse.location')->whereUuid('location');
 
     Route::get('locations/{locationId}/zones', [LocationZoneController::class, 'index'])->whereUuid('locationId')->name('warehouse.zones.index');
+    Route::post('locations/{locationId}/zones', [LocationZoneController::class, 'store'])->whereUuid('locationId')->name('warehouse.zones.store');
+    Route::put('locations/{locationId}/zones/{zoneId}', [LocationZoneController::class, 'update'])->whereUuid(['locationId', 'zoneId'])->name('warehouse.zones.update');
+    Route::delete('locations/{locationId}/zones/{zoneId}', [LocationZoneController::class, 'destroy'])->whereUuid(['locationId', 'zoneId'])->name('warehouse.zones.destroy');
 
     Route::get('locations/{locationId}/bins', [LocationBinController::class, 'index'])->whereUuid('locationId')->name('warehouse.bins.index');
     Route::post('locations/{locationId}/bins/preview', [LocationBinController::class, 'preview'])->whereUuid('locationId')->name('warehouse.bins.preview');

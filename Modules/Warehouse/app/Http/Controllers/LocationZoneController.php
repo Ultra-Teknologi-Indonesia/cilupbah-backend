@@ -4,56 +4,114 @@ namespace Modules\Warehouse\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Modules\Warehouse\Repositories\LocationZoneRepository;
-use OpenApi\Attributes as OA;
+use Modules\Warehouse\Models\LocationBin;
 
-#[OA\Tag(name: 'Location Zones', description: 'API Endpoints for Warehouse Zones')]
-#[OA\Schema(
-    schema: 'LocationZone',
-    title: 'Location Zone Schema',
-    type: 'object',
-    properties: [
-        new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
-        new OA\Property(property: 'location_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
-        new OA\Property(property: 'zone_code', type: 'string', example: 'Z-A'),
-        new OA\Property(property: 'zone_name', type: 'string', example: 'Zona Makanan', nullable: true),
-        new OA\Property(property: 'created_at', type: 'string', format: 'date-time'),
-        new OA\Property(property: 'updated_at', type: 'string', format: 'date-time'),
-        new OA\Property(property: 'bins', type: 'array', items: new OA\Items(ref: '#/components/schemas/LocationBin')),
-    ]
-)]
 class LocationZoneController extends Controller
 {
     public function __construct(
         protected LocationZoneRepository $zoneRepository
     ) {}
 
-    #[OA\Get(
-        path: '/api/v1/locations/{locationId}/zones',
-        summary: 'Get list of zones for a location',
-        security: [['bearerAuth' => []]],
-        tags: ['Location Zones'],
-        parameters: [
-            new OA\Parameter(name: 'locationId', in: 'path', required: true, description: 'ID of the location', schema: new OA\Schema(type: 'string'))
-        ],
-        responses: [
-            new OA\Response(
-                response: 200,
-                description: 'Successful operation',
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/LocationZone')),
-                        new OA\Property(property: 'message', type: 'string', example: 'Daftar zona berhasil diambil')
-                    ]
-                )
-            ),
-            new OA\Response(response: 401, description: 'Unauthenticated')
-        ]
-    )]
     public function index(string $locationId): JsonResponse
     {
         $zones = $this->zoneRepository->findByLocation($locationId);
 
         return $this->successResponse($zones, 'Daftar zona berhasil diambil');
+    }
+
+    public function store(Request $request, string $locationId): JsonResponse
+    {
+        $validated = $request->validate([
+            'zone_code' => 'required|string|max:20',
+            'zone_name' => 'nullable|string|max:100',
+            'bin_ids' => 'nullable|array',
+            'bin_ids.*' => 'uuid',
+        ]);
+
+        $existing = $this->zoneRepository->findByLocationAndCode($locationId, $validated['zone_code']);
+        if ($existing) {
+            return $this->errorResponse('Kode zona sudah digunakan di lokasi ini.', 422);
+        }
+
+        $zone = $this->zoneRepository->create([
+            'location_id' => $locationId,
+            'zone_code' => $validated['zone_code'],
+            'zone_name' => $validated['zone_name'] ?? null,
+        ]);
+
+        if (! empty($validated['bin_ids'])) {
+            LocationBin::where('location_id', $locationId)
+                ->whereIn('id', $validated['bin_ids'])
+                ->whereNull('zone_id')
+                ->update(['zone_id' => $zone->id]);
+        }
+
+        $zone->loadCount('bins');
+
+        return $this->successResponse($zone, 'Zona berhasil dibuat', 201);
+    }
+
+    public function update(Request $request, string $locationId, string $zoneId): JsonResponse
+    {
+        $zone = $this->zoneRepository->findById($zoneId);
+
+        if (! $zone || $zone->location_id !== $locationId) {
+            return $this->errorResponse('Zona tidak ditemukan.', 404);
+        }
+
+        $validated = $request->validate([
+            'zone_code' => 'sometimes|required|string|max:20',
+            'zone_name' => 'nullable|string|max:100',
+            'bin_ids' => 'nullable|array',
+            'bin_ids.*' => 'uuid',
+        ]);
+
+        if (isset($validated['zone_code']) && $validated['zone_code'] !== $zone->zone_code) {
+            $existing = $this->zoneRepository->findByLocationAndCode($locationId, $validated['zone_code']);
+            if ($existing) {
+                return $this->errorResponse('Kode zona sudah digunakan di lokasi ini.', 422);
+            }
+        }
+
+        $zone->update([
+            'zone_code' => $validated['zone_code'] ?? $zone->zone_code,
+            'zone_name' => array_key_exists('zone_name', $validated) ? $validated['zone_name'] : $zone->zone_name,
+        ]);
+
+        if (array_key_exists('bin_ids', $validated)) {
+            LocationBin::where('location_id', $locationId)
+                ->where('zone_id', $zone->id)
+                ->update(['zone_id' => null]);
+
+            if (! empty($validated['bin_ids'])) {
+                LocationBin::where('location_id', $locationId)
+                    ->whereIn('id', $validated['bin_ids'])
+                    ->where(function ($q) use ($zone) {
+                        $q->whereNull('zone_id')->orWhere('zone_id', $zone->id);
+                    })
+                    ->update(['zone_id' => $zone->id]);
+            }
+        }
+
+        $zone->loadCount('bins');
+
+        return $this->successResponse($zone, 'Zona berhasil diperbarui');
+    }
+
+    public function destroy(string $locationId, string $zoneId): JsonResponse
+    {
+        $zone = $this->zoneRepository->findById($zoneId);
+
+        if (! $zone || $zone->location_id !== $locationId) {
+            return $this->errorResponse('Zona tidak ditemukan.', 404);
+        }
+
+        LocationBin::where('zone_id', $zone->id)->update(['zone_id' => null]);
+
+        $zone->delete();
+
+        return $this->successResponse(null, 'Zona berhasil dihapus');
     }
 }
