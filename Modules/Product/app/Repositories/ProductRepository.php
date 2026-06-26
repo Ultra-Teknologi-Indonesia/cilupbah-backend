@@ -151,7 +151,7 @@ class ProductRepository
             ->all();
     }
 
-    public function paginateIndex(?string $status = null): LengthAwarePaginator
+    public function paginateIndex(?string $status = null, bool $isDownload = false): LengthAwarePaginator
     {
         return QueryBuilder::for(Product::class)
             ->with(['variants', 'media', 'category', 'brand', 'channelMappings.channelShop.channel'])
@@ -161,6 +161,7 @@ class ProductRepository
             )
             ->allowedSorts('name', 'created_at')
             ->when($status !== null, fn ($query) => $query->where('status', $status))
+            ->when($isDownload, fn ($query) => $query->whereHas('channelMappings'))
             ->paginate(request('per_page', 10))
             ->appends(request()->query());
     }
