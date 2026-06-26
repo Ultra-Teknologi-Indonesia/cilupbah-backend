@@ -19,6 +19,7 @@ class ShopeeToInternalProductMapper
             'is_draft' => strtoupper((string) ($shopeeItem['item_status'] ?? '')) !== 'NORMAL',
             'is_active' => true,
             'status' => 'master',
+            'is_from_channel' => true,
             'verified_at' => now(),
             'weight' => (float) ($shopeeItem['weight'] ?? 0),
             'length' => (float) ($dimension['package_length'] ?? 0),

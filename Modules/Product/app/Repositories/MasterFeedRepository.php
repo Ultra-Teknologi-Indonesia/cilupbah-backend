@@ -88,7 +88,7 @@ class MasterFeedRepository
     public function paginateDownloaded(?string $updatedSince = null): LengthAwarePaginator
     {
         return QueryBuilder::for(Product::class)
-            ->whereHas('channelMappings')
+            ->where('is_from_channel', true)
             ->when($updatedSince, fn ($query) => $query->where('updated_at', '>=', $updatedSince))
             ->with(self::RELATIONS)
             ->allowedSearch('name', 'sku')

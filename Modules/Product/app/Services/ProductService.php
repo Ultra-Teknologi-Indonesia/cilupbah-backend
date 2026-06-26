@@ -715,7 +715,7 @@ class ProductService
                 'category_id', 'brand_id', 'name', 'sku', 'description',
                 'order_type', 'indent_days',
                 'weight', 'weight_unit', 'length', 'width', 'height', 'is_active',
-                'is_bundle', 'is_consignment',
+                'is_bundle', 'is_consignment', 'is_from_channel',
                 'is_stored', 'is_sold', 'is_purchased',
                 'purchase_lead_time', 'package_contents',
             ]);

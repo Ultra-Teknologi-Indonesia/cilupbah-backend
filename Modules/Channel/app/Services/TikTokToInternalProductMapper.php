@@ -22,6 +22,7 @@ class TikTokToInternalProductMapper
             'is_active' => true,
 
             'status' => 'master',
+            'is_from_channel' => true,
             'verified_at' => now(),
         ];
 

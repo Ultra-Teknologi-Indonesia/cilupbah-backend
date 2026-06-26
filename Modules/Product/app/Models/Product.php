@@ -55,6 +55,7 @@ class Product extends Model
         'archive_reason',
         'is_bundle',
         'is_consignment',
+        'is_from_channel',
         'is_stored',
         'is_sold',
         'is_purchased',
