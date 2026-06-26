@@ -592,6 +592,14 @@ class ProductService
 
     private function propagateVariantChangeToChannels(string $productId): void
     {
+        // Auto-pushing internal variant edits to channels is disabled by default; see
+        // config('channel.auto_push_product_content'). Per-channel content is managed
+        // on each marketplace and downloaded back, so pushing master edits would
+        // overwrite channel-specific data. Stock sync is a separate path, unaffected.
+        if (! config('channel.auto_push_product_content', false)) {
+            return;
+        }
+
         $channelShopIds = $this->writeRepository->channelShopIdsForActiveMappings($productId);
 
         foreach ($channelShopIds as $channelShopId) {
