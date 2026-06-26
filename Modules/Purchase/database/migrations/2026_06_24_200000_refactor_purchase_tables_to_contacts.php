@@ -10,8 +10,11 @@ return new class extends Migration
     public function up(): void
     {
         // --- Migrate referenced suppliers into contacts table ---
-        $referencedSupplierIds = DB::table('purchase_orders')->pluck('supplier_id')
-            ->merge(DB::table('purchase_bills')->pluck('supplier_id'))
+        $poColumn = Schema::hasColumn('purchase_orders', 'contact_id') ? 'contact_id' : 'supplier_id';
+        $pbColumn = Schema::hasColumn('purchase_bills', 'contact_id') ? 'contact_id' : 'supplier_id';
+
+        $referencedSupplierIds = DB::table('purchase_orders')->pluck($poColumn)
+            ->merge(DB::table('purchase_bills')->pluck($pbColumn))
             ->unique()
             ->filter();
 
@@ -45,77 +48,104 @@ return new class extends Migration
         }
 
         // --- purchase_orders: supplier_id → contact_id + new fields ---
-        Schema::table('purchase_orders', function (Blueprint $table) {
-            $table->dropForeign(['supplier_id']);
-        });
+        if (Schema::hasColumn('purchase_orders', 'supplier_id')) {
+            Schema::table('purchase_orders', function (Blueprint $table) {
+                $table->dropForeign(['supplier_id']);
+            });
+            Schema::table('purchase_orders', function (Blueprint $table) {
+                $table->renameColumn('supplier_id', 'contact_id');
+            });
+        }
 
-        Schema::table('purchase_orders', function (Blueprint $table) {
-            $table->renameColumn('supplier_id', 'contact_id');
-        });
+        if (! Schema::hasColumn('purchase_orders', 'ref_no')) {
+            Schema::table('purchase_orders', function (Blueprint $table) {
+                if (! $this->hasForeignKey('purchase_orders', 'purchase_orders_contact_id_foreign')) {
+                    $table->foreign('contact_id')->references('id')->on('contacts')->restrictOnDelete();
+                }
+                $table->string('ref_no', 100)->nullable()->after('po_number');
+                $table->decimal('sub_total', 15, 2)->default(0)->after('total_amount');
+                $table->decimal('total_disc', 15, 2)->default(0)->after('sub_total');
+                $table->decimal('total_tax', 15, 2)->default(0)->after('total_disc');
+                $table->boolean('is_tax_included')->default(false)->after('total_tax');
+            });
+        }
 
-        Schema::table('purchase_orders', function (Blueprint $table) {
-            $table->foreign('contact_id')->references('id')->on('contacts')->restrictOnDelete();
-            $table->string('ref_no', 100)->nullable()->after('po_number');
-            $table->decimal('sub_total', 15, 2)->default(0)->after('total_amount');
-            $table->decimal('total_disc', 15, 2)->default(0)->after('sub_total');
-            $table->decimal('total_tax', 15, 2)->default(0)->after('total_disc');
-            $table->boolean('is_tax_included')->default(false)->after('total_tax');
-        });
-
-        // payment_term was string(50), change to integer nullable
-        DB::statement("ALTER TABLE purchase_orders ALTER COLUMN payment_term DROP DEFAULT");
-        DB::statement("UPDATE purchase_orders SET payment_term = NULL WHERE payment_term IS NULL OR payment_term !~ '^[0-9]+$'");
-        DB::statement("ALTER TABLE purchase_orders ALTER COLUMN payment_term TYPE integer USING payment_term::integer");
+        $poPaymentType = DB::selectOne("SELECT data_type FROM information_schema.columns WHERE table_name = 'purchase_orders' AND column_name = 'payment_term'");
+        if ($poPaymentType && $poPaymentType->data_type !== 'integer') {
+            DB::statement("ALTER TABLE purchase_orders ALTER COLUMN payment_term DROP DEFAULT");
+            DB::statement("UPDATE purchase_orders SET payment_term = NULL WHERE payment_term IS NULL OR payment_term !~ '^[0-9]+$'");
+            DB::statement("ALTER TABLE purchase_orders ALTER COLUMN payment_term TYPE integer USING payment_term::integer");
+        }
 
         // --- purchase_order_items: add disc/tax/unit fields ---
-        Schema::table('purchase_order_items', function (Blueprint $table) {
-            $table->text('description')->nullable()->after('item_id');
-            $table->string('unit', 30)->nullable()->after('description');
-            $table->decimal('disc', 5, 2)->default(0)->after('unit_price');
-            $table->decimal('disc_amount', 15, 2)->default(0)->after('disc');
-            $table->foreignUuid('tax_id')->nullable()->constrained('taxes')->nullOnDelete()->after('disc_amount');
-            $table->decimal('tax_amount', 15, 2)->default(0)->after('tax_id');
-        });
+        if (! Schema::hasColumn('purchase_order_items', 'description')) {
+            Schema::table('purchase_order_items', function (Blueprint $table) {
+                $table->text('description')->nullable()->after('item_id');
+                $table->string('unit', 30)->nullable()->after('description');
+                $table->decimal('disc', 5, 2)->default(0)->after('unit_price');
+                $table->decimal('disc_amount', 15, 2)->default(0)->after('disc');
+                $table->foreignId('tax_id')->nullable()->constrained('taxes')->nullOnDelete()->after('disc_amount');
+                $table->decimal('tax_amount', 15, 2)->default(0)->after('tax_id');
+            });
+        }
 
-        // Rename subtotal → amount for consistency with Jubelio
-        Schema::table('purchase_order_items', function (Blueprint $table) {
-            $table->renameColumn('subtotal', 'amount');
-        });
+        if (Schema::hasColumn('purchase_order_items', 'subtotal')) {
+            Schema::table('purchase_order_items', function (Blueprint $table) {
+                $table->renameColumn('subtotal', 'amount');
+            });
+        }
 
         // --- purchase_bills: supplier_id → contact_id + new fields ---
-        Schema::table('purchase_bills', function (Blueprint $table) {
-            $table->dropForeign(['supplier_id']);
-        });
+        if (Schema::hasColumn('purchase_bills', 'supplier_id')) {
+            Schema::table('purchase_bills', function (Blueprint $table) {
+                $table->dropForeign(['supplier_id']);
+            });
+            Schema::table('purchase_bills', function (Blueprint $table) {
+                $table->renameColumn('supplier_id', 'contact_id');
+            });
+        }
 
-        Schema::table('purchase_bills', function (Blueprint $table) {
-            $table->renameColumn('supplier_id', 'contact_id');
-        });
-
-        Schema::table('purchase_bills', function (Blueprint $table) {
-            $table->foreign('contact_id')->references('id')->on('contacts')->restrictOnDelete();
-            $table->string('ref_no', 100)->nullable()->after('bill_number');
-            $table->integer('payment_term')->nullable()->after('due_date');
-            $table->decimal('sub_total', 15, 2)->default(0)->after('total_amount');
-            $table->decimal('total_disc', 15, 2)->default(0)->after('sub_total');
-            $table->decimal('total_tax', 15, 2)->default(0)->after('total_disc');
-            $table->boolean('is_tax_included')->default(false)->after('total_tax');
-            $table->string('tag', 100)->nullable()->after('is_tax_included');
-        });
+        if (! Schema::hasColumn('purchase_bills', 'ref_no')) {
+            Schema::table('purchase_bills', function (Blueprint $table) {
+                if (! $this->hasForeignKey('purchase_bills', 'purchase_bills_contact_id_foreign')) {
+                    $table->foreign('contact_id')->references('id')->on('contacts')->restrictOnDelete();
+                }
+                $table->string('ref_no', 100)->nullable()->after('bill_number');
+                $table->integer('payment_term')->nullable()->after('due_date');
+                $table->decimal('sub_total', 15, 2)->default(0)->after('total_amount');
+                $table->decimal('total_disc', 15, 2)->default(0)->after('sub_total');
+                $table->decimal('total_tax', 15, 2)->default(0)->after('total_disc');
+                $table->boolean('is_tax_included')->default(false)->after('total_tax');
+                $table->string('tag', 100)->nullable()->after('is_tax_included');
+            });
+        }
 
         // --- purchase_bill_items: add po_item link, disc/tax/unit fields ---
-        Schema::table('purchase_bill_items', function (Blueprint $table) {
-            $table->foreignUuid('purchase_order_item_id')->nullable()->constrained('purchase_order_items')->nullOnDelete()->after('purchase_bill_id');
-            $table->text('description')->nullable()->after('item_id');
-            $table->string('unit', 30)->nullable()->after('description');
-            $table->decimal('disc', 5, 2)->default(0)->after('unit_price');
-            $table->decimal('disc_amount', 15, 2)->default(0)->after('disc');
-            $table->foreignUuid('tax_id')->nullable()->constrained('taxes')->nullOnDelete()->after('disc_amount');
-            $table->decimal('tax_amount', 15, 2)->default(0)->after('tax_id');
-        });
+        if (! Schema::hasColumn('purchase_bill_items', 'description')) {
+            Schema::table('purchase_bill_items', function (Blueprint $table) {
+                $table->foreignUuid('purchase_order_item_id')->nullable()->constrained('purchase_order_items')->nullOnDelete()->after('purchase_bill_id');
+                $table->text('description')->nullable()->after('item_id');
+                $table->string('unit', 30)->nullable()->after('description');
+                $table->decimal('disc', 5, 2)->default(0)->after('unit_price');
+                $table->decimal('disc_amount', 15, 2)->default(0)->after('disc');
+                $table->foreignId('tax_id')->nullable()->constrained('taxes')->nullOnDelete()->after('disc_amount');
+                $table->decimal('tax_amount', 15, 2)->default(0)->after('tax_id');
+            });
+        }
 
-        Schema::table('purchase_bill_items', function (Blueprint $table) {
-            $table->renameColumn('subtotal', 'amount');
-        });
+        if (Schema::hasColumn('purchase_bill_items', 'subtotal')) {
+            Schema::table('purchase_bill_items', function (Blueprint $table) {
+                $table->renameColumn('subtotal', 'amount');
+            });
+        }
+    }
+
+    private function hasForeignKey(string $table, string $keyName): bool
+    {
+        return (bool) DB::selectOne(
+            "SELECT 1 FROM information_schema.table_constraints WHERE table_name = ? AND constraint_name = ? AND constraint_type = 'FOREIGN KEY'",
+            [$table, $keyName]
+        );
     }
 
     public function down(): void
