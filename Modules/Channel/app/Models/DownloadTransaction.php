@@ -71,6 +71,17 @@ class DownloadTransaction extends Model
         ]);
     }
 
+    public function updateProgress(int $downloaded, int $total): void
+    {
+        $percent = $total > 0 ? (int) round(($downloaded / $total) * 100) : 0;
+
+        $this->update([
+            'total_downloaded' => $downloaded,
+            'all_product' => $total,
+            'progress_percent' => min($percent, 99),
+        ]);
+    }
+
     public function markFailed(string $message): void
     {
         $this->update([

@@ -299,7 +299,7 @@ class TikTokProductService
         }
     }
 
-    public function pullProducts(string $shopId): int
+    public function pullProducts(string $shopId, ?\Closure $onProgress = null): int
     {
         $shop = $this->shopRepository->findByShopId($shopId);
         if (!$shop || !$shop->access_token) {
@@ -314,6 +314,7 @@ class TikTokProductService
         $mapper         = app(TikTokToInternalProductMapper::class);
 
         $count     = 0;
+        $total     = 0;
         $pageToken = null;
 
         do {
@@ -332,6 +333,10 @@ class TikTokProductService
 
             if (!isset($res['data']['products'])) {
                 break;
+            }
+
+            if ($total === 0) {
+                $total = (int) ($res['data']['total_count'] ?? 0);
             }
 
             $products = $res['data']['products'];
@@ -392,6 +397,9 @@ class TikTokProductService
                         }
 
                         $count++;
+                        if ($onProgress) {
+                            $onProgress($count, max($total, $count));
+                        }
                     }
                 } catch (\Exception $e) {
                     Log::error("Failed to pull product {$item['id']}: " . $e->getMessage());

@@ -396,7 +396,7 @@ class LazadaProductService
         return $results;
     }
 
-    public function pullProducts(string $shopId): int
+    public function pullProducts(string $shopId, ?\Closure $onProgress = null): int
     {
         $shop = $this->shopRepository->findByShopId($shopId);
         if (! $shop || ! $shop->access_token) {
@@ -406,6 +406,7 @@ class LazadaProductService
         $productService = app(\Modules\Product\Services\ProductService::class);
 
         $count = 0;
+        $total = 0;
         $offset = 0;
         $limit = 50;
 
@@ -418,6 +419,10 @@ class LazadaProductService
                 $this->authService->refreshStoreToken((string) $shop->id);
                 $shop = $this->shopRepository->findByShopId($shopId);
                 $res = $this->client->request('GET', '/products/get', $params, $shop->access_token);
+            }
+
+            if ($total === 0) {
+                $total = (int) ($res['data']['total_products'] ?? 0);
             }
 
             $products = $res['data']['products'] ?? [];
@@ -458,6 +463,9 @@ class LazadaProductService
                         }
 
                         $count++;
+                        if ($onProgress) {
+                            $onProgress($count, max($total, $count));
+                        }
                     }
                 } catch (\Throwable $e) {
                     Log::error('Lazada: gagal pull produk ' . ($item['item_id'] ?? '?') . ': ' . $e->getMessage());

@@ -186,18 +186,24 @@ class ShopeeProductService
         ];
     }
 
-    public function pullProducts(string $shopId): int
+    public function pullProducts(string $shopId, ?\Closure $onProgress = null): int
     {
         $shop = $this->requireShop($shopId);
         $productService = app(\Modules\Product\Services\ProductService::class);
         $mapper = app(ShopeeToInternalProductMapper::class);
 
         $count = 0;
+        $total = 0;
         $offset = 0;
         $pageSize = 50;
 
         do {
             $list = $this->fetchItemList($shop, $offset, $pageSize);
+
+            if ($total === 0) {
+                $total = (int) ($list['total_count'] ?? 0);
+            }
+
             $itemIds = $this->extractItemIds($list);
 
             foreach (array_chunk($itemIds, 50) as $chunk) {
@@ -206,6 +212,9 @@ class ShopeeProductService
                         $item = $this->hydrateModels($shop, $item);
                         if ($this->persistItem($shop, $shopId, $item, $mapper, $productService)) {
                             $count++;
+                            if ($onProgress) {
+                                $onProgress($count, max($total, $count));
+                            }
                         }
                     } catch (\Throwable $e) {
                         Log::error('Shopee pull gagal item ' . ($item['item_id'] ?? '?') . ': ' . $e->getMessage());

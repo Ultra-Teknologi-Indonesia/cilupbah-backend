@@ -47,12 +47,12 @@ class ChannelDownloadService
         return $transactions;
     }
 
-    public function pull(string $channel, string $shopId): int
+    public function pull(string $channel, string $shopId, ?\Closure $onProgress = null): int
     {
         $channelShopId = $this->channelShopRepository->getIdByShopId($shopId);
 
         try {
-            $count = ($this->pullerFor($channel))($shopId);
+            $count = ($this->pullerFor($channel, $onProgress))($shopId);
         } catch (\Throwable $e) {
             ProductSyncLog::record([
                 'channel_shop_id' => $channelShopId,
@@ -165,12 +165,12 @@ class ChannelDownloadService
         return $channelShopId;
     }
 
-    protected function pullerFor(string $channel): callable
+    protected function pullerFor(string $channel, ?\Closure $onProgress = null): callable
     {
         return match (strtolower($channel)) {
-            'tiktok' => fn (string $shopId) => app(TikTokProductService::class)->pullProducts($shopId),
-            'lazada' => fn (string $shopId) => app(LazadaProductService::class)->pullProducts($shopId),
-            'shopee' => fn (string $shopId) => app(ShopeeProductService::class)->pullProducts($shopId),
+            'tiktok' => fn (string $shopId) => app(TikTokProductService::class)->pullProducts($shopId, $onProgress),
+            'lazada' => fn (string $shopId) => app(LazadaProductService::class)->pullProducts($shopId, $onProgress),
+            'shopee' => fn (string $shopId) => app(ShopeeProductService::class)->pullProducts($shopId, $onProgress),
             default => throw new \RuntimeException("Channel '{$channel}' belum didukung untuk download", 422),
         };
     }
