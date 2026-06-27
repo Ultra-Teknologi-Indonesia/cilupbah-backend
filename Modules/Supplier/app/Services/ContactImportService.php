@@ -116,49 +116,59 @@ class ContactImportService
             }
 
             $errors = [];
+            $errorFields = [];
             $mapped = [];
 
+            // Catat pesan error sekaligus kolom mana yang bermasalah,
+            // agar FE bisa menyorot value yang tidak valid.
+            $addError = function ($fields, string $message) use (&$errors, &$errorFields) {
+                $errors[] = $message;
+                foreach ((array) $fields as $field) {
+                    $errorFields[$field] = true;
+                }
+            };
+
             if (empty($raw['Nama'])) {
-                $errors[] = 'Nama wajib diisi';
+                $addError('Nama', 'Nama wajib diisi');
             } else {
                 $mapped['name'] = $raw['Nama'];
                 $lowerName = strtolower(trim($raw['Nama']));
                 if (in_array($lowerName, $existingNames)) {
-                    $errors[] = 'Nama sudah terdaftar di sistem';
+                    $addError('Nama', 'Nama sudah terdaftar di sistem');
                 }
                 if (in_array($lowerName, $seenNames)) {
-                    $errors[] = 'Nama duplikat dalam file';
+                    $addError('Nama', 'Nama duplikat dalam file');
                 }
                 $seenNames[] = $lowerName;
             }
 
             $typeLower = strtolower(trim($raw['Tipe']));
             if (empty($raw['Tipe'])) {
-                $errors[] = 'Tipe wajib diisi';
+                $addError('Tipe', 'Tipe wajib diisi');
             } elseif (! isset(self::TYPE_MAP[$typeLower])) {
-                $errors[] = 'Tipe tidak valid (pilihan: Pelanggan, Pelanggan dan Pemasok)';
+                $addError('Tipe', 'Tipe tidak valid (pilihan: Pelanggan, Pelanggan dan Pemasok)');
             } else {
                 $mapped['type'] = self::TYPE_MAP[$typeLower];
             }
 
             $taxLower = strtolower(trim($raw['PKP/Non PKP']));
             if (empty($raw['PKP/Non PKP'])) {
-                $errors[] = 'PKP/Non PKP wajib diisi';
+                $addError('PKP/Non PKP', 'PKP/Non PKP wajib diisi');
             } elseif (! isset(self::TAX_MAP[$taxLower])) {
-                $errors[] = 'PKP/Non PKP tidak valid (pilihan: PKP, Non PKP)';
+                $addError('PKP/Non PKP', 'PKP/Non PKP tidak valid (pilihan: PKP, Non PKP)');
             } else {
                 $mapped['tax_type'] = self::TAX_MAP[$taxLower];
             }
 
             if (($mapped['tax_type'] ?? '') === 'PKP') {
                 if (empty($raw['NPWP']) && empty($raw['NIK'])) {
-                    $errors[] = 'NPWP atau NIK wajib diisi jika PKP';
+                    $addError(['NPWP', 'NIK'], 'NPWP atau NIK wajib diisi jika PKP');
                 }
             }
             if (! empty($raw['NPWP'])) {
                 $npwp = preg_replace('/[^0-9]/', '', $raw['NPWP']);
                 if (strlen($npwp) < 15) {
-                    $errors[] = 'NPWP harus 15 digit';
+                    $addError('NPWP', 'NPWP harus 15 digit');
                 }
                 $mapped['tax_id'] = $npwp;
             }
@@ -168,36 +178,36 @@ class ContactImportService
 
             $catLower = strtolower(trim($raw['Kategori']));
             if (empty($raw['Kategori'])) {
-                $errors[] = 'Kategori wajib diisi';
+                $addError('Kategori', 'Kategori wajib diisi');
             } elseif (! $categories->has($catLower)) {
-                $errors[] = "Kategori \"{$raw['Kategori']}\" tidak ditemukan di sistem";
+                $addError('Kategori', "Kategori \"{$raw['Kategori']}\" tidak ditemukan di sistem");
             } else {
                 $mapped['category_id'] = $categories->get($catLower)->id;
             }
 
             if (! empty($raw['Termin'])) {
                 if (! is_numeric($raw['Termin'])) {
-                    $errors[] = 'Termin harus berupa angka';
+                    $addError('Termin', 'Termin harus berupa angka');
                 } else {
                     $mapped['payment_term'] = (int) $raw['Termin'];
                 }
             }
 
             if (empty($raw['No. Telepon']) && empty($raw['Email'])) {
-                $errors[] = 'No. Telepon atau Email wajib diisi (minimal salah satu)';
+                $addError(['No. Telepon', 'Email'], 'No. Telepon atau Email wajib diisi (minimal salah satu)');
             }
             if (! empty($raw['No. Telepon'])) {
                 $mapped['phone'] = $raw['No. Telepon'];
             }
             if (! empty($raw['Email'])) {
                 if (! filter_var($raw['Email'], FILTER_VALIDATE_EMAIL)) {
-                    $errors[] = 'Format email tidak valid';
+                    $addError('Email', 'Format email tidak valid');
                 }
                 $mapped['email'] = $raw['Email'];
             }
 
             if (empty($raw['Detail Alamat'])) {
-                $errors[] = 'Detail Alamat wajib diisi';
+                $addError('Detail Alamat', 'Detail Alamat wajib diisi');
             } else {
                 $addressParts = [$raw['Detail Alamat']];
                 if (! empty($raw['Kelurahan'])) {
@@ -226,6 +236,7 @@ class ContactImportService
                 $valid[] = $entry;
             } else {
                 $entry['errors'] = $errors;
+                $entry['error_fields'] = array_keys($errorFields);
                 $invalid[] = $entry;
             }
         }
