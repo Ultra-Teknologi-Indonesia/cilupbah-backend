@@ -51,6 +51,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('purchase/orders/progress', [PurchaseOrderController::class, 'receivable'])->name('purchase.orders.progress');
     Route::get('purchase/orders', [PurchaseOrderController::class, 'index'])->name('purchase.orders.index');
     Route::post('purchase/orders', [PurchaseOrderController::class, 'store'])->name('purchase.orders.store');
+    Route::post('purchase/orders/bulk-delete', [PurchaseOrderController::class, 'bulkDelete'])->name('purchase.orders.bulk-delete');
     Route::get('purchase/orders/{id}', [PurchaseOrderController::class, 'show'])->name('purchase.orders.show');
     Route::get('purchase/orders/{id}/items', [PurchaseOrderController::class, 'items'])->name('purchase.orders.items');
     Route::put('purchase/orders/{id}', [PurchaseOrderController::class, 'update'])->name('purchase.orders.update');

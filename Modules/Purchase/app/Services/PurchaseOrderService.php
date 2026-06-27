@@ -211,17 +211,46 @@ class PurchaseOrderService
 
     public function delete(string $id): bool
     {
-        $po = $this->poRepository->findById($id);
+        return DB::transaction(function () use ($id) {
+            $po = $this->poRepository->findByIdForUpdate($id);
 
-        if (!$po) {
-            throw new \Exception('PO tidak ditemukan.');
-        }
+            if (!$po) {
+                throw new \Exception('PO tidak ditemukan.');
+            }
 
-        if ($po->status !== PurchaseOrder::STATUS_DRAFT) {
-            throw new \Exception('Hanya PO berstatus DRAFT yang bisa dihapus.');
-        }
+            if (in_array($po->status, [PurchaseOrder::STATUS_PARTIAL_RECEIVED, PurchaseOrder::STATUS_FULLY_RECEIVED])) {
+                throw new \Exception('PO yang sudah diterima (partial/full) tidak bisa dihapus.');
+            }
 
-        return $this->poRepository->delete($po);
+            if ($po->status === PurchaseOrder::STATUS_OPEN) {
+                $po->load('items');
+                foreach ($po->items as $item) {
+                    $pendingQty = $item->pendingQty();
+                    if ($pendingQty > 0) {
+                        $this->adjustOnOrder($item->item_id, $po->location_id, -$pendingQty);
+                    }
+                }
+            }
+
+            return $this->poRepository->delete($po);
+        });
+    }
+
+    public function bulkDelete(array $ids): array
+    {
+        return DB::transaction(function () use ($ids) {
+            $deleted = 0;
+            $failed = 0;
+            foreach ($ids as $id) {
+                try {
+                    $this->delete($id);
+                    $deleted++;
+                } catch (\Exception $e) {
+                    $failed++;
+                }
+            }
+            return ['deleted' => $deleted, 'failed' => $failed];
+        });
     }
 
     private function calculateItemAmounts(array &$item): void

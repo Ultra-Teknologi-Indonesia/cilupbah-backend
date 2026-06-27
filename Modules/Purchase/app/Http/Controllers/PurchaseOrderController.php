@@ -106,4 +106,11 @@ class PurchaseOrderController extends Controller
             return $this->errorResponse($e->getMessage(), 500);
         }
     }
+
+    public function bulkDelete(\Illuminate\Http\Request $request): JsonResponse
+    {
+        $request->validate(['ids' => 'required|array']);
+        $result = $this->poService->bulkDelete($request->ids);
+        return $this->successResponse($result, "{$result['deleted']} PO berhasil dihapus, {$result['failed']} gagal.");
+    }
 }
