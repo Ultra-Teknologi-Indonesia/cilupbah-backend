@@ -94,7 +94,10 @@ class ContactImportService
         for ($row = 2; $row <= $highestRow; $row++) {
             $raw = [];
             foreach (self::COLUMNS as $col => $label) {
-                $raw[$label] = trim((string) ($sheet->getCell($col . $row)->getValue() ?? ''));
+                $value = $sheet->getCell($col . $row)->getValue();
+                $raw[$label] = is_float($value)
+                    ? trim(sprintf('%.0f', $value))
+                    : trim((string) ($value ?? ''));
             }
 
             if (empty($raw['Nama']) && empty($raw['Tipe'])) {
