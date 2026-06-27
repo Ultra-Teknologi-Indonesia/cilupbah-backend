@@ -28,7 +28,7 @@ class StorePurchaseOrderRequest extends FormRequest
             'is_tax_included'        => ['nullable', 'boolean'],
             'notes'                  => ['nullable', 'string'],
             'items'                  => ['required', 'array', 'min:1'],
-            'items.*.item_id'        => ['required', 'string', 'exists:products,id'],
+            'items.*.item_id'        => ['required', 'string', 'exists:product_variants,id'],
             'items.*.description'    => ['nullable', 'string'],
             'items.*.unit'           => ['nullable', 'string', 'max:30'],
             'items.*.qty'            => ['required', 'integer', 'min:1'],
@@ -74,5 +74,14 @@ class StorePurchaseOrderRequest extends FormRequest
         $messages['items.*.unit_price.min'] = 'Harga satuan pada baris ke-:position tidak boleh negatif.';
 
         return $messages;
+    }
+
+    protected function failedValidation(\Illuminate\Contracts\Validation\Validator $validator)
+    {
+        throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+            'status'  => 'error',
+            'message' => 'Terdapat kesalahan pada input form pesanan. Silakan periksa kembali produk yang Anda pilih.',
+            'errors'  => $validator->errors()
+        ], 422));
     }
 }
