@@ -11,6 +11,8 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\Font;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use Illuminate\Support\Str;
 
 class ContactImportService
@@ -285,7 +287,15 @@ class ContactImportService
         foreach ($guide as $i => $row) {
             $r = $i + 4;
             foreach (['A', 'B', 'C', 'D'] as $j => $col) {
-                $sheet->setCellValue($col . $r, $row[$j]);
+                // Kolom "Contoh" (C) ditulis sebagai teks eksplisit agar angka panjang
+                // seperti NIK/NPWP/No. Telepon tidak berubah jadi notasi ilmiah (3,17401E+15)
+                if ($col === 'C') {
+                    $sheet->getStyle($col . $r)->getNumberFormat()
+                        ->setFormatCode(NumberFormat::FORMAT_TEXT);
+                    $sheet->setCellValueExplicit($col . $r, $row[$j], DataType::TYPE_STRING);
+                } else {
+                    $sheet->setCellValue($col . $r, $row[$j]);
+                }
             }
             $color = ($row[3] === 'Ya' || str_starts_with($row[3], 'Ya ') || $row[3] === 'Salah satu wajib')
                 ? 'FFF2CC' : 'FFFFFF';
@@ -312,6 +322,15 @@ class ContactImportService
                 ->setHorizontal(Alignment::HORIZONTAL_CENTER);
         }
 
+        // Kolom yang berisi angka panjang harus dipaksa Text agar tidak berubah
+        // menjadi notasi ilmiah (mis. NIK 3,17401E+15, No. Telepon 6,28128E+11)
+        // saat user mengisi/menyimpan template di Excel.
+        $textColumns = ['D' => 'NPWP', 'E' => 'NIK', 'H' => 'No. Telepon'];
+        foreach (array_keys($textColumns) as $col) {
+            $sheet->getStyle($col . '1:' . $col . '1000')->getNumberFormat()
+                ->setFormatCode(NumberFormat::FORMAT_TEXT);
+        }
+
         $example = [
             'PT. Contoh Sejahtera', 'Pemasok', 'Non PKP', '', '',
             'Pelanggan Umum', '30', '+628123456789', 'contoh@email.com',
@@ -319,7 +338,12 @@ class ContactImportService
             'Gambir', 'Cideng',
         ];
         foreach (array_values(array_keys(self::COLUMNS)) as $i => $col) {
-            $sheet->setCellValue($col . '2', $example[$i] ?? '');
+            $value = $example[$i] ?? '';
+            if (isset($textColumns[$col])) {
+                $sheet->setCellValueExplicit($col . '2', $value, DataType::TYPE_STRING);
+            } else {
+                $sheet->setCellValue($col . '2', $value);
+            }
         }
         $sheet->getStyle('A2:N2')->getFont()->getColor()->setRGB('808080');
 
