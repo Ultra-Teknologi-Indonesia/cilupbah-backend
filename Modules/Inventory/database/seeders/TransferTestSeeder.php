@@ -15,27 +15,26 @@ class TransferTestSeeder extends Seeder
     {
         $gudangUtama   = '019ecf7e-b91b-70d4-87b9-0b18f4e5e9f0';
         $gudangBandung = '019ecf7e-b92b-70b7-b4f1-369585484e57';
-        $binInbound    = '019ecf7e-b936-7378-abc6-0aa4a3409da6'; // Bandung INBOUND
+        $binInbound    = '019ecf7e-b936-7378-abc6-0aa4a3409da6'; 
 
         $items = [
             [
-                'item_id'    => '019ecf7e-b95c-72c8-9b6f-8685587e46e9', // LAPTOP-001-8GB
-                'source_bin' => '019ecf7e-b935-711b-bf37-4406c95bd9c7', // F1-R1-C2-B1
+                'item_id'    => '019ecf7e-b95c-72c8-9b6f-8685587e46e9', 
+                'source_bin' => '019ecf7e-b935-711b-bf37-4406c95bd9c7', 
                 'qty'        => 2,
             ],
             [
-                'item_id'    => '019ecf7e-b963-70d6-bfae-cae22e174414', // MOUSE-001-BLK
-                'source_bin' => '019ecf7e-b935-711b-bf37-4406c95bd9c7', // F1-R1-C2-B1
+                'item_id'    => '019ecf7e-b963-70d6-bfae-cae22e174414', 
+                'source_bin' => '019ecf7e-b935-711b-bf37-4406c95bd9c7', 
                 'qty'        => 5,
             ],
             [
-                'item_id'    => '019ecf7e-b965-70e1-85e6-ac346ec29fdd', // KBD-001-RED
-                'source_bin' => '019ecf7e-b935-711b-bf37-4406c95bd9c7', // F1-R1-C2-B1
+                'item_id'    => '019ecf7e-b965-70e1-85e6-ac346ec29fdd', 
+                'source_bin' => '019ecf7e-b935-711b-bf37-4406c95bd9c7', 
                 'qty'        => 3,
             ],
         ];
 
-        // Ensure stock exists
         foreach ($items as $itemData) {
             $inv = Inventory::where('item_id', $itemData['item_id'])
                 ->where('location_id', $gudangUtama)
@@ -61,7 +60,6 @@ class TransferTestSeeder extends Seeder
             }
         }
 
-        // Create draft transfer
         $transferNumber = 'TRF-' . now()->format('Ymd') . '-DRF' . rand(10, 99);
 
         $transfer = InventoryTransfer::create([
@@ -79,7 +77,6 @@ class TransferTestSeeder extends Seeder
                 ->where('bin_id', $itemData['source_bin'])
                 ->first();
 
-            // Reserve stock
             $inv->update([
                 'reserved'  => $inv->reserved + $itemData['qty'],
                 'available' => $inv->available - $itemData['qty'],

@@ -26,12 +26,6 @@ class InventoryService
         protected InventoryTransferRepository $transferRepository,
     ) {}
 
-    /**
-     * Picu sinkronisasi stok ke semua channel terpetakan untuk tiap varian
-     * terdampak. Dipanggil SETELAH transaksi mutasi stok commit sehingga job
-     * membaca nilai available final. Job menghitung ulang available per channel
-     * saat eksekusi → aman & idempoten meski terdispatch ganda. Varian di-dedup.
-     */
     private function notifyChannelStock(array $variantIds): void
     {
         foreach (array_values(array_unique(array_filter($variantIds))) as $variantId) {

@@ -11,9 +11,9 @@ return new class extends Migration
         Schema::create('sales_order_fee_lines', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->uuid('order_id');
-            // Tipe kanonik internal: commission_fee, service_fee, platform_voucher, dst.
+
             $table->string('fee_type', 50);
-            // Nama field asli dari channel (audit/rekonsiliasi).
+
             $table->string('channel_fee_code', 80)->nullable();
             $table->decimal('amount', 18, 4)->default(0);
             $table->string('source', 20);

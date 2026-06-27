@@ -35,8 +35,6 @@ class TikTokToInternalOrderMapperTest extends TestCase
             ['product_id' => '1736162610481824874', 'sku_id' => '1736162649042093162', 'seller_sku' => '', 'quantity' => 1],
         ]), 'shop-1');
 
-        // Must match TikTokToInternalProductMapper's 'TK-' . sku_id format so the
-        // line item resolves to its local variant by SKU.
         $this->assertSame('TK-1736162649042093162', $result['items'][0]['sku']);
     }
 

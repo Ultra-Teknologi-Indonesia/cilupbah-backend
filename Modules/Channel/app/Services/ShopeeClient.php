@@ -110,12 +110,6 @@ class ShopeeClient
         return $data;
     }
 
-    /**
-     * Seperti request() POST, tapi mendukung response BINER (mis. PDF air waybill dari
-     * download_shipping_document). Shopee bisa membalas JSON (error / dokumen base64-in-JSON)
-     * ATAU stream biner. Kalau JSON → jalur error/token sama seperti request(). Kalau biner →
-     * kembalikan byte mentah yang dibungkus (caller yang meng-encode/menyimpan).
-     */
     public function requestBinary(string $apiPath, array $params, string $accessToken, string $shopId): array
     {
         $timestamp = time();

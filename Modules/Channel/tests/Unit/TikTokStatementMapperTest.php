@@ -26,7 +26,6 @@ class TikTokStatementMapperTest extends TestCase
             ]],
         ]);
 
-        // Fee TikTok negatif → disimpan positif (konsisten dgn Shopee).
         $this->assertSame(2200.0, $result['commission_fee']);
         $this->assertSame(1100.0, $result['service_fee']);
         $this->assertSame(800.0, $result['transaction_fee']);

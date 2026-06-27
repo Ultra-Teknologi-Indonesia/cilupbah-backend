@@ -5,11 +5,6 @@ namespace Modules\Inventory\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/**
- * Baris tab analitik penjualan (Tidak Laku / Paling Laku / Perkiraan Habis).
- * Atribut last_sold/qty_sold/days_idle/avg_per_day/days_to_out berasal dari
- * selectRaw di MonitorStockRepository (sebagian nullable tergantung tab).
- */
 class MonitorAnalyticsResource extends JsonResource
 {
     public function toArray(Request $request): array

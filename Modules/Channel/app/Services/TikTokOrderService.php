@@ -29,8 +29,6 @@ class TikTokOrderService
         $this->orderRepository = $orderRepository;
     }
 
-    // ─── Pull / Sync ────────────────────────────────────────────────
-
     public function pullOrders(string $shopId): int
     {
         $shop = $this->shopRepository->findByShopId($shopId);
@@ -113,15 +111,6 @@ class TikTokOrderService
         return $count;
     }
 
-    // ─── Finance / Settlement ───────────────────────────────────────
-
-    /**
-     * Path Finance "Get Order Statement Transactions".
-     *
-     * CATATAN VERIFIKASI (Phase 0): versi/path persis dapat berubah antar rilis API
-     * TikTok Partner. Disentralisasi di sini + dapat di-override via config supaya
-     * mudah disesuaikan tanpa menyentuh logika sync.
-     */
     protected function financeStatementPath(string $orderId): string
     {
         $template = config(
@@ -132,10 +121,6 @@ class TikTokOrderService
         return str_replace('{order_id}', $orderId, $template);
     }
 
-    /**
-     * Ambil statement/settlement sebuah order — sumber komisi, biaya, dan net seller.
-     * Mengembalikan isi `data`. Field final tersedia setelah order settle.
-     */
     public function getOrderStatement(string $shopId, string $orderId): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);
@@ -149,8 +134,6 @@ class TikTokOrderService
 
         return $res['data'] ?? [];
     }
-
-    // ─── Accept / Create Package ────────────────────────────────────
 
     public function acceptOrder(string $shopId, string $orderId): array
     {
@@ -176,8 +159,6 @@ class TikTokOrderService
 
         return $res;
     }
-
-    // ─── Ready To Ship (RTS) ────────────────────────────────────────
 
     public function readyToShip(string $shopId, string $orderId, ?array $handover = null): array
     {
@@ -244,9 +225,6 @@ class TikTokOrderService
 
             $someOk = collect($results)->contains('shipped', true);
 
-            // Tarik ulang order dari marketplace agar channel_status, status internal
-            // (lewat state machine), tracking, dan rekonsiliasi stok mengikuti kebenaran
-            // TikTok — konsisten dengan pola Shopee/Lazada.
             if ($allOk || $someOk) {
                 $this->resyncLocalOrder($shopId, $orderId);
             }
@@ -271,8 +249,6 @@ class TikTokOrderService
             throw $e;
         }
     }
-
-    // ─── Shipping Documents / Labels ────────────────────────────────
 
     public function getShippingDocument(string $shopId, string $packageId, string $documentType = 'SHIPPING_LABEL'): array
     {
@@ -312,8 +288,6 @@ class TikTokOrderService
         return $this->client->request('GET', "/fulfillment/202309/packages/{$packageId}", $queries, [], $shop->access_token);
     }
 
-    // ─── Buyer Cancellation ─────────────────────────────────────────
-
     public function acceptBuyerCancellation(string $shopId, string $orderId): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);
@@ -347,14 +321,10 @@ class TikTokOrderService
 
         $res = $this->client->request('POST', '/return_refund/202309/cancellations/reject', $queries, $body, $shop->access_token);
 
-        // Penolakan mengembalikan order ke alur fulfillment semula — resync agar
-        // status lokal mengikuti kondisi terbaru di TikTok.
         $this->resyncLocalOrder($shopId, $orderId);
 
         return $res;
     }
-
-    // ─── Seller Cancel / Decline ────────────────────────────────────
 
     public function declineOrder(string $shopId, string $orderId, string $reason): array
     {
@@ -407,8 +377,6 @@ class TikTokOrderService
         return $res;
     }
 
-    // ─── Cancel Reasons ─────────────────────────────────────────────
-
     public function getCancelReasons(): array
     {
         return collect(app(MarketplaceCancelReasonService::class)->for(MarketplaceCancelReasonService::TIKTOK))
@@ -442,14 +410,6 @@ class TikTokOrderService
         }, $reasons)));
     }
 
-    // ─── Internal Helpers ───────────────────────────────────────────
-
-    /**
-     * Tarik ulang satu order dari TikTok lalu upsert ke lokal. Menjadi sumber
-     * kebenaran status pasca aksi (RTS/accept/decline/cancel): channel_status,
-     * status internal (lewat state machine SalesOrderService), tracking, dan
-     * rekonsiliasi stok semuanya ikut diperbarui. Konsisten dengan Shopee/Lazada.
-     */
     protected function resyncLocalOrder(string $shopId, string $orderId): void
     {
         try {

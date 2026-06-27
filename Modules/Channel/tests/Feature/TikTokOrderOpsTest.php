@@ -10,11 +10,6 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Sales\Models\SalesOrder;
 use Tests\TestCase;
 
-/**
- * Memastikan setiap aksi order TikTok (accept / ship / decline / buyer-cancel /
- * cancel) benar-benar memanggil API marketplace DAN memicu perubahan status lokal
- * lewat resync (pola yang sama dengan Shopee/Lazada).
- */
 class TikTokOrderOpsTest extends TestCase
 {
     use RefreshDatabase;
@@ -50,10 +45,6 @@ class TikTokOrderOpsTest extends TestCase
         ]);
     }
 
-    /**
-     * Detail order yang dipakai semua endpoint GET /order/202309/orders
-     * (resolve package id, resync, dan fetch tracking).
-     */
     private function orderDetail(string $status): array
     {
         return [

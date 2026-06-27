@@ -361,7 +361,7 @@ class SalesOrderService
                         $locationId = $this->resolveLocationId($order);
                         $order->update(['location_id' => $locationId]);
                     } catch (\Exception $e) {
-                        // No location configured yet.
+
                     }
                 }
 
@@ -634,7 +634,7 @@ class SalesOrderService
                     $locationId = $this->resolveLocationId($order);
                     $order->update(['location_id' => $locationId]);
                 } catch (\Exception $e) {
-                    // No location configured yet — continue without assignment.
+
                 }
             }
 
@@ -652,9 +652,6 @@ class SalesOrderService
                 SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
             }
 
-            // Order yang sudah COMPLETED → escrow/finance final tersedia. Tarik fee
-            // di jalur terpisah (tidak menyentuh stok/status). Job idempoten & skip
-            // bila sudah settled; nightly sweep menjadi jaring pengaman bila ini miss.
             if (($orderData['channel_status'] ?? null) === 'COMPLETED'
                 && ! $order->is_settled
                 && $order->source
@@ -672,13 +669,6 @@ class SalesOrderService
         }
     }
 
-    /**
-     * Update HANYA kolom keuangan dari escrow/finance channel.
-     *
-     * Sengaja TIDAK menyentuh status, stok, items, atau location — supaya data
-     * settlement yang datang belakangan tidak pernah menggeser business-flow.
-     * Idempoten: aman dipanggil berkali-kali untuk order yang sama.
-     */
     public function updateOrderFinance(string $orderId, array $finance): ?SalesOrder
     {
         $order = SalesOrder::find($orderId);
@@ -702,7 +692,6 @@ class SalesOrderService
 
         $update = array_intersect_key($finance, array_flip($allowed));
 
-        // is_settled hanya naik ke true bila channel benar-benar mengirim data final.
         if (array_key_exists('is_settled', $finance)) {
             $update['is_settled'] = (bool) $finance['is_settled'];
         }
@@ -711,8 +700,6 @@ class SalesOrderService
 
         $order->update($update);
 
-        // Audit trail per komponen fee (replace-on-write, idempoten). Tetap jalur
-        // keuangan murni — tidak menyentuh stok/status.
         if (isset($finance['fee_lines']) && is_array($finance['fee_lines'])) {
             $this->orderRepository->replaceOrderFeeLines(
                 $order->id,
@@ -778,11 +765,9 @@ class SalesOrderService
         }
 
         if ($previousStatus === null) {
-            // Reserve stock for any new order — including UNPAID/pending —
-            // so marketplace orders immediately book inventory.
+
             $this->reserveStockForOrder($order, false);
 
-            // If the order arrived beyond 'reserved', apply subsequent transitions.
             $toRank = self::STATUS_RANK[$finalStatus] ?? 0;
             for ($rank = 2; $rank <= $toRank; $rank++) {
                 match ($rank) {
@@ -799,8 +784,6 @@ class SalesOrderService
             return false;
         }
 
-        // Stock was already reserved at 'pending', so treat it as rank 1
-        // to avoid double-reserving on pending → reserved transition.
         $fromRank = self::STATUS_RANK[$previousStatus] ?? 0;
         if ($previousStatus === 'pending') {
             $fromRank = 1;

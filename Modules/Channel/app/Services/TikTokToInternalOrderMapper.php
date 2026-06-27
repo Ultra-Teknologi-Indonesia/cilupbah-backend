@@ -81,7 +81,7 @@ class TikTokToInternalOrderMapper
 
             'sub_total'          => isset($payment['original_total_product_price']) ? (float) $payment['original_total_product_price'] : 0,
             'total_disc'         => isset($payment['seller_discount']) ? (float) $payment['seller_discount'] : 0,
-            // Estimasi voucher dari order detail (final menyusul lewat Finance API saat settle).
+
             'seller_voucher'     => isset($payment['seller_discount']) ? (float) $payment['seller_discount'] : null,
             'platform_voucher'   => isset($payment['platform_discount']) ? (float) $payment['platform_discount'] : null,
             'total_tax'          => isset($payment['tax']) ? (float) $payment['tax'] : 0,
@@ -175,14 +175,6 @@ class TikTokToInternalOrderMapper
         return null;
     }
 
-    /**
-     * Resolve the order line item SKU.
-     *
-     * TikTok line items only carry a seller_sku when the seller assigned one in
-     * TikTok Shop. When it is empty we fall back to 'TK-<sku_id>' — the exact same
-     * format TikTokToInternalProductMapper uses for variant SKUs — so the item can
-     * still be matched to its local variant by SKU.
-     */
     protected function resolveItemSku(array $lineItem): ?string
     {
         $sellerSku = $lineItem['seller_sku'] ?? null;

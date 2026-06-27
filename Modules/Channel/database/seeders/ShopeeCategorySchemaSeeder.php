@@ -6,29 +6,9 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Ramsey\Uuid\Uuid;
 
-/**
- * Seeds the Shopee category / attribute / variation schema LOCALLY so Shopee
- * has the same offline coverage TikTok already has in the dev DB — without
- * needing a connected Shopee shop or a live API call.
- *
- * It mirrors exactly what `ShopeeProductService::syncCategoryTree` /
- * `syncCategoryAttributes` would persist (same tables / columns):
- *   - channel_categories          (Shopee leaf categories)
- *   - channel_attributes          (spec attrs + sale-props via is_sale_prop)
- *   - channel_attribute_options   (option values)
- *   - category_channel_mappings   (custom "Handphone & Aksesoris" leaf -> Shopee)
- *
- * Once seeded, the existing `shopee:sync-category-attributes {shop_id}` command
- * will refresh these same rows from the live API when a real shop is connected.
- *
- * Idempotent: keyed by the natural unique keys the live sync uses.
- */
 class ShopeeCategorySchemaSeeder extends Seeder
 {
-    /**
-     * Custom leaf category name => Shopee category external_id.
-     * Screen Guard -> 400280 matches the mapping already used on staging.
-     */
+
     private const CATEGORIES = [
         'Adaptor + Kabel' => '100640',
         'Anti Crack Case' => '100641',
@@ -43,11 +23,6 @@ class ShopeeCategorySchemaSeeder extends Seeder
         'Phone Holder'    => '100650',
     ];
 
-    /**
-     * Attribute templates. Each is applied to every Shopee category above.
-     * is_sale_prop=true marks a variation axis (Shopee "tier variation").
-     * external_id only needs to be unique within a category, so fixed ids are fine.
-     */
     private const ATTRIBUTES = [
         ['ext' => '100001', 'name' => 'Merek', 'required' => true, 'multiple' => false, 'sale_prop' => false,
             'options' => ['ANKER', 'ACOME', 'Apple', 'ADVAN', 'ALDO', 'ARASHI', 'AILITE', '3M', 'OEM']],
@@ -55,7 +30,7 @@ class ShopeeCategorySchemaSeeder extends Seeder
             'options' => ['Tidak Ada Garansi', '1 Bulan', '3 Bulan', '1 Tahun']],
         ['ext' => '100003', 'name' => 'Bahan', 'required' => false, 'multiple' => true, 'sale_prop' => false,
             'options' => ['Silikon', 'TPU', 'Akrilik', 'Kulit', 'Kaca Tempered', 'Aluminium', 'Nilon']],
-        // --- Sale properties (variations) ---
+
         ['ext' => '100100', 'name' => 'Warna', 'required' => false, 'multiple' => false, 'sale_prop' => true,
             'options' => ['Hitam', 'Putih', 'Navy', 'Merah', 'Pink', 'Bening', 'Cokelat']],
         ['ext' => '100101', 'name' => 'Ukuran', 'required' => false, 'multiple' => false, 'sale_prop' => true,
@@ -177,7 +152,6 @@ class ShopeeCategorySchemaSeeder extends Seeder
         ]);
     }
 
-    /** Map the existing custom leaf category (by name) -> Shopee channel category. */
     private function mapCustomCategory(string $name, string $channelCategoryId): int
     {
         $categoryId = DB::table('categories')

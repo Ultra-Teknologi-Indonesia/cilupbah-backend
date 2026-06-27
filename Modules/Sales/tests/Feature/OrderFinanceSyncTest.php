@@ -85,11 +85,9 @@ class OrderFinanceSyncTest extends TestCase
         $repo = app(SalesOrderRepository::class);
         $order = $this->makeOrder();
 
-        // Order settle: voucher final tersimpan.
         $service->updateOrderFinance($order->id, $this->finance(settled: true));
         $this->assertEquals(5000, $order->fresh()->seller_voucher);
 
-        // Pull ulang order detail membawa estimasi voucher berbeda — tidak boleh menimpa.
         $repo->upsertOrderBySalesOrderNo($order->salesorder_no, [
             'salesorder_no'    => $order->salesorder_no,
             'channel_order_no' => $order->channel_order_no,
@@ -119,9 +117,9 @@ class OrderFinanceSyncTest extends TestCase
         Queue::fake();
 
         $target = $this->makeOrder(['channel_status' => 'COMPLETED', 'is_settled' => false]);
-        $this->makeOrder(['channel_status' => 'COMPLETED', 'is_settled' => true]);     // sudah settle
-        $this->makeOrder(['channel_status' => 'SHIPPED', 'is_settled' => false]);       // belum selesai
-        $this->makeOrder(['channel_status' => 'COMPLETED', 'is_settled' => false, 'source' => 'manual']); // bukan marketplace
+        $this->makeOrder(['channel_status' => 'COMPLETED', 'is_settled' => true]);     
+        $this->makeOrder(['channel_status' => 'SHIPPED', 'is_settled' => false]);       
+        $this->makeOrder(['channel_status' => 'COMPLETED', 'is_settled' => false, 'source' => 'manual']); 
 
         $this->artisan('orders:sync-finance')->assertSuccessful();
 

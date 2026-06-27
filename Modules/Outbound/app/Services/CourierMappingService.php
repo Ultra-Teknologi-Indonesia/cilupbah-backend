@@ -6,20 +6,9 @@ use Illuminate\Support\Collection;
 use Modules\Outbound\Models\Courier;
 use Modules\Outbound\Models\CourierChannelMapping;
 
-/**
- * Master data resolver for couriers across channels.
- *
- * Each marketplace channel reports its own raw provider names (Shopee "SPX Express",
- * TikTok "SPX Standard", Lazada "...") and its own service tiers. This service maps
- * those raw names onto a single canonical courier (master data) plus a normalised
- * shipment_type, so that orders coming from different channels but using the same
- * expedition + service tier (e.g. SPX Regular) can be merged into one manifest.
- */
 class CourierMappingService
 {
-    /**
-     * Raw provider name keyword => canonical courier code (master data brand).
-     */
+
     private array $codeAliases = [
         'j&t express' => 'jnt',
         'j&t' => 'jnt',
@@ -58,20 +47,12 @@ class CourierMappingService
         'lex id' => 'lex',
     ];
 
-    /**
-     * Canonical courier codes that are inherently an instant / same-day service.
-     * These drive couriers.type so they show up under the "instant" courier filter,
-     * regardless of how an individual order labels its service.
-     */
     private array $instantCourierCodes = [
         'spx_instant',
         'gosend',
         'grabexpress',
     ];
 
-    /**
-     * Resolve a raw channel provider name to a canonical courier code.
-     */
     public function resolveCode(string $name): string
     {
         $lower = strtolower(trim($name));
@@ -80,8 +61,6 @@ class CourierMappingService
             return $this->codeAliases[$lower];
         }
 
-        // Match the most specific keyword first (e.g. "spx instant" before "spx") so a
-        // name like "SPX Instant - 2 Jam" resolves to spx_instant, not spx.
         $keywords = array_keys($this->codeAliases);
         usort($keywords, fn ($a, $b) => strlen($b) <=> strlen($a));
 
@@ -94,29 +73,15 @@ class CourierMappingService
         return str_replace([' ', '.', '-'], '_', $lower);
     }
 
-    /**
-     * Master courier category for a canonical code (couriers.type). Inherently instant
-     * brands are tagged INSTANT; everything else defaults to REGULAR.
-     */
     public function resolveCourierType(string $code): string
     {
         return in_array($code, $this->instantCourierCodes, true) ? 'INSTANT' : 'REGULAR';
     }
 
-    /**
-     * Classify a raw provider/service name into a manifest service tier.
-     *
-     * Mirrors the values stored in shipments.shipment_type so resolved orders can be
-     * grouped straight into a shipment.
-     */
     public function resolveShipmentType(string $name): string
     {
         $lower = strtolower(trim($name));
 
-        // NOTE: a bare "express" keyword is intentionally NOT treated as a service tier.
-        // Most Indonesian courier brand names embed it (J&T Express, JNE Express, ID
-        // Express, SAP Express, ...), so matching it would misclassify regular services.
-        // Tier signals must be explicit (instant / same day / next day / cargo).
         return match (true) {
             str_contains($lower, 'instant') || str_contains($lower, 'instan') || str_contains($lower, 'sameday') || str_contains($lower, 'same day') || str_contains($lower, 'same-day') => 'INSTANT',
             str_contains($lower, 'next day') || str_contains($lower, 'nextday') => 'EXPRESS',
@@ -125,12 +90,6 @@ class CourierMappingService
         };
     }
 
-    /**
-     * Upsert the canonical courier + the channel mapping for a raw provider.
-     *
-     * Auto-resolved mappings are kept in sync on every call; mappings a human has
-     * marked verified are left untouched.
-     */
     public function record(string $channelCode, string $externalName, ?string $externalId = null, ?string $tenantId = null): ?CourierChannelMapping
     {
         $externalName = trim($externalName);
@@ -147,8 +106,6 @@ class CourierMappingService
             ['name' => $externalName, 'is_active' => true, 'type' => $courierType],
         );
 
-        // Promote an existing courier to INSTANT when its code is an inherently instant
-        // brand (e.g. spx_instant) but it was created earlier with the REGULAR default.
         if ($courierType === 'INSTANT' && $courier->type !== 'INSTANT') {
             $courier->update(['type' => 'INSTANT']);
         }
@@ -176,12 +133,6 @@ class CourierMappingService
         );
     }
 
-    /**
-     * Resolve the canonical courier + shipment tier for a single sales order.
-     *
-     * Falls back to on-the-fly resolution (without persisting) when no stored mapping
-     * exists yet, so manifest grouping still works before the first sync.
-     */
     public function resolveForOrder(object $order): ?array
     {
         $channelCode = $this->channelCodeFor($order);
@@ -213,13 +164,6 @@ class CourierMappingService
         ];
     }
 
-    /**
-     * Group orders from any mix of channels into manifest buckets keyed by
-     * "<courier_code>|<shipment_type>". Orders that share the same canonical courier
-     * and service tier land in the same bucket regardless of their source channel.
-     *
-     * @return array<string, array{courier_code: string, courier_name: string, shipment_type: string, orders: array}>
-     */
     public function groupOrdersForManifest(iterable $orders): array
     {
         $groups = [];
@@ -248,10 +192,6 @@ class CourierMappingService
         return $groups;
     }
 
-    /**
-     * Best-effort channel code for an order. Sales orders store the marketplace in
-     * `source`; normalise common variants to the channel codes used by mappings.
-     */
     private function channelCodeFor(object $order): string
     {
         $source = strtolower(trim((string) ($order->source ?? '')));

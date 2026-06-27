@@ -11,13 +11,6 @@ use Illuminate\Support\Facades\Log;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
 
-/**
- * Tarik data keuangan final (escrow/finance) sebuah order dari channel lalu simpan
- * lewat SalesOrderService::updateOrderFinance().
- *
- * Idempoten: bila order sudah is_settled, job langsung selesai tanpa memanggil API.
- * Tidak menyentuh status/stok — murni jalur keuangan.
- */
 class SyncOrderFinanceJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -40,7 +33,6 @@ class SyncOrderFinanceJob implements ShouldQueue
             return;
         }
 
-        // Sudah final → tidak perlu memanggil API lagi (kecuali dipaksa, mis. setelah return).
         if ($order->is_settled && ! $this->force) {
             return;
         }
@@ -55,8 +47,6 @@ class SyncOrderFinanceJob implements ShouldQueue
             return;
         }
 
-        // Jangan tandai settled bila channel belum mengirim angka final — biarkan
-        // nightly sweep mencoba lagi nanti. Tetap simpan estimasi yang ada.
         $orderService->updateOrderFinance($order->id, $finance);
 
         Log::info('SyncOrderFinanceJob: finance updated', [

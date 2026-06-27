@@ -121,7 +121,6 @@ class ReportService
 
         $result = $this->wrapCollection($query->paginate($filters['limit'] ?? 20), 'invoice');
 
-        // Fallback: jika tidak ada SalesInvoice untuk order_ids, generate dari SalesOrder
         if (empty($result['data']) && ! empty($orderIds)) {
             $orders = SalesOrder::with('items:id,order_id,sku,description,qty_in_base,price,amount,disc_amount,tax_amount')
                 ->whereIn('id', $orderIds)

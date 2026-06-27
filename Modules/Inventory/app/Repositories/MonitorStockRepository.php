@@ -11,25 +11,14 @@ use Modules\Product\Models\ProductVariant;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
-/**
- * Query analitik Monitor Stok (Fase 1–2): Stok Kosong, Menipis, Sedang Dibeli.
- * Semua query berbasis ProductVariant + agregasi `inventories` via leftJoinSub,
- * difilter `products.is_stored = true` (ADR-202).
- */
 class MonitorStockRepository
 {
     use AppliesStockMonitorFilters;
 
-    /** Status PO yang dianggap "sedang berjalan" untuk On Order. */
     private const OPEN_PO_STATUSES = ['OPEN', 'PARTIAL_RECEIVED'];
 
-    /** Status sales order yang dianggap "pesanan pending". */
     private const PENDING_ORDER_STATUSES = ['PENDING', 'CONFIRMED', 'PROCESSING', 'UNPAID'];
 
-    /**
-     * Base builder: 1 baris per varian stored, dengan agregasi stok.
-     * @param  array{search?:string,category_id?:string,location_id?:string}  $filters
-     */
     private function baseQuery(array $filters): Builder
     {
         $locationId = $filters['location_id'] ?? null;
@@ -59,7 +48,6 @@ class MonitorStockRepository
         return $this->applyCommonFilters($query, $filters);
     }
 
-    /** Subquery id varian yang punya pesanan penjualan pending. */
     private function pendingOrderItemIds()
     {
         return DB::table('sales_order_items')
@@ -68,7 +56,6 @@ class MonitorStockRepository
             ->select('sales_order_items.item_id');
     }
 
-    /** Subquery id varian yang ada di PO berjalan. */
     private function openPoItemIds()
     {
         return DB::table('purchase_order_items')
@@ -77,10 +64,6 @@ class MonitorStockRepository
             ->select('purchase_order_items.item_id');
     }
 
-    /**
-     * Terapkan kondisi per "mode"/tab ke builder.
-     * @param  'habis'|'minus'|'dipesan'|'menipis'|'on-order'  $mode
-     */
     private function applyMode(Builder $query, string $mode): Builder
     {
         return match ($mode) {
@@ -113,7 +96,6 @@ class MonitorStockRepository
             ->getCountForPagination();
     }
 
-    /** Ringkasan jumlah per tab (untuk badge Total). */
     public function summary(array $filters): array
     {
         return [
@@ -125,13 +107,8 @@ class MonitorStockRepository
         ];
     }
 
-    // ===================== Fase 3: Analitik penjualan =====================
-    // Sumber: inventory_movements source = ORDER_SHIP (barang benar-benar keluar terjual).
-    // On-the-fly memakai index inv_movements_source_date_item_idx (ADR-201).
-
     private const SALE_SOURCE = 'ORDER_SHIP';
 
-    /** Agregasi penjualan per item (last_sold all-time / qty_sold windowed). */
     private function salesSub(?string $locationId, ?string $from)
     {
         return DB::table('inventory_movements')
@@ -144,7 +121,6 @@ class MonitorStockRepository
             ->groupBy('item_id');
     }
 
-    /** Base + agregasi stok + agregasi penjualan. */
     private function baseWithSales(array $filters, ?string $from = null): Builder
     {
         $sales = $this->salesSub($filters['location_id'] ?? null, $from);
@@ -155,9 +131,6 @@ class MonitorStockRepository
             ->selectRaw('COALESCE(sales.qty_sold, 0) as qty_sold');
     }
 
-    /**
-     * Tidak Laku: masih ada stok tapi tak terjual > N hari (atau belum pernah).
-     */
     public function deadStock(array $filters, int $days, int $perPage = 10): LengthAwarePaginator
     {
         $threshold = now()->subDays($days)->toDateTimeString();
@@ -173,9 +146,6 @@ class MonitorStockRepository
         return $query->paginate($perPage)->appends(request()->query());
     }
 
-    /**
-     * Paling Laku: volume terjual terbanyak dalam window hari terakhir.
-     */
     public function fastMoving(array $filters, int $windowDays, int $perPage = 10): LengthAwarePaginator
     {
         $from = now()->subDays($windowDays)->toDateTimeString();
@@ -189,11 +159,6 @@ class MonitorStockRepository
         return $query->paginate($perPage)->appends(request()->query());
     }
 
-    /**
-     * Perkiraan Habis: proyeksi hari sampai stok habis ≤ threshold hari.
-     * days_to_out = available / (qty_sold / window). Kondisi tanpa pembagian:
-     *   available * window <= threshold * qty_sold.
-     */
     public function estimatedStockOut(array $filters, int $windowDays, int $thresholdDays, int $perPage = 10): LengthAwarePaginator
     {
         $from = now()->subDays($windowDays)->toDateTimeString();
@@ -210,8 +175,6 @@ class MonitorStockRepository
 
         return $query->paginate($perPage)->appends(request()->query());
     }
-
-    // ===================== Fase 4: Gagal Sync =====================
 
     public function failedSync(int $perPage = 10): LengthAwarePaginator
     {

@@ -102,11 +102,11 @@ class MonitorStockTest extends TestCase
 
     public function test_low_stock_uses_min_stock_threshold_and_safe_stock_target(): void
     {
-        // available(5) < min_stock(10) → muncul; target restock = safe_stock(20) - 5 = 15
+
         $this->makeVariant('TIPIS-1', ['min_stock' => 10, 'safe_stock' => 20], ['on_hand' => 5, 'available' => 5]);
-        // available(50) >= min_stock(10) → tidak muncul
+
         $this->makeVariant('AMAN-1', ['min_stock' => 10, 'safe_stock' => 20], ['on_hand' => 50, 'available' => 50]);
-        // min_stock 0 → tidak dipantau
+
         $this->makeVariant('NOMIN-1', ['min_stock' => 0, 'safe_stock' => 0], ['on_hand' => 0, 'available' => 0]);
 
         $res = $this->getJson('/api/v1/inventory/monitor/low-stock')->assertOk();
@@ -121,7 +121,7 @@ class MonitorStockTest extends TestCase
 
     public function test_low_stock_falls_back_to_min_stock_when_safe_stock_zero(): void
     {
-        // safe_stock 0 → target = min_stock(8); qty_to_restock = 8 - 2 = 6
+
         $this->makeVariant('FALLBACK-1', ['min_stock' => 8, 'safe_stock' => 0], ['on_hand' => 2, 'available' => 2]);
 
         $row = collect($this->getJson('/api/v1/inventory/monitor/low-stock')->json('data'))
@@ -162,7 +162,7 @@ class MonitorStockTest extends TestCase
         $res = $this->getJson('/api/v1/inventory/monitor/summary')->assertOk();
         $summary = $res->json('data');
 
-        $this->assertGreaterThanOrEqual(2, $summary['habis']); // S-HABIS + S-MINUS (available<=0)
+        $this->assertGreaterThanOrEqual(2, $summary['habis']); 
         $this->assertGreaterThanOrEqual(1, $summary['minus']);
         $this->assertGreaterThanOrEqual(1, $summary['menipis']);
         $this->assertArrayHasKey('on_order', $summary);
@@ -188,8 +188,6 @@ class MonitorStockTest extends TestCase
         $this->assertNotNull($row);
         $this->assertSame(13, $row['qty_to_restock']);
     }
-
-    // ===================== Fase 3: analitik penjualan =====================
 
     private function ship(string $itemId, int $qty, int $daysAgo): void
     {
@@ -231,7 +229,7 @@ class MonitorStockTest extends TestCase
         foreach ([1, 2, 3] as $d) {
             $this->ship($hot->id, 20, $d);
         }
-        $this->ship($old->id, 50, 200); // di luar window 30 hari
+        $this->ship($old->id, 50, 200); 
 
         $data = collect($this->getJson('/api/v1/inventory/monitor/fast-moving?days=30')->assertOk()->json('data'));
         $row = $data->firstWhere('sku', 'FAST-HOT');
@@ -243,7 +241,7 @@ class MonitorStockTest extends TestCase
 
     public function test_estimated_stock_out_projects_days(): void
     {
-        // 90 terjual dalam 30 hari -> 3/hari; available 30 -> days_to_out = 10 (<=30)
+
         $v = $this->makeVariant('ETA-1', [], ['on_hand' => 30, 'available' => 30]);
         $this->ship($v->id, 90, 10);
 

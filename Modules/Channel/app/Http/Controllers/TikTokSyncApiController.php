@@ -22,8 +22,6 @@ class TikTokSyncApiController extends Controller
         $this->shopRepository = $shopRepository;
     }
 
-    // ─── Order Pull ─────────────────────────────────────────────────
-
     public function pullOrdersAll(TikTokOrderService $orderService)
     {
         try {
@@ -72,8 +70,6 @@ class TikTokSyncApiController extends Controller
         }
     }
 
-    // ─── Order Accept / Decline (TikTok-specific) ───────────────────
-
     public function acceptOrder(Request $request, TikTokOrderService $orderService)
     {
         $request->validate([
@@ -105,8 +101,6 @@ class TikTokSyncApiController extends Controller
         }
     }
 
-    // ─── sync/ship — konsisten dengan Shopee sync/ship ──────────────
-
     public function shipOrder(Request $request, TikTokOrderService $orderService)
     {
         $request->validate([
@@ -137,8 +131,6 @@ class TikTokSyncApiController extends Controller
         }
     }
 
-    // ─── sync/awb — konsisten dengan Shopee sync/awb ────────────────
-
     public function airwayBill(Request $request, TikTokOrderService $orderService)
     {
         $request->validate([
@@ -156,8 +148,6 @@ class TikTokSyncApiController extends Controller
         }
     }
 
-    // ─── sync/packages — konsisten dengan Shopee sync/packages ──────
-
     public function packages(Request $request, TikTokOrderService $orderService)
     {
         $request->validate([
@@ -172,8 +162,6 @@ class TikTokSyncApiController extends Controller
             return $this->errorResponse('Gagal ambil detail package: ' . $e->getMessage(), 422);
         }
     }
-
-    // ─── sync/handle-buyer-cancel — konsisten dengan Shopee ─────────
 
     public function handleBuyerCancel(Request $request, TikTokOrderService $orderService)
     {
@@ -198,8 +186,6 @@ class TikTokSyncApiController extends Controller
         }
     }
 
-    // ─── sync/cancel — konsisten dengan Shopee sync/cancel ──────────
-
     public function cancelOrder(Request $request, TikTokOrderService $orderService)
     {
         $request->validate([
@@ -216,8 +202,6 @@ class TikTokSyncApiController extends Controller
         }
     }
 
-    // ─── cancel-reasons — konsisten dengan Shopee ───────────────────
-
     public function cancelReasons(Request $request, TikTokOrderService $orderService)
     {
         try {
@@ -227,8 +211,6 @@ class TikTokSyncApiController extends Controller
             return $this->errorResponse($e->getMessage(), 500);
         }
     }
-
-    // ─── Product Sync ───────────────────────────────────────────────
 
     public function pullProductsAll(TikTokProductService $productService)
     {
@@ -307,8 +289,6 @@ class TikTokSyncApiController extends Controller
             return $this->errorResponse($e->getMessage(), 500);
         }
     }
-
-    // ─── Category Sync ──────────────────────────────────────────────
 
     public function syncCategories(Request $request, TikTokProductService $productService)
     {

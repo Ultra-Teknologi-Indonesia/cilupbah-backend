@@ -96,7 +96,7 @@ class LoginHistory extends Model
                 ];
             }
         } catch (\Throwable) {
-            // Silently fail — location is non-critical
+
         }
 
         return $default;

@@ -32,7 +32,6 @@ class SupplierDatabaseSeeder extends Seeder
     {
         $category = ContactCategory::where('code', 'PLG-UMUM')->first();
 
-        // Delete ALL old system marketplace contacts and recreate per-channel
         Contact::where('is_system', true)
             ->where('code', 'like', 'MP-%')
             ->delete();

@@ -9,7 +9,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // --- Migrate referenced suppliers into contacts table ---
+
         $poColumn = Schema::hasColumn('purchase_orders', 'contact_id') ? 'contact_id' : 'supplier_id';
         $pbColumn = Schema::hasColumn('purchase_bills', 'contact_id') ? 'contact_id' : 'supplier_id';
 
@@ -47,7 +47,6 @@ return new class extends Migration
             }
         }
 
-        // --- purchase_orders: supplier_id → contact_id + new fields ---
         if (Schema::hasColumn('purchase_orders', 'supplier_id')) {
             Schema::table('purchase_orders', function (Blueprint $table) {
                 $table->dropForeign(['supplier_id']);
@@ -77,7 +76,6 @@ return new class extends Migration
             DB::statement("ALTER TABLE purchase_orders ALTER COLUMN payment_term TYPE integer USING payment_term::integer");
         }
 
-        // --- purchase_order_items: add disc/tax/unit fields ---
         if (! Schema::hasColumn('purchase_order_items', 'description')) {
             Schema::table('purchase_order_items', function (Blueprint $table) {
                 $table->text('description')->nullable()->after('item_id');
@@ -95,7 +93,6 @@ return new class extends Migration
             });
         }
 
-        // --- purchase_bills: supplier_id → contact_id + new fields ---
         if (Schema::hasColumn('purchase_bills', 'supplier_id')) {
             Schema::table('purchase_bills', function (Blueprint $table) {
                 $table->dropForeign(['supplier_id']);
@@ -120,7 +117,6 @@ return new class extends Migration
             });
         }
 
-        // --- purchase_bill_items: add po_item link, disc/tax/unit fields ---
         if (! Schema::hasColumn('purchase_bill_items', 'description')) {
             Schema::table('purchase_bill_items', function (Blueprint $table) {
                 $table->foreignUuid('purchase_order_item_id')->nullable()->constrained('purchase_order_items')->nullOnDelete()->after('purchase_bill_id');
@@ -150,7 +146,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        // purchase_bill_items
+
         Schema::table('purchase_bill_items', function (Blueprint $table) {
             $table->renameColumn('amount', 'subtotal');
             $table->dropForeign(['tax_id']);
@@ -158,7 +154,6 @@ return new class extends Migration
             $table->dropColumn(['purchase_order_item_id', 'description', 'unit', 'disc', 'disc_amount', 'tax_id', 'tax_amount']);
         });
 
-        // purchase_bills
         Schema::table('purchase_bills', function (Blueprint $table) {
             $table->dropForeign(['contact_id']);
             $table->dropColumn(['ref_no', 'payment_term', 'sub_total', 'total_disc', 'total_tax', 'is_tax_included', 'tag']);
@@ -170,14 +165,12 @@ return new class extends Migration
             $table->foreign('supplier_id')->references('id')->on('suppliers')->restrictOnDelete();
         });
 
-        // purchase_order_items
         Schema::table('purchase_order_items', function (Blueprint $table) {
             $table->renameColumn('amount', 'subtotal');
             $table->dropForeign(['tax_id']);
             $table->dropColumn(['description', 'unit', 'disc', 'disc_amount', 'tax_id', 'tax_amount']);
         });
 
-        // purchase_orders
         Schema::table('purchase_orders', function (Blueprint $table) {
             $table->dropForeign(['contact_id']);
             $table->dropColumn(['ref_no', 'sub_total', 'total_disc', 'total_tax', 'is_tax_included']);

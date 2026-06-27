@@ -2,20 +2,9 @@
 
 namespace Modules\Channel\Services;
 
-/**
- * Memetakan response TikTok Finance "statement transactions" → struktur keuangan
- * kanonik internal.
- *
- * CATATAN VERIFIKASI (Phase 0): nama field `fee_breakdown` TikTok dapat berbeda antar
- * rilis. Parser ini sengaja defensif — mencoba beberapa kemungkinan nama field dan
- * meng-abs() nilai fee (TikTok mengirim fee sebagai nilai negatif/pengurang) supaya
- * konsisten dengan Shopee (fee positif). Sesuaikan saat verifikasi sandbox.
- */
 class TikTokStatementMapper
 {
-    /**
-     * @param array $data Isi `data` dari getOrderStatement (memuat `statement_transactions`).
-     */
+
     public function map(array $data): array
     {
         $transactions = $data['statement_transactions'] ?? ($data['transactions'] ?? []);
@@ -67,7 +56,6 @@ class TikTokStatementMapper
             'is_settled'           => $hasSettlement,
         ];
 
-        // Audit trail: tiap komponen kanonik → nama field statement TikTok.
         $result['fee_lines'] = $this->feeLines($result, [
             'seller_voucher'       => 'seller_discount',
             'platform_voucher'     => 'platform_discount',
@@ -81,11 +69,6 @@ class TikTokStatementMapper
         return $result;
     }
 
-    /**
-     * Bentuk baris audit fee dari hasil kanonik: satu baris per komponen non-null.
-     *
-     * @param array<string,string> $map fee_type kanonik => nama field statement channel
-     */
     private function feeLines(array $canonical, array $map): array
     {
         $lines = [];
@@ -105,9 +88,6 @@ class TikTokStatementMapper
         return $lines;
     }
 
-    /**
-     * Ambil angka pertama yang ada dari beberapa kemungkinan nama field.
-     */
     private function num(array $src, array $keys): ?float
     {
         foreach ($keys as $key) {

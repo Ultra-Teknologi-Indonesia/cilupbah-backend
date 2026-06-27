@@ -12,6 +12,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        // PostgreSQL does not support removing enum values
+
     }
 };

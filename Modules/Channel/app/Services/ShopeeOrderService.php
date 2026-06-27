@@ -135,12 +135,6 @@ class ShopeeOrderService
         }
     }
 
-    /**
-     * Ambil rincian escrow (income) sebuah order — sumber data biaya admin, komisi,
-     * voucher, dan net settlement Shopee. Field final tersedia setelah order COMPLETED.
-     *
-     * Mengembalikan isi `response` (umumnya berisi `order_income`).
-     */
     public function getEscrowDetail(string $shopId, string $orderSn): array
     {
         $shop = $this->requireShop($shopId);
@@ -184,9 +178,7 @@ class ShopeeOrderService
 
         $method = $opts['method'] ?? null;
         if (! in_array($method, ['pickup', 'dropoff', 'non_integrated'], true)) {
-            // info_needed adalah sinyal utama; bila tidak ada/kosong, pakai
-            // ketersediaan address_list/branch_list. Jangan default ke non_integrated
-            // kecuali memang ditawarkan info_needed.
+
             $pickupOffered = array_key_exists('pickup', $infoNeeded) ? $infoNeeded['pickup'] !== null : ! empty($addressList);
             $dropoffOffered = array_key_exists('dropoff', $infoNeeded) ? $infoNeeded['dropoff'] !== null : ! empty($branchList);
             $nonIntegratedOffered = array_key_exists('non_integrated', $infoNeeded) && $infoNeeded['non_integrated'] !== null;
@@ -237,7 +229,7 @@ class ShopeeOrderService
             if (! empty($required)) {
                 $pickup = array_intersect_key($pickup, array_flip($required)) ?: $pickup;
             }
-            // Array biasa (bukan object) — pickup selalu berisi address_id/pickup_time_id.
+
             $body['pickup'] = $pickup;
         } elseif ($method === 'dropoff') {
             $required = is_array($infoNeeded['dropoff'] ?? null) ? $infoNeeded['dropoff'] : [];
@@ -418,8 +410,6 @@ class ShopeeOrderService
     {
         $shop = $this->requireShop($shopId);
 
-        // download_shipping_document mengembalikan PDF biner — pakai requestBinary agar
-        // byte tidak hilang saat Shopee membalas stream (bukan base64-in-JSON).
         return $this->callWithRefresh($shop, fn (string $token) => $this->client->requestBinary('/api/v2/logistics/download_shipping_document', [
             'shipping_document_type' => $docType,
             'order_list' => [['order_sn' => $orderSn]],
@@ -472,7 +462,6 @@ class ShopeeOrderService
 
         $download = $this->downloadShippingDocument($shopId, $orderSn, $docType);
 
-        // Kasus 1: stream PDF biner → encode base64 agar aman ditransport via JSON API.
         if (! empty($download['binary'])) {
             return [
                 'order_sn' => $orderSn,
@@ -484,7 +473,6 @@ class ShopeeOrderService
             ];
         }
 
-        // Kasus 2: Shopee membalas base64-in-JSON. Nama field persis perlu validasi sandbox.
         $payload = $download['response'] ?? $download;
 
         return [

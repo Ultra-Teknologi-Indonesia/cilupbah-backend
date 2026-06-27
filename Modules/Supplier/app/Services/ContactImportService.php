@@ -35,8 +35,8 @@ class ContactImportService
     ];
 
     private const TYPE_MAP = [
-        'pemasok'               => Contact::TYPE_SUPPLIER, // Pemasok (sendiri)
-        'pemasok dan pelanggan' => Contact::TYPE_BOTH,     // Pemasok + Pelanggan (gabung)
+        'pemasok'               => Contact::TYPE_SUPPLIER, 
+        'pemasok dan pelanggan' => Contact::TYPE_BOTH,     
         'pemasok & pelanggan'   => Contact::TYPE_BOTH,
         'pemasok + pelanggan'   => Contact::TYPE_BOTH,
     ];
@@ -46,9 +46,8 @@ class ContactImportService
         'non pkp' => 'NON_PKP',
     ];
 
-    // Warna penanda di sheet Panduan (dirujuk oleh sheet Tata Cara Penggunaan)
-    private const COLOR_REQUIRED = 'F4B183'; // oranye  = wajib diisi
-    private const COLOR_OPTIONAL = 'FFE699'; // kuning  = boleh dikosongkan
+    private const COLOR_REQUIRED = 'F4B183'; 
+    private const COLOR_OPTIONAL = 'FFE699'; 
 
     public function generateTemplate(): string
     {
@@ -66,7 +65,6 @@ class ContactImportService
         $data->setTitle('Data Import');
         $this->buildDataSheet($data);
 
-        // Buka di sheet instruksi dulu agar dibaca lebih dulu
         $spreadsheet->setActiveSheetIndex(0);
 
         $path = storage_path('app/temp/template-import-kontak.xlsx');
@@ -120,8 +118,6 @@ class ContactImportService
             $errorFields = [];
             $mapped = [];
 
-            // Catat pesan error sekaligus kolom mana yang bermasalah,
-            // agar FE bisa menyorot value yang tidak valid.
             $addError = function ($fields, string $message) use (&$errors, &$errorFields) {
                 $errors[] = $message;
                 foreach ((array) $fields as $field) {
@@ -143,7 +139,6 @@ class ContactImportService
                 $seenNames[] = $lowerName;
             }
 
-            // Buang keterangan dalam kurung mis. "Pemasok (Sendiri)" -> "pemasok"
             $typeLower = strtolower(trim(preg_replace('/\(.*?\)/', '', $raw['Tipe'])));
             $typeLower = trim(preg_replace('/\s+/', ' ', $typeLower));
             if (empty($raw['Tipe'])) {
@@ -322,7 +317,6 @@ class ContactImportService
             $r += 2;
         }
 
-        // Legenda warna agar deskripsi pada langkah pertama jelas
         $sheet->setCellValue('A' . $r, 'Keterangan Warna');
         $sheet->getStyle('A' . $r)->getFont()->setBold(true);
         $r++;
@@ -354,8 +348,6 @@ class ContactImportService
             $sheet->getStyle($col . '3')->getFont()->getColor()->setRGB('FFFFFF');
         }
 
-        // Daftar kategori diambil dinamis dari sistem agar panduan selalu
-        // menampilkan value kategori yang benar-benar diterima.
         $categoryNames = ContactCategory::orderBy('name')->pluck('name')->all();
         $categoryAccepted = empty($categoryNames)
             ? 'Harus terdaftar di sistem'
@@ -382,8 +374,7 @@ class ContactImportService
         foreach ($guide as $i => $row) {
             $r = $i + 4;
             foreach (['A', 'B', 'C', 'D'] as $j => $col) {
-                // Kolom "Contoh" (C) ditulis sebagai teks eksplisit agar angka panjang
-                // seperti NIK/NPWP/No. Telepon tidak berubah jadi notasi ilmiah (3,17401E+15)
+
                 if ($col === 'C') {
                     $sheet->getStyle($col . $r)->getNumberFormat()
                         ->setFormatCode(NumberFormat::FORMAT_TEXT);
@@ -417,9 +408,6 @@ class ContactImportService
                 ->setHorizontal(Alignment::HORIZONTAL_CENTER);
         }
 
-        // Kolom yang berisi angka panjang harus dipaksa Text agar tidak berubah
-        // menjadi notasi ilmiah (mis. NIK 3,17401E+15, No. Telepon 6,28128E+11)
-        // saat user mengisi/menyimpan template di Excel.
         $textColumns = ['D' => 'NPWP', 'E' => 'NIK', 'H' => 'No. Telepon'];
         foreach (array_keys($textColumns) as $col) {
             $sheet->getStyle($col . '1:' . $col . '1000')->getNumberFormat()

@@ -8,11 +8,6 @@ use Modules\Outbound\Models\CourierChannelMapping;
 use Modules\Outbound\Services\CourierMappingService;
 use Tests\TestCase;
 
-/**
- * Master data kurir lintas channel: memastikan nama provider mentah dari channel
- * berbeda (Shopee / TikTok / Lazada) dipetakan ke satu kurir kanonik + tier layanan
- * yang sama, sehingga order bisa digabung menjadi satu manifest.
- */
 class CourierMappingServiceTest extends TestCase
 {
     use RefreshDatabase;
@@ -79,7 +74,7 @@ class CourierMappingServiceTest extends TestCase
 
     public function test_most_specific_keyword_wins(): void
     {
-        // "spx" is a shorter alias than "spx instant"; the more specific one must win.
+
         $this->assertSame('spx_instant', $this->service->resolveCode('SPX Instant - 2 Jam'));
         $this->assertSame('spx', $this->service->resolveCode('SPX Standard'));
     }

@@ -203,8 +203,6 @@ class MonitorStockController extends Controller
         );
     }
 
-    // ===================== Fase 4: Gagal Sync =====================
-
     #[OA\Get(
         path: '/api/v1/inventory/monitor/failed-sync',
         summary: 'Tab Gagal Sync (mapping channel berstatus failed)',

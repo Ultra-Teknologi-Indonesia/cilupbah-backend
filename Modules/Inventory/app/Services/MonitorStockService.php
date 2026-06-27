@@ -12,7 +12,6 @@ class MonitorStockService
         protected MonitorStockRepository $repository,
     ) {}
 
-    /** @return array{search?:string,category_id?:string,location_id?:string} */
     public function filtersFrom(array $input): array
     {
         return array_filter([
@@ -24,7 +23,7 @@ class MonitorStockService
 
     public function outOfStock(string $mode, array $filters, int $perPage = 10)
     {
-        // hanya mode valid untuk tab Stok Kosong
+
         $mode = in_array($mode, ['habis', 'minus', 'dipesan'], true) ? $mode : 'habis';
 
         return $this->repository->paginateMode($mode, $filters, $perPage);
@@ -45,8 +44,6 @@ class MonitorStockService
         return $this->repository->summary($filters);
     }
 
-    // ===================== Fase 3: Analitik penjualan (default ADR-203) =====================
-
     public function deadStock(array $filters, int $days = 90, int $perPage = 10)
     {
         return $this->repository->deadStock($filters, max(1, $days), $perPage);
@@ -61,8 +58,6 @@ class MonitorStockService
     {
         return $this->repository->estimatedStockOut($filters, max(1, $windowDays), max(1, $thresholdDays), $perPage);
     }
-
-    // ===================== Fase 4: Gagal Sync =====================
 
     public function failedSync(int $perPage = 10)
     {

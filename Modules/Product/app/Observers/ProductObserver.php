@@ -23,11 +23,7 @@ class ProductObserver
 
     public function updated(Product $product): void
     {
-        // Auto-pushing internal product edits to the marketplaces is disabled by
-        // default: per-channel content (name/variations/media) is maintained directly
-        // on each marketplace and downloaded back, so pushing master edits would
-        // overwrite channel-specific data and trigger validation errors (e.g. TikTok's
-        // 25-char name minimum). Stock sync is a separate path and is unaffected.
+
         if (! config('channel.auto_push_product_content', false)) {
             return;
         }

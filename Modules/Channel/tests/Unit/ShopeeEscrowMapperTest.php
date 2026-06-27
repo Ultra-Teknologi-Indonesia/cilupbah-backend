@@ -69,7 +69,7 @@ class ShopeeEscrowMapperTest extends TestCase
         $this->assertSame('commission_fee', $byType['commission_fee']['channel_fee_code']);
         $this->assertSame(2200.0, $byType['commission_fee']['amount']);
         $this->assertSame('voucher_from_shopee', $byType['platform_voucher']['channel_fee_code']);
-        // Komponen yang null tidak menghasilkan baris.
+
         $this->assertArrayNotHasKey('service_fee', $byType->all());
     }
 }

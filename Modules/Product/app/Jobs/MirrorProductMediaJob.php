@@ -13,13 +13,6 @@ use Modules\Channel\Support\TikTokImageUrl;
 use Modules\Product\Models\ProductMedia;
 use Modules\Product\Support\InternalMediaUrl;
 
-/**
- * Re-downloads a single product_media row from its external channel CDN and
- * stores it on our internal CDN, then rewrites the row to the internal URL.
- *
- * Idempotent: a row already on the internal CDN is left untouched, so the job
- * is safe to retry and to re-dispatch from the backfill command.
- */
 class MirrorProductMediaJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -32,10 +25,6 @@ class MirrorProductMediaJob implements ShouldQueue
         $this->onQueue(config('queue.names.product'));
     }
 
-    /**
-     * Escalating backoff so a temporarily unreachable CDN is retried later
-     * instead of persisting the external URL forever.
-     */
     public function backoff(): array
     {
         return [60, 300, 1800];

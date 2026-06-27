@@ -20,20 +20,6 @@ use Modules\Purchase\Models\PurchaseOrder;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 
-/**
- * Builds a realistic, business-logic-accurate inventory history spread across the
- * last 12 months for every stockable (non-bundle) product variant:
- *
- *   - Beginning balance        (stock_adjustments, is_beginning_balance)
- *   - Purchasing               (purchase_orders + items)
- *   - Goods-in / barang masuk  (inbounds + items, posts stock IN)
- *   - Goods-out / barang keluar(stock_adjustments OUT + inter-warehouse transfers)
- *   - Open / partial POs        (on_order at "now")
- *
- * Every stock effect is posted to inventories + inventory_movements with a correct
- * running balance and avg_cost, mirroring InventoryService::adjust() — but with
- * explicit source tags and back-dated transaction dates. No sales orders are created.
- */
 class InventoryHistorySeeder extends Seeder
 {
     private const CREATED_BY = 'seeder@cilupbah.id';
@@ -43,10 +29,8 @@ class InventoryHistorySeeder extends Seeder
     private string $branchLocId;
     private ?string $branchBinId;
 
-    /** @var array<int,string> contact ids */
     private array $suppliers = [];
 
-    /** local mirror of on_hand per "variantId@locId" to keep outbound non-negative */
     private array $onHand = [];
 
     private int $poCounter = 0;
@@ -56,7 +40,7 @@ class InventoryHistorySeeder extends Seeder
 
     public function run(): void
     {
-        // Not idempotent — guard against duplicating an existing history.
+
         if (InventoryMovement::where('created_by', self::CREATED_BY)->exists()) {
             $this->command->warn('InventoryHistorySeeder: seeded history already exists — skipping. '
                 . 'Purge rows where created_by=' . self::CREATED_BY . ' to reseed.');
@@ -92,10 +76,6 @@ class InventoryHistorySeeder extends Seeder
             ['inventory_movements', InventoryMovement::count()],
         ]);
     }
-
-    // ---------------------------------------------------------------------
-    // Setup
-    // ---------------------------------------------------------------------
 
     private function prepareLocations(): void
     {
@@ -163,10 +143,6 @@ class InventoryHistorySeeder extends Seeder
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Per-product timeline
-    // ---------------------------------------------------------------------
-
     private function buildProductHistory(Product $product): void
     {
         $variants = $product->variants;
@@ -174,9 +150,6 @@ class InventoryHistorySeeder extends Seeder
             return;
         }
 
-        // 1) Beginning balance ~ 11 months ago. A single strictly-increasing date
-        //    cursor walks the whole timeline so that, per (item, location), every
-        //    posting is chronological and the running balance stays monotonic.
         $cursor = now()->subMonths(11)->subDays(random_int(0, 15))->setTime(9, 0);
         $this->beginningBalance($product, $variants, $cursor->copy());
 
@@ -191,18 +164,17 @@ class InventoryHistorySeeder extends Seeder
 
             $roll = random_int(1, 100);
             if ($roll <= 65) {
-                // pembelian → barang masuk
+
                 $this->purchaseAndReceive($product, $variants, $cursor->copy());
             } elseif ($roll <= 90) {
-                // barang keluar (rusak/susut/sampel)
+
                 $this->adjustmentOut($variants, $cursor->copy());
             } else {
-                // distribusi antar gudang
+
                 $this->transfer($variants, $cursor->copy());
             }
         }
 
-        // 2) Open / partial PO within the last few days (creates on_order at "now")
         if (random_int(1, 10) <= 4) {
             $this->openPurchaseOrder($product, $variants);
         }
@@ -303,7 +275,7 @@ class InventoryHistorySeeder extends Seeder
 
     private function adjustmentOut($variants, Carbon $date): void
     {
-        // Pick a subset of variants that actually have stock
+
         $candidates = $variants->filter(fn ($v) => $this->stock($v->id, $this->mainLocId) > 5);
         if ($candidates->isEmpty()) {
             return;
@@ -438,10 +410,6 @@ class InventoryHistorySeeder extends Seeder
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Posting primitive (mirrors InventoryService::adjust balance logic)
-    // ---------------------------------------------------------------------
-
     private function post(string $variantId, string $locId, ?string $binId, int $qty, string $source, Carbon $date, ?string $txn = null, ?float $unitCost = null): void
     {
         $inv = Inventory::firstOrCreate(
@@ -458,7 +426,6 @@ class InventoryHistorySeeder extends Seeder
             $newOnHand = 0;
         }
 
-        // weighted average cost on inbound
         if ($qty > 0 && $unitCost !== null) {
             $prevValue = $inv->on_hand * (float) $inv->avg_cost;
             $inv->avg_cost = $newOnHand > 0 ? round(($prevValue + $qty * $unitCost) / $newOnHand, 2) : $unitCost;
@@ -504,15 +471,6 @@ class InventoryHistorySeeder extends Seeder
         return $this->onHand[$variantId . '@' . $locId] ?? 0;
     }
 
-    // ---------------------------------------------------------------------
-    // Helpers
-    // ---------------------------------------------------------------------
-
-    /**
-     * A single restock PO realistically covers only a handful of phone-model
-     * variants, not the whole line-up. Returns a random subset so products with
-     * a large "Tipe HP" matrix don't generate an unbounded movement history.
-     */
     private function restockSubset($variants)
     {
         $total = $variants->count();
@@ -543,7 +501,6 @@ class InventoryHistorySeeder extends Seeder
         $model->saveQuietly();
     }
 
-    /** Raw insert against the live purchase_orders schema (supplier_id + subtotal/total_amount). */
     private function insertPurchaseOrder(string $poNumber, string $supplierId, string $status, Carbon $orderDate, Carbon $expected, int $total, string $notes): string
     {
         $id = (string) Str::uuid();

@@ -8,9 +8,7 @@ class ChannelOrderRepository
 {
     public function findOrderBySalesOrderNo(string $salesOrderNo)
     {
-        // Channel order ids masuk sebagai id mentah marketplace (tersimpan di
-        // channel_order_no), sedangkan salesorder_no kanonik ber-prefix (mis. "TT-...").
-        // Cocokkan kedua kolom agar lookup dengan id mentah tetap ketemu.
+
         return DB::table('sales_orders')
             ->where(function ($q) use ($salesOrderNo) {
                 $q->where('salesorder_no', $salesOrderNo)

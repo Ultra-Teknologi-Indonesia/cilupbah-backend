@@ -34,15 +34,12 @@ class SalesOrderRepository
         $sub = request('sub');
         if ($tab && $tab !== 'all') {
             $query = $this->applyTabScope($query, $tab, $sub);
-            // Quarantined Gagal Download orders only belong in the failed tab.
-            // Every other tab must hide orders not bound to the internal master,
-            // regardless of status.
+
             if ($tab !== 'failed') {
                 $query = $this->scopeExcludeFailedDownload($query);
             }
         } else {
-            // "Semua" / default listing must not surface quarantined
-            // Gagal Download orders — they live only in the failed tab.
+
             $query = $this->scopeExcludeFailedDownload($query);
         }
 
@@ -120,10 +117,6 @@ class SalesOrderRepository
         ];
     }
 
-    /**
-     * Base query for every tab except Gagal Download: excludes orders that are
-     * not bound to the internal master (quarantined channel orders).
-     */
     protected function visibleOrders()
     {
         return $this->scopeExcludeFailedDownload(SalesOrder::query());
@@ -134,25 +127,12 @@ class SalesOrderRepository
         return fn ($q) => $q->whereNull('item_id');
     }
 
-    /**
-     * "Gagal Download" scope: a channel order (has source) that still has at
-     * least one unmapped item (product not yet downloaded / bound to a master
-     * variant). Status is irrelevant — even a cancelled order that was never
-     * bound to the internal master is quarantined. These orders must only
-     * surface in the Gagal Download (failed) tab, never in any other tab.
-     */
     protected function scopeFailedDownload($query)
     {
         return $query->whereNotNull('source')
             ->whereHas('items', $this->unmappedItemsConstraint());
     }
 
-    /**
-     * Inverse of scopeFailedDownload — everything except quarantined orders.
-     * Applied to every tab except Gagal Download so that any order not bound to
-     * the internal master never leaks into the normal order stream, regardless
-     * of its status.
-     */
     protected function scopeExcludeFailedDownload($query)
     {
         return $query->where(fn ($q) => $q
@@ -318,8 +298,7 @@ class SalesOrderRepository
             'transaction_date'    => $orderData['transaction_date'],
             'sub_total'           => $orderData['sub_total'],
             'total_disc'          => $orderData['total_disc'],
-            // Voucher estimasi dari order detail. Jangan timpa bila fee sudah final
-            // (is_settled) — angka final hanya boleh ditulis lewat updateOrderFinance().
+
             'seller_voucher'      => $existing && $existing->is_settled
                 ? $existing->seller_voucher
                 : ($orderData['seller_voucher'] ?? ($existing->seller_voucher ?? null)),
@@ -531,11 +510,6 @@ class SalesOrderRepository
         }
     }
 
-    /**
-     * Ganti seluruh baris audit fee sebuah order (replace-on-write → idempoten).
-     *
-     * @param array<int,array{fee_type:string,channel_fee_code:?string,amount:float}> $lines
-     */
     public function replaceOrderFeeLines(string $orderId, array $lines, string $source, bool $isSettled): void
     {
         DB::transaction(function () use ($orderId, $lines, $source, $isSettled) {

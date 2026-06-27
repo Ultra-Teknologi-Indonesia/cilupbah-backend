@@ -101,7 +101,6 @@ class SalesOrderResource extends JsonResource
             'insurance_cost' => (float) $this->insurance_cost,
             'grand_total'    => (float) $this->grand_total,
 
-            // Null dipertahankan (bukan dipaksa 0) agar beda "belum settle" vs "nol".
             'finance' => [
                 'seller_voucher'           => $this->floatOrNull($this->seller_voucher),
                 'platform_voucher'         => $this->floatOrNull($this->platform_voucher),

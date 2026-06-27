@@ -6,11 +6,6 @@ use Illuminate\Console\Command;
 use Modules\Sales\Jobs\SyncOrderFinanceJob;
 use Modules\Sales\Models\SalesOrder;
 
-/**
- * Nightly reconciliation sweep: tarik data keuangan final untuk order yang sudah
- * COMPLETED tapi belum settled. Jaring pengaman bila trigger event (webhook/pull)
- * terlewat atau escrow belum siap saat pertama kali order completed.
- */
 class SyncOrderFinance extends Command
 {
     protected $signature = 'orders:sync-finance

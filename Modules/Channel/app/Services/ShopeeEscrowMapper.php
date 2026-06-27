@@ -2,17 +2,9 @@
 
 namespace Modules\Channel\Services;
 
-/**
- * Memetakan response Shopee `get_escrow_detail` → struktur keuangan kanonik internal.
- *
- * Sumber: `response.order_income` (lihat Shopee Open API v2 Payment).
- * Semua fee Shopee bernilai positif (biaya). Voucher dipecah seller vs Shopee.
- */
 class ShopeeEscrowMapper
 {
-    /**
-     * @param array $escrow Isi `response` dari get_escrow_detail (memuat `order_income`).
-     */
+
     public function map(array $escrow): array
     {
         $income = $escrow['order_income'] ?? $escrow;
@@ -21,7 +13,6 @@ class ShopeeEscrowMapper
         $buyerPaidShipping = $this->num($income, 'buyer_paid_shipping_fee');
         $shopeeRebate = $this->num($income, 'shopee_shipping_rebate');
 
-        // Ongkir bersih yang ditanggung seller = ongkir aktual − dibayar buyer − subsidi Shopee.
         $sellerShippingBorne = null;
         if ($actualShipping !== null) {
             $sellerShippingBorne = $actualShipping
@@ -42,11 +33,10 @@ class ShopeeEscrowMapper
             'platform_shipping_rebate' => $shopeeRebate,
             'settlement_amount'        => $settlement,
             'fee_currency'             => $escrow['currency'] ?? ($income['currency'] ?? 'IDR'),
-            // Final hanya bila escrow_amount benar-benar terisi (order sudah settle).
+
             'is_settled'               => $settlement !== null,
         ];
 
-        // Audit trail: tiap komponen kanonik → kode field mentah Shopee.
         $result['fee_lines'] = $this->feeLines($result, [
             'seller_voucher'           => 'voucher_from_seller',
             'platform_voucher'         => 'voucher_from_shopee',
@@ -62,11 +52,6 @@ class ShopeeEscrowMapper
         return $result;
     }
 
-    /**
-     * Bentuk baris audit fee dari hasil kanonik: satu baris per komponen non-null.
-     *
-     * @param array<string,string> $map fee_type kanonik => kode field mentah channel
-     */
     private function feeLines(array $canonical, array $map): array
     {
         $lines = [];

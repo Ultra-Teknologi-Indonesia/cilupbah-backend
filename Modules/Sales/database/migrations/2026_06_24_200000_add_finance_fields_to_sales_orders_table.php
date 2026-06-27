@@ -9,26 +9,22 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('sales_orders', function (Blueprint $table) {
-            // Diskon dipecah: ditanggung seller vs platform/marketplace.
+
             $table->decimal('seller_voucher', 18, 4)->nullable()->after('total_disc');
             $table->decimal('platform_voucher', 18, 4)->nullable()->after('seller_voucher');
 
-            // Biaya marketplace — hanya FINAL setelah order settle (escrow/finance).
             $table->decimal('commission_fee', 18, 4)->nullable()->after('platform_voucher');
             $table->decimal('service_fee', 18, 4)->nullable()->after('commission_fee');
             $table->decimal('transaction_fee', 18, 4)->nullable()->after('service_fee');
             $table->decimal('affiliate_commission', 18, 4)->nullable()->after('transaction_fee');
 
-            // Ongkir bersih ditanggung seller vs subsidi platform.
             $table->decimal('seller_shipping_borne', 18, 4)->nullable()->after('affiliate_commission');
             $table->decimal('platform_shipping_rebate', 18, 4)->nullable()->after('seller_shipping_borne');
 
-            // Net yang benar-benar diterima seller (escrow_amount / settlement_amount).
             $table->decimal('settlement_amount', 18, 4)->nullable()->after('platform_shipping_rebate');
 
             $table->string('fee_currency', 8)->default('IDR')->after('settlement_amount');
 
-            // is_settled = true hanya bila fee final ditarik dari escrow/finance.
             $table->boolean('is_settled')->default(false)->after('fee_currency');
             $table->timestamp('finance_synced_at')->nullable()->after('is_settled');
 

@@ -14,17 +14,9 @@ use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\ProductVariationType;
 use Modules\Product\Models\VariantOption;
 
-/**
- * Seeds 30+ master products across the existing custom "Handphone & Aksesoris"
- * leaf categories (resolved by name — NOT created here). Covers every product
- * type (single / multi-variant / bundle / consignment / preorder / serial / COD),
- * each with real images uploaded to the internal S3 (Cloudflare R2) bucket.
- *
- * Idempotent: products keyed by SKU, media skipped when already present.
- */
 class ProductCatalogSeeder extends Seeder
 {
-    /** Leaf category name => short SKU code + image search keyword. */
+
     private const CATEGORIES = [
         'Adaptor + Kabel'  => ['ADP', 'usb cable charger'],
         'Anti Crack Case'  => ['ACC', 'clear phone case'],
@@ -39,12 +31,6 @@ class ProductCatalogSeeder extends Seeder
         'Phone Holder'     => ['HLD', 'car phone holder'],
     ];
 
-    /**
-     * Phone-model variation axis ("Tipe HP") applied to EVERY non-bundle product.
-     * Full iPhone 11–17 line-up (base / mini / Plus / Pro / Pro Max per generation)
-     * plus popular Android models. No product is single-variant or carries a model
-     * name in its title — the model is always a variant.
-     */
     private const MODELS = [
         'iPhone 11', 'iPhone 11 Pro', 'iPhone 11 Pro Max',
         'iPhone 12', 'iPhone 12 mini', 'iPhone 12 Pro', 'iPhone 12 Pro Max',
@@ -56,12 +42,6 @@ class ProductCatalogSeeder extends Seeder
         'Galaxy S24', 'Galaxy S25', 'Galaxy A55', 'Redmi Note 13', 'POCO X6',
     ];
 
-    /**
-     * Curated, real product photos per leaf category (hand-picked & verified on
-     * Unsplash / Pexels CDNs). The seeder downloads these at runtime and uploads
-     * them to S3. If a URL ever fails it falls back to a keyword photo from
-     * loremflickr, then to a generated placeholder — so seeding never breaks.
-     */
     private const CATEGORY_IMAGES = [
         'Adaptor + Kabel' => [
             'https://images.unsplash.com/photo-1583394838336-acd977736f90',
@@ -122,10 +102,10 @@ class ProductCatalogSeeder extends Seeder
         ],
     ];
 
-    private array $categoryIds = [];      // name => id
-    private array $imageBytesCache = [];   // url|keyword => raw bytes
-    private array $attributeIds = [];      // attr name => id
-    private array $firstVariantByCat = []; // cat name => first variant id (for bundle components)
+    private array $categoryIds = [];      
+    private array $imageBytesCache = [];   
+    private array $attributeIds = [];      
+    private array $firstVariantByCat = []; 
 
     private int $seq = 0;
 
@@ -138,7 +118,7 @@ class ProductCatalogSeeder extends Seeder
         $created = 0;
         foreach ($this->catalog() as $entry) {
             if ($entry['archetype'] === 'bundle') {
-                continue; // bundles handled after components exist
+                continue; 
             }
             $this->createProduct($entry);
             $created++;
@@ -246,9 +226,6 @@ class ProductCatalogSeeder extends Seeder
             'package_contents' => $e['package'] ?? null,
         ]);
 
-        // ---- Variants ----
-        // Bundles are a single sellable package; every other product gets the
-        // full "Tipe HP" model matrix (so nothing is single-variant or model-named).
         $variantIds = [];
         if ($isBundle) {
             $variant = $this->makeVariant($product, $sku, $e, null);
@@ -262,9 +239,6 @@ class ProductCatalogSeeder extends Seeder
             $this->firstVariantByCat[$catName] = $variantIds[0];
         }
 
-        // ---- Media (S3) ----
-        // Product-level photos only: model variants share the same product image,
-        // so we never download one image per variant.
         $this->attachMedia($product, $catName, $sku);
 
         $this->command->line("  + {$sku} [{$e['archetype']}] {$e['name']} (" . count($variantIds) . ' var)');
@@ -296,7 +270,6 @@ class ProductCatalogSeeder extends Seeder
         ]);
     }
 
-    /** Build one variant per phone model ("Tipe HP" axis) for a product. */
     private function makeVariantMatrix(Product $product, string $baseSku, array $e): array
     {
         $axes = [['attr' => 'Tipe HP', 'options' => self::MODELS]];
@@ -307,7 +280,6 @@ class ProductCatalogSeeder extends Seeder
             ], ['sort_order' => 0]);
         }
 
-        // cartesian product
         $combos = [[]];
         foreach ($axes as $axis) {
             $next = [];
@@ -362,11 +334,8 @@ class ProductCatalogSeeder extends Seeder
             return;
         }
 
-        // Deterministic starting offset per product so different products in the
-        // same category don't all open with the identical photo.
         $base = abs(crc32($sku));
 
-        // Product-level: primary + 2 gallery shots.
         $primary = $this->imageFor($catName, $base, $product->name);
         $this->storeMedia($product->id, null, "products/seed/{$sku}/main.jpg", $primary, 0, true);
 
@@ -392,10 +361,6 @@ class ProductCatalogSeeder extends Seeder
         ]);
     }
 
-    /**
-     * Resolve a real product photo for a category. Picks the curated URL at
-     * $index (cycled), then falls back to a keyword photo, then a placeholder.
-     */
     private function imageFor(string $catName, int $index, string $label): string
     {
         $pool = self::CATEGORY_IMAGES[$catName] ?? [];
@@ -408,7 +373,6 @@ class ProductCatalogSeeder extends Seeder
             }
         }
 
-        // Fallback 1: keyword photo from loremflickr (still a real internet image).
         $keyword = self::CATEGORIES[$catName][1] ?? $label;
         $lock = abs(crc32($catName . $index)) % 90 + 1;
         $bytes = $this->download(
@@ -418,11 +382,9 @@ class ProductCatalogSeeder extends Seeder
             return $bytes;
         }
 
-        // Fallback 2: generated placeholder.
         return $this->placeholder($label);
     }
 
-    /** Download an image, cached by URL. Returns null on failure / non-image. */
     private function download(string $url): ?string
     {
         if (array_key_exists($url, $this->imageBytesCache)) {
@@ -467,71 +429,54 @@ class ProductCatalogSeeder extends Seeder
         return '899' . substr((string) abs(crc32($sku)), 0, 10);
     }
 
-    /**
-     * The full catalog (35 products). archetype drives type-specific behaviour
-     * (serial / consignment / preorder / bundle); every non-bundle product carries
-     * the full "Tipe HP" model matrix, so no product is single-variant or names a
-     * specific phone model. Every product name is generic and >= 25 characters.
-     */
     private function catalog(): array
     {
         return [
-            // --- Adaptor + Kabel ---
+
             ['cat' => 'Adaptor + Kabel', 'name' => 'Adaptor Fast Charging GaN 65W Original Bergaransi', 'brand' => 'ANKER', 'archetype' => 'serial', 'buy' => 145000, 'margin' => 0.5, 'cod' => true, 'weight' => 120, 'desc' => 'Charger GaN 65W bergaransi resmi, dilacak per serial number.'],
             ['cat' => 'Adaptor + Kabel', 'name' => 'Kabel Data USB-C to USB-C 100W Premium 1.5 Meter', 'brand' => 'ACOME', 'archetype' => 'regular', 'buy' => 38000, 'margin' => 0.6, 'cod' => true, 'weight' => 60],
             ['cat' => 'Adaptor + Kabel', 'name' => 'Kabel Charger Lightning Braided Nylon Anti Putus', 'brand' => 'ACOME', 'archetype' => 'regular', 'buy' => 29000, 'margin' => 0.65, 'weight' => 45],
 
-            // --- Anti Crack Case ---
             ['cat' => 'Anti Crack Case', 'name' => 'Anti Crack Case Bening Premium Transparan Glossy', 'brand' => 'Apple', 'archetype' => 'regular', 'buy' => 18000, 'margin' => 0.8, 'cod' => true, 'weight' => 40],
             ['cat' => 'Anti Crack Case', 'name' => 'Anti Crack Case Hybrid Pelindung Sudut Bumper', 'brand' => 'ADVAN', 'archetype' => 'regular', 'buy' => 17000, 'margin' => 0.8, 'weight' => 42],
             ['cat' => 'Anti Crack Case', 'name' => 'Anti Crack Case Acrylic Anti Kuning Tahan Lama', 'brand' => 'ADVAN', 'archetype' => 'regular', 'buy' => 22000, 'margin' => 0.85],
 
-            // --- Hard Case ---
             ['cat' => 'Hard Case', 'name' => 'Hard Case Matte Custom Print Sablon Satuan', 'brand' => 'ALDO', 'archetype' => 'preorder', 'buy' => 25000, 'margin' => 1.0, 'weight' => 55, 'desc' => 'Hard case cetak custom sesuai pesanan, indikasi 7 hari kerja.'],
             ['cat' => 'Hard Case', 'name' => 'Hard Case Slim Frosted Doff Anti Slip Premium', 'brand' => 'ALDO', 'archetype' => 'regular', 'buy' => 19000, 'margin' => 0.9, 'cod' => true],
             ['cat' => 'Hard Case', 'name' => 'Hard Case Armor Shockproof Anti Banting Militer', 'brand' => 'ARASHI', 'archetype' => 'regular', 'buy' => 31000, 'margin' => 0.85, 'cod' => true, 'weight' => 70],
 
-            // --- Leather Case ---
             ['cat' => 'Leather Case', 'name' => 'Leather Case Kulit Sapi Asli Premium Handmade', 'brand' => 'ALDO', 'archetype' => 'consignment', 'buy' => 95000, 'margin' => 0.7, 'weight' => 75, 'desc' => 'Kulit sapi asli, titipan mitra (konsinyasi).'],
             ['cat' => 'Leather Case', 'name' => 'Leather Flip Wallet Case Dompet Slot Kartu', 'brand' => 'ALDO', 'archetype' => 'regular', 'buy' => 48000, 'margin' => 0.75],
             ['cat' => 'Leather Case', 'name' => 'Leather Case Magnetic Slim MagSafe Compatible', 'brand' => 'ARASHI', 'archetype' => 'regular', 'buy' => 52000, 'margin' => 0.7, 'weight' => 60],
 
-            // --- Skin Handphone ---
             ['cat' => 'Skin Handphone', 'name' => 'Skin Garskin Carbon 3M Tekstur Doff Custom', 'brand' => '3M', 'archetype' => 'preorder', 'buy' => 15000, 'margin' => 1.2, 'weight' => 20],
             ['cat' => 'Skin Handphone', 'name' => 'Skin Garskin Motif Marble Premium Glossy Cut', 'brand' => '3M', 'archetype' => 'regular', 'buy' => 12000, 'margin' => 1.3],
             ['cat' => 'Skin Handphone', 'name' => 'Skin Anti Gores Belakang Matte Transparan Doff', 'brand' => '3M', 'archetype' => 'regular', 'buy' => 10000, 'margin' => 1.4, 'weight' => 15],
 
-            // --- Soft Case ---
             ['cat' => 'Soft Case', 'name' => 'Soft Case Silikon Premium Lembut Elastis Anti Debu', 'brand' => 'ADVAN', 'archetype' => 'regular', 'buy' => 14000, 'margin' => 1.0, 'cod' => true],
             ['cat' => 'Soft Case', 'name' => 'Soft Case Jelly Bening Ultra Thin Clear Slim', 'brand' => 'ADVAN', 'archetype' => 'regular', 'buy' => 9000, 'margin' => 1.1, 'cod' => true, 'weight' => 30],
             ['cat' => 'Soft Case', 'name' => 'Soft Case Macaron Pastel Warna Lembut Doff', 'brand' => 'ADVAN', 'archetype' => 'regular', 'buy' => 11000, 'margin' => 1.1],
 
-            // --- Gantungan HP ---
             ['cat' => 'Gantungan HP', 'name' => 'Gantungan HP Tali Manik Beads Handmade Lucu', 'brand' => 'AILITE', 'archetype' => 'regular', 'buy' => 13000, 'margin' => 1.2],
             ['cat' => 'Gantungan HP', 'name' => 'Gantungan HP Lanyard Strap Polos Panjang Nyaman', 'brand' => 'AILITE', 'archetype' => 'regular', 'buy' => 8000, 'margin' => 1.3, 'cod' => true, 'weight' => 25],
             ['cat' => 'Gantungan HP', 'name' => 'Gantungan HP Crossbody Strap Selempang Adjustable', 'brand' => 'AILITE', 'archetype' => 'regular', 'buy' => 24000, 'margin' => 0.9, 'weight' => 50],
 
-            // --- Screen Guard ---
             ['cat' => 'Screen Guard', 'name' => 'Tempered Glass Anti Gores Bening 9H Full Lem', 'brand' => 'ANKER', 'archetype' => 'regular', 'buy' => 7000, 'margin' => 1.5, 'cod' => true],
             ['cat' => 'Screen Guard', 'name' => 'Tempered Glass Anti Spy Privacy Gelap Pelindung', 'brand' => 'ANKER', 'archetype' => 'regular', 'buy' => 12000, 'margin' => 1.4, 'weight' => 18],
             ['cat' => 'Screen Guard', 'name' => 'Hydrogel Film Pelindung Layar Full Cover Lentur', 'brand' => 'AILITE', 'archetype' => 'regular', 'buy' => 6000, 'margin' => 1.6, 'weight' => 12],
 
-            // --- Strap (Smartwatch) ---
             ['cat' => 'Strap', 'name' => 'Strap Tali Jam Silikon Sport Premium Lembut', 'brand' => 'Apple', 'archetype' => 'regular', 'buy' => 22000, 'margin' => 1.0, 'cod' => true],
             ['cat' => 'Strap', 'name' => 'Strap Tali Jam Kulit Asli Premium Elegan Klasik', 'brand' => 'ALDO', 'archetype' => 'consignment', 'buy' => 65000, 'margin' => 0.7, 'weight' => 35],
             ['cat' => 'Strap', 'name' => 'Strap Tali Jam Nylon Sport Loop Adjustable Adem', 'brand' => 'AILITE', 'archetype' => 'regular', 'buy' => 18000, 'margin' => 1.1],
 
-            // --- Lazypod ---
             ['cat' => 'Lazypod', 'name' => 'Lazypod Flexible Premium Aluminium Kokoh Tahan', 'brand' => 'AILITE', 'archetype' => 'serial', 'buy' => 55000, 'margin' => 0.8, 'weight' => 220, 'desc' => 'Lazypod aluminium premium bergaransi, dilacak per serial.'],
             ['cat' => 'Lazypod', 'name' => 'Lazypod Gurita Mini Tripod Fleksibel Universal', 'brand' => 'AILITE', 'archetype' => 'regular', 'buy' => 28000, 'margin' => 0.9, 'cod' => true, 'weight' => 150],
             ['cat' => 'Lazypod', 'name' => 'Lazypod Clamp Meja Panjang Adjustable Kuat', 'brand' => 'AILITE', 'archetype' => 'regular', 'buy' => 42000, 'margin' => 0.85, 'weight' => 300],
 
-            // --- Phone Holder ---
             ['cat' => 'Phone Holder', 'name' => 'Phone Holder Mobil Magnetic Dashboard Kuat', 'brand' => 'ANKER', 'archetype' => 'regular', 'buy' => 35000, 'margin' => 0.9, 'cod' => true, 'weight' => 110],
             ['cat' => 'Phone Holder', 'name' => 'Phone Holder Motor Anti Getar Cengkraman Spion', 'brand' => 'AILITE', 'archetype' => 'regular', 'buy' => 48000, 'margin' => 0.85],
             ['cat' => 'Phone Holder', 'name' => 'Phone Holder Meja Adjustable Lipat Aluminium', 'brand' => 'AILITE', 'archetype' => 'regular', 'buy' => 26000, 'margin' => 0.95, 'weight' => 130],
 
-            // --- Bundles (single package; components resolved by first variant of each category) ---
             ['cat' => 'Soft Case', 'name' => 'Paket Proteksi Lengkap Soft Case dan Tempered Glass', 'brand' => 'ADVAN', 'archetype' => 'bundle', 'buy' => 0, 'sell' => 35000, 'weight' => 50, 'components' => ['Soft Case', 'Screen Guard'], 'package' => '1x Soft Case + 1x Tempered Glass 9H', 'desc' => 'Paket hemat proteksi layar dan bodi.'],
             ['cat' => 'Hard Case', 'name' => 'Paket Travel Hard Case dan Phone Holder Mobil Mudik', 'brand' => 'ALDO', 'archetype' => 'bundle', 'buy' => 0, 'sell' => 75000, 'weight' => 180, 'components' => ['Hard Case', 'Phone Holder'], 'package' => '1x Hard Case + 1x Phone Holder Mobil', 'desc' => 'Paket berkendara aman.'],
         ];

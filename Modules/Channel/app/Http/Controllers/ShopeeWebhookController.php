@@ -122,10 +122,6 @@ class ShopeeWebhookController extends Controller
                     return response('', 401);
                 }
 
-                // Signature tidak cocok tapi verifikasi dimatikan (mis. sandbox dengan
-                // push key yang tidak ter-sync). Push hanya dipakai sebagai trigger —
-                // data order tetap ditarik ulang dari API terautentikasi, jadi isi push
-                // tidak dipercaya. Lanjut proses.
                 Log::warning('Shopee push signature mismatch — diproses tanpa verifikasi (verify_push_signature=false)', [
                     'ip' => $request->ip(),
                 ]);

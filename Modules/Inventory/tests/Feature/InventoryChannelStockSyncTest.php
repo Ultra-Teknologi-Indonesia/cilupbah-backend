@@ -12,11 +12,6 @@ use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Tests\TestCase;
 
-/**
- * Memastikan setiap mutasi stok di sisi gudang/inventory (barang masuk lewat
- * adjustment/inbound, maupun split) otomatis memicu sinkronisasi stok ke channel,
- * sehingga listing marketplace tidak ketinggalan (cegah miss & oversell).
- */
 class InventoryChannelStockSyncTest extends TestCase
 {
     use RefreshDatabase;

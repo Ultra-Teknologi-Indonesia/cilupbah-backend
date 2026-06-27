@@ -2,11 +2,6 @@
 
 namespace Modules\Product\Support;
 
-/**
- * Helpers to tell whether a media URL already lives on our internal CDN
- * (the S3 bucket exposed at assets.ultra-fit.id) versus an external channel
- * CDN that still needs mirroring.
- */
 class InternalMediaUrl
 {
     public static function host(): ?string

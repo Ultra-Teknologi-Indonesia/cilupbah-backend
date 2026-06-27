@@ -8,15 +8,6 @@ use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductMedia;
 use Modules\Product\Support\InternalMediaUrl;
 
-/**
- * Backfills product images that still live on an external channel CDN.
- *
- * Stored external URLs cannot simply be re-downloaded — TikTok variant images
- * in particular are bare object keys that the CDN refuses to serve. The only
- * reliable fix is to re-pull each affected product from its channel: that
- * re-runs the (now corrected) inbound mapper, which prefers fetchable image
- * URLs, and the asset importer mirrors them onto our internal CDN.
- */
 class RemirrorProductImages extends Command
 {
     protected $signature = 'products:remirror-images

@@ -224,13 +224,6 @@ class ProductService
         return $productId;
     }
 
-    /**
-     * Channel downloads persist whatever image URL the importer produced — which
-     * may still be an external CDN URL when the synchronous S3 mirror failed.
-     * Queue a background re-mirror for every external row so the catalog ends up
-     * fully on our internal CDN. Idempotent and path-agnostic (covers create,
-     * update, and variation-structure media).
-     */
     private function queueExternalMediaMirroring(string $productId): void
     {
         ProductMedia::query()
@@ -479,12 +472,6 @@ class ProductService
         }
     }
 
-    /**
-     * Refresh a variant's media from a channel payload. Without this, re-pulling
-     * an existing product through syncVariantStructure would never replace stale
-     * variant images (e.g. unreachable external URLs) with the freshly mapped,
-     * internally-mirrored ones.
-     */
     private function syncVariantMediaFromPayload(string $productId, string $variantId, array $variant): void
     {
         if (! array_key_exists('media', $variant)) {
@@ -592,10 +579,7 @@ class ProductService
 
     private function propagateVariantChangeToChannels(string $productId): void
     {
-        // Auto-pushing internal variant edits to channels is disabled by default; see
-        // config('channel.auto_push_product_content'). Per-channel content is managed
-        // on each marketplace and downloaded back, so pushing master edits would
-        // overwrite channel-specific data. Stock sync is a separate path, unaffected.
+
         if (! config('channel.auto_push_product_content', false)) {
             return;
         }

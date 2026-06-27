@@ -123,8 +123,7 @@ class ChannelVariantImageTest extends TestCase
 
     public function test_tiktok_inbound_expands_bare_sku_uri_to_absolute_url(): void
     {
-        // When TikTok only gives a bare object-storage `uri` (no url_list), the
-        // mapper must at least expand it into an absolute CDN URL.
+
         $product = [
             'title' => 'Kaos',
             'skus' => [

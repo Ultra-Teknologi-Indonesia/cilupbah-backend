@@ -11,15 +11,6 @@ use Modules\Channel\Database\Seeders\ShopeeCategorySchemaSeeder;
 use Modules\Inventory\Database\Seeders\InventoryHistorySeeder;
 use Modules\Product\Database\Seeders\ProductCatalogSeeder;
 
-/**
- * Demo dataset: 30+ master products (all types, with S3 images) restricted to the
- * existing custom "Handphone & Aksesoris" leaf categories, plus a full 12-month
- * inventory/purchasing history (persediaan, pembelian, stok + history, barang
- * masuk, barang keluar) — NO sales orders (those come from channels).
- *
- * Run manually (local/staging only), no migrate:fresh needed:
- *   php artisan db:seed --class="Database\\Seeders\\DemoCatalogInventorySeeder"
- */
 class DemoCatalogInventorySeeder extends Seeder
 {
     public function run(): void
@@ -29,11 +20,9 @@ class DemoCatalogInventorySeeder extends Seeder
             return;
         }
 
-        // Suppress channel-sync / notification jobs that model observers may dispatch.
         Bus::fake();
         Queue::fake();
 
-        // Ensure a seeder user exists (used as created_by across documents).
         User::firstOrCreate(
             ['email' => 'seeder@cilupbah.id'],
             ['name' => 'Seeder Demo', 'password' => Hash::make('password')]
@@ -42,8 +31,6 @@ class DemoCatalogInventorySeeder extends Seeder
         $this->call(ProductCatalogSeeder::class);
         $this->call(InventoryHistorySeeder::class);
 
-        // Shopee category/attribute/variation schema, stored locally like TikTok
-        // (no live Shopee shop required). Syncable later via `shopee:sync-*`.
         $this->call(ShopeeCategorySchemaSeeder::class);
 
         $this->command->info('DemoCatalogInventorySeeder complete.');

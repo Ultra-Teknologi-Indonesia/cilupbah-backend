@@ -491,8 +491,7 @@ class InventoryController extends Controller
     )]
     public function needRestock(Request $request): JsonResponse
     {
-        // Diselaraskan ke Monitor Stok tab "Menipis" (ADR-202): membership available < min_stock,
-        // target restock = safe_stock (fallback min_stock), hanya produk is_stored, + filter standar.
+
         $service = app(\Modules\Inventory\Services\MonitorStockService::class);
         $perPage = (int) ($request->query('per_page') ?? $request->query('limit') ?? 10);
         $data = $service->lowStock($service->filtersFrom($request->query()), $perPage);

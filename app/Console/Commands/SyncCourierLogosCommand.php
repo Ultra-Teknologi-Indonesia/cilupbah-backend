@@ -88,9 +88,6 @@ class SyncCourierLogosCommand extends Command
                     continue;
                 }
 
-                // Always record the master-data mapping (courier enumeration). Logo
-                // download is a separate, optional step — sandbox shops and some
-                // channels return providers without a logo URL.
                 $code = $this->mapper->resolveCode($name);
                 $this->mapper->record('shopee', $name, $item['logistics_channel_id'] ?? null);
 
@@ -182,9 +179,6 @@ class SyncCourierLogosCommand extends Command
             $token = $shop->access_token;
             $queries = ['shop_cipher' => $cipher];
 
-            // TikTok Shop Logistics API (v202309) exposes shipping providers via a
-            // warehouse -> delivery option -> shipping provider traversal. There is
-            // no single "list all providers" endpoint.
             $whRes = $client->request('GET', '/logistics/202309/warehouses', $queries, [], $token);
             $warehouses = $whRes['data']['warehouses'] ?? [];
 

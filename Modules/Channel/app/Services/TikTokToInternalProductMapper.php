@@ -181,11 +181,6 @@ class TikTokToInternalProductMapper
         return null;
     }
 
-    /**
-     * Prefer a full, fetchable URL over a bare object-storage `uri`. The raw
-     * `uri` lacks the CDN image template and is unreachable on its own, so it
-     * is only used as a last resort.
-     */
     protected function pickImageRef(?array $img): ?string
     {
         if (! $img) {

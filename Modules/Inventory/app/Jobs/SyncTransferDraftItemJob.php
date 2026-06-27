@@ -70,7 +70,6 @@ class SyncTransferDraftItemJob implements ShouldQueue
             });
         });
 
-        // Source available berubah (reserve/adjust draft transfer) → sinkron ke channel.
         if ($item->fresh()?->sync_status === 'SYNCED') {
             SyncStockToChannelsJob::dispatch($item->item_id);
         }

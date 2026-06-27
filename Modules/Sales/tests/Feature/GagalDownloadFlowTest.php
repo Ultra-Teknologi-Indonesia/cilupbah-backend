@@ -152,7 +152,6 @@ class GagalDownloadFlowTest extends TestCase
     {
         $user = User::factory()->create();
 
-        // One quarantined (unmapped) order + one fully mapped order.
         $this->service->upsertFromChannel($this->channelOrderData('GD-ALL-FAIL', 'SKU-ASING'));
         $this->seedVariant('SKU-OK');
         $this->service->upsertFromChannel($this->channelOrderData('GD-ALL-OK', 'SKU-OK'));
@@ -161,14 +160,12 @@ class GagalDownloadFlowTest extends TestCase
         $this->assertSame(1, $counts['all'], 'tab Semua hanya menghitung order yang sudah terdownload');
         $this->assertSame(1, $counts['failed'], 'order gagal download tetap dihitung di tab Gagal Download');
 
-        // Default listing (tab=all) must not surface the quarantined order.
         $all = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?tab=all');
         $all->assertStatus(200);
         $nos = array_column($all->json('data'), 'salesorder_no');
         $this->assertContains('GD-ALL-OK', $nos);
         $this->assertNotContains('GD-ALL-FAIL', $nos, 'order gagal download tidak boleh muncul di Semua');
 
-        // It must still be reachable in the failed tab.
         $failed = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?tab=failed');
         $failedNos = array_column($failed->json('data'), 'salesorder_no');
         $this->assertContains('GD-ALL-FAIL', $failedNos);
@@ -176,9 +173,7 @@ class GagalDownloadFlowTest extends TestCase
 
     public function test_cancelled_unmapped_order_is_quarantined_to_failed_tab(): void
     {
-        // New rule: any order not bound to the internal master is quarantined to
-        // Gagal Download regardless of status — including cancelled. It must not
-        // appear in Semua nor in the Pembatalan tab.
+
         $orderId = $this->service->upsertFromChannel($this->channelOrderData('GD-CANCEL', 'SKU-ASING'));
         DB::table('sales_orders')->where('id', $orderId)->update(['status' => 'cancelled']);
 
