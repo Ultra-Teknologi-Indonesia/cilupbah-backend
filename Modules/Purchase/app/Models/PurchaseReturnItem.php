@@ -25,13 +25,30 @@ class PurchaseReturnItem extends Model
         'subtotal'   => 'decimal:2',
     ];
 
+    protected $appends = ['product'];
+
     public function purchaseReturn(): BelongsTo
     {
         return $this->belongsTo(PurchaseReturn::class);
     }
 
-    public function product(): BelongsTo
+    public function variant(): BelongsTo
     {
         return $this->belongsTo(\Modules\Product\Models\ProductVariant::class, 'item_id');
+    }
+
+    public function getProductAttribute(): ?array
+    {
+        if (!$this->relationLoaded('variant') || !$this->variant) {
+            return null;
+        }
+
+        return [
+            'id' => $this->variant->id,
+            'sku' => $this->variant->sku,
+            'name' => $this->variant->relationLoaded('product') && $this->variant->product 
+                ? $this->variant->product->name 
+                : null,
+        ];
     }
 }

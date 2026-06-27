@@ -30,7 +30,7 @@ class PurchaseReturnRepository
 
     public function findById(string $id): ?PurchaseReturn
     {
-        return PurchaseReturn::with(['supplier', 'location', 'purchaseOrder', 'items.product:id,name,sku'])
+        return PurchaseReturn::with(['supplier', 'location', 'purchaseOrder', 'items.variant.product:id,name'])
             ->find($id);
     }
 

@@ -46,7 +46,7 @@ class PurchaseReturnService
                 $this->returnRepository->createItem($itemData);
             }
 
-            return $return->load('items.product:id,name,sku');
+            return $return->load('items.variant.product:id,name');
         });
     }
 

@@ -31,7 +31,7 @@ class PurchaseOrderRepository
     {
         return QueryBuilder::for(PurchaseOrder::class)
             ->receivable()
-            ->with(['contact:id,name,code', 'location:id,location_name', 'items.product:id,name,sku'])
+            ->with(['contact:id,name,code', 'location:id,location_name', 'items.variant.product:id,name'])
             ->allowedSorts('po_number', 'order_date', 'created_at')
             ->defaultSort('-created_at')
             ->paginate($limit);
@@ -39,7 +39,7 @@ class PurchaseOrderRepository
 
     public function findById(string $id): ?PurchaseOrder
     {
-        return PurchaseOrder::with(['contact', 'location', 'items.product:id,name,sku', 'bills:id,purchase_order_id,bill_number'])
+        return PurchaseOrder::with(['contact', 'location', 'items.variant.product:id,name', 'bills:id,purchase_order_id,bill_number'])
             ->find($id);
     }
 

@@ -34,14 +34,31 @@ class PurchaseBillItem extends Model
         'tax_amount'  => 'decimal:2',
     ];
 
+    protected $appends = ['product'];
+
     public function bill(): BelongsTo
     {
         return $this->belongsTo(PurchaseBill::class, 'purchase_bill_id');
     }
 
-    public function product(): BelongsTo
+    public function variant(): BelongsTo
     {
         return $this->belongsTo(\Modules\Product\Models\ProductVariant::class, 'item_id');
+    }
+
+    public function getProductAttribute(): ?array
+    {
+        if (!$this->relationLoaded('variant') || !$this->variant) {
+            return null;
+        }
+
+        return [
+            'id' => $this->variant->id,
+            'sku' => $this->variant->sku,
+            'name' => $this->variant->relationLoaded('product') && $this->variant->product 
+                ? $this->variant->product->name 
+                : null,
+        ];
     }
 
     public function serialNumbers(): HasMany

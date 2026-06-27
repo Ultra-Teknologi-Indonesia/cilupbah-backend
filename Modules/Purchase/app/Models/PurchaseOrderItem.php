@@ -33,14 +33,32 @@ class PurchaseOrderItem extends Model
         'tax_amount'  => 'decimal:2',
     ];
 
+    protected $appends = ['product'];
+
     public function purchaseOrder(): BelongsTo
     {
         return $this->belongsTo(PurchaseOrder::class);
     }
 
-    public function product(): BelongsTo
+    public function variant(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Product\Models\Product::class, 'item_id');
+        return $this->belongsTo(\Modules\Product\Models\ProductVariant::class, 'item_id');
+    }
+
+    public function getProductAttribute(): ?array
+    {
+        // To avoid N+1 issues when not eager loaded
+        if (!$this->relationLoaded('variant') || !$this->variant) {
+            return null;
+        }
+
+        return [
+            'id' => $this->variant->id,
+            'sku' => $this->variant->sku,
+            'name' => $this->variant->relationLoaded('product') && $this->variant->product 
+                ? $this->variant->product->name 
+                : null,
+        ];
     }
 
     public function isFullyReceived(): bool

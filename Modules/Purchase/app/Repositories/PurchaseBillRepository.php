@@ -30,7 +30,7 @@ class PurchaseBillRepository
 
     public function findById(string $id): ?PurchaseBill
     {
-        return PurchaseBill::with(['contact', 'location', 'purchaseOrder', 'items.product:id,name,sku', 'payments'])
+        return PurchaseBill::with(['contact', 'location', 'purchaseOrder', 'items.variant.product:id,name', 'payments'])
             ->find($id);
     }
 

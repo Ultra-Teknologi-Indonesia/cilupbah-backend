@@ -47,7 +47,7 @@ class PurchaseBillService
                 $this->billRepository->createItem($itemData);
             }
 
-            return $bill->load('items.product:id,name,sku');
+            return $bill->load('items.variant.product:id,name');
         });
     }
 

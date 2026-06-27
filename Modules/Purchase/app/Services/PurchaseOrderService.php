@@ -52,7 +52,7 @@ class PurchaseOrderService
                 $this->poRepository->createItem($itemData);
             }
 
-            return $po->load('items.product:id,name,sku');
+            return $po->load('items.variant.product:id,name');
         });
     }
 
