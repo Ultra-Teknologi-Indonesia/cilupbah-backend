@@ -205,7 +205,7 @@ class CategoryService
         }
 
         $paginated = $query->orderBy('name')
-            ->paginate(request('per_page', 15))
+            ->paginate(request('per_page', 10))
             ->appends(request()->query());
 
         $paginated->getCollection()->transform(function (Category $category) use ($allChannels) {

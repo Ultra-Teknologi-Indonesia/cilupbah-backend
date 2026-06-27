@@ -14,9 +14,9 @@ class JournalIndexRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'q' => ['nullable', 'string', 'max:100'],
+            'q' => ['nullable', 'string', 'max:200'],
             'createdSince' => ['nullable', 'date'],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
         ];
     }
 }

@@ -45,7 +45,7 @@ class PurchaseOrderRepository
 
     public function getPaginatedItems(string $poId, int $perPage)
     {
-        return \Modules\Purchase\Models\PurchaseOrderItem::with(['variant.product:id,name'])
+        return PurchaseOrderItem::with(['variant.product:id,name'])
             ->where('purchase_order_id', $poId)
             ->paginate($perPage);
     }

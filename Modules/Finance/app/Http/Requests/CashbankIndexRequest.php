@@ -16,7 +16,7 @@ class CashbankIndexRequest extends FormRequest
         return [
             'transactionDateFrom' => ['nullable', 'date'],
             'transactionDateTo' => ['nullable', 'date', 'after_or_equal:transactionDateFrom'],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
         ];
     }
 }

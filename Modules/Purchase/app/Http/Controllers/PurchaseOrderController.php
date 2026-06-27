@@ -42,7 +42,7 @@ class PurchaseOrderController extends Controller
 
     public function items(string $id, Request $request): JsonResponse
     {
-        $perPage = (int) $request->query('per_page', 15);
+        $perPage = (int) $request->query('per_page', 10);
         $items = $this->poService->getPaginatedItems($id, $perPage);
         return $this->successPaginatedResponse($items, 'Daftar produk PO berhasil diambil');
     }
