@@ -36,8 +36,8 @@ class ContactImportService
 
     private const TYPE_MAP = [
         'pelanggan'               => Contact::TYPE_CUSTOMER,
-        'pemasok'                 => Contact::TYPE_SUPPLIER,
         'pelanggan dan pemasok'   => Contact::TYPE_BOTH,
+        'pelanggan & pemasok'     => Contact::TYPE_BOTH,
     ];
 
     private const TAX_MAP = [
@@ -127,7 +127,7 @@ class ContactImportService
             if (empty($raw['Tipe'])) {
                 $errors[] = 'Tipe wajib diisi';
             } elseif (! isset(self::TYPE_MAP[$typeLower])) {
-                $errors[] = 'Tipe tidak valid (pilihan: Pelanggan, Pemasok, Pelanggan dan Pemasok)';
+                $errors[] = 'Tipe tidak valid (pilihan: Pelanggan, Pelanggan dan Pemasok)';
             } else {
                 $mapped['type'] = self::TYPE_MAP[$typeLower];
             }
@@ -267,13 +267,21 @@ class ContactImportService
             $sheet->getStyle($col . '3')->getFont()->getColor()->setRGB('FFFFFF');
         }
 
+        // Daftar kategori diambil dinamis dari sistem agar panduan selalu
+        // menampilkan value kategori yang benar-benar diterima.
+        $categoryNames = ContactCategory::orderBy('name')->pluck('name')->all();
+        $categoryAccepted = empty($categoryNames)
+            ? 'Harus terdaftar di sistem'
+            : implode(' / ', $categoryNames);
+        $categoryExample = $categoryNames[0] ?? 'PLG-Umum';
+
         $guide = [
             ['Nama', 'Teks bebas', 'PT. Anugrah Niagatama', 'Ya'],
-            ['Tipe', 'Pelanggan / Pemasok / Pelanggan dan Pemasok', 'Pemasok', 'Ya'],
+            ['Tipe', 'Pelanggan / Pelanggan dan Pemasok', 'Pelanggan', 'Ya'],
             ['PKP/Non PKP', 'PKP / Non PKP', 'Non PKP', 'Ya'],
             ['NPWP', '15 digit angka', '022095350628000', 'Ya jika PKP'],
             ['NIK', '16 digit angka', '3174012345670001', 'Tidak'],
-            ['Kategori', 'Harus terdaftar di sistem', 'Pelanggan Umum', 'Ya'],
+            ['Kategori', $categoryAccepted, $categoryExample, 'Ya'],
             ['Termin', 'Angka (hari)', '30', 'Tidak'],
             ['No. Telepon', 'Format telepon', '+628128194725', 'Salah satu wajib'],
             ['Email', 'Format email', 'john@gmail.com', 'Salah satu wajib'],
@@ -331,9 +339,10 @@ class ContactImportService
                 ->setFormatCode(NumberFormat::FORMAT_TEXT);
         }
 
+        $categoryExample = ContactCategory::orderBy('name')->value('name') ?? 'PLG-Umum';
         $example = [
-            'PT. Contoh Sejahtera', 'Pemasok', 'Non PKP', '', '',
-            'Pelanggan Umum', '30', '+628123456789', 'contoh@email.com',
+            'PT. Contoh Sejahtera', 'Pelanggan', 'Non PKP', '', '',
+            $categoryExample, '30', '+628123456789', 'contoh@email.com',
             'Jl. Contoh No. 1', 'DKI Jakarta', 'Jakarta Pusat',
             'Gambir', 'Cideng',
         ];
