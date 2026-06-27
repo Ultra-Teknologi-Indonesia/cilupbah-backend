@@ -45,11 +45,19 @@ class ContactImportService
         'non pkp' => 'NON_PKP',
     ];
 
+    // Warna penanda di sheet Panduan (dirujuk oleh sheet Tata Cara Penggunaan)
+    private const COLOR_REQUIRED = 'F4B183'; // oranye  = wajib diisi
+    private const COLOR_OPTIONAL = 'FFE699'; // kuning  = boleh dikosongkan
+
     public function generateTemplate(): string
     {
         $spreadsheet = new Spreadsheet();
 
-        $guide = $spreadsheet->getActiveSheet();
+        $intro = $spreadsheet->getActiveSheet();
+        $intro->setTitle('Tata Cara Penggunaan');
+        $this->buildIntroSheet($intro);
+
+        $guide = $spreadsheet->createSheet();
         $guide->setTitle('Panduan');
         $this->buildGuideSheet($guide);
 
@@ -57,7 +65,8 @@ class ContactImportService
         $data->setTitle('Data Import');
         $this->buildDataSheet($data);
 
-        $spreadsheet->setActiveSheetIndex(1);
+        // Buka di sheet instruksi dulu agar dibaca lebih dulu
+        $spreadsheet->setActiveSheetIndex(0);
 
         $path = storage_path('app/temp/template-import-kontak.xlsx');
         if (! is_dir(dirname($path))) {
@@ -252,6 +261,70 @@ class ContactImportService
         return $created;
     }
 
+    private function buildIntroSheet($sheet): void
+    {
+        $sheet->setCellValue('A1', 'Tata Cara Penggunaan Form Import Pelanggan');
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+
+        $steps = [
+            [
+                'Langkah Pertama',
+                'Buka sheet "Panduan". Di sana terdapat ketentuan cara mengisi setiap kolom. ' .
+                'Terdapat dua warna: kotak berwarna ORANYE adalah kolom yang WAJIB diisi, ' .
+                'sedangkan kotak berwarna KUNING adalah kolom yang BOLEH dikosongkan.',
+            ],
+            [
+                'Langkah Kedua',
+                'Isi data pada sheet "Data Import" mengikuti ketentuan di sheet Panduan. ' .
+                'Jika ada pengisian yang tidak sesuai, saat diunggah sistem akan menandai baris tersebut ' .
+                'sebagai "Tidak Valid" beserta alasannya. Perbaiki kembali di Excel lalu unggah ulang.',
+            ],
+            [
+                'Langkah Ketiga',
+                'Setelah data terisi dengan benar, simpan file dalam format Excel (.xlsx). ' .
+                'Pastikan seluruh data yang akan diimport berada pada sheet "Data Import".',
+            ],
+            [
+                'Langkah Keempat',
+                'Buka menu Import pada aplikasi, klik area "Pilih file yang akan di import", ' .
+                'lalu pilih file .xlsx yang sudah Anda simpan dan klik tombol "Import". ' .
+                'Tinjau hasil pada tab Valid / Tidak Valid, kemudian klik "Simpan Data Valid" untuk menyimpan data.',
+            ],
+        ];
+
+        $r = 3;
+        foreach ($steps as [$title, $body]) {
+            $sheet->setCellValue('A' . $r, $title);
+            $sheet->getStyle('A' . $r)->getFont()->setBold(true)->setSize(12)
+                ->getColor()->setRGB('4472C4');
+            $r++;
+
+            $sheet->setCellValue('A' . $r, $body);
+            $sheet->mergeCells("A{$r}:D{$r}");
+            $sheet->getStyle('A' . $r)->getAlignment()
+                ->setWrapText(true)
+                ->setVertical(Alignment::VERTICAL_TOP);
+            $sheet->getRowDimension($r)->setRowHeight(60);
+            $r += 2;
+        }
+
+        // Legenda warna agar deskripsi pada langkah pertama jelas
+        $sheet->setCellValue('A' . $r, 'Keterangan Warna');
+        $sheet->getStyle('A' . $r)->getFont()->setBold(true);
+        $r++;
+        $sheet->setCellValue('B' . $r, 'Wajib diisi');
+        $sheet->getStyle('A' . $r)->getFill()->setFillType(Fill::FILL_SOLID)
+            ->getStartColor()->setRGB(self::COLOR_REQUIRED);
+        $r++;
+        $sheet->setCellValue('B' . $r, 'Boleh dikosongkan');
+        $sheet->getStyle('A' . $r)->getFill()->setFillType(Fill::FILL_SOLID)
+            ->getStartColor()->setRGB(self::COLOR_OPTIONAL);
+
+        foreach (['A' => 22, 'B' => 40, 'C' => 22, 'D' => 22] as $col => $w) {
+            $sheet->getColumnDimension($col)->setWidth($w);
+        }
+    }
+
     private function buildGuideSheet($sheet): void
     {
         $sheet->setCellValue('A1', 'Panduan Pengisian Import Kontak');
@@ -305,8 +378,8 @@ class ContactImportService
                     $sheet->setCellValue($col . $r, $row[$j]);
                 }
             }
-            $color = ($row[3] === 'Ya' || str_starts_with($row[3], 'Ya ') || $row[3] === 'Salah satu wajib')
-                ? 'FFF2CC' : 'FFFFFF';
+            $isRequired = ($row[3] === 'Ya' || str_starts_with($row[3], 'Ya ') || $row[3] === 'Salah satu wajib');
+            $color = $isRequired ? self::COLOR_REQUIRED : self::COLOR_OPTIONAL;
             $sheet->getStyle("A{$r}:D{$r}")->getFill()
                 ->setFillType(Fill::FILL_SOLID)
                 ->getStartColor()->setRGB($color);
