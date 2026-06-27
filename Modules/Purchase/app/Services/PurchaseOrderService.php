@@ -34,6 +34,11 @@ class PurchaseOrderService
         return $this->poRepository->findById($id);
     }
 
+    public function getPaginatedItems(string $poId, int $perPage)
+    {
+        return $this->poRepository->getPaginatedItems($poId, $perPage);
+    }
+
     public function create(array $data): PurchaseOrder
     {
         return DB::transaction(function () use ($data) {

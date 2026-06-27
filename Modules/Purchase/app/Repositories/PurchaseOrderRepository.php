@@ -39,8 +39,15 @@ class PurchaseOrderRepository
 
     public function findById(string $id): ?PurchaseOrder
     {
-        return PurchaseOrder::with(['contact', 'location', 'items.variant.product:id,name', 'bills:id,purchase_order_id,bill_number'])
+        return PurchaseOrder::with(['contact', 'location', 'bills:id,purchase_order_id,bill_number'])
             ->find($id);
+    }
+
+    public function getPaginatedItems(string $poId, int $perPage)
+    {
+        return \Modules\Purchase\Models\PurchaseOrderItem::with(['variant.product:id,name'])
+            ->where('purchase_order_id', $poId)
+            ->paginate($perPage);
     }
 
     public function findByIdForUpdate(string $id): ?PurchaseOrder
