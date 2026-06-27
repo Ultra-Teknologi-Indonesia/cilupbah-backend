@@ -37,4 +37,42 @@ class StorePurchaseOrderRequest extends FormRequest
             'items.*.tax_id'         => ['nullable', 'string', 'exists:taxes,id'],
         ];
     }
+
+    public function messages(): array
+    {
+        $messages = [];
+        $items = $this->input('items', []);
+
+        if (is_array($items)) {
+            foreach ($items as $index => $item) {
+                // Gunakan sku atau name jika dikirimkan oleh frontend, jika tidak gunakan fallback baris
+                $sku = $item['sku'] ?? null;
+                $name = $item['name'] ?? null;
+                
+                $identifier = 'baris ke-' . ($index + 1);
+                if ($sku) {
+                    $identifier = "SKU {$sku}";
+                } elseif ($name) {
+                    $identifier = "{$name}";
+                }
+
+                $messages["items.{$index}.item_id.exists"]   = "Produk ({$identifier}) tidak valid atau tidak ditemukan di database.";
+                $messages["items.{$index}.item_id.required"] = "Produk ({$identifier}) wajib diisi.";
+                $messages["items.{$index}.qty.required"]     = "Kuantitas untuk produk ({$identifier}) wajib diisi.";
+                $messages["items.{$index}.qty.min"]          = "Kuantitas untuk produk ({$identifier}) minimal :min.";
+                $messages["items.{$index}.unit_price.required"] = "Harga satuan untuk produk ({$identifier}) wajib diisi.";
+                $messages["items.{$index}.unit_price.min"]   = "Harga satuan untuk produk ({$identifier}) tidak boleh negatif.";
+            }
+        }
+
+        // Fallback messages
+        $messages['items.*.item_id.exists'] = 'Produk pada baris ke-:position tidak valid atau tidak ditemukan di database.';
+        $messages['items.*.item_id.required'] = 'Produk pada baris ke-:position wajib diisi.';
+        $messages['items.*.qty.required'] = 'Kuantitas pada baris ke-:position wajib diisi.';
+        $messages['items.*.qty.min'] = 'Kuantitas pada baris ke-:position minimal :min.';
+        $messages['items.*.unit_price.required'] = 'Harga satuan pada baris ke-:position wajib diisi.';
+        $messages['items.*.unit_price.min'] = 'Harga satuan pada baris ke-:position tidak boleh negatif.';
+
+        return $messages;
+    }
 }
