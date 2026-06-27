@@ -43,7 +43,7 @@ class PurchaseOrderService
     {
         return DB::transaction(function () use ($data) {
             $data['po_number'] = $data['po_number'] ?? $this->poRepository->generatePoNumber();
-            $data['status'] = PurchaseOrder::STATUS_DRAFT;
+            $data['status'] = PurchaseOrder::STATUS_OPEN;
             $data['created_by'] = auth()->user()?->name ?? 'system';
 
             $totals = $this->calculateTotals($data['items'], $data['is_tax_included'] ?? false);
@@ -55,6 +55,7 @@ class PurchaseOrderService
                 $itemData['purchase_order_id'] = $po->id;
                 $this->calculateItemAmounts($itemData);
                 $this->poRepository->createItem($itemData);
+                $this->adjustOnOrder($itemData['item_id'], $data['location_id'], $itemData['qty']);
             }
 
             return $po->load('items.variant.product:id,name');
@@ -85,6 +86,7 @@ class PurchaseOrderService
                     $itemData['purchase_order_id'] = $po->id;
                     $this->calculateItemAmounts($itemData);
                     $this->poRepository->createItem($itemData);
+                $this->adjustOnOrder($itemData['item_id'], $data['location_id'], $itemData['qty']);
                 }
             }
 
