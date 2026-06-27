@@ -34,14 +34,18 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('purchase/payments/{id}', [PurchasePaymentController::class, 'show'])->name('purchase.payments.show');
     Route::delete('purchase/payments', [PurchasePaymentController::class, 'destroy'])->name('purchase.payments.destroy');
 
+    // Endpoint sub-fitur bill yang masih dipakai oleh Pembayaran & Retur (jangan dimatikan)
     Route::get('purchase/bills/unpaid', [PurchaseBillController::class, 'unpaid'])->name('purchase.bills.unpaid');
     Route::get('purchase/bills/overdue', [PurchaseBillController::class, 'overdue'])->name('purchase.bills.overdue');
     Route::get('purchase/bills/for-return', [PurchaseBillController::class, 'forReturn'])->name('purchase.bills.for-return');
-    Route::get('purchase/bills', [PurchaseBillController::class, 'index'])->name('purchase.bills.index');
-    Route::post('purchase/bills', [PurchaseBillController::class, 'store'])->name('purchase.bills.store');
-    Route::get('purchase/bills/{id}', [PurchaseBillController::class, 'show'])->name('purchase.bills.show');
-    Route::put('purchase/bills/{id}', [PurchaseBillController::class, 'update'])->name('purchase.bills.update');
-    Route::delete('purchase/bills', [PurchaseBillController::class, 'destroy'])->name('purchase.bills.destroy');
+
+    // Halaman Tagihan dihapus dari FE — endpoint CRUD tagihan dinonaktifkan.
+    // Model/tabel/jurnal Finance sengaja DIBIARKAN agar AP/pembayaran tetap utuh.
+    // Route::get('purchase/bills', [PurchaseBillController::class, 'index'])->name('purchase.bills.index');
+    // Route::post('purchase/bills', [PurchaseBillController::class, 'store'])->name('purchase.bills.store');
+    // Route::get('purchase/bills/{id}', [PurchaseBillController::class, 'show'])->name('purchase.bills.show');
+    // Route::put('purchase/bills/{id}', [PurchaseBillController::class, 'update'])->name('purchase.bills.update');
+    // Route::delete('purchase/bills', [PurchaseBillController::class, 'destroy'])->name('purchase.bills.destroy');
 
     Route::get('purchase/orders/receivable', [PurchaseOrderController::class, 'receivable'])->name('purchase.orders.receivable');
     Route::get('purchase/orders/progress', [PurchaseOrderController::class, 'receivable'])->name('purchase.orders.progress');
