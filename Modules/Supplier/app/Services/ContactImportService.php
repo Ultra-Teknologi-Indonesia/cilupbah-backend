@@ -35,9 +35,10 @@ class ContactImportService
     ];
 
     private const TYPE_MAP = [
-        'pelanggan'               => Contact::TYPE_CUSTOMER,
-        'pelanggan dan pemasok'   => Contact::TYPE_BOTH,
-        'pelanggan & pemasok'     => Contact::TYPE_BOTH,
+        'pemasok'               => Contact::TYPE_SUPPLIER, // Pemasok (sendiri)
+        'pemasok dan pelanggan' => Contact::TYPE_BOTH,     // Pemasok + Pelanggan (gabung)
+        'pemasok & pelanggan'   => Contact::TYPE_BOTH,
+        'pemasok + pelanggan'   => Contact::TYPE_BOTH,
     ];
 
     private const TAX_MAP = [
@@ -142,11 +143,13 @@ class ContactImportService
                 $seenNames[] = $lowerName;
             }
 
-            $typeLower = strtolower(trim($raw['Tipe']));
+            // Buang keterangan dalam kurung mis. "Pemasok (Sendiri)" -> "pemasok"
+            $typeLower = strtolower(trim(preg_replace('/\(.*?\)/', '', $raw['Tipe'])));
+            $typeLower = trim(preg_replace('/\s+/', ' ', $typeLower));
             if (empty($raw['Tipe'])) {
                 $addError('Tipe', 'Tipe wajib diisi');
             } elseif (! isset(self::TYPE_MAP[$typeLower])) {
-                $addError('Tipe', 'Tipe tidak valid (pilihan: Pelanggan, Pelanggan dan Pemasok)');
+                $addError('Tipe', 'Tipe tidak valid (pilihan: Pemasok, Pemasok dan Pelanggan)');
             } else {
                 $mapped['type'] = self::TYPE_MAP[$typeLower];
             }
@@ -361,7 +364,7 @@ class ContactImportService
 
         $guide = [
             ['Nama', 'Teks bebas', 'PT. Anugrah Niagatama', 'Ya'],
-            ['Tipe', 'Pelanggan / Pelanggan dan Pemasok', 'Pelanggan', 'Ya'],
+            ['Tipe', 'Pemasok (sendiri) / Pemasok + Pelanggan (gabung)', 'Pemasok', 'Ya'],
             ['PKP/Non PKP', 'PKP / Non PKP', 'Non PKP', 'Ya'],
             ['NPWP', '15 digit angka', '022095350628000', 'Ya jika PKP'],
             ['NIK', '16 digit angka', '3174012345670001', 'Tidak'],
@@ -425,7 +428,7 @@ class ContactImportService
 
         $categoryExample = ContactCategory::orderBy('name')->value('name') ?? 'PLG-Umum';
         $example = [
-            'PT. Contoh Sejahtera', 'Pelanggan', 'Non PKP', '', '',
+            'PT. Contoh Sejahtera', 'Pemasok', 'Non PKP', '', '',
             $categoryExample, '30', '+628123456789', 'contoh@email.com',
             'Jl. Contoh No. 1', 'DKI Jakarta', 'Jakarta Pusat',
             'Gambir', 'Cideng',
