@@ -62,6 +62,11 @@ class Inbound extends Model
         return $this->hasMany(InboundAssignment::class);
     }
 
+    public function putaways(): HasMany
+    {
+        return $this->hasMany(\Modules\Inventory\Models\Putaway::class, 'source_id')->where('source_type', 'INBOUND');
+    }
+
     public function scopeByStatus($query, string $status)
     {
         return $query->where('status', $status);
