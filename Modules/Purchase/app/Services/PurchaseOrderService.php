@@ -43,7 +43,7 @@ class PurchaseOrderService
     {
         return DB::transaction(function () use ($data) {
             $data['po_number'] = $data['po_number'] ?? $this->poRepository->generatePoNumber();
-            $data['status'] = PurchaseOrder::STATUS_OPEN;
+            $data['status'] = PurchaseOrder::STATUS_DRAFT;
             $data['created_by'] = auth()->user()?->name ?? 'system';
 
             $totals = $this->calculateTotals($data['items'], $data['is_tax_included'] ?? false);
@@ -55,7 +55,6 @@ class PurchaseOrderService
                 $itemData['purchase_order_id'] = $po->id;
                 $this->calculateItemAmounts($itemData);
                 $this->poRepository->createItem($itemData);
-                $this->adjustOnOrder($itemData['item_id'], $data['location_id'], $itemData['qty']);
             }
 
             return $po->load('items.variant.product:id,name');
@@ -86,7 +85,6 @@ class PurchaseOrderService
                     $itemData['purchase_order_id'] = $po->id;
                     $this->calculateItemAmounts($itemData);
                     $this->poRepository->createItem($itemData);
-                $this->adjustOnOrder($itemData['item_id'], $data['location_id'], $itemData['qty']);
                 }
             }
 
@@ -220,18 +218,12 @@ class PurchaseOrderService
                 throw new \Exception('PO tidak ditemukan.');
             }
 
-            if (in_array($po->status, [PurchaseOrder::STATUS_PARTIAL_RECEIVED, PurchaseOrder::STATUS_FULLY_RECEIVED])) {
-                throw new \Exception('PO yang sudah diterima (partial/full) tidak bisa dihapus.');
-            }
-
-            if ($po->status === PurchaseOrder::STATUS_OPEN) {
-                $po->load('items');
-                foreach ($po->items as $item) {
-                    $pendingQty = $item->pendingQty();
-                    if ($pendingQty > 0) {
-                        $this->adjustOnOrder($item->item_id, $po->location_id, -$pendingQty);
-                    }
-                }
+            if (in_array($po->status, [
+                PurchaseOrder::STATUS_OPEN,
+                PurchaseOrder::STATUS_PARTIAL_RECEIVED,
+                PurchaseOrder::STATUS_FULLY_RECEIVED,
+            ])) {
+                throw new \Exception('PO yang sudah diapprove tidak bisa dihapus. Batalkan terlebih dahulu.');
             }
 
             return $this->poRepository->delete($po);

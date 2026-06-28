@@ -59,30 +59,18 @@ class InboundService
             unset($data['items']);
 
             $data['transaction_number'] = $data['reference_number'] ?? ('INB-' . Str::upper(Str::random(8)));
-            $data['status'] = Inbound::STATUS_RECEIVED;
+            $data['status'] = Inbound::STATUS_DRAFT;
 
             $inbound = $this->inboundRepository->create($data);
-            $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
 
             foreach ($items as $itemData) {
-                $inboundItem = $this->inboundRepository->createItem([
+                $this->inboundRepository->createItem([
                     'inbound_id'   => $inbound->id,
                     'item_id'      => $itemData['item_id'],
                     'expected_qty' => $itemData['expected_qty'],
-                    'received_qty' => $itemData['expected_qty'],
+                    'received_qty' => 0,
                     'notes'        => $itemData['notes'] ?? null,
                 ]);
-                
-                if ($defaultBin) {
-                    $this->inboundRepository->createReceipt([
-                        'inbound_item_id' => $inboundItem->id,
-                        'qty'             => $itemData['expected_qty'],
-                        'bin_id'          => $defaultBin->id,
-                        'condition'       => 'GOOD',
-                        'received_by'     => $data['created_by'] ?? 'system',
-                        'received_date'   => now(),
-                    ]);
-                }
             }
 
             return $inbound->load('items');

@@ -10,7 +10,7 @@ use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
-use Modules\Supplier\Models\Supplier;
+use Modules\Supplier\Models\Contact;
 use App\Models\User;
 use Tests\TestCase;
 
@@ -25,7 +25,7 @@ class StockIntegrationTest extends TestCase
     private ProductVariant $variant2;
     private Inventory $inventory;
     private LocationBin $binInbound;
-    private Supplier $supplier;
+    private Contact $contact;
 
     protected function setUp(): void
     {
@@ -104,10 +104,10 @@ class StockIntegrationTest extends TestCase
             'available'   => 100,
         ]);
 
-        $this->supplier = Supplier::create([
-            'code'    => 'SUP-001',
-            'name'    => 'PT Supplier Test',
-            'status'  => 'active',
+        $this->contact = Contact::create([
+            'code'   => 'CON-001',
+            'name'   => 'PT Supplier Test',
+            'status' => 'active',
         ]);
     }
 
@@ -294,7 +294,7 @@ class StockIntegrationTest extends TestCase
     public function test_po_approve_increases_on_order(): void
     {
         $createResponse = $this->postJson('/api/v1/purchase/orders', [
-            'supplier_id' => $this->supplier->id,
+            'contact_id' => $this->contact->id,
             'location_id' => $this->location->id,
             'order_date'  => now()->toDateString(),
             'created_by'  => 'admin',
@@ -318,7 +318,7 @@ class StockIntegrationTest extends TestCase
     public function test_po_cancel_releases_on_order(): void
     {
         $createResponse = $this->postJson('/api/v1/purchase/orders', [
-            'supplier_id' => $this->supplier->id,
+            'contact_id' => $this->contact->id,
             'location_id' => $this->location->id,
             'order_date'  => now()->toDateString(),
             'created_by'  => 'admin',
@@ -343,7 +343,7 @@ class StockIntegrationTest extends TestCase
     public function test_po_receive_decreases_on_order_and_creates_inbound(): void
     {
         $createResponse = $this->postJson('/api/v1/purchase/orders', [
-            'supplier_id' => $this->supplier->id,
+            'contact_id' => $this->contact->id,
             'location_id' => $this->location->id,
             'order_date'  => now()->toDateString(),
             'created_by'  => 'admin',
@@ -381,7 +381,7 @@ class StockIntegrationTest extends TestCase
     public function test_po_partial_receive(): void
     {
         $createResponse = $this->postJson('/api/v1/purchase/orders', [
-            'supplier_id' => $this->supplier->id,
+            'contact_id' => $this->contact->id,
             'location_id' => $this->location->id,
             'order_date'  => now()->toDateString(),
             'created_by'  => 'admin',
@@ -541,7 +541,7 @@ class StockIntegrationTest extends TestCase
     public function test_purchase_to_inbound_full_flow(): void
     {
         $poResponse = $this->postJson('/api/v1/purchase/orders', [
-            'supplier_id' => $this->supplier->id,
+            'contact_id' => $this->contact->id,
             'location_id' => $this->location->id,
             'order_date'  => now()->toDateString(),
             'created_by'  => 'admin',
@@ -598,7 +598,7 @@ class StockIntegrationTest extends TestCase
     public function test_sales_and_purchase_stock_balance(): void
     {
         $poResponse = $this->postJson('/api/v1/purchase/orders', [
-            'supplier_id' => $this->supplier->id,
+            'contact_id' => $this->contact->id,
             'location_id' => $this->location->id,
             'order_date'  => now()->toDateString(),
             'created_by'  => 'admin',
@@ -638,7 +638,7 @@ class StockIntegrationTest extends TestCase
     public function test_available_always_equals_formula_after_operations(): void
     {
         $poResponse = $this->postJson('/api/v1/purchase/orders', [
-            'supplier_id' => $this->supplier->id,
+            'contact_id' => $this->contact->id,
             'location_id' => $this->location->id,
             'order_date'  => now()->toDateString(),
             'created_by'  => 'admin',

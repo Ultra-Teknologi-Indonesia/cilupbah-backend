@@ -32,11 +32,9 @@ class StockRevaluationService
             $revaluation = $this->revaluationRepository->create([
                 'revaluation_no' => $revaluationNo,
                 'location_id'    => $data['location_id'],
-                'status'         => StockRevaluation::STATUS_APPROVED,
+                'status'         => StockRevaluation::STATUS_DRAFT,
                 'notes'          => $data['notes'] ?? null,
                 'created_by'     => $data['created_by'],
-                'approved_by'    => $data['created_by'],
-                'approved_at'    => now(),
             ]);
 
             foreach ($data['items'] as $itemData) {
@@ -54,12 +52,43 @@ class StockRevaluationService
                     'old_cost'             => $inventory->avg_cost,
                     'new_cost'             => $itemData['new_cost'],
                 ]);
-
-                $inventory->avg_cost = $itemData['new_cost'];
-                $inventory->save();
             }
 
             return $this->revaluationRepository->findById($revaluation->id);
+        });
+    }
+
+    public function approve(string $id, array $data): StockRevaluation
+    {
+        return DB::transaction(function () use ($id, $data) {
+            $revaluation = $this->revaluationRepository->findByIdForUpdate($id);
+
+            if (!$revaluation) {
+                throw new \Exception('Dokumen penyesuaian nilai tidak ditemukan.');
+            }
+
+            if ($revaluation->status !== StockRevaluation::STATUS_DRAFT) {
+                throw new \Exception('Hanya dokumen DRAFT yang bisa diapprove.');
+            }
+
+            foreach ($revaluation->items as $item) {
+                $inventory = $this->inventoryRepository->findOrCreateForUpdate(
+                    $item->item_id,
+                    $revaluation->location_id,
+                    $item->bin_id,
+                );
+
+                $inventory->avg_cost = $item->new_cost;
+                $inventory->save();
+            }
+
+            $revaluation->update([
+                'status'      => StockRevaluation::STATUS_APPROVED,
+                'approved_by' => $data['approved_by'] ?? null,
+                'approved_at' => now(),
+            ]);
+
+            return $this->revaluationRepository->findById($id);
         });
     }
 
@@ -70,6 +99,10 @@ class StockRevaluationService
 
             if (!$revaluation) {
                 throw new \Exception('Dokumen penyesuaian nilai tidak ditemukan.');
+            }
+
+            if ($revaluation->status === StockRevaluation::STATUS_APPROVED) {
+                throw new \Exception('Dokumen yang sudah diapprove tidak bisa dibatalkan.');
             }
 
             if ($revaluation->status === StockRevaluation::STATUS_CANCELLED) {

@@ -117,6 +117,18 @@ class StockRevaluationController extends Controller
             new OA\Response(response: 422, description: 'Validation Error'),
         ]
     )]
+    public function approve(\Illuminate\Http\Request $request, string $id): JsonResponse
+    {
+        try {
+            $data = ['approved_by' => $request->user()?->name ?? $request->user()?->email];
+            $revaluation = $this->revaluationService->approve($id, $data);
+
+            return $this->successResponse($revaluation, 'Penyesuaian nilai berhasil diapprove, harga pokok diperbarui.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
     public function cancel(string $id): JsonResponse
     {
         try {

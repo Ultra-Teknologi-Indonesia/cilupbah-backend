@@ -87,6 +87,39 @@ class InventoryRepository
         return (int) Inventory::where('item_id', $itemId)->sum('available');
     }
 
+    /**
+     * Aggregate on_hand across all bins of an item at a location.
+     * Source of truth = per-bin rows; sellable stock is the sum across bins.
+     */
+    public function sumOnHandAtLocation(string $itemId, string $locationId): int
+    {
+        return (int) Inventory::where('item_id', $itemId)
+            ->where('location_id', $locationId)
+            ->sum('on_hand');
+    }
+
+    /** Aggregate reserved across all rows of an item at a location. */
+    public function sumReservedAtLocation(string $itemId, string $locationId): int
+    {
+        return (int) Inventory::where('item_id', $itemId)
+            ->where('location_id', $locationId)
+            ->sum('reserved');
+    }
+
+    /**
+     * Rows holding physical stock at a location, locked for update and ordered
+     * FEFO (earliest expiry first, nulls last) for deduction during picking.
+     */
+    public function stockRowsForUpdate(string $itemId, string $locationId): Collection
+    {
+        return Inventory::where('item_id', $itemId)
+            ->where('location_id', $locationId)
+            ->where('on_hand', '>', 0)
+            ->orderByRaw('expired_date IS NULL, expired_date')
+            ->lockForUpdate()
+            ->get();
+    }
+
     public function getAllPaginated(int $limit = 10)
     {
         return \Spatie\QueryBuilder\QueryBuilder::for(Inventory::class)

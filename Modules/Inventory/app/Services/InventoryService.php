@@ -198,7 +198,7 @@ class InventoryService
                 'transfer_number'          => $transferNumber,
                 'source_location_id'       => $data['source_location_id'],
                 'destination_location_id'  => $data['destination_location_id'],
-                'status'                   => InventoryTransfer::STATUS_DRAFT,
+                'status'                   => InventoryTransfer::STATUS_IN_TRANSIT,
                 'notes'                    => $data['notes'] ?? null,
                 'created_by'               => $data['created_by'],
             ]);
@@ -227,7 +227,7 @@ class InventoryService
                     throw new \Exception("Stok tidak mencukupi di lokasi asal (tersedia: {$current}, diminta: {$itemData['qty']}).");
                 }
 
-                $sourceInventory->reserved += $itemData['qty'];
+                $sourceInventory->on_hand -= $itemData['qty'];
                 $this->inventoryRepository->updateStock($sourceInventory);
 
                 $this->movementRepository->create([
@@ -406,7 +406,7 @@ class InventoryService
                 throw new \Exception('Transfer tidak ditemukan.');
             }
 
-            if ($transfer->status !== InventoryTransfer::STATUS_CHECKING) {
+            if ($transfer->status !== InventoryTransfer::STATUS_IN_TRANSIT) {
                 throw new \Exception("Transfer berstatus {$transfer->status}, tidak bisa di-receive.");
             }
 

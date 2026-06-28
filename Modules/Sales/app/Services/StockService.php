@@ -62,16 +62,12 @@ class StockService
     {
         $this->withStockLock($itemId, $locationId, function () use ($sku, $itemId, $locationId, $qty, $transactionNumber, $enforce) {
             DB::transaction(function () use ($sku, $itemId, $locationId, $qty, $transactionNumber, $enforce) {
-                $inventory = $enforce
-                    ? $this->inventoryRepository->findExactForUpdate($itemId, $locationId, null)
-                    : $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
-
-                if (!$inventory) {
-
-                    throw new InsufficientStockException($sku, 0, $qty);
-                }
-
-                $available = $inventory->on_hand - $inventory->reserved;
+                // Availability is the aggregate across all bins (physical stock lives
+                // in per-bin rows from receive/putaway); reserved is held on the
+                // location-level (bin_id = null) aggregate row.
+                $onHand   = $this->inventoryRepository->sumOnHandAtLocation($itemId, $locationId);
+                $reserved = $this->inventoryRepository->sumReservedAtLocation($itemId, $locationId);
+                $available = $onHand - $reserved;
 
                 if ($available < $qty) {
                     if ($enforce) {
@@ -88,8 +84,9 @@ class StockService
                     ]);
                 }
 
-                $inventory->reserved += $qty;
-                $this->inventoryRepository->updateStock($inventory);
+                $aggregate = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
+                $aggregate->reserved += $qty;
+                $this->inventoryRepository->updateStock($aggregate);
 
                 $this->movementRepository->create([
                     'item_id'            => $itemId,
@@ -98,7 +95,7 @@ class StockService
                     'transaction_number' => $transactionNumber,
                     'source'             => 'ORDER_RESERVE',
                     'qty'                => -$qty,
-                    'balance'            => $inventory->on_hand,
+                    'balance'            => $onHand,
                     'transaction_date'   => now(),
                     'created_by'         => 'system',
                 ]);
@@ -121,27 +118,61 @@ class StockService
     {
         $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
             DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
-                $inventory = $this->inventoryRepository->findExactForUpdate($itemId, $locationId, null);
+                // Release the reservation from the location-level aggregate row.
+                $aggregate = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
+                $aggregate->reserved = max(0, $aggregate->reserved - $qty);
+                $this->inventoryRepository->updateStock($aggregate);
 
-                if (!$inventory) {
-                    throw new \RuntimeException("Inventory tidak ditemukan untuk item {$itemId}.");
+                // Deduct physical on_hand across stock-bearing bins (FEFO).
+                $remaining = $qty;
+                foreach ($this->inventoryRepository->stockRowsForUpdate($itemId, $locationId) as $row) {
+                    if ($remaining <= 0) {
+                        break;
+                    }
+
+                    $take = min($row->on_hand, $remaining);
+                    $row->on_hand -= $take;
+                    $this->inventoryRepository->updateStock($row);
+                    $remaining -= $take;
+
+                    $this->movementRepository->create([
+                        'item_id'            => $itemId,
+                        'location_id'        => $locationId,
+                        'bin_id'             => $row->bin_id,
+                        'transaction_number' => $transactionNumber,
+                        'source'             => 'ORDER_PICK',
+                        'qty'                => -$take,
+                        'balance'            => $row->on_hand,
+                        'transaction_date'   => now(),
+                        'created_by'         => 'system',
+                    ]);
                 }
 
-                $inventory->on_hand -= $qty;
-                $inventory->reserved -= $qty;
-                $this->inventoryRepository->updateStock($inventory);
+                // Not enough physical stock to cover the pick (oversold): absorb the
+                // remainder on the aggregate row so totals stay consistent, and warn.
+                if ($remaining > 0) {
+                    $aggregate->on_hand -= $remaining;
+                    $this->inventoryRepository->updateStock($aggregate);
 
-                $this->movementRepository->create([
-                    'item_id'            => $itemId,
-                    'location_id'        => $locationId,
-                    'bin_id'             => null,
-                    'transaction_number' => $transactionNumber,
-                    'source'             => 'ORDER_PICK',
-                    'qty'                => -$qty,
-                    'balance'            => $inventory->on_hand,
-                    'transaction_date'   => now(),
-                    'created_by'         => 'system',
-                ]);
+                    Log::warning('Pick exceeds physical stock; absorbed on aggregate row', [
+                        'item_id'            => $itemId,
+                        'location_id'        => $locationId,
+                        'shortfall'          => $remaining,
+                        'transaction_number' => $transactionNumber,
+                    ]);
+
+                    $this->movementRepository->create([
+                        'item_id'            => $itemId,
+                        'location_id'        => $locationId,
+                        'bin_id'             => null,
+                        'transaction_number' => $transactionNumber,
+                        'source'             => 'ORDER_PICK',
+                        'qty'                => -$remaining,
+                        'balance'            => $aggregate->on_hand,
+                        'transaction_date'   => now(),
+                        'created_by'         => 'system',
+                    ]);
+                }
             });
         });
     }
@@ -161,11 +192,8 @@ class StockService
     {
         $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
             DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
-                $inventory = $this->inventoryRepository->findExactForUpdate($itemId, $locationId, null);
-
-                if (!$inventory) {
-                    throw new \RuntimeException("Inventory tidak ditemukan untuk item {$itemId}.");
-                }
+                // On_hand was already deducted at pick; shipping is audit-only.
+                $balance = $this->inventoryRepository->sumOnHandAtLocation($itemId, $locationId);
 
                 $this->movementRepository->create([
                     'item_id'            => $itemId,
@@ -174,7 +202,7 @@ class StockService
                     'transaction_number' => $transactionNumber,
                     'source'             => 'ORDER_SHIP',
                     'qty'                => 0,
-                    'balance'            => $inventory->on_hand,
+                    'balance'            => $balance,
                     'transaction_date'   => now(),
                     'created_by'         => 'system',
                 ]);
@@ -197,14 +225,11 @@ class StockService
     {
         $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
             DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
-                $inventory = $this->inventoryRepository->findExactForUpdate($itemId, $locationId, null);
-
-                if (!$inventory) {
-                    throw new \RuntimeException("Inventory tidak ditemukan untuk item {$itemId}.");
-                }
-
-                $inventory->on_hand += $qty;
-                $this->inventoryRepository->updateStock($inventory);
+                // Picked stock returning to inventory lands on the location-level
+                // aggregate row (unassigned to a bin until a putaway reassigns it).
+                $aggregate = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
+                $aggregate->on_hand += $qty;
+                $this->inventoryRepository->updateStock($aggregate);
 
                 $this->movementRepository->create([
                     'item_id'            => $itemId,
@@ -213,7 +238,7 @@ class StockService
                     'transaction_number' => $transactionNumber,
                     'source'             => 'ORDER_RESTORE',
                     'qty'                => $qty,
-                    'balance'            => $inventory->on_hand,
+                    'balance'            => $aggregate->on_hand,
                     'transaction_date'   => now(),
                     'created_by'         => 'system',
                 ]);
@@ -236,14 +261,10 @@ class StockService
     {
         $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
             DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
-                $inventory = $this->inventoryRepository->findExactForUpdate($itemId, $locationId, null);
-
-                if (!$inventory) {
-                    throw new \RuntimeException("Inventory tidak ditemukan untuk item {$itemId}.");
-                }
-
-                $inventory->reserved -= $qty;
-                $this->inventoryRepository->updateStock($inventory);
+                // Release the reservation from the location-level aggregate row.
+                $aggregate = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
+                $aggregate->reserved = max(0, $aggregate->reserved - $qty);
+                $this->inventoryRepository->updateStock($aggregate);
 
                 $this->movementRepository->create([
                     'item_id'            => $itemId,
@@ -252,7 +273,7 @@ class StockService
                     'transaction_number' => $transactionNumber,
                     'source'             => 'ORDER_CANCEL',
                     'qty'                => $qty,
-                    'balance'            => $inventory->on_hand,
+                    'balance'            => $aggregate->on_hand,
                     'transaction_date'   => now(),
                     'created_by'         => 'system',
                 ]);

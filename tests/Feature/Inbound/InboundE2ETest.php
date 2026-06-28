@@ -8,7 +8,7 @@ use Modules\Warehouse\Models\LocationBin;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Inventory\Models\Inventory;
-use Modules\Supplier\Models\Supplier;
+use Modules\Supplier\Models\Contact;
 use Modules\Purchase\Models\PurchaseOrder;
 use Modules\Purchase\Models\PurchaseOrderItem;
 use Modules\Inbound\Models\Inbound;
@@ -31,7 +31,7 @@ class InboundE2ETest extends TestCase
     private ProductVariant $variant1;
     private ProductVariant $variant2;
     private ProductVariant $variant3;
-    private Supplier $supplier;
+    private Contact $contact;
 
     protected function setUp(): void
     {
@@ -132,8 +132,8 @@ class InboundE2ETest extends TestCase
             'product_id' => $this->product3->id, 'sku' => 'KBD-001-V1', 'sell_price' => 1000000, 'is_active' => true,
         ]);
 
-        $this->supplier = Supplier::create([
-            'code' => 'SUP-01', 'name' => 'Test Supplier', 'status' => 'active',
+        $this->contact = Contact::create([
+            'code' => 'CON-01', 'name' => 'Test Supplier', 'status' => 'active',
         ]);
 
         foreach ([$this->variant1, $this->variant2] as $v) {
@@ -148,7 +148,7 @@ class InboundE2ETest extends TestCase
     public function test_a_create_po_returns_201(): void
     {
         $response = $this->postJson('/api/v1/purchase/orders', [
-            'supplier_id'  => $this->supplier->id,
+            'contact_id'   => $this->contact->id,
             'location_id'  => $this->warehouse->id,
             'order_date'   => now()->toDateString(),
             'expected_date' => now()->addDays(7)->toDateString(),
@@ -533,7 +533,7 @@ class InboundE2ETest extends TestCase
     {
 
         $poResponse = $this->postJson('/api/v1/purchase/orders', [
-            'supplier_id' => $this->supplier->id,
+            'contact_id' => $this->contact->id,
             'location_id' => $this->warehouse->id,
             'order_date'  => now()->toDateString(),
             'created_by'  => 'admin',
@@ -673,7 +673,7 @@ class InboundE2ETest extends TestCase
     private function createPO(): PurchaseOrder
     {
         $response = $this->postJson('/api/v1/purchase/orders', [
-            'supplier_id' => $this->supplier->id,
+            'contact_id' => $this->contact->id,
             'location_id' => $this->warehouse->id,
             'order_date'  => now()->toDateString(),
             'created_by'  => 'admin',
