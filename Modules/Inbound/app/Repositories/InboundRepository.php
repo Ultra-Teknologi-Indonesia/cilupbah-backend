@@ -14,7 +14,7 @@ class InboundRepository
     public function getAllPaginated(int $limit = 10)
     {
         return QueryBuilder::for(Inbound::class)
-            ->with(['location:id,location_name', 'items.variant:id,sku,product_id', 'assignments.worker:id,name', 'putaways:id,source_id,status'])
+            ->with(['location:id,location_name', 'items.variant:id,sku,product_id', 'assignments.worker:id,name', 'putaways:id,source_id,status,assigned_to', 'putaways.assignee:id,name'])
             ->allowedFilters(
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('type'),
