@@ -5,9 +5,11 @@ namespace Modules\Warehouse\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Modules\Warehouse\Services\LocationBinService;
 use Modules\Warehouse\Http\Requests\GenerateLocationBinRequest;
 use Modules\Warehouse\Http\Requests\StoreLocationBinRequest;
+use Modules\Warehouse\Http\Requests\UniformApplyLocationBinRequest;
+use Modules\Warehouse\Http\Resources\LocationBinResource;
+use Modules\Warehouse\Services\LocationBinService;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Location Bins', description: 'API Endpoints for Warehouse Location Bins')]
@@ -59,9 +61,13 @@ class LocationBinController extends Controller
     )]
     public function index(string $locationId): JsonResponse
     {
-        $bins = $this->binService->getByLocation($locationId);
+        $paginator = $this->binService->getByLocationPaginated($locationId);
 
-        return $this->successResponse($bins, 'Daftar bin berhasil diambil');
+        $paginator->setCollection(
+            LocationBinResource::collection($paginator->getCollection())->collection
+        );
+
+        return $this->successPaginatedResponse($paginator, 'Daftar bin berhasil diambil');
     }
 
     #[OA\Get(
@@ -141,15 +147,34 @@ class LocationBinController extends Controller
     public function preview(GenerateLocationBinRequest $request, string $locationId): JsonResponse
     {
         try {
-            $preview = $this->binService->previewMassGenerate($request->validated());
+            $validated = $request->validated();
+            $page = (int) ($validated['page'] ?? 1);
+            $perPage = (int) ($validated['per_page'] ?? 50);
+
+            $preview = $this->binService->previewMassGenerate($validated, $page, $perPage);
 
             return $this->successResponse(
-                $preview,
-                "Preview berhasil di-generate.",
-                200
+                $preview['data'],
+                'Preview berhasil di-generate.',
+                200,
+                $preview['meta']
             );
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 500);
+        }
+    }
+
+    public function uniformApply(UniformApplyLocationBinRequest $request, string $locationId): JsonResponse
+    {
+        try {
+            $affected = $this->binService->uniformApply($locationId, $request->validated());
+
+            return $this->successResponse(
+                ['affected' => $affected],
+                "Berhasil menerapkan ke {$affected} rak."
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
         }
     }
 

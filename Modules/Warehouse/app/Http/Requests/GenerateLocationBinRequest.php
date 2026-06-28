@@ -23,6 +23,8 @@ class GenerateLocationBinRequest extends FormRequest
             'bin_code' => 'required|string|max:10',
             'qty_bin' => 'required|integer|min:1',
             'max_qty' => 'nullable|integer|min:0',
+            'page' => 'nullable|integer|min:1',
+            'per_page' => 'nullable|integer|min:1|max:1000',
         ];
     }
 
@@ -36,10 +38,10 @@ class GenerateLocationBinRequest extends FormRequest
 
             $totalCombinations = $qtyFloor * $qtyRow * $qtyColumn * $qtyBin;
 
-            if ($totalCombinations > 2000) {
+            if ($totalCombinations > 10000) {
                 $validator->errors()->add(
                     'total_combinations',
-                    "Maksimum Kombinasi Rak Adalah 2000. Anda mencoba membuat {$totalCombinations} kombinasi."
+                    "Maksimum Kombinasi Rak Adalah 10.000. Anda mencoba membuat {$totalCombinations} kombinasi."
                 );
             }
         });

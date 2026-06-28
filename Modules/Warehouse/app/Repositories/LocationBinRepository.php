@@ -5,7 +5,10 @@ namespace Modules\Warehouse\Repositories;
 use Modules\Warehouse\Models\LocationBin;
 use Modules\Inventory\Models\Inventory;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Ramsey\Uuid\Uuid;
+use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class LocationBinRepository
 {
@@ -14,6 +17,78 @@ class LocationBinRepository
         return LocationBin::where('location_id', $locationId)
             ->orderBy('bin_final_code')
             ->get();
+    }
+
+    public function findByLocationPaginated(string $locationId): LengthAwarePaginator
+    {
+        return QueryBuilder::for(LocationBin::where('location_id', $locationId))
+            ->allowedSearch(
+                'bin_final_code',
+                'floor_code',
+                'row_code',
+                'column_code',
+                'bin_code',
+                'category'
+            )
+            ->allowedFilters([
+                AllowedFilter::exact('is_inbound'),
+                AllowedFilter::exact('is_stock_acknowledged'),
+                AllowedFilter::exact('is_large_bin'),
+                AllowedFilter::exact('category'),
+                AllowedFilter::exact('zone_id'),
+            ])
+            ->allowedSorts(
+                'bin_final_code',
+                'floor_code',
+                'row_code',
+                'column_code',
+                'bin_code',
+                'max_qty',
+                'created_at'
+            )
+            ->defaultSort('bin_final_code')
+            ->paginate(request('per_page', 50))
+            ->appends(request()->query());
+    }
+
+    public function applyFilterQuery(string $locationId)
+    {
+        return QueryBuilder::for(LocationBin::where('location_id', $locationId))
+            ->allowedSearch(
+                'bin_final_code',
+                'floor_code',
+                'row_code',
+                'column_code',
+                'bin_code',
+                'category'
+            )
+            ->allowedFilters([
+                AllowedFilter::exact('is_inbound'),
+                AllowedFilter::exact('is_stock_acknowledged'),
+                AllowedFilter::exact('is_large_bin'),
+                AllowedFilter::exact('category'),
+                AllowedFilter::exact('zone_id'),
+            ]);
+    }
+
+    public function updateManyByIds(string $locationId, array $ids, array $payload): int
+    {
+        if (empty($ids) || empty($payload)) {
+            return 0;
+        }
+
+        return LocationBin::where('location_id', $locationId)
+            ->whereIn('id', $ids)
+            ->update($payload);
+    }
+
+    public function updateAllByLocation(string $locationId, array $payload): int
+    {
+        if (empty($payload)) {
+            return 0;
+        }
+
+        return LocationBin::where('location_id', $locationId)->update($payload);
     }
 
     public function findById(string $id): ?LocationBin

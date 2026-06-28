@@ -22,6 +22,11 @@ class LocationBinService
         return $this->binRepository->findByLocation($locationId);
     }
 
+    public function getByLocationPaginated(string $locationId)
+    {
+        return $this->binRepository->findByLocationPaginated($locationId);
+    }
+
     public function getById(string $id): ?LocationBin
     {
         return $this->binRepository->findById($id);
@@ -162,40 +167,96 @@ class LocationBinService
         });
     }
 
-    public function previewMassGenerate(array $data): array
+    public function previewMassGenerate(array $data, int $page = 1, int $perPage = 50): array
     {
+        $qtyFloor = (int) $data['qty_floor'];
+        $qtyRow = (int) $data['qty_row'];
+        $qtyColumn = (int) $data['qty_column'];
+        $qtyBin = (int) $data['qty_bin'];
         $maxQty = $data['max_qty'] ?? 0;
-        $previewData = [];
 
-        for ($f = 1; $f <= $data['qty_floor']; $f++) {
-            $fCode = "{$data['floor_code']}{$f}";
-            for ($r = 1; $r <= $data['qty_row']; $r++) {
-                $rCode = "{$data['row_code']}{$r}";
-                for ($c = 1; $c <= $data['qty_column']; $c++) {
-                    $cCode = "{$data['column_code']}{$c}";
-                    for ($b = 1; $b <= $data['qty_bin']; $b++) {
-                        $bCode = "{$data['bin_code']}{$b}";
+        $total = $qtyFloor * $qtyRow * $qtyColumn * $qtyBin;
+        $perPage = max(1, min($perPage, 1000));
+        $page = max(1, $page);
+        $lastPage = max(1, (int) ceil($total / $perPage));
+        $offset = ($page - 1) * $perPage;
 
-                        $binData = [
-                            'floor_code' => $fCode,
-                            'row_code' => $rCode,
-                            'column_code' => $cCode,
-                            'bin_code' => $bCode,
-                        ];
-
-                        $previewData[] = array_merge($binData, [
-                            'bin_final_code' => $this->generateFinalCode($binData),
-                            'max_qty' => $maxQty,
-                        ]);
-                    }
-                }
+        $items = [];
+        if ($offset < $total) {
+            $end = min($offset + $perPage, $total);
+            for ($i = $offset; $i < $end; $i++) {
+                $items[] = $this->buildPreviewRowAtIndex($i, $data, $maxQty);
             }
         }
 
         return [
-            'total_racks' => count($previewData),
-            'preview_samples' => array_slice($previewData, 0, 10),
-            'all_racks' => $previewData,
+            'data' => $items,
+            'meta' => [
+                'current_page' => $page,
+                'last_page' => $lastPage,
+                'per_page' => $perPage,
+                'total' => $total,
+            ],
         ];
+    }
+
+    protected function buildPreviewRowAtIndex(int $index, array $data, int $maxQty): array
+    {
+        $qtyRow = (int) $data['qty_row'];
+        $qtyColumn = (int) $data['qty_column'];
+        $qtyBin = (int) $data['qty_bin'];
+
+        $perFloor = $qtyRow * $qtyColumn * $qtyBin;
+        $perRow = $qtyColumn * $qtyBin;
+        $perColumn = $qtyBin;
+
+        $f = intdiv($index, $perFloor) + 1;
+        $rem = $index % $perFloor;
+        $r = intdiv($rem, $perRow) + 1;
+        $rem = $rem % $perRow;
+        $c = intdiv($rem, $perColumn) + 1;
+        $b = ($rem % $perColumn) + 1;
+
+        $codes = [
+            'floor_code' => "{$data['floor_code']}{$f}",
+            'row_code' => "{$data['row_code']}{$r}",
+            'column_code' => "{$data['column_code']}{$c}",
+            'bin_code' => "{$data['bin_code']}{$b}",
+        ];
+
+        return array_merge($codes, [
+            'bin_final_code' => $this->generateFinalCode($codes),
+            'max_qty' => $maxQty,
+        ]);
+    }
+
+    public function uniformApply(string $locationId, array $payload): int
+    {
+        $scope = $payload['scope'];
+        $values = $payload['values'];
+
+        $updateData = array_filter([
+            'max_qty' => $values['max_qty'] ?? null,
+            'is_stock_acknowledged' => array_key_exists('is_stock_acknowledged', $values) ? (bool) $values['is_stock_acknowledged'] : null,
+            'is_large_bin' => array_key_exists('is_large_bin', $values) ? (bool) $values['is_large_bin'] : null,
+            'category' => array_key_exists('category', $values) ? $values['category'] : null,
+        ], fn($v) => $v !== null);
+
+        if (empty($updateData)) {
+            return 0;
+        }
+
+        if ($scope === 'selected') {
+            return $this->binRepository->updateManyByIds(
+                $locationId,
+                $payload['ids'] ?? [],
+                $updateData
+            );
+        }
+
+        // scope === 'all' → apply ke seluruh bin yang match filter aktif
+        $query = $this->binRepository->applyFilterQuery($locationId);
+
+        return $query->update($updateData);
     }
 }
