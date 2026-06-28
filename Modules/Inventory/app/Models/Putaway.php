@@ -49,4 +49,9 @@ class Putaway extends Model
     {
         return $this->belongsTo(\App\Models\User::class, 'assigned_to');
     }
+
+    public function inbound(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Inbound\Models\Inbound::class, 'source_id');
+    }
 }

@@ -171,7 +171,7 @@ class InboundService
                     }
                 }
 
-                $this->createPutawayFromInbound($inbound, $defaultBin, $data['received_by']);
+                // $this->createPutawayFromInbound($inbound, $defaultBin, $data['received_by']);
             }
 
             return $this->getById($inboundId);

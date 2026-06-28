@@ -21,6 +21,7 @@ class InboundItem extends Model
         'discrepancy_qty',
         'discrepancy_note',
         'condition',
+        'notes',
     ];
 
     public function inbound(): BelongsTo

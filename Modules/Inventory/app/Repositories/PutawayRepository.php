@@ -12,7 +12,7 @@ class PutawayRepository
     public function getAllPaginated(int $limit = 10)
     {
         return QueryBuilder::for(Putaway::class)
-            ->with(['location:id,location_name', 'assignee:id,name', 'items:id,putaway_id,item_id,qty,putaway_qty'])
+            ->with(['location:id,location_name', 'assignee:id,name', 'items:id,putaway_id,item_id,qty,putaway_qty', 'inbound:id,reference_number,created_at'])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('location_id'),
@@ -98,19 +98,18 @@ class PutawayRepository
 
     public function generatePutawayNo(): string
     {
-        $date = now()->format('Ymd');
-        $prefix = "PUT-{$date}-";
+        $prefix = "PUT-";
 
         $last = Putaway::where('putaway_no', 'like', "{$prefix}%")
             ->orderByDesc('putaway_no')
             ->value('putaway_no');
 
         if ($last) {
-            $seq = (int) substr($last, -4) + 1;
+            $seq = (int) substr($last, strlen($prefix)) + 1;
         } else {
             $seq = 1;
         }
 
-        return $prefix . str_pad($seq, 4, '0', STR_PAD_LEFT);
+        return $prefix . str_pad($seq, 9, '0', STR_PAD_LEFT);
     }
 }

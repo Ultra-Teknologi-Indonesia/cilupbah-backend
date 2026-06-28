@@ -40,6 +40,7 @@ class Inbound extends Model
         'status',
         'expected_date',
         'created_by',
+        'notes',
     ];
 
     protected $casts = [

@@ -142,6 +142,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::prefix('putaway')->group(function () {
         Route::get('/', [PutawayController::class, 'index'])->name('putaway.index');
+        Route::post('/', [PutawayController::class, 'store'])->name('putaway.store');
         Route::get('/not-started', [PutawayController::class, 'notStarted'])->name('putaway.notStarted');
         Route::get('/in-progress', [PutawayController::class, 'inProgress'])->name('putaway.inProgress');
         Route::get('/completed', [PutawayController::class, 'completed'])->name('putaway.completed');

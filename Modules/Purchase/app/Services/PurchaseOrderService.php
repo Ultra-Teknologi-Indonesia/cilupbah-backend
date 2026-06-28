@@ -151,6 +151,7 @@ class PurchaseOrderService
                 $inboundItems[] = [
                     'item_id'      => $poItem->item_id,
                     'expected_qty' => $receiveItem['qty'],
+                    'notes'        => $receiveItem['notes'] ?? null,
                 ];
             }
 
@@ -161,11 +162,12 @@ class PurchaseOrderService
             $this->poRepository->updateStatus($po, $newStatus);
 
             $inbound = $this->inboundService->receiveFromPO([
-                'location_id'      => $po->location_id,
-                'reference_number' => $po->po_number,
+                'location_id'      => $data['location_id'] ?? $po->location_id,
+                'reference_number' => $data['reference_number'] ?? $po->po_number,
                 'source_id'        => $po->id,
-                'expected_date'    => now()->toDateString(),
+                'expected_date'    => $data['receive_date'] ?? now()->toDateString(),
                 'created_by'       => $data['received_by'],
+                'notes'            => $data['notes'] ?? null,
                 'items'            => $inboundItems,
             ]);
 
