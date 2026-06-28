@@ -53,6 +53,6 @@ class Inventory extends Model
 
     public function recalculateAvailable(): void
     {
-        $this->available = $this->on_hand - $this->on_order - $this->reserved;
+        $this->available = $this->on_hand - $this->reserved;
     }
 }

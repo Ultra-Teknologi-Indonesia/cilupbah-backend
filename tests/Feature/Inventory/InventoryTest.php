@@ -1329,7 +1329,7 @@ class InventoryTest extends TestCase
 
         $inv->recalculateAvailable();
 
-        $this->assertEquals(70, $inv->available);
+        $this->assertEquals(80, $inv->available);
     }
 
     public function test_recalculate_available_with_negative_result(): void
@@ -1341,7 +1341,7 @@ class InventoryTest extends TestCase
 
         $inv->recalculateAvailable();
 
-        $this->assertEquals(-40, $inv->available);
+        $this->assertEquals(-20, $inv->available);
     }
 
     public function test_unauthenticated_request_returns_401(): void

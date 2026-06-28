@@ -312,7 +312,7 @@ class StockIntegrationTest extends TestCase
 
         $this->inventory->refresh();
         $this->assertEquals(50, $this->inventory->on_order);
-        $this->assertEquals(50, $this->inventory->available);
+        $this->assertEquals(100, $this->inventory->available);
     }
 
     public function test_po_cancel_releases_on_order(): void
@@ -556,7 +556,7 @@ class StockIntegrationTest extends TestCase
         $this->inventory->refresh();
         $this->assertEquals(100, $this->inventory->on_hand);
         $this->assertEquals(50, $this->inventory->on_order);
-        $this->assertEquals(50, $this->inventory->available);
+        $this->assertEquals(100, $this->inventory->available);
 
         $po = \Modules\Purchase\Models\PurchaseOrder::find($poId);
         $poItem = $po->items->first();
@@ -617,7 +617,7 @@ class StockIntegrationTest extends TestCase
         $this->assertEquals(30, $this->inventory->on_order);
         $this->assertEquals(20, $this->inventory->reserved);
 
-        $this->assertEquals(50, $this->inventory->available);
+        $this->assertEquals(80, $this->inventory->available);
     }
 
     public function test_delete_reserved_order_restores_stock(): void
@@ -660,7 +660,7 @@ class StockIntegrationTest extends TestCase
         ]);
 
         $this->inventory->refresh();
-        $expected = $this->inventory->on_hand - $this->inventory->on_order - $this->inventory->reserved;
+        $expected = $this->inventory->on_hand - $this->inventory->reserved;
         $this->assertEquals($expected, $this->inventory->available);
     }
 }
