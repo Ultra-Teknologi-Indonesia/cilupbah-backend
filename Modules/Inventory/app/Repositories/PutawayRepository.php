@@ -12,7 +12,7 @@ class PutawayRepository
     public function getAllPaginated(int $limit = 10)
     {
         return QueryBuilder::for(Putaway::class)
-            ->with(['location:id,location_name', 'assignee:id,name', 'items:id,putaway_id,item_id,qty,putaway_qty', 'inbound:id,reference_number,created_at'])
+            ->with(['location:id,location_name', 'assignee:id,name', 'creator:id,name', 'items:id,putaway_id,item_id,qty,putaway_qty', 'inbound:id,reference_number,created_at'])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('location_id'),
@@ -28,7 +28,7 @@ class PutawayRepository
     public function getByStatus(string $status, int $limit = 10)
     {
         return QueryBuilder::for(Putaway::where('status', $status))
-            ->with(['location:id,location_name', 'assignee:id,name', 'items:id,putaway_id,item_id,qty,putaway_qty'])
+            ->with(['location:id,location_name', 'assignee:id,name', 'creator:id,name', 'items:id,putaway_id,item_id,qty,putaway_qty'])
             ->allowedFilters(
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('assigned_to'),
@@ -47,6 +47,7 @@ class PutawayRepository
             'items.destinationBin:id,bin_final_code',
             'location:id,location_name',
             'assignee:id,name',
+            'creator:id,name',
         ])->find($id);
     }
 
