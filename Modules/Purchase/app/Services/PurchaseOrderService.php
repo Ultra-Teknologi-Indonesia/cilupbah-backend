@@ -166,7 +166,7 @@ class PurchaseOrderService
                 'reference_number' => $data['reference_number'] ?? $po->po_number,
                 'source_id'        => $po->id,
                 'expected_date'    => $data['receive_date'] ?? now()->toDateString(),
-                'created_by'       => $data['received_by'],
+                'created_by'       => $data['received_by'] ?? 'System',
                 'notes'            => $data['notes'] ?? null,
                 'items'            => $inboundItems,
             ]);

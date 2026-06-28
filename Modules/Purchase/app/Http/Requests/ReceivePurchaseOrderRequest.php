@@ -14,7 +14,7 @@ class ReceivePurchaseOrderRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'received_by'                       => ['required', 'string', 'max:100'],
+            'received_by'                       => ['nullable', 'string', 'max:100'],
             'reference_number'                  => ['nullable', 'string', 'max:255'],
             'location_id'                       => ['nullable', 'string', 'exists:locations,id'],
             'receive_date'                      => ['nullable', 'date'],
