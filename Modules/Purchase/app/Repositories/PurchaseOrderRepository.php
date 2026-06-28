@@ -39,7 +39,7 @@ class PurchaseOrderRepository
 
     public function findById(string $id): ?PurchaseOrder
     {
-        return PurchaseOrder::with(['contact', 'location', 'bills:id,purchase_order_id,bill_number', 'items.variant.product'])
+        return PurchaseOrder::with(['contact', 'location', 'bills:id,purchase_order_id,bill_number', 'items.variant.product', 'items.variant.media', 'items.product.media'])
             ->find($id);
     }
 
