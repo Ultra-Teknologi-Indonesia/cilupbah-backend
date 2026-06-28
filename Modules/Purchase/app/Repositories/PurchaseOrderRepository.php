@@ -13,7 +13,7 @@ class PurchaseOrderRepository
     public function getAllPaginated(int $limit = 10)
     {
         return QueryBuilder::for(PurchaseOrder::class)
-            ->with(['contact:id,name,code', 'location:id,location_name', 'bills:id,purchase_order_id,bill_number'])
+            ->with(['contact:id,name,code', 'location:id,location_name', 'bills:id,purchase_order_id,bill_number', 'items:id,purchase_order_id,qty,received_qty'])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('contact_id'),
