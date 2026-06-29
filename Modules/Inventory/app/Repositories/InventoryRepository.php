@@ -98,12 +98,23 @@ class InventoryRepository
             ->sum('on_hand');
     }
 
-    /** Aggregate reserved across all rows of an item at a location. */
+    /** Aggregate reserved across all rows of an item at a location.
+     *  Reserved = pencadangan manual untuk promo/flash sale (komersial). */
     public function sumReservedAtLocation(string $itemId, string $locationId): int
     {
         return (int) Inventory::where('item_id', $itemId)
             ->where('location_id', $locationId)
             ->sum('reserved');
+    }
+
+    /** Aggregate on_order across all rows of an item at a location.
+     *  On_order = pesanan masuk dari channel/manual yang belum di-pick
+     *  (metrik operasional). */
+    public function sumOnOrderAtLocation(string $itemId, string $locationId): int
+    {
+        return (int) Inventory::where('item_id', $itemId)
+            ->where('location_id', $locationId)
+            ->sum('on_order');
     }
 
     /**

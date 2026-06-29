@@ -51,8 +51,19 @@ class Inventory extends Model
             ->where('location_id', $this->location_id);
     }
 
+    /**
+     * Formula Jubelio-compatible:
+     *   available = on_hand − on_order − reserved
+     *
+     *   on_order = pesanan masuk dari channel/manual yang belum di-pick
+     *              (metrik operasional)
+     *   reserved = pencadangan manual untuk promo/flash sale
+     *              (metrik komersial)
+     *
+     * Available adalah angka yang di-push ke marketplace.
+     */
     public function recalculateAvailable(): void
     {
-        $this->available = $this->on_hand - $this->reserved;
+        $this->available = max(0, $this->on_hand - (int) $this->on_order - $this->reserved);
     }
 }
