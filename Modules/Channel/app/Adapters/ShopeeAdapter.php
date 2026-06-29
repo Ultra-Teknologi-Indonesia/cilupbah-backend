@@ -133,7 +133,8 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
 
     public function syncPriceAndStock(Product $product, ChannelShop $shop, string $externalProductId): array
     {
-        $channelWarehouse = DB::table('channel_warehouses')->where('store_id', $shop->shop_id)->first();
+        $product->loadMissing('variants');
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
 
         $priceList = [];
         $stockList = [];
@@ -148,14 +149,7 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
             }
 
             $modelId = (int) ($mapping->external_sku_id ?? 0);
-
-            $availableQty = 0;
-            if ($channelWarehouse) {
-                $availableQty = (int) DB::table('inventories')
-                    ->where('item_id', $variant->id)
-                    ->where('location_id', $channelWarehouse->location_id)
-                    ->sum('available');
-            }
+            $availableQty = (int) ($stockByVariant[$variant->id] ?? 0);
 
             $priceList[] = ['model_id' => $modelId, 'original_price' => (float) $variant->sell_price];
             $stockList[] = ['model_id' => $modelId, 'seller_stock' => [['stock' => max(0, $availableQty)]]];

@@ -302,9 +302,8 @@ class TikTokAdapter implements MarketplaceAdapterInterface
 
     public function syncPriceAndStock(Product $product, ChannelShop $shop, string $externalProductId): array
     {
-        $channelWarehouse = DB::table('channel_warehouses')
-            ->where('store_id', $shop->shop_id)
-            ->first();
+        $product->loadMissing('variants');
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
 
         $inventorySkus = [];
         $priceSkus = [];
@@ -315,13 +314,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
             })->first();
 
             if ($mapping && $mapping->external_sku_id) {
-                $availableQty = 0;
-                if ($channelWarehouse) {
-                    $availableQty = (int) DB::table('inventories')
-                        ->where('item_id', $variant->id)
-                        ->where('location_id', $channelWarehouse->location_id)
-                        ->sum('available');
-                }
+                $availableQty = (int) ($stockByVariant[$variant->id] ?? 0);
 
                 $inventorySkus[] = [
                     'id' => $mapping->external_sku_id,
