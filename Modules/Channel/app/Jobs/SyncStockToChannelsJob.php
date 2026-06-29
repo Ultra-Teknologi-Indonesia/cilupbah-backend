@@ -55,13 +55,20 @@ class SyncStockToChannelsJob implements ShouldQueue
                 continue;
             }
 
-            if ($mapping->sync_status !== 'pending' && $mapping->sync_status !== 'deactivated') {
-                SyncProductToChannelJob::dispatch(
-                    $product->id,
-                    $mapping->channel_shop_id,
-                    'sync_price_stock'
-                );
+            // Skip hanya mapping yang sengaja di-deactivate user.
+            // Mapping `pending` (belum listed di marketplace) JUGA dipush — di
+            // SyncProductToChannelJob, action 'sync_price_stock' tanpa external_id
+            // akan fallback ke pushProduct() yang membuat listing baru. Setelah
+            // sukses, status mapping otomatis flip ke synced/in_review.
+            if ($mapping->sync_status === 'deactivated') {
+                continue;
             }
+
+            SyncProductToChannelJob::dispatch(
+                $product->id,
+                $mapping->channel_shop_id,
+                'sync_price_stock'
+            );
         }
     }
 }
