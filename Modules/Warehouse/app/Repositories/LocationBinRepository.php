@@ -30,13 +30,13 @@ class LocationBinRepository
                 'bin_code',
                 'category'
             )
-            ->allowedFilters([
+            ->allowedFilters(
                 AllowedFilter::exact('is_inbound'),
                 AllowedFilter::exact('is_stock_acknowledged'),
                 AllowedFilter::exact('is_large_bin'),
                 AllowedFilter::exact('category'),
                 AllowedFilter::exact('zone_id'),
-            ])
+            )
             ->allowedSorts(
                 'bin_final_code',
                 'floor_code',
@@ -62,13 +62,13 @@ class LocationBinRepository
                 'bin_code',
                 'category'
             )
-            ->allowedFilters([
+            ->allowedFilters(
                 AllowedFilter::exact('is_inbound'),
                 AllowedFilter::exact('is_stock_acknowledged'),
                 AllowedFilter::exact('is_large_bin'),
                 AllowedFilter::exact('category'),
                 AllowedFilter::exact('zone_id'),
-            ]);
+            );
     }
 
     public function updateManyByIds(string $locationId, array $ids, array $payload): int
