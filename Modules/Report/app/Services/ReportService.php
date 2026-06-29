@@ -200,14 +200,22 @@ class ReportService
 
     public function pickListReport(array $filters): array
     {
-        $query = Picklist::with(['items.product:id,name,sku', 'items.order:id,salesorder_no,customer_name', 'location:id,location_name,location_code'])
+        $query = Picklist::with([
+                'items.product:id,product_id,sku',
+                'items.product.product:id,name',
+                'items.order:id,salesorder_no,customer_name',
+                'items.bin:id,bin_final_code',
+                'location:id,location_name,location_code',
+                'picker:id,name,email',
+            ])
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
             ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
             ->when($filters['date_to'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '<=', $v))
             ->orderByDesc('created_at');
 
-        if ($id = $filters['id'] ?? null) {
+        $id = $filters['id'] ?? $filters['picklist_id'] ?? null;
+        if ($id) {
             return $this->wrapSingle($query->findOrFail($id), 'pick_list');
         }
 
