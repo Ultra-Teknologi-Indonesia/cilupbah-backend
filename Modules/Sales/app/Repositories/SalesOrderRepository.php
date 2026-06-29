@@ -43,6 +43,8 @@ class SalesOrderRepository
             $query = $this->scopeExcludeFailedDownload($query);
         }
 
+        $query = $this->scopeExcludeHandedToWarehouse($query);
+
         if ($channel = request('channel')) {
             $query->where('source', $channel);
         }
