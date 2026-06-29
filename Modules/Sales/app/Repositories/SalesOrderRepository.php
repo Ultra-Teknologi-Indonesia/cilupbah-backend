@@ -133,7 +133,19 @@ class SalesOrderRepository
 
     protected function visibleOrders()
     {
-        return $this->scopeExcludeFailedDownload(SalesOrder::query());
+        return $this->scopeExcludeHandedToWarehouse(
+            $this->scopeExcludeFailedDownload(SalesOrder::query())
+        );
+    }
+
+    protected function scopeExcludeHandedToWarehouse($query)
+    {
+        return $query->where(function ($q) {
+            $q->where('status', '!=', 'reserved')
+              ->orWhereDoesntHave('picklistItems', fn ($pi) => $pi->whereHas('picklist', fn ($p) =>
+                  $p->whereNotIn('status', [\Modules\Outbound\Models\Picklist::STATUS_CANCELLED, \Modules\Outbound\Models\Picklist::STATUS_FAILED])
+              ));
+        });
     }
 
     protected function unmappedItemsConstraint(): \Closure
