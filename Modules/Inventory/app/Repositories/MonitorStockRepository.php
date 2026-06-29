@@ -80,7 +80,7 @@ class MonitorStockRepository
         };
     }
 
-    public function paginateMode(string $mode, array $filters, int $perPage = 10): LengthAwarePaginator
+    public function paginateMode(string $mode, array $filters, int $perPage = 20): LengthAwarePaginator
     {
         $query = $this->applyMode($this->baseQuery($filters), $mode)
             ->orderBy('products.name')
@@ -131,7 +131,7 @@ class MonitorStockRepository
             ->selectRaw('COALESCE(sales.qty_sold, 0) as qty_sold');
     }
 
-    public function deadStock(array $filters, int $days, int $perPage = 10): LengthAwarePaginator
+    public function deadStock(array $filters, int $days, int $perPage = 20): LengthAwarePaginator
     {
         $threshold = now()->subDays($days)->toDateTimeString();
 
@@ -146,7 +146,7 @@ class MonitorStockRepository
         return $query->paginate($perPage)->appends(request()->query());
     }
 
-    public function fastMoving(array $filters, int $windowDays, int $perPage = 10): LengthAwarePaginator
+    public function fastMoving(array $filters, int $windowDays, int $perPage = 20): LengthAwarePaginator
     {
         $from = now()->subDays($windowDays)->toDateTimeString();
         $w = max(1, $windowDays);
@@ -159,7 +159,7 @@ class MonitorStockRepository
         return $query->paginate($perPage)->appends(request()->query());
     }
 
-    public function estimatedStockOut(array $filters, int $windowDays, int $thresholdDays, int $perPage = 10): LengthAwarePaginator
+    public function estimatedStockOut(array $filters, int $windowDays, int $thresholdDays, int $perPage = 20): LengthAwarePaginator
     {
         $from = now()->subDays($windowDays)->toDateTimeString();
         $w = max(1, $windowDays);
@@ -176,7 +176,7 @@ class MonitorStockRepository
         return $query->paginate($perPage)->appends(request()->query());
     }
 
-    public function failedSync(int $perPage = 10): LengthAwarePaginator
+    public function failedSync(int $perPage = 20): LengthAwarePaginator
     {
         return QueryBuilder::for(
                 ProductChannelMapping::failed()

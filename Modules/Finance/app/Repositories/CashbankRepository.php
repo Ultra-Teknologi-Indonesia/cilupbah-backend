@@ -17,7 +17,7 @@ class CashbankRepository
             ->when($dateTo, fn ($q) => $q->whereDate('payment_date', '<=', $dateTo))
             ->allowedSorts('payment_date', 'amount', 'payment_number', 'created_at')
             ->defaultSort('-payment_date')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 
@@ -29,7 +29,7 @@ class CashbankRepository
             ->when($dateTo, fn ($q) => $q->whereDate('payment_date', '<=', $dateTo))
             ->allowedSorts('payment_date', 'amount', 'payment_number', 'created_at')
             ->defaultSort('-payment_date')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 

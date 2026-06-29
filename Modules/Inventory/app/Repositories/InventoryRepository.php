@@ -213,7 +213,7 @@ class InventoryRepository
             )
             ->allowedSorts('product_variants.sku', 'product_variants.created_at', 'products.name')
             ->defaultSort('products.name', 'product_variants.sku')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 

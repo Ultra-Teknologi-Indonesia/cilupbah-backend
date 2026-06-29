@@ -20,7 +20,7 @@ class WebhookDeliveryRepository
             )
             ->allowedSorts('created_at', 'delivered_at', 'status')
             ->defaultSort('-created_at')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 

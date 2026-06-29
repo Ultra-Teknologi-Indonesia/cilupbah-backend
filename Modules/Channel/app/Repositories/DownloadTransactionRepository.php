@@ -27,7 +27,7 @@ class DownloadTransactionRepository
             )
             ->allowedSorts('created_at', 'trx_no')
             ->defaultSort('-created_at')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 
@@ -61,7 +61,7 @@ class DownloadTransactionRepository
             ->allowedSearch('name', 'sku')
             ->defaultSort('-updated_at')
             ->allowedSorts('name', 'updated_at')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 }

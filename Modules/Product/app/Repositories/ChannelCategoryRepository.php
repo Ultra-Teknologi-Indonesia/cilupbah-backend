@@ -10,7 +10,7 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class ChannelCategoryRepository
 {
-    public function getPaginated(string $channelId, int $perPage = 10): LengthAwarePaginator
+    public function getPaginated(string $channelId, int $perPage = 20): LengthAwarePaginator
     {
         return QueryBuilder::for(ChannelCategory::class)
             ->where('channel_id', $channelId)

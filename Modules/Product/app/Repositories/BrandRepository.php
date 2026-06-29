@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Collection;
 
 class BrandRepository
 {
-    public function getPaginated(int $perPage = 10): LengthAwarePaginator
+    public function getPaginated(int $perPage = 20): LengthAwarePaginator
     {
         return QueryBuilder::for(Brand::class)
             ->allowedSearch('name')

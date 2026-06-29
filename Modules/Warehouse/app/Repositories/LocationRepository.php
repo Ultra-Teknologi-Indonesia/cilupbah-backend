@@ -12,7 +12,7 @@ class LocationRepository
 
     protected function perPage(): int
     {
-        $perPage = (int) request('per_page', 10);
+        $perPage = (int) request('per_page', 20);
 
         return $perPage > 0 ? $perPage : 10;
     }

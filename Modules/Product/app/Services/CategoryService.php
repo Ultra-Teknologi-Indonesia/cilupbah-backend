@@ -19,7 +19,7 @@ class CategoryService
         $this->repository = $repository;
     }
 
-    public function getPaginatedCategories(int $perPage = 10): LengthAwarePaginator
+    public function getPaginatedCategories(int $perPage = 20): LengthAwarePaginator
     {
         return $this->repository->getPaginated($perPage);
     }
@@ -205,7 +205,7 @@ class CategoryService
         }
 
         $paginated = $query->orderBy('name')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
 
         $paginated->getCollection()->transform(function (Category $category) use ($allChannels) {

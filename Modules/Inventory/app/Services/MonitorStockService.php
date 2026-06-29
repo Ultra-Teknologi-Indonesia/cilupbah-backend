@@ -21,7 +21,7 @@ class MonitorStockService
         ], fn ($v) => $v !== null && $v !== '');
     }
 
-    public function outOfStock(string $mode, array $filters, int $perPage = 10)
+    public function outOfStock(string $mode, array $filters, int $perPage = 20)
     {
 
         $mode = in_array($mode, ['habis', 'minus', 'dipesan'], true) ? $mode : 'habis';
@@ -29,12 +29,12 @@ class MonitorStockService
         return $this->repository->paginateMode($mode, $filters, $perPage);
     }
 
-    public function lowStock(array $filters, int $perPage = 10)
+    public function lowStock(array $filters, int $perPage = 20)
     {
         return $this->repository->paginateMode('menipis', $filters, $perPage);
     }
 
-    public function onOrder(array $filters, int $perPage = 10)
+    public function onOrder(array $filters, int $perPage = 20)
     {
         return $this->repository->paginateMode('on-order', $filters, $perPage);
     }
@@ -44,22 +44,22 @@ class MonitorStockService
         return $this->repository->summary($filters);
     }
 
-    public function deadStock(array $filters, int $days = 90, int $perPage = 10)
+    public function deadStock(array $filters, int $days = 90, int $perPage = 20)
     {
         return $this->repository->deadStock($filters, max(1, $days), $perPage);
     }
 
-    public function fastMoving(array $filters, int $windowDays = 30, int $perPage = 10)
+    public function fastMoving(array $filters, int $windowDays = 30, int $perPage = 20)
     {
         return $this->repository->fastMoving($filters, max(1, $windowDays), $perPage);
     }
 
-    public function estimatedStockOut(array $filters, int $windowDays = 30, int $thresholdDays = 30, int $perPage = 10)
+    public function estimatedStockOut(array $filters, int $windowDays = 30, int $thresholdDays = 30, int $perPage = 20)
     {
         return $this->repository->estimatedStockOut($filters, max(1, $windowDays), max(1, $thresholdDays), $perPage);
     }
 
-    public function failedSync(int $perPage = 10)
+    public function failedSync(int $perPage = 20)
     {
         return $this->repository->failedSync($perPage);
     }

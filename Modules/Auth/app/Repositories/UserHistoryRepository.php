@@ -16,7 +16,7 @@ class UserHistoryRepository
             ->where('target_user_id', $userId)
             ->allowedSorts('created_at', 'action')
             ->defaultSort('-created_at')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 

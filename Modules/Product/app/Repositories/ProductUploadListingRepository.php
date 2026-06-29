@@ -31,7 +31,7 @@ class ProductUploadListingRepository
                 AllowedSort::field('created_at', 'channel_shops.created_at'),
             )
             ->defaultSort('channel_shops.shop_name')
-            ->paginate(request('per_page', 25))
+            ->paginate(request('per_page', 12))
             ->appends(request()->query());
     }
 }

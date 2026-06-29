@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Collection;
 
 class CategoryRepository
 {
-    public function getPaginated(int $perPage = 10, bool $enabledOnly = true): LengthAwarePaginator
+    public function getPaginated(int $perPage = 20, bool $enabledOnly = true): LengthAwarePaginator
     {
         $query = QueryBuilder::for(Category::class)
             ->allowedIncludes('parent', 'children', 'children.children', 'children.children.children', 'attributes')

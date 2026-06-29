@@ -23,7 +23,7 @@ class JournalRepository
             ->when($createdSince, fn ($query) => $query->where('transaction_date', '>=', $createdSince))
             ->allowedSorts('transaction_date', 'journal_no', 'created_at')
             ->defaultSort('-transaction_date')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 

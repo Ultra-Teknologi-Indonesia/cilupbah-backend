@@ -37,7 +37,7 @@ class WarrantyController extends Controller
     )]
     public function index(): JsonResponse
     {
-        $limit = request('per_page', 10);
+        $limit = request('per_page', 20);
         $warranties = $this->service->getAllPaginated($limit);
 
         return $this->successPaginatedResponse($warranties);

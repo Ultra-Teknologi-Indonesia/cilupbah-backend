@@ -50,7 +50,7 @@ class MasterFeedRepository
             )
             ->allowedSorts('name', 'created_at', 'updated_at')
             ->defaultSort('-updated_at')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 12))
             ->appends(request()->query());
     }
 
@@ -113,7 +113,7 @@ class MasterFeedRepository
             )
             ->allowedSorts('name', 'created_at', 'updated_at')
             ->defaultSort('-updated_at')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 12))
             ->appends(request()->query());
     }
 
@@ -140,7 +140,7 @@ class MasterFeedRepository
             ->allowedSearch('name', 'sku')
             ->allowedSorts('name', 'created_at', 'updated_at')
             ->defaultSort('-updated_at')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 12))
             ->appends(request()->query());
     }
 }

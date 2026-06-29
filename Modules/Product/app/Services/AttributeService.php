@@ -17,7 +17,7 @@ class AttributeService
         $this->repository = $repository;
     }
 
-    public function getPaginatedAttributes(int $perPage = 10): LengthAwarePaginator
+    public function getPaginatedAttributes(int $perPage = 20): LengthAwarePaginator
     {
         return $this->repository->getPaginated($perPage);
     }

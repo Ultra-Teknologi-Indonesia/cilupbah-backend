@@ -112,7 +112,7 @@ class ChannelAttributeService
         }
     }
 
-    public function getPaginated(string $channelCategoryId, int $perPage = 10): LengthAwarePaginator
+    public function getPaginated(string $channelCategoryId, int $perPage = 20): LengthAwarePaginator
     {
         return $this->attributeRepository->getPaginated($channelCategoryId, $perPage);
     }

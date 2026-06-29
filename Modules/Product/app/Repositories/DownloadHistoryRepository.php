@@ -34,7 +34,7 @@ class DownloadHistoryRepository
             )
             ->defaultSort('-created_at')
             ->with(self::RELATIONS)
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 }

@@ -21,7 +21,7 @@ class PriceListRepository
             )
             ->allowedSorts('sku', 'sell_price')
             ->defaultSort('sku')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 

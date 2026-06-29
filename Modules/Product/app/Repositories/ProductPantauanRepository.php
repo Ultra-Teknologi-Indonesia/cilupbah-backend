@@ -47,7 +47,7 @@ class ProductPantauanRepository
 
         $this->applyLens($query, $lens, $activeShopCount);
 
-        $paginator = $query->paginate(request('per_page', 25))->appends(request()->query());
+        $paginator = $query->paginate(request('per_page', 12))->appends(request()->query());
 
         $paginator->getCollection()->each(function (Product $product) use ($activeShopCount) {
             $product->not_uploaded_count = $activeShopCount - (int) $product->synced_shop_count;

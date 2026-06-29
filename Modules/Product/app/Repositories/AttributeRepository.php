@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Collection;
 
 class AttributeRepository
 {
-    public function getPaginated(int $perPage = 10): LengthAwarePaginator
+    public function getPaginated(int $perPage = 20): LengthAwarePaginator
     {
         return QueryBuilder::for(Attribute::class)
             ->allowedSearch('name')

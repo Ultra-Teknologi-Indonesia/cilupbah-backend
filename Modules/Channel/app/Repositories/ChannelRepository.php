@@ -24,7 +24,7 @@ class ChannelRepository
             )
             ->allowedSorts('name', 'created_at', 'id')
             ->defaultSort('-created_at')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 }

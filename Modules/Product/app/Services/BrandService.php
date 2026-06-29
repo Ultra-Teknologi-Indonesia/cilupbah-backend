@@ -17,7 +17,7 @@ class BrandService
         $this->repository = $repository;
     }
 
-    public function getPaginatedBrands(int $perPage = 10): LengthAwarePaginator
+    public function getPaginatedBrands(int $perPage = 20): LengthAwarePaginator
     {
         return $this->repository->getPaginated($perPage);
     }

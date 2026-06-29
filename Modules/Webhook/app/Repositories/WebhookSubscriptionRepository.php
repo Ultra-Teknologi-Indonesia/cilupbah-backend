@@ -22,7 +22,7 @@ class WebhookSubscriptionRepository
             )
             ->allowedSorts('event', 'created_at')
             ->defaultSort('-created_at')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 

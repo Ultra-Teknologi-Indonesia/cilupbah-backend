@@ -17,7 +17,7 @@ class ChannelCategoryService
         $this->repository = $repository;
     }
 
-    public function getPaginated(string $channelId, int $perPage = 10): LengthAwarePaginator
+    public function getPaginated(string $channelId, int $perPage = 20): LengthAwarePaginator
     {
         return $this->repository->getPaginated($this->resolveChannelId($channelId), $perPage);
     }

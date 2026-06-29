@@ -45,7 +45,7 @@ class ChannelMonitorRepository
                 AllowedFilter::exact('is_active')
             )
             ->allowedSorts('name', 'created_at', 'updated_at')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 
@@ -118,7 +118,7 @@ class ChannelMonitorRepository
                 AllowedSort::field('created_at', 'product_channel_mappings.created_at'),
             )
             ->defaultSort('-product_channel_mappings.last_synced_at')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 

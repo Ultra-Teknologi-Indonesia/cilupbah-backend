@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Collection;
 
 class ChannelAttributeRepository
 {
-    public function getPaginated(string $channelCategoryId, int $perPage = 10): LengthAwarePaginator
+    public function getPaginated(string $channelCategoryId, int $perPage = 20): LengthAwarePaginator
     {
         return QueryBuilder::for(ChannelAttribute::class)
             ->where('channel_category_id', $channelCategoryId)
@@ -40,7 +40,7 @@ class ChannelAttributeRepository
                 'external_id',
             )
             ->defaultSort('name')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 

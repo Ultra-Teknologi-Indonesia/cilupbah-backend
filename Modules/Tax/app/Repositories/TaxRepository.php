@@ -25,7 +25,7 @@ class TaxRepository
             ->allowedFilters(AllowedFilter::exact('is_active'))
             ->allowedSorts('name', 'rate', 'created_at')
             ->defaultSort('name')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 
