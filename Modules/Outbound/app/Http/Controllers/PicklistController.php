@@ -3,12 +3,16 @@
 namespace Modules\Outbound\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Modules\Outbound\Services\PicklistService;
 use Modules\Outbound\Http\Requests\CreatePicklistRequest;
 use Modules\Outbound\Http\Requests\PickItemRequest;
+use Modules\Report\Services\ReportService;
 use OpenApi\Attributes as OA;
+use Throwable;
 
 #[OA\Tag(name: 'Outbound - Picklist', description: 'API Endpoints for Picklist management')]
 #[OA\Schema(
@@ -33,6 +37,7 @@ class PicklistController extends Controller
 {
     public function __construct(
         protected PicklistService $picklistService,
+        protected ReportService $reportService,
     ) {}
 
     #[OA\Get(
@@ -135,6 +140,55 @@ class PicklistController extends Controller
         $data = $this->picklistService->getItems($id, $limit);
 
         return $this->successPaginatedResponse($data);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/outbound/picklists/{id}/pdf',
+        summary: 'Cetak dokumen Picklist sebagai PDF (A4 portrait)',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Picklist'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'PDF stream',
+                content: new OA\MediaType(mediaType: 'application/pdf'),
+            ),
+            new OA\Response(response: 404, description: 'Picklist tidak ditemukan'),
+        ]
+    )]
+    public function pdf(string $id)
+    {
+        validator(['id' => $id], ['id' => 'required|string|exists:picklists,id'])->validate();
+
+        try {
+            $report = $this->reportService->pickListReport(['picklist_id' => $id]);
+            $picklist = $report['data'] ?? null;
+
+            if (!$picklist) {
+                return response()->json(['success' => false, 'message' => 'Picklist tidak ditemukan.'], 404);
+            }
+
+            $picklistNo = $picklist->picklist_no ?? 'PICK';
+            $filename = "PICK-{$picklistNo}.pdf";
+            // Standardize on PICK-{picklist_no}; picklist_no sudah berformat PK-YYYYMMDD-XXXX
+            $filename = str_starts_with((string) $picklistNo, 'PK-')
+                ? "{$picklistNo}.pdf"
+                : "PICK-{$picklistNo}.pdf";
+
+            $pdf = Pdf::loadView('outbound::pdf.picklist', ['picklist' => $picklist])
+                ->setPaper('a4', 'portrait');
+
+            return $pdf->stream($filename);
+        } catch (Throwable $e) {
+            report($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal membuat PDF picklist: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     #[OA\Post(
