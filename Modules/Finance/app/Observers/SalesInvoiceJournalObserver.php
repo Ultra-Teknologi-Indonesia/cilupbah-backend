@@ -26,14 +26,6 @@ class SalesInvoiceJournalObserver
         }
     }
 
-    /**
-     * Snapshot avg_cost ke setiap SalesInvoiceItem (cogs_per_unit, total_cogs).
-     *
-     * Strategi sederhana: weighted-average avg_cost dari semua row Inventory
-     * untuk item tersebut (lintas lokasi/bin) — cukup akurat untuk MVP. Jika
-     * invoice mempunyai location_id, dipersempit ke lokasi tersebut. Hanya item
-     * dengan cogs_per_unit kosong yang di-snapshot, jadi metode ini idempoten.
-     */
     protected function snapshotCogs(SalesInvoice $invoice): void
     {
         $items = $invoice->items()->whereNull('cogs_per_unit')->get();
@@ -74,7 +66,6 @@ class SalesInvoiceJournalObserver
             return round($totalValue / $totalQty, 4);
         }
 
-        // Fallback: rata-rata sederhana avg_cost yang punya nilai > 0.
         $valid = $rows->filter(fn ($r) => (float) $r->avg_cost > 0);
         if ($valid->isEmpty()) {
             return 0.0;

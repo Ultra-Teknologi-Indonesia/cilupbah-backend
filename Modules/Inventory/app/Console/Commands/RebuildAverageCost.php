@@ -18,7 +18,6 @@ class RebuildAverageCost extends Command
 
     protected $description = 'Rebuild avg_cost di table inventories dengan replay moving average dari inventory_movements.';
 
-    /** Source values yang dianggap "receive masuk" (qty positif menambah stok). */
     private const RECEIVE_SOURCES = ['ADJUSTMENT', 'PUTAWAY_IN', 'TRANSFER_IN', 'TRANSIT_IN', 'SPLIT_IN'];
 
     public function handle(): int
@@ -28,7 +27,6 @@ class RebuildAverageCost extends Command
 
         $this->info('Mulai rebuild avg_cost' . ($dryRun ? ' (DRY-RUN)' : '') . '...');
 
-        // Diagnostic: print distinct sources untuk visibility.
         $sources = InventoryMovement::query()->distinct()->pluck('source');
         $this->line('Distinct movement sources: ' . $sources->implode(', '));
 
@@ -66,7 +64,6 @@ class RebuildAverageCost extends Command
             foreach ($movements as $mv) {
                 $qty = (float) $mv->qty;
 
-                // Hanya gunakan IN-movements untuk update avg.
                 if ($qty <= 0 || ! in_array($mv->source, self::RECEIVE_SOURCES, true)) {
                     $runningQty = max(0.0, $runningQty + $qty);
                     continue;
@@ -124,15 +121,9 @@ class RebuildAverageCost extends Command
         return self::SUCCESS;
     }
 
-    /**
-     * Derive cost untuk movement IN:
-     *  1. Trace Inbound (transaction_number) → source_id (PO id) → PurchaseOrderItem.landed_cost
-     *  2. Fallback: PO item terbaru untuk item_id sebelum tanggal movement
-     *  3. Fallback terakhir: variant.buy_price
-     */
     private function deriveCostFromPO(InventoryMovement $mv): float
     {
-        // 1) Trace via Inbound.transaction_number → source_id (PO id).
+
         $inbound = Inbound::where('transaction_number', $mv->transaction_number)->first();
         if ($inbound && $inbound->source_id) {
             $poItem = PurchaseOrderItem::where('purchase_order_id', $inbound->source_id)
@@ -146,7 +137,6 @@ class RebuildAverageCost extends Command
             }
         }
 
-        // 2) PO item terbaru untuk item_id (yang received_qty > 0) sebelum/pada tanggal movement.
         $poItem = PurchaseOrderItem::query()
             ->where('item_id', $mv->item_id)
             ->where('received_qty', '>', 0)
@@ -162,7 +152,6 @@ class RebuildAverageCost extends Command
             }
         }
 
-        // 3) Fallback: variant.buy_price.
         $variant = ProductVariant::find($mv->item_id);
         if ($variant && (float) $variant->buy_price > 0) {
             return (float) $variant->buy_price;

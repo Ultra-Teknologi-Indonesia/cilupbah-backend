@@ -30,13 +30,11 @@ class MovingAverageRecalculationTest extends TestCase
         return [$user, $location, $bin, $variant];
     }
 
-    /** Stok awal 0, terima 10 @ 1000 → avg 1000. */
     public function test_first_receipt_sets_initial_avg(): void
     {
         [$user, $loc, $bin, $variant] = $this->makeContext();
         $service = app(InventoryService::class);
 
-        // Caller pattern: adjust() menambah stok dulu, lalu recalc.
         $service->adjust([
             'item_id' => $variant->id,
             'location_id' => $loc->id,
@@ -49,7 +47,6 @@ class MovingAverageRecalculationTest extends TestCase
         $this->assertEqualsWithDelta(1000.00, $newAvg, 0.01);
     }
 
-    /** 10 @ 1000 lalu terima 10 @ 1200 → avg 1100. */
     public function test_second_receipt_weighted_average(): void
     {
         [$user, $loc, $bin, $variant] = $this->makeContext();
@@ -64,7 +61,6 @@ class MovingAverageRecalculationTest extends TestCase
         $this->assertEqualsWithDelta(1100.00, $newAvg, 0.01);
     }
 
-    /** Cost <= 0 tidak boleh mengubah avg. */
     public function test_zero_cost_does_not_change_avg(): void
     {
         [$user, $loc, $bin, $variant] = $this->makeContext();
@@ -79,7 +75,6 @@ class MovingAverageRecalculationTest extends TestCase
         $this->assertEqualsWithDelta(1000.00, $newAvg, 0.01);
     }
 
-    /** Bila pre_qty + recv_qty = 0 (mis. stok kosong & qty 0), tidak crash. */
     public function test_empty_inventory_with_zero_qty_returns_current_avg(): void
     {
         [, $loc, $bin, $variant] = $this->makeContext();

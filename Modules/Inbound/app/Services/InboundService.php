@@ -142,7 +142,6 @@ class InboundService
 
             $itemsDict = $inbound->items->keyBy('id');
 
-            // Pre-load landed-cost map (item_id => landed_cost_per_unit) bila inbound berasal dari PO.
             $landedCostMap = $this->resolveLandedCostMap($inbound);
 
             foreach ($data['items'] as $receiptData) {
@@ -181,7 +180,6 @@ class InboundService
                     'created_by'         => $data['received_by'],
                 ]);
 
-                // Moving-average + tagging cost pada movement IN dari PO.
                 $landedCost = (float) ($landedCostMap[$inboundItem->item_id] ?? 0);
                 if ($landedCost > 0) {
                     $this->inventoryService->recalculateAverageCost(
@@ -194,7 +192,6 @@ class InboundService
                         $receiptData['serial_no'] ?? '',
                     );
 
-                    // Update movement row yang baru saja dibuat oleh adjust() agar punya cost info.
                     InventoryMovement::where('transaction_number', $inbound->transaction_number)
                         ->where('item_id', $inboundItem->item_id)
                         ->where('location_id', $inbound->location_id)
@@ -226,7 +223,6 @@ class InboundService
                     }
                 }
 
-                // $this->createPutawayFromInbound($inbound, $defaultBin, $data['received_by']);
             }
 
             return $this->getById($inboundId);
@@ -607,12 +603,6 @@ class InboundService
         ]);
     }
 
-    /**
-     * Bangun map item_id => landed_cost_per_unit dari PurchaseOrderItem.
-     * Hanya untuk inbound yang berasal dari PO (source_type=purchase_order).
-     * Bila item_id muncul lebih dari satu kali di PO, ambil rata-rata tertimbang
-     * berdasarkan qty (paling representatif untuk moving average di gudang).
-     */
     private function resolveLandedCostMap(Inbound $inbound): array
     {
         if ($inbound->source_type !== 'purchase_order' || empty($inbound->source_id)) {

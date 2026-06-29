@@ -62,14 +62,7 @@ class StockService
     {
         $this->withStockLock($itemId, $locationId, function () use ($sku, $itemId, $locationId, $qty, $transactionNumber, $enforce) {
             DB::transaction(function () use ($sku, $itemId, $locationId, $qty, $transactionNumber, $enforce) {
-                // Hard-split (Jubelio-compatible):
-                //   on_order = pesanan in-progress (operasional)
-                //   reserved = cadangan manual promo (komersial)
-                //   available = on_hand - on_order - reserved
-                //
-                // Order masuk → on_order naik. Reserved dipakai oleh
-                // ReservedStockService (modul Inventory) untuk pencadangan
-                // event flash sale, bukan oleh flow ini.
+
                 $onHand   = $this->inventoryRepository->sumOnHandAtLocation($itemId, $locationId);
                 $onOrder  = $this->inventoryRepository->sumOnOrderAtLocation($itemId, $locationId);
                 $reserved = $this->inventoryRepository->sumReservedAtLocation($itemId, $locationId);
@@ -124,12 +117,11 @@ class StockService
     {
         $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
             DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
-                // Release booking dari aggregate (operasional → fulfilled).
+
                 $aggregate = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
                 $aggregate->on_order = max(0, ((int) $aggregate->on_order) - $qty);
                 $this->inventoryRepository->updateStock($aggregate);
 
-                // Deduct physical on_hand across stock-bearing bins (FEFO).
                 $remaining = $qty;
                 foreach ($this->inventoryRepository->stockRowsForUpdate($itemId, $locationId) as $row) {
                     if ($remaining <= 0) {
@@ -154,8 +146,6 @@ class StockService
                     ]);
                 }
 
-                // Not enough physical stock to cover the pick (oversold): absorb the
-                // remainder on the aggregate row so totals stay consistent, and warn.
                 if ($remaining > 0) {
                     $aggregate->on_hand -= $remaining;
                     $this->inventoryRepository->updateStock($aggregate);
@@ -198,7 +188,7 @@ class StockService
     {
         $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
             DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
-                // On_hand was already deducted at pick; shipping is audit-only.
+
                 $balance = $this->inventoryRepository->sumOnHandAtLocation($itemId, $locationId);
 
                 $this->movementRepository->create([
@@ -231,8 +221,7 @@ class StockService
     {
         $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
             DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
-                // Picked stock returning to inventory lands on the location-level
-                // aggregate row (unassigned to a bin until a putaway reassigns it).
+
                 $aggregate = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
                 $aggregate->on_hand += $qty;
                 $this->inventoryRepository->updateStock($aggregate);
@@ -267,7 +256,7 @@ class StockService
     {
         $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
             DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
-                // Release booking (order cancelled sebelum pick).
+
                 $aggregate = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
                 $aggregate->on_order = max(0, ((int) $aggregate->on_order) - $qty);
                 $this->inventoryRepository->updateStock($aggregate);

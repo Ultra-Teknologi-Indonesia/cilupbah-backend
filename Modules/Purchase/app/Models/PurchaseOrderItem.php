@@ -49,7 +49,7 @@ class PurchaseOrderItem extends Model
 
     public function getProductAttribute(): ?array
     {
-        // To avoid N+1 issues when not eager loaded
+
         if (!$this->relationLoaded('variant') || !$this->variant) {
             return null;
         }
@@ -73,11 +73,6 @@ class PurchaseOrderItem extends Model
         return max(0, $this->qty - $this->received_qty);
     }
 
-    /**
-     * Harga pokok per unit (landed cost) untuk perhitungan HPP / moving average.
-     * Formula: unit_price + (shipping_cost/qty) - (disc_amount/qty).
-     * Tidak memasukkan pajak (asumsi tax masukan dapat dikreditkan).
-     */
     public function getLandedCostPerUnitAttribute(): float
     {
         $qty = (float) $this->qty;

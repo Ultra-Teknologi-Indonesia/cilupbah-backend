@@ -36,15 +36,6 @@ class ChannelStockResolver
         return $result;
     }
 
-    /**
-     * Tentukan gudang sumber stok untuk channel shop:
-     *  1. Mapping eksplisit di channel_warehouses (store_id).
-     *  2. Fallback: gudang default tenant — location pertama dengan
-     *     is_warehouse=true, is_active=true, bukan location_type=TRANSIT,
-     *     diurut by created_at (paling lama dianggap "Gudang Utama").
-     *  3. Auto-create row di channel_warehouses agar konsisten next call &
-     *     hemat query.
-     */
     protected function resolveLocationId(ChannelShop $shop): ?string
     {
         $cw = DB::table('channel_warehouses')->where('store_id', $shop->shop_id)->first();
@@ -66,7 +57,6 @@ class ChannelStockResolver
             return null;
         }
 
-        // Auto-create mapping supaya tidak query locations lagi & user bisa override di UI.
         DB::table('channel_warehouses')->insert([
             'location_id' => $defaultLocation->id,
             'channel_id' => $shop->channel_id,

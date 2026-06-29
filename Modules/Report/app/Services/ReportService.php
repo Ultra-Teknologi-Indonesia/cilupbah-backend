@@ -260,26 +260,9 @@ class ReportService
         ];
     }
 
-    /**
-     * Laporan Harga Pokok Penjualan (HPP).
-     *
-     * Komponen yang dihitung:
-     *  - persediaan_akhir : SUM(on_hand * avg_cost) saat ini
-     *  - pembelian_bruto  : SUM(qty * cost_per_unit) movement IN-from-purchase di periode
-     *  - ongkos_angkut    : SUM(shipping_cost) PO items di periode (best-effort by PO date)
-     *  - retur_pembelian  : SUM(total_amount) PurchaseReturn di periode
-     *  - potongan         : SUM(disc_amount) PO items di periode
-     *  - pembelian_bersih : pembelian_bruto + ongkos_angkut - retur - potongan
-     *  - hpp_periode      : SUM(sales_invoice_items.total_cogs) di periode
-     *  - persediaan_awal  : persediaan_akhir - pembelian_bersih + hpp_periode
-     *  - hpp              : persediaan_awal + pembelian_bersih - persediaan_akhir
-     *
-     * Catatan: tanpa snapshot persediaan_awal historis, formula bergantung pada
-     * konsistensi avg_cost saat ini — sufficient untuk laporan periode berjalan.
-     */
     public function hppReport(string $dateFrom, string $dateTo, ?string $locationId = null): array
     {
-        // Persediaan akhir = nilai stok saat ini (per location filter bila ada).
+
         $inventoryQuery = Inventory::query();
         if ($locationId) {
             $inventoryQuery->where('location_id', $locationId);
@@ -288,7 +271,6 @@ class ReportService
             ->selectRaw('COALESCE(SUM(on_hand * avg_cost), 0) AS total')
             ->value('total');
 
-        // Pembelian bruto = nilai movement IN-from-purchase di periode.
         $movementQuery = InventoryMovement::whereBetween('transaction_date', [$dateFrom . ' 00:00:00', $dateTo . ' 23:59:59'])
             ->where('qty', '>', 0)
             ->whereIn('source', ['ADJUSTMENT', 'PUTAWAY_IN'])
@@ -298,7 +280,6 @@ class ReportService
         }
         $pembelianBruto = (float) $movementQuery->sum(DB::raw('qty * cost_per_unit'));
 
-        // Ongkos angkut & potongan dari PO items yang PO-nya bertanggal di periode.
         $poItemsQuery = PurchaseOrderItem::query()
             ->whereHas('purchaseOrder', function ($q) use ($dateFrom, $dateTo, $locationId) {
                 $q->whereDate('order_date', '>=', $dateFrom)
@@ -311,7 +292,6 @@ class ReportService
         $ongkosAngkut = (float) (clone $poItemsQuery)->sum('shipping_cost');
         $potonganPembelian = (float) (clone $poItemsQuery)->sum('disc_amount');
 
-        // Retur pembelian.
         $returQuery = PurchaseReturn::whereDate('return_date', '>=', $dateFrom)
             ->whereDate('return_date', '<=', $dateTo)
             ->whereNotIn('status', [PurchaseReturn::STATUS_DRAFT, PurchaseReturn::STATUS_CANCELLED]);
@@ -322,7 +302,6 @@ class ReportService
 
         $pembelianBersih = $pembelianBruto + $ongkosAngkut - $returPembelian - $potonganPembelian;
 
-        // HPP periode = sum total_cogs invoice di periode.
         $cogsQuery = SalesInvoiceItem::whereHas('invoice', function ($q) use ($dateFrom, $dateTo) {
             $q->whereDate('invoice_date', '>=', $dateFrom)
               ->whereDate('invoice_date', '<=', $dateTo)

@@ -9,9 +9,7 @@ use Modules\Purchase\Services\PurchaseOrderService;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
+
     public function up(): void
     {
         try {
@@ -22,7 +20,7 @@ return new class extends Migration
                 try {
                     $service->approve($po->id);
                 } catch (\Exception $e) {
-                    // Log error if needed, but continue
+
                     \Log::error("Gagal migrasi PO DRAFT ke OPEN: {$po->po_number}. Error: " . $e->getMessage());
                 }
             }
@@ -31,11 +29,8 @@ return new class extends Migration
         }
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        // No down needed as we don't know which were originally DRAFT
+
     }
 };

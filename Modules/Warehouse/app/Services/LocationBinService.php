@@ -254,7 +254,6 @@ class LocationBinService
             );
         }
 
-        // scope === 'all' → apply ke seluruh bin yang match filter aktif
         $query = $this->binRepository->applyFilterQuery($locationId);
 
         return $query->update($updateData);

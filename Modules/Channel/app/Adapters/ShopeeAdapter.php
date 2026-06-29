@@ -136,9 +136,6 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         $product->loadMissing('variants');
         $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
 
-        // Shopee warehouse ID (location_id di Shopee) untuk seller multi-warehouse.
-        // Kalau seller tidak punya warehouse terdaftar di Shopee, omit field
-        // sesuai spec. Sumber: channel_warehouses.channel_location_id.
         $channelLocationId = DB::table('channel_warehouses')
             ->where('store_id', $shop->shop_id)
             ->value('channel_location_id');

@@ -46,19 +46,15 @@ class MultiRackPicklistSeeder extends Seeder
             return;
         }
 
-        // --- Setup inventory: keyboard spread across 3 racks ---
-        // Rak A: 2, Rak B: 3, Rak C: 10
         $this->setInventory($keyboard->id, $warehouse->id, $binA->id, 2);
         $this->setInventory($keyboard->id, $warehouse->id, $binB->id, 3);
         $this->setInventory($keyboard->id, $warehouse->id, $binC->id, 10);
 
-        // Mouse spread: Rak A: 5, Rak B: 8
         $this->setInventory($mouse->id, $warehouse->id, $binA->id, 5);
         $this->setInventory($mouse->id, $warehouse->id, $binB->id, 8);
 
         $this->command->info('Inventory set: KBD-001-RED => A(2), B(3), C(10) | MOUSE-001-BLK => A(5), B(8)');
 
-        // --- Sales order: 10 keyboard + 12 mouse ---
         $order = SalesOrder::firstOrCreate(
             ['salesorder_no' => 'SO-MULTIRACK-001'],
             [
@@ -102,7 +98,6 @@ class MultiRackPicklistSeeder extends Seeder
             ]
         );
 
-        // --- Picklist IN_PROGRESS ---
         $picklist = Picklist::firstOrCreate(
             ['picklist_no' => 'PK-MULTIRACK-001'],
             [
@@ -116,7 +111,6 @@ class MultiRackPicklistSeeder extends Seeder
             ]
         );
 
-        // Keyboard: butuh 10, belum pick
         PicklistItem::firstOrCreate(
             ['picklist_id' => $picklist->id, 'order_item_id' => $soItemKbd->id],
             [
@@ -129,7 +123,6 @@ class MultiRackPicklistSeeder extends Seeder
             ]
         );
 
-        // Mouse: butuh 12, belum pick
         PicklistItem::firstOrCreate(
             ['picklist_id' => $picklist->id, 'order_item_id' => $soItemMouse->id],
             [

@@ -75,7 +75,6 @@ class ProcessStockOpnameFinalizeJob implements ShouldQueue
             });
         }
 
-        // Jurnal agregat untuk seluruh selisih opname.
         try {
             app(AutoJournalService::class)->forStockOpnameAdjustment(
                 $opname->opname_no,

@@ -98,7 +98,6 @@ class StockRevaluationService
             return $this->revaluationRepository->findById($id);
         });
 
-        // Jurnal revaluasi setelah transaksi sukses.
         try {
             app(AutoJournalService::class)->forStockRevaluation(
                 $approvedRevaluation->revaluation_no,

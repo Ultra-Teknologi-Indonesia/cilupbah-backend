@@ -75,13 +75,6 @@ class AutoJournalService
         );
     }
 
-    /**
-     * Jurnal HPP saat sales invoice diterbitkan:
-     *   DR Harga Pokok Penjualan
-     *   CR Persediaan Barang
-     * Sumber nilai: SUM(sales_invoice_items.total_cogs) yang sudah ter-snapshot
-     * sebelum metode ini dipanggil.
-     */
     public function forSalesInvoiceCogs(SalesInvoice $invoice): void
     {
         $totalCogs = (float) $invoice->items()->sum('total_cogs');
@@ -98,11 +91,6 @@ class AutoJournalService
         );
     }
 
-    /**
-     * Jurnal penyesuaian akibat stock opname (selisih nilai aktual vs sistem).
-     * signedValue > 0 → stok bertambah (DR Persediaan / CR Inventory Gain).
-     * signedValue < 0 → stok berkurang (DR Inventory Loss / CR Persediaan).
-     */
     public function forStockOpnameAdjustment(
         string $opnameNumber,
         string $sourceId,
@@ -134,10 +122,6 @@ class AutoJournalService
         );
     }
 
-    /**
-     * Jurnal revaluasi persediaan (perubahan avg_cost manual).
-     * signedDelta > 0 → nilai naik; signedDelta < 0 → nilai turun.
-     */
     public function forStockRevaluation(
         string $revalNumber,
         string $sourceId,

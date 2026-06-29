@@ -43,21 +43,6 @@ class InventoryService
         return $this->inventoryRepository->getByLocation($locationId);
     }
 
-    /**
-     * Hitung ulang avg_cost untuk inventory tertentu menggunakan moving average.
-     *
-     * Dipanggil di dalam transaksi caller (mis. InboundService::receive) — jangan
-     * buka transaksi baru di sini. Caller sudah memanggil adjust() sehingga
-     * on_hand di row Inventory sudah TERMASUK receivedQty terbaru.
-     *
-     * Formula:
-     *   new_avg = (pre_qty * old_avg + recv_qty * recv_cost) / (pre_qty + recv_qty)
-     * dengan pre_qty = current_on_hand - receivedQty.
-     *
-     * Edge cases:
-     * - receivedCostPerUnit <= 0: skip update, return current avg_cost.
-     * - total (pre_qty + recv_qty) <= 0: pakai receivedCostPerUnit saja.
-     */
     public function recalculateAverageCost(
         string $itemId,
         string $locationId,

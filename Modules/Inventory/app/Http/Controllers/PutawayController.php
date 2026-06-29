@@ -66,7 +66,7 @@ class PutawayController extends Controller
             $inbound = \Modules\Inbound\Models\Inbound::with('items')->findOrFail($request->inbound_id);
             $defaultBin = app(\Modules\Warehouse\Services\LocationBinService::class)->getDefaultBin($inbound->location_id);
             $userId = $request->user()->id ?? 'system';
-            
+
             $items = $inbound->items
                 ->filter(fn ($item) => $item->received_qty > 0)
                 ->map(fn ($item) => [
@@ -92,7 +92,7 @@ class PutawayController extends Controller
                 'created_by'  => $userId,
                 'items'       => $items,
             ]);
-            
+
             if ($request->assigned_to) {
                 app(\Modules\Inventory\Services\PutawayService::class)->assignStaff([
                     'performed_by' => $userId,

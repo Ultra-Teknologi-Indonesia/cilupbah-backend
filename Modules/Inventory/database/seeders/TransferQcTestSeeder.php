@@ -13,20 +13,20 @@ class TransferQcTestSeeder extends Seeder
     {
         $gudangUtama   = '019ecf7e-b91b-70d4-87b9-0b18f4e5e9f0';
         $gudangBandung = '019ecf7e-b92b-70b7-b4f1-369585484e57';
-        $binSource     = '019ecf7e-b935-711b-bf37-4406c95bd9c7'; // F1-R1-C2-B1
-        $binInbound    = '019ecf7e-b936-7378-abc6-0aa4a3409da6'; // Bandung INBOUND
+        $binSource     = '019ecf7e-b935-711b-bf37-4406c95bd9c7'; 
+        $binInbound    = '019ecf7e-b936-7378-abc6-0aa4a3409da6'; 
 
         $items = [
             [
-                'item_id' => '019ecf7e-b95c-72c8-9b6f-8685587e46e9', // LAPTOP-001-8GB
+                'item_id' => '019ecf7e-b95c-72c8-9b6f-8685587e46e9', 
                 'qty'     => 5,
             ],
             [
-                'item_id' => '019ecf7e-b963-70d6-bfae-cae22e174414', // MOUSE-001-BLK
+                'item_id' => '019ecf7e-b963-70d6-bfae-cae22e174414', 
                 'qty'     => 10,
             ],
             [
-                'item_id' => '019ecf7e-b965-70e1-85e6-ac346ec29fdd', // KBD-001-RED
+                'item_id' => '019ecf7e-b965-70e1-85e6-ac346ec29fdd', 
                 'qty'     => 8,
             ],
         ];

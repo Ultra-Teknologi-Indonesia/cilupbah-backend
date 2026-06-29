@@ -45,10 +45,10 @@ class StorePurchaseOrderRequest extends FormRequest
 
         if (is_array($items)) {
             foreach ($items as $index => $item) {
-                // Gunakan sku atau name jika dikirimkan oleh frontend, jika tidak gunakan fallback baris
+
                 $sku = $item['sku'] ?? null;
                 $name = $item['name'] ?? null;
-                
+
                 $identifier = 'baris ke-' . ($index + 1);
                 if ($sku) {
                     $identifier = "SKU {$sku}";
@@ -65,7 +65,6 @@ class StorePurchaseOrderRequest extends FormRequest
             }
         }
 
-        // Fallback messages
         $messages['items.*.item_id.exists'] = 'Produk pada baris ke-:position tidak valid atau tidak ditemukan di database.';
         $messages['items.*.item_id.required'] = 'Produk pada baris ke-:position wajib diisi.';
         $messages['items.*.qty.required'] = 'Kuantitas pada baris ke-:position wajib diisi.';
