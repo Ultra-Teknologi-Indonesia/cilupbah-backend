@@ -75,6 +75,100 @@ class AutoJournalService
         );
     }
 
+    /**
+     * Jurnal HPP saat sales invoice diterbitkan:
+     *   DR Harga Pokok Penjualan
+     *   CR Persediaan Barang
+     * Sumber nilai: SUM(sales_invoice_items.total_cogs) yang sudah ter-snapshot
+     * sebelum metode ini dipanggil.
+     */
+    public function forSalesInvoiceCogs(SalesInvoice $invoice): void
+    {
+        $totalCogs = (float) $invoice->items()->sum('total_cogs');
+
+        $this->record(
+            sourceType: 'sales_invoice_cogs',
+            sourceId: $invoice->id,
+            sourceNo: $invoice->invoice_number,
+            date: $invoice->invoice_date ?? now(),
+            amount: $totalCogs,
+            debitAccountId: $this->mappedAccountId(AccountMappingKey::COGS),
+            creditAccountId: $this->mappedAccountId(AccountMappingKey::INVENTORY),
+            description: 'HPP penjualan ' . $invoice->invoice_number,
+        );
+    }
+
+    /**
+     * Jurnal penyesuaian akibat stock opname (selisih nilai aktual vs sistem).
+     * signedValue > 0 → stok bertambah (DR Persediaan / CR Inventory Gain).
+     * signedValue < 0 → stok berkurang (DR Inventory Loss / CR Persediaan).
+     */
+    public function forStockOpnameAdjustment(
+        string $opnameNumber,
+        string $sourceId,
+        $date,
+        float $signedValue,
+    ): void {
+        $amount = abs($signedValue);
+        if ($amount <= 0) {
+            return;
+        }
+
+        $debit = $signedValue > 0
+            ? $this->mappedAccountId(AccountMappingKey::INVENTORY)
+            : $this->mappedAccountId(AccountMappingKey::INVENTORY_LOSS);
+
+        $credit = $signedValue > 0
+            ? $this->mappedAccountId(AccountMappingKey::INVENTORY_GAIN)
+            : $this->mappedAccountId(AccountMappingKey::INVENTORY);
+
+        $this->record(
+            sourceType: 'stock_opname',
+            sourceId: $sourceId,
+            sourceNo: $opnameNumber,
+            date: $date,
+            amount: $amount,
+            debitAccountId: $debit,
+            creditAccountId: $credit,
+            description: 'Penyesuaian stok opname ' . $opnameNumber,
+        );
+    }
+
+    /**
+     * Jurnal revaluasi persediaan (perubahan avg_cost manual).
+     * signedDelta > 0 → nilai naik; signedDelta < 0 → nilai turun.
+     */
+    public function forStockRevaluation(
+        string $revalNumber,
+        string $sourceId,
+        $date,
+        float $signedDelta,
+    ): void {
+        $amount = abs($signedDelta);
+        if ($amount <= 0) {
+            return;
+        }
+
+        $debit = $signedDelta > 0
+            ? $this->mappedAccountId(AccountMappingKey::INVENTORY)
+            : $this->mappedAccountId(AccountMappingKey::INVENTORY_LOSS);
+
+        $credit = $signedDelta > 0
+            ? $this->mappedAccountId(AccountMappingKey::INVENTORY_GAIN)
+            : $this->mappedAccountId(AccountMappingKey::INVENTORY);
+
+        $this->record(
+            sourceType: 'stock_revaluation',
+            sourceId: $sourceId,
+            sourceNo: $revalNumber,
+            date: $date,
+            amount: $amount,
+            debitAccountId: $debit,
+            creditAccountId: $credit,
+            description: 'Revaluasi persediaan ' . $revalNumber,
+        );
+    }
+
     public function forSalesReturnRefund(\Modules\Sales\Models\SalesReturnSettlementRefund $refund): void
     {
         $this->record(

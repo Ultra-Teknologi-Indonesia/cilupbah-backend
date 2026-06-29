@@ -43,6 +43,60 @@ class InventoryService
         return $this->inventoryRepository->getByLocation($locationId);
     }
 
+    /**
+     * Hitung ulang avg_cost untuk inventory tertentu menggunakan moving average.
+     *
+     * Dipanggil di dalam transaksi caller (mis. InboundService::receive) — jangan
+     * buka transaksi baru di sini. Caller sudah memanggil adjust() sehingga
+     * on_hand di row Inventory sudah TERMASUK receivedQty terbaru.
+     *
+     * Formula:
+     *   new_avg = (pre_qty * old_avg + recv_qty * recv_cost) / (pre_qty + recv_qty)
+     * dengan pre_qty = current_on_hand - receivedQty.
+     *
+     * Edge cases:
+     * - receivedCostPerUnit <= 0: skip update, return current avg_cost.
+     * - total (pre_qty + recv_qty) <= 0: pakai receivedCostPerUnit saja.
+     */
+    public function recalculateAverageCost(
+        string $itemId,
+        string $locationId,
+        ?string $binId,
+        float $receivedQty,
+        float $receivedCostPerUnit,
+        string $batchNo = '',
+        string $serialNo = ''
+    ): float {
+        $inventory = $this->inventoryRepository->findOrCreateForUpdate(
+            $itemId,
+            $locationId,
+            $binId,
+            $batchNo,
+            $serialNo,
+        );
+
+        $currentAvg = (float) ($inventory->avg_cost ?? 0);
+
+        if ($receivedCostPerUnit <= 0 || $receivedQty <= 0) {
+            return $currentAvg;
+        }
+
+        $currentOnHand = (float) $inventory->on_hand;
+        $preQty = $currentOnHand - $receivedQty;
+
+        $totalQty = $preQty + $receivedQty;
+        if ($totalQty <= 0) {
+            $newAvg = $receivedCostPerUnit;
+        } else {
+            $newAvg = (($preQty * $currentAvg) + ($receivedQty * $receivedCostPerUnit)) / $totalQty;
+        }
+
+        $inventory->avg_cost = round($newAvg, 2);
+        $inventory->save();
+
+        return (float) $inventory->avg_cost;
+    }
+
     public function adjust(array $data): Inventory
     {
         $inventory = DB::transaction(function () use ($data) {

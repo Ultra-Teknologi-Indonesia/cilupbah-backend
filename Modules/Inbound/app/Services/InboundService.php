@@ -6,9 +6,12 @@ use Modules\Inbound\Repositories\InboundRepository;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundAssignment;
 use Modules\Inbound\Models\InboundItem;
+use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\PutawayService;
 use Modules\Notification\Events\TaskAssigned;
+use Modules\Purchase\Models\PurchaseOrder;
+use Modules\Purchase\Models\PurchaseOrderItem;
 use Modules\Warehouse\Services\LocationBinService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -139,6 +142,9 @@ class InboundService
 
             $itemsDict = $inbound->items->keyBy('id');
 
+            // Pre-load landed-cost map (item_id => landed_cost_per_unit) bila inbound berasal dari PO.
+            $landedCostMap = $this->resolveLandedCostMap($inbound);
+
             foreach ($data['items'] as $receiptData) {
                 $inboundItem = $itemsDict->get($receiptData['inbound_item_id']);
                 if (! $inboundItem) {
@@ -174,6 +180,34 @@ class InboundService
                     'transaction_number' => $inbound->transaction_number,
                     'created_by'         => $data['received_by'],
                 ]);
+
+                // Moving-average + tagging cost pada movement IN dari PO.
+                $landedCost = (float) ($landedCostMap[$inboundItem->item_id] ?? 0);
+                if ($landedCost > 0) {
+                    $this->inventoryService->recalculateAverageCost(
+                        $inboundItem->item_id,
+                        $inbound->location_id,
+                        $defaultBin->id,
+                        (float) $receiptData['qty'],
+                        $landedCost,
+                        $receiptData['batch_no'] ?? '',
+                        $receiptData['serial_no'] ?? '',
+                    );
+
+                    // Update movement row yang baru saja dibuat oleh adjust() agar punya cost info.
+                    InventoryMovement::where('transaction_number', $inbound->transaction_number)
+                        ->where('item_id', $inboundItem->item_id)
+                        ->where('location_id', $inbound->location_id)
+                        ->where('bin_id', $defaultBin->id)
+                        ->where('qty', $receiptData['qty'])
+                        ->whereNull('cost_per_unit')
+                        ->orderByDesc('id')
+                        ->limit(1)
+                        ->update([
+                            'cost_per_unit' => $landedCost,
+                            'total_cost'    => round($landedCost * (float) $receiptData['qty'], 2),
+                        ]);
+                }
             }
 
             $allReceived = $inbound->items->every(fn ($item) => $item->received_qty >= $item->expected_qty);
@@ -571,6 +605,39 @@ class InboundService
             'created_by'  => $receivedBy,
             'items'       => $items,
         ]);
+    }
+
+    /**
+     * Bangun map item_id => landed_cost_per_unit dari PurchaseOrderItem.
+     * Hanya untuk inbound yang berasal dari PO (source_type=purchase_order).
+     * Bila item_id muncul lebih dari satu kali di PO, ambil rata-rata tertimbang
+     * berdasarkan qty (paling representatif untuk moving average di gudang).
+     */
+    private function resolveLandedCostMap(Inbound $inbound): array
+    {
+        if ($inbound->source_type !== 'purchase_order' || empty($inbound->source_id)) {
+            return [];
+        }
+
+        $items = PurchaseOrderItem::where('purchase_order_id', $inbound->source_id)->get();
+        if ($items->isEmpty()) {
+            return [];
+        }
+
+        $map = [];
+        foreach ($items->groupBy('item_id') as $itemId => $rows) {
+            $totalQty = 0.0;
+            $totalCost = 0.0;
+            foreach ($rows as $row) {
+                $qty = (float) $row->qty;
+                if ($qty <= 0) continue;
+                $totalQty += $qty;
+                $totalCost += $qty * (float) $row->landed_cost_per_unit;
+            }
+            $map[$itemId] = $totalQty > 0 ? $totalCost / $totalQty : 0;
+        }
+
+        return $map;
     }
 
     private function resolveInboundPutawayStatus(Inbound $inbound): void

@@ -5,6 +5,7 @@ namespace Modules\Report\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Report\Http\Requests\HppReportRequest;
 use Modules\Report\Services\ReportService;
 use OpenApi\Attributes as OA;
 
@@ -300,6 +301,31 @@ class ReportController extends Controller
             new OA\Response(response: 422, description: 'Gagal mengambil dari Lazada'),
         ]
     )]
+    #[OA\Get(
+        path: '/api/v1/reports/hpp',
+        summary: 'Laporan Harga Pokok Penjualan (HPP) untuk periode tertentu',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        parameters: [
+            new OA\Parameter(name: 'date_from', in: 'query', required: true, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'date_to', in: 'query', required: true, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'location_id', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'uuid')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'HPP report data'),
+        ]
+    )]
+    public function hpp(HppReportRequest $request): JsonResponse
+    {
+        $data = $this->reportService->hppReport(
+            $request->input('date_from'),
+            $request->input('date_to'),
+            $request->input('location_id'),
+        );
+
+        return $this->successResponse($data, 'Laporan HPP berhasil diambil.');
+    }
+
     public function lazadaGetDocument(Request $request): JsonResponse
     {
         $orderId = $request->query('order_id');

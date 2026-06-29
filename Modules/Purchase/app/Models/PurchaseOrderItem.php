@@ -20,17 +20,19 @@ class PurchaseOrderItem extends Model
         'unit_price',
         'disc',
         'disc_amount',
+        'shipping_cost',
         'tax_id',
         'tax_amount',
         'amount',
     ];
 
     protected $casts = [
-        'unit_price'  => 'decimal:2',
-        'amount'      => 'decimal:2',
-        'disc'        => 'decimal:2',
-        'disc_amount' => 'decimal:2',
-        'tax_amount'  => 'decimal:2',
+        'unit_price'    => 'decimal:2',
+        'amount'        => 'decimal:2',
+        'disc'          => 'decimal:2',
+        'disc_amount'   => 'decimal:2',
+        'shipping_cost' => 'decimal:2',
+        'tax_amount'    => 'decimal:2',
     ];
 
     protected $appends = ['product'];
@@ -69,5 +71,20 @@ class PurchaseOrderItem extends Model
     public function pendingQty(): int
     {
         return max(0, $this->qty - $this->received_qty);
+    }
+
+    /**
+     * Harga pokok per unit (landed cost) untuk perhitungan HPP / moving average.
+     * Formula: unit_price + (shipping_cost/qty) - (disc_amount/qty).
+     * Tidak memasukkan pajak (asumsi tax masukan dapat dikreditkan).
+     */
+    public function getLandedCostPerUnitAttribute(): float
+    {
+        $qty = (float) $this->qty;
+        $base = (float) $this->unit_price;
+        $shippingPerUnit = $qty > 0 ? ((float) $this->shipping_cost) / $qty : 0;
+        $discountPerUnit = $qty > 0 ? ((float) $this->disc_amount) / $qty : 0;
+
+        return max(0, $base + $shippingPerUnit - $discountPerUnit);
     }
 }

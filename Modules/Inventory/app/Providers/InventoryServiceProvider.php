@@ -4,6 +4,7 @@ namespace Modules\Inventory\Providers;
 
 use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
+use Modules\Inventory\Console\Commands\RebuildAverageCost;
 
 class InventoryServiceProvider extends ModuleServiceProvider
 {
@@ -11,6 +12,10 @@ class InventoryServiceProvider extends ModuleServiceProvider
     protected string $name = 'Inventory';
 
     protected string $nameLower = 'inventory';
+
+    protected array $commands = [
+        RebuildAverageCost::class,
+    ];
 
     protected array $providers = [
         EventServiceProvider::class,

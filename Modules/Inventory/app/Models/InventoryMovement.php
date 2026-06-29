@@ -18,12 +18,16 @@ class InventoryMovement extends Model
         'source',
         'qty',
         'balance',
+        'cost_per_unit',
+        'total_cost',
         'transaction_date',
         'created_by',
     ];
 
     protected $casts = [
         'transaction_date' => 'datetime',
+        'cost_per_unit'    => 'decimal:4',
+        'total_cost'       => 'decimal:2',
     ];
 
     public function product(): BelongsTo

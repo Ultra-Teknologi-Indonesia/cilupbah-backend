@@ -10,6 +10,8 @@ final class AccountMappingKey
     public const ACCOUNTS_PAYABLE = 'accounts_payable';
     public const SALES_RETURN = 'sales_return';
     public const COGS = 'cogs';
+    public const INVENTORY_GAIN = 'inventory_gain';
+    public const INVENTORY_LOSS = 'inventory_loss';
 
     public const DEFINITIONS = [
         self::SALES_REVENUE => ['label' => 'Pendapatan Penjualan', 'default' => '4-4000'],
@@ -18,6 +20,8 @@ final class AccountMappingKey
         self::ACCOUNTS_PAYABLE => ['label' => 'Hutang Usaha', 'default' => '2-2000'],
         self::SALES_RETURN => ['label' => 'Retur Penjualan', 'default' => '4-4200'],
         self::COGS => ['label' => 'Harga Pokok Penjualan', 'default' => '5-5000'],
+        self::INVENTORY_GAIN => ['label' => 'Keuntungan Penyesuaian Persediaan', 'default' => '4-4900'],
+        self::INVENTORY_LOSS => ['label' => 'Kerugian Penyesuaian Persediaan', 'default' => '5-5900'],
     ];
 
     public static function keys(): array

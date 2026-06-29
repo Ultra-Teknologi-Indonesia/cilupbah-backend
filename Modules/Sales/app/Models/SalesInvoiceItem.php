@@ -18,13 +18,17 @@ class SalesInvoiceItem extends Model
         'disc_amount',
         'tax_amount',
         'subtotal',
+        'cogs_per_unit',
+        'total_cogs',
     ];
 
     protected $casts = [
-        'unit_price'  => 'decimal:2',
-        'disc_amount' => 'decimal:2',
-        'tax_amount'  => 'decimal:2',
-        'subtotal'    => 'decimal:2',
+        'unit_price'    => 'decimal:2',
+        'disc_amount'   => 'decimal:2',
+        'tax_amount'    => 'decimal:2',
+        'subtotal'      => 'decimal:2',
+        'cogs_per_unit' => 'decimal:4',
+        'total_cogs'    => 'decimal:2',
     ];
 
     public function invoice(): BelongsTo
