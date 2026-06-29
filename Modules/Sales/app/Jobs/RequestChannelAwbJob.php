@@ -8,6 +8,8 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Outbound\Services\OutboundFulfillmentService;
 use Modules\Sales\Models\SalesOrder;
 
@@ -57,6 +59,10 @@ class RequestChannelAwbJob implements ShouldQueue
             if (($result['status'] ?? null) === 'failed') {
                 throw new \RuntimeException($result['message'] ?? 'readyToShip gagal.');
             }
+
+            if ($source === 'shopee') {
+                $this->fetchShopeeTracking($order);
+            }
         } catch (\Throwable $e) {
             Log::error('RequestChannelAwbJob: error saat request AWB', [
                 'order_id'      => $order->id,
@@ -74,5 +80,35 @@ class RequestChannelAwbJob implements ShouldQueue
             'order_id'  => $this->orderId,
             'exception' => $exception->getMessage(),
         ]);
+    }
+
+    private function fetchShopeeTracking(SalesOrder $order): void
+    {
+        try {
+            $shop = app(ChannelShopRepository::class)->findByShopId($order->channel_shop_id);
+            if (! $shop) {
+                return;
+            }
+
+            $tn = app(ShopeeOrderService::class)->resolveTrackingNumber(
+                $shop,
+                (string) $order->channel_order_no,
+                'READY_TO_SHIP'
+            );
+
+            if ($tn) {
+                $order->update(['tracking_number' => $tn]);
+                Log::info('RequestChannelAwbJob: tracking_number disimpan', [
+                    'order_id'        => $order->id,
+                    'salesorder_no'   => $order->salesorder_no,
+                    'tracking_number' => $tn,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('RequestChannelAwbJob: gagal fetch tracking_number', [
+                'order_id'  => $order->id,
+                'exception' => $e->getMessage(),
+            ]);
+        }
     }
 }

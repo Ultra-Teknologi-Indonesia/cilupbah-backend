@@ -118,9 +118,9 @@ class ShopeeOrderService
         return $orders;
     }
 
-    protected function resolveTrackingNumber(object $shop, string $orderSn, string $status): ?string
+    public function resolveTrackingNumber(object $shop, string $orderSn, string $status): ?string
     {
-        if ($orderSn === '' || ! in_array(strtoupper($status), ['PROCESSED', 'SHIPPED', 'TO_CONFIRM_RECEIVE', 'COMPLETED'], true)) {
+        if ($orderSn === '' || ! in_array(strtoupper($status), ['READY_TO_SHIP', 'PROCESSED', 'SHIPPED', 'TO_CONFIRM_RECEIVE', 'COMPLETED'], true)) {
             return null;
         }
 
