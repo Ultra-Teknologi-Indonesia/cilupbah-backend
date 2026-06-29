@@ -242,7 +242,7 @@ class OutboundFulfillmentService
     private function generatePicklistNo(): string
     {
         $date = now()->format('Ymd');
-        $prefix = "PK-{$date}-";
+        $prefix = "PICK-{$date}-";
 
         $last = Picklist::where('picklist_no', 'like', "{$prefix}%")
             ->orderByDesc('picklist_no')
