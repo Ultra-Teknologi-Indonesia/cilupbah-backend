@@ -70,6 +70,14 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('/{id}/cancel', [ReservedStockController::class, 'cancel'])->name('inventory.reservedStocks.cancel');
     });
 
+    Route::get('inventory/warehouse-workers/{locationId}', function (string $locationId) {
+        $users = \App\Models\User::where('warehouse_id', $locationId)
+            ->select('id', 'name')
+            ->orderBy('name')
+            ->get();
+        return response()->json(['data' => $users]);
+    })->name('inventory.warehouseWorkers');
+
     Route::get('inventory/transfers/transit', [InventoryTransactionController::class, 'transitList'])->name('inventory.transfers.transit');
     Route::get('inventory/transfers/all-transit', [InventoryTransactionController::class, 'transitList'])->name('inventory.transfers.allTransit');
     Route::get('inventory/transfers/in', [InventoryTransactionController::class, 'transfersIn'])->name('inventory.transfers.in');

@@ -428,12 +428,16 @@ class InventoryService
 
             $receiveNumber = 'TRFI-' . now()->format('Ymd') . '-' . Str::upper(Str::random(4));
 
-            $transfer->update([
+            $updateData = [
                 'status'         => InventoryTransfer::STATUS_RECEIVED,
                 'receive_number' => $receiveNumber,
                 'received_by'    => $data['received_by'],
                 'received_at'    => now(),
-            ]);
+            ];
+            if (! empty($data['assigned_to'])) {
+                $updateData['assigned_to'] = $data['assigned_to'];
+            }
+            $transfer->update($updateData);
 
             $inboundService = app(InboundService::class);
             $inboundItems = $transfer->items
@@ -452,6 +456,41 @@ class InventoryService
                     'created_by'       => $data['received_by'],
                     'items'            => $inboundItems,
                 ]);
+            }
+
+            if (! empty($data['assigned_to'])) {
+                $assignedUser = \App\Models\User::where('name', $data['assigned_to'])->first();
+                if ($assignedUser) {
+                    $putawayService = app(PutawayService::class);
+                    $defaultBin = LocationBin::where('location_id', $transfer->destination_location_id)->first();
+
+                    $putawayItems = $transfer->items
+                        ->filter(fn ($item) => $item->received_qty > 0)
+                        ->map(fn ($item) => [
+                            'item_id'          => $item->item_id,
+                            'source_bin_id'    => $defaultBin?->id ?? $item->destination_bin_id,
+                            'destination_bin_id' => null,
+                            'qty'              => $item->received_qty,
+                            'batch_no'         => $item->batch_no,
+                            'serial_no'        => $item->serial_no,
+                        ])->values()->toArray();
+
+                    if (! empty($putawayItems)) {
+                        $putaway = $putawayService->create([
+                            'location_id'  => $transfer->destination_location_id,
+                            'source_type'  => 'TRANSFER',
+                            'source_id'    => $transfer->id,
+                            'notes'        => "Putaway dari transfer {$transfer->transfer_number}",
+                            'created_by'   => $data['received_by'],
+                            'items'        => $putawayItems,
+                        ]);
+
+                        $putawayService->assignStaff([
+                            'data' => [['putaway_id' => $putaway->id, 'assigned_to' => $assignedUser->id]],
+                            'performed_by' => $data['received_by'],
+                        ]);
+                    }
+                }
             }
 
             return $this->transferRepository->findById($transferId);

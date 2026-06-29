@@ -15,6 +15,7 @@ class TransferInRequest extends FormRequest
     {
         return [
             'received_by'           => ['required', 'string', 'max:100'],
+            'assigned_to'           => ['nullable', 'string', 'max:100'],
             'items'                 => ['nullable', 'array'],
             'items.*.item_id'       => ['required_with:items', 'string'],
             'items.*.received_qty'  => ['required_with:items', 'integer', 'min:0'],
