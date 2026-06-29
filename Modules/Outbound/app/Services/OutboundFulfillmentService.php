@@ -210,7 +210,8 @@ class OutboundFulfillmentService
                     'order_id' => $order->id,
                     'order_item_id' => $item->id,
                     'item_id' => $item->item_id,
-                    'qty_ordered' => $item->qty,
+                    'sku' => $item->sku,
+                    'qty_ordered' => $item->qty_in_base,
                     'qty_picked' => 0,
                 ]);
             }
