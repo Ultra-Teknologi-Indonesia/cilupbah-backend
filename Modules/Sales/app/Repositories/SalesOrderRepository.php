@@ -143,8 +143,8 @@ class SalesOrderRepository
     protected function scopeExcludeHandedToWarehouse($query)
     {
         return $query->where(function ($q) {
-            $q->where('status', '!=', 'reserved')
-              ->orWhereNull('handed_to_warehouse_at');
+            $q->whereNull('handed_to_warehouse_at')
+              ->orWhereIn('status', ['shipped', 'cancelled']);
         });
     }
 
