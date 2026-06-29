@@ -106,6 +106,8 @@ class SalesOrderService
                     ]))
                     ->delete();
 
+                $order->update(['handed_to_warehouse_at' => now()]);
+
                 $count++;
             }
 

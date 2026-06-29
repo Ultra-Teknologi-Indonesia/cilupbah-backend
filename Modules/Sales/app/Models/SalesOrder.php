@@ -86,6 +86,7 @@ class SalesOrder extends Model
         'source',
         'location_id',
         'received_date',
+        'handed_to_warehouse_at',
     ];
 
     protected $casts = [
@@ -97,6 +98,7 @@ class SalesOrder extends Model
         'return_due_date'     => 'datetime',
         'cancel_requested_at' => 'datetime',
         'received_date'       => 'datetime',
+        'handed_to_warehouse_at' => 'datetime',
         'finance_synced_at'   => 'datetime',
         'is_settled'                    => 'boolean',
         'is_paid'                       => 'boolean',

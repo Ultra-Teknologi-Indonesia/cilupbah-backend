@@ -277,6 +277,7 @@ class OutboundFulfillmentService
     private function readyToProcess()
     {
         return Order::where('status', 'reserved')
+            ->whereNotNull('handed_to_warehouse_at')
             ->whereDoesntHave('picklistItems');
     }
 
