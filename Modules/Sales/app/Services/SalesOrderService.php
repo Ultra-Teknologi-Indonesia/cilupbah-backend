@@ -12,6 +12,7 @@ use Modules\Sales\Exceptions\InvalidStatusTransitionException;
 use Modules\Sales\Exceptions\LocationNotConfiguredException;
 use Modules\Sales\Exceptions\ProductNotMappableException;
 use Modules\Sales\Jobs\CancelChannelOrderJob;
+use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Jobs\SyncStockJob;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderItem;
@@ -92,12 +93,14 @@ class SalesOrderService
 
     public function moveToReadyToProcess(array $orderIds): int
     {
-        return DB::transaction(function () use ($orderIds) {
+        [$count, $awbOrderIds] = DB::transaction(function () use ($orderIds) {
             $orders = SalesOrder::whereIn('id', $orderIds)
                 ->where('status', 'reserved')
                 ->get();
 
             $count = 0;
+            $awbOrderIds = [];
+
             foreach ($orders as $order) {
                 PicklistItem::where('order_id', $order->id)
                     ->whereHas('picklist', fn ($q) => $q->whereIn('status', [
@@ -108,11 +111,32 @@ class SalesOrderService
 
                 $order->update(['handed_to_warehouse_at' => now()]);
 
+                $source = strtolower((string) $order->source);
+                if (
+                    in_array($source, ['shopee', 'tiktok', 'lazada'], true)
+                    && empty($order->tracking_number)
+                ) {
+                    $awbOrderIds[] = $order->id;
+                }
+
                 $count++;
             }
 
-            return $count;
+            return [$count, $awbOrderIds];
         });
+
+        foreach ($awbOrderIds as $orderId) {
+            try {
+                RequestChannelAwbJob::dispatch($orderId);
+            } catch (\Throwable $e) {
+                Log::error('moveToReadyToProcess: gagal dispatch RequestChannelAwbJob', [
+                    'order_id'  => $orderId,
+                    'exception' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $count;
     }
 
     public function acceptCancelRequest(string $orderId): SalesOrder
