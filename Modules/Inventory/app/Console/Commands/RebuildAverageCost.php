@@ -4,8 +4,10 @@ namespace Modules\Inventory\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Modules\Inbound\Models\Inbound;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
+use Modules\Product\Models\ProductVariant;
 use Modules\Purchase\Models\PurchaseOrderItem;
 
 class RebuildAverageCost extends Command
@@ -123,25 +125,49 @@ class RebuildAverageCost extends Command
     }
 
     /**
-     * Coba derive cost dari PurchaseOrderItem berdasarkan transaction_number.
-     * Best-effort: bila tidak ketemu, return 0.
+     * Derive cost untuk movement IN:
+     *  1. Trace Inbound (transaction_number) → source_id (PO id) → PurchaseOrderItem.landed_cost
+     *  2. Fallback: PO item terbaru untuk item_id sebelum tanggal movement
+     *  3. Fallback terakhir: variant.buy_price
      */
     private function deriveCostFromPO(InventoryMovement $mv): float
     {
-        // Inbound transaction_number biasanya = reference number PO atau prefix INB-.
-        // Pendekatan: cari PO item dengan item_id sama yang punya PO ter-receive paling dekat.
-        $poItem = PurchaseOrderItem::query()
-            ->whereHas('purchaseOrder', function ($q) use ($mv) {
-                $q->where('order_number', $mv->transaction_number)
-                  ->orWhere('reference_number', $mv->transaction_number);
-            })
-            ->where('item_id', $mv->item_id)
-            ->first();
-
-        if (! $poItem) {
-            return 0.0;
+        // 1) Trace via Inbound.transaction_number → source_id (PO id).
+        $inbound = Inbound::where('transaction_number', $mv->transaction_number)->first();
+        if ($inbound && $inbound->source_id) {
+            $poItem = PurchaseOrderItem::where('purchase_order_id', $inbound->source_id)
+                ->where('item_id', $mv->item_id)
+                ->first();
+            if ($poItem) {
+                $cost = (float) $poItem->landed_cost_per_unit;
+                if ($cost > 0) {
+                    return $cost;
+                }
+            }
         }
 
-        return (float) $poItem->landed_cost_per_unit;
+        // 2) PO item terbaru untuk item_id (yang received_qty > 0) sebelum/pada tanggal movement.
+        $poItem = PurchaseOrderItem::query()
+            ->where('item_id', $mv->item_id)
+            ->where('received_qty', '>', 0)
+            ->whereHas('purchaseOrder', function ($q) use ($mv) {
+                $q->whereDate('order_date', '<=', $mv->transaction_date);
+            })
+            ->orderByDesc('updated_at')
+            ->first();
+        if ($poItem) {
+            $cost = (float) $poItem->landed_cost_per_unit;
+            if ($cost > 0) {
+                return $cost;
+            }
+        }
+
+        // 3) Fallback: variant.buy_price.
+        $variant = ProductVariant::find($mv->item_id);
+        if ($variant && (float) $variant->buy_price > 0) {
+            return (float) $variant->buy_price;
+        }
+
+        return 0.0;
     }
 }
