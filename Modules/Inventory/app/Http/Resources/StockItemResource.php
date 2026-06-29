@@ -73,11 +73,25 @@ class StockItemResource extends JsonResource
 
     protected function totalStocks($inventories): array
     {
+        // Hitung available di level total, bukan SUM kolom `available` per-row.
+        // Alasan: on_hand hidup di per-bin row, on_order/reserved hidup di
+        // aggregate row (bin_id=null), dan available per-row di-clamp
+        // max(0, ...). Akibatnya SUM(available) salah ketika komponen-nya
+        // tersebar di row berbeda.
+        //
+        // Contoh keliru:
+        //   bin row    on_hand=1000 on_order=0 available=1000
+        //   aggregate  on_hand=0    on_order=3 available=0 (clamp dari -3)
+        //   SUM(available) = 1000  ← SALAH; seharusnya 997
+        $onHand = (int) $inventories->sum('on_hand');
+        $onOrder = (int) $inventories->sum('on_order');
+        $reserved = (int) $inventories->sum('reserved');
+
         return [
-            'on_hand' => (int) $inventories->sum('on_hand'),
-            'on_order' => (int) $inventories->sum('on_order'),
-            'reserved' => (int) $inventories->sum('reserved'),
-            'available' => (int) $inventories->sum('available'),
+            'on_hand' => $onHand,
+            'on_order' => $onOrder,
+            'reserved' => $reserved,
+            'available' => max(0, $onHand - $onOrder - $reserved),
         ];
     }
 
