@@ -17,7 +17,7 @@ class CreatePicklistRequest extends FormRequest
             'order_ids' => 'required|array|min:1',
             'order_ids.*' => 'string|exists:sales_orders,id',
             'location_id' => 'required|string|exists:locations,id',
-            'picker_id' => 'nullable|string|exists:users,id',
+            'picker_id' => 'required|string|exists:users,id',
             'notes' => 'nullable|string|max:500',
         ];
     }
