@@ -38,10 +38,10 @@ class GenerateLocationBinRequest extends FormRequest
 
             $totalCombinations = $qtyFloor * $qtyRow * $qtyColumn * $qtyBin;
 
-            if ($totalCombinations > 10000) {
+            if ($totalCombinations > 2000) {
                 $validator->errors()->add(
                     'total_combinations',
-                    "Maksimum Kombinasi Rak Adalah 10.000. Anda mencoba membuat {$totalCombinations} kombinasi."
+                    "Maksimum Kombinasi Rak Adalah 2.000. Anda mencoba membuat {$totalCombinations} kombinasi."
                 );
             }
         });
