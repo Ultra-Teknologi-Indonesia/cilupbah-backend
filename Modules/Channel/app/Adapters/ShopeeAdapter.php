@@ -136,6 +136,13 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         $product->loadMissing('variants');
         $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
 
+        // Shopee warehouse ID (location_id di Shopee) untuk seller multi-warehouse.
+        // Kalau seller tidak punya warehouse terdaftar di Shopee, omit field
+        // sesuai spec. Sumber: channel_warehouses.channel_location_id.
+        $channelLocationId = DB::table('channel_warehouses')
+            ->where('store_id', $shop->shop_id)
+            ->value('channel_location_id');
+
         $priceList = [];
         $stockList = [];
 
@@ -149,10 +156,18 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
             }
 
             $modelId = (int) ($mapping->external_sku_id ?? 0);
-            $availableQty = (int) ($stockByVariant[$variant->id] ?? 0);
+            $availableQty = max(0, (int) ($stockByVariant[$variant->id] ?? 0));
+
+            $sellerStockEntry = ['stock' => $availableQty];
+            if ($channelLocationId) {
+                $sellerStockEntry['location_id'] = (string) $channelLocationId;
+            }
 
             $priceList[] = ['model_id' => $modelId, 'original_price' => (float) $variant->sell_price];
-            $stockList[] = ['model_id' => $modelId, 'seller_stock' => [['stock' => max(0, $availableQty)]]];
+            $stockList[] = [
+                'model_id' => $modelId,
+                'seller_stock' => [$sellerStockEntry],
+            ];
         }
 
         if (empty($priceList)) {
