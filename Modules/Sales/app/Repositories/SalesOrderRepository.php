@@ -98,13 +98,27 @@ class SalesOrderRepository
             'failed'           => $this->scopeFailedDownload(SalesOrder::query())->count(),
             'ready-to-process' => $this->visibleOrders()->where('status', 'reserved')
                 ->whereDoesntHave('picklistItems')
-                ->whereDoesntHave('items', $this->unmappedItemsConstraint())->count(),
+                ->whereDoesntHave('items', $this->unmappedItemsConstraint())
+                ->whereDoesntHave('items', fn ($q) => $q->whereRaw(
+                    "sales_order_items.qty_in_base > COALESCE((
+                        SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(on_order),0) - COALESCE(SUM(reserved),0))
+                        FROM inventories
+                        WHERE inventories.item_id = sales_order_items.item_id
+                    ), 0)"
+                ))
+                ->count(),
             'in-transit'       => $this->visibleOrders()->where('status', 'shipped')
                 ->whereNull('received_date')->count(),
             'completed'        => $this->visibleOrders()->where('status', 'shipped')
                 ->whereNotNull('received_date')->count(),
             'empty-stock'      => $this->visibleOrders()->where('status', 'reserved')
-                ->whereHas('items', fn ($q) => $q->whereHas('inventory', fn ($inv) => $inv->where('available', '<=', 0)))
+                ->whereHas('items', fn ($q) => $q->whereRaw(
+                    "sales_order_items.qty_in_base > COALESCE((
+                        SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(on_order),0) - COALESCE(SUM(reserved),0))
+                        FROM inventories
+                        WHERE inventories.item_id = sales_order_items.item_id
+                    ), 0)"
+                ))
                 ->count(),
             'failed-pick'      => $this->visibleOrders()->where('status', 'reserved')
                 ->whereHas('picklistItems', fn ($q) => $q->whereHas('picklist', fn ($p) => $p->where('status', 'FAILED')))
@@ -148,11 +162,24 @@ class SalesOrderRepository
             'failed'           => $this->scopeFailedDownload($query),
             'ready-to-process' => $query->where('status', 'reserved')
                 ->whereDoesntHave('picklistItems')
-                ->whereDoesntHave('items', $this->unmappedItemsConstraint()),
+                ->whereDoesntHave('items', $this->unmappedItemsConstraint())
+                ->whereDoesntHave('items', fn ($q) => $q->whereRaw(
+                    "sales_order_items.qty_in_base > COALESCE((
+                        SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(on_order),0) - COALESCE(SUM(reserved),0))
+                        FROM inventories
+                        WHERE inventories.item_id = sales_order_items.item_id
+                    ), 0)"
+                )),
             'in-transit'       => $query->where('status', 'shipped')->whereNull('received_date'),
             'completed'        => $query->where('status', 'shipped')->whereNotNull('received_date'),
             'empty-stock'      => $query->where('status', 'reserved')
-                ->whereHas('items', fn ($q) => $q->whereHas('inventory', fn ($inv) => $inv->where('available', '<=', 0))),
+                ->whereHas('items', fn ($q) => $q->whereRaw(
+                    "sales_order_items.qty_in_base > COALESCE((
+                        SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(on_order),0) - COALESCE(SUM(reserved),0))
+                        FROM inventories
+                        WHERE inventories.item_id = sales_order_items.item_id
+                    ), 0)"
+                )),
             'failed-pick'      => $query->where('status', 'reserved')
                 ->whereHas('picklistItems', fn ($q) => $q->whereHas('picklist', fn ($p) => $p->where('status', 'FAILED'))),
             'cancellation'     => $this->applyCancellationSubScope($query, $sub),
