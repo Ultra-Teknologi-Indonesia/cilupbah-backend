@@ -349,7 +349,7 @@ class InventoryService
                 throw new \Exception('Transfer tidak ditemukan.');
             }
 
-            if ($transfer->status !== InventoryTransfer::STATUS_CHECKING) {
+            if ($transfer->status !== InventoryTransfer::STATUS_IN_TRANSIT) {
                 throw new \Exception("Transfer berstatus {$transfer->status}, tidak bisa di-receive.");
             }
 
