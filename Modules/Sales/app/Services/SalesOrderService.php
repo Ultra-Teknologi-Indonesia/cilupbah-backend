@@ -715,15 +715,24 @@ class SalesOrderService
     private function mapChannelStatusToInternal(string $channelStatus): string
     {
         return match ($channelStatus) {
-            'UNPAID', 'ON_HOLD'                       => 'pending',
+            // Belum dibayar / menunggu (Shopee UNPAID/PENDING, TikTok UNPAID/ON_HOLD remorse 1jam)
+            'UNPAID', 'PENDING', 'ON_HOLD'            => 'pending',
+
+            // Siap diproses (Shopee READY_TO_SHIP/RETRY_SHIP, TikTok AWAITING_SHIPMENT)
             'AWAITING_SHIPMENT', 'READY_TO_SHIP'      => 'reserved',
             'RETRY_SHIP'                              => 'reserved',
+
+            // Label shipping sudah dibuat (Shopee PROCESSED, TikTok AWAITING_COLLECTION/PARTIALLY_SHIPPING)
             'AWAITING_COLLECTION', 'PROCESSED'        => 'packed',
             'PARTIALLY_SHIPPING'                      => 'packed',
+
+            // Sudah di tangan kurir / buyer
             'IN_TRANSIT'                              => 'shipped',
             'SHIPPED', 'TO_CONFIRM_RECEIVE'           => 'shipped',
             'DELIVERED', 'COMPLETED'                  => 'shipped',
 
+            // Request batal/retur — masuk ke pending (akan distinguishing
+            // ke tab khusus via channel_status di iterasi berikutnya)
             'IN_CANCEL', 'TO_RETURN'                  => 'pending',
             'CANCELLED'                               => 'cancelled',
             default                                   => 'pending',
