@@ -650,6 +650,11 @@ class SalesOrderService
                 ->first();
 
             $previousStatus = $existing?->status;
+
+            if ($existing && $existing->handed_to_warehouse_at && in_array($mappedStatus, ['picked', 'packed'], true)) {
+                $mappedStatus = $previousStatus;
+            }
+
             $finalStatus = $this->resolveInternalStatus($previousStatus, $mappedStatus);
             $orderData['status'] = $finalStatus;
 
