@@ -84,15 +84,12 @@ class PacklistRepository
 
     public function generatePacklistNo(): string
     {
-        $date = now()->format('Ymd');
-        $prefix = "PCK-{$date}-";
-
-        $last = Packlist::where('packlist_no', 'like', "{$prefix}%")
+        $last = Packlist::where('packlist_no', 'like', 'PACK-%')
             ->orderByDesc('packlist_no')
             ->value('packlist_no');
 
-        $seq = $last ? (int) substr($last, -4) + 1 : 1;
+        $seq = $last ? (int) substr($last, 5) + 1 : 1;
 
-        return $prefix . str_pad($seq, 4, '0', STR_PAD_LEFT);
+        return 'PACK-' . str_pad($seq, 9, '0', STR_PAD_LEFT);
     }
 }
