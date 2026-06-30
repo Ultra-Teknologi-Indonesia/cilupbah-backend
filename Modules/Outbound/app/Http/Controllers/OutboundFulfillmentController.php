@@ -139,6 +139,21 @@ class OutboundFulfillmentController extends Controller
             return response()->json(['success' => false, 'message' => 'Order tidak ditemukan.'], 404);
         }
 
+        try {
+            $userEmail = auth()->user() ? auth()->user()->email : 'system';
+            $this->fulfillmentService->moveToReadyToPick(
+                $order->id,
+                $order->location_id,
+                $userEmail
+            );
+            
+            // Reload order to reflect new picklist/status
+            $order = $this->fulfillmentService->findOrderByNo($request->order_no);
+        } catch (\Exception $e) {
+            // Ignore if order is already picked, has active picklist, or not in reserved status.
+            // We still want to return the order data.
+        }
+
         return response()->json(['success' => true, 'data' => $order]);
     }
 
