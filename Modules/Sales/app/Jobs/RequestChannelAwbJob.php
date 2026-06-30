@@ -12,6 +12,7 @@ use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Outbound\Services\OutboundFulfillmentService;
+use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Models\SalesOrder;
 
 class RequestChannelAwbJob implements ShouldQueue
@@ -123,6 +124,11 @@ class RequestChannelAwbJob implements ShouldQueue
                     'salesorder_no'   => $order->salesorder_no,
                     'tracking_number' => $tn,
                 ]);
+
+                // Pre-generate Shopee shipping document (PDF) di background
+                // supaya klik "Cetak Label" di FE langsung download cepat.
+                PrepareShopeeShippingLabelJob::dispatch($order->id)
+                    ->onQueue(config('queue.names.channel_sync'));
 
                 return true;
             }

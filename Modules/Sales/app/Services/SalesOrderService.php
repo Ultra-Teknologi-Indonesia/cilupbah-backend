@@ -11,6 +11,7 @@ use Modules\Sales\Exceptions\InsufficientStockException;
 use Modules\Sales\Exceptions\InvalidStatusTransitionException;
 use Modules\Sales\Exceptions\LocationNotConfiguredException;
 use Modules\Sales\Exceptions\ProductNotMappableException;
+use Modules\Sales\Exceptions\ShippingLabelPreparingException;
 use Modules\Sales\Jobs\CancelChannelOrderJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Jobs\SyncStockJob;
@@ -306,10 +307,50 @@ class SalesOrderService
 
         if ($source === 'shopee') {
             $shopeeService = app(\Modules\Channel\Services\ShopeeOrderService::class);
-            $shopeeDocType = $docType === 'shipping_label' ? 'NORMAL_AIR_WAYBILL' : 'NORMAL_AIR_WAYBILL';
+
+            // Fast path: shipping document sudah dipre-generate oleh
+            // PrepareShopeeShippingLabelJob. Tinggal download PDF (cepat).
+            if ($order->shipping_label_status === 'ready' && $order->shipping_label_doc_type) {
+                $download = $shopeeService->downloadShippingDocument(
+                    $shopId,
+                    $channelOrderNo,
+                    $order->shipping_label_doc_type
+                );
+
+                if (! empty($download['binary']) || ! empty($download['content'])) {
+                    return [
+                        'type'            => 'base64',
+                        'content_type'    => $download['content_type'] ?? 'application/pdf',
+                        'document_base64' => base64_encode((string) ($download['content'] ?? '')),
+                        'source'          => 'shopee',
+                    ];
+                }
+
+                // Edge: status ready tapi download gagal — jatuh ke fallback sync.
+            }
+
+            if ($order->shipping_label_status === 'preparing') {
+                throw new ShippingLabelPreparingException(
+                    'Label sedang disiapkan oleh Shopee. Coba lagi dalam 1-2 menit.'
+                );
+            }
+
+            if ($order->shipping_label_status === 'failed') {
+                throw new \RuntimeException('Persiapan label Shopee gagal. Coba minta resi ulang.');
+            }
+
+            // Legacy / belum dipersiapkan: fallback ke flow synchronous penuh.
+            $shopeeDocType = 'NORMAL_AIR_WAYBILL';
             $result = $shopeeService->getAirwayBill($shopId, $channelOrderNo, $shopeeDocType);
 
             if (! empty($result['ready']) && ! empty($result['document_base64'])) {
+                // Sekalian cache status supaya request berikutnya cepat.
+                $order->update([
+                    'shipping_label_status'      => 'ready',
+                    'shipping_label_doc_type'    => $result['doc_type'] ?? $shopeeDocType,
+                    'shipping_label_prepared_at' => now(),
+                ]);
+
                 return [
                     'type' => 'base64',
                     'content_type' => $result['content_type'] ?? 'application/pdf',

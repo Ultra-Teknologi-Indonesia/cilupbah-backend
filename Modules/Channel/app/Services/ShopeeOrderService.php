@@ -382,7 +382,7 @@ class ShopeeOrderService
         ], $token, $shop->shop_id));
     }
 
-    protected function resolveSupportedDocType(string $shopId, string $orderSn, string $fallback): string
+    public function resolveSupportedDocType(string $shopId, string $orderSn, string $fallback): string
     {
         try {
             $params = $this->getShippingDocumentParameter($shopId, $orderSn);

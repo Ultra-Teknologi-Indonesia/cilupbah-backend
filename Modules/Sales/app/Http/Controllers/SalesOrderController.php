@@ -658,6 +658,12 @@ class SalesOrderController extends Controller
             $result = $this->orderService->getShippingLabel($order, $docType);
 
             return $this->successResponse($result, 'Shipping label berhasil diambil');
+        } catch (\Modules\Sales\Exceptions\ShippingLabelPreparingException $e) {
+            return response()->json([
+                'success' => false,
+                'status'  => 'preparing',
+                'message' => $e->getMessage(),
+            ], 202);
         } catch (\InvalidArgumentException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         } catch (\RuntimeException $e) {
