@@ -87,10 +87,14 @@ return Application::configure(basePath: dirname(__DIR__))
                     ], $e->getStatusCode());
                 }
 
+                $exposeDetail = ! app()->environment('production');
+
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Internal Server Error',
-                    'error' => env('APP_DEBUG') ? $e->getMessage() : null,
+                    'error' => $exposeDetail ? $e->getMessage() : null,
+                    'exception' => $exposeDetail ? class_basename($e) : null,
+                    'file' => $exposeDetail ? $e->getFile() . ':' . $e->getLine() : null,
                 ], 500);
             }
         });
