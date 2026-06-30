@@ -7,6 +7,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Modules\Inventory\Models\Inventory;
 use Modules\Outbound\Services\PicklistService;
 use Modules\Outbound\Http\Requests\CreatePicklistRequest;
 use Modules\Outbound\Http\Requests\PickItemRequest;
@@ -177,6 +178,8 @@ class PicklistController extends Controller
             $filename = str_starts_with((string) $picklistNo, 'PK-')
                 ? "{$picklistNo}.pdf"
                 : "PICK-{$picklistNo}.pdf";
+
+            $this->attachRecommendedBins($picklist);
 
             $pdf = Pdf::loadView('outbound::pdf.picklist', ['picklist' => $picklist])
                 ->setPaper('a4', 'portrait');
@@ -352,5 +355,37 @@ class PicklistController extends Controller
         $this->picklistService->delete($id);
 
         return response()->json(['success' => true, 'message' => 'Picklist berhasil dihapus.']);
+    }
+
+    /**
+     * Inject `recommended_bin_code` ke setiap PicklistItem berdasarkan stok terkini
+     * di lokasi picklist. Picker boleh ambil dari bin lain saat scan/pick — kami
+     * tidak meng-lock bin pada PicklistItem.
+     */
+    protected function attachRecommendedBins($picklist): void
+    {
+        $items = $picklist->items ?? collect();
+        if ($items->isEmpty()) {
+            return;
+        }
+
+        $locationId = $picklist->location_id;
+        $itemIds = $items->pluck('item_id')->filter()->unique()->values()->all();
+
+        $stocks = Inventory::query()
+            ->whereIn('item_id', $itemIds)
+            ->where('location_id', $locationId)
+            ->where('on_hand', '>', 0)
+            ->whereNotNull('bin_id')
+            ->with('bin:id,bin_final_code')
+            ->orderByDesc('on_hand')
+            ->get(['id', 'item_id', 'bin_id', 'on_hand']);
+
+        $byItem = $stocks->groupBy('item_id');
+
+        foreach ($items as $item) {
+            $top = $byItem->get($item->item_id)?->first();
+            $item->recommended_bin_code = optional($top?->bin)->bin_final_code;
+        }
     }
 }

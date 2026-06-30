@@ -1,8 +1,8 @@
 @php
     /** @var \Modules\Outbound\Models\Picklist $picklist */
     $items = collect($picklist->items ?? []);
-    // Sort by bin code agar picker bisa walk bin-by-bin
-    $items = $items->sortBy(fn ($it) => optional($it->bin)->bin_final_code ?? 'zzz')->values();
+    // Sort by rekomendasi bin code agar picker bisa walk bin-by-bin
+    $items = $items->sortBy(fn ($it) => $it->recommended_bin_code ?? 'zzz')->values();
     $totalQtyOrdered = $items->sum('qty_ordered');
     $totalItems = $items->count();
     $status = $picklist->status ?? 'DRAFT';
@@ -11,6 +11,31 @@
     $locationCode = optional($picklist->location)->location_code ?? '';
     $pickerName = optional($picklist->picker)->name ?? '-';
     $pickerEmail = optional($picklist->picker)->email ?? '';
+
+    $resolveVariantName = function ($item) {
+        $variant = $item->product ?? null;
+        $parentName = optional(optional($variant)->product)->name;
+        $optionValues = collect(optional($variant)->options ?? [])
+            ->map(fn ($o) => trim((string) ($o->value ?? '')))
+            ->filter()
+            ->values();
+        if ($optionValues->isNotEmpty()) {
+            return $optionValues->implode(' / ');
+        }
+
+        $desc = trim((string) ($item->orderItem->description ?? ''));
+        if ($desc !== '' && $parentName) {
+            $stripped = trim(str_replace($parentName, '', $desc), " -|/,");
+            if ($stripped !== '' && $stripped !== $desc) {
+                return $stripped;
+            }
+        }
+        if ($desc !== '' && $desc !== $parentName) {
+            return $desc;
+        }
+
+        return $item->sku ?? optional($variant)->sku ?? '-';
+    };
 @endphp
 <!DOCTYPE html>
 <html lang="id">
@@ -174,17 +199,20 @@
         </tr>
     </table>
 
+    <div class="small" style="margin: 6px 0 4px 0;">
+        Rekomendasi bin di bawah adalah saran sistem berdasarkan stok terkini. Picker boleh ambil dari bin lain sesuai kondisi gudang.
+    </div>
+
     <table class="items">
         <thead>
             <tr>
                 <th style="width: 24px;">No</th>
-                <th style="width: 70px;">Bin</th>
+                <th style="width: 70px;">Rek. Bin</th>
                 <th style="width: 90px;">SKU</th>
                 <th>Nama Produk</th>
+                <th style="width: 110px;">Varian</th>
                 <th style="width: 95px;">Order No</th>
-                <th style="width: 110px;">Customer</th>
                 <th style="width: 38px;" class="center">Qty</th>
-                <th style="width: 30px;" class="center">Pick</th>
             </tr>
         </thead>
         <tbody>
@@ -192,41 +220,25 @@
                 @php
                     $sku = $item->sku ?? optional($item->product)->sku ?? '-';
                     $productName = optional(optional($item->product)->product)->name ?? '-';
-                    $binCode = optional($item->bin)->bin_final_code ?? '-';
+                    $binCode = $item->recommended_bin_code ?? '-';
                     $orderNo = optional($item->order)->salesorder_no ?? '-';
-                    $customer = optional($item->order)->customer_name ?? '-';
+                    $variantName = $resolveVariantName($item);
                 @endphp
                 <tr>
                     <td class="center mono">{{ $i + 1 }}</td>
                     <td class="bin-cell mono">{{ $binCode }}</td>
                     <td class="mono">{{ $sku }}</td>
                     <td>{{ $productName }}</td>
+                    <td>{{ $variantName }}</td>
                     <td class="mono">{{ $orderNo }}</td>
-                    <td>{{ $customer }}</td>
                     <td class="num mono">{{ $item->qty_ordered }}</td>
-                    <td class="center"><span class="check-box"></span></td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="8" class="center" style="padding: 18px;">Tidak ada item.</td>
+                    <td colspan="7" class="center" style="padding: 18px;">Tidak ada item.</td>
                 </tr>
             @endforelse
         </tbody>
-    </table>
-
-    <table class="sign-table">
-        <tr>
-            <td>
-                <div class="sign-box"></div>
-                <div>Picker</div>
-                <div class="small">{{ $pickerName }}</div>
-            </td>
-            <td>
-                <div class="sign-box"></div>
-                <div>Supervisor</div>
-                <div class="small">&nbsp;</div>
-            </td>
-        </tr>
     </table>
 </body>
 </html>
