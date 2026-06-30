@@ -2,11 +2,12 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use Modules\Outbound\Http\Controllers\PicklistController;
-use Modules\Outbound\Http\Controllers\PacklistController;
-use Modules\Outbound\Http\Controllers\ShipmentController;
-use Modules\Outbound\Http\Controllers\OutboundFulfillmentController;
+use Modules\Outbound\Http\Controllers\AdHocPickController;
 use Modules\Outbound\Http\Controllers\CourierController;
+use Modules\Outbound\Http\Controllers\OutboundFulfillmentController;
+use Modules\Outbound\Http\Controllers\PacklistController;
+use Modules\Outbound\Http\Controllers\PicklistController;
+use Modules\Outbound\Http\Controllers\ShipmentController;
 use Modules\Outbound\Http\Controllers\WmsController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
@@ -17,6 +18,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('orders/change-location', [OutboundFulfillmentController::class, 'changeLocation'])->name('outbound.orders.change-location');
     Route::post('orders/request-cancel', [OutboundFulfillmentController::class, 'requestCancelOrder'])->name('outbound.orders.request-cancel');
     Route::post('orders/ready-to-ship', [OutboundFulfillmentController::class, 'readyToShip'])->name('outbound.orders.ready-to-ship');
+    Route::post('orders/ad-hoc-pick', [AdHocPickController::class, 'complete'])->name('outbound.orders.ad-hoc-pick');
+    Route::post('orders/ad-hoc-pick/scan', [AdHocPickController::class, 'scan'])->name('outbound.orders.ad-hoc-pick.scan');
     Route::get('pickers', [OutboundFulfillmentController::class, 'pickers'])->name('outbound.pickers.index');
     Route::get('orders/{stage}', [OutboundFulfillmentController::class, 'ordersByStage'])->name('outbound.orders.stage');
 
