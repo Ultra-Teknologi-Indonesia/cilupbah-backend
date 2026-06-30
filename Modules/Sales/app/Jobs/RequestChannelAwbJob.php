@@ -10,6 +10,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Channel\Services\TikTokOrderService;
 use Modules\Outbound\Services\OutboundFulfillmentService;
 use Modules\Sales\Models\SalesOrder;
 
@@ -62,6 +63,8 @@ class RequestChannelAwbJob implements ShouldQueue
 
             if ($source === 'shopee') {
                 $this->fetchShopeeTracking($order);
+            } elseif ($source === 'tiktok') {
+                $this->fetchTiktokTracking($order);
             }
         } catch (\Throwable $e) {
             Log::error('RequestChannelAwbJob: error saat request AWB', [
@@ -102,6 +105,41 @@ class RequestChannelAwbJob implements ShouldQueue
                     'order_id'        => $order->id,
                     'salesorder_no'   => $order->salesorder_no,
                     'tracking_number' => $tn,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('RequestChannelAwbJob: gagal fetch tracking_number', [
+                'order_id'  => $order->id,
+                'exception' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function fetchTiktokTracking(SalesOrder $order): void
+    {
+        try {
+            $shop = app(ChannelShopRepository::class)->findByShopId($order->channel_shop_id);
+            if (! $shop) {
+                return;
+            }
+
+            $resolved = app(TikTokOrderService::class)->resolveTrackingNumber(
+                $shop,
+                (string) $order->channel_order_no
+            );
+
+            if ($resolved && ! empty($resolved['tracking_number'])) {
+                $update = ['tracking_number' => $resolved['tracking_number']];
+                if (! empty($resolved['shipping_provider'])) {
+                    $update['shipping_provider'] = $resolved['shipping_provider'];
+                }
+
+                $order->update($update);
+
+                Log::info('RequestChannelAwbJob: tracking_number disimpan', [
+                    'order_id'        => $order->id,
+                    'salesorder_no'   => $order->salesorder_no,
+                    'tracking_number' => $resolved['tracking_number'],
                 ]);
             }
         } catch (\Throwable $e) {

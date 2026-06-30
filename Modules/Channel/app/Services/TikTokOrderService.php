@@ -462,7 +462,7 @@ class TikTokOrderService
         return array_values(array_unique($ids));
     }
 
-    protected function fetchAndStoreTracking(object $shop, string $orderId, array $queries): void
+    public function fetchAndStoreTracking(object $shop, string $orderId, array $queries): void
     {
         try {
             $detailQueries = array_merge($queries, ['ids' => $orderId]);
@@ -497,5 +497,36 @@ class TikTokOrderService
                 'error'    => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Resolve tracking_number for a TikTok order without persisting.
+     * Returns ['tracking_number' => string, 'shipping_provider' => string|null] or null.
+     */
+    public function resolveTrackingNumber(object $shop, string $orderId): ?array
+    {
+        $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
+        $detailQueries = array_merge($queries, ['ids' => $orderId]);
+
+        $res = $this->client->request('GET', '/order/202309/orders', $detailQueries, [], $shop->access_token);
+
+        $orders = $res['data']['orders'] ?? [];
+        if (empty($orders)) {
+            return null;
+        }
+
+        $packages = $orders[0]['packages'] ?? [];
+
+        foreach ($packages as $pkg) {
+            $tn = $pkg['tracking_number'] ?? null;
+            if ($tn !== null && $tn !== '') {
+                return [
+                    'tracking_number'   => (string) $tn,
+                    'shipping_provider' => $pkg['shipping_provider_name'] ?? $pkg['shipping_provider'] ?? null,
+                ];
+            }
+        }
+
+        return null;
     }
 }
