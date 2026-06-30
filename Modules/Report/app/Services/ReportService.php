@@ -22,7 +22,7 @@ class ReportService
 {
     public function putawayReport(array $filters): array
     {
-        $query = Putaway::with(['items.product:id,name,sku', 'location:id,location_name,location_code'])
+        $query = Putaway::with(['items.product:id,product_id,sku', 'items.product.product:id,name', 'location:id,location_name,location_code'])
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
             ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
@@ -55,7 +55,7 @@ class ReportService
 
     public function adjustmentReport(array $filters): array
     {
-        $query = StockAdjustment::with(['items.product:id,name,sku', 'location:id,location_name,location_code'])
+        $query = StockAdjustment::with(['items.product:id,product_id,sku', 'items.product.product:id,name', 'location:id,location_name,location_code'])
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
             ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('transaction_date', '>=', $v))
@@ -71,7 +71,7 @@ class ReportService
 
     public function stockOpnameReport(array $filters): array
     {
-        $query = StockOpname::with(['items.product:id,name,sku', 'location:id,location_name,location_code'])
+        $query = StockOpname::with(['items.product:id,product_id,sku', 'items.product.product:id,name', 'location:id,location_name,location_code'])
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
             ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
@@ -87,7 +87,7 @@ class ReportService
 
     public function purchaseOrderReport(array $filters): array
     {
-        $query = PurchaseOrder::with(['items.product:id,name,sku', 'supplier:id,name,code', 'location:id,location_name,location_code'])
+        $query = PurchaseOrder::with(['items.product:id,product_id,sku', 'items.product.product:id,name', 'supplier:id,name,code', 'location:id,location_name,location_code'])
             ->when($filters['supplier_id'] ?? null, fn ($q, $v) => $q->where('supplier_id', $v))
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))

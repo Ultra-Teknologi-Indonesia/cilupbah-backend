@@ -382,6 +382,30 @@ class ShopeeOrderService
         ], $token, $shop->shop_id));
     }
 
+    protected function resolveSupportedDocType(string $shopId, string $orderSn, string $fallback): string
+    {
+        try {
+            $params = $this->getShippingDocumentParameter($shopId, $orderSn);
+            $row = $params['response']['result_list'][0] ?? [];
+
+            $suggested = $row['suggest_shipping_document_type'] ?? null;
+            if ($suggested) {
+                return $suggested;
+            }
+
+            $infos = $row['shipping_document_info'] ?? [];
+            foreach ($infos as $info) {
+                if (! empty($info['shipping_document_type'])) {
+                    return $info['shipping_document_type'];
+                }
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Shopee: gagal get_shipping_document_parameter {$orderSn}: " . $e->getMessage());
+        }
+
+        return $fallback;
+    }
+
     public function createShippingDocument(string $shopId, string $orderSn, string $docType = 'NORMAL_AIR_WAYBILL'): array
     {
         $shop = $this->requireShop($shopId);
@@ -418,15 +442,24 @@ class ShopeeOrderService
 
     public function getAirwayBill(string $shopId, string $orderSn, string $docType = 'NORMAL_AIR_WAYBILL'): array
     {
-        $create = $this->createShippingDocument($shopId, $orderSn, $docType);
+        $resolvedType = $this->resolveSupportedDocType($shopId, $orderSn, $docType);
+
+        $create = $this->createShippingDocument($shopId, $orderSn, $resolvedType);
         if (! empty($create['error'])) {
+            $failDetail = $create['response']['result_list'][0]['fail_message']
+                ?? $create['response']['result_list'][0]['fail_error']
+                ?? null;
+
             return [
                 'order_sn' => $orderSn,
                 'ready' => false,
                 'error' => $create['error'],
-                'message' => $create['message'] ?? null,
+                'message' => $failDetail ?? $create['message'] ?? null,
+                'doc_type' => $resolvedType,
             ];
         }
+
+        $docType = $resolvedType;
 
         $maxRetries = 6;
         $status = null;
