@@ -87,6 +87,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('sales/counts', [SalesOrderController::class, 'counts'])->name('sales.counts');
 
     Route::get('sales/{id}/shipping-label', [SalesOrderController::class, 'getShippingLabel'])->whereUuid('id')->name('sales.orders.shipping-label');
+    Route::post('sales/{id}/shipping-label/retry', [SalesOrderController::class, 'retryShippingLabel'])->whereUuid('id')->name('sales.orders.shipping-label.retry');
     Route::put('sales/{id}/relocate', [SalesOrderController::class, 'relocate'])->whereUuid('id')->name('sales.orders.relocate');
 
     Route::post('sales/{id}/items/{itemId}/download', [SalesOrderController::class, 'downloadOrderItem'])

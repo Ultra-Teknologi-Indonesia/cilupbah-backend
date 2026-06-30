@@ -13,6 +13,7 @@ use Modules\Sales\Exceptions\LocationNotConfiguredException;
 use Modules\Sales\Exceptions\ProductNotMappableException;
 use Modules\Sales\Exceptions\ShippingLabelPreparingException;
 use Modules\Sales\Jobs\CancelChannelOrderJob;
+use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Jobs\SyncStockJob;
 use Modules\Sales\Models\SalesOrder;
@@ -94,13 +95,14 @@ class SalesOrderService
 
     public function moveToReadyToProcess(array $orderIds): int
     {
-        [$count, $awbOrderIds] = DB::transaction(function () use ($orderIds) {
+        [$count, $awbOrderIds, $shopeeLabelOrderIds] = DB::transaction(function () use ($orderIds) {
             $orders = SalesOrder::whereIn('id', $orderIds)
                 ->where('status', 'reserved')
                 ->get();
 
             $count = 0;
             $awbOrderIds = [];
+            $shopeeLabelOrderIds = [];
 
             foreach ($orders as $order) {
                 PicklistItem::where('order_id', $order->id)
@@ -118,12 +120,18 @@ class SalesOrderService
                     && empty($order->tracking_number)
                 ) {
                     $awbOrderIds[] = $order->id;
+                } elseif (
+                    $source === 'shopee'
+                    && ! empty($order->tracking_number)
+                    && ! in_array($order->shipping_label_status, ['ready', 'self_design_ready', 'preparing'], true)
+                ) {
+                    $shopeeLabelOrderIds[] = $order->id;
                 }
 
                 $count++;
             }
 
-            return [$count, $awbOrderIds];
+            return [$count, $awbOrderIds, $shopeeLabelOrderIds];
         });
 
         foreach ($awbOrderIds as $orderId) {
@@ -131,6 +139,18 @@ class SalesOrderService
                 RequestChannelAwbJob::dispatch($orderId);
             } catch (\Throwable $e) {
                 Log::error('moveToReadyToProcess: gagal dispatch RequestChannelAwbJob', [
+                    'order_id'  => $orderId,
+                    'exception' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        foreach ($shopeeLabelOrderIds as $orderId) {
+            try {
+                PrepareShopeeShippingLabelJob::dispatch($orderId)
+                    ->onQueue(config('queue.names.channel_sync'));
+            } catch (\Throwable $e) {
+                Log::error('moveToReadyToProcess: gagal dispatch PrepareShopeeShippingLabelJob', [
                     'order_id'  => $orderId,
                     'exception' => $e->getMessage(),
                 ]);
@@ -354,7 +374,12 @@ class SalesOrderService
             }
 
             if ($order->shipping_label_status === 'failed') {
-                throw new \RuntimeException('Persiapan label Shopee gagal. Coba minta resi ulang.');
+                PrepareShopeeShippingLabelJob::dispatch($order->id)
+                    ->onQueue(config('queue.names.channel_sync'));
+
+                throw new ShippingLabelPreparingException(
+                    'Label sebelumnya gagal. Sedang dicoba ulang, tunggu 1-2 menit.'
+                );
             }
 
             $shopeeDocType = 'NORMAL_AIR_WAYBILL';
@@ -388,6 +413,27 @@ class SalesOrderService
         }
 
         throw new \InvalidArgumentException("Channel '{$source}' belum mendukung cetak resi otomatis.");
+    }
+
+    public function retryShippingLabel(SalesOrder $order): void
+    {
+        if (strtolower((string) $order->source) !== 'shopee') {
+            throw new \InvalidArgumentException('Retry label hanya tersedia untuk pesanan Shopee.');
+        }
+
+        if (empty($order->tracking_number)) {
+            throw new \InvalidArgumentException('Pesanan belum memiliki nomor resi. Minta resi terlebih dahulu.');
+        }
+
+        $order->update([
+            'shipping_label_status'      => null,
+            'shipping_label_doc_type'    => null,
+            'shipping_label_prepared_at' => null,
+            'shipping_label_raw_data'    => null,
+        ]);
+
+        PrepareShopeeShippingLabelJob::dispatch($order->id)
+            ->onQueue(config('queue.names.channel_sync'));
     }
 
     public function renderSelfDesignAwb(SalesOrder $order): string

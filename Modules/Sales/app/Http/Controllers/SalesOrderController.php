@@ -671,6 +671,23 @@ class SalesOrderController extends Controller
         }
     }
 
+    public function retryShippingLabel(string $id)
+    {
+        $order = SalesOrder::findOrFail($id);
+
+        try {
+            $this->orderService->retryShippingLabel($order);
+
+            return response()->json([
+                'success' => true,
+                'status'  => 'preparing',
+                'message' => 'Label sedang disiapkan ulang. Coba unduh lagi dalam 1-2 menit.',
+            ], 202);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+    }
+
     #[OA\Put(
         path: '/api/v1/sales/{id}/relocate',
         summary: 'Change the warehouse/location for an order',
