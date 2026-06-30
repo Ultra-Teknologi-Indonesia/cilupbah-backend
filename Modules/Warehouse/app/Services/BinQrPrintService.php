@@ -89,7 +89,7 @@ class BinQrPrintService
             'started_at' => optional($job->started_at)->toIso8601String(),
             'completed_at' => optional($job->completed_at)->toIso8601String(),
             'download_url' => $job->status === QrPrintJob::STATUS_READY
-                ? route('warehouse.qr-jobs.download', ['id' => $job->id])
+                ? route('api.warehouse.qr-jobs.download', ['id' => $job->id])
                 : null,
         ];
     }
