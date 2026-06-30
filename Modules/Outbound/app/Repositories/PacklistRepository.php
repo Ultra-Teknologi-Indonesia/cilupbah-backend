@@ -14,7 +14,10 @@ class PacklistRepository
         return QueryBuilder::for(Packlist::class)
             ->with(['location:id,location_name,location_code', 'packer:id,name,email', 'order:id,salesorder_no,customer_name'])
             ->allowedFilters(
-                AllowedFilter::exact('status'),
+                AllowedFilter::callback('status', function ($query, $value) {
+                    $statuses = is_array($value) ? $value : explode(',', $value);
+                    $query->whereIn('status', $statuses);
+                }),
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('packer_id'),
                 AllowedFilter::exact('order_id'),
