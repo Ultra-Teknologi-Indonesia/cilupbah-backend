@@ -70,12 +70,22 @@ class PacklistController extends Controller
     )]
     public function scanOrder(Request $request): JsonResponse
     {
-        $request->validate(['order_no' => 'required|string']);
+        $request->validate([
+            'order_no' => 'required|string',
+            'packer_id' => 'nullable|string|exists:users,id',
+        ]);
 
-        $packlist = $this->packlistService->scanOrder($request->query('order_no'));
+        $packlist = $this->packlistService->scanOrder(
+            $request->query('order_no'),
+            $request->query('packer_id'),
+            auth()->user()?->email,
+        );
 
         if (!$packlist) {
-            return response()->json(['success' => false, 'message' => 'Packlist aktif tidak ditemukan untuk order ini.'], 404);
+            return response()->json([
+                'success' => false,
+                'message' => 'Pesanan tidak ditemukan atau belum siap packing.',
+            ], 404);
         }
 
         return response()->json(['success' => true, 'data' => $packlist]);

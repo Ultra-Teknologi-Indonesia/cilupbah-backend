@@ -30,28 +30,42 @@ class PacklistService
         return $this->packlistRepository->getItemsPaginated($packlistId, $limit);
     }
 
-    public function scanOrder(string $orderNo): ?Packlist
+    public function scanOrder(string $orderNo, ?string $packerId = null, ?string $createdBy = null): ?Packlist
     {
-        $packlist = Packlist::where('order_id', function ($q) use ($orderNo) {
-            $q->select('id')
-                ->from('sales_orders')
-                ->where('salesorder_no', $orderNo)
-                ->orWhere('channel_order_no', $orderNo)
-                ->orWhere('tracking_number', $orderNo)
-                ->limit(1);
-        })
-            ->whereIn('status', [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS])
-            ->with([
-                'items.product:id,sku,product_id',
-                'items.product.product:id,product_name',
-                'items.orderItem:id,sku,description,image_url',
-                'location:id,location_name,location_code',
-                'packer:id,name,email',
-                'order:id,salesorder_no,customer_name',
-            ])
+        $order = Order::where('salesorder_no', $orderNo)
+            ->orWhere('channel_order_no', $orderNo)
+            ->orWhere('tracking_number', $orderNo)
             ->first();
 
-        return $packlist;
+        if (!$order) {
+            return null;
+        }
+
+        $packlist = Packlist::where('order_id', $order->id)
+            ->whereIn('status', [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS])
+            ->first();
+
+        if (!$packlist && $order->status === 'picked') {
+            $packlist = $this->create([
+                'order_id' => $order->id,
+                'location_id' => $order->location_id,
+                'packer_id' => $packerId,
+                'created_by' => $createdBy ?? 'system',
+            ]);
+        }
+
+        if (!$packlist) {
+            return null;
+        }
+
+        return $packlist->load([
+            'items.product:id,sku,product_id',
+            'items.product.product:id,product_name',
+            'items.orderItem:id,sku,description,image_url',
+            'location:id,location_name,location_code',
+            'packer:id,name,email',
+            'order:id,salesorder_no,customer_name',
+        ]);
     }
 
     public function create(array $data): Packlist
