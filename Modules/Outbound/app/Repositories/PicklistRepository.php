@@ -11,8 +11,13 @@ class PicklistRepository
 {
     public function getAllPaginated(int $limit = 10)
     {
-        return QueryBuilder::for(Picklist::class)
-            ->withCount('items')
+        $query = QueryBuilder::for(Picklist::class);
+
+        if (empty(request('filter.status'))) {
+            $query->whereNotIn('status', [Picklist::STATUS_COMPLETED, Picklist::STATUS_CANCELLED]);
+        }
+
+        return $query->withCount('items')
             ->withSum('items', 'qty_ordered')
             ->withSum('items', 'qty_picked')
             ->with(['location:id,location_name,location_code', 'picker:id,name,email'])
