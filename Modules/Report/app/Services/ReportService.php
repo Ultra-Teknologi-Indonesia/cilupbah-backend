@@ -204,6 +204,8 @@ class ReportService
                 'items.product:id,product_id,sku',
                 'items.product.product:id,name',
                 'items.product.options:id,variant_id,attribute_id,value',
+                'items.product.media:id,product_id,variant_id,url,is_primary,sort_order',
+                'items.product.product.media:id,product_id,variant_id,url,is_primary,sort_order',
                 'items.orderItem:id,order_id,description',
                 'items.order:id,salesorder_no,customer_name',
                 'items.bin:id,bin_final_code',

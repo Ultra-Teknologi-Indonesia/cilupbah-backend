@@ -13,6 +13,7 @@ use Modules\Outbound\Http\Requests\CreatePicklistRequest;
 use Modules\Outbound\Http\Requests\PickItemRequest;
 use Modules\Report\Services\ReportService;
 use OpenApi\Attributes as OA;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Throwable;
 
 #[OA\Tag(name: 'Outbound - Picklist', description: 'API Endpoints for Picklist management')]
@@ -181,8 +182,12 @@ class PicklistController extends Controller
 
             $this->attachRecommendedBins($picklist);
 
-            $pdf = Pdf::loadView('outbound::pdf.picklist', ['picklist' => $picklist])
-                ->setPaper('a4', 'portrait');
+            $qrDataUri = $this->generateQrDataUri((string) $picklistNo);
+
+            $pdf = Pdf::loadView('outbound::pdf.picklist', [
+                'picklist' => $picklist,
+                'qrDataUri' => $qrDataUri,
+            ])->setPaper('a4', 'portrait');
 
             return $pdf->stream($filename);
         } catch (Throwable $e) {
@@ -386,6 +391,22 @@ class PicklistController extends Controller
         foreach ($items as $item) {
             $top = $byItem->get($item->item_id)?->first();
             $item->recommended_bin_code = optional($top?->bin)->bin_final_code;
+        }
+    }
+
+    protected function generateQrDataUri(string $content): ?string
+    {
+        try {
+            $svg = QrCode::format('svg')
+                ->size(160)
+                ->margin(0)
+                ->errorCorrection('M')
+                ->generate($content);
+
+            return 'data:image/svg+xml;base64,' . base64_encode((string) $svg);
+        } catch (Throwable $e) {
+            report($e);
+            return null;
         }
     }
 }
