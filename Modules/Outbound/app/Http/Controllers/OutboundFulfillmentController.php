@@ -289,6 +289,7 @@ class OutboundFulfillmentController extends Controller
         tags: ['Outbound - Fulfillment'],
         parameters: [
             new OA\Parameter(name: 'location_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'role', in: 'query', required: false, schema: new OA\Schema(type: 'string'), description: 'Filter by role name (e.g. picker, packer)'),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Success'),
@@ -298,12 +299,17 @@ class OutboundFulfillmentController extends Controller
     {
         $request->validate([
             'location_id' => 'nullable|string',
+            'role' => 'nullable|string',
         ]);
 
         $query = User::query();
 
         if ($request->filled('location_id')) {
             $query->where('warehouse_id', $request->query('location_id'));
+        }
+
+        if ($request->filled('role')) {
+            $query->role($request->query('role'));
         }
 
         $pickers = $query
