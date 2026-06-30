@@ -308,8 +308,6 @@ class SalesOrderService
         if ($source === 'shopee') {
             $shopeeService = app(\Modules\Channel\Services\ShopeeOrderService::class);
 
-            // Fast path: shipping document sudah dipre-generate oleh
-            // PrepareShopeeShippingLabelJob. Tinggal download PDF (cepat).
             if ($order->shipping_label_status === 'ready' && $order->shipping_label_doc_type) {
                 $download = $shopeeService->downloadShippingDocument(
                     $shopId,
@@ -326,11 +324,8 @@ class SalesOrderService
                     ];
                 }
 
-                // Edge: status ready tapi download gagal — jatuh ke fallback sync.
             }
 
-            // Self-Design AWB — Shopee tidak provide PDF (dummy J&T, SPX Instant, dll).
-            // BE render PDF sendiri dari raw data yang sudah dicache oleh job.
             if ($order->shipping_label_status === 'self_design_ready') {
                 try {
                     $pdfBase64 = $this->renderSelfDesignAwb($order);
@@ -362,12 +357,11 @@ class SalesOrderService
                 throw new \RuntimeException('Persiapan label Shopee gagal. Coba minta resi ulang.');
             }
 
-            // Legacy / belum dipersiapkan: fallback ke flow synchronous penuh.
             $shopeeDocType = 'NORMAL_AIR_WAYBILL';
             $result = $shopeeService->getAirwayBill($shopId, $channelOrderNo, $shopeeDocType);
 
             if (! empty($result['ready']) && ! empty($result['document_base64'])) {
-                // Sekalian cache status supaya request berikutnya cepat.
+
                 $order->update([
                     'shipping_label_status'      => 'ready',
                     'shipping_label_doc_type'    => $result['doc_type'] ?? $shopeeDocType,
@@ -396,18 +390,10 @@ class SalesOrderService
         throw new \InvalidArgumentException("Channel '{$source}' belum mendukung cetak resi otomatis.");
     }
 
-    /**
-     * Render Self-Design AWB ke PDF (base64) — dipakai ketika channel
-     * (Shopee dummy J&T, SPX Instant, dll) tidak menyediakan PDF label.
-     *
-     * Sumber data: kolom `shipping_label_raw_data` yang sudah di-cache oleh
-     * PrepareShopeeShippingLabelJob ketika `allow_self_design_awb=true`.
-     */
     public function renderSelfDesignAwb(SalesOrder $order): string
     {
         $raw = $order->shipping_label_raw_data ?? [];
 
-        // Defensive fallback: kalau raw_data hilang/incomplete, isi dari kolom SO sendiri.
         $recipientFromOrder = [
             'name'         => $order->shipping_full_name,
             'phone'        => $order->shipping_phone,
@@ -432,7 +418,6 @@ class SalesOrderService
             ?? 'COURIER');
         $orderSn = (string) ($order->channel_order_no ?? $order->salesorder_no);
 
-        // Barcode/QR fallback: render tracking sebagai QR SVG inline.
         $barcodeUri = null;
         if ($tracking !== '') {
             try {
@@ -458,7 +443,6 @@ class SalesOrderService
             'barcodeUri' => $barcodeUri,
         ]);
 
-        // A6 thermal-ish: 100mm x 150mm (~283 x 425 pt)
         $pdf->setPaper([0, 0, 283.46, 425.20], 'portrait');
 
         return base64_encode($pdf->output());
@@ -878,24 +862,19 @@ class SalesOrderService
     private function mapChannelStatusToInternal(string $channelStatus): string
     {
         return match ($channelStatus) {
-            // Belum dibayar / menunggu (Shopee UNPAID/PENDING, TikTok UNPAID/ON_HOLD remorse 1jam)
+
             'UNPAID', 'PENDING', 'ON_HOLD'            => 'pending',
 
-            // Siap diproses (Shopee READY_TO_SHIP/RETRY_SHIP, TikTok AWAITING_SHIPMENT)
             'AWAITING_SHIPMENT', 'READY_TO_SHIP'      => 'reserved',
             'RETRY_SHIP'                              => 'reserved',
 
-            // Label shipping sudah dibuat (Shopee PROCESSED, TikTok AWAITING_COLLECTION/PARTIALLY_SHIPPING)
             'AWAITING_COLLECTION', 'PROCESSED'        => 'packed',
             'PARTIALLY_SHIPPING'                      => 'packed',
 
-            // Sudah di tangan kurir / buyer
             'IN_TRANSIT'                              => 'shipped',
             'SHIPPED', 'TO_CONFIRM_RECEIVE'           => 'shipped',
             'DELIVERED', 'COMPLETED'                  => 'shipped',
 
-            // Request batal/retur — masuk ke pending (akan distinguishing
-            // ke tab khusus via channel_status di iterasi berikutnya)
             'IN_CANCEL', 'TO_RETURN'                  => 'pending',
             'CANCELLED'                               => 'cancelled',
             default                                   => 'pending',

@@ -499,10 +499,6 @@ class TikTokOrderService
         }
     }
 
-    /**
-     * Resolve tracking_number for a TikTok order without persisting.
-     * Returns ['tracking_number' => string, 'shipping_provider' => string|null] or null.
-     */
     public function resolveTrackingNumber(object $shop, string $orderId): ?array
     {
         $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];

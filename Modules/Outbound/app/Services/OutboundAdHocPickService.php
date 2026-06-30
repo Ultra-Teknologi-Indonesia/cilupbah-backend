@@ -7,13 +7,6 @@ use Illuminate\Support\Facades\DB;
 use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Sales\Services\SalesOrderService;
 
-/**
- * Ad-hoc picking: pick langsung dari order tanpa membuat picklist.
- * Order yang sudah 'reserved' & sudah handed_to_warehouse_at langsung di-transisi ke 'picked'
- * lewat SalesOrderService::updateOrder(), yang sudah meng-handle stok (pickStockForOrder)
- * dan validasi transisi status. Progress per-item disimpan di Cache (TTL 1 hari) karena
- * SalesOrderItem belum punya kolom qty_picked.
- */
 class OutboundAdHocPickService
 {
     public function __construct(
@@ -55,10 +48,6 @@ class OutboundAdHocPickService
         Cache::forget($this->progressKey($orderId));
     }
 
-    /**
-     * Selesaikan ad-hoc pick: transisi order 'reserved' -> 'picked'.
-     * Stok deduction & validasi transisi dilakukan oleh SalesOrderService::updateOrder().
-     */
     public function complete(string $orderId): Order
     {
         $order = $this->loadOrder($orderId);
@@ -88,12 +77,6 @@ class OutboundAdHocPickService
         ]);
     }
 
-    /**
-     * Increment scan progress per-SKU. Kalau setelah increment semua item
-     * sudah terpenuhi (sum qty_picked == sum qty_in_base), auto-complete.
-     *
-     * @return array{ completed: bool, order: Order, progress: array<string,int>, matched_item_id: string, qty_picked: int, qty_ordered: int }
-     */
     public function scan(string $orderId, string $sku, int $qty = 1): array
     {
         $order = $this->loadOrder($orderId);

@@ -17,19 +17,13 @@ use Modules\Warehouse\Services\BinQrPrintService;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Throwable;
 
-/**
- * Generate PDF QR rak secara async + update progress per chunk.
- * Strategi: render satu blade dengan loop semua bin (page-break per item).
- * Progress di-update setiap 100 bin lewat callback chunk Eloquent.
- * Output: file PDF di storage local (qr-jobs/{job_id}.pdf).
- */
 class GenerateBinQrPdfJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 1;
 
-    public int $timeout = 1800; // 30 menit; PDF besar bisa lama.
+    public int $timeout = 1800; 
 
     private const CHUNK_SIZE = 100;
 
@@ -37,6 +31,10 @@ class GenerateBinQrPdfJob implements ShouldQueue
 
     public function handle(): void
     {
+
+        ini_set('memory_limit', '-1');
+        set_time_limit(0);
+
         $printJob = QrPrintJob::find($this->jobId);
         if (! $printJob) {
             Log::warning('GenerateBinQrPdfJob: job tidak ditemukan', ['job_id' => $this->jobId]);
@@ -83,7 +81,7 @@ class GenerateBinQrPdfJob implements ShouldQueue
             $processed = 0;
 
             $query->chunk(self::CHUNK_SIZE, function ($chunk) use (&$items, &$processed, $qrSize, $printJob) {
-                /** @var QrPrintJob $printJob */
+
                 foreach ($chunk as $bin) {
                     $code = (string) $bin->bin_final_code;
                     if ($code === '') {

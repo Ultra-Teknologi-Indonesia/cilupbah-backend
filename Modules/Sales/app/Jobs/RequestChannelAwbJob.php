@@ -125,8 +125,6 @@ class RequestChannelAwbJob implements ShouldQueue
                     'tracking_number' => $tn,
                 ]);
 
-                // Pre-generate Shopee shipping document (PDF) di background
-                // supaya klik "Cetak Label" di FE langsung download cepat.
                 PrepareShopeeShippingLabelJob::dispatch($order->id)
                     ->onQueue(config('queue.names.channel_sync'));
 

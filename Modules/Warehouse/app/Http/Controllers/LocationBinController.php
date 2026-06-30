@@ -370,7 +370,7 @@ class LocationBinController extends Controller
         }
 
         try {
-            /** @var \Modules\Warehouse\Services\BinQrPrintService $service */
+
             $service = app(\Modules\Warehouse\Services\BinQrPrintService::class);
             $job = $service->createJob($locationId, $opts);
         } catch (\Throwable $e) {

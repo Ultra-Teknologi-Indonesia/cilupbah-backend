@@ -84,9 +84,7 @@ class InventoryRepository
 
     public function getTotalAvailableByItem(string $itemId): int
     {
-        // Available di level item = on_hand_total - on_order_total - reserved_total.
-        // Jangan SUM(available) karena per-row sudah di-clamp max(0,…) dan
-        // komponen tersebar di per-bin row vs aggregate row (bin_id=null).
+
         $row = Inventory::where('item_id', $itemId)
             ->selectRaw('COALESCE(SUM(on_hand),0) AS oh, COALESCE(SUM(on_order),0) AS oo, COALESCE(SUM(reserved),0) AS r')
             ->first();

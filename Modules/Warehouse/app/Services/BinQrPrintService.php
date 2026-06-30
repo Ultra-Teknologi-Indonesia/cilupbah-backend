@@ -24,11 +24,6 @@ class BinQrPrintService
 
     public const STORAGE_DIR = 'qr-jobs';
 
-    /**
-     * Create job + dispatch worker.
-     *
-     * @param  array{paper?:string, bin_ids?:array<int,string>, user_id?:string|null}  $opts
-     */
     public function createJob(string $locationId, array $opts = []): QrPrintJob
     {
         $location = Location::find($locationId);
@@ -120,9 +115,6 @@ class BinQrPrintService
         return self::STORAGE_DIR.'/'.$jobId.'.pdf';
     }
 
-    /**
-     * Cleanup file PDF >24 jam. Dipanggil scheduled job.
-     */
     public function cleanupOldJobs(int $hours = 24): int
     {
         $threshold = now()->subHours($hours);

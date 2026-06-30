@@ -16,7 +16,7 @@ return new class extends Migration
                 ->default('pending')
                 ->index();
             $table->string('paper', 32)->default('thermal_50x40');
-            $table->json('bin_ids')->nullable(); // null = semua bin di lokasi
+            $table->json('bin_ids')->nullable(); 
             $table->unsignedInteger('total_bins')->default(0);
             $table->unsignedInteger('processed_bins')->default(0);
             $table->string('file_path', 500)->nullable();

@@ -22,10 +22,6 @@ class ChannelStockResolver
             return $result;
         }
 
-        // Compute available di level total: SUM(on_hand) - SUM(on_order) - SUM(reserved).
-        // Tidak boleh SUM(available) karena available per-row sudah di-clamp max(0, ..)
-        // dan komponen-nya tersebar di per-bin row (on_hand) vs aggregate row
-        // (on_order/reserved bin_id=null). Lihat StockItemResource.totalStocks().
         $stocks = DB::table('inventories')
             ->whereIn('item_id', $variantIds)
             ->where('location_id', $locationId)

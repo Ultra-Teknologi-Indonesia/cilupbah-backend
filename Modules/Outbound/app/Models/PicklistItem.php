@@ -48,10 +48,6 @@ class PicklistItem extends Model
         return $this->belongsTo(\Modules\Warehouse\Models\LocationBin::class, 'bin_id');
     }
 
-    /**
-     * Resolve gambar produk untuk picklist item.
-     * Prioritas: variant media (primary > first) > parent product media (primary > first).
-     */
     public function getImageUrlAttribute(): ?string
     {
         $variant = $this->product;

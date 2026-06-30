@@ -175,7 +175,7 @@ class PicklistController extends Controller
 
             $picklistNo = $picklist->picklist_no ?? 'PICK';
             $filename = "PICK-{$picklistNo}.pdf";
-            // Standardize on PICK-{picklist_no}; picklist_no sudah berformat PK-YYYYMMDD-XXXX
+
             $filename = str_starts_with((string) $picklistNo, 'PK-')
                 ? "{$picklistNo}.pdf"
                 : "PICK-{$picklistNo}.pdf";
@@ -362,11 +362,6 @@ class PicklistController extends Controller
         return response()->json(['success' => true, 'message' => 'Picklist berhasil dihapus.']);
     }
 
-    /**
-     * Inject `recommended_bin_code` ke setiap PicklistItem berdasarkan stok terkini
-     * di lokasi picklist. Picker boleh ambil dari bin lain saat scan/pick — kami
-     * tidak meng-lock bin pada PicklistItem.
-     */
     protected function attachRecommendedBins($picklist): void
     {
         $items = $picklist->items ?? collect();

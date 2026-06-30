@@ -406,13 +406,6 @@ class ShopeeOrderService
         return $fallback;
     }
 
-    /**
-     * Cek apakah order memerlukan self-design AWB (BE render PDF sendiri).
-     *
-     * Terjadi pada provider dummy/sandbox (J&T Express dummy, SPX Instant, dll)
-     * dimana Shopee TIDAK menyediakan PDF label. Field `allow_self_design_awb`
-     * di response `get_package_detail` menandakan kondisi ini.
-     */
     public function getPackageDetailByOrderSn(string $shopId, string $orderSn, ?string $packageNumber = null): array
     {
         $shop = $this->requireShop($shopId);
@@ -427,10 +420,6 @@ class ShopeeOrderService
         ], $token, $shop->shop_id));
     }
 
-    /**
-     * Ambil raw data shipping document untuk render label custom (self-design).
-     * Return: recipient, sender, addresses, tracking_number, routing_code, dll.
-     */
     public function getShippingDocumentDataInfo(string $shopId, string $orderSn, ?string $packageNumber = null, string $docType = 'NORMAL_AIR_WAYBILL'): array
     {
         $shop = $this->requireShop($shopId);
@@ -446,10 +435,6 @@ class ShopeeOrderService
         ], $token, $shop->shop_id));
     }
 
-    /**
-     * Boolean shortcut — return true jika order ini hanya bisa pakai self-design AWB.
-     * Selalu defensive: error / field hilang → false (fallback ke flow normal).
-     */
     public function checkAllowSelfDesignAwb(object $shop, string $orderSn, ?string $packageNumber = null): bool
     {
         try {

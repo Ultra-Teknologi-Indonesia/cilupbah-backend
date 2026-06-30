@@ -146,12 +146,10 @@ class OutboundFulfillmentController extends Controller
                 $order->location_id,
                 $userEmail
             );
-            
-            // Reload order to reflect new picklist/status
+
             $order = $this->fulfillmentService->findOrderByNo($request->order_no);
         } catch (\Exception $e) {
-            // Ignore if order is already picked, has active picklist, or not in reserved status.
-            // We still want to return the order data.
+
         }
 
         return response()->json(['success' => true, 'data' => $order]);

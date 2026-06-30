@@ -6,11 +6,6 @@ use Illuminate\Console\Command;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Models\SalesOrder;
 
-/**
- * One-shot backfill: dispatch PrepareShopeeShippingLabelJob untuk semua order
- * Shopee yang sudah punya tracking_number tapi belum pernah di-prepare.
- * Aman dijalankan berkali-kali (job idempotent).
- */
 class PrepareShopeeLabelsBackfill extends Command
 {
     protected $signature = 'sales:backfill-shopee-labels

@@ -11,19 +11,6 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Sales\Models\SalesOrder;
 
-/**
- * Pre-generate a Shopee shipping document (AWB PDF) in the background so the
- * user-facing "Cetak Label" action only needs to download the cached PDF —
- * no 30s polling wait in the request lifecycle.
- *
- * Shopee flow (Open API v2):
- *   1. tracking_number must already exist (handled by RequestChannelAwbJob)
- *   2. create_shipping_document   — kick off PDF generation (async at Shopee)
- *   3. get_shipping_document_result — poll until READY / FAILED
- *   4. download_shipping_document — fetched on demand from getShippingLabel()
- *
- * Job is idempotent: re-runs short-circuit when status is already 'ready'.
- */
 class PrepareShopeeShippingLabelJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -33,7 +20,6 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
 
     private const MAX_GLOBAL_ATTEMPTS = 3;
 
-    /** Poll delays (seconds) between get_shipping_document_result calls. */
     private const POLL_DELAYS = [5, 10, 15, 30, 60, 120];
 
     public function __construct(
@@ -80,9 +66,6 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
 
         $order->update(['shipping_label_status' => 'preparing']);
 
-        // === Self-Design AWB short-circuit ===
-        // Provider dummy (J&T Express sandbox, SPX Instant, dll) tidak punya PDF di Shopee.
-        // Kalau allow_self_design_awb=true → fetch raw data dan biar BE render PDF sendiri.
         try {
             $shop = (object) ['shop_id' => $shopId];
             $selfDesign = $shopee->checkAllowSelfDesignAwb($shop, $orderSn);
@@ -122,10 +105,9 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
                     'order_sn'  => $orderSn,
                     'exception' => $e->getMessage(),
                 ]);
-                // Fallback: lanjut flow normal di bawah, mungkin Shopee tetap bisa generate PDF.
+
             }
         }
-        // === end self-design branch ===
 
         try {
             $docType = $shopee->resolveSupportedDocType($shopId, $orderSn, 'NORMAL_AIR_WAYBILL');
@@ -143,8 +125,6 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
                 ?? $create['response']['result_list'][0]['fail_error']
                 ?? ($create['message'] ?? null);
 
-            // Some Shopee errors indicate the document was already created in a previous
-            // run — those are recoverable, so we still proceed to polling.
             $errCode = (string) $create['error'];
             $recoverable = str_contains($errCode, 'duplicate') || str_contains($errCode, 'already');
 
@@ -200,10 +180,8 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
                 throw new \RuntimeException('Shopee shipping document FAILED: ' . ($row['fail_message'] ?? $row['fail_error'] ?? 'unknown'));
             }
 
-            // PROCESSING — loop ke delay berikutnya.
         }
 
-        // Polling habis tanpa READY → reset ke not_ready dan retry global.
         $order->update(['shipping_label_status' => 'not_ready']);
 
         $nextAttempt = $this->attempt + 1;
