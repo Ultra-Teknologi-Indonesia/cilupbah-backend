@@ -21,6 +21,8 @@ class PicklistItem extends Model
         'qty_picked',
     ];
 
+    protected $appends = ['image_url'];
+
     public function picklist(): BelongsTo
     {
         return $this->belongsTo(Picklist::class);
@@ -44,5 +46,43 @@ class PicklistItem extends Model
     public function bin(): BelongsTo
     {
         return $this->belongsTo(\Modules\Warehouse\Models\LocationBin::class, 'bin_id');
+    }
+
+    /**
+     * Resolve gambar produk untuk picklist item.
+     * Prioritas: variant media (primary > first) > parent product media (primary > first).
+     */
+    public function getImageUrlAttribute(): ?string
+    {
+        $variant = $this->product;
+        if ($variant) {
+            $url = $this->resolveMediaUrl($variant->relationLoaded('media') ? $variant->media : null);
+            if ($url) {
+                return $url;
+            }
+
+            $parentProduct = $variant->product;
+            if ($parentProduct) {
+                $url = $this->resolveMediaUrl(
+                    $parentProduct->relationLoaded('media') ? $parentProduct->media : null
+                );
+                if ($url) {
+                    return $url;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    protected function resolveMediaUrl($media): ?string
+    {
+        if (! $media || $media->isEmpty()) {
+            return null;
+        }
+
+        $primary = $media->firstWhere('is_primary', true);
+
+        return $primary ? $primary->url : $media->first()->url;
     }
 }
