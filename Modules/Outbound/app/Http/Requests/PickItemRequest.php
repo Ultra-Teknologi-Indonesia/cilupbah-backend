@@ -15,7 +15,7 @@ class PickItemRequest extends FormRequest
     {
         return [
             'qty_picked' => 'required|integer|min:0',
-            'bin_id' => 'nullable|string|exists:location_bins,id',
+            'bin_code' => 'required|string',
         ];
     }
 }

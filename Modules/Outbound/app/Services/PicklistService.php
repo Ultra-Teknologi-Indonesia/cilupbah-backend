@@ -8,6 +8,7 @@ use Modules\Outbound\Jobs\ProcessPicklistCompleteJob;
 use Modules\Notification\Events\TaskAssigned;
 use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Inventory\Models\Inventory;
+use Modules\Warehouse\Models\LocationBin;
 use Illuminate\Support\Facades\DB;
 
 class PicklistService
@@ -57,19 +58,13 @@ class PicklistService
 
             foreach ($orders as $order) {
                 foreach ($order->items as $orderItem) {
-                    $bin = Inventory::where('item_id', $orderItem->item_id)
-                        ->where('location_id', $data['location_id'])
-                        ->where('on_hand', '>', 0)
-                        ->orderByDesc('on_hand')
-                        ->value('bin_id');
-
                     $this->picklistRepository->createItem([
                         'picklist_id' => $picklist->id,
                         'order_id' => $order->id,
                         'order_item_id' => $orderItem->id,
                         'item_id' => $orderItem->item_id,
                         'sku' => $orderItem->sku,
-                        'bin_id' => $bin,
+                        'bin_id' => null,
                         'qty_ordered' => $orderItem->qty_in_base,
                         'qty_picked' => 0,
                     ]);
@@ -163,12 +158,44 @@ class PicklistService
             throw new \Exception("Qty picked ({$data['qty_picked']}) melebihi qty ordered ({$item->qty_ordered}).");
         }
 
-        $updateData = ['qty_picked' => $data['qty_picked']];
-        if (isset($data['bin_id'])) {
-            $updateData['bin_id'] = $data['bin_id'];
+        $bin = LocationBin::where('bin_final_code', $data['bin_code'])
+            ->where('location_id', $picklist->location_id)
+            ->first();
+
+        if (!$bin) {
+            throw new \Exception("Rak dengan kode '{$data['bin_code']}' tidak ditemukan.");
         }
 
-        $this->picklistRepository->updateItem($itemId, $updateData);
+        $delta = $data['qty_picked'] - $item->qty_picked;
+
+        if ($delta > 0) {
+            DB::transaction(function () use ($item, $bin, $picklist, $data, $delta, $itemId) {
+                $inventory = Inventory::where('item_id', $item->item_id)
+                    ->where('location_id', $picklist->location_id)
+                    ->where('bin_id', $bin->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$inventory || $inventory->on_hand < $delta) {
+                    throw new \Exception("Stok tidak cukup di rak {$bin->bin_final_code}. Tersedia: " . ($inventory->on_hand ?? 0));
+                }
+
+                $inventory->on_hand -= $delta;
+                $inventory->reserved = max(0, $inventory->reserved - $delta);
+                $inventory->recalculateAvailable();
+                $inventory->save();
+
+                $this->picklistRepository->updateItem($itemId, [
+                    'qty_picked' => $data['qty_picked'],
+                    'bin_id' => $bin->id,
+                ]);
+            });
+        } else {
+            $this->picklistRepository->updateItem($itemId, [
+                'qty_picked' => $data['qty_picked'],
+                'bin_id' => $bin->id,
+            ]);
+        }
     }
 
     public function complete(string $id): Picklist

@@ -260,10 +260,10 @@ class PicklistController extends Controller
         requestBody: new OA\RequestBody(
             required: true,
             content: new OA\JsonContent(
-                required: ['qty_picked'],
+                required: ['qty_picked', 'bin_code'],
                 properties: [
                     new OA\Property(property: 'qty_picked', type: 'integer', minimum: 0),
-                    new OA\Property(property: 'bin_id', type: 'string', nullable: true),
+                    new OA\Property(property: 'bin_code', type: 'string'),
                 ]
             )
         ),
