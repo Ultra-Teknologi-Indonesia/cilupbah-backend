@@ -29,7 +29,7 @@ class PacklistRepository
     {
         return Packlist::with([
             'items.product:id,sku,product_id',
-            'items.orderItem:id,sku,description,qty_in_base',
+            'items.orderItem:id,sku,description,qty_in_base,image_url',
             'location:id,location_name,location_code',
             'packer:id,name,email',
             'order:id,salesorder_no,customer_name',

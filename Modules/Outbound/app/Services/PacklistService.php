@@ -36,10 +36,19 @@ class PacklistService
             $q->select('id')
                 ->from('sales_orders')
                 ->where('salesorder_no', $orderNo)
+                ->orWhere('channel_order_no', $orderNo)
+                ->orWhere('tracking_number', $orderNo)
                 ->limit(1);
         })
             ->whereIn('status', [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS])
-            ->with(['items.product:id,sku,product_id', 'items.product.product:id,product_name'])
+            ->with([
+                'items.product:id,sku,product_id',
+                'items.product.product:id,product_name',
+                'items.orderItem:id,sku,description,image_url',
+                'location:id,location_name,location_code',
+                'packer:id,name,email',
+                'order:id,salesorder_no,customer_name',
+            ])
             ->first();
 
         return $packlist;
