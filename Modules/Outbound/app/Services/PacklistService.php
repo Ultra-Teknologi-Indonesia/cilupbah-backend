@@ -61,7 +61,11 @@ class PacklistService
         return $packlist->load([
             'items.product:id,sku,product_id',
             'items.product.product:id,product_name',
-            'items.orderItem:id,sku,description,image_url',
+            'items.orderItem:id,sku,description,item_id',
+            'items.orderItem.product:id,sku,product_id',
+            'items.orderItem.product.media',
+            'items.orderItem.product.product:id,product_name',
+            'items.orderItem.product.product.media',
             'location:id,location_name,location_code',
             'packer:id,name,email',
             'order:id,salesorder_no,customer_name',
