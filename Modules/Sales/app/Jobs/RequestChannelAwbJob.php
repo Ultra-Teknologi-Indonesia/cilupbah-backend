@@ -21,8 +21,11 @@ class RequestChannelAwbJob implements ShouldQueue
     public int $tries = 3;
     public array $backoff = [10, 30, 60];
 
+    private const TRACKING_RETRY_DELAYS = [30, 60, 300, 600];
+
     public function __construct(
         public readonly string $orderId,
+        public readonly int $trackingAttempt = 0,
     ) {
         $this->onQueue(config('queue.names.channel_sync'));
     }
@@ -46,25 +49,39 @@ class RequestChannelAwbJob implements ShouldQueue
         }
 
         try {
-            $results = $fulfillment->readyToShip([$order->id]);
-            $result = $results[0] ?? null;
+            if ($this->trackingAttempt === 0) {
+                $results = $fulfillment->readyToShip([$order->id]);
+                $result = $results[0] ?? null;
 
-            Log::info('RequestChannelAwbJob: readyToShip dispatched', [
-                'order_id'      => $order->id,
-                'salesorder_no' => $order->salesorder_no,
-                'source'        => $source,
-                'status'        => $result['status'] ?? 'unknown',
-                'message'       => $result['message'] ?? null,
-            ]);
+                Log::info('RequestChannelAwbJob: readyToShip dispatched', [
+                    'order_id'      => $order->id,
+                    'salesorder_no' => $order->salesorder_no,
+                    'source'        => $source,
+                    'status'        => $result['status'] ?? 'unknown',
+                    'message'       => $result['message'] ?? null,
+                ]);
 
-            if (($result['status'] ?? null) === 'failed') {
-                throw new \RuntimeException($result['message'] ?? 'readyToShip gagal.');
+                if (($result['status'] ?? null) === 'failed') {
+                    throw new \RuntimeException($result['message'] ?? 'readyToShip gagal.');
+                }
             }
 
+            $gotTracking = false;
             if ($source === 'shopee') {
-                $this->fetchShopeeTracking($order);
+                $gotTracking = $this->fetchShopeeTracking($order);
             } elseif ($source === 'tiktok') {
-                $this->fetchTiktokTracking($order);
+                $gotTracking = $this->fetchTiktokTracking($order);
+            }
+
+            if (! $gotTracking && isset(self::TRACKING_RETRY_DELAYS[$this->trackingAttempt])) {
+                $delay = self::TRACKING_RETRY_DELAYS[$this->trackingAttempt];
+                Log::info('RequestChannelAwbJob: tracking belum tersedia, retry', [
+                    'order_id'      => $order->id,
+                    'salesorder_no' => $order->salesorder_no,
+                    'next_attempt'  => $this->trackingAttempt + 1,
+                    'delay_seconds' => $delay,
+                ]);
+                self::dispatch($order->id, $this->trackingAttempt + 1)->delay(now()->addSeconds($delay));
             }
         } catch (\Throwable $e) {
             Log::error('RequestChannelAwbJob: error saat request AWB', [
@@ -85,18 +102,18 @@ class RequestChannelAwbJob implements ShouldQueue
         ]);
     }
 
-    private function fetchShopeeTracking(SalesOrder $order): void
+    private function fetchShopeeTracking(SalesOrder $order): bool
     {
         try {
             $shop = app(ChannelShopRepository::class)->findByShopId($order->channel_shop_id);
             if (! $shop) {
-                return;
+                return false;
             }
 
             $tn = app(ShopeeOrderService::class)->resolveTrackingNumber(
                 $shop,
                 (string) $order->channel_order_no,
-                'READY_TO_SHIP'
+                $order->channel_status ?? 'READY_TO_SHIP'
             );
 
             if ($tn) {
@@ -106,6 +123,8 @@ class RequestChannelAwbJob implements ShouldQueue
                     'salesorder_no'   => $order->salesorder_no,
                     'tracking_number' => $tn,
                 ]);
+
+                return true;
             }
         } catch (\Throwable $e) {
             Log::warning('RequestChannelAwbJob: gagal fetch tracking_number', [
@@ -113,14 +132,16 @@ class RequestChannelAwbJob implements ShouldQueue
                 'exception' => $e->getMessage(),
             ]);
         }
+
+        return false;
     }
 
-    private function fetchTiktokTracking(SalesOrder $order): void
+    private function fetchTiktokTracking(SalesOrder $order): bool
     {
         try {
             $shop = app(ChannelShopRepository::class)->findByShopId($order->channel_shop_id);
             if (! $shop) {
-                return;
+                return false;
             }
 
             $resolved = app(TikTokOrderService::class)->resolveTrackingNumber(
@@ -141,6 +162,8 @@ class RequestChannelAwbJob implements ShouldQueue
                     'salesorder_no'   => $order->salesorder_no,
                     'tracking_number' => $resolved['tracking_number'],
                 ]);
+
+                return true;
             }
         } catch (\Throwable $e) {
             Log::warning('RequestChannelAwbJob: gagal fetch tracking_number', [
@@ -148,5 +171,7 @@ class RequestChannelAwbJob implements ShouldQueue
                 'exception' => $e->getMessage(),
             ]);
         }
+
+        return false;
     }
 }
