@@ -82,7 +82,7 @@ class GenerateBinQrPdfJob implements ShouldQueue
             $items = [];
             $processed = 0;
 
-            $query->chunkById(self::CHUNK_SIZE, function ($chunk) use (&$items, &$processed, $qrSize, $printJob) {
+            $query->chunk(self::CHUNK_SIZE, function ($chunk) use (&$items, &$processed, $qrSize, $printJob) {
                 foreach ($chunk as $bin) {
                     $code = (string) $bin->bin_final_code;
                     if ($code === '') {
