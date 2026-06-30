@@ -14,6 +14,7 @@ use Modules\Warehouse\Http\Requests\UniformApplyLocationBinRequest;
 use Modules\Warehouse\Http\Resources\LocationBinResource;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
+use Modules\Warehouse\Services\BinQrPrintService;
 use Modules\Warehouse\Services\LocationBinService;
 use OpenApi\Attributes as OA;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
@@ -313,7 +314,8 @@ class LocationBinController extends Controller
         $totalBins = (clone $query)->count();
         if ($totalBins > self::MAX_BINS_PER_REQUEST) {
             return $this->errorResponse(
-                'Jumlah bin melebihi batas ('.self::MAX_BINS_PER_REQUEST.'). Saring lewat parameter bin_ids.',
+                'Jumlah bin melebihi batas ('.self::MAX_BINS_PER_REQUEST.') untuk endpoint sinkron. '
+                .'Gunakan POST /locations/{id}/bins/print-qr-job (async + progress polling) untuk bulk besar.',
                 422
             );
         }
@@ -349,6 +351,37 @@ class LocationBinController extends Controller
 
             return $this->errorResponse('Gagal membuat PDF QR bin: '.$e->getMessage(), 500);
         }
+    }
+
+    public function printQrJob(Request $request, string $locationId)
+    {
+        $validated = $request->validate([
+            'bin_ids' => 'nullable|string',
+            'paper' => 'nullable|string|in:thermal_50x40,thermal_80x40,a4_single,a4_multi',
+        ]);
+
+        $opts = [
+            'paper' => $validated['paper'] ?? self::PAPER_THERMAL_50X40,
+            'user_id' => auth()->id(),
+        ];
+
+        if (! empty($validated['bin_ids'])) {
+            $opts['bin_ids'] = array_map('trim', explode(',', (string) $validated['bin_ids']));
+        }
+
+        try {
+            /** @var \Modules\Warehouse\Services\BinQrPrintService $service */
+            $service = app(\Modules\Warehouse\Services\BinQrPrintService::class);
+            $job = $service->createJob($locationId, $opts);
+        } catch (\Throwable $e) {
+            report($e);
+            return $this->errorResponse('Gagal membuat job print QR: ' . $e->getMessage(), 500);
+        }
+
+        return $this->successResponse([
+            'job_id' => $job->id,
+            'status' => $job->status,
+        ], 'Job print QR rak berhasil dibuat.');
     }
 
     protected function applyPaperSettings($pdf, string $paper): void
