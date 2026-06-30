@@ -46,7 +46,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('purchase/orders/{id}', [PurchaseOrderController::class, 'show'])->name('purchase.orders.show');
     Route::get('purchase/orders/{id}/items', [PurchaseOrderController::class, 'items'])->name('purchase.orders.items');
     Route::put('purchase/orders/{id}', [PurchaseOrderController::class, 'update'])->name('purchase.orders.update');
-    Route::post('purchase/orders/{id}/approve', [PurchaseOrderController::class, 'approve'])->name('purchase.orders.approve');
+
     Route::post('purchase/orders/{id}/receive', [PurchaseOrderController::class, 'receive'])->name('purchase.orders.receive');
     Route::post('purchase/orders/{id}/cancel', [PurchaseOrderController::class, 'cancel'])->name('purchase.orders.cancel');
     Route::delete('purchase/orders/{id}', [PurchaseOrderController::class, 'destroy'])->name('purchase.orders.destroy');

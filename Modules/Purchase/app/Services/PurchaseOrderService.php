@@ -43,7 +43,7 @@ class PurchaseOrderService
     {
         return DB::transaction(function () use ($data) {
             $data['po_number'] = $data['po_number'] ?? $this->poRepository->generatePoNumber();
-            $data['status'] = PurchaseOrder::STATUS_DRAFT;
+            $data['status'] = PurchaseOrder::STATUS_OPEN;
             $data['created_by'] = auth()->user()?->name ?? 'system';
 
             $totals = $this->calculateTotals($data['items'], $data['is_tax_included'] ?? false);
@@ -55,62 +55,51 @@ class PurchaseOrderService
                 $itemData['purchase_order_id'] = $po->id;
                 $this->calculateItemAmounts($itemData);
                 $this->poRepository->createItem($itemData);
+                
+                // Langsung sesuaikan stok on_order
+                $this->adjustOnOrder($itemData['item_id'], $po->location_id, $itemData['qty']);
             }
 
-            return $po->load('items.variant.product:id,name');
+            return $po->fresh()->load('items.variant.product:id,name');
         });
     }
 
     public function update(string $id, array $data): PurchaseOrder
     {
         return DB::transaction(function () use ($id, $data) {
-            $po = $this->poRepository->findById($id);
-
-            if (!$po) {
-                throw new \Exception('PO tidak ditemukan.');
-            }
-
-            if ($po->status !== PurchaseOrder::STATUS_DRAFT) {
-                throw new \Exception('Hanya PO berstatus DRAFT yang bisa diedit.');
-            }
-
-            $totals = $this->calculateTotals($data['items'] ?? [], $data['is_tax_included'] ?? false);
-            $data = array_merge($data, $totals);
-
-            $po->update($data);
-
-            if (isset($data['items'])) {
-                $po->items()->delete();
-                foreach ($data['items'] as $itemData) {
-                    $itemData['purchase_order_id'] = $po->id;
-                    $this->calculateItemAmounts($itemData);
-                    $this->poRepository->createItem($itemData);
-                }
-            }
-
-            return $this->getById($id);
-        });
-    }
-
-    public function approve(string $id): PurchaseOrder
-    {
-        return DB::transaction(function () use ($id) {
             $po = $this->poRepository->findByIdForUpdate($id);
 
             if (!$po) {
                 throw new \Exception('PO tidak ditemukan.');
             }
 
-            if ($po->status !== PurchaseOrder::STATUS_DRAFT) {
-                throw new \Exception("PO sudah berstatus {$po->status}, tidak bisa diapprove.");
+            if ($po->status !== PurchaseOrder::STATUS_OPEN) {
+                throw new \Exception('Hanya PO berstatus OPEN yang bisa diedit.');
             }
 
-            $this->poRepository->updateStatus($po, PurchaseOrder::STATUS_OPEN);
+            $totals = $this->calculateTotals($data['items'] ?? [], $data['is_tax_included'] ?? false);
+            $data = array_merge($data, $totals);
 
-            $po->load('items');
-            foreach ($po->items as $item) {
-                $this->adjustOnOrder($item->item_id, $po->location_id, $item->qty);
+            if (isset($data['items'])) {
+                $po->load('items');
+                // Kembalikan on_order lama terlebih dahulu
+                foreach ($po->items as $item) {
+                    $this->adjustOnOrder($item->item_id, $po->location_id, -$item->qty);
+                }
+
+                $po->items()->delete();
+                
+                foreach ($data['items'] as $itemData) {
+                    $itemData['purchase_order_id'] = $po->id;
+                    $this->calculateItemAmounts($itemData);
+                    $this->poRepository->createItem($itemData);
+                    
+                    // Tambahkan on_order yang baru
+                    $this->adjustOnOrder($itemData['item_id'], $data['location_id'] ?? $po->location_id, $itemData['qty']);
+                }
             }
+
+            $po->update($data);
 
             return $this->getById($id);
         });

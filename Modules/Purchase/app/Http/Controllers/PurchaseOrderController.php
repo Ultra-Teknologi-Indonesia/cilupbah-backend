@@ -67,15 +67,6 @@ class PurchaseOrderController extends Controller
         }
     }
 
-    public function approve(string $id): JsonResponse
-    {
-        try {
-            $po = $this->poService->approve($id);
-            return $this->successResponse($po, 'PO berhasil diapprove');
-        } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
-        }
-    }
 
     public function receive(string $id, ReceivePurchaseOrderRequest $request): JsonResponse
     {
