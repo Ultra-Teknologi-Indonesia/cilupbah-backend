@@ -171,7 +171,7 @@ class OutboundFulfillmentService
             ->orWhere('channel_order_no', $orderNo)
             ->with([
                 'items.product:id,sku,product_id',
-                'items.product.product:id,product_name',
+                'items.product.product:id,name',
                 'location:id,location_name,location_code',
             ])
             ->first();
