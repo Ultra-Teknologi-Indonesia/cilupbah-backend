@@ -32,7 +32,7 @@ class PacklistRepository
             'items.orderItem:id,sku,description,qty_in_base,item_id',
             'items.orderItem.product:id,sku,product_id',
             'items.orderItem.product.media',
-            'items.orderItem.product.product:id,product_name',
+            'items.orderItem.product.product:id,name',
             'items.orderItem.product.product.media',
             'location:id,location_name,location_code',
             'packer:id,name,email',
