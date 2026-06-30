@@ -80,15 +80,12 @@ class PicklistRepository
 
     public function generatePicklistNo(): string
     {
-        $date = now()->format('Ymd');
-        $prefix = "PK-{$date}-";
-
-        $last = Picklist::where('picklist_no', 'like', "{$prefix}%")
-            ->orderByDesc('picklist_no')
+        $last = Picklist::whereRaw("picklist_no ~ '^PICK-[0-9]+$'")
+            ->orderByRaw("CAST(SUBSTRING(picklist_no FROM 6) AS BIGINT) DESC")
             ->value('picklist_no');
 
-        $seq = $last ? (int) substr($last, -4) + 1 : 1;
+        $seq = $last ? ((int) substr($last, 5)) + 1 : (Picklist::count() + 1);
 
-        return $prefix . str_pad($seq, 4, '0', STR_PAD_LEFT);
+        return 'PICK-' . str_pad((string) $seq, 9, '0', STR_PAD_LEFT);
     }
 }
