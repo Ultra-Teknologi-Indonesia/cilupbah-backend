@@ -133,7 +133,6 @@ class PurchaseOrderService
                 }
 
                 $this->poRepository->updateItemReceivedQty($poItem->id, $receiveItem['qty']);
-                $this->adjustOnOrder($poItem->item_id, $po->location_id, -$receiveItem['qty']);
 
                 $inboundItems[] = [
                     'item_id'      => $poItem->item_id,

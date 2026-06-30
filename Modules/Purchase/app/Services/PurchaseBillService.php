@@ -4,12 +4,17 @@ namespace Modules\Purchase\Services;
 
 use Modules\Purchase\Repositories\PurchaseBillRepository;
 use Modules\Purchase\Models\PurchaseBill;
+use Modules\Inventory\Repositories\InventoryRepository;
+use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
 
 class PurchaseBillService
 {
+    use StockLockable;
+
     public function __construct(
-        protected PurchaseBillRepository $billRepository
+        protected PurchaseBillRepository $billRepository,
+        protected InventoryRepository $inventoryRepository
     ) {}
 
     public function getAllPaginated(int $limit = 10)
@@ -45,6 +50,9 @@ class PurchaseBillService
                 $itemData['purchase_bill_id'] = $bill->id;
                 $this->calculateItemAmounts($itemData);
                 $this->billRepository->createItem($itemData);
+                
+                // Kurangi stok on_order ketika faktur (bill) keluar
+                $this->adjustOnOrder($itemData['item_id'], $bill->location_id, -$itemData['qty']);
             }
 
             return $bill->load('items.variant.product:id,name');
@@ -67,16 +75,26 @@ class PurchaseBillService
             $totals = $this->calculateTotals($data['items'] ?? [], $data['is_tax_included'] ?? false);
             $data = array_merge($data, $totals);
 
-            $bill->update($data);
-
             if (isset($data['items'])) {
+                $bill->load('items');
+                // Kembalikan stok on_order dari item lama
+                foreach ($bill->items as $item) {
+                    $this->adjustOnOrder($item->item_id, $bill->location_id, $item->qty);
+                }
+
                 $bill->items()->delete();
+                
                 foreach ($data['items'] as $itemData) {
                     $itemData['purchase_bill_id'] = $bill->id;
                     $this->calculateItemAmounts($itemData);
                     $this->billRepository->createItem($itemData);
+                    
+                    // Kurangi stok on_order untuk item baru
+                    $this->adjustOnOrder($itemData['item_id'], $data['location_id'] ?? $bill->location_id, -$itemData['qty']);
                 }
             }
+
+            $bill->update($data);
 
             return $this->getById($id);
         });
@@ -84,14 +102,23 @@ class PurchaseBillService
 
     public function delete(string $id): bool
     {
-        $bill = $this->billRepository->findById($id);
-        if (!$bill) {
-            throw new \Exception('Tagihan tidak ditemukan.');
-        }
-        if (in_array($bill->status, [PurchaseBill::STATUS_PAID])) {
-            throw new \Exception('Tagihan yang sudah lunas tidak bisa dihapus.');
-        }
-        return $this->billRepository->delete($bill);
+        return DB::transaction(function () use ($id) {
+            $bill = $this->billRepository->findById($id);
+            if (!$bill) {
+                throw new \Exception('Tagihan tidak ditemukan.');
+            }
+            if (in_array($bill->status, [PurchaseBill::STATUS_PAID])) {
+                throw new \Exception('Tagihan yang sudah lunas tidak bisa dihapus.');
+            }
+            
+            $bill->load('items');
+            // Kembalikan stok on_order jika faktur dihapus
+            foreach ($bill->items as $item) {
+                $this->adjustOnOrder($item->item_id, $bill->location_id, $item->qty);
+            }
+
+            return $this->billRepository->delete($bill);
+        });
     }
 
     public function getUnpaid(int $limit = 10)
@@ -147,5 +174,21 @@ class PurchaseBillService
             'total_tax'    => round($totalTax, 2),
             'total_amount' => round($subTotal - $totalDisc + $totalTax, 2),
         ];
+    }
+
+    private function adjustOnOrder(string $itemId, string $locationId, int $qty): void
+    {
+        $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty) {
+            DB::transaction(function () use ($itemId, $locationId, $qty) {
+                $inventory = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
+
+                if ($qty <= 0 && $inventory->on_order === 0) {
+                    return;
+                }
+
+                $inventory->on_order = max(0, $inventory->on_order + $qty);
+                $this->inventoryRepository->updateStock($inventory);
+            });
+        });
     }
 }
