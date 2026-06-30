@@ -1,10 +1,10 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Warehouse\Http\Controllers\ChannelWarehouseController;
+use Modules\Warehouse\Http\Controllers\LocationBinController;
 use Modules\Warehouse\Http\Controllers\LocationController;
 use Modules\Warehouse\Http\Controllers\LocationZoneController;
-use Modules\Warehouse\Http\Controllers\LocationBinController;
-use Modules\Warehouse\Http\Controllers\ChannelWarehouseController;
 use Modules\Warehouse\Http\Controllers\WarehouseSettingController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
@@ -24,6 +24,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::delete('locations/{locationId}/zones/{zoneId}', [LocationZoneController::class, 'destroy'])->whereUuid(['locationId', 'zoneId'])->name('warehouse.zones.destroy');
 
     Route::get('locations/{locationId}/bins', [LocationBinController::class, 'index'])->whereUuid('locationId')->name('warehouse.bins.index');
+    Route::get('locations/{locationId}/bins/print-qr', [LocationBinController::class, 'printQr'])->whereUuid('locationId')->name('warehouse.bins.print-qr');
     Route::post('locations/{locationId}/bins/preview', [LocationBinController::class, 'preview'])->whereUuid('locationId')->name('warehouse.bins.preview');
     Route::post('locations/{locationId}/bins/generate', [LocationBinController::class, 'generate'])->whereUuid('locationId')->name('warehouse.bins.generate');
     Route::put('locations/{locationId}/bins/bulk', [LocationBinController::class, 'bulkUpdate'])->whereUuid('locationId')->name('warehouse.bins.bulk-update');

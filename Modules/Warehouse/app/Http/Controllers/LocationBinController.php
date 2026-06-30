@@ -3,14 +3,21 @@
 namespace Modules\Warehouse\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Warehouse\Http\Requests\GenerateLocationBinRequest;
 use Modules\Warehouse\Http\Requests\StoreLocationBinRequest;
 use Modules\Warehouse\Http\Requests\UniformApplyLocationBinRequest;
 use Modules\Warehouse\Http\Resources\LocationBinResource;
+use Modules\Warehouse\Models\Location;
+use Modules\Warehouse\Models\LocationBin;
 use Modules\Warehouse\Services\LocationBinService;
 use OpenApi\Attributes as OA;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
+use Throwable;
 
 #[OA\Tag(name: 'Location Bins', description: 'API Endpoints for Warehouse Location Bins')]
 #[OA\Schema(
@@ -43,7 +50,7 @@ class LocationBinController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Location Bins'],
         parameters: [
-            new OA\Parameter(name: 'locationId', in: 'path', required: true, description: 'ID of the location', schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'locationId', in: 'path', required: true, description: 'ID of the location', schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(
@@ -52,11 +59,11 @@ class LocationBinController extends Controller
                 content: new OA\JsonContent(
                     properties: [
                         new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/LocationBin')),
-                        new OA\Property(property: 'message', type: 'string', example: 'Daftar bin berhasil diambil')
+                        new OA\Property(property: 'message', type: 'string', example: 'Daftar bin berhasil diambil'),
                     ]
                 )
             ),
-            new OA\Response(response: 401, description: 'Unauthenticated')
+            new OA\Response(response: 401, description: 'Unauthenticated'),
         ]
     )]
     public function index(string $locationId): JsonResponse
@@ -76,7 +83,7 @@ class LocationBinController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Location Bins'],
         parameters: [
-            new OA\Parameter(name: 'locationId', in: 'path', required: true, description: 'ID of the location', schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'locationId', in: 'path', required: true, description: 'ID of the location', schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(
@@ -85,19 +92,19 @@ class LocationBinController extends Controller
                 content: new OA\JsonContent(
                     properties: [
                         new OA\Property(property: 'data', ref: '#/components/schemas/LocationBin'),
-                        new OA\Property(property: 'message', type: 'string', example: 'Default bin berhasil diambil')
+                        new OA\Property(property: 'message', type: 'string', example: 'Default bin berhasil diambil'),
                     ]
                 )
             ),
             new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 404, description: 'Default bin tidak ditemukan.')
+            new OA\Response(response: 404, description: 'Default bin tidak ditemukan.'),
         ]
     )]
     public function defaultBin(string $locationId): JsonResponse
     {
         $bin = $this->binService->getDefaultBin($locationId);
 
-        if (!$bin) {
+        if (! $bin) {
             return $this->errorResponse('Default bin tidak ditemukan.', 404);
         }
 
@@ -110,7 +117,7 @@ class LocationBinController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Location Bins'],
         parameters: [
-            new OA\Parameter(name: 'locationId', in: 'path', required: true, description: 'ID of the location', schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'locationId', in: 'path', required: true, description: 'ID of the location', schema: new OA\Schema(type: 'string')),
         ],
         requestBody: new OA\RequestBody(
             required: true,
@@ -125,7 +132,7 @@ class LocationBinController extends Controller
                     new OA\Property(property: 'qty_column', type: 'integer', example: 3),
                     new OA\Property(property: 'bin_code', type: 'string', example: 'B'),
                     new OA\Property(property: 'qty_bin', type: 'integer', example: 4),
-                    new OA\Property(property: 'max_qty', type: 'integer', example: 100)
+                    new OA\Property(property: 'max_qty', type: 'integer', example: 100),
                 ]
             )
         ),
@@ -136,12 +143,12 @@ class LocationBinController extends Controller
                 content: new OA\JsonContent(
                     properties: [
                         new OA\Property(property: 'data', type: 'object'),
-                        new OA\Property(property: 'message', type: 'string', example: 'Preview berhasil di-generate')
+                        new OA\Property(property: 'message', type: 'string', example: 'Preview berhasil di-generate'),
                     ]
                 )
             ),
             new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 422, description: 'Validation Error')
+            new OA\Response(response: 422, description: 'Validation Error'),
         ]
     )]
     public function preview(GenerateLocationBinRequest $request, string $locationId): JsonResponse
@@ -182,7 +189,7 @@ class LocationBinController extends Controller
     {
         try {
             $bin = $this->binService->create($request->validated());
-        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+        } catch (UniqueConstraintViolationException $e) {
             return $this->errorResponse('Bin dengan kode tersebut sudah ada pada lokasi ini.', 422);
         }
 
@@ -209,7 +216,7 @@ class LocationBinController extends Controller
     {
         try {
             $result = $this->binService->massGenerate($locationId, $request->validated());
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        } catch (ModelNotFoundException $e) {
             return $this->errorResponse('Lokasi tidak ditemukan.', 404);
         }
 
@@ -230,11 +237,162 @@ class LocationBinController extends Controller
 
         try {
             $updated = $this->binService->bulkUpdate($locationId, $validated['bins']);
+
             return $this->successResponse(['updated' => $updated], 'Rak berhasil diperbarui.');
-        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+        } catch (UniqueConstraintViolationException $e) {
             return $this->errorResponse('Kode rak harus unik dalam satu lokasi. Ada kode yang duplikat.', 422);
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public const PAPER_THERMAL_50X40 = 'thermal_50x40';
+
+    public const PAPER_THERMAL_80X40 = 'thermal_80x40';
+
+    public const PAPER_A4_SINGLE = 'a4_single';
+
+    public const PAPER_A4_MULTI = 'a4_multi';
+
+    public const MAX_BINS_PER_REQUEST = 500;
+
+    #[OA\Get(
+        path: '/api/v1/locations/{locationId}/bins/print-qr',
+        summary: 'Cetak label QR per bin sebagai PDF (default: thermal 50x40mm)',
+        security: [['bearerAuth' => []]],
+        tags: ['Location Bins'],
+        parameters: [
+            new OA\Parameter(name: 'locationId', in: 'path', required: true, description: 'ID lokasi', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'bin_ids', in: 'query', required: false, description: 'CSV daftar UUID bin (opsional, default semua bin di lokasi)', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'paper', in: 'query', required: false, schema: new OA\Schema(type: 'string', enum: ['thermal_50x40', 'thermal_80x40', 'a4_single', 'a4_multi'], default: 'thermal_50x40')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'PDF stream', content: new OA\MediaType(mediaType: 'application/pdf')),
+            new OA\Response(response: 404, description: 'Lokasi tidak ditemukan'),
+            new OA\Response(response: 422, description: 'Validation Error / batas bin terlampaui'),
+        ]
+    )]
+    public function printQr(Request $request, string $locationId)
+    {
+        $validated = $request->validate([
+            'bin_ids' => 'nullable|string',
+            'paper' => 'nullable|string|in:thermal_50x40,thermal_80x40,a4_single,a4_multi',
+        ]);
+
+        $location = Location::find($locationId);
+        if (! $location) {
+            return $this->errorResponse('Lokasi tidak ditemukan.', 404);
+        }
+
+        $paper = $validated['paper'] ?? self::PAPER_THERMAL_50X40;
+
+        $binIds = [];
+        if (! empty($validated['bin_ids'])) {
+            $binIds = collect(explode(',', (string) $validated['bin_ids']))
+                ->map(fn ($id) => trim($id))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            foreach ($binIds as $id) {
+                if (! preg_match('/^[0-9a-f\-]{32,36}$/i', $id)) {
+                    return $this->errorResponse("ID bin tidak valid: {$id}", 422);
+                }
+            }
+        }
+
+        $query = LocationBin::where('location_id', $locationId)
+            ->whereNotNull('bin_final_code')
+            ->where('bin_final_code', '!=', '');
+
+        if (! empty($binIds)) {
+            $query->whereIn('id', $binIds);
+        }
+
+        $totalBins = (clone $query)->count();
+        if ($totalBins > self::MAX_BINS_PER_REQUEST) {
+            return $this->errorResponse(
+                'Jumlah bin melebihi batas ('.self::MAX_BINS_PER_REQUEST.'). Saring lewat parameter bin_ids.',
+                422
+            );
+        }
+
+        $bins = $query->orderBy('bin_final_code')->get();
+
+        try {
+            $qrSize = $this->qrSizeFor($paper);
+            $items = $bins->map(function (LocationBin $bin) use ($qrSize) {
+                return [
+                    'bin_final_code' => (string) $bin->bin_final_code,
+                    'qr_data_uri' => $this->generateQrDataUri((string) $bin->bin_final_code, $qrSize),
+                ];
+            })->all();
+
+            $view = Pdf::loadView('warehouse::pdf.bin-qr', [
+                'location' => $location,
+                'items' => $items,
+                'paper' => $paper,
+            ]);
+
+            $this->applyPaperSettings($view, $paper);
+
+            $filename = sprintf(
+                'bin-qr-%s-%s.pdf',
+                $location->location_code ?: 'LOC',
+                now()->format('YmdHis')
+            );
+
+            return $view->stream($filename);
+        } catch (Throwable $e) {
+            report($e);
+
+            return $this->errorResponse('Gagal membuat PDF QR bin: '.$e->getMessage(), 500);
+        }
+    }
+
+    protected function applyPaperSettings($pdf, string $paper): void
+    {
+        switch ($paper) {
+            case self::PAPER_THERMAL_50X40:
+                $pdf->setPaper([0, 0, 141.7, 113.4], 'portrait');
+                break;
+            case self::PAPER_THERMAL_80X40:
+                $pdf->setPaper([0, 0, 226.8, 113.4], 'portrait');
+                break;
+            case self::PAPER_A4_SINGLE:
+            case self::PAPER_A4_MULTI:
+            default:
+                $pdf->setPaper('a4', 'portrait');
+                break;
+        }
+    }
+
+    protected function qrSizeFor(string $paper): int
+    {
+        return match ($paper) {
+            self::PAPER_THERMAL_50X40 => 200,
+            self::PAPER_THERMAL_80X40 => 220,
+            self::PAPER_A4_SINGLE => 600,
+            self::PAPER_A4_MULTI => 220,
+            default => 200,
+        };
+    }
+
+    protected function generateQrDataUri(string $content, int $size): ?string
+    {
+        try {
+            $svg = QrCode::format('svg')
+                ->size($size)
+                ->margin(0)
+                ->errorCorrection('M')
+                ->generate($content);
+
+            return 'data:image/svg+xml;base64,'.base64_encode((string) $svg);
+        } catch (Throwable $e) {
+            report($e);
+
+            return null;
         }
     }
 }
