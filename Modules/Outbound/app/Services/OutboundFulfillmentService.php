@@ -168,6 +168,7 @@ class OutboundFulfillmentService
     public function findOrderByNo(string $orderNo): ?Order
     {
         return Order::where('salesorder_no', $orderNo)
+            ->orWhere('channel_order_no', $orderNo)
             ->with([
                 'items.product:id,sku,product_id',
                 'items.product.product:id,product_name',
