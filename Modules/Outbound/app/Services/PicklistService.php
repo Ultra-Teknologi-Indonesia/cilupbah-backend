@@ -158,6 +158,11 @@ class PicklistService
             throw new \Exception("Qty picked ({$data['qty_picked']}) melebihi qty ordered ({$item->qty_ordered}).");
         }
 
+        $isSku = $picklist->items->contains(fn ($i) => strcasecmp($i->sku, $data['bin_code']) === 0);
+        if ($isSku) {
+            throw new \Exception("'{$data['bin_code']}' adalah SKU produk, bukan kode rak.");
+        }
+
         $bin = LocationBin::where('bin_final_code', $data['bin_code'])
             ->where('location_id', $picklist->location_id)
             ->first();
