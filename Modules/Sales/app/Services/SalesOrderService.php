@@ -329,6 +329,29 @@ class SalesOrderService
                 // Edge: status ready tapi download gagal — jatuh ke fallback sync.
             }
 
+            // Self-Design AWB — Shopee tidak provide PDF (dummy J&T, SPX Instant, dll).
+            // BE render PDF sendiri dari raw data yang sudah dicache oleh job.
+            if ($order->shipping_label_status === 'self_design_ready') {
+                try {
+                    $pdfBase64 = $this->renderSelfDesignAwb($order);
+
+                    return [
+                        'type'                 => 'base64',
+                        'content_type'         => 'application/pdf',
+                        'document_base64'      => $pdfBase64,
+                        'source'               => 'shopee',
+                        'requires_self_design' => true,
+                    ];
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::error('SalesOrderService: render self-design AWB gagal', [
+                        'order_id'  => $order->id,
+                        'exception' => $e->getMessage(),
+                    ]);
+
+                    throw new \RuntimeException('Gagal render label custom (self-design): ' . $e->getMessage());
+                }
+            }
+
             if ($order->shipping_label_status === 'preparing') {
                 throw new ShippingLabelPreparingException(
                     'Label sedang disiapkan oleh Shopee. Coba lagi dalam 1-2 menit.'
@@ -371,6 +394,74 @@ class SalesOrderService
         }
 
         throw new \InvalidArgumentException("Channel '{$source}' belum mendukung cetak resi otomatis.");
+    }
+
+    /**
+     * Render Self-Design AWB ke PDF (base64) — dipakai ketika channel
+     * (Shopee dummy J&T, SPX Instant, dll) tidak menyediakan PDF label.
+     *
+     * Sumber data: kolom `shipping_label_raw_data` yang sudah di-cache oleh
+     * PrepareShopeeShippingLabelJob ketika `allow_self_design_awb=true`.
+     */
+    public function renderSelfDesignAwb(SalesOrder $order): string
+    {
+        $raw = $order->shipping_label_raw_data ?? [];
+
+        // Defensive fallback: kalau raw_data hilang/incomplete, isi dari kolom SO sendiri.
+        $recipientFromOrder = [
+            'name'         => $order->shipping_full_name,
+            'phone'        => $order->shipping_phone,
+            'full_address' => $order->shipping_address,
+            'town'         => $order->shipping_area,
+            'city'         => $order->shipping_city,
+            'state'        => $order->shipping_province,
+            'zipcode'      => $order->shipping_post_code,
+        ];
+
+        if (empty($raw['recipient_address']) && empty($raw['recipient'])) {
+            $raw['recipient_address'] = $recipientFromOrder;
+        }
+
+        $tracking = (string) ($raw['tracking_number']
+            ?? $raw['tracking_no']
+            ?? $order->tracking_number
+            ?? '');
+        $courier = (string) ($raw['shipping_carrier']
+            ?? $raw['carrier']
+            ?? $order->shipping_provider
+            ?? 'COURIER');
+        $orderSn = (string) ($order->channel_order_no ?? $order->salesorder_no);
+
+        // Barcode/QR fallback: render tracking sebagai QR SVG inline.
+        $barcodeUri = null;
+        if ($tracking !== '') {
+            try {
+                $svg = \SimpleSoftwareIO\QrCode\Facades\QrCode::format('svg')
+                    ->size(300)
+                    ->margin(0)
+                    ->errorCorrection('M')
+                    ->generate($tracking);
+                $barcodeUri = 'data:image/svg+xml;base64,' . base64_encode((string) $svg);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('SalesOrderService: QR gen gagal untuk self-design AWB', [
+                    'order_id'  => $order->id,
+                    'exception' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('sales::pdf.self-design-awb', [
+            'data'       => $raw,
+            'orderSn'    => $orderSn,
+            'tracking'   => $tracking,
+            'courier'    => $courier,
+            'barcodeUri' => $barcodeUri,
+        ]);
+
+        // A6 thermal-ish: 100mm x 150mm (~283 x 425 pt)
+        $pdf->setPaper([0, 0, 283.46, 425.20], 'portrait');
+
+        return base64_encode($pdf->output());
     }
 
     private function idempotencyKey(?string $source, string $salesOrderNo): string

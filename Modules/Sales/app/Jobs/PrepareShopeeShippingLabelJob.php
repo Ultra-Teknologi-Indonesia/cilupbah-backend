@@ -63,7 +63,7 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
             return;
         }
 
-        if ($order->shipping_label_status === 'ready') {
+        if (in_array($order->shipping_label_status, ['ready', 'self_design_ready'], true)) {
             return;
         }
 
@@ -79,6 +79,53 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
         }
 
         $order->update(['shipping_label_status' => 'preparing']);
+
+        // === Self-Design AWB short-circuit ===
+        // Provider dummy (J&T Express sandbox, SPX Instant, dll) tidak punya PDF di Shopee.
+        // Kalau allow_self_design_awb=true → fetch raw data dan biar BE render PDF sendiri.
+        try {
+            $shop = (object) ['shop_id' => $shopId];
+            $selfDesign = $shopee->checkAllowSelfDesignAwb($shop, $orderSn);
+        } catch (\Throwable $e) {
+            $selfDesign = false;
+            Log::warning('PrepareShopeeShippingLabelJob: checkAllowSelfDesignAwb gagal, fallback ke flow normal', [
+                'order_id'  => $order->id,
+                'order_sn'  => $orderSn,
+                'exception' => $e->getMessage(),
+            ]);
+        }
+
+        if ($selfDesign) {
+            try {
+                $rawRes = $shopee->getShippingDocumentDataInfo($shopId, $orderSn);
+                $rawData = $rawRes['response']['data_info_list'][0]
+                    ?? $rawRes['response']['result_list'][0]
+                    ?? $rawRes['response']
+                    ?? [];
+
+                $order->update([
+                    'shipping_label_status'      => 'self_design_ready',
+                    'shipping_label_doc_type'    => 'SELF_DESIGN',
+                    'shipping_label_prepared_at' => now(),
+                    'shipping_label_raw_data'    => $rawData,
+                ]);
+
+                Log::info('PrepareShopeeShippingLabelJob: self-design AWB siap (BE akan render PDF)', [
+                    'order_id' => $order->id,
+                    'order_sn' => $orderSn,
+                ]);
+
+                return;
+            } catch (\Throwable $e) {
+                Log::error('PrepareShopeeShippingLabelJob: gagal fetch self-design raw data, fallback ke create+poll', [
+                    'order_id'  => $order->id,
+                    'order_sn'  => $orderSn,
+                    'exception' => $e->getMessage(),
+                ]);
+                // Fallback: lanjut flow normal di bawah, mungkin Shopee tetap bisa generate PDF.
+            }
+        }
+        // === end self-design branch ===
 
         try {
             $docType = $shopee->resolveSupportedDocType($shopId, $orderSn, 'NORMAL_AIR_WAYBILL');

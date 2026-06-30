@@ -406,6 +406,64 @@ class ShopeeOrderService
         return $fallback;
     }
 
+    /**
+     * Cek apakah order memerlukan self-design AWB (BE render PDF sendiri).
+     *
+     * Terjadi pada provider dummy/sandbox (J&T Express dummy, SPX Instant, dll)
+     * dimana Shopee TIDAK menyediakan PDF label. Field `allow_self_design_awb`
+     * di response `get_package_detail` menandakan kondisi ini.
+     */
+    public function getPackageDetailByOrderSn(string $shopId, string $orderSn, ?string $packageNumber = null): array
+    {
+        $shop = $this->requireShop($shopId);
+
+        $package = array_filter([
+            'order_sn'       => $orderSn,
+            'package_number' => $packageNumber,
+        ], static fn ($v) => $v !== null && $v !== '');
+
+        return $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/api/v2/order/get_package_detail', [
+            'package_list' => [$package],
+        ], $token, $shop->shop_id));
+    }
+
+    /**
+     * Ambil raw data shipping document untuk render label custom (self-design).
+     * Return: recipient, sender, addresses, tracking_number, routing_code, dll.
+     */
+    public function getShippingDocumentDataInfo(string $shopId, string $orderSn, ?string $packageNumber = null, string $docType = 'NORMAL_AIR_WAYBILL'): array
+    {
+        $shop = $this->requireShop($shopId);
+
+        $orderItem = array_filter([
+            'order_sn'               => $orderSn,
+            'package_number'         => $packageNumber,
+            'shipping_document_type' => $docType,
+        ], static fn ($v) => $v !== null && $v !== '');
+
+        return $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/api/v2/logistics/get_shipping_document_data_info', [
+            'order_list' => [$orderItem],
+        ], $token, $shop->shop_id));
+    }
+
+    /**
+     * Boolean shortcut — return true jika order ini hanya bisa pakai self-design AWB.
+     * Selalu defensive: error / field hilang → false (fallback ke flow normal).
+     */
+    public function checkAllowSelfDesignAwb(object $shop, string $orderSn, ?string $packageNumber = null): bool
+    {
+        try {
+            $res = $this->getPackageDetailByOrderSn((string) $shop->shop_id, $orderSn, $packageNumber);
+            $pkg = $res['response']['package_list'][0] ?? [];
+
+            return (bool) ($pkg['allow_self_design_awb'] ?? false);
+        } catch (\Throwable $e) {
+            Log::warning("Shopee: gagal cek allow_self_design_awb {$orderSn}: " . $e->getMessage());
+
+            return false;
+        }
+    }
+
     public function createShippingDocument(string $shopId, string $orderSn, string $docType = 'NORMAL_AIR_WAYBILL'): array
     {
         $shop = $this->requireShop($shopId);
