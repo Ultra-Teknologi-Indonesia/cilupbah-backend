@@ -6,16 +6,17 @@
     $companyName = config('app.company_name', 'PT ULTRA TEKNOLOGI INDONESIA');
     $printedAt = now()->format('d M Y H:i');
 
-    // Group by SKU: merge qty dan kumpulkan nomor pesanan
+    // Group by SKU: merge qty dan kumpulkan nomor pesanan + qty per pesanan
     $grouped = $rawItems->groupBy('sku')->map(function ($group) {
         $first = $group->first();
         $first->qty_ordered = $group->sum('qty_ordered');
-        $first->order_numbers = $group
-            ->map(fn ($it) => optional($it->order)->salesorder_no)
-            ->filter()
-            ->unique()
-            ->values()
-            ->all();
+        $orderQty = [];
+        foreach ($group as $it) {
+            $no = optional($it->order)->salesorder_no;
+            if (! $no) continue;
+            $orderQty[$no] = ($orderQty[$no] ?? 0) + (int) $it->qty_ordered;
+        }
+        $first->order_lines = $orderQty;
         return $first;
     })->values();
     $items = $grouped->sortBy(fn ($it) => $it->recommended_bin_code ?? 'zzz')->values();
@@ -227,7 +228,7 @@
                 <th class="col-rak">Rek. Rak</th>
                 <th class="col-qty">Qty</th>
                 <th class="col-unit">Unit</th>
-                <th class="col-ket">Keterangan</th>
+                <th class="col-ket">No. Pesanan</th>
             </tr>
         </thead>
         <tbody>
@@ -261,8 +262,8 @@
                     <td class="num mono">{{ (int) $item->qty_ordered }}</td>
                     <td class="center">buah</td>
                     <td class="ket-order">
-                        @foreach($item->order_numbers ?? [] as $orderNo)
-                            {{ $orderNo }}@if(!$loop->last)<br>@endif
+                        @foreach($item->order_lines ?? [] as $orderNo => $qty)
+                            {{ $orderNo }} ({{ $qty }})@if(!$loop->last)<br>@endif
                         @endforeach
                     </td>
                 </tr>
