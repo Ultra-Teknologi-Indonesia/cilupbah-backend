@@ -82,7 +82,7 @@ class StockItemResource extends JsonResource
             'on_hand' => $onHand,
             'on_order' => $onOrder,
             'reserved' => $reserved,
-            'available' => max(0, $onHand - $onOrder - $reserved),
+            'available' => max(0, $onHand - $reserved),
         ];
     }
 
