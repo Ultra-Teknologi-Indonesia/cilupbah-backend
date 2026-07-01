@@ -51,6 +51,7 @@ class PutawayRepository
             'location:id,location_name',
             'assignee:id,name',
             'creator:id,name',
+            'inbound:id,reference_number,transaction_number',
         ])->find($id);
     }
 
