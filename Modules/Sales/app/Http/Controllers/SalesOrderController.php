@@ -718,4 +718,44 @@ class SalesOrderController extends Controller
 
         return $this->successResponse(new SalesOrderResource($order), 'Lokasi pengambilan pesanan berhasil diubah');
     }
+
+    #[OA\Get(
+        path: '/api/v1/sales/{id}/invoice',
+        summary: 'Generate invoice PDF for a sales order',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'PDF stream', content: new OA\MediaType(mediaType: 'application/pdf')),
+            new OA\Response(response: 404, description: 'Order not found')
+        ]
+    )]
+    public function invoice(string $id)
+    {
+        $order = SalesOrder::with('items')->find($id);
+
+        if (! $order) {
+            return $this->errorResponse('Pesanan tidak ditemukan', 404);
+        }
+
+        $shipping = (object) [
+            'full_name' => $order->shipping_full_name,
+            'phone'     => $order->shipping_phone,
+            'address'   => $order->shipping_address,
+            'city'      => $order->shipping_city,
+            'province'  => $order->shipping_province,
+            'post_code' => $order->shipping_post_code,
+        ];
+        $order->shipping = $shipping;
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('sales::pdf.invoice', [
+            'order' => $order,
+        ])->setPaper('a4', 'portrait');
+
+        $filename = "INV-{$order->salesorder_no}.pdf";
+
+        return $pdf->stream($filename);
+    }
 }
