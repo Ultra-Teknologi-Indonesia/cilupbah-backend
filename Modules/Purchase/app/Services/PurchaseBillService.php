@@ -50,8 +50,7 @@ class PurchaseBillService
                 $itemData['purchase_bill_id'] = $bill->id;
                 $this->calculateItemAmounts($itemData);
                 $this->billRepository->createItem($itemData);
-                
-                // Kurangi stok on_order ketika faktur (bill) keluar
+
                 $this->adjustOnOrder($itemData['item_id'], $bill->location_id, -$itemData['qty']);
             }
 
@@ -77,19 +76,18 @@ class PurchaseBillService
 
             if (isset($data['items'])) {
                 $bill->load('items');
-                // Kembalikan stok on_order dari item lama
+
                 foreach ($bill->items as $item) {
                     $this->adjustOnOrder($item->item_id, $bill->location_id, $item->qty);
                 }
 
                 $bill->items()->delete();
-                
+
                 foreach ($data['items'] as $itemData) {
                     $itemData['purchase_bill_id'] = $bill->id;
                     $this->calculateItemAmounts($itemData);
                     $this->billRepository->createItem($itemData);
-                    
-                    // Kurangi stok on_order untuk item baru
+
                     $this->adjustOnOrder($itemData['item_id'], $data['location_id'] ?? $bill->location_id, -$itemData['qty']);
                 }
             }
@@ -110,9 +108,9 @@ class PurchaseBillService
             if (in_array($bill->status, [PurchaseBill::STATUS_PAID])) {
                 throw new \Exception('Tagihan yang sudah lunas tidak bisa dihapus.');
             }
-            
+
             $bill->load('items');
-            // Kembalikan stok on_order jika faktur dihapus
+
             foreach ($bill->items as $item) {
                 $this->adjustOnOrder($item->item_id, $bill->location_id, $item->qty);
             }

@@ -55,8 +55,7 @@ class PurchaseOrderService
                 $itemData['purchase_order_id'] = $po->id;
                 $this->calculateItemAmounts($itemData);
                 $this->poRepository->createItem($itemData);
-                
-                // Langsung sesuaikan stok on_order
+
                 $this->adjustOnOrder($itemData['item_id'], $po->location_id, $itemData['qty']);
             }
 
@@ -82,19 +81,18 @@ class PurchaseOrderService
 
             if (isset($data['items'])) {
                 $po->load('items');
-                // Kembalikan on_order lama terlebih dahulu
+
                 foreach ($po->items as $item) {
                     $this->adjustOnOrder($item->item_id, $po->location_id, -$item->qty);
                 }
 
                 $po->items()->delete();
-                
+
                 foreach ($data['items'] as $itemData) {
                     $itemData['purchase_order_id'] = $po->id;
                     $this->calculateItemAmounts($itemData);
                     $this->poRepository->createItem($itemData);
-                    
-                    // Tambahkan on_order yang baru
+
                     $this->adjustOnOrder($itemData['item_id'], $data['location_id'] ?? $po->location_id, $itemData['qty']);
                 }
             }

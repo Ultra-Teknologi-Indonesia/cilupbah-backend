@@ -67,7 +67,6 @@ class PurchaseOrderController extends Controller
         }
     }
 
-
     public function receive(string $id, ReceivePurchaseOrderRequest $request): JsonResponse
     {
         try {

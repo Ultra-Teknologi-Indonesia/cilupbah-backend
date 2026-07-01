@@ -488,7 +488,6 @@ class TikTokOrderService
                 }
             }
 
-            // Fallback: try shipping document API if order detail has no tracking
             if (! $trackingNumber) {
                 foreach ($packages as $pkg) {
                     $packageId = $pkg['id'] ?? null;
@@ -549,7 +548,6 @@ class TikTokOrderService
             }
         }
 
-        // Fallback: fetch tracking from shipping document API per package
         foreach ($packages as $pkg) {
             $packageId = $pkg['id'] ?? null;
             if (! $packageId) {

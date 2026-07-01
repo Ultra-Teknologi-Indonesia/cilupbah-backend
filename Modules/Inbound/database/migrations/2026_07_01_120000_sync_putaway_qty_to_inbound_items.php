@@ -7,8 +7,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Sync putaway_qty from putaway_items back to inbound_items
-        // for putaways with source_type = 'INBOUND'
+
         DB::statement("
             UPDATE inbound_items ii
             SET putaway_qty = sub.total_putaway
@@ -25,7 +24,6 @@ return new class extends Migration
               AND ii.putaway_qty < sub.total_putaway
         ");
 
-        // Update inbound status to COMPLETED where all items are fully putaway'd
         DB::statement("
             UPDATE inbounds
             SET status = 'COMPLETED'
@@ -42,6 +40,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        // Cannot reliably reverse data sync
+
     }
 };
