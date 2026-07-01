@@ -36,6 +36,7 @@ class CancelChannelOrderJob implements ShouldQueue
             match ($order->source) {
                 'tiktok'    => $this->cancelOnTikTok($order),
                 'shopee'    => $this->cancelOnShopee($order),
+                'lazada'    => $this->cancelOnLazada($order),
                 'tokopedia' => $this->cancelOnTokopedia($order),
                 default     => Log::info("CancelChannelOrderJob: no handler for source '{$order->source}'"),
             };
@@ -73,6 +74,23 @@ class CancelChannelOrderJob implements ShouldQueue
         );
 
         Log::info("CancelChannelOrderJob: cancelled on Shopee", [
+            'salesorder_no' => $order->salesorder_no,
+            'shop_id'       => $order->channel_shop_id,
+            'reason'        => $this->cancelReason,
+        ]);
+    }
+
+    private function cancelOnLazada(SalesOrder $order): void
+    {
+        $lazadaOrderService = app(\Modules\Channel\Services\LazadaOrderService::class);
+
+        $lazadaOrderService->cancelOrder(
+            $order->channel_shop_id,
+            $order->salesorder_no,
+            $this->cancelReason,
+        );
+
+        Log::info("CancelChannelOrderJob: cancelled on Lazada", [
             'salesorder_no' => $order->salesorder_no,
             'shop_id'       => $order->channel_shop_id,
             'reason'        => $this->cancelReason,
