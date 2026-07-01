@@ -257,13 +257,13 @@ class TikTokOrderService
             throw new \Exception("No access token found for shop: {$shopId}");
         }
 
-        $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
-        $body = [
-            'package_id'    => $packageId,
+        $queries = [
+            'shop_cipher'   => $shop->shop_cipher ?? '',
             'document_type' => $documentType,
+            'document_size' => 'A6',
         ];
 
-        return $this->client->request('POST', '/fulfillment/202309/packages/shipping_documents', $queries, $body, $shop->access_token);
+        return $this->client->request('GET', "/fulfillment/202309/packages/{$packageId}/shipping_documents", $queries, [], $shop->access_token);
     }
 
     public function getShippingLabel(string $shopId, string $packageId): array
