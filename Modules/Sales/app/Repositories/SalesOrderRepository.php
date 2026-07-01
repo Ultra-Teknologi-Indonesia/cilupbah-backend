@@ -103,7 +103,7 @@ class SalesOrderRepository
                 ->whereDoesntHave('items', $this->unmappedItemsConstraint())
                 ->whereDoesntHave('items', fn ($q) => $q->whereRaw(
                     "sales_order_items.qty_in_base > COALESCE((
-                        SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(on_order),0) - COALESCE(SUM(reserved),0))
+                        SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
                         FROM inventories
                         WHERE inventories.item_id = sales_order_items.item_id
                     ), 0)"
@@ -116,7 +116,7 @@ class SalesOrderRepository
             'empty-stock'      => $this->visibleOrders()->where('status', 'reserved')
                 ->whereHas('items', fn ($q) => $q->whereRaw(
                     "sales_order_items.qty_in_base > COALESCE((
-                        SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(on_order),0) - COALESCE(SUM(reserved),0))
+                        SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
                         FROM inventories
                         WHERE inventories.item_id = sales_order_items.item_id
                     ), 0)"
@@ -177,7 +177,7 @@ class SalesOrderRepository
                 ->whereDoesntHave('items', $this->unmappedItemsConstraint())
                 ->whereDoesntHave('items', fn ($q) => $q->whereRaw(
                     "sales_order_items.qty_in_base > COALESCE((
-                        SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(on_order),0) - COALESCE(SUM(reserved),0))
+                        SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
                         FROM inventories
                         WHERE inventories.item_id = sales_order_items.item_id
                     ), 0)"
@@ -187,7 +187,7 @@ class SalesOrderRepository
             'empty-stock'      => $query->where('status', 'reserved')
                 ->whereHas('items', fn ($q) => $q->whereRaw(
                     "sales_order_items.qty_in_base > COALESCE((
-                        SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(on_order),0) - COALESCE(SUM(reserved),0))
+                        SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
                         FROM inventories
                         WHERE inventories.item_id = sales_order_items.item_id
                     ), 0)"

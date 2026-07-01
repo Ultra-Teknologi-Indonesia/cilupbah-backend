@@ -53,6 +53,6 @@ class Inventory extends Model
 
     public function recalculateAvailable(): void
     {
-        $this->available = max(0, $this->on_hand - (int) $this->on_order - $this->reserved);
+        $this->available = max(0, $this->on_hand - $this->reserved);
     }
 }

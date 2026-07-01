@@ -26,11 +26,11 @@ class ChannelStockResolver
             ->whereIn('item_id', $variantIds)
             ->where('location_id', $locationId)
             ->groupBy('item_id')
-            ->selectRaw('item_id, SUM(on_hand) as oh, SUM(on_order) as oo, SUM(reserved) as r')
+            ->selectRaw('item_id, SUM(on_hand) as oh, SUM(reserved) as r')
             ->get();
 
         foreach ($stocks as $row) {
-            $qty = (int) $row->oh - (int) $row->oo - (int) $row->r;
+            $qty = (int) $row->oh - (int) $row->r;
             $result[$row->item_id] = max(0, $qty);
         }
 

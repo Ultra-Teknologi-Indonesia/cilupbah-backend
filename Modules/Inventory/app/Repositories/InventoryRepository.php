@@ -86,9 +86,9 @@ class InventoryRepository
     {
 
         $row = Inventory::where('item_id', $itemId)
-            ->selectRaw('COALESCE(SUM(on_hand),0) AS oh, COALESCE(SUM(on_order),0) AS oo, COALESCE(SUM(reserved),0) AS r')
+            ->selectRaw('COALESCE(SUM(on_hand),0) AS oh, COALESCE(SUM(reserved),0) AS r')
             ->first();
-        return max(0, (int) $row->oh - (int) $row->oo - (int) $row->r);
+        return max(0, (int) $row->oh - (int) $row->r);
     }
 
     public function sumOnHandAtLocation(string $itemId, string $locationId): int
