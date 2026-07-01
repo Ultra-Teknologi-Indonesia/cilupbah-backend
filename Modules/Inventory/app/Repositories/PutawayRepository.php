@@ -43,6 +43,9 @@ class PutawayRepository
     {
         return Putaway::with([
             'items.product:id,sku,product_id',
+            'items.product.product:id,name',
+            'items.product.options:id,variant_id,value',
+            'items.product.media' => fn ($q) => $q->orderBy('sort_order')->limit(1),
             'items.sourceBin:id,bin_final_code',
             'items.destinationBin:id,bin_final_code',
             'location:id,location_name',
@@ -74,7 +77,14 @@ class PutawayRepository
     public function getItemsPaginated(string $putawayId, int $limit = 10)
     {
         return QueryBuilder::for(PutawayItem::where('putaway_id', $putawayId))
-            ->with(['product:id,sku,product_id', 'sourceBin:id,bin_final_code', 'destinationBin:id,bin_final_code'])
+            ->with([
+                'product:id,sku,product_id',
+                'product.product:id,name',
+                'product.options:id,variant_id,value',
+                'product.media' => fn ($q) => $q->orderBy('sort_order')->limit(1),
+                'sourceBin:id,bin_final_code',
+                'destinationBin:id,bin_final_code',
+            ])
             ->allowedSorts('created_at')
             ->defaultSort('created_at')
             ->paginate($limit);
