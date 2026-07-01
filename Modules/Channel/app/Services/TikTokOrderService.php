@@ -488,6 +488,32 @@ class TikTokOrderService
                 }
             }
 
+            // Fallback: try shipping document API if order detail has no tracking
+            if (! $trackingNumber) {
+                foreach ($packages as $pkg) {
+                    $packageId = $pkg['id'] ?? null;
+                    if (! $packageId) {
+                        continue;
+                    }
+                    try {
+                        $shop2 = $shop;
+                        $docRes = $this->getShippingDocument((string) ($shop2->shop_id ?? ''), (string) $packageId, 'SHIPPING_LABEL');
+                        $tn = $docRes['data']['tracking_number'] ?? null;
+                        if ($tn !== null && $tn !== '') {
+                            $trackingNumber = (string) $tn;
+                            $shippingProvider = $pkg['shipping_provider_name'] ?? $pkg['shipping_provider'] ?? null;
+                            break;
+                        }
+                    } catch (\Throwable $docErr) {
+                        Log::debug('fetchAndStoreTracking: shipping document fallback gagal', [
+                            'order_id'   => $orderId,
+                            'package_id' => $packageId,
+                            'error'      => $docErr->getMessage(),
+                        ]);
+                    }
+                }
+            }
+
             if ($trackingNumber) {
                 $this->orderRepository->updateTrackingByOrderNo($orderId, $trackingNumber, $shippingProvider);
             }
@@ -520,6 +546,30 @@ class TikTokOrderService
                     'tracking_number'   => (string) $tn,
                     'shipping_provider' => $pkg['shipping_provider_name'] ?? $pkg['shipping_provider'] ?? null,
                 ];
+            }
+        }
+
+        // Fallback: fetch tracking from shipping document API per package
+        foreach ($packages as $pkg) {
+            $packageId = $pkg['id'] ?? null;
+            if (! $packageId) {
+                continue;
+            }
+            try {
+                $docRes = $this->getShippingDocument((string) ($shop->shop_id ?? ''), (string) $packageId, 'SHIPPING_LABEL');
+                $tn = $docRes['data']['tracking_number'] ?? null;
+                if ($tn !== null && $tn !== '') {
+                    return [
+                        'tracking_number'   => (string) $tn,
+                        'shipping_provider' => $pkg['shipping_provider_name'] ?? $pkg['shipping_provider'] ?? null,
+                    ];
+                }
+            } catch (\Throwable $e) {
+                Log::debug('resolveTrackingNumber: shipping document fallback gagal', [
+                    'order_id'   => $orderId,
+                    'package_id' => $packageId,
+                    'error'      => $e->getMessage(),
+                ]);
             }
         }
 
