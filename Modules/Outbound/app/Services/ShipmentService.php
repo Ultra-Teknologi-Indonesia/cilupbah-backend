@@ -9,6 +9,7 @@ use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\ShipmentOrder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class ShipmentService
 {
@@ -231,5 +232,61 @@ class ShipmentService
         }
 
         return $this->shipmentRepository->delete($id);
+    }
+
+    private const CHANNEL_SHIPPED_STATUSES = [
+        'AWAITING_COLLECTION', 'PROCESSED', 'PARTIALLY_SHIPPING',
+        'IN_TRANSIT', 'SHIPPED', 'TO_CONFIRM_RECEIVE',
+        'DELIVERED', 'COMPLETED',
+    ];
+
+    public function autoCreateForChannelOrder(Order $order): ?Shipment
+    {
+        if ($order->status !== 'packed') {
+            return null;
+        }
+
+        if (! in_array($order->channel_status, self::CHANNEL_SHIPPED_STATUSES, true)) {
+            return null;
+        }
+
+        if (empty($order->tracking_number) || empty($order->location_id)) {
+            return null;
+        }
+
+        if (ShipmentOrder::where('order_id', $order->id)->exists()) {
+            return null;
+        }
+
+        $shipment = $this->create([
+            'location_id'   => $order->location_id,
+            'courier_name'  => $order->shipping_provider ?? 'Marketplace',
+            'courier_code'  => $order->shipping_provider
+                ? strtolower(preg_replace('/\s+/', '-', $order->shipping_provider))
+                : null,
+            'shipment_type' => 'REGULAR',
+            'shipment_date' => now()->toDateString(),
+            'notes'         => 'Auto: channel ' . $order->channel_status,
+            'created_by'    => 'SYSTEM',
+        ]);
+
+        $packlist = Packlist::where('order_id', $order->id)
+            ->where('status', Packlist::STATUS_COMPLETED)
+            ->first();
+
+        $this->shipmentRepository->createOrder([
+            'shipment_id'     => $shipment->id,
+            'order_id'        => $order->id,
+            'packlist_id'     => $packlist?->id,
+            'tracking_number' => $order->tracking_number,
+        ]);
+
+        Log::info('Auto-created shipment for channel order', [
+            'order_id'       => $order->id,
+            'shipment_id'    => $shipment->id,
+            'channel_status' => $order->channel_status,
+        ]);
+
+        return $shipment;
     }
 }
