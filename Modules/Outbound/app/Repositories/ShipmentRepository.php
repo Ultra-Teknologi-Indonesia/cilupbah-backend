@@ -14,6 +14,10 @@ class ShipmentRepository
         return QueryBuilder::for(Shipment::class)
             ->with(['location:id,location_name,location_code'])
             ->withCount('orders')
+            ->addSelect(['total_weight_gram' => \Modules\Sales\Models\Order::selectRaw('COALESCE(SUM(order_weight_gram), 0)')
+                ->join('shipment_orders', 'shipment_orders.order_id', '=', 'orders.id')
+                ->whereColumn('shipment_orders.shipment_id', 'shipments.id'),
+            ])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('location_id'),
@@ -88,7 +92,7 @@ class ShipmentRepository
     public function findById(string $id): ?Shipment
     {
         return Shipment::with([
-            'orders.order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,tracking_number,source,channel_order_no',
+            'orders.order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,tracking_number,source,channel_order_no,order_weight_gram',
             'orders.packlist:id,packlist_no',
             'location:id,location_name,location_code',
         ])->find($id);
