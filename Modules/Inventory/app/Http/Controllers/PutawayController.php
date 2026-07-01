@@ -376,7 +376,7 @@ class PutawayController extends Controller
 
         $bin = LocationBin::where('location_id', $locationId)
             ->where('is_inbound', false)
-            ->where(fn ($q) => $q->where('bin_final_code', $code)->orWhere('id', $code))
+            ->where(fn ($q) => $q->where('bin_final_code', $code)->when(\Illuminate\Support\Str::isUuid($code), fn ($q2) => $q2->orWhere('id', $code)))
             ->first();
 
         if (!$bin) {
