@@ -90,7 +90,9 @@
         .col-qty { width: 50px; }
         .col-date { width: 80px; }
         .col-source { width: 80px; }
-        .col-rak { width: 90px; }
+        .col-rak { width: 110px; }
+        .rec-line { margin-bottom: 1px; }
+        .rec-qty { font-weight: 400; font-size: 8.5px; color: #333; }
         .barang-sku {
             font-family: DejaVu Sans Mono, monospace;
             font-weight: 700;
@@ -174,7 +176,7 @@
                     $productName = optional(optional($item->product)->product)->name ?? optional($item->product)->name ?? '-';
                     $sourceRef = $sourceLabel ?? '-';
                     $destBin = optional($item->destinationBin)->bin_final_code ?? '-';
-                    $recommendedBin = $item->recommended_bin_code ?? '-';
+                    $recommendedBins = $item->recommended_bins ?? [];
                     $receivedAt = $putaway->created_at ? \Carbon\Carbon::parse($putaway->created_at)->format('d M Y') : '-';
                 @endphp
                 <tr>
@@ -184,7 +186,15 @@
                     <td class="num mono">{{ (int) $item->qty }}</td>
                     <td class="center">{{ $receivedAt }}</td>
                     <td class="center">{{ $sourceRef }}</td>
-                    <td class="center rak-bin">{{ $recommendedBin }}</td>
+                    <td class="rak-bin" style="font-size: 9px;">
+                        @if(count($recommendedBins) > 0)
+                            @foreach($recommendedBins as $rec)
+                                <div class="rec-line">{{ $rec['code'] }} <span class="rec-qty">({{ $rec['qty'] }})</span></div>
+                            @endforeach
+                        @else
+                            -
+                        @endif
+                    </td>
                     <td class="center rak-bin">{{ $destBin }}</td>
                 </tr>
             @empty

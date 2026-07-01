@@ -461,38 +461,67 @@ class PutawayController extends Controller
             ->where('on_hand', '>', 0)
             ->whereNotNull('bin_id')
             ->whereHas('bin', fn ($q) => $q->where('is_inbound', false))
-            ->with('bin:id,bin_final_code')
+            ->with('bin:id,bin_final_code,max_qty')
             ->orderByDesc('on_hand')
             ->get(['id', 'item_id', 'bin_id', 'on_hand']);
 
         $byItem = $stocks->groupBy('item_id');
 
-        $emptyBins = null;
+        $allBins = LocationBin::where('location_id', $locationId)
+            ->where('is_inbound', false)
+            ->orderBy('bin_final_code')
+            ->get(['id', 'bin_final_code', 'max_qty']);
+
+        $binCurrentQty = Inventory::where('location_id', $locationId)
+            ->where('on_hand', '>', 0)
+            ->whereNotNull('bin_id')
+            ->groupBy('bin_id')
+            ->selectRaw('bin_id, SUM(on_hand) as total')
+            ->pluck('total', 'bin_id')
+            ->map(fn ($v) => (int) $v);
+
+        $usedCapacity = [];
 
         foreach ($items as $item) {
-            $top = $byItem->get($item->item_id)?->first();
+            $remaining = (int) $item->qty;
+            $plan = [];
+            $usedBinIds = [];
 
-            if ($top && $top->bin) {
-                $item->recommended_bin_code = $top->bin->bin_final_code;
-                continue;
+            $itemStocks = $byItem->get($item->item_id, collect());
+            foreach ($itemStocks as $stock) {
+                if ($remaining <= 0) break;
+                $bin = $stock->bin;
+                if (!$bin) continue;
+
+                $currentInBin = ($binCurrentQty[$bin->id] ?? 0) + ($usedCapacity[$bin->id] ?? 0);
+                $binRemaining = $bin->max_qty ? max(0, $bin->max_qty - $currentInBin) : $remaining;
+                if ($binRemaining <= 0) continue;
+
+                $allocate = min($remaining, $binRemaining);
+                $plan[] = ['code' => $bin->bin_final_code, 'qty' => $allocate];
+                $usedCapacity[$bin->id] = ($usedCapacity[$bin->id] ?? 0) + $allocate;
+                $usedBinIds[] = $bin->id;
+                $remaining -= $allocate;
             }
 
-            if ($emptyBins === null) {
-                $usedBinIds = Inventory::where('location_id', $locationId)
-                    ->where('on_hand', '>', 0)
-                    ->whereNotNull('bin_id')
-                    ->pluck('bin_id')
-                    ->unique();
+            if ($remaining > 0) {
+                foreach ($allBins as $bin) {
+                    if ($remaining <= 0) break;
+                    if (in_array($bin->id, $usedBinIds)) continue;
 
-                $emptyBins = LocationBin::where('location_id', $locationId)
-                    ->where('is_inbound', false)
-                    ->whereNotIn('id', $usedBinIds)
-                    ->orderBy('bin_final_code')
-                    ->limit(50)
-                    ->pluck('bin_final_code');
+                    $currentInBin = ($binCurrentQty[$bin->id] ?? 0) + ($usedCapacity[$bin->id] ?? 0);
+                    $binRemaining = $bin->max_qty ? max(0, $bin->max_qty - $currentInBin) : $remaining;
+                    if ($binRemaining <= 0) continue;
+
+                    $allocate = min($remaining, $binRemaining);
+                    $plan[] = ['code' => $bin->bin_final_code, 'qty' => $allocate];
+                    $usedCapacity[$bin->id] = ($usedCapacity[$bin->id] ?? 0) + $allocate;
+                    $usedBinIds[] = $bin->id;
+                    $remaining -= $allocate;
+                }
             }
 
-            $item->recommended_bin_code = $emptyBins->shift();
+            $item->recommended_bins = $plan;
         }
     }
 
