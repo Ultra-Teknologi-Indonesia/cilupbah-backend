@@ -1,6 +1,7 @@
 @php
     /** @var \Modules\Inventory\Models\Putaway $putaway */
     /** @var string|null $qrDataUri */
+    /** @var string $sourceLabel */
     $items = collect($putaway->items ?? []);
     $locationName = optional($putaway->location)->location_name ?? '-';
     $companyName = config('app.company_name', 'PT ULTRA TEKNOLOGI INDONESIA');
@@ -171,7 +172,7 @@
                 @php
                     $sku = optional($item->product)->sku ?? '-';
                     $productName = optional(optional($item->product)->product)->name ?? optional($item->product)->name ?? '-';
-                    $sourceBin = optional($item->sourceBin)->bin_final_code ?? '-';
+                    $sourceRef = $sourceLabel ?? '-';
                     $destBin = optional($item->destinationBin)->bin_final_code ?? '-';
                     $recommendedBin = $item->recommended_bin_code ?? '-';
                     $receivedAt = $putaway->created_at ? \Carbon\Carbon::parse($putaway->created_at)->format('d M Y') : '-';
@@ -182,7 +183,7 @@
                     <td>{{ $productName }}</td>
                     <td class="num mono">{{ (int) $item->qty }}</td>
                     <td class="center">{{ $receivedAt }}</td>
-                    <td class="center">{{ $sourceBin }}</td>
+                    <td class="center">{{ $sourceRef }}</td>
                     <td class="center rak-bin">{{ $recommendedBin }}</td>
                     <td class="center rak-bin">{{ $destBin }}</td>
                 </tr>

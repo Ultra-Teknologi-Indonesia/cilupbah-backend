@@ -411,7 +411,11 @@ class PutawayController extends Controller
             $putawayNo = $putaway->putaway_no ?? 'PUT';
             $filename = "PUTAWAY-{$putawayNo}.pdf";
 
+            $putaway->load('inbound');
+
             $this->attachRecommendedBins($putaway);
+
+            $sourceLabel = $this->resolveSourceLabel($putaway);
 
             $qrDataUri = $this->generateQrDataUri((string) $putawayNo);
 
@@ -421,6 +425,7 @@ class PutawayController extends Controller
                 'putaway' => $putaway,
                 'qrDataUri' => $qrDataUri,
                 'printedBy' => $printedBy,
+                'sourceLabel' => $sourceLabel,
             ])->setPaper('a4', 'portrait');
 
             return $pdf->stream($filename);
@@ -455,10 +460,44 @@ class PutawayController extends Controller
 
         $byItem = $stocks->groupBy('item_id');
 
+        $emptyBins = null;
+
         foreach ($items as $item) {
             $top = $byItem->get($item->item_id)?->first();
-            $item->recommended_bin_code = optional($top?->bin)->bin_final_code;
+
+            if ($top && $top->bin) {
+                $item->recommended_bin_code = $top->bin->bin_final_code;
+                continue;
+            }
+
+            if ($emptyBins === null) {
+                $usedBinIds = Inventory::where('location_id', $locationId)
+                    ->where('on_hand', '>', 0)
+                    ->whereNotNull('bin_id')
+                    ->pluck('bin_id')
+                    ->unique();
+
+                $emptyBins = LocationBin::where('location_id', $locationId)
+                    ->where('is_inbound', false)
+                    ->whereNotIn('id', $usedBinIds)
+                    ->orderBy('bin_final_code')
+                    ->limit(50)
+                    ->pluck('bin_final_code');
+            }
+
+            $item->recommended_bin_code = $emptyBins->shift();
         }
+    }
+
+    protected function resolveSourceLabel($putaway): string
+    {
+        if ($putaway->source_type === 'INBOUND' && $putaway->inbound) {
+            return $putaway->inbound->reference_number
+                ?? $putaway->inbound->transaction_number
+                ?? '-';
+        }
+
+        return '-';
     }
 
     protected function generateQrDataUri(string $content): ?string
