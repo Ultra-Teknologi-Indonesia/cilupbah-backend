@@ -42,7 +42,10 @@ return [
         'app_secret' => env('LAZADA_APP_SECRET'),
         'redirect_uri' => env('LAZADA_REDIRECT_URI'),
 
-        'auth_url' => env('LAZADA_AUTH_URL', 'https://auth.lazada.com'),
+        // Host regional Indonesia. Gunakan domain .lazada.co.id (bukan auth.lazada.com global)
+        // agar sesi login Seller Center (sellercenter.lazada.co.id) terbawa dan seller tidak
+        // diminta login ulang saat OAuth authorize.
+        'auth_url' => env('LAZADA_AUTH_URL', 'https://api.lazada.co.id'),
 
         'base_url' => env('LAZADA_BASE_URL', 'https://api.lazada.co.id/rest'),
     ],
