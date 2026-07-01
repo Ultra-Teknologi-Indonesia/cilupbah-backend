@@ -66,17 +66,27 @@ class InboundService
 
             $inbound = $this->inboundRepository->create($data);
 
+            $receiveItems = [];
             foreach ($items as $itemData) {
-                $this->inboundRepository->createItem([
+                $inboundItem = $this->inboundRepository->createItem([
                     'inbound_id'   => $inbound->id,
                     'item_id'      => $itemData['item_id'],
                     'expected_qty' => $itemData['expected_qty'],
                     'received_qty' => 0,
                     'notes'        => $itemData['notes'] ?? null,
                 ]);
+
+                $receiveItems[] = [
+                    'inbound_item_id' => $inboundItem->id,
+                    'qty'             => $itemData['expected_qty'],
+                    'condition'       => 'GOOD',
+                ];
             }
 
-            return $inbound->load('items');
+            return $this->receive($inbound->id, [
+                'received_by' => $data['created_by'],
+                'items'       => $receiveItems,
+            ]);
         });
     }
 
