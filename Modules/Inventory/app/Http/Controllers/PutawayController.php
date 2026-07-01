@@ -7,9 +7,13 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Inventory\Services\PutawayService;
 use Modules\Inventory\Models\Putaway;
+use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Http\Requests\AssignPutawayStaffRequest;
 use Modules\Inventory\Http\Requests\ProcessPutawayItemRequest;
 use Modules\Warehouse\Models\LocationBin;
+use Barryvdh\DomPDF\Facade\Pdf;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
+use Throwable;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Putaway', description: 'API Endpoints for Standalone Putaway')]
@@ -380,5 +384,95 @@ class PutawayController extends Controller
         }
 
         return $this->successResponse($bin, 'Bin ditemukan.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/putaway/{id}/pdf',
+        summary: 'Cetak dokumen Putaway sebagai PDF (A4 portrait)',
+        security: [['bearerAuth' => []]],
+        tags: ['Putaway'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'PDF stream', content: new OA\MediaType(mediaType: 'application/pdf')),
+            new OA\Response(response: 404, description: 'Putaway tidak ditemukan'),
+        ]
+    )]
+    public function pdf(Request $request, string $id)
+    {
+        try {
+            $putaway = $this->putawayService->getById($id);
+
+            if (!$putaway) {
+                return response()->json(['success' => false, 'message' => 'Putaway tidak ditemukan.'], 404);
+            }
+
+            $putawayNo = $putaway->putaway_no ?? 'PUT';
+            $filename = "PUTAWAY-{$putawayNo}.pdf";
+
+            $this->attachRecommendedBins($putaway);
+
+            $qrDataUri = $this->generateQrDataUri((string) $putawayNo);
+
+            $printedBy = $request->user()->name ?? $request->user()->email ?? '-';
+
+            $pdf = Pdf::loadView('inventory::pdf.putaway', [
+                'putaway' => $putaway,
+                'qrDataUri' => $qrDataUri,
+                'printedBy' => $printedBy,
+            ])->setPaper('a4', 'portrait');
+
+            return $pdf->stream($filename);
+        } catch (Throwable $e) {
+            report($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal membuat PDF putaway: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    protected function attachRecommendedBins($putaway): void
+    {
+        $items = $putaway->items ?? collect();
+        if ($items->isEmpty()) {
+            return;
+        }
+
+        $locationId = $putaway->location_id;
+        $itemIds = $items->pluck('item_id')->filter()->unique()->values()->all();
+
+        $stocks = Inventory::query()
+            ->whereIn('item_id', $itemIds)
+            ->where('location_id', $locationId)
+            ->where('on_hand', '>', 0)
+            ->whereNotNull('bin_id')
+            ->with('bin:id,bin_final_code')
+            ->orderByDesc('on_hand')
+            ->get(['id', 'item_id', 'bin_id', 'on_hand']);
+
+        $byItem = $stocks->groupBy('item_id');
+
+        foreach ($items as $item) {
+            $top = $byItem->get($item->item_id)?->first();
+            $item->recommended_bin_code = optional($top?->bin)->bin_final_code;
+        }
+    }
+
+    protected function generateQrDataUri(string $content): ?string
+    {
+        try {
+            $svg = QrCode::format('svg')
+                ->size(160)
+                ->margin(0)
+                ->errorCorrection('M')
+                ->generate($content);
+
+            return 'data:image/svg+xml;base64,' . base64_encode((string) $svg);
+        } catch (Throwable $e) {
+            report($e);
+            return null;
+        }
     }
 }
