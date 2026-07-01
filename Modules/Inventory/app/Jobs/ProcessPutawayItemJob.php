@@ -11,6 +11,7 @@ use Modules\Inventory\Models\PutawayItem;
 use Modules\Inventory\Repositories\PutawayRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
+use Modules\Inbound\Models\InboundItem;
 use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
 
@@ -114,6 +115,12 @@ class ProcessPutawayItemJob implements ShouldQueue
                     'putaway_qty' => $putawayItem->putaway_qty + $qty,
                     'destination_bin_id' => $destinationBinId,
                 ]);
+
+                if ($putaway->source_type === 'INBOUND' && $putaway->source_id) {
+                    InboundItem::where('inbound_id', $putaway->source_id)
+                        ->where('item_id', $putawayItem->item_id)
+                        ->increment('putaway_qty', $qty);
+                }
             });
         });
     }

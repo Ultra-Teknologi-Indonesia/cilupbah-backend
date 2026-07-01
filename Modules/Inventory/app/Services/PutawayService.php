@@ -172,6 +172,18 @@ class PutawayService
                 'completed_at' => now(),
             ]);
 
+            if ($putaway->source_type === 'INBOUND' && $putaway->source_id) {
+                $inbound = \Modules\Inbound\Models\Inbound::with('items')->find($putaway->source_id);
+                if ($inbound) {
+                    $allPutaway = $inbound->items->every(fn ($item) => $item->isFullyPutaway());
+                    $inbound->update([
+                        'status' => $allPutaway
+                            ? \Modules\Inbound\Models\Inbound::STATUS_COMPLETED
+                            : \Modules\Inbound\Models\Inbound::STATUS_PUTAWAY_IN_PROGRESS,
+                    ]);
+                }
+            }
+
             return $this->putawayRepository->findById($id);
         });
     }
