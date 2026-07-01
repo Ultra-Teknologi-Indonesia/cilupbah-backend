@@ -14,8 +14,8 @@ class FcmService
 
     public function __construct()
     {
-        $this->projectId = config('services.fcm.project_id', '');
-        $this->credentialsPath = config('services.fcm.credentials');
+        $this->projectId = config('services.fcm.project_id') ?? '';
+        $this->credentialsPath = config('services.fcm.credentials') ?? '';
     }
 
     public function sendToUser(string $userId, string $title, string $body, array $data = []): int

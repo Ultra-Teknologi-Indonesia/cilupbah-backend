@@ -2,10 +2,12 @@
 
 namespace Modules\Inventory\Services;
 
+use App\Models\User;
 use Modules\Inventory\Repositories\StockOpnameRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Models\StockOpname;
 use Modules\Inventory\Jobs\ProcessStockOpnameFinalizeJob;
+use Modules\Notification\Events\TaskAssigned;
 use Modules\Warehouse\Models\LocationBin;
 use Illuminate\Support\Facades\DB;
 use Ramsey\Uuid\Uuid;
@@ -83,7 +85,25 @@ class StockOpnameService
                 }
             }
 
-            return $this->opnameRepository->findById($opname->id);
+            $opname = $this->opnameRepository->findById($opname->id);
+
+            if (!empty($data['process_by'])) {
+                $worker = User::where('name', $data['process_by'])
+                    ->orWhere('email', $data['process_by'])
+                    ->first();
+
+                if ($worker) {
+                    TaskAssigned::dispatch(
+                        $worker->id,
+                        'stock_opname',
+                        $opname->opname_no,
+                        $data['created_by'],
+                        ['stock_opname_id' => $opname->id],
+                    );
+                }
+            }
+
+            return $opname;
         });
     }
 
