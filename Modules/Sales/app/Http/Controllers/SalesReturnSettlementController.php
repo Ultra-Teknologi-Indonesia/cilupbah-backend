@@ -36,26 +36,113 @@ class SalesReturnSettlementController extends Controller
         return $this->successPaginatedResponse($settlements, 'Daftar return settlement berhasil diambil');
     }
 
-    #[OA\Delete(
+    #[OA\Post(
         path: '/api/v1/sales/return-settlements',
-        summary: 'Delete a return settlement',
+        summary: 'Create a new return settlement',
         security: [['bearerAuth' => []]],
         tags: ['Sales Return Settlements'],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
-            required: ['id'],
+            required: ['return_id'],
             properties: [
-                new OA\Property(property: 'id', type: 'string'),
+                new OA\Property(property: 'return_id', type: 'string'),
+                new OA\Property(property: 'notes', type: 'string', nullable: true),
             ]
         )),
+        responses: [
+            new OA\Response(response: 201, description: 'Return settlement berhasil dibuat'),
+        ]
+    )]
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'return_id' => 'required|bail|uuid|exists:sales_returns,id',
+            'notes'     => 'nullable|string',
+        ]);
+
+        $validated['created_by'] = $request->user()?->email;
+
+        $settlement = $this->service->create($validated);
+
+        return $this->successResponse($settlement, 'Return settlement berhasil dibuat', 201);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/sales/return-settlements/{id}',
+        summary: 'Get return settlement detail',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Return Settlements'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Successful operation'),
+            new OA\Response(response: 404, description: 'Tidak ditemukan'),
+        ]
+    )]
+    public function show(string $id): JsonResponse
+    {
+        $settlement = $this->service->getById($id);
+
+        if (! $settlement) {
+            return $this->errorResponse('Return settlement tidak ditemukan', 404);
+        }
+
+        return $this->successResponse($settlement);
+    }
+
+    #[OA\Post(
+        path: '/api/v1/sales/return-settlements/{id}/confirm',
+        summary: 'Confirm a draft settlement',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Return Settlements'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Settlement berhasil dikonfirmasi'),
+        ]
+    )]
+    public function confirm(string $id): JsonResponse
+    {
+        $settlement = $this->service->confirm($id);
+
+        return $this->successResponse($settlement, 'Settlement berhasil dikonfirmasi');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/sales/return-settlements/{id}/complete',
+        summary: 'Complete a confirmed settlement',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Return Settlements'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Settlement berhasil diselesaikan'),
+        ]
+    )]
+    public function complete(string $id): JsonResponse
+    {
+        $settlement = $this->service->complete($id);
+
+        return $this->successResponse($settlement, 'Settlement berhasil diselesaikan');
+    }
+
+    #[OA\Delete(
+        path: '/api/v1/sales/return-settlements/{id}',
+        summary: 'Delete a draft return settlement',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Return Settlements'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+        ],
         responses: [
             new OA\Response(response: 200, description: 'Return settlement berhasil dihapus'),
         ]
     )]
-    public function destroy(Request $request): JsonResponse
+    public function destroy(string $id): JsonResponse
     {
-        $request->validate(['id' => 'required|bail|uuid|exists:sales_return_settlements,id']);
-
-        $this->service->delete($request->input('id'));
+        $this->service->delete($id);
 
         return $this->successResponse(null, 'Return settlement berhasil dihapus');
     }
@@ -216,5 +303,43 @@ class SalesReturnSettlementController extends Controller
         }
 
         return $this->successResponse($refund);
+    }
+
+    #[OA\Delete(
+        path: '/api/v1/sales/return-settlements/invoices/{id}',
+        summary: 'Delete a settlement invoice',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Return Settlements'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Settlement invoice berhasil dihapus'),
+        ]
+    )]
+    public function invoiceDestroy(string $id): JsonResponse
+    {
+        $this->service->deleteInvoice($id);
+
+        return $this->successResponse(null, 'Settlement invoice berhasil dihapus');
+    }
+
+    #[OA\Delete(
+        path: '/api/v1/sales/return-settlements/refunds/{id}',
+        summary: 'Delete a settlement refund',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Return Settlements'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Refund berhasil dihapus'),
+        ]
+    )]
+    public function refundDestroy(string $id): JsonResponse
+    {
+        $this->service->deleteRefund($id);
+
+        return $this->successResponse(null, 'Refund berhasil dihapus');
     }
 }

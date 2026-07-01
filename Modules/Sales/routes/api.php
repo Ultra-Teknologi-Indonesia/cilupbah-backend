@@ -50,11 +50,17 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('sales/return-settlements/invoices', [SalesReturnSettlementController::class, 'invoiceIndex'])->name('sales.return-settlements.invoices.index');
     Route::post('sales/return-settlements/invoices', [SalesReturnSettlementController::class, 'invoiceStore'])->name('sales.return-settlements.invoices.store');
     Route::get('sales/return-settlements/invoices/{id}', [SalesReturnSettlementController::class, 'invoiceShow'])->whereUuid('id')->name('sales.return-settlements.invoices.show');
+    Route::delete('sales/return-settlements/invoices/{id}', [SalesReturnSettlementController::class, 'invoiceDestroy'])->whereUuid('id')->name('sales.return-settlements.invoices.destroy');
     Route::get('sales/return-settlements/refunds', [SalesReturnSettlementController::class, 'refundIndex'])->name('sales.return-settlements.refunds.index');
     Route::post('sales/return-settlements/refunds', [SalesReturnSettlementController::class, 'refundStore'])->name('sales.return-settlements.refunds.store');
     Route::get('sales/return-settlements/refunds/{id}', [SalesReturnSettlementController::class, 'refundShow'])->whereUuid('id')->name('sales.return-settlements.refunds.show');
+    Route::delete('sales/return-settlements/refunds/{id}', [SalesReturnSettlementController::class, 'refundDestroy'])->whereUuid('id')->name('sales.return-settlements.refunds.destroy');
     Route::get('sales/return-settlements', [SalesReturnSettlementController::class, 'index'])->name('sales.return-settlements.index');
-    Route::delete('sales/return-settlements', [SalesReturnSettlementController::class, 'destroy'])->name('sales.return-settlements.destroy');
+    Route::post('sales/return-settlements', [SalesReturnSettlementController::class, 'store'])->name('sales.return-settlements.store');
+    Route::get('sales/return-settlements/{id}', [SalesReturnSettlementController::class, 'show'])->whereUuid('id')->name('sales.return-settlements.show');
+    Route::post('sales/return-settlements/{id}/confirm', [SalesReturnSettlementController::class, 'confirm'])->whereUuid('id')->name('sales.return-settlements.confirm');
+    Route::post('sales/return-settlements/{id}/complete', [SalesReturnSettlementController::class, 'complete'])->whereUuid('id')->name('sales.return-settlements.complete');
+    Route::delete('sales/return-settlements/{id}', [SalesReturnSettlementController::class, 'destroy'])->whereUuid('id')->name('sales.return-settlements.destroy');
 
     Route::get('sales/packlists/shipped', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('shipped', $request))->name('sales.packlists.shipped');
     Route::post('sales/packlists/create-invoice', [SalesInvoiceController::class, 'createFromOrder'])->name('sales.packlists.create-invoice');

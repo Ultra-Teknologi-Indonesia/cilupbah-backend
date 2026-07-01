@@ -65,9 +65,19 @@ class ProcessTikTokWebhook implements ShouldQueue
                     break;
                 case 4:
                 case '4':
+                    $orderId = $this->payload['data']['order_id'] ?? null;
+                    if ($orderId) {
+                        $orderService->pullOrderById($shopId, $orderId);
+                        Log::info("TikTok Webhook type 4 (cancel): order {$orderId} resynced.", ['shop_id' => $shopId]);
+                    }
+                    break;
                 case 5:
                 case '5':
-                    Log::info("TikTok Webhook type {$type} diterima, belum ada handler khusus.", ['shop_id' => $shopId]);
+                    $orderId = $this->payload['data']['order_id'] ?? null;
+                    if ($orderId) {
+                        $orderService->pullOrderById($shopId, $orderId);
+                        Log::info("TikTok Webhook type 5 (return/refund): order {$orderId} resynced.", ['shop_id' => $shopId]);
+                    }
                     break;
                 default:
                     Log::info('Unhandled TikTok Webhook Type in Job: ' . $type);
