@@ -383,6 +383,13 @@ class PutawayController extends Controller
             return $this->errorResponse('Rak tidak ditemukan.', 404);
         }
 
+        $currentQty = Inventory::where('bin_id', $bin->id)
+            ->where('location_id', $locationId)
+            ->sum('on_hand');
+
+        $bin->current_qty = (int) $currentQty;
+        $bin->remaining_capacity = $bin->max_qty ? max(0, $bin->max_qty - (int) $currentQty) : null;
+
         return $this->successResponse($bin, 'Bin ditemukan.');
     }
 

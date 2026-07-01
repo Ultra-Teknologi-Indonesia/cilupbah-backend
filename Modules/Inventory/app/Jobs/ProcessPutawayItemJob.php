@@ -60,6 +60,17 @@ class ProcessPutawayItemJob implements ShouldQueue
                 $destinationBinId = $this->data['destination_bin_id'];
                 $transactionNumber = $putaway->putaway_no;
 
+                $destBin = \Modules\Warehouse\Models\LocationBin::find($destinationBinId);
+                if ($destBin && $destBin->max_qty) {
+                    $currentBinQty = (int) \Modules\Inventory\Models\Inventory::where('bin_id', $destinationBinId)
+                        ->where('location_id', $putaway->location_id)
+                        ->sum('on_hand');
+                    $binRemaining = $destBin->max_qty - $currentBinQty;
+                    if ($qty > $binRemaining) {
+                        throw new \RuntimeException("Kapasitas rak tidak cukup (sisa: {$binRemaining}, diminta: {$qty}).");
+                    }
+                }
+
                 $sourceInventory = $inventoryRepository->findExactForUpdate(
                     $putawayItem->item_id,
                     $putaway->location_id,
