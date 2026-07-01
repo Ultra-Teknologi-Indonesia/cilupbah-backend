@@ -448,6 +448,7 @@ class PutawayController extends Controller
             ->where('location_id', $locationId)
             ->where('on_hand', '>', 0)
             ->whereNotNull('bin_id')
+            ->whereHas('bin', fn ($q) => $q->where('is_inbound', false))
             ->with('bin:id,bin_final_code')
             ->orderByDesc('on_hand')
             ->get(['id', 'item_id', 'bin_id', 'on_hand']);
