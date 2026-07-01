@@ -8,6 +8,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Modules\Inventory\Models\PutawayItem;
+use Modules\Inventory\Models\PutawayPlacement;
 use Modules\Inventory\Repositories\PutawayRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
@@ -126,6 +127,20 @@ class ProcessPutawayItemJob implements ShouldQueue
                     'putaway_qty' => $putawayItem->putaway_qty + $qty,
                     'destination_bin_id' => $destinationBinId,
                 ]);
+
+                $placement = PutawayPlacement::where('putaway_item_id', $putawayItem->id)
+                    ->where('bin_id', $destinationBinId)
+                    ->first();
+
+                if ($placement) {
+                    $placement->increment('qty', $qty);
+                } else {
+                    PutawayPlacement::create([
+                        'putaway_item_id' => $putawayItem->id,
+                        'bin_id' => $destinationBinId,
+                        'qty' => $qty,
+                    ]);
+                }
 
                 if ($putaway->source_type === 'INBOUND' && $putaway->source_id) {
                     InboundItem::where('inbound_id', $putaway->source_id)

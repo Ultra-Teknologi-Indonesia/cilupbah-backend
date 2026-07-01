@@ -48,6 +48,8 @@ class PutawayRepository
             'items.product.media' => fn ($q) => $q->orderBy('sort_order')->limit(1),
             'items.sourceBin:id,bin_final_code',
             'items.destinationBin:id,bin_final_code',
+            'items.placements:id,putaway_item_id,bin_id,qty',
+            'items.placements.bin:id,bin_final_code',
             'location:id,location_name',
             'assignee:id,name',
             'creator:id,name',
@@ -85,6 +87,8 @@ class PutawayRepository
                 'product.media' => fn ($q) => $q->orderBy('sort_order')->limit(1),
                 'sourceBin:id,bin_final_code',
                 'destinationBin:id,bin_final_code',
+                'placements:id,putaway_item_id,bin_id,qty',
+                'placements.bin:id,bin_final_code',
             ])
             ->allowedSorts('created_at')
             ->defaultSort('created_at')

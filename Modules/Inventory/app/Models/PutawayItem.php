@@ -4,6 +4,7 @@ namespace Modules\Inventory\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Traits\HasUuid7;
 
 class PutawayItem extends Model
@@ -39,5 +40,10 @@ class PutawayItem extends Model
     public function destinationBin(): BelongsTo
     {
         return $this->belongsTo(\Modules\Warehouse\Models\LocationBin::class, 'destination_bin_id');
+    }
+
+    public function placements(): HasMany
+    {
+        return $this->hasMany(PutawayPlacement::class);
     }
 }
