@@ -341,6 +341,41 @@ class ShipmentController extends Controller
     }
 
     #[OA\Post(
+        path: '/api/v1/outbound/shipments/{id}/scan-order',
+        summary: 'Scan order barcode to add to shipment',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Shipment'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['barcode'],
+                properties: [
+                    new OA\Property(property: 'barcode', type: 'string'),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+            new OA\Response(response: 422, description: 'Validation error'),
+        ]
+    )]
+    public function scanOrder(string $id, Request $request): JsonResponse
+    {
+        $request->validate(['barcode' => 'required|string']);
+
+        try {
+            $shipment = $this->shipmentService->scanAndAddOrder($id, $request->barcode);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['success' => true, 'data' => $shipment]);
+    }
+
+    #[OA\Post(
         path: '/api/v1/outbound/shipments/scan',
         summary: 'Scan shipment by barcode/shipment_no/tracking_number',
         security: [['bearerAuth' => []]],

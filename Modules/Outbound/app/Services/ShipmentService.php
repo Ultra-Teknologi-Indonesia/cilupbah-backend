@@ -234,6 +234,64 @@ class ShipmentService
         return $this->shipmentRepository->delete($id);
     }
 
+    public function scanAndAddOrder(string $shipmentId, string $barcode): Shipment
+    {
+        $shipment = $this->shipmentRepository->findById($shipmentId);
+
+        if (! $shipment) {
+            throw new \Exception('Shipment tidak ditemukan.');
+        }
+
+        if ($shipment->status !== Shipment::STATUS_SCHEDULED) {
+            throw new \Exception('Order hanya bisa ditambah ke shipment SCHEDULED.');
+        }
+
+        $order = Order::where('status', 'packed')
+            ->where(function ($q) use ($barcode) {
+                $q->where('salesorder_no', $barcode)
+                  ->orWhere('tracking_number', $barcode);
+            })
+            ->first();
+
+        if (! $order) {
+            throw new \Exception("Pesanan '{$barcode}' tidak ditemukan atau belum packed.");
+        }
+
+        if (ShipmentOrder::where('order_id', $order->id)->exists()) {
+            throw new \Exception("Pesanan {$order->salesorder_no} sudah ada di pengiriman lain.");
+        }
+
+        if ($shipment->courier_name && $order->shipping_provider) {
+            $normalize = fn(string $s) => strtolower(preg_replace('/[^a-z0-9]/i', '', $s));
+            $sc = $normalize($shipment->courier_name);
+            $oc = $normalize($order->shipping_provider);
+            if (! str_contains($oc, $sc) && ! str_contains($sc, $oc)) {
+                throw new \Exception(
+                    "Kurir tidak sesuai. Pengiriman ini '{$shipment->courier_name}', "
+                    . "pesanan menggunakan '{$order->shipping_provider}'."
+                );
+            }
+        }
+
+        if ($shipment->location_id && $order->location_id
+            && $shipment->location_id !== $order->location_id) {
+            throw new \Exception('Pesanan berasal dari lokasi berbeda.');
+        }
+
+        $packlist = Packlist::where('order_id', $order->id)
+            ->where('status', Packlist::STATUS_COMPLETED)
+            ->first();
+
+        $this->shipmentRepository->createOrder([
+            'shipment_id'     => $shipment->id,
+            'order_id'        => $order->id,
+            'packlist_id'     => $packlist?->id,
+            'tracking_number' => $order->tracking_number,
+        ]);
+
+        return $this->shipmentRepository->findById($shipmentId);
+    }
+
     private const CHANNEL_SHIPPED_STATUSES = [
         'AWAITING_COLLECTION', 'PROCESSED', 'PARTIALLY_SHIPPING',
         'IN_TRANSIT', 'SHIPPED', 'TO_CONFIRM_RECEIVE',

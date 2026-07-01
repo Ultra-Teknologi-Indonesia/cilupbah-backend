@@ -88,7 +88,7 @@ class ShipmentRepository
     public function findById(string $id): ?Shipment
     {
         return Shipment::with([
-            'orders.order:id,salesorder_no,customer_name,status,grand_total',
+            'orders.order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,tracking_number,source,channel_order_no',
             'orders.packlist:id,packlist_no',
             'location:id,location_name,location_code',
         ])->find($id);
