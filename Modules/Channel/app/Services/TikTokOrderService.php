@@ -66,6 +66,7 @@ class TikTokOrderService
             foreach ($res['data']['orders'] as $item) {
                 try {
                     $internalData = $this->mapper->map($item, $shopId);
+                    $internalData = $this->enrichTrackingFromPackages($internalData, $item, $shopCipher, $accessToken);
                     $this->orderService->upsertFromChannel($internalData);
                     $count++;
                 } catch (\Exception $e) {
@@ -97,10 +98,14 @@ class TikTokOrderService
             return 0;
         }
 
+        $accessToken = $shop->access_token;
+        $shopCipher = $shop->shop_cipher ?? '';
+
         $count = 0;
         foreach ($res['data']['orders'] as $item) {
             try {
                 $internalData = $this->mapper->map($item, $shopId);
+                $internalData = $this->enrichTrackingFromPackages($internalData, $item, $shopCipher, $accessToken);
                 $this->orderService->upsertFromChannel($internalData);
                 $count++;
             } catch (\Exception $e) {
@@ -109,6 +114,40 @@ class TikTokOrderService
         }
 
         return $count;
+    }
+
+    protected function enrichTrackingFromPackages(array $internalData, array $tiktokOrder, string $shopCipher, string $accessToken): array
+    {
+        if (! empty($internalData['tracking_number'])) {
+            return $internalData;
+        }
+
+        $packages = $tiktokOrder['packages'] ?? [];
+        if (empty($packages)) {
+            return $internalData;
+        }
+
+        $packageId = $packages[0]['id'] ?? null;
+        if (! $packageId) {
+            return $internalData;
+        }
+
+        try {
+            $queries = ['shop_cipher' => $shopCipher];
+            $res = $this->client->request('GET', "/fulfillment/202309/packages/{$packageId}", $queries, [], $accessToken);
+
+            $data = $res['data'] ?? [];
+            if (! empty($data['tracking_number'])) {
+                $internalData['tracking_number'] = (string) $data['tracking_number'];
+            }
+            if (! empty($data['shipping_provider_name'])) {
+                $internalData['shipping_provider'] = (string) $data['shipping_provider_name'];
+            }
+        } catch (\Exception $e) {
+            Log::warning("Failed to enrich tracking from package {$packageId}: " . $e->getMessage());
+        }
+
+        return $internalData;
     }
 
     protected function financeStatementPath(string $orderId): string
