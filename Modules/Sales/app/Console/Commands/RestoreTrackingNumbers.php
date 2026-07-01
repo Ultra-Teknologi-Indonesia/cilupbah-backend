@@ -30,7 +30,6 @@ class RestoreTrackingNumbers extends Command
             ->where('source', $source)
             ->whereIn('status', ['shipped', 'packed', 'completed', 'delivered'])
             ->where('updated_at', '>=', now()->subDays($days))
-            ->with('channelShop:id,shop_id')
             ->get(['id', 'salesorder_no', 'channel_order_no', 'channel_shop_id', 'status', 'source']);
 
         if ($orders->isEmpty()) {
@@ -61,7 +60,7 @@ class RestoreTrackingNumbers extends Command
         $failed = 0;
 
         foreach ($orders as $order) {
-            $shopId = $order->channelShop?->shop_id;
+            $shopId = $order->channel_shop_id;
             if (! $shopId) {
                 $this->warn("  skip {$order->salesorder_no}: no shop_id");
                 $failed++;
