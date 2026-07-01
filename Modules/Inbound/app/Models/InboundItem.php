@@ -17,6 +17,8 @@ class InboundItem extends Model
         'item_id',
         'expected_qty',
         'received_qty',
+        'rejected_qty',
+        'rejection_note',
         'putaway_qty',
         'discrepancy_qty',
         'discrepancy_note',
@@ -41,7 +43,7 @@ class InboundItem extends Model
 
     public function isFullyReceived(): bool
     {
-        return $this->received_qty >= $this->expected_qty;
+        return ($this->received_qty + ($this->rejected_qty ?? 0)) >= $this->expected_qty;
     }
 
     public function isFullyPutaway(): bool

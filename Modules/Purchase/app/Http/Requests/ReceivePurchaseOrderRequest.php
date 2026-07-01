@@ -21,6 +21,8 @@ class ReceivePurchaseOrderRequest extends FormRequest
             'items'                             => ['required', 'array', 'min:1'],
             'items.*.purchase_order_item_id'    => ['required', 'string', 'exists:purchase_order_items,id'],
             'items.*.qty'                       => ['required', 'integer', 'min:1'],
+            'items.*.rejected_qty'              => ['nullable', 'integer', 'min:0'],
+            'items.*.rejection_note'            => ['nullable', 'string'],
             'items.*.notes'                     => ['nullable', 'string'],
         ];
     }

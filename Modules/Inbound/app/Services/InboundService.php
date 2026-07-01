@@ -68,19 +68,32 @@ class InboundService
 
             $receiveItems = [];
             foreach ($items as $itemData) {
+                $acceptedQty = $itemData['accepted_qty'] ?? $itemData['expected_qty'];
+                $rejectedQty = $itemData['rejected_qty'] ?? 0;
+
                 $inboundItem = $this->inboundRepository->createItem([
-                    'inbound_id'   => $inbound->id,
-                    'item_id'      => $itemData['item_id'],
-                    'expected_qty' => $itemData['expected_qty'],
-                    'received_qty' => 0,
-                    'notes'        => $itemData['notes'] ?? null,
+                    'inbound_id'     => $inbound->id,
+                    'item_id'        => $itemData['item_id'],
+                    'expected_qty'   => $itemData['expected_qty'],
+                    'received_qty'   => 0,
+                    'rejected_qty'   => $rejectedQty,
+                    'rejection_note' => $itemData['rejection_note'] ?? null,
+                    'condition'      => $rejectedQty > 0 ? 'PARTIAL' : 'GOOD',
+                    'notes'          => $itemData['notes'] ?? null,
                 ]);
 
-                $receiveItems[] = [
-                    'inbound_item_id' => $inboundItem->id,
-                    'qty'             => $itemData['expected_qty'],
-                    'condition'       => 'GOOD',
-                ];
+                if ($acceptedQty > 0) {
+                    $receiveItems[] = [
+                        'inbound_item_id' => $inboundItem->id,
+                        'qty'             => $acceptedQty,
+                        'condition'       => 'GOOD',
+                    ];
+                }
+            }
+
+            if (empty($receiveItems)) {
+                $inbound->update(['status' => Inbound::STATUS_RECEIVED]);
+                return $inbound->load('items');
             }
 
             return $this->receive($inbound->id, [
@@ -217,13 +230,13 @@ class InboundService
                 }
             }
 
-            $allReceived = $inbound->items->every(fn ($item) => $item->received_qty >= $item->expected_qty);
+            $allReceived = $inbound->items->every(fn ($item) => $item->isFullyReceived());
             $newStatus = $allReceived ? Inbound::STATUS_RECEIVED : Inbound::STATUS_PARTIAL;
             $this->inboundRepository->updateStatus($inbound, $newStatus);
 
             if ($allReceived) {
                 foreach ($inbound->items as $item) {
-                    $disc = $item->expected_qty - $item->received_qty;
+                    $disc = $item->expected_qty - $item->received_qty - ($item->rejected_qty ?? 0);
                     if ($disc !== 0) {
                         $this->inboundRepository->updateItemDiscrepancy(
                             $item->id,
@@ -259,12 +272,12 @@ class InboundService
             }
 
             foreach ($inbound->items as $item) {
-                $disc = $item->expected_qty - $item->received_qty;
+                $disc = $item->expected_qty - $item->received_qty - ($item->rejected_qty ?? 0);
                 if ($disc > 0) {
                     $this->inboundRepository->updateItemDiscrepancy(
                         $item->id,
                         $disc,
-                        "Closed by {$closedBy}. Expected {$item->expected_qty}, received {$item->received_qty}"
+                        "Closed by {$closedBy}. Expected {$item->expected_qty}, received {$item->received_qty}, rejected {$item->rejected_qty}"
                     );
                 }
             }

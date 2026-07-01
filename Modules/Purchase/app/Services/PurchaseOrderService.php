@@ -127,17 +127,24 @@ class PurchaseOrderService
                     throw new \Exception("PO Item ID {$receiveItem['purchase_order_item_id']} tidak ditemukan.");
                 }
 
+                $acceptedQty = $receiveItem['qty'];
+                $rejectedQty = $receiveItem['rejected_qty'] ?? 0;
+                $totalQty = $acceptedQty + $rejectedQty;
+
                 $pending = $poItem->pendingQty();
-                if ($receiveItem['qty'] > $pending) {
-                    throw new \Exception("Qty receive ({$receiveItem['qty']}) melebihi pending ({$pending}) untuk item {$poItem->item_id}.");
+                if ($totalQty > $pending) {
+                    throw new \Exception("Qty receive ({$totalQty}) melebihi pending ({$pending}) untuk item {$poItem->item_id}.");
                 }
 
-                $this->poRepository->updateItemReceivedQty($poItem->id, $receiveItem['qty']);
+                $this->poRepository->updateItemReceivedQty($poItem->id, $totalQty);
 
                 $inboundItems[] = [
-                    'item_id'      => $poItem->item_id,
-                    'expected_qty' => $receiveItem['qty'],
-                    'notes'        => $receiveItem['notes'] ?? null,
+                    'item_id'        => $poItem->item_id,
+                    'expected_qty'   => $totalQty,
+                    'accepted_qty'   => $acceptedQty,
+                    'rejected_qty'   => $rejectedQty,
+                    'rejection_note' => $receiveItem['rejection_note'] ?? null,
+                    'notes'          => $receiveItem['notes'] ?? null,
                 ];
             }
 
