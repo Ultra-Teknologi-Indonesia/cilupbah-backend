@@ -351,6 +351,61 @@ class PutawayController extends Controller
     }
 
     #[OA\Get(
+        path: '/api/v1/putaway/bins',
+        summary: 'List available bins for putaway with capacity info',
+        security: [['bearerAuth' => []]],
+        tags: ['Putaway'],
+        parameters: [
+            new OA\Parameter(name: 'location_id', in: 'query', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'search', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar rak berhasil diambil.'),
+        ]
+    )]
+    public function listBins(Request $request): JsonResponse
+    {
+        $request->validate([
+            'location_id' => 'required|string',
+        ]);
+
+        $locationId = $request->query('location_id');
+        $search = $request->query('search', '');
+
+        $query = LocationBin::where('location_id', $locationId)
+            ->where('is_inbound', false)
+            ->orderBy('bin_final_code');
+
+        if ($search) {
+            $query->where('bin_final_code', 'like', "%{$search}%");
+        }
+
+        $bins = $query->get(['id', 'bin_final_code', 'max_qty']);
+
+        $binCurrentQty = Inventory::where('location_id', $locationId)
+            ->where('on_hand', '>', 0)
+            ->whereNotNull('bin_id')
+            ->whereIn('bin_id', $bins->pluck('id'))
+            ->groupBy('bin_id')
+            ->selectRaw('bin_id, SUM(on_hand) as total')
+            ->pluck('total', 'bin_id')
+            ->map(fn ($v) => (int) $v);
+
+        $result = $bins->map(function ($bin) use ($binCurrentQty) {
+            $currentQty = $binCurrentQty[$bin->id] ?? 0;
+            return [
+                'id' => $bin->id,
+                'bin_final_code' => $bin->bin_final_code,
+                'max_qty' => $bin->max_qty,
+                'current_qty' => $currentQty,
+                'remaining_capacity' => $bin->max_qty ? max(0, $bin->max_qty - $currentQty) : null,
+            ];
+        });
+
+        return $this->successResponse($result, 'Daftar rak berhasil diambil.');
+    }
+
+    #[OA\Get(
         path: '/api/v1/putaway/bins/lookup',
         summary: 'Lookup bin by code for putaway scanning',
         security: [['bearerAuth' => []]],
