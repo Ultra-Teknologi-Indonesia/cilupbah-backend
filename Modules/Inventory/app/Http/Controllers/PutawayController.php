@@ -480,13 +480,24 @@ class PutawayController extends Controller
             ->pluck('total', 'bin_id')
             ->map(fn ($v) => (int) $v);
 
+        $binItemIds = Inventory::where('location_id', $locationId)
+            ->where('on_hand', '>', 0)
+            ->whereNotNull('bin_id')
+            ->select('bin_id', 'item_id')
+            ->distinct()
+            ->get()
+            ->groupBy('bin_id')
+            ->map(fn ($rows) => $rows->pluck('item_id')->unique()->values()->all());
+
         $usedCapacity = [];
+        $usedBinItems = [];
 
         foreach ($items as $item) {
             $remaining = (int) $item->qty;
             $plan = [];
             $usedBinIds = [];
 
+            // Priority 1: bins already containing the same variant
             $itemStocks = $byItem->get($item->item_id, collect());
             foreach ($itemStocks as $stock) {
                 if ($remaining <= 0) break;
@@ -500,14 +511,24 @@ class PutawayController extends Controller
                 $allocate = min($remaining, $binRemaining);
                 $plan[] = ['code' => $bin->bin_final_code, 'qty' => $allocate];
                 $usedCapacity[$bin->id] = ($usedCapacity[$bin->id] ?? 0) + $allocate;
+                $usedBinItems[$bin->id][] = $item->item_id;
                 $usedBinIds[] = $bin->id;
                 $remaining -= $allocate;
             }
 
+            // Priority 2: empty bins (skip bins that contain a different variant)
             if ($remaining > 0) {
                 foreach ($allBins as $bin) {
                     if ($remaining <= 0) break;
                     if (in_array($bin->id, $usedBinIds)) continue;
+
+                    $existingItemIds = array_unique(array_merge(
+                        $binItemIds[$bin->id] ?? [],
+                        $usedBinItems[$bin->id] ?? []
+                    ));
+                    if (!empty($existingItemIds) && !in_array($item->item_id, $existingItemIds)) {
+                        continue;
+                    }
 
                     $currentInBin = ($binCurrentQty[$bin->id] ?? 0) + ($usedCapacity[$bin->id] ?? 0);
                     $binRemaining = $bin->max_qty ? max(0, $bin->max_qty - $currentInBin) : $remaining;
@@ -516,6 +537,7 @@ class PutawayController extends Controller
                     $allocate = min($remaining, $binRemaining);
                     $plan[] = ['code' => $bin->bin_final_code, 'qty' => $allocate];
                     $usedCapacity[$bin->id] = ($usedCapacity[$bin->id] ?? 0) + $allocate;
+                    $usedBinItems[$bin->id][] = $item->item_id;
                     $usedBinIds[] = $bin->id;
                     $remaining -= $allocate;
                 }
