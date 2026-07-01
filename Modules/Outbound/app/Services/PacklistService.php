@@ -4,6 +4,7 @@ namespace Modules\Outbound\Services;
 
 use Modules\Outbound\Repositories\PacklistRepository;
 use Modules\Outbound\Models\Packlist;
+use Modules\Outbound\Models\PacklistItem;
 use Modules\Outbound\Jobs\ProcessPacklistCompleteJob;
 use Modules\Notification\Events\TaskAssigned;
 use Modules\Sales\Models\SalesOrder as Order;
@@ -60,12 +61,14 @@ class PacklistService
 
         return $packlist->load([
             'items.product:id,sku,product_id',
+            'items.product.media:id,variant_id,product_id,url,is_primary,sort_order',
             'items.product.product:id,name',
+            'items.product.product.media:id,product_id,variant_id,url,is_primary,sort_order',
             'items.orderItem:id,sku,description,item_id',
             'items.orderItem.product:id,sku,product_id',
-            'items.orderItem.product.media',
+            'items.orderItem.product.media:id,variant_id,product_id,url,is_primary,sort_order',
             'items.orderItem.product.product:id,name',
-            'items.orderItem.product.product.media',
+            'items.orderItem.product.product.media:id,product_id,variant_id,url,is_primary,sort_order',
             'location:id,location_name,location_code',
             'packer:id,name,email',
             'order:id,salesorder_no,customer_name',
@@ -211,13 +214,9 @@ class PacklistService
 
     public function verifyBarcode(string $packlistId, string $barcode): array
     {
-        $packlist = $this->packlistRepository->findById($packlistId);
-
-        if (!$packlist) {
-            throw new \Exception('Packlist tidak ditemukan.');
-        }
-
-        $item = $packlist->items->first(fn ($i) => $i->sku === $barcode);
+        $item = PacklistItem::where('packlist_id', $packlistId)
+            ->where('sku', $barcode)
+            ->first();
 
         if (!$item) {
             throw new \Exception("Barcode/SKU '{$barcode}' tidak ditemukan dalam packlist ini.");

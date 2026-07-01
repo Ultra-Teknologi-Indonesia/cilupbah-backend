@@ -32,11 +32,14 @@ class PacklistRepository
     {
         return Packlist::with([
             'items.product:id,sku,product_id',
+            'items.product.media:id,variant_id,product_id,url,is_primary,sort_order',
+            'items.product.product:id,name',
+            'items.product.product.media:id,product_id,variant_id,url,is_primary,sort_order',
             'items.orderItem:id,sku,description,qty_in_base,item_id',
             'items.orderItem.product:id,sku,product_id',
-            'items.orderItem.product.media',
+            'items.orderItem.product.media:id,variant_id,product_id,url,is_primary,sort_order',
             'items.orderItem.product.product:id,name',
-            'items.orderItem.product.product.media',
+            'items.orderItem.product.product.media:id,product_id,variant_id,url,is_primary,sort_order',
             'location:id,location_name,location_code',
             'packer:id,name,email',
             'order:id,salesorder_no,customer_name',
