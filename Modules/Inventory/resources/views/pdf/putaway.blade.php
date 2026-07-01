@@ -175,7 +175,10 @@
                     $sku = optional($item->product)->sku ?? '-';
                     $productName = optional(optional($item->product)->product)->name ?? optional($item->product)->name ?? '-';
                     $sourceRef = $sourceLabel ?? '-';
-                    $destBin = optional($item->destinationBin)->bin_final_code ?? '-';
+                    $placedBins = collect($item->placements ?? [])->map(fn($p) => [
+                        'code' => optional($p->bin)->bin_final_code ?? '-',
+                        'qty' => (int) $p->qty,
+                    ])->all();
                     $recommendedBins = $item->recommended_bins ?? [];
                     $receivedAt = $putaway->created_at ? \Carbon\Carbon::parse($putaway->created_at)->format('d M Y') : '-';
                 @endphp
@@ -195,7 +198,15 @@
                             -
                         @endif
                     </td>
-                    <td class="center rak-bin">{{ $destBin }}</td>
+                    <td class="rak-bin" style="font-size: 9px;">
+                        @if(count($placedBins) > 0)
+                            @foreach($placedBins as $placed)
+                                <div class="rec-line">{{ $placed['code'] }} <span class="rec-qty">({{ $placed['qty'] }})</span></div>
+                            @endforeach
+                        @else
+                            -
+                        @endif
+                    </td>
                 </tr>
             @empty
                 <tr>

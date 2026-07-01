@@ -504,6 +504,11 @@ class PutawayController extends Controller
                 $bin = $stock->bin;
                 if (!$bin) continue;
 
+                $existingRecommended = $usedBinItems[$bin->id] ?? [];
+                if (!empty($existingRecommended) && !in_array($item->item_id, $existingRecommended)) {
+                    continue;
+                }
+
                 $currentInBin = ($binCurrentQty[$bin->id] ?? 0) + ($usedCapacity[$bin->id] ?? 0);
                 $binRemaining = $bin->max_qty ? max(0, $bin->max_qty - $currentInBin) : $remaining;
                 if ($binRemaining <= 0) continue;
