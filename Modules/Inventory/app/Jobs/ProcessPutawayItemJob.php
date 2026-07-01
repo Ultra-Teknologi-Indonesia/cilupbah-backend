@@ -7,6 +7,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Models\PutawayItem;
 use Modules\Inventory\Models\PutawayPlacement;
 use Modules\Inventory\Repositories\PutawayRepository;
@@ -146,6 +147,19 @@ class ProcessPutawayItemJob implements ShouldQueue
                     InboundItem::where('inbound_id', $putaway->source_id)
                         ->where('item_id', $putawayItem->item_id)
                         ->increment('putaway_qty', $qty);
+                }
+
+                $allDone = PutawayItem::where('putaway_id', $this->putawayId)
+                    ->get(['qty', 'putaway_qty'])
+                    ->every(fn ($i) => $i->putaway_qty >= $i->qty);
+
+                if ($allDone) {
+                    Putaway::where('id', $this->putawayId)
+                        ->where('status', '!=', Putaway::STATUS_COMPLETED)
+                        ->update([
+                            'status' => Putaway::STATUS_COMPLETED,
+                            'completed_at' => now(),
+                        ]);
                 }
             });
         });
