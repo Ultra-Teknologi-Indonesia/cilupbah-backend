@@ -264,9 +264,20 @@ class SalesOrderService
 
     public function requestAwb(array $data): array
     {
-        $order = SalesOrder::findOrFail($data['order_id']);
+        $fulfillmentService = app(\Modules\Outbound\Services\OutboundFulfillmentService::class);
+        $results = $fulfillmentService->readyToShip([$data['order_id']]);
 
-        return ['order_id' => $order->id, 'status' => 'requested'];
+        if (empty($results)) {
+            return ['order_id' => $data['order_id'], 'status' => 'failed', 'message' => 'Tidak ada hasil dari proses pengiriman.'];
+        }
+
+        $result = $results[0];
+
+        if (($result['status'] ?? '') === 'failed') {
+            throw new \Exception($result['message'] ?? 'Gagal memproses pengiriman.');
+        }
+
+        return $result;
     }
 
     public function getShippingLabel(SalesOrder $order, string $docType = 'shipping_label'): array

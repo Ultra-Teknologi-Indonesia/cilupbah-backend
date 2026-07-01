@@ -281,6 +281,38 @@ class OutboundFulfillmentController extends Controller
         return $this->successResponse($results, 'Proses Siap Dikirim selesai.');
     }
 
+    #[OA\Post(
+        path: '/api/v1/outbound/orders/retry-pickup',
+        summary: 'Retry pickup for Shopee RETRY_SHIP orders',
+        description: 'Calls Shopee update_shipping_order to rearrange pickup for orders with LOGISTICS_PICKUP_RETRY status.',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Fulfillment'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['order_ids'],
+                properties: [
+                    new OA\Property(property: 'order_ids', type: 'array', items: new OA\Items(type: 'string')),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Success (per-order results)'),
+            new OA\Response(response: 422, description: 'Validation error'),
+        ]
+    )]
+    public function retryPickup(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'order_ids' => 'required|array|min:1',
+            'order_ids.*' => 'required|string|exists:sales_orders,id',
+        ]);
+
+        $results = $this->fulfillmentService->retryPickup($validated['order_ids']);
+
+        return $this->successResponse($results, 'Proses retry pickup selesai.');
+    }
+
     #[OA\Get(
         path: '/api/v1/outbound/pickers',
         summary: 'List warehouse users eligible as pickers',

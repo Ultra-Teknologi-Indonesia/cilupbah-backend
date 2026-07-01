@@ -688,6 +688,37 @@ class ShopeeOrderService
         )));
     }
 
+    public function retryPickup(string $shopId, string $orderSn): array
+    {
+        $shop = $this->requireShop($shopId);
+
+        $param = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/logistics/get_shipping_parameter', ['order_sn' => $orderSn], $token, $shop->shop_id));
+
+        $info = $param['response'] ?? [];
+        $addressList = $info['pickup']['address_list'] ?? [];
+
+        if (empty($addressList)) {
+            throw new \Exception("Tidak ada alamat pickup yang tersedia. Silakan atur ulang melalui Shopee Seller Center.");
+        }
+
+        $addressId = $addressList[0]['address_id'] ?? null;
+        $pickupTimeId = $addressList[0]['time_slot_list'][0]['pickup_time_id'] ?? null;
+
+        $pickup = array_filter([
+            'address_id' => $addressId,
+            'pickup_time_id' => $pickupTimeId,
+        ], fn ($v) => $v !== null);
+
+        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/api/v2/logistics/update_shipping_order', [
+            'order_sn' => $orderSn,
+            'pickup' => (object) $pickup,
+        ], $token, $shop->shop_id));
+
+        $this->resyncLocalOrder($shopId, $orderSn);
+
+        return ['order_sn' => $orderSn, 'updated' => empty($res['error']), 'error' => $res['error'] ?? null, 'response' => $res['response'] ?? []];
+    }
+
     protected function resyncLocalOrder(string $shopId, string $orderSn): void
     {
         try {

@@ -18,6 +18,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('orders/change-location', [OutboundFulfillmentController::class, 'changeLocation'])->name('outbound.orders.change-location');
     Route::post('orders/request-cancel', [OutboundFulfillmentController::class, 'requestCancelOrder'])->name('outbound.orders.request-cancel');
     Route::post('orders/ready-to-ship', [OutboundFulfillmentController::class, 'readyToShip'])->name('outbound.orders.ready-to-ship');
+    Route::post('orders/retry-pickup', [OutboundFulfillmentController::class, 'retryPickup'])->name('outbound.orders.retry-pickup');
     Route::post('orders/ad-hoc-pick', [AdHocPickController::class, 'complete'])->name('outbound.orders.ad-hoc-pick');
     Route::post('orders/ad-hoc-pick/scan', [AdHocPickController::class, 'scan'])->name('outbound.orders.ad-hoc-pick.scan');
     Route::get('pickers', [OutboundFulfillmentController::class, 'pickers'])->name('outbound.pickers.index');

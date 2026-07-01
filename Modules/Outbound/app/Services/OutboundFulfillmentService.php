@@ -104,6 +104,52 @@ class OutboundFulfillmentService
         return $results;
     }
 
+    public function retryPickup(array $orderIds): array
+    {
+        $results = [];
+
+        foreach ($orderIds as $orderId) {
+            $order = Order::find($orderId);
+
+            if (! $order) {
+                $results[] = ['order_id' => $orderId, 'salesorder_no' => null, 'source' => null, 'status' => 'failed', 'message' => 'Order tidak ditemukan.'];
+                continue;
+            }
+
+            if ($order->channel_status !== 'RETRY_SHIP') {
+                $results[] = $this->result($order, 'skipped', 'Order tidak dalam status RETRY_SHIP.');
+                continue;
+            }
+
+            $source = strtolower((string) $order->source);
+
+            if ($source !== 'shopee') {
+                $results[] = $this->result($order, 'skipped', 'Retry pickup hanya tersedia untuk order Shopee.');
+                continue;
+            }
+
+            try {
+                $this->assertChannelRefs($source, (string) $order->channel_shop_id, (string) $order->channel_order_no);
+                $res = $this->shopeeOrderService->retryPickup((string) $order->channel_shop_id, (string) $order->channel_order_no);
+
+                if (! empty($res['updated'])) {
+                    $results[] = $this->result($order, 'success', 'Pickup berhasil diatur ulang.');
+                } else {
+                    $results[] = $this->result($order, 'failed', 'Gagal atur ulang pickup' . (! empty($res['error']) ? " ({$res['error']})" : '') . '.');
+                }
+            } catch (\Throwable $e) {
+                Log::error('retryPickup gagal', [
+                    'order_id' => $order->id,
+                    'salesorder_no' => $order->salesorder_no,
+                    'error' => $e->getMessage(),
+                ]);
+                $results[] = $this->result($order, 'failed', $e->getMessage());
+            }
+        }
+
+        return $results;
+    }
+
     private function assertChannelRefs(string $source, string $shopId, string $channelOrderNo): void
     {
         if ($shopId === '' || $channelOrderNo === '') {
