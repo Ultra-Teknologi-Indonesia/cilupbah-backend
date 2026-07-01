@@ -118,7 +118,11 @@ class TikTokOrderService
 
     protected function enrichTrackingFromPackages(array $internalData, array $tiktokOrder, string $shopCipher, string $accessToken): array
     {
-        if (! empty($internalData['tracking_number'])) {
+        $needsTracking = empty($internalData['tracking_number']);
+        $needsProvider = empty($internalData['shipping_provider'])
+            || stripos($internalData['shipping_provider'], 'standard') !== false;
+
+        if (! $needsTracking && ! $needsProvider) {
             return $internalData;
         }
 
@@ -137,10 +141,10 @@ class TikTokOrderService
             $res = $this->client->request('GET', "/fulfillment/202309/packages/{$packageId}", $queries, [], $accessToken);
 
             $data = $res['data'] ?? [];
-            if (! empty($data['tracking_number'])) {
+            if ($needsTracking && ! empty($data['tracking_number'])) {
                 $internalData['tracking_number'] = (string) $data['tracking_number'];
             }
-            if (! empty($data['shipping_provider_name'])) {
+            if ($needsProvider && ! empty($data['shipping_provider_name'])) {
                 $internalData['shipping_provider'] = (string) $data['shipping_provider_name'];
             }
         } catch (\Exception $e) {

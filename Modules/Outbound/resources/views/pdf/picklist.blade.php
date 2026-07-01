@@ -1,11 +1,24 @@
 @php
     /** @var \Modules\Outbound\Models\Picklist $picklist */
     /** @var string|null $qrDataUri */
-    $items = collect($picklist->items ?? []);
-    $items = $items->sortBy(fn ($it) => $it->recommended_bin_code ?? 'zzz')->values();
+    $rawItems = collect($picklist->items ?? []);
     $locationName = optional($picklist->location)->location_name ?? '-';
     $companyName = config('app.company_name', 'PT ULTRA TEKNOLOGI INDONESIA');
     $printedAt = now()->format('d M Y H:i');
+
+    // Group by SKU: merge qty dan kumpulkan nomor pesanan
+    $grouped = $rawItems->groupBy('sku')->map(function ($group) {
+        $first = $group->first();
+        $first->qty_ordered = $group->sum('qty_ordered');
+        $first->order_numbers = $group
+            ->map(fn ($it) => optional($it->order)->salesorder_no)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        return $first;
+    })->values();
+    $items = $grouped->sortBy(fn ($it) => $it->recommended_bin_code ?? 'zzz')->values();
 
     $resolveVariantName = function ($item) {
         $variant = $item->product ?? null;
@@ -115,12 +128,18 @@
         }
         .center { text-align: center; }
         .num { text-align: right; }
-        .col-no { width: 28px; }
-        .col-variant { width: 90px; }
-        .col-foto { width: 68px; }
-        .col-rak { width: 130px; }
-        .col-qty { width: 56px; }
-        .col-unit { width: 50px; }
+        .col-no { width: 24px; }
+        .col-variant { width: 80px; }
+        .col-foto { width: 58px; }
+        .col-rak { width: 100px; }
+        .col-qty { width: 44px; }
+        .col-unit { width: 40px; }
+        .col-ket { width: 120px; }
+        .ket-order {
+            font-size: 8.5px;
+            line-height: 1.4;
+            word-break: break-all;
+        }
         .barang-sku {
             font-family: DejaVu Sans Mono, monospace;
             font-weight: 700;
@@ -205,9 +224,10 @@
                 <th>Barang</th>
                 <th class="col-variant">Variant</th>
                 <th class="col-foto">Foto</th>
-                <th class="col-rak">Rekomendasi Rak</th>
-                <th class="col-qty">Qty Pesan</th>
+                <th class="col-rak">Rek. Rak</th>
+                <th class="col-qty">Qty</th>
                 <th class="col-unit">Unit</th>
+                <th class="col-ket">Keterangan</th>
             </tr>
         </thead>
         <tbody>
@@ -240,10 +260,15 @@
                     </td>
                     <td class="num mono">{{ (int) $item->qty_ordered }}</td>
                     <td class="center">buah</td>
+                    <td class="ket-order">
+                        @foreach($item->order_numbers ?? [] as $orderNo)
+                            {{ $orderNo }}@if(!$loop->last)<br>@endif
+                        @endforeach
+                    </td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="7" class="center" style="padding: 18px;">Tidak ada item.</td>
+                    <td colspan="8" class="center" style="padding: 18px;">Tidak ada item.</td>
                 </tr>
             @endforelse
         </tbody>
