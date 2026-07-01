@@ -59,6 +59,14 @@ class PacklistService
             return null;
         }
 
+        if ($packlist->status === Packlist::STATUS_DRAFT) {
+            $packlist->update([
+                'status' => Packlist::STATUS_IN_PROGRESS,
+                'started_at' => now(),
+            ]);
+            $packlist->refresh();
+        }
+
         return $packlist->load([
             'items.product:id,sku,product_id',
             'items.product.media:id,variant_id,product_id,url,is_primary,sort_order',
