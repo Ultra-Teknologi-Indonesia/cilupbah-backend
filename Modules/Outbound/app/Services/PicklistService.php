@@ -181,8 +181,12 @@ class PicklistService
                     ->lockForUpdate()
                     ->first();
 
-                if (!$inventory || $inventory->on_hand < $delta) {
-                    throw new \Exception("Stok tidak cukup di rak {$bin->bin_final_code}. Tersedia: " . ($inventory->on_hand ?? 0));
+                if (!$inventory) {
+                    throw new \Exception("SKU ini tidak ditemukan di rak {$bin->bin_final_code}. Silahkan pilih rak lain.");
+                }
+
+                if ($inventory->on_hand < $delta) {
+                    throw new \Exception("Stok tidak cukup di rak {$bin->bin_final_code}. Tersedia: {$inventory->on_hand}, dibutuhkan: {$delta}. Silahkan pilih rak lain.");
                 }
 
                 $inventory->on_hand -= $delta;

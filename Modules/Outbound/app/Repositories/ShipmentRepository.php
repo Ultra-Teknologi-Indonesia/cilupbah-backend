@@ -14,8 +14,8 @@ class ShipmentRepository
         return QueryBuilder::for(Shipment::class)
             ->with(['location:id,location_name,location_code'])
             ->withCount('orders')
-            ->addSelect(['total_weight_gram' => \Modules\Sales\Models\Order::selectRaw('COALESCE(SUM(order_weight_gram), 0)')
-                ->join('shipment_orders', 'shipment_orders.order_id', '=', 'orders.id')
+            ->addSelect(['total_weight_gram' => \Modules\Sales\Models\SalesOrder::selectRaw('COALESCE(SUM(order_weight_gram), 0)')
+                ->join('shipment_orders', 'shipment_orders.order_id', '=', 'sales_orders.id')
                 ->whereColumn('shipment_orders.shipment_id', 'shipments.id'),
             ])
             ->allowedFilters(

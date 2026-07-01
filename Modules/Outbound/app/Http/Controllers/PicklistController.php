@@ -273,7 +273,11 @@ class PicklistController extends Controller
     )]
     public function pickItem(string $id, string $itemId, PickItemRequest $request): JsonResponse
     {
-        $this->picklistService->pickItem($id, $itemId, $request->validated());
+        try {
+            $this->picklistService->pickItem($id, $itemId, $request->validated());
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
 
         return response()->json(['success' => true, 'message' => 'Item berhasil di-pick.']);
     }
