@@ -45,7 +45,9 @@ class ShipmentService
 
     public function create(array $data): Shipment
     {
-        $shipmentNo = $this->shipmentRepository->generateShipmentNo();
+        $shipmentNo = !empty($data['shipment_no'])
+            ? $data['shipment_no']
+            : $this->shipmentRepository->generateShipmentNo();
 
         return $this->shipmentRepository->create([
             'shipment_no' => $shipmentNo,
