@@ -2,6 +2,7 @@
 
 namespace Modules\Channel\Services;
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Repositories\ChannelRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
@@ -61,6 +62,13 @@ class TikTokAuthService
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]
+            );
+
+            $this->fetchAndSaveWarehouse(
+                $shopId,
+                $shopCipher,
+                $accessToken,
+                $this->channelRepository->getIdByCode('tiktok')
             );
 
             $savedShops[] = ['shop_id' => $shopId, 'shop_name' => $shopName];
@@ -179,6 +187,75 @@ class TikTokAuthService
         }
 
         return $summary;
+    }
+
+    private function fetchAndSaveWarehouse(string $shopId, ?string $shopCipher, string $accessToken, string $channelId): void
+    {
+        try {
+            $result = $this->client->request(
+                'GET',
+                '/logistics/202309/warehouses',
+                ['shop_cipher' => $shopCipher ?? ''],
+                [],
+                $accessToken
+            );
+
+            $warehouses = $result['data']['warehouses'] ?? [];
+            $sales = collect($warehouses)->firstWhere('type', 'SALES_WAREHOUSE');
+            $warehouseId = $sales['id'] ?? ($warehouses[0]['id'] ?? null);
+            $warehouseType = $sales ? 'SALES_WAREHOUSE' : ($warehouses[0]['type'] ?? null);
+
+            if (! $warehouseId) {
+                return;
+            }
+
+            $this->saveWarehouseMapping($shopId, $channelId, $warehouseId, $warehouseType);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to fetch TikTok warehouse at connect', [
+                'shop_id' => $shopId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function saveWarehouseMapping(string $storeId, string $channelId, string $channelLocationId, ?string $channelLocationType): void
+    {
+        $exists = DB::table('channel_warehouses')->where('store_id', $storeId)->exists();
+
+        if ($exists) {
+            DB::table('channel_warehouses')
+                ->where('store_id', $storeId)
+                ->update([
+                    'channel_location_id' => $channelLocationId,
+                    'channel_location_type' => $channelLocationType,
+                    'updated_at' => now(),
+                ]);
+            return;
+        }
+
+        $defaultLocation = DB::table('locations')
+            ->where('is_warehouse', true)
+            ->where('is_active', true)
+            ->where(function ($q) {
+                $q->whereNull('location_type')
+                    ->orWhere('location_type', '!=', 'TRANSIT');
+            })
+            ->orderBy('created_at')
+            ->first();
+
+        if (! $defaultLocation) {
+            return;
+        }
+
+        DB::table('channel_warehouses')->insert([
+            'location_id' => $defaultLocation->id,
+            'channel_id' => $channelId,
+            'store_id' => $storeId,
+            'channel_location_id' => $channelLocationId,
+            'channel_location_type' => $channelLocationType,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     protected function getTokenStatus($shop): string

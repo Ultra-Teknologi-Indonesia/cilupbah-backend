@@ -320,7 +320,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
                     'id' => $mapping->external_sku_id,
                     'inventory' => [
                         [
-                            'warehouse_id' => config('channel.tiktok_defaults.warehouse_id', '7646426075561690887'),
+                            'warehouse_id' => $this->resolveTikTokWarehouseId($shop),
                             'quantity' => max(0, $availableQty),
                         ]
                     ]
@@ -365,5 +365,37 @@ class TikTokAdapter implements MarketplaceAdapterInterface
     public function mapInboundProduct(array $channelData, string $shopId): array
     {
         return $this->inboundMapper->map($channelData, $shopId);
+    }
+
+    private function resolveTikTokWarehouseId(ChannelShop $shop): string
+    {
+        $warehouseId = DB::table('channel_warehouses')
+            ->where('store_id', $shop->shop_id)
+            ->whereNotNull('channel_location_id')
+            ->value('channel_location_id');
+
+        if ($warehouseId) {
+            return $warehouseId;
+        }
+
+        $result = $this->client->request(
+            'GET',
+            '/logistics/202309/warehouses',
+            ['shop_cipher' => $shop->shop_cipher ?? ''],
+            [],
+            $shop->access_token
+        );
+
+        $warehouses = $result['data']['warehouses'] ?? [];
+        $sales = collect($warehouses)->firstWhere('type', 'SALES_WAREHOUSE');
+        $resolved = $sales['id'] ?? ($warehouses[0]['id'] ?? null);
+
+        if ($resolved) {
+            DB::table('channel_warehouses')
+                ->where('store_id', $shop->shop_id)
+                ->update(['channel_location_id' => $resolved, 'channel_location_type' => 'SALES_WAREHOUSE']);
+        }
+
+        return $resolved ?? '';
     }
 }

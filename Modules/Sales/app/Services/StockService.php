@@ -64,9 +64,8 @@ class StockService
             DB::transaction(function () use ($sku, $itemId, $locationId, $qty, $transactionNumber, $enforce) {
 
                 $onHand   = $this->inventoryRepository->sumOnHandAtLocation($itemId, $locationId);
-                $onOrder  = $this->inventoryRepository->sumOnOrderAtLocation($itemId, $locationId);
                 $reserved = $this->inventoryRepository->sumReservedAtLocation($itemId, $locationId);
-                $available = $onHand - $onOrder - $reserved;
+                $available = $onHand - $reserved;
 
                 if ($available < $qty) {
                     if ($enforce) {
@@ -84,7 +83,7 @@ class StockService
                 }
 
                 $aggregate = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
-                $aggregate->on_order = ((int) $aggregate->on_order) + $qty;
+                $aggregate->reserved = ((int) $aggregate->reserved) + $qty;
                 $this->inventoryRepository->updateStock($aggregate);
 
                 $this->movementRepository->create([
@@ -119,7 +118,7 @@ class StockService
             DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
 
                 $aggregate = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
-                $aggregate->on_order = max(0, ((int) $aggregate->on_order) - $qty);
+                $aggregate->reserved = max(0, ((int) $aggregate->reserved) - $qty);
                 $this->inventoryRepository->updateStock($aggregate);
 
                 $remaining = $qty;
@@ -258,7 +257,7 @@ class StockService
             DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
 
                 $aggregate = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
-                $aggregate->on_order = max(0, ((int) $aggregate->on_order) - $qty);
+                $aggregate->reserved = max(0, ((int) $aggregate->reserved) - $qty);
                 $this->inventoryRepository->updateStock($aggregate);
 
                 $this->movementRepository->create([

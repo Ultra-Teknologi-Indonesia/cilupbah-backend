@@ -2,6 +2,7 @@
 
 namespace Modules\Channel\Services;
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
@@ -45,6 +46,8 @@ class ShopeeAuthService
             'refresh_token_expires_at' => $refreshExpiresAt,
             'is_active' => true,
         ]);
+
+        $this->fetchAndSaveWarehouse($shopId, $accessToken, $channelId);
 
         return ['shop_id' => $shopId, 'shop_name' => $shopName];
     }
@@ -157,6 +160,74 @@ class ShopeeAuthService
         }
 
         return $summary;
+    }
+
+    private function fetchAndSaveWarehouse(string $shopId, string $accessToken, string $channelId): void
+    {
+        try {
+            $result = $this->client->request(
+                'GET',
+                '/api/v2/shop/get_warehouse_detail',
+                [],
+                $accessToken,
+                $shopId
+            );
+
+            $warehouses = $result['response']['warehouse_list'] ?? [];
+            $default = collect($warehouses)->first();
+            $locationId = $default['location_id'] ?? null;
+
+            if (! $locationId) {
+                return;
+            }
+
+            $this->saveWarehouseMapping($shopId, $channelId, (string) $locationId, 'DEFAULT');
+        } catch (\Throwable $e) {
+            Log::warning('Failed to fetch Shopee warehouse at connect', [
+                'shop_id' => $shopId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function saveWarehouseMapping(string $storeId, string $channelId, string $channelLocationId, ?string $channelLocationType): void
+    {
+        $exists = DB::table('channel_warehouses')->where('store_id', $storeId)->exists();
+
+        if ($exists) {
+            DB::table('channel_warehouses')
+                ->where('store_id', $storeId)
+                ->update([
+                    'channel_location_id' => $channelLocationId,
+                    'channel_location_type' => $channelLocationType,
+                    'updated_at' => now(),
+                ]);
+            return;
+        }
+
+        $defaultLocation = DB::table('locations')
+            ->where('is_warehouse', true)
+            ->where('is_active', true)
+            ->where(function ($q) {
+                $q->whereNull('location_type')
+                    ->orWhere('location_type', '!=', 'TRANSIT');
+            })
+            ->orderBy('created_at')
+            ->first();
+
+        if (! $defaultLocation) {
+            return;
+        }
+
+        DB::table('channel_warehouses')->insert([
+            'location_id' => $defaultLocation->id,
+            'channel_id' => $channelId,
+            'store_id' => $storeId,
+            'channel_location_id' => $channelLocationId,
+            'channel_location_type' => $channelLocationType,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     protected function requireShopeeShop(string $id): ChannelShop
