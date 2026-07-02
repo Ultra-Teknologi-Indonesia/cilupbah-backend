@@ -329,9 +329,16 @@ class InventoryController extends Controller
             ->toArray();
 
         $stores = \Modules\Channel\Models\ChannelShop::query()
+            ->with('channel:id,name')
             ->orderBy('shop_name')
-            ->get(['shop_id', 'shop_name'])
-            ->map(fn ($s) => ['value' => (string) $s->shop_id, 'label' => $s->shop_name])
+            ->get(['id', 'channel_id', 'shop_id', 'shop_name'])
+            ->map(function ($s) {
+                $channelName = $s->channel?->name ?? '—';
+                return [
+                    'value' => (string) $s->shop_id,
+                    'label' => "{$channelName} - {$s->shop_name}",
+                ];
+            })
             ->values()
             ->toArray();
 
