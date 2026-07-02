@@ -86,6 +86,8 @@ class ProcessPutawayItemJob implements ShouldQueue
                     throw new \RuntimeException("Stok di source bin tidak mencukupi (tersedia: {$current}, diminta: {$qty}).");
                 }
 
+                $unitCost = (float) ($sourceInventory->avg_cost ?? 0);
+
                 $sourceInventory->on_hand -= $qty;
                 $inventoryRepository->updateStock($sourceInventory);
 
@@ -97,6 +99,8 @@ class ProcessPutawayItemJob implements ShouldQueue
                     'source' => 'PUTAWAY_OUT',
                     'qty' => -$qty,
                     'balance' => $sourceInventory->on_hand,
+                    'cost_per_unit' => $unitCost > 0 ? $unitCost : null,
+                    'total_cost' => $unitCost > 0 ? round($unitCost * (float) $qty, 2) : null,
                     'transaction_date' => now(),
                     'created_by' => 'system',
                 ]);
@@ -109,7 +113,18 @@ class ProcessPutawayItemJob implements ShouldQueue
                     $putawayItem->serial_no ?? '',
                 );
 
+                $preDestOnHand = (float) $destInventory->on_hand;
+                $preDestAvgCost = (float) ($destInventory->avg_cost ?? 0);
+
                 $destInventory->on_hand += $qty;
+
+                if ($unitCost > 0) {
+                    $newTotal = $preDestOnHand + (float) $qty;
+                    $destInventory->avg_cost = $newTotal > 0
+                        ? round((($preDestOnHand * $preDestAvgCost) + ((float) $qty * $unitCost)) / $newTotal, 2)
+                        : $unitCost;
+                }
+
                 $inventoryRepository->updateStock($destInventory);
 
                 $movementRepository->create([
@@ -120,6 +135,8 @@ class ProcessPutawayItemJob implements ShouldQueue
                     'source' => 'PUTAWAY_IN',
                     'qty' => $qty,
                     'balance' => $destInventory->on_hand,
+                    'cost_per_unit' => $unitCost > 0 ? $unitCost : null,
+                    'total_cost' => $unitCost > 0 ? round($unitCost * (float) $qty, 2) : null,
                     'transaction_date' => now(),
                     'created_by' => 'system',
                 ]);
