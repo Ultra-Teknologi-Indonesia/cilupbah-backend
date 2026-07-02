@@ -21,7 +21,7 @@ class InventoryMovementResource extends JsonResource
             'transaction_number' => $this->transaction_number,
             'source' => $this->source,
             'qty' => (int) $this->qty,
-            'balance' => (int) $this->balance,
+            'balance' => (int) ($this->total_balance ?? $this->balance),
             'transaction_date' => $this->transaction_date,
             'created_by' => $this->created_by,
             'created_at' => $this->created_at,

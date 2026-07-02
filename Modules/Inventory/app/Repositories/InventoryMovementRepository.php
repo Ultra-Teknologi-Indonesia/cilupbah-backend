@@ -31,6 +31,9 @@ class InventoryMovementRepository
     public function getHistoryPaginated(int $limit = 10)
     {
         return \Spatie\QueryBuilder\QueryBuilder::for(InventoryMovement::class)
+            ->select('inventory_movements.*')
+            ->selectRaw('SUM(qty) OVER (PARTITION BY item_id, location_id ORDER BY transaction_date, id) AS total_balance')
+            ->where('qty', '!=', 0)
             ->with(['product:id,sku,product_id', 'location:id,location_name', 'bin:id,bin_final_code'])
             ->allowedFilters(
                 \Spatie\QueryBuilder\AllowedFilter::exact('item_id'),
