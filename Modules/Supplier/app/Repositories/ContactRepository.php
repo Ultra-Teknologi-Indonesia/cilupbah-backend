@@ -16,7 +16,16 @@ class ContactRepository
             ->with(['category:id,name,code', 'salesman:id,name,code'])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
-                AllowedFilter::exact('type'),
+                AllowedFilter::callback('type', function ($query, $value) {
+                    $val = strtoupper((string) $value);
+                    if ($val === Contact::TYPE_CUSTOMER) {
+                        $query->whereIn('type', [Contact::TYPE_CUSTOMER, Contact::TYPE_BOTH]);
+                    } elseif ($val === Contact::TYPE_SUPPLIER) {
+                        $query->whereIn('type', [Contact::TYPE_SUPPLIER, Contact::TYPE_BOTH]);
+                    } elseif ($val === Contact::TYPE_BOTH) {
+                        $query->where('type', Contact::TYPE_BOTH);
+                    }
+                }),
                 AllowedFilter::exact('category_id'),
                 AllowedFilter::exact('is_system'),
                 AllowedFilter::custom('search', new FuzzyFilter('name,company_name,code,email'))
