@@ -187,7 +187,13 @@ class OutboundFulfillmentService
 
         return QueryBuilder::for($query->with(['items', 'items.product.media', 'items.product.product.media', 'location:id,location_name,location_code']))
             ->allowedFilters(
-                AllowedFilter::partial('q', 'salesorder_no'),
+                AllowedFilter::callback('q', function ($query, $value) {
+                    $query->where(function ($q) use ($value) {
+                        $q->where('salesorder_no', 'like', "%{$value}%")
+                            ->orWhere('channel_order_no', 'like', "%{$value}%")
+                            ->orWhere('tracking_number', 'like', "%{$value}%");
+                    });
+                }),
                 AllowedFilter::exact('source'),
                 AllowedFilter::exact('location_id'),
             )
@@ -215,6 +221,7 @@ class OutboundFulfillmentService
     {
         return Order::where('salesorder_no', $orderNo)
             ->orWhere('channel_order_no', $orderNo)
+            ->orWhere('tracking_number', $orderNo)
             ->with([
                 'items.product:id,sku,product_id',
                 'items.product.product:id,name',
