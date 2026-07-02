@@ -311,6 +311,21 @@ class InventoryController extends Controller
     }
 
     #[OA\Get(
+        path: '/api/v1/inventory/movement-filters',
+        summary: 'Get available filter options (source groups + direction) for movement history',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory'],
+        responses: [new OA\Response(response: 200, description: 'Successful operation')]
+    )]
+    public function movementFilters(): JsonResponse
+    {
+        return $this->successResponse(
+            \Modules\Inventory\Support\InventoryMovementSourceMap::filterOptions(),
+            'Opsi filter kronologi stok berhasil diambil.'
+        );
+    }
+
+    #[OA\Get(
         path: '/api/v1/inventory/items/by-location/{locationId}',
         summary: 'Get inventory items by location',
         security: [['bearerAuth' => []]],

@@ -32,13 +32,18 @@ class InventoryMovementRepository
     {
         $reservationSources = ['ORDER_BOOK', 'ORDER_CANCEL'];
 
-        return \Spatie\QueryBuilder\QueryBuilder::for(InventoryMovement::class)
+        $sourceFilter = trim((string) request()->input('filter.source', ''));
+        $requestedSources = array_values(array_filter(array_map('trim', explode(',', $sourceFilter))));
+        $userWantsReservation = count(array_intersect($requestedSources, $reservationSources)) > 0;
+
+        $qb = \Spatie\QueryBuilder\QueryBuilder::for(InventoryMovement::class)
             ->select('inventory_movements.*')
             ->selectRaw(
                 'SUM(CASE WHEN source IN (?, ?) THEN 0 ELSE qty END) OVER (PARTITION BY item_id, location_id ORDER BY transaction_date, id) AS total_balance',
                 $reservationSources
             )
             ->where('qty', '!=', 0)
+            ->when(! $userWantsReservation, fn ($q) => $q->whereNotIn('source', $reservationSources))
             ->with(['product:id,sku,product_id', 'location:id,location_name', 'bin:id,bin_final_code'])
             ->allowedFilters(
                 \Spatie\QueryBuilder\AllowedFilter::exact('item_id'),
@@ -67,8 +72,9 @@ class InventoryMovementRepository
                 })
             )
             ->allowedSorts('transaction_date', 'created_at')
-            ->defaultSort('-transaction_date')
-            ->paginate(request('per_page', $limit))
+            ->defaultSort('-transaction_date');
+
+        return $qb->paginate(request('per_page', $limit))
             ->appends(request()->query());
     }
 }

@@ -33,6 +33,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inventory/need-restock', [InventoryController::class, 'needRestock'])->name('inventory.needRestock');
     Route::get('inventory/stock-products', [InventoryController::class, 'stockProducts'])->name('inventory.stockProducts');
     Route::get('inventory/history', [InventoryController::class, 'history'])->name('inventory.history');
+    Route::get('inventory/movement-filters', [InventoryController::class, 'movementFilters'])->name('inventory.movementFilters');
     Route::get('inventory/items/by-location/{locationId}', [InventoryController::class, 'byLocation'])->name('inventory.items.byLocation');
     Route::get('inventory/purchase-order/items', [InventoryController::class, 'purchaseOrderItems'])->name('inventory.purchaseOrder.items');
 
