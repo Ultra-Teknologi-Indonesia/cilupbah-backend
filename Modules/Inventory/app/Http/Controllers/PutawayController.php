@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Inventory\Services\PutawayService;
@@ -19,6 +20,8 @@ use OpenApi\Attributes as OA;
 #[OA\Tag(name: 'Putaway', description: 'API Endpoints for Standalone Putaway')]
 class PutawayController extends Controller
 {
+    use ApiResponse;
+
     public function __construct(
         protected PutawayService $putawayService
     ) {}
@@ -467,7 +470,7 @@ class PutawayController extends Controller
             $putaway = $this->putawayService->getById($id);
 
             if (!$putaway) {
-                return response()->json(['success' => false, 'message' => 'Putaway tidak ditemukan.'], 404);
+                return $this->errorResponse('Putaway tidak ditemukan.', 404);
             }
 
             $putawayNo = $putaway->putaway_no ?? 'PUT';
@@ -493,10 +496,7 @@ class PutawayController extends Controller
             return $pdf->stream($filename);
         } catch (Throwable $e) {
             report($e);
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal membuat PDF putaway: ' . $e->getMessage(),
-            ], 500);
+            return $this->errorResponse('Gagal membuat PDF putaway: ' . $e->getMessage(), 500);
         }
     }
 

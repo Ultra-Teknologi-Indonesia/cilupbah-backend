@@ -659,15 +659,11 @@ class SalesOrderController extends Controller
 
             return $this->successResponse($result, 'Shipping label berhasil diambil');
         } catch (\Modules\Sales\Exceptions\ShippingLabelPreparingException $e) {
-            return response()->json([
-                'success' => false,
-                'status'  => 'preparing',
-                'message' => $e->getMessage(),
-            ], 202);
+            return $this->errorResponse($e->getMessage(), 202);
         } catch (\InvalidArgumentException $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->errorResponse($e->getMessage(), 422);
         } catch (\RuntimeException $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->errorResponse($e->getMessage(), 422);
         }
     }
 
@@ -678,13 +674,9 @@ class SalesOrderController extends Controller
         try {
             $this->orderService->retryShippingLabel($order);
 
-            return response()->json([
-                'success' => true,
-                'status'  => 'preparing',
-                'message' => 'Label sedang disiapkan ulang. Coba unduh lagi dalam 1-2 menit.',
-            ], 202);
+            return $this->successResponse(null, 'Label sedang disiapkan ulang. Coba unduh lagi dalam 1-2 menit.', 202);
         } catch (\InvalidArgumentException $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->errorResponse($e->getMessage(), 422);
         }
     }
 

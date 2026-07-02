@@ -96,7 +96,7 @@ class PicklistController extends Controller
 
         $picklist = $this->picklistService->create($data);
 
-        return response()->json(['success' => true, 'data' => $picklist], 201);
+        return $this->successResponse($picklist, null, 201);
     }
 
     #[OA\Get(
@@ -117,10 +117,10 @@ class PicklistController extends Controller
         $picklist = $this->picklistService->getById($id);
 
         if (!$picklist) {
-            return response()->json(['success' => false, 'message' => 'Picklist tidak ditemukan.'], 404);
+            return $this->errorResponse('Picklist tidak ditemukan.', 404);
         }
 
-        return response()->json(['success' => true, 'data' => $picklist]);
+        return $this->successResponse($picklist);
     }
 
     #[OA\Get(
@@ -170,7 +170,7 @@ class PicklistController extends Controller
             $picklist = $report['data'] ?? null;
 
             if (!$picklist) {
-                return response()->json(['success' => false, 'message' => 'Picklist tidak ditemukan.'], 404);
+                return $this->errorResponse('Picklist tidak ditemukan.', 404);
             }
 
             $picklistNo = $picklist->picklist_no ?? 'PICK';
@@ -192,10 +192,7 @@ class PicklistController extends Controller
             return $pdf->stream($filename);
         } catch (Throwable $e) {
             report($e);
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal membuat PDF picklist: ' . $e->getMessage(),
-            ], 500);
+            return $this->errorResponse('Gagal membuat PDF picklist: ' . $e->getMessage(), 500);
         }
     }
 
@@ -226,7 +223,7 @@ class PicklistController extends Controller
 
         $picklist = $this->picklistService->assignPicker($id, $request->picker_id, auth()->user()->email);
 
-        return response()->json(['success' => true, 'data' => $picklist]);
+        return $this->successResponse($picklist);
     }
 
     #[OA\Post(
@@ -245,7 +242,7 @@ class PicklistController extends Controller
     {
         $picklist = $this->picklistService->start($id);
 
-        return response()->json(['success' => true, 'data' => $picklist]);
+        return $this->successResponse($picklist);
     }
 
     #[OA\Post(
@@ -276,10 +273,10 @@ class PicklistController extends Controller
         try {
             $this->picklistService->pickItem($id, $itemId, $request->validated());
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->errorResponse($e->getMessage(), 422);
         }
 
-        return response()->json(['success' => true, 'message' => 'Item berhasil di-pick.']);
+        return $this->successResponse(null, 'Item berhasil di-pick.');
     }
 
     #[OA\Post(
@@ -298,7 +295,7 @@ class PicklistController extends Controller
     {
         $picklist = $this->picklistService->complete($id);
 
-        return response()->json(['success' => true, 'data' => $picklist]);
+        return $this->successResponse($picklist);
     }
 
     #[OA\Post(
@@ -325,7 +322,7 @@ class PicklistController extends Controller
     {
         $picklist = $this->picklistService->failPick($id, $request->reason);
 
-        return response()->json(['success' => true, 'data' => $picklist]);
+        return $this->successResponse($picklist);
     }
 
     #[OA\Post(
@@ -344,7 +341,7 @@ class PicklistController extends Controller
     {
         $picklist = $this->picklistService->cancel($id);
 
-        return response()->json(['success' => true, 'data' => $picklist]);
+        return $this->successResponse($picklist);
     }
 
     #[OA\Delete(
@@ -363,7 +360,7 @@ class PicklistController extends Controller
     {
         $this->picklistService->delete($id);
 
-        return response()->json(['success' => true, 'message' => 'Picklist berhasil dihapus.']);
+        return $this->successResponse(null, 'Picklist berhasil dihapus.');
     }
 
     protected function attachRecommendedBins($picklist): void

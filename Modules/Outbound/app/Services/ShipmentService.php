@@ -5,6 +5,7 @@ namespace Modules\Outbound\Services;
 use Modules\Outbound\Repositories\ShipmentRepository;
 use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Jobs\ProcessShipmentHandOverJob;
+use Modules\Outbound\Jobs\ProcessShipmentPickupJob;
 use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\ShipmentOrder;
@@ -94,6 +95,8 @@ class ShipmentService
                 ]);
             }
         });
+
+        ProcessShipmentPickupJob::dispatch($shipmentId, $orders->pluck('id')->toArray());
 
         return $this->shipmentRepository->findById($shipmentId);
     }
@@ -288,6 +291,8 @@ class ShipmentService
             'packlist_id'     => $packlist?->id,
             'tracking_number' => $order->tracking_number,
         ]);
+
+        ProcessShipmentPickupJob::dispatch($shipmentId, [$order->id]);
 
         return $this->shipmentRepository->findById($shipmentId);
     }

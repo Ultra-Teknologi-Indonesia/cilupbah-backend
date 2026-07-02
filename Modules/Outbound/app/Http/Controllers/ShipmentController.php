@@ -3,12 +3,16 @@
 namespace Modules\Outbound\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Traits\ApiResponse;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Outbound\Services\ShipmentService;
 use Modules\Outbound\Http\Requests\CreateShipmentRequest;
 use Modules\Outbound\Http\Requests\AddShipmentOrdersRequest;
 use OpenApi\Attributes as OA;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
+use Throwable;
 
 #[OA\Tag(name: 'Outbound - Shipment', description: 'API Endpoints for Shipment management')]
 #[OA\Schema(
@@ -33,6 +37,8 @@ use OpenApi\Attributes as OA;
 )]
 class ShipmentController extends Controller
 {
+    use ApiResponse;
+
     public function __construct(
         protected ShipmentService $shipmentService,
     ) {}
@@ -60,7 +66,7 @@ class ShipmentController extends Controller
         $limit = $request->query('limit', 10);
         $data = $this->shipmentService->getAllPaginated($limit);
 
-        return response()->json(['success' => true, 'data' => $data]);
+        return $this->successResponse($data);
     }
 
     #[OA\Post(
@@ -94,7 +100,7 @@ class ShipmentController extends Controller
 
         $shipment = $this->shipmentService->create($data);
 
-        return response()->json(['success' => true, 'data' => $shipment], 201);
+        return $this->successResponse($shipment, null, 201);
     }
 
     #[OA\Get(
@@ -128,7 +134,7 @@ class ShipmentController extends Controller
         $limit = $request->query('limit', 10);
         $data = $this->shipmentService->getByCourier($courierCode, $limit);
 
-        return response()->json(['success' => true, 'data' => $data]);
+        return $this->successResponse($data);
     }
 
     #[OA\Get(
@@ -150,7 +156,7 @@ class ShipmentController extends Controller
         $limit = $request->query('limit', 10);
         $data = $this->shipmentService->getCompleted($type, $courierIds, $limit);
 
-        return response()->json(['success' => true, 'data' => $data]);
+        return $this->successResponse($data);
     }
 
     #[OA\Get(
@@ -170,7 +176,7 @@ class ShipmentController extends Controller
         $limit = $request->query('limit', 10);
         $data = $this->shipmentService->getInstantAll($limit);
 
-        return response()->json(['success' => true, 'data' => $data]);
+        return $this->successResponse($data);
     }
 
     #[OA\Post(
@@ -210,7 +216,7 @@ class ShipmentController extends Controller
 
         $shipment = $this->shipmentService->createInstant($data);
 
-        return response()->json(['success' => true, 'data' => $shipment], 201);
+        return $this->successResponse($shipment, null, 201);
     }
 
     #[OA\Post(
@@ -246,10 +252,10 @@ class ShipmentController extends Controller
         try {
             $this->shipmentService->updateHandoverQty($id, $request->order_id, $request->qty_given);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 400);
+            return $this->errorResponse($e->getMessage());
         }
 
-        return response()->json(['success' => true, 'message' => 'Qty handover berhasil diperbarui.']);
+        return $this->successResponse(null, 'Qty handover berhasil diperbarui.');
     }
 
     public function show(string $id): JsonResponse
@@ -257,10 +263,10 @@ class ShipmentController extends Controller
         $shipment = $this->shipmentService->getById($id);
 
         if (!$shipment) {
-            return response()->json(['success' => false, 'message' => 'Shipment tidak ditemukan.'], 404);
+            return $this->errorResponse('Shipment tidak ditemukan.', 404);
         }
 
-        return response()->json(['success' => true, 'data' => $shipment]);
+        return $this->successResponse($shipment);
     }
 
     #[OA\Post(
@@ -288,7 +294,7 @@ class ShipmentController extends Controller
     {
         $shipment = $this->shipmentService->addOrders($id, $request->order_ids);
 
-        return response()->json(['success' => true, 'data' => $shipment]);
+        return $this->successResponse($shipment);
     }
 
     #[OA\Post(
@@ -318,7 +324,7 @@ class ShipmentController extends Controller
 
         $shipment = $this->shipmentService->removeOrders($id, $request->order_ids);
 
-        return response()->json(['success' => true, 'data' => $shipment]);
+        return $this->successResponse($shipment);
     }
 
     #[OA\Post(
@@ -337,7 +343,7 @@ class ShipmentController extends Controller
     {
         $shipment = $this->shipmentService->handOver($id);
 
-        return response()->json(['success' => true, 'data' => $shipment]);
+        return $this->successResponse($shipment);
     }
 
     #[OA\Post(
@@ -369,10 +375,10 @@ class ShipmentController extends Controller
         try {
             $shipment = $this->shipmentService->scanAndAddOrder($id, $request->barcode);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->errorResponse($e->getMessage(), 422);
         }
 
-        return response()->json(['success' => true, 'data' => $shipment]);
+        return $this->successResponse($shipment);
     }
 
     #[OA\Post(
@@ -401,10 +407,10 @@ class ShipmentController extends Controller
         try {
             $shipment = $this->shipmentService->scanShipment($request->barcode);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 404);
+            return $this->errorResponse($e->getMessage(), 404);
         }
 
-        return response()->json(['success' => true, 'data' => $shipment]);
+        return $this->successResponse($shipment);
     }
 
     #[OA\Post(
@@ -438,7 +444,7 @@ class ShipmentController extends Controller
 
         $this->shipmentService->updateTrackingNumber($id, $request->order_id, $request->tracking_number);
 
-        return response()->json(['success' => true, 'message' => 'Tracking number berhasil disimpan.']);
+        return $this->successResponse(null, 'Tracking number berhasil disimpan.');
     }
 
     #[OA\Post(
@@ -457,7 +463,66 @@ class ShipmentController extends Controller
     {
         $shipment = $this->shipmentService->cancel($id);
 
-        return response()->json(['success' => true, 'data' => $shipment]);
+        return $this->successResponse($shipment);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/outbound/shipments/{id}/manifest-pdf',
+        summary: 'Cetak manifest pengiriman sebagai PDF (A4 portrait)',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Shipment'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'PDF stream',
+                content: new OA\MediaType(mediaType: 'application/pdf'),
+            ),
+            new OA\Response(response: 404, description: 'Shipment tidak ditemukan'),
+        ]
+    )]
+    public function manifestPdf(string $id)
+    {
+        $shipment = $this->shipmentService->getById($id);
+
+        if (!$shipment) {
+            return $this->errorResponse('Shipment tidak ditemukan.', 404);
+        }
+
+        try {
+            $shipmentNo = $shipment->shipment_no ?? 'SHP';
+            $filename = "{$shipmentNo}-manifest.pdf";
+
+            $qrDataUri = $this->generateQrDataUri((string) $shipmentNo);
+
+            $pdf = Pdf::loadView('outbound::pdf.manifest', [
+                'shipment' => $shipment,
+                'qrDataUri' => $qrDataUri,
+            ])->setPaper('a4', 'portrait');
+
+            return $pdf->stream($filename);
+        } catch (Throwable $e) {
+            report($e);
+            return $this->errorResponse('Gagal membuat PDF manifest: ' . $e->getMessage(), 500);
+        }
+    }
+
+    protected function generateQrDataUri(string $content): ?string
+    {
+        try {
+            $svg = QrCode::format('svg')
+                ->size(160)
+                ->margin(0)
+                ->errorCorrection('M')
+                ->generate($content);
+
+            return 'data:image/svg+xml;base64,' . base64_encode((string) $svg);
+        } catch (Throwable $e) {
+            report($e);
+            return null;
+        }
     }
 
     #[OA\Delete(
@@ -476,6 +541,6 @@ class ShipmentController extends Controller
     {
         $this->shipmentService->delete($id);
 
-        return response()->json(['success' => true, 'message' => 'Shipment berhasil dihapus.']);
+        return $this->successResponse(null, 'Shipment berhasil dihapus.');
     }
 }

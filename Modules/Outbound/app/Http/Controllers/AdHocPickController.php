@@ -48,10 +48,10 @@ class AdHocPickController extends Controller
         try {
             $order = $this->service->complete($data['order_id']);
         } catch (\Throwable $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->errorResponse($e->getMessage(), 422);
         }
 
-        return response()->json(['success' => true, 'data' => $order]);
+        return $this->successResponse($order);
     }
 
     #[OA\Post(
@@ -92,19 +92,16 @@ class AdHocPickController extends Controller
                 (int) ($data['qty'] ?? 1),
             );
         } catch (\Throwable $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->errorResponse($e->getMessage(), 422);
         }
 
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'completed' => $result['completed'],
-                'matched_item_id' => $result['matched_item_id'],
-                'qty_picked' => $result['qty_picked'],
-                'qty_ordered' => $result['qty_ordered'],
-                'progress' => $result['progress'],
-                'order' => $result['order'],
-            ],
+        return $this->successResponse([
+            'completed' => $result['completed'],
+            'matched_item_id' => $result['matched_item_id'],
+            'qty_picked' => $result['qty_picked'],
+            'qty_ordered' => $result['qty_ordered'],
+            'progress' => $result['progress'],
+            'order' => $result['order'],
         ]);
     }
 }

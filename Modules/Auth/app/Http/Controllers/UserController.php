@@ -56,7 +56,7 @@ class UserController extends Controller
             max(1, (int) $request->query('pageSize', 50)),
         );
 
-        return response()->json($result);
+        return $this->successResponse($result);
     }
 
     #[OA\Get(

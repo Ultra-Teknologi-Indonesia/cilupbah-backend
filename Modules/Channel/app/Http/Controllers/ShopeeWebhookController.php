@@ -57,7 +57,7 @@ class ShopeeWebhookController extends Controller
             ];
         }
 
-        return response()->json([
+        return $this->successResponse([
             'config' => [
                 'push_url' => config('services.shopee.push_url'),
                 'redirect_uri' => config('services.shopee.redirect_uri'),

@@ -16,6 +16,8 @@ class ShipmentOrder extends Model
         'packlist_id',
         'tracking_number',
         'qty_given',
+        'pickup_status',
+        'pickup_message',
     ];
 
     public function shipment(): BelongsTo

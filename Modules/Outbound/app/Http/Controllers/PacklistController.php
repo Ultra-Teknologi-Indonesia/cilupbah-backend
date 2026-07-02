@@ -82,13 +82,10 @@ class PacklistController extends Controller
         );
 
         if (!$packlist) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Pesanan tidak ditemukan atau belum siap packing.',
-            ], 404);
+            return $this->errorResponse('Pesanan tidak ditemukan atau belum siap packing.', 404);
         }
 
-        return response()->json(['success' => true, 'data' => $packlist]);
+        return $this->successResponse($packlist);
     }
 
     public function index(Request $request): JsonResponse
@@ -96,7 +93,7 @@ class PacklistController extends Controller
         $limit = $request->query('limit', 10);
         $data = $this->packlistService->getAllPaginated($limit);
 
-        return response()->json(['success' => true, 'data' => $data]);
+        return $this->successResponse($data);
     }
 
     #[OA\Post(
@@ -129,7 +126,7 @@ class PacklistController extends Controller
 
         $packlist = $this->packlistService->create($data);
 
-        return response()->json(['success' => true, 'data' => $packlist], 201);
+        return $this->successResponse($packlist, null, 201);
     }
 
     #[OA\Get(
@@ -150,10 +147,10 @@ class PacklistController extends Controller
         $packlist = $this->packlistService->getById($id);
 
         if (!$packlist) {
-            return response()->json(['success' => false, 'message' => 'Packlist tidak ditemukan.'], 404);
+            return $this->errorResponse('Packlist tidak ditemukan.', 404);
         }
 
-        return response()->json(['success' => true, 'data' => $packlist]);
+        return $this->successResponse($packlist);
     }
 
     #[OA\Get(
@@ -174,7 +171,7 @@ class PacklistController extends Controller
         $limit = $request->query('limit', 10);
         $data = $this->packlistService->getItems($id, $limit);
 
-        return response()->json(['success' => true, 'data' => $data]);
+        return $this->successResponse($data);
     }
 
     #[OA\Post(
@@ -204,7 +201,7 @@ class PacklistController extends Controller
 
         $packlist = $this->packlistService->assignPacker($id, $request->packer_id, auth()->user()->email);
 
-        return response()->json(['success' => true, 'data' => $packlist]);
+        return $this->successResponse($packlist);
     }
 
     #[OA\Post(
@@ -223,7 +220,7 @@ class PacklistController extends Controller
     {
         $packlist = $this->packlistService->start($id);
 
-        return response()->json(['success' => true, 'data' => $packlist]);
+        return $this->successResponse($packlist);
     }
 
     #[OA\Post(
@@ -253,7 +250,7 @@ class PacklistController extends Controller
     {
         $this->packlistService->packItem($id, $itemId, $request->validated());
 
-        return response()->json(['success' => true, 'message' => 'Item berhasil di-pack.']);
+        return $this->successResponse(null, 'Item berhasil di-pack.');
     }
 
     #[OA\Post(
@@ -283,7 +280,7 @@ class PacklistController extends Controller
 
         $result = $this->packlistService->verifyBarcode($id, $request->barcode);
 
-        return response()->json(['success' => true, 'data' => $result]);
+        return $this->successResponse($result);
     }
 
     #[OA\Post(
@@ -302,7 +299,7 @@ class PacklistController extends Controller
     {
         $packlist = $this->packlistService->complete($id);
 
-        return response()->json(['success' => true, 'data' => $packlist]);
+        return $this->successResponse($packlist);
     }
 
     #[OA\Post(
@@ -321,7 +318,7 @@ class PacklistController extends Controller
     {
         $packlist = $this->packlistService->cancel($id);
 
-        return response()->json(['success' => true, 'data' => $packlist]);
+        return $this->successResponse($packlist);
     }
 
     #[OA\Delete(
@@ -340,6 +337,6 @@ class PacklistController extends Controller
     {
         $this->packlistService->delete($id);
 
-        return response()->json(['success' => true, 'message' => 'Packlist berhasil dihapus.']);
+        return $this->successResponse(null, 'Packlist berhasil dihapus.');
     }
 }

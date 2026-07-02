@@ -3,6 +3,7 @@
 namespace Modules\Notification\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Traits\ApiResponse;
 use Modules\Notification\Models\DeviceToken;
 use Modules\Notification\Http\Requests\StoreDeviceTokenRequest;
 use Illuminate\Http\JsonResponse;
@@ -12,6 +13,7 @@ use OpenApi\Attributes as OA;
 #[OA\Tag(name: 'Device Tokens', description: 'FCM device token management')]
 class DeviceTokenController extends Controller
 {
+    use ApiResponse;
     #[OA\Post(
         path: '/api/v1/device-tokens',
         summary: 'Register FCM device token',
@@ -46,7 +48,7 @@ class DeviceTokenController extends Controller
             ],
         );
 
-        return response()->json(['data' => $token], 200);
+        return $this->successResponse($token);
     }
 
     #[OA\Delete(
@@ -74,6 +76,6 @@ class DeviceTokenController extends Controller
             ->where('fcm_token', $request->fcm_token)
             ->delete();
 
-        return response()->json(['message' => 'Token removed']);
+        return $this->successResponse(null, 'Token removed');
     }
 }

@@ -3,6 +3,7 @@
 namespace Modules\Notification\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Traits\ApiResponse;
 use Modules\Notification\Models\Notification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -28,6 +29,7 @@ use OpenApi\Attributes as OA;
 )]
 class NotificationController extends Controller
 {
+    use ApiResponse;
     #[OA\Get(
         path: '/api/v1/notifications',
         summary: 'Get list of notifications for current user',
@@ -61,7 +63,7 @@ class NotificationController extends Controller
 
         $perPage = min((int) $request->get('per_page', 20), 100);
 
-        return response()->json($query->paginate($perPage));
+        return $this->successPaginatedResponse($query->paginate($perPage));
     }
 
     #[OA\Get(
@@ -87,7 +89,7 @@ class NotificationController extends Controller
             ->where('is_read', false)
             ->count();
 
-        return response()->json(['count' => $count]);
+        return $this->successResponse(['count' => $count]);
     }
 
     #[OA\Get(
@@ -112,7 +114,7 @@ class NotificationController extends Controller
         $notification = Notification::where('user_id', $request->user()->id)
             ->findOrFail($id);
 
-        return response()->json(['data' => $notification]);
+        return $this->successResponse($notification);
     }
 
     #[OA\Patch(
@@ -135,7 +137,7 @@ class NotificationController extends Controller
 
         $notification->markAsRead();
 
-        return response()->json(['data' => $notification]);
+        return $this->successResponse($notification);
     }
 
     #[OA\Post(
@@ -156,7 +158,7 @@ class NotificationController extends Controller
                 'read_at' => now(),
             ]);
 
-        return response()->json(['message' => 'All notifications marked as read']);
+        return $this->successResponse(null, 'All notifications marked as read');
     }
 
     #[OA\Delete(
@@ -179,6 +181,6 @@ class NotificationController extends Controller
 
         $notification->delete();
 
-        return response()->json(['message' => 'Notification deleted']);
+        return $this->successResponse(null, 'Notification deleted');
     }
 }

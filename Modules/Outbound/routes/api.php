@@ -68,6 +68,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('shipments/{id}/save-awb', [ShipmentController::class, 'saveAwb'])->name('outbound.shipments.save-awb');
     Route::post('shipments/{id}/hand-over', [ShipmentController::class, 'handOver'])->name('outbound.shipments.hand-over');
     Route::post('shipments/{id}/update-handover-qty', [ShipmentController::class, 'updateHandoverQty'])->name('outbound.shipments.update-handover-qty');
+    Route::get('shipments/{id}/manifest-pdf', [ShipmentController::class, 'manifestPdf'])->name('outbound.shipments.manifest-pdf');
     Route::post('shipments/{id}/cancel', [ShipmentController::class, 'cancel'])->name('outbound.shipments.cancel');
     Route::delete('shipments/{id}', [ShipmentController::class, 'destroy'])->name('outbound.shipments.destroy');
 

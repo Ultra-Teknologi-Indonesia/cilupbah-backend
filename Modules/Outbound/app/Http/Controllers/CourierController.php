@@ -69,7 +69,7 @@ class CourierController extends Controller
         $limit = $request->query('limit', 10);
         $data = $this->courierService->getByTenant($tenantId, $limit);
 
-        return response()->json(['success' => true, 'data' => $data]);
+        return $this->successResponse($data);
     }
 
     public function index(Request $request): JsonResponse
@@ -77,7 +77,7 @@ class CourierController extends Controller
         $limit = $request->query('limit', 10);
         $data = $this->courierService->getAllPaginated($limit);
 
-        return response()->json(['success' => true, 'data' => $data]);
+        return $this->successResponse($data);
     }
 
     #[OA\Get(
@@ -93,7 +93,7 @@ class CourierController extends Controller
     {
         $data = $this->courierService->getAll();
 
-        return response()->json(['success' => true, 'data' => $data]);
+        return $this->successResponse($data);
     }
 
     #[OA\Post(
@@ -125,7 +125,7 @@ class CourierController extends Controller
     {
         $courier = $this->courierService->create($request->validated());
 
-        return response()->json(['success' => true, 'data' => $courier], 201);
+        return $this->successResponse($courier, null, 201);
     }
 
     #[OA\Get(
@@ -146,10 +146,10 @@ class CourierController extends Controller
         $courier = $this->courierService->getById($id);
 
         if (!$courier) {
-            return response()->json(['success' => false, 'message' => 'Courier tidak ditemukan.'], 404);
+            return $this->errorResponse('Courier tidak ditemukan.', 404);
         }
 
-        return response()->json(['success' => true, 'data' => $courier]);
+        return $this->successResponse($courier);
     }
 
     #[OA\Put(
@@ -183,7 +183,7 @@ class CourierController extends Controller
     {
         $courier = $this->courierService->update($id, $request->validated());
 
-        return response()->json(['success' => true, 'data' => $courier]);
+        return $this->successResponse($courier);
     }
 
     #[OA\Delete(
@@ -202,6 +202,6 @@ class CourierController extends Controller
     {
         $this->courierService->delete($id);
 
-        return response()->json(['success' => true, 'message' => 'Courier berhasil dihapus.']);
+        return $this->successResponse(null, 'Courier berhasil dihapus.');
     }
 }

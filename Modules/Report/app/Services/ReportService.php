@@ -228,7 +228,7 @@ class ReportService
 
     public function shippingManifestReport(array $filters): array
     {
-        $query = Shipment::with(['orders.order:id,salesorder_no,customer_name,tracking_number,shipping_provider,shipping_full_name,shipping_address,shipping_city', 'location:id,location_name,location_code'])
+        $query = Shipment::with(['orders.order:id,salesorder_no,customer_name,tracking_number,shipping_provider,shipping_full_name,shipping_address,shipping_city,order_weight_gram,status', 'location:id,location_name,location_code'])
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
             ->when($filters['courier_code'] ?? null, fn ($q, $v) => $q->where('courier_code', $v))

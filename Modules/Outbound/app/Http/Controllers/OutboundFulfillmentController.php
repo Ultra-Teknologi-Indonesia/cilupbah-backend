@@ -44,10 +44,10 @@ class OutboundFulfillmentController extends Controller
         try {
             $data = $this->fulfillmentService->getOrdersByStage($stage, $limit);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 400);
+            return $this->errorResponse($e->getMessage());
         }
 
-        return response()->json(['success' => true, 'data' => $data]);
+        return $this->successResponse($data);
     }
 
     #[OA\Post(
@@ -84,10 +84,10 @@ class OutboundFulfillmentController extends Controller
                 auth()->user()->email,
             );
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 400);
+            return $this->errorResponse($e->getMessage());
         }
 
-        return response()->json(['success' => true, 'data' => $order]);
+        return $this->successResponse($order);
     }
 
     #[OA\Post(
@@ -136,7 +136,7 @@ class OutboundFulfillmentController extends Controller
         $order = $this->fulfillmentService->findOrderByNo($request->order_no);
 
         if (!$order) {
-            return response()->json(['success' => false, 'message' => 'Order tidak ditemukan.'], 404);
+            return $this->errorResponse('Order tidak ditemukan.', 404);
         }
 
         try {
@@ -152,7 +152,7 @@ class OutboundFulfillmentController extends Controller
 
         }
 
-        return response()->json(['success' => true, 'data' => $order]);
+        return $this->successResponse($order);
     }
 
     #[OA\Post(
@@ -189,10 +189,10 @@ class OutboundFulfillmentController extends Controller
                 auth()->user()->email,
             );
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 400);
+            return $this->errorResponse($e->getMessage());
         }
 
-        return response()->json(['success' => true, 'data' => $order, 'message' => 'Order dipindah ke ready-to-pick.']);
+        return $this->successResponse($order, 'Order dipindah ke ready-to-pick.');
     }
 
     #[OA\Post(
@@ -223,10 +223,10 @@ class OutboundFulfillmentController extends Controller
         try {
             $order = $this->fulfillmentService->moveToReadyToProcess($request->order_id);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 400);
+            return $this->errorResponse($e->getMessage());
         }
 
-        return response()->json(['success' => true, 'data' => $order, 'message' => 'Order dipindah ke ready-to-process.']);
+        return $this->successResponse($order, 'Order dipindah ke ready-to-process.');
     }
 
     public function requestCancelOrder(Request $request): JsonResponse
@@ -243,10 +243,10 @@ class OutboundFulfillmentController extends Controller
                 auth()->user()->email,
             );
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 400);
+            return $this->errorResponse($e->getMessage());
         }
 
-        return response()->json(['success' => true, 'data' => $order]);
+        return $this->successResponse($order);
     }
 
     #[OA\Post(

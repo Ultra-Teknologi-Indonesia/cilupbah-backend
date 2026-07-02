@@ -4,6 +4,7 @@ namespace Modules\Outbound\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Warehouse\Models\Location;
@@ -13,6 +14,8 @@ use OpenApi\Attributes as OA;
 #[OA\Tag(name: 'Outbound - WMS', description: 'API Endpoints for WMS utilities (employee, default bin)')]
 class WmsController extends Controller
 {
+    use ApiResponse;
+
     #[OA\Get(
         path: '/api/v1/outbound/wms/employee/{identifier}',
         summary: 'Get WMS employee by NIK or email',
@@ -33,10 +36,10 @@ class WmsController extends Controller
             ->first();
 
         if (!$user) {
-            return response()->json(['success' => false, 'message' => 'Employee tidak ditemukan.'], 404);
+            return $this->errorResponse('Employee tidak ditemukan.', 404);
         }
 
-        return response()->json(['success' => true, 'data' => $user->only(['id', 'name', 'email', 'nik'])]);
+        return $this->successResponse($user->only(['id', 'name', 'email', 'nik']));
     }
 
     #[OA\Get(
@@ -57,7 +60,7 @@ class WmsController extends Controller
         $location = Location::find($locationId);
 
         if (!$location) {
-            return response()->json(['success' => false, 'message' => 'Location tidak ditemukan.'], 404);
+            return $this->errorResponse('Location tidak ditemukan.', 404);
         }
 
         $bin = null;
@@ -65,11 +68,11 @@ class WmsController extends Controller
             $bin = LocationBin::find($location->default_bin_id);
         }
 
-        return response()->json(['success' => true, 'data' => [
+        return $this->successResponse([
             'location_id' => $location->id,
             'location_name' => $location->location_name,
             'default_bin' => $bin,
-        ]]);
+        ]);
     }
 
     #[OA\Put(
@@ -101,7 +104,7 @@ class WmsController extends Controller
         $location = Location::find($locationId);
 
         if (!$location) {
-            return response()->json(['success' => false, 'message' => 'Location tidak ditemukan.'], 404);
+            return $this->errorResponse('Location tidak ditemukan.', 404);
         }
 
         $bin = LocationBin::where('id', $request->bin_id)
@@ -109,15 +112,15 @@ class WmsController extends Controller
             ->first();
 
         if (!$bin) {
-            return response()->json(['success' => false, 'message' => 'Bin tidak ditemukan di location ini.'], 422);
+            return $this->errorResponse('Bin tidak ditemukan di location ini.', 422);
         }
 
         $location->update(['default_bin_id' => $request->bin_id]);
 
-        return response()->json(['success' => true, 'data' => [
+        return $this->successResponse([
             'location_id' => $location->id,
             'location_name' => $location->location_name,
             'default_bin' => $bin,
-        ]]);
+        ]);
     }
 }
