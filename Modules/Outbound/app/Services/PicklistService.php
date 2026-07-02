@@ -4,7 +4,9 @@ namespace Modules\Outbound\Services;
 
 use Modules\Outbound\Repositories\PicklistRepository;
 use Modules\Outbound\Models\Picklist;
+use Modules\Outbound\Models\PicklistItem;
 use Modules\Outbound\Jobs\ProcessPicklistCompleteJob;
+use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Notification\Events\TaskAssigned;
 use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Inventory\Models\Inventory;
@@ -158,18 +160,7 @@ class PicklistService
             throw new \Exception("Qty picked ({$data['qty_picked']}) melebihi qty ordered ({$item->qty_ordered}).");
         }
 
-        $isSku = $picklist->items->contains(fn ($i) => strcasecmp($i->sku, $data['bin_code']) === 0);
-        if ($isSku) {
-            throw new \Exception("'{$data['bin_code']}' adalah SKU produk, bukan kode rak.");
-        }
-
-        $bin = LocationBin::where('bin_final_code', $data['bin_code'])
-            ->where('location_id', $picklist->location_id)
-            ->first();
-
-        if (!$bin) {
-            throw new \Exception("Rak dengan kode '{$data['bin_code']}' tidak ditemukan.");
-        }
+        $bin = $this->resolveBin($picklist, $data['bin_code']);
 
         $delta = $data['qty_picked'] - $item->qty_picked;
 
@@ -207,6 +198,99 @@ class PicklistService
         }
     }
 
+    /**
+     * Validasi scan SKU terhadap rak yang aktif, TANPA memutasi stok.
+     * Dipakai FE saat scan SKU untuk memastikan barang benar-benar ada di rak
+     * sebelum modal qty dibuka, plus menyediakan angka default qty (max_pickable).
+     */
+    public function scanForPick(string $picklistId, string $sku, string $binCode): array
+    {
+        $picklist = $this->picklistRepository->findById($picklistId);
+
+        if (!$picklist) {
+            throw new OutboundValidationException('Picklist tidak ditemukan.');
+        }
+
+        if (!in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS])) {
+            throw new OutboundValidationException("Picklist tidak bisa di-pick (status saat ini: {$picklist->status}).");
+        }
+
+        $item = $this->resolveItemBySku($picklist, $sku);
+
+        if ($item->qty_picked >= $item->qty_ordered) {
+            throw new OutboundValidationException("{$item->sku} sudah selesai di-pick.");
+        }
+
+        $bin = $this->resolveBin($picklist, $binCode);
+
+        $inventory = Inventory::where('item_id', $item->item_id)
+            ->where('location_id', $picklist->location_id)
+            ->where('bin_id', $bin->id)
+            ->first();
+
+        if (!$inventory) {
+            throw new OutboundValidationException("SKU ini tidak ditemukan di rak {$bin->bin_final_code}. Silahkan pilih rak lain.");
+        }
+
+        $available = (int) $inventory->on_hand;
+        $remaining = $item->qty_ordered - $item->qty_picked;
+
+        if ($available <= 0) {
+            throw new OutboundValidationException("Stok tidak cukup di rak {$bin->bin_final_code}. Tersedia: {$available}. Silahkan pilih rak lain.");
+        }
+
+        return [
+            'item_id' => $item->id,
+            'sku' => $item->sku,
+            'bin_code' => $bin->bin_final_code,
+            'available_in_bin' => $available,
+            'remaining_to_pick' => $remaining,
+            'max_pickable' => min($available, $remaining),
+        ];
+    }
+
+    /**
+     * Resolve SKU → item picklist. Urutan cocok dengan findItemForSku di FE:
+     * SKU persis & belum penuh → SKU persis → partial belum penuh.
+     */
+    private function resolveItemBySku(Picklist $picklist, string $sku): PicklistItem
+    {
+        $lower = mb_strtolower($sku);
+        $items = $picklist->items;
+
+        $item = $items->first(fn ($it) => mb_strtolower($it->sku) === $lower && $it->qty_picked < $it->qty_ordered)
+            ?? $items->first(fn ($it) => mb_strtolower($it->sku) === $lower)
+            ?? $items->first(fn ($it) => str_contains(mb_strtolower($it->sku ?? ''), $lower) && $it->qty_picked < $it->qty_ordered);
+
+        if (!$item) {
+            throw new OutboundValidationException("SKU {$sku} tidak ada di picklist ini.");
+        }
+
+        return $item;
+    }
+
+    /**
+     * Pastikan kode yang di-scan adalah rak yang valid di lokasi picklist
+     * (bukan SKU, dan raknya ada).
+     */
+    private function resolveBin(Picklist $picklist, string $binCode): LocationBin
+    {
+        $isSku = $picklist->items->contains(fn ($i) => strcasecmp($i->sku, $binCode) === 0);
+        if ($isSku) {
+            throw new OutboundValidationException("'{$binCode}' adalah SKU produk, bukan kode rak.");
+        }
+
+        $bin = LocationBin::where('bin_final_code', $binCode)
+            ->where('location_id', $picklist->location_id)
+            ->first();
+
+        if (!$bin) {
+            throw new OutboundValidationException("Rak dengan kode '{$binCode}' tidak ditemukan.");
+        }
+
+        return $bin;
+    }
+
     public function complete(string $id): Picklist
     {
         $picklist = $this->picklistRepository->findById($id);
@@ -216,12 +300,12 @@ class PicklistService
         }
 
         if (!in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS])) {
-            throw new \Exception("Hanya picklist DRAFT/IN_PROGRESS yang bisa di-complete (saat ini: {$picklist->status}).");
+            throw new OutboundValidationException("Hanya picklist DRAFT/IN_PROGRESS yang bisa di-complete (saat ini: {$picklist->status}).");
         }
 
         $unpicked = $picklist->items->filter(fn ($item) => $item->qty_picked < $item->qty_ordered);
         if ($unpicked->isNotEmpty()) {
-            throw new \Exception("Masih ada {$unpicked->count()} item yang belum selesai di-pick.");
+            throw new OutboundValidationException("Masih ada {$unpicked->count()} item yang belum selesai di-pick.");
         }
 
         $this->picklistRepository->update($id, [

@@ -19,11 +19,23 @@ class ShipmentRepository
                 ->whereColumn('shipment_orders.shipment_id', 'shipments.id'),
             ])
             ->allowedFilters(
-                AllowedFilter::exact('status'),
+                // Multi-value status: filter[status]=SCHEDULED,HANDED_OVER
+                AllowedFilter::callback('status', function ($query, $value) {
+                    $values = is_array($value) ? $value : explode(',', (string) $value);
+                    $values = array_filter(array_map('trim', $values));
+                    if (! empty($values)) $query->whereIn('status', $values);
+                }),
                 AllowedFilter::exact('location_id'),
+                AllowedFilter::exact('courier_code'),
                 AllowedFilter::exact('courier_name'),
                 AllowedFilter::exact('shipment_type'),
                 AllowedFilter::partial('q', 'shipment_no'),
+                AllowedFilter::callback('date_from', function ($query, $value) {
+                    if ($value) $query->whereDate('shipment_date', '>=', $value);
+                }),
+                AllowedFilter::callback('date_to', function ($query, $value) {
+                    if ($value) $query->whereDate('shipment_date', '<=', $value);
+                }),
             )
             ->allowedSorts('created_at', 'shipment_no', 'shipment_date')
             ->defaultSort('-shipment_date')

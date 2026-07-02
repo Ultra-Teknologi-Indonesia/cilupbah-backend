@@ -35,6 +35,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::get('picklists/{id}/pdf', [PicklistController::class, 'pdf'])->name('outbound.picklists.pdf');
     Route::post('picklists/{id}/assign-picker', [PicklistController::class, 'assignPicker'])->name('outbound.picklists.assign-picker');
     Route::post('picklists/{id}/start', [PicklistController::class, 'start'])->name('outbound.picklists.start');
+    Route::post('picklists/{id}/scan', [PicklistController::class, 'scan'])->name('outbound.picklists.scan');
     Route::post('picklists/{id}/items/{itemId}/pick', [PicklistController::class, 'pickItem'])->name('outbound.picklists.pick-item');
     Route::post('picklists/{id}/complete', [PicklistController::class, 'complete'])->name('outbound.picklists.complete');
     Route::post('picklists/{id}/fail', [PicklistController::class, 'fail'])->name('outbound.picklists.fail');

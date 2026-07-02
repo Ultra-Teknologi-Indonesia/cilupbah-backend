@@ -6,6 +6,7 @@ use Modules\Outbound\Repositories\PacklistRepository;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\PacklistItem;
 use Modules\Outbound\Jobs\ProcessPacklistCompleteJob;
+use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Notification\Events\TaskAssigned;
 use Modules\Sales\Models\SalesOrder as Order;
 use Illuminate\Support\Facades\DB;
@@ -244,12 +245,12 @@ class PacklistService
         }
 
         if (!in_array($packlist->status, [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS])) {
-            throw new \Exception("Hanya packlist DRAFT/IN_PROGRESS yang bisa di-complete (saat ini: {$packlist->status}).");
+            throw new OutboundValidationException("Hanya packlist DRAFT/IN_PROGRESS yang bisa di-complete (saat ini: {$packlist->status}).");
         }
 
         $unpacked = $packlist->items->filter(fn ($item) => $item->qty_packed < $item->qty_ordered);
         if ($unpacked->isNotEmpty()) {
-            throw new \Exception("Masih ada {$unpacked->count()} item yang belum selesai di-pack.");
+            throw new OutboundValidationException("Masih ada {$unpacked->count()} item yang belum selesai di-pack.");
         }
 
         $this->packlistRepository->update($id, [

@@ -22,6 +22,21 @@ class PacklistRepository
                 AllowedFilter::exact('packer_id'),
                 AllowedFilter::exact('order_id'),
                 AllowedFilter::partial('q', 'packlist_no'),
+                // Filter via order (packlists.order_id -> sales_orders)
+                AllowedFilter::callback('shipping_provider', function ($query, $value) {
+                    $query->whereHas('order', fn ($q) => $q->where('shipping_provider', $value));
+                }),
+                AllowedFilter::callback('date_from', function ($query, $value) {
+                    if ($value) $query->whereHas('order', fn ($q) => $q->whereDate('transaction_date', '>=', $value));
+                }),
+                AllowedFilter::callback('date_to', function ($query, $value) {
+                    if ($value) $query->whereHas('order', fn ($q) => $q->whereDate('transaction_date', '<=', $value));
+                }),
+                AllowedFilter::callback('label_printed', function ($query, $value) {
+                    $v = strtolower((string) $value);
+                    if ($v === 'yes') $query->whereHas('order', fn ($q) => $q->whereNotNull('shipping_label_prepared_at'));
+                    elseif ($v === 'no') $query->whereHas('order', fn ($q) => $q->whereNull('shipping_label_prepared_at'));
+                }),
             )
             ->allowedSorts('created_at', 'packlist_no', 'started_at', 'completed_at')
             ->defaultSort('-created_at')

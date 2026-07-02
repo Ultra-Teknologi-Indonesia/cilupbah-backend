@@ -280,6 +280,41 @@ class PicklistController extends Controller
     }
 
     #[OA\Post(
+        path: '/api/v1/outbound/picklists/{id}/scan',
+        summary: 'Validate SKU against active bin before opening qty modal (no stock mutation)',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Picklist'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['sku', 'bin_code'],
+                properties: [
+                    new OA\Property(property: 'sku', type: 'string'),
+                    new OA\Property(property: 'bin_code', type: 'string'),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+            new OA\Response(response: 422, description: 'Validation error'),
+        ]
+    )]
+    public function scan(string $id, Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string',
+            'bin_code' => 'required|string',
+        ]);
+
+        $result = $this->picklistService->scanForPick($id, $validated['sku'], $validated['bin_code']);
+
+        return $this->successResponse($result);
+    }
+
+    #[OA\Post(
         path: '/api/v1/outbound/picklists/{id}/complete',
         summary: 'Complete picklist',
         security: [['bearerAuth' => []]],
