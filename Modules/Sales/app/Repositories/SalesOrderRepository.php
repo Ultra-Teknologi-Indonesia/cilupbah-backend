@@ -63,6 +63,21 @@ class SalesOrderRepository
         if ($contentType = request('content_type')) {
             $query = $this->applyContentTypeFilter($query, $contentType);
         }
+        if ($shippingProvider = request('shipping_provider')) {
+            $query->where('shipping_provider', $shippingProvider);
+        }
+        // Metode pembayaran: cod | noncod → is_cod boolean.
+        if ($payment = request('payment')) {
+            $p = strtolower((string) $payment);
+            if ($p === 'cod') $query->where('is_cod', true);
+            elseif ($p === 'noncod') $query->where(function ($q) { $q->where('is_cod', false)->orWhereNull('is_cod'); });
+        }
+        // Status cetak label: yes = pernah dicetak (untuk cetak ulang) | no = belum
+        if ($labelPrinted = request('label_printed')) {
+            $lp = strtolower((string) $labelPrinted);
+            if ($lp === 'yes') $query->whereNotNull('shipping_label_prepared_at');
+            elseif ($lp === 'no') $query->whereNull('shipping_label_prepared_at');
+        }
 
         if ($q = request('q')) {
             if (request('search_by', 'order') === 'sku') {
