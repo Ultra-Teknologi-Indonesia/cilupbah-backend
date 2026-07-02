@@ -4,6 +4,7 @@ namespace Modules\Sales\Services;
 
 use Modules\Sales\Repositories\SalesReturnRepository;
 use Modules\Sales\Models\SalesReturn;
+use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Exceptions\InvalidReturnStateException;
 use Modules\Sales\Jobs\AdminAlertJob;
 use Modules\Inbound\Services\InboundService;
@@ -91,6 +92,89 @@ class SalesReturnService
         });
     }
 
+    /**
+     * Buat SalesReturn dari event retur marketplace (Shopee/TikTok/Lazada).
+     * Idempotent: dilewati bila retur untuk channel_return_id / order yang sama sudah ada.
+     * Mengembalikan null bila dilewati (order tidak ketemu, duplikat, tanpa item/lokasi).
+     *
+     * @param array{source:string,channel_order_id:string|int,channel_return_id?:string|int|null,channel_shop_id?:string|null,reason?:string|null,created_by?:string|null} $payload
+     */
+    public function createFromChannel(array $payload): ?SalesReturn
+    {
+        $source = (string) $payload['source'];
+        $channelOrderId = (string) $payload['channel_order_id'];
+
+        // Namespace-kan id retur channel agar unik lintas marketplace (mis. "shopee:RSN-1").
+        $channelReturnId = isset($payload['channel_return_id']) && $payload['channel_return_id'] !== ''
+            ? $source . ':' . $payload['channel_return_id']
+            : null;
+
+        if ($channelReturnId && $this->returnRepository->existsByChannelReturn(SalesReturn::SOURCE_MARKETPLACE, $channelReturnId)) {
+            return null;
+        }
+
+        $order = SalesOrder::with('items')
+            ->where('source', $source)
+            ->where(function ($q) use ($channelOrderId) {
+                $q->where('channel_order_no', $channelOrderId)
+                  ->orWhere('salesorder_no', $channelOrderId)
+                  ->orWhere('salesorder_no', 'like', '%-' . $channelOrderId);
+            })
+            ->first();
+
+        if (! $order) {
+            Log::warning('Retur marketplace dilewati: order lokal tidak ditemukan.', [
+                'source' => $source,
+                'channel_order_id' => $channelOrderId,
+                'channel_return_id' => $channelReturnId,
+            ]);
+            return null;
+        }
+
+        if (! $channelReturnId && $this->returnRepository->existsMarketplaceForOrder($order->id)) {
+            return null;
+        }
+
+        $locationId = $order->location_id ?? $this->settings->restockLocationId();
+        if (! $locationId) {
+            Log::warning('Retur marketplace dilewati: lokasi restock tidak dapat ditentukan.', [
+                'source' => $source,
+                'order_id' => $order->id,
+            ]);
+            return null;
+        }
+
+        $items = $order->items
+            ->filter(fn ($it) => $it->item_id && (float) $it->qty_in_base > 0)
+            ->map(fn ($it) => [
+                'item_id'   => $it->item_id,
+                'qty'       => (int) $it->qty_in_base,
+                'condition' => 'GOOD',
+            ])
+            ->values()
+            ->toArray();
+
+        if (empty($items)) {
+            Log::warning('Retur marketplace dilewati: order tanpa item valid.', [
+                'source' => $source,
+                'order_id' => $order->id,
+            ]);
+            return null;
+        }
+
+        return $this->create([
+            'order_id'          => $order->id,
+            'location_id'       => $locationId,
+            'source'            => SalesReturn::SOURCE_MARKETPLACE,
+            'channel_return_id' => $channelReturnId,
+            'channel_shop_id'   => $payload['channel_shop_id'] ?? null,
+            'customer_name'     => $order->customer_name ?? null,
+            'reason'            => $payload['reason'] ?? 'Retur dari marketplace',
+            'created_by'        => $payload['created_by'] ?? 'system:' . $source . '-webhook',
+            'items'             => $items,
+        ]);
+    }
+
     public function accept(string $id, array $data): SalesReturn
     {
         return DB::transaction(function () use ($id, $data) {
@@ -119,6 +203,21 @@ class SalesReturnService
                 'created_by'       => $data['processed_by'],
                 'items'            => $inboundItems,
             ]);
+
+            if ($this->settings->autoReceive()) {
+                $conditionByItem = $return->items->keyBy('item_id');
+
+                $receiveItems = $inbound->items->map(fn ($item) => [
+                    'inbound_item_id' => $item->id,
+                    'qty'             => $item->expected_qty,
+                    'condition'       => $conditionByItem[$item->item_id]->condition ?? 'GOOD',
+                ])->toArray();
+
+                $this->inboundService->receive($inbound->id, [
+                    'received_by' => $data['processed_by'],
+                    'items'       => $receiveItems,
+                ]);
+            }
 
             return $this->getById($id);
         });

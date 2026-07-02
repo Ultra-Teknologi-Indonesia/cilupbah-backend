@@ -7,6 +7,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Modules\Channel\Jobs\SyncStockToChannelsJob;
 use Modules\Finance\Services\AutoJournalService;
 use Modules\Inventory\Models\StockOpname;
 use Modules\Inventory\Repositories\InventoryRepository;
@@ -73,6 +74,10 @@ class ProcessStockOpnameFinalizeJob implements ShouldQueue
                     ]);
                 });
             });
+        }
+
+        foreach ($itemsWithDifference->pluck('item_id')->filter()->unique() as $itemId) {
+            SyncStockToChannelsJob::dispatch($itemId);
         }
 
         try {

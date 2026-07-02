@@ -26,6 +26,11 @@ class SalesReturnSettingService
         return (bool) $this->get()->auto_accept;
     }
 
+    public function autoReceive(): bool
+    {
+        return (bool) $this->get()->auto_receive;
+    }
+
     public function restockLocationId(): ?string
     {
         return $this->get()->default_restock_location_id;

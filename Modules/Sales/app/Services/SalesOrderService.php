@@ -280,7 +280,12 @@ class SalesOrderService
         return $result;
     }
 
-    public function getShippingLabel(SalesOrder $order, string $docType = 'shipping_label'): array
+    /**
+     * @param array $options Opsi cetak per channel:
+     *   - tiktok: document_type (SHIPPING_LABEL|PACKING_LIST|SHIPPING_LABEL_AND_PACKING_LIST), document_size (A6|A5|...)
+     *   - shopee: document_type (NORMAL_AIR_WAYBILL|THERMAL_AIR_WAYBILL|SELF_DESIGN)
+     */
+    public function getShippingLabel(SalesOrder $order, array $options = []): array
     {
         $source = $order->source;
         $shopId = $order->channel_shop_id;
@@ -318,7 +323,9 @@ class SalesOrderService
                 throw new \RuntimeException('Package ID tidak ditemukan untuk pesanan TikTok ini.');
             }
 
-            $result = $tikTokService->getShippingLabel($shopId, $packageId);
+            $documentType = $options['document_type'] ?? 'SHIPPING_LABEL';
+            $documentSize = $options['document_size'] ?? 'A6';
+            $result = $tikTokService->getShippingLabel($shopId, $packageId, $documentType, $documentSize);
             $docUrl = $result['data']['doc_url'] ?? ($result['data']['document_url'] ?? null);
 
             if ($docUrl) {
@@ -339,7 +346,15 @@ class SalesOrderService
         if ($source === 'shopee') {
             $shopeeService = app(\Modules\Channel\Services\ShopeeOrderService::class);
 
-            if ($order->shipping_label_status === 'ready' && $order->shipping_label_doc_type) {
+            // Tipe dokumen yang diminta user (mis. NORMAL_AIR_WAYBILL / THERMAL_AIR_WAYBILL).
+            $requestedDocType = $options['document_type'] ?? null;
+
+            // Pakai cache hanya bila tipe yang diminta sama dengan yang sudah disiapkan.
+            $cacheUsable = $order->shipping_label_status === 'ready'
+                && $order->shipping_label_doc_type
+                && (! $requestedDocType || $requestedDocType === $order->shipping_label_doc_type);
+
+            if ($cacheUsable) {
                 $download = $shopeeService->downloadShippingDocument(
                     $shopId,
                     $channelOrderNo,
@@ -393,7 +408,7 @@ class SalesOrderService
                 );
             }
 
-            $shopeeDocType = 'NORMAL_AIR_WAYBILL';
+            $shopeeDocType = $requestedDocType ?? 'NORMAL_AIR_WAYBILL';
             $result = $shopeeService->getAirwayBill($shopId, $channelOrderNo, $shopeeDocType);
 
             if (! empty($result['ready']) && ! empty($result['document_base64'])) {

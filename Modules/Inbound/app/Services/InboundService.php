@@ -6,6 +6,7 @@ use Modules\Inbound\Repositories\InboundRepository;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundAssignment;
 use Modules\Inbound\Models\InboundItem;
+use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\PutawayService;
@@ -628,6 +629,10 @@ class InboundService
 
     private function resolveLandedCostMap(Inbound $inbound): array
     {
+        if ($inbound->source_type === 'sales_return') {
+            return $this->resolveSalesReturnCostMap($inbound);
+        }
+
         if ($inbound->source_type !== 'purchase_order' || empty($inbound->source_id)) {
             return [];
         }
@@ -648,6 +653,42 @@ class InboundService
                 $totalCost += $qty * (float) $row->landed_cost_per_unit;
             }
             $map[$itemId] = $totalQty > 0 ? $totalCost / $totalQty : 0;
+        }
+
+        return $map;
+    }
+
+    /**
+     * Cost restock retur: pakai avg_cost inventori berjalan (barang kembali pada
+     * nilai persediaan saat ini karena order item tidak menyimpan COGS historis).
+     */
+    private function resolveSalesReturnCostMap(Inbound $inbound): array
+    {
+        $itemIds = $inbound->items->pluck('item_id')->filter()->unique()->values();
+        if ($itemIds->isEmpty()) {
+            return [];
+        }
+
+        $rows = Inventory::whereIn('item_id', $itemIds)
+            ->where('avg_cost', '>', 0)
+            ->get(['item_id', 'location_id', 'on_hand', 'avg_cost']);
+
+        $map = [];
+        foreach ($rows->groupBy('item_id') as $itemId => $group) {
+            $preferred = $group->where('location_id', $inbound->location_id);
+            $pool = $preferred->isNotEmpty() ? $preferred : $group;
+
+            $totalQty = 0.0;
+            $totalValue = 0.0;
+            foreach ($pool as $row) {
+                $qty = max((float) $row->on_hand, 0.0);
+                $totalQty += $qty;
+                $totalValue += $qty * (float) $row->avg_cost;
+            }
+
+            $map[$itemId] = $totalQty > 0
+                ? $totalValue / $totalQty
+                : (float) $pool->avg('avg_cost');
         }
 
         return $map;

@@ -139,11 +139,11 @@ class InventoryTransactionController extends Controller
         try {
             $validated = $request->validate([
                 'approved_by' => 'required|string',
-                'assigned_to' => 'required|string',
+                'assigned_to' => 'nullable|string',
             ]);
 
             $result = $this->inventoryService->approveTransfer($id, $validated);
-            return $this->successResponse($result, 'Transfer berhasil di-approve dan pekerja telah di-assign.');
+            return $this->successResponse($result, 'Transfer berhasil di-approve.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -500,6 +500,17 @@ class InventoryTransactionController extends Controller
             $inventory = $this->inventoryService->putaway($request->validated());
 
             return $this->successResponse($inventory, 'Putaway berhasil.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function binTransfer(\Modules\Inventory\Http\Requests\BinTransferRequest $request): JsonResponse
+    {
+        try {
+            $inventory = $this->inventoryService->binTransfer($request->validated());
+
+            return $this->successResponse($inventory, 'Transfer antar bin berhasil.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }

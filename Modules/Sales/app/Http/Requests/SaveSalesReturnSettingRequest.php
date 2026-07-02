@@ -15,6 +15,7 @@ class SaveSalesReturnSettingRequest extends FormRequest
     {
         return [
             'auto_accept' => ['nullable', 'boolean'],
+            'auto_receive' => ['nullable', 'boolean'],
             'default_restock_location_id' => ['nullable', 'bail', 'uuid', 'exists:locations,id'],
             'allowed_conditions' => ['nullable', 'array', 'min:1'],
             'allowed_conditions.*' => ['string', 'max:50'],

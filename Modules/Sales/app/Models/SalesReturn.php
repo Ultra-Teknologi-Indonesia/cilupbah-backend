@@ -19,6 +19,8 @@ class SalesReturn extends Model
         'order_id',
         'location_id',
         'source',
+        'channel_return_id',
+        'channel_shop_id',
         'customer_name',
         'customer_contact',
         'status',

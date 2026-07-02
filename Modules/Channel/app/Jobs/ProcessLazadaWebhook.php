@@ -65,6 +65,22 @@ class ProcessLazadaWebhook implements ShouldQueue
         if ($this->isReverseMessage($data)) {
             $this->handleOrderEvent($orderService, $sellerId, $data);
 
+            $channelOrderId = (string) ($data['trade_order_id'] ?? $data['order_id'] ?? $data['reverse_order_id'] ?? '');
+            if ($channelOrderId !== '') {
+                try {
+                    app(\Modules\Sales\Services\SalesReturnService::class)->createFromChannel([
+                        'source'            => 'lazada',
+                        'channel_order_id'  => $channelOrderId,
+                        'channel_return_id' => $data['reverse_order_id'] ?? null,
+                        'channel_shop_id'   => $sellerId,
+                        'reason'            => $data['reverse_status'] ?? $data['order_status'] ?? 'Retur Lazada',
+                        'created_by'        => 'system:lazada-webhook',
+                    ]);
+                } catch (\Throwable $e) {
+                    Log::warning('Lazada auto SalesReturn gagal: ' . $e->getMessage(), ['channel_order_id' => $channelOrderId]);
+                }
+            }
+
             return;
         }
 

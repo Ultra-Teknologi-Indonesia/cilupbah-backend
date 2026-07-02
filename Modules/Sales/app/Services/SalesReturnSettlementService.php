@@ -107,9 +107,7 @@ class SalesReturnSettlementService
         return DB::transaction(function () use ($data) {
             $entry = $this->repo->createInvoice($data);
 
-            $settlement = SalesReturnSettlement::findOrFail($data['settlement_id']);
-            $settlement->total_amount = $settlement->invoices()->sum('amount');
-            $settlement->save();
+            $this->recomputeTotal($data['settlement_id']);
 
             return $entry;
         });
@@ -122,12 +120,21 @@ class SalesReturnSettlementService
             $settlementId = $invoice->settlement_id;
             $invoice->delete();
 
-            $settlement = SalesReturnSettlement::findOrFail($settlementId);
-            $settlement->total_amount = $settlement->invoices()->sum('amount');
-            $settlement->save();
+            $this->recomputeTotal($settlementId);
 
             return true;
         });
+    }
+
+    /**
+     * Total settlement = potongan faktur + refund tunai.
+     */
+    private function recomputeTotal(string $settlementId): void
+    {
+        $settlement = SalesReturnSettlement::findOrFail($settlementId);
+        $settlement->total_amount = (float) $settlement->invoices()->sum('amount')
+            + (float) $settlement->refunds()->sum('amount');
+        $settlement->save();
     }
 
     public function getRefunds(int $limit = 10)
@@ -142,11 +149,33 @@ class SalesReturnSettlementService
 
     public function createRefund(array $data): SalesReturnSettlementRefund
     {
-        return $this->repo->createRefund($data);
+        return DB::transaction(function () use ($data) {
+            $entry = $this->repo->createRefund($data);
+
+            if (! empty($data['settlement_id'])) {
+                $this->recomputeTotal($data['settlement_id']);
+            }
+
+            return $entry;
+        });
     }
 
     public function deleteRefund(string $id): bool
     {
-        return SalesReturnSettlementRefund::where('id', $id)->delete() > 0;
+        return DB::transaction(function () use ($id) {
+            $refund = SalesReturnSettlementRefund::find($id);
+            if (! $refund) {
+                return false;
+            }
+
+            $settlementId = $refund->settlement_id;
+            $refund->delete();
+
+            if ($settlementId) {
+                $this->recomputeTotal($settlementId);
+            }
+
+            return true;
+        });
     }
 }

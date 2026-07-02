@@ -14,6 +14,7 @@ class SalesReturnSetting extends Model
 
     protected $fillable = [
         'auto_accept',
+        'auto_receive',
         'default_restock_location_id',
         'allowed_conditions',
         'allowed_refund_methods',
@@ -22,6 +23,7 @@ class SalesReturnSetting extends Model
 
     protected $casts = [
         'auto_accept' => 'boolean',
+        'auto_receive' => 'boolean',
         'allowed_conditions' => 'array',
         'allowed_refund_methods' => 'array',
         'return_validity_days' => 'integer',

@@ -122,6 +122,37 @@ class AutoJournalService
         );
     }
 
+    public function forStockAdjustment(
+        string $adjustmentNumber,
+        string $sourceId,
+        $date,
+        float $signedValue,
+    ): void {
+        $amount = abs($signedValue);
+        if ($amount <= 0) {
+            return;
+        }
+
+        $debit = $signedValue > 0
+            ? $this->mappedAccountId(AccountMappingKey::INVENTORY)
+            : $this->mappedAccountId(AccountMappingKey::INVENTORY_LOSS);
+
+        $credit = $signedValue > 0
+            ? $this->mappedAccountId(AccountMappingKey::INVENTORY_GAIN)
+            : $this->mappedAccountId(AccountMappingKey::INVENTORY);
+
+        $this->record(
+            sourceType: 'stock_adjustment',
+            sourceId: $sourceId,
+            sourceNo: $adjustmentNumber,
+            date: $date,
+            amount: $amount,
+            debitAccountId: $debit,
+            creditAccountId: $credit,
+            description: 'Penyesuaian stok ' . $adjustmentNumber,
+        );
+    }
+
     public function forStockRevaluation(
         string $revalNumber,
         string $sourceId,

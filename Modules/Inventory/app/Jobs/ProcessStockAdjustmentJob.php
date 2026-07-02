@@ -7,11 +7,14 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Modules\Channel\Jobs\SyncStockToChannelsJob;
+use Modules\Finance\Services\AutoJournalService;
 use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class ProcessStockAdjustmentJob implements ShouldQueue
 {
@@ -35,14 +38,25 @@ class ProcessStockAdjustmentJob implements ShouldQueue
             return;
         }
 
+        $totalSignedValue = 0.0;
+        $adjustedItemIds = [];
+
         foreach ($adjustment->items as $item) {
-            $this->withStockLock($item->item_id, $adjustment->location_id, function () use ($item, $adjustment, $inventoryRepository, $movementRepository) {
-                DB::transaction(function () use ($item, $adjustment, $inventoryRepository, $movementRepository) {
+            if ((float) $item->difference_qty === 0.0) {
+                continue;
+            }
+
+            $this->withStockLock($item->item_id, $adjustment->location_id, function () use ($item, $adjustment, $inventoryRepository, $movementRepository, &$totalSignedValue) {
+                DB::transaction(function () use ($item, $adjustment, $inventoryRepository, $movementRepository, &$totalSignedValue) {
                     $inventory = $inventoryRepository->findOrCreateForUpdate(
                         $item->item_id,
                         $adjustment->location_id,
                         $item->bin_id,
                     );
+
+                    $avgCost = (float) ($inventory->avg_cost ?? 0);
+                    $signedValue = (float) $item->difference_qty * $avgCost;
+                    $totalSignedValue += $signedValue;
 
                     $inventory->on_hand += $item->difference_qty;
                     $inventoryRepository->updateStock($inventory);
@@ -55,11 +69,32 @@ class ProcessStockAdjustmentJob implements ShouldQueue
                         'source' => 'ADJUSTMENT',
                         'qty' => $item->difference_qty,
                         'balance' => $inventory->on_hand,
+                        'cost_per_unit' => $avgCost > 0 ? $avgCost : null,
+                        'total_cost' => $avgCost > 0 ? round($signedValue, 2) : null,
                         'transaction_date' => now(),
                         'created_by' => $this->approvedBy,
                     ]);
                 });
             });
+
+            $adjustedItemIds[] = $item->item_id;
+        }
+
+        try {
+            app(AutoJournalService::class)->forStockAdjustment(
+                $adjustment->adjustment_no,
+                $adjustment->id,
+                $adjustment->approved_at ?? now(),
+                $totalSignedValue,
+            );
+        } catch (\Throwable $e) {
+            Log::warning('AutoJournal stock adjustment gagal: ' . $e->getMessage(), [
+                'adjustment_no' => $adjustment->adjustment_no,
+            ]);
+        }
+
+        foreach (array_values(array_unique($adjustedItemIds)) as $itemId) {
+            SyncStockToChannelsJob::dispatch($itemId);
         }
     }
 }

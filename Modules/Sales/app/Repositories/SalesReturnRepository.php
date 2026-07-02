@@ -53,6 +53,20 @@ class SalesReturnRepository
         return SalesReturn::create($data);
     }
 
+    public function existsByChannelReturn(string $source, string $channelReturnId): bool
+    {
+        return SalesReturn::where('source', $source)
+            ->where('channel_return_id', $channelReturnId)
+            ->exists();
+    }
+
+    public function existsMarketplaceForOrder(string $orderId): bool
+    {
+        return SalesReturn::where('order_id', $orderId)
+            ->where('source', SalesReturn::SOURCE_MARKETPLACE)
+            ->exists();
+    }
+
     public function createItem(array $data): SalesReturnItem
     {
         return SalesReturnItem::create($data);

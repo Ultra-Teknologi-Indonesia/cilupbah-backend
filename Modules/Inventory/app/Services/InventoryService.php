@@ -183,6 +183,99 @@ class InventoryService
         });
     }
 
+    /**
+     * Pindah stok antar bin dalam satu gudang (mutasi internal), membawa nilai avg_cost.
+     */
+    public function binTransfer(array $data): Inventory
+    {
+        if (($data['source_bin_id'] ?? null) === ($data['destination_bin_id'] ?? null)) {
+            throw new \Exception('Bin asal dan bin tujuan harus berbeda.');
+        }
+
+        if (($data['qty'] ?? 0) <= 0) {
+            throw new \Exception('Qty harus lebih dari 0.');
+        }
+
+        $inventory = DB::transaction(function () use ($data) {
+            $transactionNumber = $data['transaction_number']
+                ?? ('BINT-' . now()->format('Ymd') . '-' . Str::upper(Str::random(4)));
+
+            $source = $this->inventoryRepository->findExactForUpdate(
+                $data['item_id'],
+                $data['location_id'],
+                $data['source_bin_id'],
+                $data['batch_no'] ?? '',
+                $data['serial_no'] ?? ''
+            );
+
+            if (! $source || $source->on_hand < $data['qty']) {
+                $current = $source ? $source->on_hand : 0;
+                throw new \Exception("Stok di bin asal tidak mencukupi (tersedia: {$current}, diminta: {$data['qty']}).");
+            }
+
+            $unitCost = (float) ($source->avg_cost ?? 0);
+
+            $source->on_hand -= $data['qty'];
+            $this->inventoryRepository->updateStock($source);
+
+            $this->movementRepository->create([
+                'item_id'            => $data['item_id'],
+                'location_id'        => $data['location_id'],
+                'bin_id'             => $data['source_bin_id'],
+                'transaction_number' => $transactionNumber,
+                'source'             => 'BIN_TRANSFER_OUT',
+                'qty'                => -$data['qty'],
+                'balance'            => $source->on_hand,
+                'cost_per_unit'      => $unitCost > 0 ? $unitCost : null,
+                'total_cost'         => $unitCost > 0 ? round($unitCost * (float) $data['qty'], 2) : null,
+                'transaction_date'   => now(),
+                'created_by'         => $data['created_by'],
+            ]);
+
+            $dest = $this->inventoryRepository->findOrCreateForUpdate(
+                $data['item_id'],
+                $data['location_id'],
+                $data['destination_bin_id'],
+                $data['batch_no'] ?? '',
+                $data['serial_no'] ?? '',
+                ['expired_date' => $data['expired_date'] ?? null],
+            );
+
+            $dest->on_hand += $data['qty'];
+            $this->inventoryRepository->updateStock($dest);
+
+            if ($unitCost > 0) {
+                $this->recalculateAverageCost(
+                    $data['item_id'],
+                    $data['location_id'],
+                    $data['destination_bin_id'],
+                    (float) $data['qty'],
+                    $unitCost,
+                    $data['batch_no'] ?? '',
+                    $data['serial_no'] ?? '',
+                );
+            }
+
+            $this->movementRepository->create([
+                'item_id'            => $data['item_id'],
+                'location_id'        => $data['location_id'],
+                'bin_id'             => $data['destination_bin_id'],
+                'transaction_number' => $transactionNumber,
+                'source'             => 'BIN_TRANSFER_IN',
+                'qty'                => $data['qty'],
+                'balance'            => $dest->on_hand,
+                'cost_per_unit'      => $unitCost > 0 ? $unitCost : null,
+                'total_cost'         => $unitCost > 0 ? round($unitCost * (float) $data['qty'], 2) : null,
+                'transaction_date'   => now(),
+                'created_by'         => $data['created_by'],
+            ]);
+
+            return $dest->fresh();
+        });
+
+        return $inventory;
+    }
+
     public function getStockItems(int $limit = 10)
     {
         return $this->inventoryRepository->getStockItems($limit);
@@ -322,14 +415,14 @@ class InventoryService
                 throw new \Exception('Transfer tidak ditemukan.');
             }
 
-            if ($transfer->status !== InventoryTransfer::STATUS_IN_TRANSIT) {
-                throw new \Exception("Transfer berstatus {$transfer->status}, tidak bisa di-approve.");
+            if ($transfer->status !== InventoryTransfer::STATUS_DRAFT) {
+                throw new \Exception("Transfer berstatus {$transfer->status}, hanya draft yang bisa di-approve.");
             }
 
             $transfer->update([
-                'status'      => InventoryTransfer::STATUS_CHECKING,
+                'status'      => InventoryTransfer::STATUS_APPROVED,
                 'approved_by' => $data['approved_by'],
-                'assigned_to' => $data['assigned_to'],
+                'assigned_to' => $data['assigned_to'] ?? null,
                 'approved_at' => now(),
             ]);
 
@@ -346,8 +439,8 @@ class InventoryService
                 throw new \Exception('Transfer tidak ditemukan.');
             }
 
-            if (! in_array($transfer->status, [InventoryTransfer::STATUS_DRAFT, InventoryTransfer::STATUS_IN_TRANSIT])) {
-                throw new \Exception("Transfer berstatus {$transfer->status}, tidak bisa dibatalkan.");
+            if (! in_array($transfer->status, [InventoryTransfer::STATUS_DRAFT, InventoryTransfer::STATUS_PENDING, InventoryTransfer::STATUS_APPROVED])) {
+                throw new \Exception("Transfer berstatus {$transfer->status}, hanya bisa dibatalkan sebelum dikirim.");
             }
 
             foreach ($transfer->items as $item) {
@@ -445,7 +538,7 @@ class InventoryService
                 throw new \Exception('Transfer tidak ditemukan.');
             }
 
-            if ($transfer->status !== InventoryTransfer::STATUS_IN_TRANSIT) {
+            if (! in_array($transfer->status, [InventoryTransfer::STATUS_IN_TRANSIT, InventoryTransfer::STATUS_CHECKING])) {
                 throw new \Exception("Transfer berstatus {$transfer->status}, tidak bisa di-receive.");
             }
 

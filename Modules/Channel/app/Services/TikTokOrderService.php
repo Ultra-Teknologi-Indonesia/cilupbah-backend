@@ -293,7 +293,7 @@ class TikTokOrderService
         }
     }
 
-    public function getShippingDocument(string $shopId, string $packageId, string $documentType = 'SHIPPING_LABEL'): array
+    public function getShippingDocument(string $shopId, string $packageId, string $documentType = 'SHIPPING_LABEL', string $documentSize = 'A6'): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);
         if (! $shop || ! $shop->access_token) {
@@ -303,20 +303,20 @@ class TikTokOrderService
         $queries = [
             'shop_cipher'   => $shop->shop_cipher ?? '',
             'document_type' => $documentType,
-            'document_size' => 'A6',
+            'document_size' => $documentSize,
         ];
 
         return $this->client->request('GET', "/fulfillment/202309/packages/{$packageId}/shipping_documents", $queries, [], $shop->access_token);
     }
 
-    public function getShippingLabel(string $shopId, string $packageId): array
+    public function getShippingLabel(string $shopId, string $packageId, string $documentType = 'SHIPPING_LABEL', string $documentSize = 'A6'): array
     {
-        return $this->getShippingDocument($shopId, $packageId, 'SHIPPING_LABEL');
+        return $this->getShippingDocument($shopId, $packageId, $documentType, $documentSize);
     }
 
-    public function getPackingList(string $shopId, string $packageId): array
+    public function getPackingList(string $shopId, string $packageId, string $documentSize = 'A6'): array
     {
-        return $this->getShippingDocument($shopId, $packageId, 'PACKING_LIST');
+        return $this->getShippingDocument($shopId, $packageId, 'PACKING_LIST', $documentSize);
     }
 
     public function getPackageDetail(string $shopId, string $packageId): array

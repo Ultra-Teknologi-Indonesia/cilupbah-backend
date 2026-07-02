@@ -642,6 +642,8 @@ class SalesOrderController extends Controller
         parameters: [
             new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'doc_type', in: 'query', required: false, schema: new OA\Schema(type: 'string', default: 'shipping_label')),
+            new OA\Parameter(name: 'document_type', in: 'query', required: false, description: 'TikTok: SHIPPING_LABEL|PACKING_LIST|SHIPPING_LABEL_AND_PACKING_LIST · Shopee: NORMAL_AIR_WAYBILL|THERMAL_AIR_WAYBILL|SELF_DESIGN', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'document_size', in: 'query', required: false, description: 'TikTok: A6|A5|...', schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Shipping label retrieved'),
@@ -652,10 +654,15 @@ class SalesOrderController extends Controller
     public function getShippingLabel(string $id, Request $request)
     {
         $order = SalesOrder::findOrFail($id);
-        $docType = $request->query('doc_type', 'shipping_label');
+
+        $options = array_filter([
+            'doc_type'      => $request->query('doc_type'),
+            'document_type' => $request->query('document_type'),
+            'document_size' => $request->query('document_size'),
+        ], fn ($v) => $v !== null && $v !== '');
 
         try {
-            $result = $this->orderService->getShippingLabel($order, $docType);
+            $result = $this->orderService->getShippingLabel($order, $options);
 
             return $this->successResponse($result, 'Shipping label berhasil diambil');
         } catch (\Modules\Sales\Exceptions\ShippingLabelPreparingException $e) {

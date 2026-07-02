@@ -64,6 +64,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::post('inventory/adjustments', [InventoryTransactionController::class, 'adjust'])->name('inventory.adjust');
     Route::post('inventory/putaway', [InventoryTransactionController::class, 'putaway'])->name('inventory.putaway');
+    Route::post('inventory/bin-transfer', [InventoryTransactionController::class, 'binTransfer'])->name('inventory.binTransfer');
 
     Route::prefix('inventory/adjustments/documents')->group(function () {
         Route::get('/', [StockAdjustmentController::class, 'index'])->name('inventory.adjustments.documents.index');

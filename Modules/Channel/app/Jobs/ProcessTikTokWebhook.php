@@ -77,6 +77,21 @@ class ProcessTikTokWebhook implements ShouldQueue
                     if ($orderId) {
                         $orderService->pullOrderById($shopId, $orderId);
                         Log::info("TikTok Webhook type 5 (return/refund): order {$orderId} resynced.", ['shop_id' => $shopId]);
+
+                        try {
+                            app(\Modules\Sales\Services\SalesReturnService::class)->createFromChannel([
+                                'source'            => 'tiktok',
+                                'channel_order_id'  => (string) $orderId,
+                                'channel_return_id' => $this->payload['data']['return_id']
+                                    ?? $this->payload['data']['reverse_order_id']
+                                    ?? null,
+                                'channel_shop_id'   => (string) $shopId,
+                                'reason'            => 'Retur TikTok',
+                                'created_by'        => 'system:tiktok-webhook',
+                            ]);
+                        } catch (\Throwable $e) {
+                            Log::warning('TikTok auto SalesReturn gagal: ' . $e->getMessage(), ['order_id' => $orderId]);
+                        }
                     }
                     break;
                 default:

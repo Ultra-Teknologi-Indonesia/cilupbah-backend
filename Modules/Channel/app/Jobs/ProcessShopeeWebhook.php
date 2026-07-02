@@ -24,6 +24,7 @@ class ProcessShopeeWebhook implements ShouldQueue
     private const PUSH_ORDER_STATUS = 3;
     private const PUSH_TRACKING_NO = 4;
     private const PUSH_ITEM_UPDATE = 5;
+    private const PUSH_ORDER_REFUND = 10;
     private const PUSH_SHIPPING_DOC = 15;
     private const PUSH_BOOKING_STATUS = 23;
     private const PUSH_BOOKING_TRACKING_NO = 24;
@@ -59,6 +60,7 @@ class ProcessShopeeWebhook implements ShouldQueue
             self::PUSH_BOOKING_SHIPPING_DOC,
             self::PUSH_PACKAGE_FULFILLMENT,
             self::PUSH_COURIER_DELIVERY_BINDING => $this->handleOrderEvent($orderService, $shopId, $data),
+            self::PUSH_ORDER_REFUND => $this->handleReturnEvent($orderService, $shopId, $data),
             self::PUSH_ITEM_UPDATE => $this->logItemEvent($shopId, $data),
             default => Log::info("Shopee webhook code {$code} belum ditangani — diabaikan.", ['shop_id' => $shopId]),
         };
@@ -96,6 +98,32 @@ class ProcessShopeeWebhook implements ShouldQueue
         }
 
         $orderService->pullOrderById($shopId, $orderSn);
+    }
+
+    protected function handleReturnEvent(ShopeeOrderService $orderService, string $shopId, array $data): void
+    {
+        $orderSn = (string) ($data['ordersn'] ?? $data['order_sn'] ?? '');
+
+        if ($orderSn === '') {
+            Log::warning('Shopee webhook refund tanpa ordersn — diabaikan.', ['data' => $data]);
+
+            return;
+        }
+
+        $orderService->pullOrderById($shopId, $orderSn);
+
+        try {
+            app(\Modules\Sales\Services\SalesReturnService::class)->createFromChannel([
+                'source'            => 'shopee',
+                'channel_order_id'  => $orderSn,
+                'channel_return_id' => $data['return_sn'] ?? $data['refund_id'] ?? null,
+                'channel_shop_id'   => $shopId,
+                'reason'            => $data['reason'] ?? 'Retur Shopee',
+                'created_by'        => 'system:shopee-webhook',
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Shopee auto SalesReturn gagal: ' . $e->getMessage(), ['ordersn' => $orderSn]);
+        }
     }
 
     protected function logItemEvent(string $shopId, array $data): void
