@@ -165,7 +165,10 @@ class InventoryController extends Controller
     {
         $stocks = $this->inventoryService->getStockByItem($itemId);
 
-        return $this->successResponse($stocks, 'Detail stok per item berhasil diambil');
+        return $this->successResponse(
+            \Modules\Inventory\Http\Resources\InventoryStockResource::collection($stocks),
+            'Detail stok per item berhasil diambil'
+        );
     }
 
     #[OA\Get(
@@ -301,7 +304,10 @@ class InventoryController extends Controller
         $limit = $request->query('limit', 10);
         $movements = $this->inventoryService->getHistoryPaginated($limit);
 
-        return $this->successPaginatedResponse($movements, 'Riwayat stok berhasil diambil.');
+        return $this->successPaginatedResponse(
+            \Modules\Inventory\Http\Resources\InventoryMovementResource::collection($movements),
+            'Riwayat stok berhasil diambil.'
+        );
     }
 
     #[OA\Get(
