@@ -30,20 +30,10 @@ class InventoryMovementRepository
 
     public function getHistoryPaginated(int $limit = 10)
     {
-        $reservationSources = ['ORDER_BOOK', 'ORDER_CANCEL'];
-
-        $sourceFilter = trim((string) request()->input('filter.source', ''));
-        $requestedSources = array_values(array_filter(array_map('trim', explode(',', $sourceFilter))));
-        $userWantsReservation = count(array_intersect($requestedSources, $reservationSources)) > 0;
-
         $qb = \Spatie\QueryBuilder\QueryBuilder::for(InventoryMovement::class)
             ->select('inventory_movements.*')
-            ->selectRaw(
-                'SUM(CASE WHEN source IN (?, ?) THEN 0 ELSE qty END) OVER (PARTITION BY item_id, location_id ORDER BY transaction_date, id) AS total_balance',
-                $reservationSources
-            )
+            ->selectRaw('SUM(qty) OVER (PARTITION BY item_id, location_id ORDER BY transaction_date, id) AS total_balance')
             ->where('qty', '!=', 0)
-            ->when(! $userWantsReservation, fn ($q) => $q->whereNotIn('source', $reservationSources))
             ->with(['product:id,sku,product_id', 'location:id,location_name', 'bin:id,bin_final_code'])
             ->allowedFilters(
                 \Spatie\QueryBuilder\AllowedFilter::exact('item_id'),
@@ -64,6 +54,15 @@ class InventoryMovementRepository
                     }
                 }),
                 \Spatie\QueryBuilder\AllowedFilter::exact('transaction_number'),
+                \Spatie\QueryBuilder\AllowedFilter::callback('store_id', function ($query, $value) {
+                    if ($value === null || $value === '') return;
+                    $query->whereExists(function ($sub) use ($value) {
+                        $sub->select(\Illuminate\Support\Facades\DB::raw(1))
+                            ->from('sales_orders')
+                            ->whereColumn('sales_orders.salesorder_no', 'inventory_movements.transaction_number')
+                            ->where('sales_orders.channel_shop_id', $value);
+                    });
+                }),
                 \Spatie\QueryBuilder\AllowedFilter::callback('date_from', function ($query, $value) {
                     $query->whereDate('transaction_date', '>=', $value);
                 }),

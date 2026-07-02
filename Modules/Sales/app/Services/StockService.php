@@ -85,18 +85,6 @@ class StockService
                 $aggregate = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
                 $aggregate->reserved = ((int) $aggregate->reserved) + $qty;
                 $this->inventoryRepository->updateStock($aggregate);
-
-                $this->movementRepository->create([
-                    'item_id'            => $itemId,
-                    'location_id'        => $locationId,
-                    'bin_id'             => null,
-                    'transaction_number' => $transactionNumber,
-                    'source'             => 'ORDER_BOOK',
-                    'qty'                => -$qty,
-                    'balance'            => $onHand,
-                    'transaction_date'   => now(),
-                    'created_by'         => 'system',
-                ]);
             });
         });
     }
@@ -253,24 +241,12 @@ class StockService
 
     private function cancelSingle(string $sku, string $itemId, string $locationId, int $qty, string $transactionNumber): void
     {
-        $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
-            DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
+        $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty) {
+            DB::transaction(function () use ($itemId, $locationId, $qty) {
 
                 $aggregate = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
                 $aggregate->reserved = max(0, ((int) $aggregate->reserved) - $qty);
                 $this->inventoryRepository->updateStock($aggregate);
-
-                $this->movementRepository->create([
-                    'item_id'            => $itemId,
-                    'location_id'        => $locationId,
-                    'bin_id'             => null,
-                    'transaction_number' => $transactionNumber,
-                    'source'             => 'ORDER_CANCEL',
-                    'qty'                => $qty,
-                    'balance'            => $aggregate->on_hand,
-                    'transaction_date'   => now(),
-                    'created_by'         => 'system',
-                ]);
             });
         });
     }

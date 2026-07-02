@@ -319,8 +319,24 @@ class InventoryController extends Controller
     )]
     public function movementFilters(): JsonResponse
     {
+        $base = \Modules\Inventory\Support\InventoryMovementSourceMap::filterOptions();
+
+        $locations = \Modules\Warehouse\Models\Location::where('is_active', true)
+            ->orderBy('location_name')
+            ->get(['id', 'location_name'])
+            ->map(fn ($l) => ['value' => (string) $l->id, 'label' => $l->location_name])
+            ->values()
+            ->toArray();
+
+        $stores = \Modules\Channel\Models\ChannelShop::query()
+            ->orderBy('shop_name')
+            ->get(['shop_id', 'shop_name'])
+            ->map(fn ($s) => ['value' => (string) $s->shop_id, 'label' => $s->shop_name])
+            ->values()
+            ->toArray();
+
         return $this->successResponse(
-            \Modules\Inventory\Support\InventoryMovementSourceMap::filterOptions(),
+            array_merge($base, ['locations' => $locations, 'stores' => $stores]),
             'Opsi filter kronologi stok berhasil diambil.'
         );
     }
