@@ -29,6 +29,11 @@ class StockAdjustmentService
 
     public function create(array $data): StockAdjustment
     {
+        // Validasi kapasitas rak SEBELUM buka transaksi. Agregasi delta per bin
+        // (satu adjustment bisa punya beberapa item di rak sama), lalu bandingkan
+        // dengan max_qty. Kalau over-capacity → tolak dengan pesan jelas.
+        $this->validateBinCapacity($data);
+
         $adjustment = DB::transaction(function () use ($data) {
             // Terima nomor custom dari FE; kalau kosong → auto-generate (prefix ADJ).
             $adjustmentNo = ! empty($data['adjustment_no'])
@@ -78,6 +83,61 @@ class StockAdjustmentService
         }
 
         return $adjustment;
+    }
+
+    /**
+     * Validasi kapasitas rak: agregasi delta per bin dari semua items,
+     * lalu bandingkan dengan (current_bin_sum + delta) vs bin.max_qty.
+     * Skip bin yang max_qty NULL/0 (kapasitas unlimited).
+     */
+    protected function validateBinCapacity(array $data): void
+    {
+        $locationId = $data['location_id'];
+
+        // Group delta per bin.
+        $deltaByBin = [];
+        foreach ($data['items'] as $it) {
+            $binId = $it['bin_id'] ?? null;
+            if (! $binId) continue;
+
+            $inventory = $this->inventoryRepository->findExact(
+                $it['item_id'],
+                $locationId,
+                $binId,
+            );
+            $systemQty = $inventory ? (int) $inventory->on_hand : 0;
+            $delta = (int) $it['actual_qty'] - $systemQty;
+
+            if ($delta <= 0) continue; // hanya cek kalau nambah stok
+
+            $deltaByBin[$binId] = ($deltaByBin[$binId] ?? 0) + $delta;
+        }
+
+        if (empty($deltaByBin)) return;
+
+        $bins = \Modules\Warehouse\Models\LocationBin::whereIn('id', array_keys($deltaByBin))
+            ->get(['id', 'bin_final_code', 'max_qty']);
+
+        foreach ($bins as $bin) {
+            if (! $bin->max_qty || $bin->max_qty <= 0) continue; // unlimited
+
+            $currentSum = (int) \Modules\Inventory\Models\Inventory::where('bin_id', $bin->id)
+                ->where('location_id', $locationId)
+                ->sum('on_hand');
+
+            $newTotal = $currentSum + $deltaByBin[$bin->id];
+
+            if ($newTotal > $bin->max_qty) {
+                throw new \Exception(sprintf(
+                    'Kapasitas rak %s tidak cukup: max %d, saat ini %d, akan jadi %d (over %d).',
+                    $bin->bin_final_code,
+                    $bin->max_qty,
+                    $currentSum,
+                    $newTotal,
+                    $newTotal - $bin->max_qty,
+                ));
+            }
+        }
     }
 
     public function approve(string $id, string $approvedBy): StockAdjustment

@@ -209,6 +209,56 @@ class StockAdjustmentImportService
             ];
         }
 
+        // Validasi kapasitas rak: agregasi delta per bin di semua item valid.
+        // Bin yang total setelah delta > max_qty → error, item-nya di-mark invalid.
+        $deltaByBin = [];
+        foreach ($items as $it) {
+            $delta = $it['actual_qty'] - $it['system_qty'];
+            if ($delta <= 0 || ! $it['bin_id']) continue;
+            $deltaByBin[$it['bin_id']] = ($deltaByBin[$it['bin_id']] ?? 0) + $delta;
+        }
+
+        if (! empty($deltaByBin)) {
+            $bins = LocationBin::whereIn('id', array_keys($deltaByBin))
+                ->get(['id', 'bin_final_code', 'max_qty'])
+                ->keyBy('id');
+
+            $overCapacityBins = [];
+            foreach ($deltaByBin as $binId => $delta) {
+                $bin = $bins->get($binId);
+                if (! $bin || ! $bin->max_qty || $bin->max_qty <= 0) continue;
+
+                $currentSum = (int) Inventory::where('bin_id', $binId)
+                    ->where('location_id', $locationId)
+                    ->sum('on_hand');
+                $newTotal = $currentSum + $delta;
+
+                if ($newTotal > $bin->max_qty) {
+                    $overCapacityBins[$binId] = [
+                        'code' => $bin->bin_final_code,
+                        'max'  => (int) $bin->max_qty,
+                        'over' => $newTotal - (int) $bin->max_qty,
+                    ];
+                }
+            }
+
+            if (! empty($overCapacityBins)) {
+                $items = array_filter($items, function ($it) use ($overCapacityBins, &$errors) {
+                    if (isset($overCapacityBins[$it['bin_id']])) {
+                        $info = $overCapacityBins[$it['bin_id']];
+                        $errors[] = [
+                            'row'   => $it['row_no'],
+                            'field' => 'delta_qty|final_qty',
+                            'error' => "Kapasitas rak {$info['code']} tidak cukup (max {$info['max']}, over {$info['over']})",
+                        ];
+                        return false;
+                    }
+                    return true;
+                });
+                $items = array_values($items);
+            }
+        }
+
         $token = 'imp_' . Str::uuid()->toString();
         $summary = [
             'total_rows' => count($rows),
