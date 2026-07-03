@@ -56,6 +56,8 @@ class StockAdjustmentRepository
             ->with([
                 'product:id,sku,product_id',
                 'product.product:id,name',
+                'product.media',
+                'product.product.media',
                 'bin:id,bin_final_code'
             ])
             ->allowedSearch('notes')
