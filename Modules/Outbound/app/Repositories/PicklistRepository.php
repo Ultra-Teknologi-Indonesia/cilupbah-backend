@@ -24,7 +24,7 @@ class PicklistRepository
             SELECT 1 FROM picklist_items
             JOIN sales_orders ON sales_orders.id = picklist_items.order_id
             WHERE picklist_items.picklist_id = picklists.id
-              AND (LOWER(sales_orders.shipping_provider) REGEXP ? OR LOWER(sales_orders.shipping_type) REGEXP ?)
+              AND (sales_orders.shipping_provider ~* ? OR sales_orders.shipping_type ~* ?)
         ) AS has_instant', [$rx, $rx]);
 
         return $query->withCount('items')

@@ -217,17 +217,17 @@ class OutboundFulfillmentService
                     $rx = InstantOrderClassifier::REGEX;
                     if ($v === 'instant') {
                         $query->where(function ($q) use ($rx) {
-                            $q->whereRaw('LOWER(shipping_provider) REGEXP ?', [$rx])
-                              ->orWhereRaw('LOWER(shipping_type) REGEXP ?', [$rx]);
+                            $q->whereRaw('shipping_provider ~* ?', [$rx])
+                              ->orWhereRaw('shipping_type ~* ?', [$rx]);
                         });
                     } elseif ($v === 'regular') {
                         $query->where(function ($q) use ($rx) {
                             $q->where(function ($qq) use ($rx) {
                                 $qq->whereNull('shipping_provider')
-                                   ->orWhereRaw('LOWER(shipping_provider) NOT REGEXP ?', [$rx]);
+                                   ->orWhereRaw('shipping_provider !~* ?', [$rx]);
                             })->where(function ($qq) use ($rx) {
                                 $qq->whereNull('shipping_type')
-                                   ->orWhereRaw('LOWER(shipping_type) NOT REGEXP ?', [$rx]);
+                                   ->orWhereRaw('shipping_type !~* ?', [$rx]);
                             });
                         });
                     }

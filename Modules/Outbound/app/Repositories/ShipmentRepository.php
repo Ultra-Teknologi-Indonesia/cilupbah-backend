@@ -25,7 +25,7 @@ class ShipmentRepository
                 SELECT 1 FROM shipment_orders
                 JOIN sales_orders ON sales_orders.id = shipment_orders.order_id
                 WHERE shipment_orders.shipment_id = shipments.id
-                  AND (LOWER(sales_orders.shipping_provider) REGEXP ? OR LOWER(sales_orders.shipping_type) REGEXP ?)
+                  AND (sales_orders.shipping_provider ~* ? OR sales_orders.shipping_type ~* ?)
             ) AS has_instant', [$rx, $rx])
             ->allowedFilters(
 
