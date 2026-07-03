@@ -102,60 +102,15 @@ class StockService
 
     private function pickSingle(string $sku, string $itemId, string $locationId, int $qty, string $transactionNumber): void
     {
-        $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
-            DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
-
+        // Pemotongan on_hand + movement PICKING sudah dilakukan PicklistService::pickItem() per-scan
+        // di bin yang di-scan picker (sumber kebenaran fisik). Di sini cukup drain reservation di row
+        // aggregate agar available tetap benar; tidak menulis ORDER_PICK supaya kronologi bersih dari
+        // ghost decrement yang selama ini bermanifestasi sebagai "stok nyangkut / faktur".
+        $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty) {
+            DB::transaction(function () use ($itemId, $locationId, $qty) {
                 $aggregate = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
                 $aggregate->reserved = max(0, ((int) $aggregate->reserved) - $qty);
                 $this->inventoryRepository->updateStock($aggregate);
-
-                $remaining = $qty;
-                foreach ($this->inventoryRepository->stockRowsForUpdate($itemId, $locationId) as $row) {
-                    if ($remaining <= 0) {
-                        break;
-                    }
-
-                    $take = min($row->on_hand, $remaining);
-                    $row->on_hand -= $take;
-                    $this->inventoryRepository->updateStock($row);
-                    $remaining -= $take;
-
-                    $this->movementRepository->create([
-                        'item_id'            => $itemId,
-                        'location_id'        => $locationId,
-                        'bin_id'             => $row->bin_id,
-                        'transaction_number' => $transactionNumber,
-                        'source'             => 'ORDER_PICK',
-                        'qty'                => -$take,
-                        'balance'            => $row->on_hand,
-                        'transaction_date'   => now(),
-                        'created_by'         => 'system',
-                    ]);
-                }
-
-                if ($remaining > 0) {
-                    $aggregate->on_hand -= $remaining;
-                    $this->inventoryRepository->updateStock($aggregate);
-
-                    Log::warning('Pick exceeds physical stock; absorbed on aggregate row', [
-                        'item_id'            => $itemId,
-                        'location_id'        => $locationId,
-                        'shortfall'          => $remaining,
-                        'transaction_number' => $transactionNumber,
-                    ]);
-
-                    $this->movementRepository->create([
-                        'item_id'            => $itemId,
-                        'location_id'        => $locationId,
-                        'bin_id'             => null,
-                        'transaction_number' => $transactionNumber,
-                        'source'             => 'ORDER_PICK',
-                        'qty'                => -$remaining,
-                        'balance'            => $aggregate->on_hand,
-                        'transaction_date'   => now(),
-                        'created_by'         => 'system',
-                    ]);
-                }
             });
         });
     }

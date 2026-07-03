@@ -11,10 +11,10 @@ class InventoryMovementSourceMap
         'PURCHASE_RETURN'  => ['category' => 'PURCHASE_RETURN', 'label' => 'Retur Pembelian'],
         'SALES_RETURN'     => ['category' => 'SALES_RETURN', 'label' => 'Retur Penjualan'],
         'PICKING'          => ['category' => 'PICKING', 'label' => 'Barang di-pick'],
+        'ORDER_SHIP'       => ['category' => 'PESANAN', 'label' => 'Pesanan Dikirim'],
+        'ORDER_RESTORE'    => ['category' => 'PESANAN', 'label' => 'Pesanan Dibatalkan'],
         'INVOICE'          => ['category' => 'INVOICE', 'label' => 'Faktur'],
-        'ORDER_SHIP'       => ['category' => 'INVOICE', 'label' => 'Faktur'],
         'ORDER_PICK'       => ['category' => 'INVOICE', 'label' => 'Faktur'],
-        'ORDER_RESTORE'    => ['category' => 'INVOICE', 'label' => 'Faktur'],
         'TRANSFER_IN'      => ['category' => 'TRANSFER', 'label' => 'Transfer'],
         'TRANSFER_OUT'     => ['category' => 'TRANSFER', 'label' => 'Transfer'],
         'BIN_TRANSFER_IN'  => ['category' => 'TRANSFER', 'label' => 'Transfer'],
@@ -30,14 +30,19 @@ class InventoryMovementSourceMap
         'PURCHASE_RETURN',
         'SALES_RETURN',
         'PICKING',
+        'PESANAN',
         'INVOICE',
         'TRANSFER',
         'REVALUATION',
     ];
 
-    public const INVOICE_SOURCES = ['INVOICE', 'ORDER_SHIP', 'ORDER_PICK', 'ORDER_RESTORE'];
+    // Sumber yang berperan sebagai variance / stok nyangkut. ORDER_PICK ada di sini demi legacy —
+    // stop ditulis setelah StockService.pickSingle dinetralkan, tapi row historis tetap terlihat di
+    // tab Perlu Perhatian supaya admin bisa telusur stok nyangkut peninggalan.
+    public const INVOICE_SOURCES = ['INVOICE', 'ORDER_PICK'];
 
-    public const CLEAN_HIDDEN_SOURCES = ['INVOICE', 'ORDER_SHIP', 'ORDER_PICK', 'ORDER_RESTORE'];
+    // Sumber yang disembunyikan dari tab Kronologi Bersih (default view untuk staf lapangan).
+    public const CLEAN_HIDDEN_SOURCES = ['INVOICE', 'ORDER_PICK'];
 
     public static function meta(string $source): array
     {
