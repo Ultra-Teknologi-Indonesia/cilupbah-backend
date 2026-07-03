@@ -272,6 +272,12 @@ class ShipmentService
             throw new \Exception("Pesanan '{$barcode}' tidak ditemukan atau belum packed.");
         }
 
+        if ($order->cancel_requested_at !== null || $order->is_canceled) {
+            throw new \Exception(
+                "Pesanan {$order->salesorder_no} sedang dibatalkan — pisahkan paket fisik, jangan dimanifestkan."
+            );
+        }
+
         if (ShipmentOrder::where('order_id', $order->id)->exists()) {
             throw new \Exception("Pesanan {$order->salesorder_no} sudah ada di pengiriman lain.");
         }
@@ -318,6 +324,10 @@ class ShipmentService
     public function autoCreateForChannelOrder(Order $order): ?Shipment
     {
         if ($order->status !== 'packed') {
+            return null;
+        }
+
+        if ($order->cancel_requested_at !== null || $order->is_canceled) {
             return null;
         }
 
