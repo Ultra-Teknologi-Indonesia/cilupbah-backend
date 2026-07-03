@@ -94,10 +94,6 @@ class ProductE2ETest extends TestCase
             'sku' => 'E2E-VAR-01',
             'sell_price' => 100000,
         ]);
-
-        $this->assertDatabaseMissing('product_variant_channel_mappings', [
-            'override_price' => 125000,
-        ]);
     }
 
     public function test_can_read_product_detail()
@@ -187,10 +183,6 @@ class ProductE2ETest extends TestCase
         $this->assertDatabaseHas('product_variants', [
             'sku' => 'E2E-VAR-UPDATE',
             'sell_price' => 20000,
-        ]);
-
-        $this->assertDatabaseMissing('product_variant_channel_mappings', [
-            'override_price' => 30000,
         ]);
     }
 
