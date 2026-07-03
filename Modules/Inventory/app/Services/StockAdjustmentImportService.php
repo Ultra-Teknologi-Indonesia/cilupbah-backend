@@ -64,13 +64,13 @@ class StockAdjustmentImportService
 
             $sku = trim((string) ($row['item_code'] ?? ''));
             if ($sku === '') {
-                $errors[] = ['row' => $rowNo, 'field' => 'item_code', 'error' => 'SKU wajib diisi'];
+                $errors[] = ['row' => $rowNo, 'field' => 'item_code', 'error' => 'Terdapat baris kosong tanpa SKU. Pastikan SKU diisi.'];
                 continue;
             }
 
             $variant = $variants->get(strtolower($sku));
             if (! $variant) {
-                $errors[] = ['row' => $rowNo, 'field' => 'item_code', 'error' => "SKU '{$sku}' tidak ditemukan"];
+                $errors[] = ['row' => $rowNo, 'field' => 'item_code', 'error' => "[SKU: {$sku}] SKU tidak terdaftar di sistem."];
                 continue;
             }
 
@@ -81,12 +81,12 @@ class StockAdjustmentImportService
             $hasFinal = $finalRaw !== null && $finalRaw !== '';
 
             if (! $hasDelta && ! $hasFinal) {
-                $errors[] = ['row' => $rowNo, 'field' => 'delta_qty|final_qty', 'error' => 'Isi salah satu: delta_qty atau final_qty'];
+                $errors[] = ['row' => $rowNo, 'field' => 'delta_qty|final_qty', 'error' => "[SKU: {$sku}] Mohon isi angka pada kolom delta_qty ATAU final_qty."];
                 continue;
             }
 
             if ($hasDelta && $hasFinal) {
-                $errors[] = ['row' => $rowNo, 'field' => 'delta_qty|final_qty', 'error' => 'Isi HANYA salah satu (delta_qty atau final_qty), bukan keduanya'];
+                $errors[] = ['row' => $rowNo, 'field' => 'delta_qty|final_qty', 'error' => "[SKU: {$sku}] Tidak bisa mengisi delta_qty dan final_qty bersamaan. Pilih salah satu."];
                 continue;
             }
 
@@ -94,7 +94,7 @@ class StockAdjustmentImportService
             $inputValue = $mode === 'DELTA' ? (int) $deltaRaw : (int) $finalRaw;
 
             if ($mode === 'FINAL' && $inputValue < 0) {
-                $errors[] = ['row' => $rowNo, 'field' => 'final_qty', 'error' => 'final_qty tidak boleh negatif'];
+                $errors[] = ['row' => $rowNo, 'field' => 'final_qty', 'error' => "[SKU: {$sku}] Nilai akhir (final_qty) tidak boleh kurang dari 0."];
                 continue;
             }
 
@@ -105,7 +105,7 @@ class StockAdjustmentImportService
             if ($binCode !== '') {
                 $bin = $bins->get($binCode);
                 if (! $bin) {
-                    $errors[] = ['row' => $rowNo, 'field' => 'bin_final_code', 'error' => "Rak '{$binCode}' tidak ada di lokasi terpilih"];
+                    $errors[] = ['row' => $rowNo, 'field' => 'bin_final_code', 'error' => "[SKU: {$sku}] Rak '{$binCode}' tidak ditemukan di lokasi ini."];
                     continue;
                 }
                 $binId = $bin->id;
@@ -131,7 +131,7 @@ class StockAdjustmentImportService
                 }
 
                 if (! $primary) {
-                    $errors[] = ['row' => $rowNo, 'field' => 'bin_final_code', 'error' => 'Belum ada rak untuk item ini di lokasi terpilih — isi bin_final_code manual'];
+                    $errors[] = ['row' => $rowNo, 'field' => 'bin_final_code', 'error' => "[SKU: {$sku}] Item ini belum pernah masuk gudang ini. Harap tentukan kode rak secara manual."];
                     continue;
                 }
                 $binId = $primary->bin_id;
@@ -148,7 +148,7 @@ class StockAdjustmentImportService
             $actualQty = $mode === 'DELTA' ? $systemQty + $inputValue : $inputValue;
 
             if ($actualQty < 0) {
-                $errors[] = ['row' => $rowNo, 'field' => 'delta_qty', 'error' => "Delta menyebabkan stok minus (on_hand={$systemQty} + delta={$inputValue} = {$actualQty})"];
+                $errors[] = ['row' => $rowNo, 'field' => 'delta_qty', 'error' => "[SKU: {$sku}] Pengurangan stok melebihi batas (sisa {$systemQty}, dikurangi " . abs($inputValue) . ")."];
                 continue;
             }
 
@@ -157,7 +157,7 @@ class StockAdjustmentImportService
             if ($hppRaw !== null && $hppRaw !== '') {
                 $unitCost = (float) $hppRaw;
                 if ($unitCost < 0) {
-                    $errors[] = ['row' => $rowNo, 'field' => 'hpp', 'error' => 'hpp tidak boleh negatif'];
+                    $errors[] = ['row' => $rowNo, 'field' => 'hpp', 'error' => "[SKU: {$sku}] Harga Pokok (HPP) tidak boleh kurang dari 0."];
                     continue;
                 }
             }
@@ -223,7 +223,7 @@ class StockAdjustmentImportService
                         $errors[] = [
                             'row'   => $it['row_no'],
                             'field' => 'delta_qty|final_qty',
-                            'error' => "Kapasitas rak {$info['code']} tidak cukup (max {$info['max']}, over {$info['over']})",
+                            'error' => "[SKU: {$it['sku']}] Kapasitas rak {$info['code']} tidak cukup (kelebihan {$info['over']} unit, maksimal {$info['max']}).",
                         ];
                         return false;
                     }
