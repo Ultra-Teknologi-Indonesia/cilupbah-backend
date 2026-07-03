@@ -10,6 +10,7 @@ class InventoryMovementSourceMap
         'STOCK_OPNAME'     => ['category' => 'ADJUSTMENT', 'label' => 'Penyesuaian'],
         'PURCHASE_RETURN'  => ['category' => 'PURCHASE_RETURN', 'label' => 'Retur Pembelian'],
         'SALES_RETURN'     => ['category' => 'SALES_RETURN', 'label' => 'Retur Penjualan'],
+        'PICKING'          => ['category' => 'PICKING', 'label' => 'Barang di-pick'],
         'INVOICE'          => ['category' => 'INVOICE', 'label' => 'Faktur'],
         'ORDER_SHIP'       => ['category' => 'INVOICE', 'label' => 'Faktur'],
         'ORDER_PICK'       => ['category' => 'INVOICE', 'label' => 'Faktur'],
@@ -28,14 +29,24 @@ class InventoryMovementSourceMap
         'ADJUSTMENT',
         'PURCHASE_RETURN',
         'SALES_RETURN',
+        'PICKING',
         'INVOICE',
         'TRANSFER',
         'REVALUATION',
     ];
 
+    public const INVOICE_SOURCES = ['INVOICE', 'ORDER_SHIP', 'ORDER_PICK', 'ORDER_RESTORE'];
+
+    public const CLEAN_HIDDEN_SOURCES = ['INVOICE', 'ORDER_SHIP', 'ORDER_PICK', 'ORDER_RESTORE'];
+
     public static function meta(string $source): array
     {
         return self::SOURCES[$source] ?? ['category' => 'OTHER', 'label' => $source];
+    }
+
+    public static function isVariance(string $source): bool
+    {
+        return in_array($source, self::INVOICE_SOURCES, true);
     }
 
     public static function filterOptions(): array

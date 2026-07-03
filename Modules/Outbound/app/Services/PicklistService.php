@@ -10,13 +10,16 @@ use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Notification\Events\TaskAssigned;
 use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Warehouse\Models\LocationBin;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class PicklistService
 {
     public function __construct(
         protected PicklistRepository $picklistRepository,
+        protected InventoryMovementRepository $movementRepository,
     ) {}
 
     public function getAllPaginated(int $limit = 10)
@@ -188,6 +191,18 @@ class PicklistService
                 $this->picklistRepository->updateItem($itemId, [
                     'qty_picked' => $data['qty_picked'],
                     'bin_id' => $bin->id,
+                ]);
+
+                $this->movementRepository->create([
+                    'item_id'            => $item->item_id,
+                    'location_id'        => $picklist->location_id,
+                    'bin_id'             => $bin->id,
+                    'transaction_number' => $picklist->picklist_no,
+                    'source'             => 'PICKING',
+                    'qty'                => -$delta,
+                    'balance'            => $inventory->on_hand,
+                    'transaction_date'   => now(),
+                    'created_by'         => (string) (Auth::id() ?? $picklist->picker_id ?? 'system'),
                 ]);
             });
         } else {

@@ -26,6 +26,7 @@ class InventoryMovementResource extends JsonResource
             'source' => $this->source,
             'source_category' => $meta['category'],
             'source_label' => $meta['label'],
+            'is_variance' => InventoryMovementSourceMap::isVariance($this->source),
             'direction' => $qty > 0 ? 'in' : ($qty < 0 ? 'out' : 'none'),
             'qty' => $qty,
             'balance' => (int) ($this->total_balance ?? $this->balance),

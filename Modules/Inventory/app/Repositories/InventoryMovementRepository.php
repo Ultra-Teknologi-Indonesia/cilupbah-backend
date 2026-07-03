@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Repositories;
 
 use Modules\Inventory\Models\InventoryMovement;
+use Modules\Inventory\Support\InventoryMovementSourceMap;
 use Illuminate\Database\Eloquent\Collection;
 
 class InventoryMovementRepository
@@ -30,10 +31,18 @@ class InventoryMovementRepository
 
     public function getHistoryPaginated(int $limit = 10)
     {
-        $qb = \Spatie\QueryBuilder\QueryBuilder::for(InventoryMovement::class)
+        $view = strtolower((string) request('view', 'all'));
+        $baseQuery = InventoryMovement::query()->where('qty', '!=', 0);
+
+        if ($view === 'clean') {
+            $baseQuery->whereNotIn('source', InventoryMovementSourceMap::CLEAN_HIDDEN_SOURCES);
+        } elseif ($view === 'attention') {
+            $baseQuery->whereIn('source', InventoryMovementSourceMap::INVOICE_SOURCES);
+        }
+
+        $qb = \Spatie\QueryBuilder\QueryBuilder::for($baseQuery)
             ->select('inventory_movements.*')
             ->selectRaw('SUM(qty) OVER (PARTITION BY item_id, location_id ORDER BY transaction_date, id) AS total_balance')
-            ->where('qty', '!=', 0)
             ->with(['product:id,sku,product_id', 'location:id,location_name', 'bin:id,bin_final_code'])
             ->allowedFilters(
                 \Spatie\QueryBuilder\AllowedFilter::exact('item_id'),
