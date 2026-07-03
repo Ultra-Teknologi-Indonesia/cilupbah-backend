@@ -380,6 +380,8 @@ class InventoryService
             'location:id,location_name,location_code',
             'items.product',
             'items.product.product:id,name',
+            'items.product.media' => fn ($q) => $q->orderByDesc('is_primary')->orderBy('sort_order'),
+            'items.product.product.media' => fn ($q) => $q->orderByDesc('is_primary')->orderBy('sort_order'),
             'items.sourceBin:id,bin_final_code,location_id',
             'items.destinationBin:id,bin_final_code,location_id',
         ])->find($id);
