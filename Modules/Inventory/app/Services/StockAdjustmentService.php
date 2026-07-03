@@ -27,6 +27,11 @@ class StockAdjustmentService
         return $this->adjustmentRepository->findById($id);
     }
 
+    public function getItemsPaginated(string $id, int $limit = 10)
+    {
+        return $this->adjustmentRepository->getItemsPaginated($id, $limit);
+    }
+
     public function create(array $data): StockAdjustment
     {
         $this->validateBinCapacity($data);

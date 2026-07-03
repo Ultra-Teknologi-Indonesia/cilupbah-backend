@@ -77,6 +77,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('/', [StockAdjustmentController::class, 'index'])->name('inventory.adjustments.documents.index');
         Route::post('/', [StockAdjustmentController::class, 'store'])->name('inventory.adjustments.documents.store');
         Route::get('/{id}', [StockAdjustmentController::class, 'show'])->name('inventory.adjustments.documents.show');
+        Route::get('/{id}/items', [StockAdjustmentController::class, 'items'])->name('inventory.adjustments.documents.items');
         Route::delete('/{id}', [StockAdjustmentController::class, 'destroy'])->name('inventory.adjustments.documents.destroy');
     });
 

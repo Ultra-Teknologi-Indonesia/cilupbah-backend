@@ -67,6 +67,28 @@ class StockAdjustmentController extends Controller
         return $this->successResponse($adjustment, 'Detail adjustment berhasil diambil.');
     }
 
+    #[OA\Get(
+        path: '/api/v1/inventory/adjustments/documents/{id}/items',
+        summary: 'Get paginated stock adjustment items',
+        security: [['bearerAuth' => []]],
+        tags: ['Stock Adjustment'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'limit', in: 'query', schema: new OA\Schema(type: 'integer', default: 10)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Daftar item berhasil diambil.'),
+            new OA\Response(response: 404, description: 'Dokumen tidak ditemukan.'),
+        ]
+    )]
+    public function items(Request $request, string $id): JsonResponse
+    {
+        $limit = $request->query('limit', 10);
+        $items = $this->adjustmentService->getItemsPaginated($id, $limit);
+
+        return $this->successPaginatedResponse($items, 'Daftar item berhasil diambil.');
+    }
+
     #[OA\Post(
         path: '/api/v1/inventory/adjustments/documents',
         summary: 'Create a new stock adjustment document',

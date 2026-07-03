@@ -25,12 +25,7 @@ class StockAdjustmentRepository
 
     public function findById(string $id): ?StockAdjustment
     {
-        return StockAdjustment::with([
-            'items.product:id,sku,product_id',
-            'items.product.product:id,name',
-            'items.bin:id,bin_final_code',
-            'location:id,location_name'
-        ])
+        return StockAdjustment::with(['location:id,location_name'])
             ->find($id);
     }
 
@@ -49,9 +44,25 @@ class StockAdjustmentRepository
         return StockAdjustmentItem::create($data);
     }
 
-    public function delete(string $id): bool
+    public function delete(string $id): void
     {
-        return StockAdjustment::where('id', $id)->delete();
+        StockAdjustment::where('id', $id)->delete();
+    }
+
+    public function getItemsPaginated(string $adjustmentId, int $limit = 10)
+    {
+        return \Spatie\QueryBuilder\QueryBuilder::for(\Modules\Inventory\Models\StockAdjustmentItem::class)
+            ->where('stock_adjustment_id', $adjustmentId)
+            ->with([
+                'product:id,sku,product_id',
+                'product.product:id,name',
+                'bin:id,bin_final_code'
+            ])
+            ->allowedSearch('notes')
+            ->allowedSorts('created_at')
+            ->defaultSort('-created_at')
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function generateAdjustmentNo(): string
