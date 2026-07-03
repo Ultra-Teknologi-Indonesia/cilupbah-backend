@@ -89,6 +89,6 @@ class Inbound extends Model
 
     public function isPutawayable(): bool
     {
-        return in_array($this->status, [self::STATUS_RECEIVED, self::STATUS_PUTAWAY_IN_PROGRESS]);
+        return in_array($this->status, [self::STATUS_PARTIAL, self::STATUS_RECEIVED, self::STATUS_PUTAWAY_IN_PROGRESS]);
     }
 }
