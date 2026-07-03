@@ -75,14 +75,22 @@ class TransferDirectionTest extends TestCase
             ->assertJsonCount(2, 'data');
     }
 
-    public function test_out_requires_valid_location(): void
+    public function test_out_rejects_invalid_location(): void
     {
-        $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/v1/inventory/transfers/out')
-            ->assertStatus(422);
-
         $this->actingAs($this->user, 'sanctum')
             ->getJson('/api/v1/inventory/transfers/out?location_id=99999999')
             ->assertStatus(422);
+    }
+
+    public function test_in_without_location_returns_all_in_transit(): void
+    {
+        $this->makeTransfer($this->a->id, $this->b->id, 'IN_TRANSIT');
+        $this->makeTransfer($this->b->id, $this->a->id, 'IN_TRANSIT');
+        $this->makeTransfer($this->a->id, $this->b->id, 'RECEIVED');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/inventory/transfers/in')
+            ->assertStatus(200)
+            ->assertJsonCount(2, 'data');
     }
 }
