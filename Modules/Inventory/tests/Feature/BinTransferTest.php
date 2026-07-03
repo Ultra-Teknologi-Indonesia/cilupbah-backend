@@ -4,9 +4,9 @@ namespace Modules\Inventory\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Models\BinTransfer;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
@@ -18,7 +18,7 @@ class BinTransferTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_bin_transfer_moves_stock_and_carries_cost(): void
+    public function test_bin_transfer_moves_multi_item_stock_and_carries_cost(): void
     {
         Queue::fake();
 
@@ -38,34 +38,53 @@ class BinTransferTest extends TestCase
             'name' => 'Cat BT', 'created_at' => now(), 'updated_at' => now(),
         ]);
         $product = Product::create(['category_id' => $categoryId, 'name' => 'P-BT', 'sku' => 'P-BT', 'is_active' => true]);
-        $variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V-BT']);
+        $variant1 = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V-BT-1']);
+        $variant2 = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V-BT-2']);
 
         Inventory::create([
-            'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $binA->id,
+            'item_id' => $variant1->id, 'location_id' => $location->id, 'bin_id' => $binA->id,
             'on_hand' => 10, 'reserved' => 0, 'available' => 10, 'avg_cost' => 2500,
         ]);
+        Inventory::create([
+            'item_id' => $variant2->id, 'location_id' => $location->id, 'bin_id' => $binA->id,
+            'on_hand' => 3, 'reserved' => 0, 'available' => 3, 'avg_cost' => 1000,
+        ]);
 
-        app(InventoryService::class)->binTransfer([
-            'item_id' => $variant->id,
+        $transfer = app(InventoryService::class)->binTransfer([
             'location_id' => $location->id,
             'source_bin_id' => $binA->id,
             'destination_bin_id' => $binB->id,
-            'qty' => 4,
             'created_by' => 'tester',
+            'items' => [
+                ['item_id' => $variant1->id, 'qty' => 4],
+                ['item_id' => $variant2->id, 'qty' => 2],
+            ],
         ]);
 
-        $src = Inventory::where('bin_id', $binA->id)->first();
-        $dst = Inventory::where('bin_id', $binB->id)->first();
+        $this->assertInstanceOf(BinTransfer::class, $transfer);
+        $this->assertStringStartsWith('TRFI-', $transfer->transfer_number);
+        $this->assertCount(2, $transfer->items);
 
-        $this->assertSame(6, (int) $src->on_hand);
-        $this->assertSame(4, (int) $dst->on_hand);
-        $this->assertEquals(2500.0, (float) $dst->avg_cost);
+        $src1 = Inventory::where('bin_id', $binA->id)->where('item_id', $variant1->id)->first();
+        $dst1 = Inventory::where('bin_id', $binB->id)->where('item_id', $variant1->id)->first();
+        $src2 = Inventory::where('bin_id', $binA->id)->where('item_id', $variant2->id)->first();
+        $dst2 = Inventory::where('bin_id', $binB->id)->where('item_id', $variant2->id)->first();
+
+        $this->assertSame(6, (int) $src1->on_hand);
+        $this->assertSame(4, (int) $dst1->on_hand);
+        $this->assertEquals(2500.0, (float) $dst1->avg_cost);
+
+        $this->assertSame(1, (int) $src2->on_hand);
+        $this->assertSame(2, (int) $dst2->on_hand);
+        $this->assertEquals(1000.0, (float) $dst2->avg_cost);
 
         $this->assertDatabaseHas('inventory_movements', [
             'bin_id' => $binA->id, 'source' => 'BIN_TRANSFER_OUT', 'qty' => -4,
+            'transaction_number' => $transfer->transfer_number,
         ]);
         $this->assertDatabaseHas('inventory_movements', [
-            'bin_id' => $binB->id, 'source' => 'BIN_TRANSFER_IN', 'qty' => 4,
+            'bin_id' => $binB->id, 'source' => 'BIN_TRANSFER_IN', 'qty' => 2,
+            'transaction_number' => $transfer->transfer_number,
         ]);
     }
 
@@ -92,9 +111,52 @@ class BinTransferTest extends TestCase
         $this->expectException(\Exception::class);
 
         app(InventoryService::class)->binTransfer([
-            'item_id' => $variant->id, 'location_id' => $location->id,
-            'source_bin_id' => $binA->id, 'destination_bin_id' => $binB->id,
-            'qty' => 5, 'created_by' => 'tester',
+            'location_id' => $location->id,
+            'source_bin_id' => $binA->id,
+            'destination_bin_id' => $binB->id,
+            'created_by' => 'tester',
+            'items' => [
+                ['item_id' => $variant->id, 'qty' => 5],
+            ],
         ]);
+
+        $this->assertDatabaseCount('bin_transfers', 0);
+    }
+
+    public function test_bin_transfer_number_is_sequential(): void
+    {
+        Queue::fake();
+
+        $location = Location::create([
+            'location_code' => 'WH-SEQ', 'location_name' => 'Gudang Seq',
+            'location_type' => 'warehouse', 'is_warehouse' => true, 'is_active' => true,
+        ]);
+        $binA = LocationBin::create(['location_id' => $location->id, 'bin_code' => 'A', 'bin_final_code' => 'WH-SEQ-A']);
+        $binB = LocationBin::create(['location_id' => $location->id, 'bin_code' => 'B', 'bin_final_code' => 'WH-SEQ-B']);
+
+        $categoryId = DB::table('categories')->insertGetId(['name' => 'Cat Seq', 'created_at' => now(), 'updated_at' => now()]);
+        $product = Product::create(['category_id' => $categoryId, 'name' => 'P-Seq', 'sku' => 'P-Seq', 'is_active' => true]);
+        $variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V-Seq']);
+
+        Inventory::create([
+            'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $binA->id,
+            'on_hand' => 100, 'reserved' => 0, 'available' => 100, 'avg_cost' => 500,
+        ]);
+
+        $svc = app(InventoryService::class);
+
+        $first = $svc->binTransfer([
+            'location_id' => $location->id, 'source_bin_id' => $binA->id, 'destination_bin_id' => $binB->id,
+            'created_by' => 'tester', 'items' => [['item_id' => $variant->id, 'qty' => 1]],
+        ]);
+        $second = $svc->binTransfer([
+            'location_id' => $location->id, 'source_bin_id' => $binA->id, 'destination_bin_id' => $binB->id,
+            'created_by' => 'tester', 'items' => [['item_id' => $variant->id, 'qty' => 1]],
+        ]);
+
+        $firstNo = (int) substr($first->transfer_number, 5);
+        $secondNo = (int) substr($second->transfer_number, 5);
+        $this->assertSame($firstNo + 1, $secondNo);
+        $this->assertMatchesRegularExpression('/^TRFI-\d{9}$/', $first->transfer_number);
     }
 }

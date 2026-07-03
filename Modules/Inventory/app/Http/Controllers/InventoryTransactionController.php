@@ -508,9 +508,56 @@ class InventoryTransactionController extends Controller
     public function binTransfer(\Modules\Inventory\Http\Requests\BinTransferRequest $request): JsonResponse
     {
         try {
-            $inventory = $this->inventoryService->binTransfer($request->validated());
+            $data = $request->validated();
+            if (empty($data['created_by']) && $request->user()) {
+                $data['created_by'] = $request->user()->name ?? $request->user()->email;
+            }
 
-            return $this->successResponse($inventory, 'Transfer antar bin berhasil.');
+            $transfer = $this->inventoryService->binTransfer($data);
+
+            return $this->successResponse($transfer, 'Pindah bin berhasil.', 201);
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function binTransferIndex(\Illuminate\Http\Request $request): JsonResponse
+    {
+        $perPage = (int) $request->query('per_page', 10);
+        $filters = [
+            'q' => $request->query('filter.q') ?? $request->query('q'),
+            'location_id' => $request->query('filter.location_id') ?? $request->query('location_id'),
+            'date_from' => $request->query('filter.date_from') ?? $request->query('date_from'),
+            'date_to' => $request->query('filter.date_to') ?? $request->query('date_to'),
+        ];
+
+        $paginated = $this->inventoryService->getBinTransfers(array_filter($filters), $perPage);
+
+        return $this->successPaginatedResponse($paginated, 'Daftar pindah bin berhasil diambil.');
+    }
+
+    public function binTransferShow(string $id): JsonResponse
+    {
+        $transfer = $this->inventoryService->getBinTransfer($id);
+        if (! $transfer) {
+            return $this->errorResponse('Pindah bin tidak ditemukan.', 404);
+        }
+
+        return $this->successResponse($transfer, 'Detail pindah bin berhasil diambil.');
+    }
+
+    public function binTransferUpdate(\Illuminate\Http\Request $request, string $id): JsonResponse
+    {
+        $data = $request->validate([
+            'transfer_date' => 'nullable|date',
+            'created_by' => 'nullable|string|max:100',
+            'notes' => 'nullable|string',
+        ]);
+
+        try {
+            $transfer = $this->inventoryService->updateBinTransferMetadata($id, $data);
+
+            return $this->successResponse($transfer, 'Pindah bin berhasil diperbarui.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }

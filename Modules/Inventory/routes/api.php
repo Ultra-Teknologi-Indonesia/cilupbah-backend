@@ -66,6 +66,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('inventory/adjustments', [InventoryTransactionController::class, 'adjust'])->name('inventory.adjust');
     Route::post('inventory/putaway', [InventoryTransactionController::class, 'putaway'])->name('inventory.putaway');
     Route::post('inventory/bin-transfer', [InventoryTransactionController::class, 'binTransfer'])->name('inventory.binTransfer');
+    Route::get('inventory/bin-transfers', [InventoryTransactionController::class, 'binTransferIndex'])->name('inventory.binTransfers.index');
+    Route::post('inventory/bin-transfers', [InventoryTransactionController::class, 'binTransfer'])->name('inventory.binTransfers.store');
+    Route::get('inventory/bin-transfers/{id}', [InventoryTransactionController::class, 'binTransferShow'])->name('inventory.binTransfers.show');
+    Route::patch('inventory/bin-transfers/{id}', [InventoryTransactionController::class, 'binTransferUpdate'])->name('inventory.binTransfers.update');
 
     Route::prefix('inventory/adjustments/import')->group(function () {
         Route::get('/template', [\Modules\Inventory\Http\Controllers\StockAdjustmentImportController::class, 'template'])->name('inventory.adjustments.import.template');

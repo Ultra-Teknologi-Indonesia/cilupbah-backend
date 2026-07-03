@@ -14,15 +14,29 @@ class BinTransferRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'item_id' => 'required|uuid|exists:product_variants,id',
             'location_id' => 'required|exists:locations,id',
             'source_bin_id' => 'required|uuid|exists:location_bins,id',
             'destination_bin_id' => 'required|uuid|different:source_bin_id|exists:location_bins,id',
-            'batch_no' => 'nullable|string|max:100',
-            'serial_no' => 'nullable|string|max:100',
-            'expired_date' => 'nullable|date',
-            'qty' => 'required|integer|min:1',
+            'transfer_date' => 'nullable|date',
             'created_by' => 'required|string|max:100',
+            'notes' => 'nullable|string',
+
+            'items' => 'required|array|min:1',
+            'items.*.item_id' => 'required|uuid|exists:product_variants,id',
+            'items.*.qty' => 'required|integer|min:1',
+            'items.*.batch_no' => 'nullable|string|max:100',
+            'items.*.serial_no' => 'nullable|string|max:100',
+            'items.*.expired_date' => 'nullable|date',
+            'items.*.notes' => 'nullable|string',
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'destination_bin_id.different' => 'Rak asal dan rak tujuan harus berbeda.',
+            'items.required' => 'Minimal 1 produk harus dipindahkan.',
+            'items.min' => 'Minimal 1 produk harus dipindahkan.',
         ];
     }
 }
