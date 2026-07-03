@@ -226,6 +226,67 @@ class BinTransferTest extends TestCase
         $res2->assertJsonPath('data.available_bins', []);
     }
 
+    public function test_stocked_items_returns_only_variants_with_stock_at_location(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $whA = Location::create([
+            'location_code' => 'WH-STK-A', 'location_name' => 'Gudang STK A',
+            'location_type' => 'warehouse', 'is_warehouse' => true, 'is_active' => true,
+        ]);
+        $whB = Location::create([
+            'location_code' => 'WH-STK-B', 'location_name' => 'Gudang STK B',
+            'location_type' => 'warehouse', 'is_warehouse' => true, 'is_active' => true,
+        ]);
+        $binA = LocationBin::create(['location_id' => $whA->id, 'bin_code' => 'A', 'bin_final_code' => 'WH-STK-A-1']);
+        $binB = LocationBin::create(['location_id' => $whB->id, 'bin_code' => 'B', 'bin_final_code' => 'WH-STK-B-1']);
+
+        $catId = DB::table('categories')->insertGetId(['name' => 'CSTK', 'created_at' => now(), 'updated_at' => now()]);
+        $product = Product::create(['category_id' => $catId, 'name' => 'PSTK', 'sku' => 'PSTK', 'is_active' => true]);
+        $withStock = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V-WITH-STOCK']);
+        $atOtherWh = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V-OTHER-WH']);
+        $zeroStock = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V-ZERO']);
+        $noRow = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V-NONE']);
+
+        Inventory::create([
+            'item_id' => $withStock->id, 'location_id' => $whA->id, 'bin_id' => $binA->id,
+            'on_hand' => 5, 'reserved' => 0, 'available' => 5, 'avg_cost' => 100,
+        ]);
+        Inventory::create([
+            'item_id' => $atOtherWh->id, 'location_id' => $whB->id, 'bin_id' => $binB->id,
+            'on_hand' => 5, 'reserved' => 0, 'available' => 5, 'avg_cost' => 100,
+        ]);
+        Inventory::create([
+            'item_id' => $zeroStock->id, 'location_id' => $whA->id, 'bin_id' => $binA->id,
+            'on_hand' => 0, 'reserved' => 0, 'available' => 0, 'avg_cost' => 100,
+        ]);
+
+        $user = \App\Models\User::factory()->create();
+        $this->actingAs($user);
+
+        $res = $this->getJson("/api/v1/inventory/stock/items?location_id={$whA->id}");
+        $res->assertStatus(200);
+        $skus = collect($res->json('data'))->pluck('sku')->all();
+        $this->assertContains('V-WITH-STOCK', $skus);
+        $this->assertNotContains('V-OTHER-WH', $skus);
+        $this->assertNotContains('V-ZERO', $skus);
+        $this->assertNotContains('V-NONE', $skus);
+
+        $searchRes = $this->getJson("/api/v1/inventory/stock/items?location_id={$whA->id}&search=WITH");
+        $searchRes->assertStatus(200);
+        $searchSkus = collect($searchRes->json('data'))->pluck('sku')->all();
+        $this->assertSame(['V-WITH-STOCK'], $searchSkus);
+    }
+
+    public function test_stocked_items_requires_location_id(): void
+    {
+        $user = \App\Models\User::factory()->create();
+        $this->actingAs($user);
+
+        $res = $this->getJson('/api/v1/inventory/stock/items');
+        $res->assertStatus(422);
+    }
+
     public function test_bin_transfer_number_is_sequential(): void
     {
         Queue::fake();

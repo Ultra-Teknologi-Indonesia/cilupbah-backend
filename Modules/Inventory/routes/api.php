@@ -39,6 +39,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::get('inventory/items/by-sku/{sku}', [InventoryController::class, 'bySku'])->name('inventory.items.bySku');
     Route::get('inventory/stock/by-sku/{sku}', [InventoryController::class, 'bySku'])->name('inventory.stock.bySku');
+    Route::get('inventory/stock/items', [InventoryController::class, 'stockedItems'])->name('inventory.stock.items');
     Route::post('inventory/items/all-stocks', [InventoryController::class, 'allStocksByIds'])->name('inventory.items.allStocks');
     Route::delete('inventory/items/item-variant', [InventoryController::class, 'deleteVariant'])->name('inventory.items.deleteVariant');
 

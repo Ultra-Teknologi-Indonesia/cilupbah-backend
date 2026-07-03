@@ -810,4 +810,79 @@ class InventoryController extends Controller
 
         return $this->successResponse(['deleted' => $deleted], 'Varian berhasil dihapus.');
     }
+
+    public function stockedItems(Request $request): JsonResponse
+    {
+        $locationId = $request->query('location_id');
+        if (! $locationId) {
+            return $this->errorResponse('Parameter location_id wajib.', 422);
+        }
+
+        $search = trim((string) $request->query('search', ''));
+        $perPage = (int) $request->query('per_page', 20);
+        if ($perPage <= 0 || $perPage > 200) {
+            $perPage = 20;
+        }
+
+        $sub = DB::table('inventories')
+            ->select('item_id', DB::raw('SUM(on_hand) as total_on_hand'))
+            ->where('location_id', $locationId)
+            ->groupBy('item_id')
+            ->havingRaw('SUM(on_hand) > 0');
+
+        $query = \Modules\Product\Models\ProductVariant::query()
+            ->joinSub($sub, 'stock_summary', function ($join) {
+                $join->on('stock_summary.item_id', '=', 'product_variants.id');
+            })
+            ->select('product_variants.*', 'stock_summary.total_on_hand')
+            ->with([
+                'product:id,name',
+                'options.attribute:id,name',
+                'media' => fn ($q) => $q->orderByDesc('is_primary')->orderBy('sort_order'),
+                'product.media' => fn ($q) => $q->orderByDesc('is_primary')->orderBy('sort_order'),
+            ]);
+
+        if ($search !== '') {
+            $like = '%' . $search . '%';
+            $query->where(function ($q) use ($like) {
+                $q->where('product_variants.sku', 'like', $like)
+                    ->orWhereHas('product', fn ($p) => $p->where('name', 'like', $like));
+            });
+        }
+
+        $paginated = $query
+            ->orderBy('product_variants.sku')
+            ->paginate($perPage);
+
+        $paginated->getCollection()->transform(function ($variant) {
+            $variantLabel = $variant->options
+                ?->map(fn ($o) => $o->value)
+                ->filter()
+                ->implode(', ') ?? '';
+
+            $thumbnail = null;
+            $variantMedia = $variant->media?->firstWhere('media_type', 'image')
+                ?? $variant->media?->first();
+            if ($variantMedia?->url) {
+                $thumbnail = $variantMedia->url;
+            } else {
+                $productMedia = $variant->product?->media?->firstWhere('media_type', 'image')
+                    ?? $variant->product?->media?->first();
+                if ($productMedia?->url) {
+                    $thumbnail = $productMedia->url;
+                }
+            }
+
+            return [
+                'item_id'       => $variant->id,
+                'sku'           => $variant->sku,
+                'product_name'  => $variant->product?->name,
+                'variant_label' => $variantLabel,
+                'thumbnail_url' => $thumbnail,
+                'total_on_hand' => (int) ($variant->total_on_hand ?? 0),
+            ];
+        });
+
+        return $this->successPaginatedResponse($paginated, 'Daftar produk berstok diambil.');
+    }
 }
