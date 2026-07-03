@@ -30,7 +30,10 @@ class StockAdjustmentService
     public function create(array $data): StockAdjustment
     {
         $adjustment = DB::transaction(function () use ($data) {
-            $adjustmentNo = $this->adjustmentRepository->generateAdjustmentNo();
+            // Terima nomor custom dari FE; kalau kosong → auto-generate (prefix ADJ).
+            $adjustmentNo = ! empty($data['adjustment_no'])
+                ? $data['adjustment_no']
+                : $this->adjustmentRepository->generateAdjustmentNo();
 
             $adjustment = $this->adjustmentRepository->create([
                 'adjustment_no' => $adjustmentNo,
