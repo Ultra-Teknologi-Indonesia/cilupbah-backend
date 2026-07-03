@@ -139,6 +139,8 @@ class StockAdjustmentService
             throw new \Exception('Dokumen adjustment tidak ditemukan.');
         }
 
-        return $this->adjustmentRepository->delete($id);
+        $this->adjustmentRepository->delete($id);
+
+        return true;
     }
 }

@@ -51,7 +51,7 @@ class StockAdjustmentRepository
 
     public function getItemsPaginated(string $adjustmentId, int $limit = 10)
     {
-        return \Spatie\QueryBuilder\QueryBuilder::for(\Modules\Inventory\Models\StockAdjustmentItem::class)
+        return QueryBuilder::for(StockAdjustmentItem::class)
             ->where('stock_adjustment_id', $adjustmentId)
             ->with([
                 'product:id,sku,product_id',
