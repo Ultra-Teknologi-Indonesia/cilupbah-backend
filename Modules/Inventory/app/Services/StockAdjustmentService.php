@@ -29,7 +29,7 @@ class StockAdjustmentService
 
     public function create(array $data): StockAdjustment
     {
-        return DB::transaction(function () use ($data) {
+        $adjustment = DB::transaction(function () use ($data) {
             $adjustmentNo = $this->adjustmentRepository->generateAdjustmentNo();
 
             $adjustment = $this->adjustmentRepository->create([
@@ -59,12 +59,22 @@ class StockAdjustmentService
                     'system_qty' => $systemQty,
                     'actual_qty' => $actualQty,
                     'difference_qty' => $actualQty - $systemQty,
+                    'unit_cost' => isset($itemData['unit_cost']) && $itemData['unit_cost'] !== ''
+                        ? (float) $itemData['unit_cost']
+                        : null,
                     'notes' => $itemData['notes'] ?? null,
                 ]);
             }
 
             return $this->adjustmentRepository->findById($adjustment->id);
         });
+
+        // Auto-approve untuk UX "langsung simpan" (bukan draft) — skip 2-step approval.
+        if (! empty($data['auto_approve'])) {
+            $adjustment = $this->approve($adjustment->id, $data['created_by']);
+        }
+
+        return $adjustment;
     }
 
     public function approve(string $id, string $approvedBy): StockAdjustment

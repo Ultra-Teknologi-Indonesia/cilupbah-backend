@@ -54,11 +54,31 @@ class ProcessStockAdjustmentJob implements ShouldQueue
                         $item->bin_id,
                     );
 
-                    $avgCost = (float) ($inventory->avg_cost ?? 0);
-                    $signedValue = (float) $item->difference_qty * $avgCost;
+                    $preOnHand = (float) $inventory->on_hand;
+                    $preAvgCost = (float) ($inventory->avg_cost ?? 0);
+                    $delta = (float) $item->difference_qty;
+                    $itemUnitCost = (float) ($item->unit_cost ?? 0);
+
+                    // Weighted-average avg_cost recalc:
+                    // - Delta positif dengan unit_cost > 0 → hitung weighted rata-rata baru
+                    //   supaya nilai persediaan konsisten dengan nilai barang yang masuk.
+                    // - Delta negatif → avg_cost tetap (COGS pakai avg_cost sebelumnya).
+                    // - Kalau pre-stock 0 & unit_cost > 0 → langsung pakai unit_cost.
+                    if ($delta > 0 && $itemUnitCost > 0) {
+                        $newOnHand = $preOnHand + $delta;
+                        $newAvg = $newOnHand > 0
+                            ? (($preOnHand * $preAvgCost) + ($delta * $itemUnitCost)) / $newOnHand
+                            : $itemUnitCost;
+                        $inventory->avg_cost = round($newAvg, 2);
+                    }
+
+                    // Nilai movement: delta positif pakai unit_cost user (belanja baru),
+                    // delta negatif pakai avg_cost pre (COGS keluar).
+                    $movementCost = $delta > 0 && $itemUnitCost > 0 ? $itemUnitCost : $preAvgCost;
+                    $signedValue = $delta * $movementCost;
                     $totalSignedValue += $signedValue;
 
-                    $inventory->on_hand += $item->difference_qty;
+                    $inventory->on_hand += $delta;
                     $inventoryRepository->updateStock($inventory);
 
                     $movementRepository->create([
@@ -69,8 +89,8 @@ class ProcessStockAdjustmentJob implements ShouldQueue
                         'source' => 'ADJUSTMENT',
                         'qty' => $item->difference_qty,
                         'balance' => $inventory->on_hand,
-                        'cost_per_unit' => $avgCost > 0 ? $avgCost : null,
-                        'total_cost' => $avgCost > 0 ? round($signedValue, 2) : null,
+                        'cost_per_unit' => $movementCost > 0 ? $movementCost : null,
+                        'total_cost' => $movementCost > 0 ? round($signedValue, 2) : null,
                         'transaction_date' => now(),
                         'created_by' => $this->approvedBy,
                     ]);

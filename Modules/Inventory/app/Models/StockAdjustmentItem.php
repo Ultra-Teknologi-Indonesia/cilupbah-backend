@@ -17,7 +17,12 @@ class StockAdjustmentItem extends Model
         'system_qty',
         'actual_qty',
         'difference_qty',
+        'unit_cost',
         'notes',
+    ];
+
+    protected $casts = [
+        'unit_cost' => 'decimal:4',
     ];
 
     public function stockAdjustment(): BelongsTo
