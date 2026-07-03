@@ -34,7 +34,6 @@ class CategoryRepository
     {
         $query = QueryBuilder::for(Category::class)
             ->allowedIncludes('parent', 'children', 'children.children', 'children.children.children', 'attributes')
-            ->allowedSearch('name')
             ->allowedFilters(
                 AllowedFilter::exact('is_active'),
                 AllowedFilter::exact('parent_id'),
@@ -46,7 +45,12 @@ class CategoryRepository
             $query->where('is_enabled', true);
         }
 
-        if (! request()->has('filter.parent_id')) {
+        // Search typeahead: substring match di semua level (bukan hanya root),
+        // konsisten dengan getMappingList. Tanpa search, default ke root saja
+        // agar response tree (include children) tidak duplikat.
+        if ($search = request('search')) {
+            $query->where('name', 'ilike', "%{$search}%");
+        } elseif (! request()->has('filter.parent_id')) {
             $query->whereNull('parent_id');
         }
 
