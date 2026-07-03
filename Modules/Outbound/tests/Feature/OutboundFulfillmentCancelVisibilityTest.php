@@ -134,4 +134,35 @@ class OutboundFulfillmentCancelVisibilityTest extends TestCase
 
         $this->assertTrue(collect($page->items())->pluck('id')->contains($orderId));
     }
+
+    public function test_dismissed_cancelled_order_is_hidden_from_finish_pack(): void
+    {
+        $locationId = $this->seedLocation();
+        $orderId = $this->seedOrder('cancelled', $locationId);
+        $this->seedCompletedPacklist($orderId, $locationId);
+        DB::table('sales_orders')->where('id', $orderId)->update([
+            'cancel_dismissed_at' => now(),
+            'cancel_dismissed_by' => 'system:test',
+        ]);
+
+        $page = app(OutboundFulfillmentService::class)->getOrdersByStage('finish-pack');
+
+        $this->assertFalse(collect($page->items())->pluck('id')->contains($orderId));
+    }
+
+    public function test_dismissed_cancelled_order_is_hidden_from_ready_to_ship(): void
+    {
+        $locationId = $this->seedLocation();
+        $orderId = $this->seedOrder('cancelled', $locationId);
+        $this->seedCompletedPacklist($orderId, $locationId);
+        $this->seedScheduledShipmentAssignment($orderId, $locationId);
+        DB::table('sales_orders')->where('id', $orderId)->update([
+            'cancel_dismissed_at' => now(),
+            'cancel_dismissed_by' => 'system:test',
+        ]);
+
+        $page = app(OutboundFulfillmentService::class)->getOrdersByStage('ready-to-ship');
+
+        $this->assertFalse(collect($page->items())->pluck('id')->contains($orderId));
+    }
 }

@@ -7,6 +7,7 @@ use Modules\Outbound\Http\Controllers\CourierController;
 use Modules\Outbound\Http\Controllers\OutboundFulfillmentController;
 use Modules\Outbound\Http\Controllers\PacklistController;
 use Modules\Outbound\Http\Controllers\PicklistController;
+use Modules\Outbound\Http\Controllers\PreManifestCancelController;
 use Modules\Outbound\Http\Controllers\ShipmentController;
 use Modules\Outbound\Http\Controllers\WmsController;
 
@@ -72,6 +73,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::get('shipments/{id}/manifest-pdf', [ShipmentController::class, 'manifestPdf'])->name('outbound.shipments.manifest-pdf');
     Route::post('shipments/{id}/cancel', [ShipmentController::class, 'cancel'])->name('outbound.shipments.cancel');
     Route::delete('shipments/{id}', [ShipmentController::class, 'destroy'])->name('outbound.shipments.destroy');
+
+    Route::get('pre-manifest/cancelled/count', [PreManifestCancelController::class, 'count'])->name('outbound.pre-manifest.cancelled.count');
+    Route::get('pre-manifest/cancelled/export', [PreManifestCancelController::class, 'export'])->name('outbound.pre-manifest.cancelled.export');
+    Route::patch('pre-manifest/cancelled/{orderId}/dismiss', [PreManifestCancelController::class, 'dismiss'])->name('outbound.pre-manifest.cancelled.dismiss');
+    Route::patch('pre-manifest/cancelled/{orderId}/undismiss', [PreManifestCancelController::class, 'undismiss'])->name('outbound.pre-manifest.cancelled.undismiss');
 
     Route::get('couriers', [CourierController::class, 'index'])->name('outbound.couriers.index');
     Route::get('couriers/all', [CourierController::class, 'all'])->name('outbound.couriers.all');

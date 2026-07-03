@@ -76,10 +76,22 @@ class ShipmentService
             throw new \Exception("Order hanya bisa ditambah ke shipment SCHEDULED (saat ini: {$shipment->status}).");
         }
 
-        $orders = Order::whereIn('id', $orderIds)->where('status', 'packed')->get();
+        $orders = Order::whereIn('id', $orderIds)
+            ->where('status', 'packed')
+            ->whereNull('cancel_requested_at')
+            ->get();
 
-        if ($orders->isEmpty()) {
-            throw new \Exception("Tidak ada order dengan status 'packed' yang ditemukan.");
+        if ($orders->count() !== count($orderIds)) {
+            $rejectedIds = array_values(array_diff($orderIds, $orders->pluck('id')->all()));
+            $rejected = Order::whereIn('id', $rejectedIds)
+                ->pluck('salesorder_no')
+                ->implode(', ');
+
+            throw new \Exception(
+                $rejected !== ''
+                    ? "Order berikut dibatalkan atau bukan status 'packed' dan tidak bisa dimanifestkan: {$rejected}"
+                    : "Sebagian order tidak ditemukan atau bukan status 'packed'."
+            );
         }
 
         DB::transaction(function () use ($shipment, $orders) {

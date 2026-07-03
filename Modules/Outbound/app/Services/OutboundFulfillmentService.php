@@ -429,6 +429,7 @@ class OutboundFulfillmentService
             $q->where('status', 'packed')
                 ->orWhere(function ($q2) {
                     $q2->where('status', 'cancelled')
+                        ->whereNull('cancel_dismissed_at')
                         ->whereHas('packlist', fn ($pq) => $pq->where('status', Packlist::STATUS_COMPLETED));
                 });
         })->whereDoesntHave('shipmentOrders');
@@ -437,7 +438,11 @@ class OutboundFulfillmentService
     private function readyToShipStage()
     {
         return Order::where(function ($q) {
-            $q->where('status', 'packed')->orWhere('status', 'cancelled');
+            $q->where('status', 'packed')
+                ->orWhere(function ($q2) {
+                    $q2->where('status', 'cancelled')
+                        ->whereNull('cancel_dismissed_at');
+                });
         })->whereHas('shipmentOrders', function ($q) {
             $q->whereHas('shipment', fn ($sq) => $sq->where('status', 'SCHEDULED'));
         });
