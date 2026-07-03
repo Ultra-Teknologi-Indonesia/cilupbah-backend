@@ -871,12 +871,11 @@ class SalesOrderService
                 SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
             }
 
-            // Lazada berhenti di DELIVERED; COMPLETED hanya ada di Shopee/TikTok.
-            if (in_array($orderData['channel_status'] ?? null, ['COMPLETED', 'DELIVERED'], true)
-                && ! $order->is_settled
-                && $order->source
-                && $order->channel_shop_id
-            ) {
+            // Sync finance dispatch untuk SEMUA order marketplace (bukan cuma yang
+            // sudah COMPLETED/DELIVERED). Kalau escrow belum tersedia, mapper
+            // channel akan return null-null → FE render 0. Sekali is_settled=true,
+            // skip supaya tidak overwrite data final.
+            if (! $order->is_settled && $order->source && $order->channel_shop_id) {
                 \Modules\Sales\Jobs\SyncOrderFinanceJob::dispatch($order->id)
                     ->onQueue(config('queue.names.channel_sync'));
             }
