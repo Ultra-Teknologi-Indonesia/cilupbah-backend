@@ -79,6 +79,18 @@ class SalesOrderRepository
             elseif ($lp === 'no') $query->whereNull('shipping_label_prepared_at');
         }
 
+        if ($contactStatus = request('contact_status')) {
+            $cs = strtolower((string) $contactStatus);
+            if ($cs === 'contacted') $query->whereNotNull('contacted_at');
+            elseif ($cs === 'not_contacted') $query->whereNull('contacted_at');
+        }
+
+        if ($decision = request('decision')) {
+            if (in_array($decision, ['waiting', 'cancel', 'replace'], true)) {
+                $query->where('customer_decision', $decision);
+            }
+        }
+
         if ($q = request('q')) {
             if (request('search_by', 'order') === 'sku') {
 
