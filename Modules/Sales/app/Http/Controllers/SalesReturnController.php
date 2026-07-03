@@ -5,8 +5,11 @@ namespace Modules\Sales\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Modules\Sales\Services\SalesReturnService;
+use Maatwebsite\Excel\Facades\Excel;
+use Modules\Sales\Exports\SalesReturnReportExport;
 use Modules\Sales\Http\Requests\StoreSalesReturnRequest;
+use Modules\Sales\Http\Resources\SalesReturnReportResource;
+use Modules\Sales\Services\SalesReturnService;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Sales Returns', description: 'API Endpoints for Sales Returns')]
@@ -277,5 +280,90 @@ class SalesReturnController extends Controller
         $items = $this->returnService->getResolvedReturnItems($limit);
 
         return $this->successPaginatedResponse($items, 'Daftar item return yang resolved');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/sales/returns/report',
+        summary: 'Laporan retur detail (settlement + refund per baris)',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Returns'],
+        parameters: [
+            new OA\Parameter(name: 'date_from', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'date_to', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'location_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'channel_shop_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'status', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'source', in: 'query', required: false, schema: new OA\Schema(type: 'string', enum: ['manual', 'marketplace'])),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+        ],
+        responses: [new OA\Response(response: 200, description: 'Successful operation')]
+    )]
+    public function report(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'date_from'       => 'nullable|date',
+            'date_to'         => 'nullable|date|after_or_equal:date_from',
+            'location_id'     => 'nullable|string',
+            'channel_shop_id' => 'nullable|string',
+            'status'          => 'nullable|string|max:20',
+            'source'          => 'nullable|in:manual,marketplace',
+            'limit'           => 'nullable|integer|min:1|max:200',
+        ]);
+
+        $limit = (int) ($validated['limit'] ?? 20);
+        $rows = $this->returnService->getReportPaginated($validated, $limit);
+
+        return $this->successPaginatedResponse(
+            SalesReturnReportResource::collection($rows),
+            'Laporan retur berhasil diambil.'
+        );
+    }
+
+    #[OA\Get(
+        path: '/api/v1/sales/returns/report/export',
+        summary: 'Unduh XLSX laporan retur detail',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Returns'],
+        parameters: [
+            new OA\Parameter(name: 'date_from', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'date_to', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'location_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'channel_shop_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'status', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'source', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
+    )]
+    public function reportExport(Request $request)
+    {
+        $validated = $request->validate([
+            'date_from'       => 'nullable|date',
+            'date_to'         => 'nullable|date|after_or_equal:date_from',
+            'location_id'     => 'nullable|string',
+            'channel_shop_id' => 'nullable|string',
+            'status'          => 'nullable|string|max:20',
+            'source'          => 'nullable|in:manual,marketplace',
+        ]);
+
+        $today = now()->toDateString();
+        $dateFrom = $validated['date_from'] ?? null;
+        $dateTo   = $validated['date_to']   ?? null;
+
+        $export = new SalesReturnReportExport(
+            dateFrom:      $dateFrom,
+            dateTo:        $dateTo,
+            locationId:    $validated['location_id']     ?? null,
+            channelShopId: $validated['channel_shop_id'] ?? null,
+            status:        $validated['status']          ?? null,
+            source:        $validated['source']          ?? null,
+        );
+
+        $filename = sprintf(
+            'laporan-retur-%s-%s.xlsx',
+            $dateFrom ?? 'semua',
+            $dateTo ?? $today
+        );
+
+        return Excel::download($export, $filename);
     }
 }

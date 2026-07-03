@@ -26,6 +26,39 @@ class SalesReturnService
         return $this->returnRepository->getAllPaginated($limit);
     }
 
+    public function getReportPaginated(array $filters, int $limit = 20)
+    {
+        $q = SalesReturn::query()
+            ->with([
+                'order:id,salesorder_no,channel_order_no,customer_name',
+                'location:id,location_name',
+                'settlement.refunds',
+            ]);
+
+        if (! empty($filters['date_from'])) {
+            $q->whereDate('created_at', '>=', $filters['date_from']);
+        }
+        if (! empty($filters['date_to'])) {
+            $q->whereDate('created_at', '<=', $filters['date_to']);
+        }
+        if (! empty($filters['location_id'])) {
+            $q->where('location_id', $filters['location_id']);
+        }
+        if (! empty($filters['channel_shop_id'])) {
+            $q->where('channel_shop_id', $filters['channel_shop_id']);
+        }
+        if (! empty($filters['status'])) {
+            $q->where('status', $filters['status']);
+        }
+        if (! empty($filters['source'])) {
+            $q->where('source', $filters['source']);
+        }
+
+        return $q->orderByDesc('created_at')
+            ->paginate($limit)
+            ->appends(request()->query());
+    }
+
     public function getUnprocessedMarketplace(int $limit = 10)
     {
         return $this->returnRepository->getUnprocessedMarketplace($limit);

@@ -24,6 +24,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::get('sales/sales-returns/unpaid', [SalesReturnController::class, 'unpaid'])->name('sales.returns.unpaid');
     Route::get('sales/returns/unprocessed', [SalesReturnController::class, 'unprocessed'])->name('sales.returns.unprocessed');
+    Route::get('sales/returns/report/export', [SalesReturnController::class, 'reportExport'])->name('sales.returns.report.export');
+    Route::get('sales/returns/report', [SalesReturnController::class, 'report'])->name('sales.returns.report');
     Route::get('sales/returns', [SalesReturnController::class, 'index'])->name('sales.returns.index');
     Route::post('sales/returns', [SalesReturnController::class, 'store'])->name('sales.returns.store');
     Route::get('sales/returns/{id}', [SalesReturnController::class, 'show'])->whereUuid('id')->name('sales.returns.show');
