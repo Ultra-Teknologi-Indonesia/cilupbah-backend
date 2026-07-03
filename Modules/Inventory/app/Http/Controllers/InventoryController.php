@@ -678,13 +678,21 @@ class InventoryController extends Controller
     )]
     public function bySku(string $sku, Request $request): JsonResponse
     {
-        $variant = \Modules\Product\Models\ProductVariant::where('sku', $sku)
+        $normalized = trim($sku);
+
+        // Match SKU atau barcode, case-insensitive. Scanner sering ngasih barcode
+        // bukan SKU, dan admin sering scan huruf kecil sedangkan data huruf besar.
+        $variant = \Modules\Product\Models\ProductVariant::query()
+            ->where(function ($q) use ($normalized) {
+                $q->whereRaw('LOWER(sku) = ?', [strtolower($normalized)])
+                  ->orWhere('barcode', $normalized);
+            })
             ->with([
                 'product:id,name,sku,category_id,status,is_bundle',
                 'product.category:id,name',
                 'options.attribute:id,name',
-                'media',
-                'product.media',
+                'media' => fn ($q) => $q->orderByDesc('is_primary')->orderBy('sort_order'),
+                'product.media' => fn ($q) => $q->orderByDesc('is_primary')->orderBy('sort_order'),
             ])
             ->first();
 
@@ -745,14 +753,19 @@ class InventoryController extends Controller
             ->filter()
             ->implode(', ');
 
-        // Thumbnail: cari primary di media varian; fallback ke media produk.
+        // Thumbnail: media varian dulu (sudah ordered primary-first), fallback media produk.
+        // Skip video type — cari image saja.
         $thumbnail = null;
-        if ($variant->media && $variant->media->isNotEmpty()) {
-            $primaryMedia = $variant->media->firstWhere('is_primary', true) ?? $variant->media->first();
-            $thumbnail = $primaryMedia?->url ?? $primaryMedia?->file_path ?? null;
-        } elseif ($variant->product?->media && $variant->product->media->isNotEmpty()) {
-            $primaryMedia = $variant->product->media->firstWhere('is_primary', true) ?? $variant->product->media->first();
-            $thumbnail = $primaryMedia?->url ?? $primaryMedia?->file_path ?? null;
+        $variantMedia = $variant->media?->firstWhere('media_type', 'image')
+            ?? $variant->media?->first();
+        if ($variantMedia?->url) {
+            $thumbnail = $variantMedia->url;
+        } else {
+            $productMedia = $variant->product?->media?->firstWhere('media_type', 'image')
+                ?? $variant->product?->media?->first();
+            if ($productMedia?->url) {
+                $thumbnail = $productMedia->url;
+            }
         }
 
         return $this->successResponse([
