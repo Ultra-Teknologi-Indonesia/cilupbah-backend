@@ -29,7 +29,9 @@ class LazadaAuthController extends Controller
     {
         $redirectUri = (string) config('services.lazada.redirect_uri');
         $state = OAuthFlow::issueState(self::CHANNEL);
-        $url = $client->getAuthUrl($redirectUri, $state);
+        // force_auth=true memaksa layar login/otorisasi bersih di auth.lazada.com,
+        // menghindari path sesi basi yang memicu "Missing parameter".
+        $url = $client->getAuthUrl($redirectUri, $state, forceAuth: true);
 
         return $this->successResponse(['auth_url' => $url], 'URL otorisasi Lazada berhasil dibuat.');
     }

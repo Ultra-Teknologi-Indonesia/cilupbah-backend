@@ -42,10 +42,11 @@ return [
         'app_secret' => env('LAZADA_APP_SECRET'),
         'redirect_uri' => env('LAZADA_REDIRECT_URI'),
 
-        // Host regional Indonesia. Gunakan domain .lazada.co.id (bukan auth.lazada.com global)
-        // agar sesi login Seller Center (sellercenter.lazada.co.id) terbawa dan seller tidak
-        // diminta login ulang saat OAuth authorize.
-        'auth_url' => env('LAZADA_AUTH_URL', 'https://api.lazada.co.id'),
+        // OAuth authorization server + token endpoint. HARUS auth.lazada.com:
+        // api.lazada.co.id adalah API gateway REST, bukan authorization server. Halaman
+        // /oauth/authorize di api.lazada.co.id hanya me-redirect ke auth.lazada.com dan
+        // menghilangkan client_id/redirect_uri di prosesnya -> "Missing parameter".
+        'auth_url' => env('LAZADA_AUTH_URL', 'https://auth.lazada.com'),
 
         'base_url' => env('LAZADA_BASE_URL', 'https://api.lazada.co.id/rest'),
     ],

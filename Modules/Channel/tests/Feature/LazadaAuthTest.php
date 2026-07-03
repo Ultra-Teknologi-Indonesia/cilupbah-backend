@@ -104,8 +104,17 @@ class LazadaAuthTest extends TestCase
         $this->assertStringContainsString('auth.lazada.com/oauth/authorize', $url);
         $this->assertStringContainsString('client_id=test_key', $url);
         $this->assertStringContainsString('response_type=code', $url);
+        $this->assertStringContainsString('redirect_uri=', $url);
 
-        $this->assertStringNotContainsString('force_auth', $url);
+        // force_auth=true memaksa layar otorisasi bersih, menghindari "Missing parameter".
+        $this->assertStringContainsString('force_auth=true', $url);
+    }
+
+    public function test_auth_fails_fast_when_redirect_uri_missing(): void
+    {
+        config()->set('services.lazada.redirect_uri', '');
+
+        $this->getJson('/api/v1/lazada/auth')->assertStatus(500);
     }
 
     public function test_signature_is_deterministic_hmac_sha256(): void

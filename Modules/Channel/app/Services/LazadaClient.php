@@ -81,6 +81,11 @@ class LazadaClient
 
     public function getAuthUrl(string $redirectUri, string $state = '', bool $forceAuth = false): string
     {
+        if (trim($redirectUri) === '') {
+            throw new \RuntimeException('LAZADA_REDIRECT_URI belum dikonfigurasi. Callback URL wajib diisi agar OAuth authorize tidak gagal "Missing parameter".');
+        }
+
+        // client_id (app_key) sudah dijamin non-empty oleh konstruktor.
         $queries = [
             'response_type' => 'code',
             'redirect_uri' => $redirectUri,
