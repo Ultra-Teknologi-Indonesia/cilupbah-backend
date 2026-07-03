@@ -18,8 +18,10 @@ class TikTokStatementMapper
         $service = 0.0;
         $transaction = 0.0;
         $affiliate = 0.0;
+        $processing = 0.0;
         $sellerVoucher = 0.0;
         $platformVoucher = 0.0;
+        $paymentVoucher = 0.0;
         $currency = 'IDR';
         $hasSettlement = false;
 
@@ -38,19 +40,23 @@ class TikTokStatementMapper
             $service += $this->abs($this->num($breakdown, ['sfp_service_fee', 'service_fee', 'sfp_service_fees']));
             $transaction += $this->abs($this->num($breakdown, ['transaction_fee', 'payment_fee']));
             $affiliate += $this->abs($this->num($breakdown, ['affiliate_commission', 'affiliate_partner_commission']));
+            $processing += $this->abs($this->num($breakdown, ['handling_fee', 'order_processing_fee', 'fulfillment_fee']));
 
             $revenue = $tx['revenue_breakdown'] ?? [];
             $sellerVoucher += $this->abs($this->num($revenue, ['seller_discount', 'seller_voucher']));
             $platformVoucher += $this->abs($this->num($revenue, ['platform_discount', 'platform_voucher']));
+            $paymentVoucher += $this->abs($this->num($revenue, ['payment_platform_discount', 'payment_discount']));
         }
 
         $result = [
             'seller_voucher'       => $sellerVoucher ?: null,
             'platform_voucher'     => $platformVoucher ?: null,
+            'payment_voucher'      => $paymentVoucher ?: null,
             'commission_fee'       => $commission ?: null,
             'service_fee'          => $service ?: null,
             'transaction_fee'      => $transaction ?: null,
             'affiliate_commission' => $affiliate ?: null,
+            'order_processing_fee' => $processing ?: null,
             'settlement_amount'    => $hasSettlement ? $settlement : null,
             'fee_currency'         => $currency,
             'is_settled'           => $hasSettlement,
@@ -59,10 +65,12 @@ class TikTokStatementMapper
         $result['fee_lines'] = $this->feeLines($result, [
             'seller_voucher'       => 'seller_discount',
             'platform_voucher'     => 'platform_discount',
+            'payment_voucher'      => 'payment_platform_discount',
             'commission_fee'       => 'platform_commission',
             'service_fee'          => 'sfp_service_fee',
             'transaction_fee'      => 'transaction_fee',
             'affiliate_commission' => 'affiliate_commission',
+            'order_processing_fee' => 'handling_fee',
             'settlement_amount'    => 'settlement_amount',
         ]);
 

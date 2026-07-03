@@ -40,6 +40,7 @@ class SyncOrderFinanceJob implements ShouldQueue
         $finance = match ($order->source) {
             'shopee' => $this->fetchShopee($order),
             'tiktok' => $this->fetchTikTok($order),
+            'lazada' => $this->fetchLazada($order),
             default  => null,
         };
 
@@ -83,6 +84,20 @@ class SyncOrderFinanceJob implements ShouldQueue
         }
 
         return $mapper->map($statement);
+    }
+
+    private function fetchLazada(SalesOrder $order): ?array
+    {
+        $service = app(\Modules\Channel\Services\LazadaOrderService::class);
+        $mapper = app(\Modules\Channel\Services\LazadaTransactionMapper::class);
+
+        $transactions = $service->getTransactionDetails($order->channel_shop_id, $order->channel_order_no);
+
+        if (empty($transactions)) {
+            return null;
+        }
+
+        return $mapper->map($transactions);
     }
 
     public function failed(\Throwable $exception): void

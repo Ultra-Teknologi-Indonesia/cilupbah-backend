@@ -871,7 +871,8 @@ class SalesOrderService
                 SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
             }
 
-            if (($orderData['channel_status'] ?? null) === 'COMPLETED'
+            // Lazada berhenti di DELIVERED; COMPLETED hanya ada di Shopee/TikTok.
+            if (in_array($orderData['channel_status'] ?? null, ['COMPLETED', 'DELIVERED'], true)
                 && ! $order->is_settled
                 && $order->source
                 && $order->channel_shop_id
@@ -912,10 +913,12 @@ class SalesOrderService
         $allowed = [
             'seller_voucher',
             'platform_voucher',
+            'payment_voucher',
             'commission_fee',
             'service_fee',
             'transaction_fee',
             'affiliate_commission',
+            'order_processing_fee',
             'seller_shipping_borne',
             'platform_shipping_rebate',
             'settlement_amount',

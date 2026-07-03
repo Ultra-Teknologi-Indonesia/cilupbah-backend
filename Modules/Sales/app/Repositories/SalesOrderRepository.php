@@ -359,6 +359,18 @@ class SalesOrderRepository
             'platform_voucher'    => $existing && $existing->is_settled
                 ? $existing->platform_voucher
                 : ($orderData['platform_voucher'] ?? ($existing->platform_voucher ?? null)),
+            'payment_voucher'     => $existing && $existing->is_settled
+                ? $existing->payment_voucher
+                : ($orderData['payment_voucher'] ?? ($existing->payment_voucher ?? null)),
+            'order_processing_fee' => $existing && $existing->is_settled
+                ? $existing->order_processing_fee
+                : ($orderData['order_processing_fee'] ?? ($existing->order_processing_fee ?? null)),
+            'platform_shipping_rebate' => $existing && $existing->is_settled
+                ? $existing->platform_shipping_rebate
+                : ($orderData['platform_shipping_rebate'] ?? ($existing->platform_shipping_rebate ?? null)),
+            'seller_shipping_borne' => $existing && $existing->is_settled
+                ? $existing->seller_shipping_borne
+                : ($orderData['seller_shipping_borne'] ?? ($existing->seller_shipping_borne ?? null)),
             'total_tax'           => $orderData['total_tax'],
             'shipping_cost'       => $orderData['shipping_cost'],
             'actual_shipping_fee' => $orderData['actual_shipping_fee'] ?? null,

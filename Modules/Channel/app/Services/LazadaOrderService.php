@@ -141,6 +141,19 @@ class LazadaOrderService
         return ['order_id' => $orderId, 'cancelled_item_ids' => $cancelled];
     }
 
+    public function getTransactionDetails(string $shopId, string $orderId): array
+    {
+        $shop = $this->requireShop($shopId);
+
+        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/finance/transaction/details/get', [
+            'trade_order_id' => $orderId,
+            'start_time' => now()->subDays(180)->format('Y-m-d'),
+            'end_time' => now()->format('Y-m-d'),
+        ], $token));
+
+        return $res['data'] ?? [];
+    }
+
     public function getCancelReasons(string $shopId): array
     {
         $shop = $this->requireShop($shopId);

@@ -84,6 +84,11 @@ class TikTokToInternalOrderMapper
 
             'seller_voucher'     => isset($payment['seller_discount']) ? (float) $payment['seller_discount'] : null,
             'platform_voucher'   => isset($payment['platform_discount']) ? (float) $payment['platform_discount'] : null,
+            'order_processing_fee' => isset($payment['handling_fee']) ? (float) $payment['handling_fee'] : null,
+            'seller_shipping_borne' => isset($payment['shipping_fee_seller_discount']) ? (float) $payment['shipping_fee_seller_discount'] : null,
+            'platform_shipping_rebate' => isset($payment['shipping_fee_platform_discount']) || isset($payment['shipping_fee_cofunded_discount'])
+                ? (float) ($payment['shipping_fee_platform_discount'] ?? 0) + (float) ($payment['shipping_fee_cofunded_discount'] ?? 0)
+                : null,
             'total_tax'          => isset($payment['tax']) ? (float) $payment['tax'] : 0,
             'shipping_cost'      => isset($payment['original_shipping_fee']) ? (float) $payment['original_shipping_fee'] : 0,
             'actual_shipping_fee' => isset($payment['shipping_fee']) ? (float) $payment['shipping_fee'] : null,

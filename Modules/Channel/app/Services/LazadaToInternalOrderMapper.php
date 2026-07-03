@@ -47,6 +47,10 @@ class LazadaToInternalOrderMapper
 
             'sub_total' => $subTotal,
             'total_disc' => $voucher,
+            'seller_voucher' => isset($lazadaOrder['voucher_seller']) ? (float) $lazadaOrder['voucher_seller'] : null,
+            'platform_voucher' => isset($lazadaOrder['voucher_platform']) ? (float) $lazadaOrder['voucher_platform'] : null,
+            'seller_shipping_borne' => isset($lazadaOrder['shipping_fee_discount_seller']) ? (float) $lazadaOrder['shipping_fee_discount_seller'] : null,
+            'platform_shipping_rebate' => isset($lazadaOrder['shipping_fee_discount_platform']) ? (float) $lazadaOrder['shipping_fee_discount_platform'] : null,
             'total_tax' => $taxTotal,
             'shipping_cost' => $shippingFee,
             'insurance_cost' => 0,

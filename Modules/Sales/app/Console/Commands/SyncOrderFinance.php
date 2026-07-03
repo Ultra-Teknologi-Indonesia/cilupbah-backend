@@ -10,7 +10,7 @@ class SyncOrderFinance extends Command
 {
     protected $signature = 'orders:sync-finance
         {--days=30 : Hanya order yang di-update dalam N hari terakhir}
-        {--source= : Batasi ke satu channel (shopee|tiktok)}
+        {--source= : Batasi ke satu channel (shopee|tiktok|lazada)}
         {--force : Tarik ulang walau sudah is_settled}';
 
     protected $description = 'Sinkronkan biaya admin/komisi/voucher & net settlement untuk order yang sudah selesai';
@@ -21,9 +21,10 @@ class SyncOrderFinance extends Command
         $source = $this->option('source');
         $force = (bool) $this->option('force');
 
+        // Lazada tidak punya status COMPLETED — order selesai berhenti di DELIVERED.
         $query = SalesOrder::query()
-            ->where('channel_status', 'COMPLETED')
-            ->whereIn('source', $source ? [$source] : ['shopee', 'tiktok'])
+            ->whereIn('channel_status', ['COMPLETED', 'DELIVERED'])
+            ->whereIn('source', $source ? [$source] : ['shopee', 'tiktok', 'lazada'])
             ->whereNotNull('channel_shop_id')
             ->whereNotNull('channel_order_no')
             ->where('updated_at', '>=', now()->subDays($days));

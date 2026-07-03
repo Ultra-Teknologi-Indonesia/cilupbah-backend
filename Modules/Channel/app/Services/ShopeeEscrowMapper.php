@@ -22,13 +22,24 @@ class ShopeeEscrowMapper
 
         $settlement = $this->num($income, 'escrow_amount');
 
+        // "Voucher bayar": diskon yang didanai kanal pembayaran (promo pembayaran, koin, promo kartu kredit).
+        $paymentPromo = $this->num($income, 'payment_promotion');
+        $coins = $this->num($income, 'coins');
+        $ccPromo = $this->num($income, 'credit_card_promotion');
+        $paymentVoucher = ($paymentPromo === null && $coins === null && $ccPromo === null)
+            ? null
+            : ($paymentPromo ?? 0) + ($coins ?? 0) + ($ccPromo ?? 0);
+
         $result = [
             'seller_voucher'           => $this->num($income, 'voucher_from_seller'),
             'platform_voucher'         => $this->num($income, 'voucher_from_shopee'),
+            'payment_voucher'          => $paymentVoucher,
             'commission_fee'           => $this->num($income, 'commission_fee'),
             'service_fee'              => $this->num($income, 'service_fee'),
             'transaction_fee'          => $this->num($income, 'seller_transaction_fee'),
             'affiliate_commission'     => $this->num($income, 'order_ams_commission_fee'),
+            'order_processing_fee'     => $this->num($income, 'order_processing_fee')
+                ?? $this->num($income, 'order_handling_fee'),
             'seller_shipping_borne'    => $sellerShippingBorne,
             'platform_shipping_rebate' => $shopeeRebate,
             'settlement_amount'        => $settlement,
@@ -40,6 +51,8 @@ class ShopeeEscrowMapper
         $result['fee_lines'] = $this->feeLines($result, [
             'seller_voucher'           => 'voucher_from_seller',
             'platform_voucher'         => 'voucher_from_shopee',
+            'payment_voucher'          => 'payment_promotion',
+            'order_processing_fee'     => 'order_processing_fee',
             'commission_fee'           => 'commission_fee',
             'service_fee'              => 'service_fee',
             'transaction_fee'          => 'seller_transaction_fee',
