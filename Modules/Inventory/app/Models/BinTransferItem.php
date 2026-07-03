@@ -13,6 +13,8 @@ class BinTransferItem extends Model
     protected $fillable = [
         'bin_transfer_id',
         'item_id',
+        'source_bin_id',
+        'destination_bin_id',
         'qty',
         'batch_no',
         'serial_no',
@@ -32,5 +34,15 @@ class BinTransferItem extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(\Modules\Product\Models\ProductVariant::class, 'item_id');
+    }
+
+    public function sourceBin(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Warehouse\Models\LocationBin::class, 'source_bin_id');
+    }
+
+    public function destinationBin(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Warehouse\Models\LocationBin::class, 'destination_bin_id');
     }
 }

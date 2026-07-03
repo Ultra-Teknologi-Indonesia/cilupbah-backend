@@ -15,8 +15,6 @@ class BinTransfer extends Model
     protected $fillable = [
         'transfer_number',
         'location_id',
-        'source_bin_id',
-        'destination_bin_id',
         'transfer_date',
         'created_by',
         'notes',
@@ -34,15 +32,5 @@ class BinTransfer extends Model
     public function location(): BelongsTo
     {
         return $this->belongsTo(\Modules\Warehouse\Models\Location::class);
-    }
-
-    public function sourceBin(): BelongsTo
-    {
-        return $this->belongsTo(\Modules\Warehouse\Models\LocationBin::class, 'source_bin_id');
-    }
-
-    public function destinationBin(): BelongsTo
-    {
-        return $this->belongsTo(\Modules\Warehouse\Models\LocationBin::class, 'destination_bin_id');
     }
 }

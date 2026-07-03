@@ -189,12 +189,17 @@ class InventoryService
     {
         $items = $this->normalizeBinTransferItems($data);
 
-        if (($data['source_bin_id'] ?? null) === ($data['destination_bin_id'] ?? null)) {
-            throw new \Exception('Bin asal dan bin tujuan harus berbeda.');
+        if (empty($items)) {
+            throw new \Exception('Minimal 1 produk harus ditransfer.');
         }
 
-        if (empty($items)) {
-            throw new \Exception('Minimal 1 produk harus dipindahkan.');
+        foreach ($items as $idx => $it) {
+            if (empty($it['source_bin_id']) || empty($it['destination_bin_id'])) {
+                throw new \Exception('Setiap baris produk wajib punya rak asal dan rak tujuan.');
+            }
+            if ($it['source_bin_id'] === $it['destination_bin_id']) {
+                throw new \Exception('Rak asal dan rak tujuan harus berbeda pada baris ke-' . ($idx + 1) . '.');
+            }
         }
 
         $variantIds = [];
@@ -203,13 +208,11 @@ class InventoryService
             $transferNumber = $data['transfer_number'] ?? $this->generateBinTransferNumber();
 
             $header = BinTransfer::create([
-                'transfer_number'     => $transferNumber,
-                'location_id'         => $data['location_id'],
-                'source_bin_id'       => $data['source_bin_id'],
-                'destination_bin_id'  => $data['destination_bin_id'],
-                'transfer_date'       => $data['transfer_date'] ?? now()->toDateString(),
-                'created_by'          => $data['created_by'],
-                'notes'               => $data['notes'] ?? null,
+                'transfer_number' => $transferNumber,
+                'location_id'     => $data['location_id'],
+                'transfer_date'   => $data['transfer_date'] ?? now()->toDateString(),
+                'created_by'      => $data['created_by'],
+                'notes'           => $data['notes'] ?? null,
             ]);
 
             foreach ($items as $itemData) {
@@ -218,17 +221,20 @@ class InventoryService
                     throw new \Exception('Qty setiap produk harus lebih dari 0.');
                 }
 
+                $sourceBinId = $itemData['source_bin_id'];
+                $destBinId = $itemData['destination_bin_id'];
+
                 $source = $this->inventoryRepository->findExactForUpdate(
                     $itemData['item_id'],
                     $data['location_id'],
-                    $data['source_bin_id'],
+                    $sourceBinId,
                     $itemData['batch_no'] ?? '',
                     $itemData['serial_no'] ?? '',
                 );
 
                 if (! $source || $source->on_hand < $qty) {
                     $current = $source ? $source->on_hand : 0;
-                    throw new \Exception("Stok di bin asal tidak mencukupi untuk produk {$itemData['item_id']} (tersedia: {$current}, diminta: {$qty}).");
+                    throw new \Exception("Stok di rak asal tidak mencukupi untuk produk {$itemData['item_id']} (tersedia: {$current}, diminta: {$qty}).");
                 }
 
                 $unitCost = (float) ($source->avg_cost ?? 0);
@@ -239,7 +245,7 @@ class InventoryService
                 $this->movementRepository->create([
                     'item_id'            => $itemData['item_id'],
                     'location_id'        => $data['location_id'],
-                    'bin_id'             => $data['source_bin_id'],
+                    'bin_id'             => $sourceBinId,
                     'transaction_number' => $transferNumber,
                     'source'             => 'BIN_TRANSFER_OUT',
                     'qty'                => -$qty,
@@ -253,7 +259,7 @@ class InventoryService
                 $dest = $this->inventoryRepository->findOrCreateForUpdate(
                     $itemData['item_id'],
                     $data['location_id'],
-                    $data['destination_bin_id'],
+                    $destBinId,
                     $itemData['batch_no'] ?? '',
                     $itemData['serial_no'] ?? '',
                     ['expired_date' => $itemData['expired_date'] ?? null],
@@ -266,7 +272,7 @@ class InventoryService
                     $this->recalculateAverageCost(
                         $itemData['item_id'],
                         $data['location_id'],
-                        $data['destination_bin_id'],
+                        $destBinId,
                         (float) $qty,
                         $unitCost,
                         $itemData['batch_no'] ?? '',
@@ -277,7 +283,7 @@ class InventoryService
                 $this->movementRepository->create([
                     'item_id'            => $itemData['item_id'],
                     'location_id'        => $data['location_id'],
-                    'bin_id'             => $data['destination_bin_id'],
+                    'bin_id'             => $destBinId,
                     'transaction_number' => $transferNumber,
                     'source'             => 'BIN_TRANSFER_IN',
                     'qty'                => $qty,
@@ -289,13 +295,15 @@ class InventoryService
                 ]);
 
                 BinTransferItem::create([
-                    'bin_transfer_id' => $header->id,
-                    'item_id'         => $itemData['item_id'],
-                    'qty'             => $qty,
-                    'batch_no'        => $itemData['batch_no'] ?? null,
-                    'serial_no'       => $itemData['serial_no'] ?? null,
-                    'expired_date'    => $itemData['expired_date'] ?? null,
-                    'notes'           => $itemData['notes'] ?? null,
+                    'bin_transfer_id'    => $header->id,
+                    'item_id'            => $itemData['item_id'],
+                    'source_bin_id'      => $sourceBinId,
+                    'destination_bin_id' => $destBinId,
+                    'qty'                => $qty,
+                    'batch_no'           => $itemData['batch_no'] ?? null,
+                    'serial_no'          => $itemData['serial_no'] ?? null,
+                    'expired_date'       => $itemData['expired_date'] ?? null,
+                    'notes'              => $itemData['notes'] ?? null,
                 ]);
 
                 $variantIds[] = $itemData['item_id'];
@@ -317,12 +325,14 @@ class InventoryService
 
         if (isset($data['item_id']) && isset($data['qty'])) {
             return [[
-                'item_id'      => $data['item_id'],
-                'qty'          => $data['qty'],
-                'batch_no'     => $data['batch_no'] ?? null,
-                'serial_no'    => $data['serial_no'] ?? null,
-                'expired_date' => $data['expired_date'] ?? null,
-                'notes'        => $data['notes_item'] ?? null,
+                'item_id'            => $data['item_id'],
+                'source_bin_id'      => $data['source_bin_id'] ?? null,
+                'destination_bin_id' => $data['destination_bin_id'] ?? null,
+                'qty'                => $data['qty'],
+                'batch_no'           => $data['batch_no'] ?? null,
+                'serial_no'          => $data['serial_no'] ?? null,
+                'expired_date'       => $data['expired_date'] ?? null,
+                'notes'              => $data['notes_item'] ?? null,
             ]];
         }
 
@@ -341,7 +351,7 @@ class InventoryService
     public function getBinTransfers(array $filters = [], int $perPage = 10)
     {
         $query = BinTransfer::query()
-            ->with(['location:id,location_name', 'sourceBin:id,bin_final_code', 'destinationBin:id,bin_final_code'])
+            ->with(['location:id,location_name'])
             ->withCount('items');
 
         if (! empty($filters['q'])) {
@@ -368,10 +378,10 @@ class InventoryService
     {
         return BinTransfer::with([
             'location:id,location_name,location_code',
-            'sourceBin:id,bin_final_code,location_id',
-            'destinationBin:id,bin_final_code,location_id',
             'items.product',
             'items.product.product:id,name',
+            'items.sourceBin:id,bin_final_code,location_id',
+            'items.destinationBin:id,bin_final_code,location_id',
         ])->find($id);
     }
 
@@ -379,7 +389,7 @@ class InventoryService
     {
         $transfer = BinTransfer::find($id);
         if (! $transfer) {
-            throw new \Exception('Pindah bin tidak ditemukan.');
+            throw new \Exception('Transfer internal tidak ditemukan.');
         }
 
         $updatable = array_intersect_key($data, array_flip(['transfer_date', 'created_by', 'notes']));
@@ -389,7 +399,7 @@ class InventoryService
 
         $transfer->update($updatable);
 
-        return $transfer->fresh(['items', 'location', 'sourceBin', 'destinationBin']);
+        return $transfer->fresh(['items', 'location']);
     }
 
     public function getStockItems(int $limit = 10)
