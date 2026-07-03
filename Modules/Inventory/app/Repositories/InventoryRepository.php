@@ -21,7 +21,12 @@ class InventoryRepository
     public function getByItem(string $itemId): Collection
     {
         return Inventory::where('item_id', $itemId)
-            ->with(['location', 'bin'])
+            ->whereNotNull('bin_id')
+            ->where('on_hand', '>', 0)
+            ->with([
+                'location:id,location_name',
+                'bin:id,bin_final_code,floor_code,row_code,column_code',
+            ])
             ->get();
     }
 
