@@ -617,6 +617,24 @@ class InboundController extends Controller
         }
     }
 
+    #[OA\Get(
+        path: '/api/v1/inbounds/{id}/barcodes',
+        summary: 'Download barcode PDF for all products in an inbound receipt',
+        security: [['bearerAuth' => []]],
+        tags: ['Inbounds'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'PDF stream', content: new OA\MediaType(mediaType: 'application/pdf')),
+            new OA\Response(response: 404, description: 'Not found'),
+        ]
+    )]
+    public function downloadBarcodes(string $id)
+    {
+        return $this->inboundService->downloadBarcodes($id);
+    }
+
     #[OA\Post(
         path: '/api/v1/inbounds/{id}/cancel',
         summary: 'Cancel an inbound',

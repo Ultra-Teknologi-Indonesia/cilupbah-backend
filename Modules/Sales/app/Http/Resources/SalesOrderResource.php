@@ -95,6 +95,7 @@ class SalesOrderResource extends JsonResource
             'payment_method'      => $this->payment_method,
             'payment_method_name' => $this->payment_method_name,
             'paid_time'           => $this->paid_time,
+            'ship_by_date'        => $this->ship_by_date,
 
             'sub_total'      => (float) $this->sub_total,
             'total_disc'     => (float) $this->total_disc,

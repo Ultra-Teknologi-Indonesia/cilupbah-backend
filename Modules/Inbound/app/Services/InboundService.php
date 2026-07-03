@@ -598,6 +598,28 @@ class InboundService
         }
     }
 
+    public function downloadBarcodes(string $id)
+    {
+        $inbound = Inbound::with(['items.variant'])->findOrFail($id);
+        
+        $pages = [];
+        foreach ($inbound->items as $item) {
+            $qty = $item->expected_qty > 0 ? $item->expected_qty : ($item->received_qty > 0 ? $item->received_qty : 1);
+            
+            for ($i = 0; $i < $qty; $i++) {
+                $pages[] = [
+                    'sku' => $item->variant->sku ?? 'UNKNOWN',
+                    'name' => $item->variant->name ?? 'Unknown Product',
+                ];
+            }
+        }
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('inbound::pdf.barcodes', compact('pages'))
+            ->setPaper([0, 0, 141.73, 85.04], 'landscape');
+            
+        return $pdf->stream("barcodes-inbound-{$inbound->transaction_number}.pdf");
+    }
+
     private function createPutawayFromInbound(Inbound $inbound, $defaultBin, string $receivedBy): void
     {
         $items = $inbound->items
