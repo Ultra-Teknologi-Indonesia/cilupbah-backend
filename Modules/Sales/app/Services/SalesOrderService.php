@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Services;
 
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -160,7 +161,7 @@ class SalesOrderService
         return $count;
     }
 
-    public function acceptCancelRequest(string $orderId): SalesOrder
+    public function acceptCancelRequest(string $orderId, bool $auto = false, ?string $reason = null): SalesOrder
     {
         $order = SalesOrder::findOrFail($orderId);
 
@@ -172,13 +173,41 @@ class SalesOrderService
             throw new InvalidStatusTransitionException($order->status, 'cancelled');
         }
 
-        return DB::transaction(function () use ($order) {
+        $actorId = $auto ? null : (Auth::id() ?: null);
+        $channel = $auto ? 'auto' : 'manual';
+        $finalReason = $reason ?? $order->cancel_request_reason ?? 'seller_cancel_reason_other';
+
+        if ($order->status === 'shipped') {
+            return DB::transaction(function () use ($order, $actorId, $channel, $finalReason) {
+                app(SalesReturnService::class)->createFromCancelledShipped(
+                    $order,
+                    $finalReason,
+                    $actorId ?? 'system:auto-accept-cancel',
+                );
+
+                $order->update([
+                    'cancel_accepted_at' => now(),
+                    'cancel_accepted_by' => $actorId,
+                    'cancel_channel'     => $channel,
+                    'cancel_reason'      => $finalReason,
+                ]);
+
+                Cache::forget($this->idempotencyKey($order->source, $order->salesorder_no));
+
+                return $order->fresh();
+            });
+        }
+
+        return DB::transaction(function () use ($order, $actorId, $channel, $finalReason) {
             $this->applyStockTransition($order, 'cancelled');
 
             $order->update([
-                'status'        => 'cancelled',
-                'is_canceled'   => true,
-                'cancel_reason' => $order->cancel_request_reason ?? 'seller_cancel_reason_other',
+                'status'             => 'cancelled',
+                'is_canceled'        => true,
+                'cancel_reason'      => $finalReason,
+                'cancel_accepted_at' => now(),
+                'cancel_accepted_by' => $actorId,
+                'cancel_channel'     => $channel,
             ]);
 
             Cache::forget($this->idempotencyKey($order->source, $order->salesorder_no));
@@ -193,7 +222,7 @@ class SalesOrderService
         });
     }
 
-    public function rejectCancelRequest(string $orderId): SalesOrder
+    public function rejectCancelRequest(string $orderId, ?string $reason = null): SalesOrder
     {
         $order = SalesOrder::findOrFail($orderId);
 
@@ -201,10 +230,15 @@ class SalesOrderService
             throw new \InvalidArgumentException('Pesanan ini tidak memiliki permintaan pembatalan.');
         }
 
+        $actorId = Auth::id() ?: null;
+
         $order->update([
-            'cancel_requested_at'     => null,
-            'cancel_request_reason'   => null,
-            'cancel_requested_by'     => null,
+            'cancel_requested_at'   => null,
+            'cancel_request_reason' => null,
+            'cancel_requested_by'   => null,
+            'cancel_rejected_at'    => now(),
+            'cancel_rejected_by'    => $actorId,
+            'cancel_reject_reason'  => $reason,
         ]);
 
         return $order->fresh();
@@ -1138,6 +1172,10 @@ class SalesOrderService
 
         $order->loadMissing('items');
 
+        if (in_array($status, ['picked', 'packed'], true)) {
+            return $this->restoreStockToOriginBins($order);
+        }
+
         foreach ($order->items as $item) {
             if (! $item->item_id) {
                 continue;
@@ -1145,23 +1183,79 @@ class SalesOrderService
 
             $locationId = $this->resolveLocationId($order);
 
-            if (in_array($status, ['pending', 'reserved'], true)) {
-                $this->stockService->cancel(
-                    $item->sku ?? "item:{$item->item_id}",
-                    $item->item_id,
-                    $locationId,
-                    $item->qty_in_base,
-                    $order->salesorder_no,
-                );
-            } else {
-                $this->stockService->restore(
-                    $item->sku ?? "item:{$item->item_id}",
-                    $item->item_id,
-                    $locationId,
-                    $item->qty_in_base,
-                    $order->salesorder_no,
-                );
+            $this->stockService->cancel(
+                $item->sku ?? "item:{$item->item_id}",
+                $item->item_id,
+                $locationId,
+                $item->qty_in_base,
+                $order->salesorder_no,
+            );
+        }
+
+        return true;
+    }
+
+    private function restoreStockToOriginBins(SalesOrder $order): bool
+    {
+        $locationId = $this->resolveLocationId($order);
+
+        $binAllocations = \Modules\Outbound\Models\PicklistItem::where('order_id', $order->id)
+            ->whereNotNull('bin_id')
+            ->get(['item_id', 'sku', 'bin_id', 'qty_picked', 'qty_ordered'])
+            ->groupBy('item_id');
+
+        $remainingByItem = [];
+        foreach ($order->items as $item) {
+            if (! $item->item_id) {
+                continue;
             }
+            $remainingByItem[$item->item_id] = [
+                'sku'       => $item->sku ?? "item:{$item->item_id}",
+                'qty'       => (int) $item->qty_in_base,
+            ];
+        }
+
+        foreach ($binAllocations as $itemId => $rows) {
+            if (! isset($remainingByItem[$itemId])) {
+                continue;
+            }
+
+            foreach ($rows as $row) {
+                $qty = (int) ($row->qty_picked ?: $row->qty_ordered);
+                if ($qty <= 0) {
+                    continue;
+                }
+
+                $take = min($qty, $remainingByItem[$itemId]['qty']);
+                if ($take <= 0) {
+                    break;
+                }
+
+                $this->stockService->restoreToBin(
+                    $remainingByItem[$itemId]['sku'],
+                    $itemId,
+                    $locationId,
+                    $row->bin_id,
+                    $take,
+                    $order->salesorder_no,
+                );
+
+                $remainingByItem[$itemId]['qty'] -= $take;
+            }
+        }
+
+        foreach ($remainingByItem as $itemId => $data) {
+            if ($data['qty'] <= 0) {
+                continue;
+            }
+
+            $this->stockService->restore(
+                $data['sku'],
+                $itemId,
+                $locationId,
+                $data['qty'],
+                $order->salesorder_no,
+            );
         }
 
         return true;

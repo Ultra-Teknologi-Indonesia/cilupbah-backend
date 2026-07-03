@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 use OpenApi\Attributes as OA;
 
 use App\Traits\ApiResponse;
+use Maatwebsite\Excel\Facades\Excel;
+use Modules\Sales\Exports\CancelledOrdersExport;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
 use Modules\Sales\Http\Resources\SalesOrderResource;
@@ -310,6 +312,46 @@ class SalesOrderController extends Controller
     }
 
     #[OA\Get(
+        path: '/api/v1/sales/orders/cancelled/export',
+        summary: 'Download cancelled orders as XLSX (recap for outbound reconciliation)',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'date_from', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'date_to', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'post_pack_only', in: 'query', required: false, schema: new OA\Schema(type: 'boolean', default: false)),
+            new OA\Parameter(name: 'source', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'XLSX file stream', content: new OA\MediaType(mediaType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')),
+        ]
+    )]
+    public function exportCancelled(Request $request)
+    {
+        $validated = $request->validate([
+            'date_from'      => 'nullable|date',
+            'date_to'        => 'nullable|date|after_or_equal:date_from',
+            'post_pack_only' => 'nullable|boolean',
+            'source'         => 'nullable|string|max:50',
+        ]);
+
+        $export = new CancelledOrdersExport(
+            dateFrom:     $validated['date_from'] ?? null,
+            dateTo:       $validated['date_to'] ?? null,
+            postPackOnly: (bool) ($validated['post_pack_only'] ?? false),
+            source:       $validated['source'] ?? null,
+        );
+
+        $filename = sprintf(
+            'cancel-orders-%s-%s.xlsx',
+            $validated['date_from'] ?? 'all',
+            $validated['date_to'] ?? now()->format('Y-m-d'),
+        );
+
+        return Excel::download($export, $filename);
+    }
+
+    #[OA\Get(
         path: '/api/v1/sales/orders/completed',
         summary: 'Get completed (shipped) orders',
         security: [['bearerAuth' => []]],
@@ -606,9 +648,13 @@ class SalesOrderController extends Controller
             new OA\Response(response: 422, description: 'No pending cancel request'),
         ]
     )]
-    public function acceptCancelRequest(string $id)
+    public function acceptCancelRequest(string $id, Request $request)
     {
-        $order = $this->orderService->acceptCancelRequest($id);
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:255',
+        ]);
+
+        $order = $this->orderService->acceptCancelRequest($id, auto: false, reason: $validated['reason'] ?? null);
 
         return $this->successResponse(new SalesOrderResource($order), 'Pembatalan pesanan diterima');
     }
@@ -627,9 +673,13 @@ class SalesOrderController extends Controller
             new OA\Response(response: 422, description: 'No pending cancel request'),
         ]
     )]
-    public function rejectCancelRequest(string $id)
+    public function rejectCancelRequest(string $id, Request $request)
     {
-        $order = $this->orderService->rejectCancelRequest($id);
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:255',
+        ]);
+
+        $order = $this->orderService->rejectCancelRequest($id, reason: $validated['reason'] ?? null);
 
         return $this->successResponse(new SalesOrderResource($order), 'Permintaan pembatalan ditolak');
     }

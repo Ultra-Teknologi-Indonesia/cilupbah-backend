@@ -92,6 +92,46 @@ class SalesReturnService
         });
     }
 
+    public function createFromCancelledShipped(SalesOrder $order, ?string $reason, string $createdBy): ?SalesReturn
+    {
+        $locationId = $order->location_id ?? $this->settings->restockLocationId();
+        if (! $locationId) {
+            Log::warning('createFromCancelledShipped: lokasi restock tidak dapat ditentukan.', [
+                'order_id' => $order->id,
+            ]);
+            return null;
+        }
+
+        $order->loadMissing('items');
+
+        $items = $order->items
+            ->filter(fn ($it) => $it->item_id && (float) $it->qty_in_base > 0)
+            ->map(fn ($it) => [
+                'item_id'   => $it->item_id,
+                'qty'       => (int) $it->qty_in_base,
+                'condition' => 'GOOD',
+            ])
+            ->values()
+            ->toArray();
+
+        if (empty($items)) {
+            Log::warning('createFromCancelledShipped: order tanpa item valid.', [
+                'order_id' => $order->id,
+            ]);
+            return null;
+        }
+
+        return $this->create([
+            'order_id'      => $order->id,
+            'location_id'   => $locationId,
+            'source'        => SalesReturn::SOURCE_MANUAL,
+            'customer_name' => $order->customer_name ?? null,
+            'reason'        => $reason ?: 'Cancel diterima setelah paket dikirim',
+            'created_by'    => $createdBy,
+            'items'         => $items,
+        ]);
+    }
+
     public function createFromChannel(array $payload): ?SalesReturn
     {
         $source = (string) $payload['source'];

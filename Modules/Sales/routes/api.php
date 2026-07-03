@@ -77,6 +77,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('sales/shipments/{shipment_header_id}', fn (Request $request, string $shipment_header_id) => app(ShipmentController::class)->show($shipment_header_id))->whereUuid('shipment_header_id')->name('sales.shipments.show');
 
     Route::get('sales/orders/cancel', [SalesOrderController::class, 'cancelled'])->name('sales.orders.cancelled');
+    Route::get('sales/orders/cancelled/export', [SalesOrderController::class, 'exportCancelled'])->name('sales.orders.cancelled.export');
     Route::get('sales/orders/completed', [SalesOrderController::class, 'completed'])->name('sales.orders.completed');
     Route::get('sales/orders/failed', [SalesOrderController::class, 'failed'])->name('sales.orders.failed');
     Route::get('sales/orders/returned-list', [SalesOrderController::class, 'returnedList'])->name('sales.orders.returned-list');

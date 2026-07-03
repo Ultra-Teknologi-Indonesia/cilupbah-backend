@@ -144,6 +144,12 @@ class SalesOrderRepository
                 ->where('status', 'cancelled')
                 ->orWhere(fn ($q2) => $q2->whereNotNull('cancel_requested_at')->where('status', '!=', 'cancelled'))
             )->count(),
+            'cancellation_post_pack' => $this->visibleOrders()
+                ->whereNotNull('handed_to_warehouse_at')
+                ->where(fn ($q) => $q
+                    ->where('is_canceled', true)
+                    ->orWhereNotNull('cancel_requested_at')
+                )->count(),
             'returned'         => $this->visibleOrders()->whereHas('returns')->count(),
         ];
     }
@@ -159,7 +165,8 @@ class SalesOrderRepository
     {
         return $query->where(function ($q) {
             $q->whereNull('handed_to_warehouse_at')
-              ->orWhereIn('status', ['shipped', 'cancelled']);
+              ->orWhereIn('status', ['shipped', 'cancelled'])
+              ->orWhereNotNull('cancel_requested_at');
         });
     }
 
@@ -220,6 +227,11 @@ class SalesOrderRepository
         return match ($sub) {
             'pending'   => $query->whereNotNull('cancel_requested_at')->where('status', '!=', 'cancelled'),
             'cancelled' => $query->where('status', 'cancelled'),
+            'post_pack' => $query->whereNotNull('handed_to_warehouse_at')
+                ->where(fn ($q) => $q
+                    ->where('is_canceled', true)
+                    ->orWhereNotNull('cancel_requested_at')
+                ),
             default     => $query->where(fn ($q) => $q
                 ->where('status', 'cancelled')
                 ->orWhere(fn ($q2) => $q2->whereNotNull('cancel_requested_at')->where('status', '!=', 'cancelled'))
