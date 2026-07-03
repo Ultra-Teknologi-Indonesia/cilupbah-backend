@@ -11,7 +11,6 @@ use Modules\Product\Http\Requests\StoreBundleRequest;
 use Modules\Product\Http\Requests\UpdateProductRequest;
 use Modules\Product\Http\Resources\ProductPriceResource;
 use Modules\Product\Http\Resources\ProductChannelListingResource;
-use Modules\Product\Http\Resources\ProductChannelPriceResource;
 use Modules\Product\Http\Resources\ProductPriceBookResource;
 use Modules\Product\Http\Resources\ProductResource;
 use Modules\Product\Http\Resources\ProductStockResource;
@@ -464,34 +463,6 @@ class ProductController extends Controller
         return $this->successPaginatedResponse(
             ProductChannelListingResource::collection($this->productRepository->paginateListedVariants($product->id)),
             'Daftar listing channel berhasil diambil.'
-        );
-    }
-
-    #[OA\Get(
-        path: '/api/v1/products/{id}/channel-prices',
-        summary: 'Harga channel per varian (internal + override per toko)',
-        tags: ['Products'],
-        parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
-            new OA\Parameter(name: 'channel', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
-            new OA\Parameter(name: 'include_unlisted', in: 'query', required: false, schema: new OA\Schema(type: 'boolean')),
-            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
-        ],
-        responses: [
-            new OA\Response(response: 200, description: 'OK'),
-            new OA\Response(response: 404, description: 'Produk tidak ditemukan'),
-        ]
-    )]
-    public function channelPrices(Request $request, $id): JsonResponse
-    {
-        $product = $this->findProduct($id);
-        if (! $product) {
-            return $this->errorResponse('Produk tidak ditemukan', 404);
-        }
-
-        return $this->successPaginatedResponse(
-            ProductChannelPriceResource::collection($this->productRepository->paginateListedVariants($product->id)),
-            'Harga channel berhasil diambil.'
         );
     }
 

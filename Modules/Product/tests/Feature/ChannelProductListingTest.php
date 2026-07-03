@@ -84,7 +84,6 @@ class ChannelProductListingTest extends TestCase
                 'product_channel_mapping_id' => $mapping->id,
                 'variant_id' => $variant->id,
                 'external_sku_id' => "CHANNEL-{$externalId}",
-                'override_price' => 250000,
             ]);
         }
 
@@ -138,7 +137,7 @@ class ChannelProductListingTest extends TestCase
         $this->assertSame('MASTER-TT-GROUP-1', $sku['master_sku']);
         $this->assertSame('CHANNEL-TT-GROUP-1', $sku['channel_sku']);
         $this->assertSame('Sky Blue', $sku['product_variation']);
-        $this->assertEquals(250000, $sku['max_price']);
+        $this->assertEquals(200000, $sku['max_price']);
     }
 
     public function test_default_pagination_is_ten(): void
@@ -287,7 +286,7 @@ class ChannelProductListingTest extends TestCase
         $this->assertNotContains('Produk Lain', $names);
     }
 
-    private function seedPriced(string $name, string $ext, int $sellPrice, ?int $override): void
+    private function seedPriced(string $name, string $ext, int $sellPrice): void
     {
         $product = Product::create([
             'name' => $name,
@@ -311,14 +310,13 @@ class ChannelProductListingTest extends TestCase
             'product_channel_mapping_id' => $mapping->id,
             'variant_id' => $variant->id,
             'external_sku_id' => "C-{$ext}",
-            'override_price' => $override,
         ]);
     }
 
     public function test_filter_min_price_uses_effective_price(): void
     {
-        $this->seedPriced('Murah', 'CHEAP', 50000, null);      
-        $this->seedPriced('Mahal', 'PRICEY', 80000, 300000);   
+        $this->seedPriced('Murah', 'CHEAP', 50000);
+        $this->seedPriced('Mahal', 'PRICEY', 300000);
 
         $response = $this->getJson('/api/v1/products/channel-products?filter[min_price]=100000');
 
@@ -330,8 +328,8 @@ class ChannelProductListingTest extends TestCase
 
     public function test_filter_max_price_uses_effective_price(): void
     {
-        $this->seedPriced('Murah', 'CHEAP', 50000, null);
-        $this->seedPriced('Mahal', 'PRICEY', 80000, 300000);
+        $this->seedPriced('Murah', 'CHEAP', 50000);
+        $this->seedPriced('Mahal', 'PRICEY', 300000);
 
         $response = $this->getJson('/api/v1/products/channel-products?filter[max_price]=100000');
 

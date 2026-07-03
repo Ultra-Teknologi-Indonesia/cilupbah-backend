@@ -52,7 +52,7 @@ class ChannelProductListingResource extends JsonResource
 
         return $this->variantMappings->map(function ($mapping) use ($shop, $channel, $media, $primary) {
             $variant = $mapping->relationLoaded('variant') ? $mapping->variant : null;
-            $price = $mapping->override_price ?? ($variant->sell_price ?? null);
+            $price = $variant->sell_price ?? null;
 
             $variantMedia = ($variant && $media->isNotEmpty())
                 ? ($media->where('variant_id', $variant->id)->firstWhere('is_primary', true)

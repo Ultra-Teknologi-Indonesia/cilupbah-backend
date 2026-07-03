@@ -19,13 +19,11 @@ class ProductVariantChannelMapping extends Model
         'sales_attribute_name',
         'synced_price',
         'synced_stock',
-        'override_price',
     ];
 
     protected $casts = [
         'synced_price' => 'decimal:2',
         'synced_stock' => 'integer',
-        'override_price' => 'decimal:2',
     ];
 
     public function channelMapping(): BelongsTo

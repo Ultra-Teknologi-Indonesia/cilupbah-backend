@@ -135,45 +135,6 @@ class ProductWriteRepository
         return $pcmId;
     }
 
-    public function upsertVariantChannelOverridePrice(string $pcmId, string $variantId, $price): void
-    {
-        $pvcm = DB::table('product_variant_channel_mappings')
-            ->where('product_channel_mapping_id', $pcmId)
-            ->where('variant_id', $variantId)
-            ->first();
-
-        if ($pvcm) {
-            DB::table('product_variant_channel_mappings')
-                ->where('id', $pvcm->id)
-                ->update([
-                    'override_price' => $price,
-                    'updated_at' => now(),
-                ]);
-
-            return;
-        }
-
-        DB::table('product_variant_channel_mappings')->insert([
-            'id' => Uuid::uuid7()->getHex()->toString(),
-            'product_channel_mapping_id' => $pcmId,
-            'variant_id' => $variantId,
-            'override_price' => $price,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-    }
-
-    public function insertVariantChannelOverridePrice(string $pcmId, string $variantId, $price): void
-    {
-        DB::table('product_variant_channel_mappings')->insert([
-            'id' => Uuid::uuid7()->getHex()->toString(),
-            'product_channel_mapping_id' => $pcmId,
-            'variant_id' => $variantId,
-            'override_price' => $price,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-    }
 
     public function variationTypeAttributeIds(string $productId): array
     {

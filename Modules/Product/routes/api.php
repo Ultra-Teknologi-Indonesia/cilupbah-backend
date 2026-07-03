@@ -108,7 +108,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('products/{id}/upload-listing', [ProductUploadListingController::class, 'index'])->whereUuid('id');
     Route::post('products/{id}/upload-listing/match', [ProductUploadListingController::class, 'match'])->whereUuid('id');
 
-    Route::get('products/{id}/channel-prices', [ProductController::class, 'channelPrices'])->whereUuid('id');
     Route::get('products/{id}/price-book', [ProductController::class, 'priceBook'])->whereUuid('id');
 
     Route::get('products/{id}/channel-drafts/required-attributes', [ProductChannelDraftController::class, 'requiredAttributes'])->whereUuid('id');

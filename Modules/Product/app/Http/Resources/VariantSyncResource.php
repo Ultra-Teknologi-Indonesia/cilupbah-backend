@@ -16,7 +16,6 @@ class VariantSyncResource extends JsonResource
             'sku'             => $variant->sku ?? null,
             'external_sku_id' => $this->external_sku_id,
             'sell_price'      => $variant?->sell_price !== null ? (float) $variant->sell_price : null,
-            'override_price'  => $this->override_price !== null ? (float) $this->override_price : null,
             'synced_price'    => $this->synced_price !== null ? (float) $this->synced_price : null,
             'synced_stock'    => $this->synced_stock,
         ];

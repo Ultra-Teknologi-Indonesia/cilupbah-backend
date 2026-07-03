@@ -112,7 +112,7 @@ class ProductChannelValidationService
                     continue;
                 }
 
-                $effective = $vm->override_price ?? $variant->sell_price;
+                $effective = $variant->sell_price;
                 if ($this->numbersDiffer($vm->synced_price, $effective)) {
                     $issues[] = [
                         'variant_id' => $vm->variant_id,

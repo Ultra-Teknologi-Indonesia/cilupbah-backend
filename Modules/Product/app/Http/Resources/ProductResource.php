@@ -150,12 +150,6 @@ class ProductResource extends JsonResource
                                 'shop_name' => $s->shop_name,
                             ])->values()
                             : [],
-                        'channel_prices' => $variant->relationLoaded('channelMappings') ? $variant->channelMappings->map(function ($map) {
-                            return [
-                                'channel_shop_id' => $map->relationLoaded('channelMapping') ? $map->channelMapping->channel_shop_id : null,
-                                'price' => $map->override_price,
-                            ];
-                        })->filter(fn($m) => $m['price'] !== null)->values() : [],
                     ];
 
                     if ($variant->relationLoaded('inventories')) {
