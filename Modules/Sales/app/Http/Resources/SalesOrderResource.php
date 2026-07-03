@@ -144,6 +144,14 @@ class SalesOrderResource extends JsonResource
             'cancel_requested_at'    => $this->cancel_requested_at,
             'cancel_request_reason'  => $this->cancel_request_reason,
 
+            'contacted_at'       => $this->contacted_at,
+            'contacted_by'       => $this->contacted_by,
+            'contact_channel'    => $this->contact_channel,
+            'customer_decision'  => $this->customer_decision,
+            'decision_at'        => $this->decision_at,
+            'decision_by'        => $this->decision_by,
+            'contact_note'       => $this->contact_note,
+
             'items' => SalesOrderItemResource::collection($this->whenLoaded('items')),
 
             'created_at' => $this->created_at,

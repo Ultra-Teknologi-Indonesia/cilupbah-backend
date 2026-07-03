@@ -799,6 +799,177 @@ class SalesOrderController extends Controller
             new OA\Response(response: 404, description: 'Order not found')
         ]
     )]
+    #[OA\Post(
+        path: '/api/v1/sales/orders/{id}/mark-contacted',
+        summary: 'Mark that customer has been contacted for an empty-stock order',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(required: false, content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: 'channel', type: 'string', nullable: true, enum: ['marketplace_chat', 'whatsapp', 'phone', 'other']),
+                new OA\Property(property: 'note', type: 'string', nullable: true),
+            ]
+        )),
+        responses: [new OA\Response(response: 200, description: 'Pesanan berhasil ditandai sudah dihubungi')]
+    )]
+    public function markContacted(string $id, Request $request)
+    {
+        $validated = $request->validate([
+            'channel' => 'nullable|string|in:marketplace_chat,whatsapp,phone,other',
+            'note'    => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $order = $this->orderService->markContacted($id, $validated['channel'] ?? null, $validated['note'] ?? null);
+
+            return $this->successResponse(new SalesOrderResource($order), 'Pesanan ditandai sudah dihubungi');
+        } catch (\InvalidArgumentException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Post(
+        path: '/api/v1/sales/orders/bulk-mark-contacted',
+        summary: 'Bulk mark orders as customer-contacted',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['order_ids'],
+            properties: [
+                new OA\Property(property: 'order_ids', type: 'array', items: new OA\Items(type: 'string')),
+                new OA\Property(property: 'channel', type: 'string', nullable: true),
+                new OA\Property(property: 'note', type: 'string', nullable: true),
+            ]
+        )),
+        responses: [new OA\Response(response: 200, description: 'Pesanan berhasil ditandai sudah dihubungi')]
+    )]
+    public function bulkMarkContacted(Request $request)
+    {
+        $validated = $request->validate([
+            'order_ids'   => 'required|array|min:1',
+            'order_ids.*' => 'required|bail|uuid|exists:sales_orders,id',
+            'channel'     => 'nullable|string|in:marketplace_chat,whatsapp,phone,other',
+            'note'        => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $count = $this->orderService->bulkMarkContacted(
+                $validated['order_ids'],
+                $validated['channel'] ?? null,
+                $validated['note'] ?? null,
+            );
+
+            return $this->successResponse(['contacted' => $count], "{$count} pesanan ditandai sudah dihubungi");
+        } catch (\InvalidArgumentException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Post(
+        path: '/api/v1/sales/orders/{id}/customer-decision',
+        summary: 'Record buyer decision (waiting/cancel/replace) for an empty-stock order',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['decision'],
+            properties: [
+                new OA\Property(property: 'decision', type: 'string', enum: ['waiting', 'cancel', 'replace']),
+                new OA\Property(property: 'note', type: 'string', nullable: true),
+            ]
+        )),
+        responses: [new OA\Response(response: 200, description: 'Keputusan buyer tersimpan')]
+    )]
+    public function setCustomerDecision(string $id, Request $request)
+    {
+        $validated = $request->validate([
+            'decision' => 'required|string|in:waiting,cancel,replace',
+            'note'     => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $order = $this->orderService->setCustomerDecision($id, $validated['decision'], $validated['note'] ?? null);
+
+            return $this->successResponse(new SalesOrderResource($order), 'Keputusan buyer tersimpan');
+        } catch (\InvalidArgumentException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Patch(
+        path: '/api/v1/sales/orders/{id}/items/{itemId}',
+        summary: 'Update an order item internally (does not sync to marketplace)',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'itemId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: 'sku', type: 'string', nullable: true),
+                new OA\Property(property: 'description', type: 'string', nullable: true),
+                new OA\Property(property: 'qty_in_base', type: 'integer', nullable: true, minimum: 1),
+                new OA\Property(property: 'price', type: 'number', nullable: true),
+                new OA\Property(property: 'disc_amount', type: 'number', nullable: true),
+                new OA\Property(property: 'tax_amount', type: 'number', nullable: true),
+            ]
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'Item pesanan diperbarui'),
+            new OA\Response(response: 422, description: 'Order tidak dapat diedit'),
+        ]
+    )]
+    public function updateItem(string $id, string $itemId, Request $request)
+    {
+        $validated = $request->validate([
+            'sku'         => 'nullable|string|max:100',
+            'description' => 'nullable|string|max:500',
+            'qty_in_base' => 'nullable|integer|min:1',
+            'price'       => 'nullable|numeric|min:0',
+            'disc_amount' => 'nullable|numeric|min:0',
+            'tax_amount'  => 'nullable|numeric|min:0',
+        ]);
+
+        try {
+            $order = $this->orderService->updateOrderItem($id, $itemId, $validated);
+
+            return $this->successResponse(new SalesOrderResource($order->load('items')), 'Item pesanan diperbarui (internal)');
+        } catch (\InvalidArgumentException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Delete(
+        path: '/api/v1/sales/orders/{id}/items/{itemId}',
+        summary: 'Delete an order item internally (does not sync to marketplace)',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'itemId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Item pesanan dihapus'),
+            new OA\Response(response: 422, description: 'Order tidak dapat diedit'),
+        ]
+    )]
+    public function deleteItem(string $id, string $itemId)
+    {
+        try {
+            $order = $this->orderService->deleteOrderItem($id, $itemId);
+
+            return $this->successResponse(new SalesOrderResource($order->load('items')), 'Item pesanan dihapus (internal)');
+        } catch (\InvalidArgumentException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
     public function invoice(string $id)
     {
         $order = SalesOrder::with('items')->find($id);

@@ -1370,4 +1370,151 @@ class SalesOrderService
     {
         return in_array($source, [null, '', 'manual'], true);
     }
+
+    private const CONTACT_CHANNELS = ['marketplace_chat', 'whatsapp', 'phone', 'other'];
+    private const CUSTOMER_DECISIONS = ['waiting', 'cancel', 'replace'];
+
+    public function markContacted(string $orderId, ?string $channel = null, ?string $note = null): SalesOrder
+    {
+        $order = SalesOrder::findOrFail($orderId);
+        $this->assertContactChannel($channel);
+
+        $order->update([
+            'contacted_at'    => now(),
+            'contacted_by'    => Auth::id() ?: null,
+            'contact_channel' => $channel,
+            'contact_note'    => $note ?? $order->contact_note,
+        ]);
+
+        return $order->fresh();
+    }
+
+    public function bulkMarkContacted(array $orderIds, ?string $channel = null, ?string $note = null): int
+    {
+        $this->assertContactChannel($channel);
+
+        return DB::transaction(function () use ($orderIds, $channel, $note) {
+            $actorId = Auth::id() ?: null;
+            $now = now();
+            $count = 0;
+
+            $orders = SalesOrder::whereIn('id', $orderIds)->get();
+            foreach ($orders as $order) {
+                $order->update([
+                    'contacted_at'    => $now,
+                    'contacted_by'    => $actorId,
+                    'contact_channel' => $channel ?? $order->contact_channel,
+                    'contact_note'    => $note ?? $order->contact_note,
+                ]);
+                $count++;
+            }
+
+            return $count;
+        });
+    }
+
+    public function setCustomerDecision(string $orderId, string $decision, ?string $note = null): SalesOrder
+    {
+        if (! in_array($decision, self::CUSTOMER_DECISIONS, true)) {
+            throw new \InvalidArgumentException('Keputusan pembeli tidak valid.');
+        }
+
+        $order = SalesOrder::findOrFail($orderId);
+
+        $order->update([
+            'customer_decision' => $decision,
+            'decision_at'       => now(),
+            'decision_by'       => Auth::id() ?: null,
+            'contact_note'      => $note ?? $order->contact_note,
+        ]);
+
+        return $order->fresh();
+    }
+
+    public function updateOrderItem(string $orderId, string $itemId, array $data): SalesOrder
+    {
+        return DB::transaction(function () use ($orderId, $itemId, $data) {
+            $order = SalesOrder::with('items')->findOrFail($orderId);
+            $this->assertEditableInternally($order);
+
+            $item = $order->items->firstWhere('id', $itemId);
+            if (! $item) {
+                throw new \InvalidArgumentException('Item pesanan tidak ditemukan.');
+            }
+
+            $updates = array_intersect_key($data, array_flip(['sku', 'description', 'qty_in_base', 'price', 'disc', 'disc_amount', 'tax_amount']));
+            if ($updates) {
+                $qty = (float) ($updates['qty_in_base'] ?? $item->qty_in_base);
+                $price = (float) ($updates['price'] ?? $item->price);
+                $discAmount = (float) ($updates['disc_amount'] ?? $item->disc_amount);
+                $taxAmount = (float) ($updates['tax_amount'] ?? $item->tax_amount);
+                $updates['amount'] = ($price * $qty) - $discAmount + $taxAmount;
+                $item->update($updates);
+            }
+
+            $this->recomputeOrderTotals($order->fresh(['items']));
+
+            return $order->fresh(['items']);
+        });
+    }
+
+    public function deleteOrderItem(string $orderId, string $itemId): SalesOrder
+    {
+        return DB::transaction(function () use ($orderId, $itemId) {
+            $order = SalesOrder::with('items')->findOrFail($orderId);
+            $this->assertEditableInternally($order);
+
+            $item = $order->items->firstWhere('id', $itemId);
+            if (! $item) {
+                throw new \InvalidArgumentException('Item pesanan tidak ditemukan.');
+            }
+
+            if ($order->items->count() <= 1) {
+                throw new \InvalidArgumentException('Pesanan harus memiliki minimal satu item. Batalkan pesanan bila ingin menghapus item terakhir.');
+            }
+
+            $item->delete();
+            $this->recomputeOrderTotals($order->fresh(['items']));
+
+            return $order->fresh(['items']);
+        });
+    }
+
+    private function assertEditableInternally(SalesOrder $order): void
+    {
+        if (! in_array($order->status, ['pending'], true)) {
+            throw new \InvalidArgumentException('Item pesanan hanya bisa diubah/dihapus saat status masih Menunggu (belum direservasi/dipick).');
+        }
+    }
+
+    private function assertContactChannel(?string $channel): void
+    {
+        if ($channel !== null && ! in_array($channel, self::CONTACT_CHANNELS, true)) {
+            throw new \InvalidArgumentException('Channel kontak tidak valid.');
+        }
+    }
+
+    private function recomputeOrderTotals(SalesOrder $order): void
+    {
+        $order->loadMissing('items');
+
+        $subTotal   = 0.0;
+        $totalDisc  = 0.0;
+        $totalTax   = 0.0;
+        foreach ($order->items as $it) {
+            $subTotal  += (float) $it->price * (float) $it->qty_in_base;
+            $totalDisc += (float) $it->disc_amount;
+            $totalTax  += (float) $it->tax_amount;
+        }
+
+        $grandTotal = $subTotal - $totalDisc + $totalTax
+            + (float) $order->shipping_cost + (float) $order->insurance_cost;
+
+        $order->update([
+            'sub_total'   => $subTotal,
+            'total_disc'  => $totalDisc,
+            'total_tax'   => $totalTax,
+            'grand_total' => $grandTotal,
+        ]);
+    }
 }
