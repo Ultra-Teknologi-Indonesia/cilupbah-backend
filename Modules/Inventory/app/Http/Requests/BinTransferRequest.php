@@ -17,6 +17,7 @@ class BinTransferRequest extends FormRequest
             'location_id' => 'required|exists:locations,id',
             'source_bin_id' => 'required|uuid|exists:location_bins,id',
             'destination_bin_id' => 'required|uuid|different:source_bin_id|exists:location_bins,id',
+            'transfer_number' => 'nullable|string|max:50|unique:bin_transfers,transfer_number',
             'transfer_date' => 'nullable|date',
             'created_by' => 'required|string|max:100',
             'notes' => 'nullable|string',
@@ -35,8 +36,9 @@ class BinTransferRequest extends FormRequest
     {
         return [
             'destination_bin_id.different' => 'Rak asal dan rak tujuan harus berbeda.',
-            'items.required' => 'Minimal 1 produk harus dipindahkan.',
-            'items.min' => 'Minimal 1 produk harus dipindahkan.',
+            'transfer_number.unique' => 'No. transfer internal sudah dipakai.',
+            'items.required' => 'Minimal 1 produk harus ditransfer.',
+            'items.min' => 'Minimal 1 produk harus ditransfer.',
         ];
     }
 }
