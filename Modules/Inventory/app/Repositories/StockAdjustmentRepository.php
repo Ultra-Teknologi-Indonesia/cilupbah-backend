@@ -25,7 +25,12 @@ class StockAdjustmentRepository
 
     public function findById(string $id): ?StockAdjustment
     {
-        return StockAdjustment::with(['items.product:id,sku,product_id', 'items.bin:id,bin_final_code', 'location:id,location_name'])
+        return StockAdjustment::with([
+            'items.product:id,sku,product_id',
+            'items.product.product:id,name',
+            'items.bin:id,bin_final_code',
+            'location:id,location_name'
+        ])
             ->find($id);
     }
 
