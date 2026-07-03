@@ -17,9 +17,6 @@ class StockAdjustmentImportController extends Controller
         protected StockAdjustmentService $adjustmentService,
     ) {}
 
-    /**
-     * Download template Excel kosong.
-     */
     public function template(): StreamedResponse
     {
         $spreadsheet = $this->importService->generateTemplate();
@@ -34,9 +31,6 @@ class StockAdjustmentImportController extends Controller
         ]);
     }
 
-    /**
-     * Upload + parse + validasi. Return preview_token untuk confirm.
-     */
     public function preview(Request $request): JsonResponse
     {
         $request->validate([
@@ -56,9 +50,6 @@ class StockAdjustmentImportController extends Controller
         }
     }
 
-    /**
-     * Konfirmasi + apply pakai preview_token dari step preview.
-     */
     public function confirm(Request $request): JsonResponse
     {
         $request->validate([
@@ -86,7 +77,6 @@ class StockAdjustmentImportController extends Controller
                 'location_id'      => $preview['location_id'],
                 'notes'            => $request->input('notes'),
                 'created_by'       => $request->input('created_by'),
-                'auto_approve'     => true,
                 'items' => array_map(fn ($it) => [
                     'item_id'   => $it['item_id'],
                     'bin_id'    => $it['bin_id'],

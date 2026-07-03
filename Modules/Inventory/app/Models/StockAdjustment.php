@@ -12,25 +12,17 @@ class StockAdjustment extends Model
 {
     use HasUuid7, SoftDeletes;
 
-    const STATUS_DRAFT = 'DRAFT';
-    const STATUS_APPROVED = 'APPROVED';
-    const STATUS_CANCELLED = 'CANCELLED';
-
     protected $fillable = [
         'adjustment_no',
         'transaction_date',
         'location_id',
-        'status',
         'is_beginning_balance',
         'notes',
         'created_by',
-        'approved_by',
-        'approved_at',
     ];
 
     protected $casts = [
         'transaction_date' => 'datetime',
-        'approved_at' => 'datetime',
         'is_beginning_balance' => 'boolean',
     ];
 

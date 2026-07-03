@@ -198,11 +198,6 @@ class PicklistService
         }
     }
 
-    /**
-     * Validasi scan SKU terhadap rak yang aktif, TANPA memutasi stok.
-     * Dipakai FE saat scan SKU untuk memastikan barang benar-benar ada di rak
-     * sebelum modal qty dibuka, plus menyediakan angka default qty (max_pickable).
-     */
     public function scanForPick(string $picklistId, string $sku, string $binCode): array
     {
         $picklist = $this->picklistRepository->findById($picklistId);
@@ -249,10 +244,6 @@ class PicklistService
         ];
     }
 
-    /**
-     * Resolve SKU → item picklist. Urutan cocok dengan findItemForSku di FE:
-     * SKU persis & belum penuh → SKU persis → partial belum penuh.
-     */
     private function resolveItemBySku(Picklist $picklist, string $sku): PicklistItem
     {
         $lower = mb_strtolower($sku);
@@ -269,10 +260,6 @@ class PicklistService
         return $item;
     }
 
-    /**
-     * Pastikan kode yang di-scan adalah rak yang valid di lokasi picklist
-     * (bukan SKU, dan raknya ada).
-     */
     private function resolveBin(Picklist $picklist, string $binCode): LocationBin
     {
         $isSku = $picklist->items->contains(fn ($i) => strcasecmp($i->sku, $binCode) === 0);

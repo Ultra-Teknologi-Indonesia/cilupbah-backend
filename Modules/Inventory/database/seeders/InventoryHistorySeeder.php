@@ -187,12 +187,9 @@ class InventoryHistorySeeder extends Seeder
             'adjustment_no' => sprintf('ADJ-BEG-%04d', $this->adjCounter),
             'transaction_date' => $date,
             'location_id' => $this->mainLocId,
-            'status' => StockAdjustment::STATUS_APPROVED,
             'is_beginning_balance' => true,
             'notes' => 'Saldo awal persediaan',
             'created_by' => self::CREATED_BY,
-            'approved_by' => self::CREATED_BY,
-            'approved_at' => $date,
         ]);
         $this->touchDates($adj, $date);
 
@@ -287,12 +284,9 @@ class InventoryHistorySeeder extends Seeder
             'adjustment_no' => sprintf('ADJ-OUT-%04d', $this->adjCounter),
             'transaction_date' => $date,
             'location_id' => $this->mainLocId,
-            'status' => StockAdjustment::STATUS_APPROVED,
             'is_beginning_balance' => false,
             'notes' => $reasons[array_rand($reasons)],
             'created_by' => self::CREATED_BY,
-            'approved_by' => self::CREATED_BY,
-            'approved_at' => $date,
         ]);
         $this->touchDates($adj, $date);
 

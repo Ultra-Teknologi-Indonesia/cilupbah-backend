@@ -658,10 +658,6 @@ class InboundService
         return $map;
     }
 
-    /**
-     * Cost restock retur: pakai avg_cost inventori berjalan (barang kembali pada
-     * nilai persediaan saat ini karena order item tidak menyimpan COGS historis).
-     */
     private function resolveSalesReturnCostMap(Inbound $inbound): array
     {
         $itemIds = $inbound->items->pluck('item_id')->filter()->unique()->values();

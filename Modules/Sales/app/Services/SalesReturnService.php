@@ -92,19 +92,11 @@ class SalesReturnService
         });
     }
 
-    /**
-     * Buat SalesReturn dari event retur marketplace (Shopee/TikTok/Lazada).
-     * Idempotent: dilewati bila retur untuk channel_return_id / order yang sama sudah ada.
-     * Mengembalikan null bila dilewati (order tidak ketemu, duplikat, tanpa item/lokasi).
-     *
-     * @param array{source:string,channel_order_id:string|int,channel_return_id?:string|int|null,channel_shop_id?:string|null,reason?:string|null,created_by?:string|null} $payload
-     */
     public function createFromChannel(array $payload): ?SalesReturn
     {
         $source = (string) $payload['source'];
         $channelOrderId = (string) $payload['channel_order_id'];
 
-        // Namespace-kan id retur channel agar unik lintas marketplace (mis. "shopee:RSN-1").
         $channelReturnId = isset($payload['channel_return_id']) && $payload['channel_return_id'] !== ''
             ? $source . ':' . $payload['channel_return_id']
             : null;

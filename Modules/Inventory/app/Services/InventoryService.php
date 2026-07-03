@@ -183,9 +183,6 @@ class InventoryService
         });
     }
 
-    /**
-     * Pindah stok antar bin dalam satu gudang (mutasi internal), membawa nilai avg_cost.
-     */
     public function binTransfer(array $data): Inventory
     {
         if (($data['source_bin_id'] ?? null) === ($data['destination_bin_id'] ?? null)) {

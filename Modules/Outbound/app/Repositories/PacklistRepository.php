@@ -22,7 +22,7 @@ class PacklistRepository
                 AllowedFilter::exact('packer_id'),
                 AllowedFilter::exact('order_id'),
                 AllowedFilter::partial('q', 'packlist_no'),
-                // Filter via order (packlists.order_id -> sales_orders)
+
                 AllowedFilter::callback('shipping_provider', function ($query, $value) {
                     $query->whereHas('order', fn ($q) => $q->where('shipping_provider', $value));
                 }),

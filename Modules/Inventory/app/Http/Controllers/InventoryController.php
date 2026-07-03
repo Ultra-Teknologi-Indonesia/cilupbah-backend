@@ -680,8 +680,6 @@ class InventoryController extends Controller
     {
         $normalized = trim($sku);
 
-        // Match SKU atau barcode, case-insensitive. Scanner sering ngasih barcode
-        // bukan SKU, dan admin sering scan huruf kecil sedangkan data huruf besar.
         $variant = \Modules\Product\Models\ProductVariant::query()
             ->where(function ($q) use ($normalized) {
                 $q->whereRaw('LOWER(sku) = ?', [strtolower($normalized)])
@@ -702,9 +700,6 @@ class InventoryController extends Controller
 
         $locationId = $request->query('location_id');
 
-        // Primary bin: baris inventory paling awal di lokasi (kalau ada) yang punya bin_id
-        // real (bukan DEFAULT) dengan on_hand>0. Fallback: bin manapun on_hand>0.
-        // Aturan: 1 SKU = 1 rak utama = alokasi pertama admin.
         $primaryQuery = Inventory::where('item_id', $variant->id)
             ->whereNotNull('bin_id')
             ->when($locationId, fn ($q) => $q->where('location_id', $locationId))
@@ -723,13 +718,10 @@ class InventoryController extends Controller
                 ->first();
         }
 
-        // Total on_hand di lokasi terpilih (kalau tidak ada, seluruh lokasi).
         $onHand = Inventory::where('item_id', $variant->id)
             ->when($locationId, fn ($q) => $q->where('location_id', $locationId))
             ->sum('on_hand');
 
-        // Daftar rak yang punya stok untuk item ini di lokasi terpilih.
-        // Untuk combobox pilih rak manual — hanya tampilkan rak yang ada barangnya.
         $availableBins = Inventory::where('item_id', $variant->id)
             ->whereNotNull('bin_id')
             ->where('on_hand', '>', 0)
@@ -747,14 +739,11 @@ class InventoryController extends Controller
             ->values()
             ->toArray();
 
-        // Variant label: "Merah, iPhone 15" — dari options + attribute.
         $variantLabel = $variant->options
             ->map(fn ($o) => $o->value)
             ->filter()
             ->implode(', ');
 
-        // Thumbnail: media varian dulu (sudah ordered primary-first), fallback media produk.
-        // Skip video type — cari image saja.
         $thumbnail = null;
         $variantMedia = $variant->media?->firstWhere('media_type', 'image')
             ?? $variant->media?->first();

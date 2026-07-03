@@ -34,7 +34,7 @@ class ProcessStockAdjustmentJob implements ShouldQueue
     {
         $adjustment = StockAdjustment::with('items')->find($this->adjustmentId);
 
-        if (!$adjustment || $adjustment->status !== StockAdjustment::STATUS_APPROVED) {
+        if (!$adjustment) {
             return;
         }
 
@@ -59,11 +59,6 @@ class ProcessStockAdjustmentJob implements ShouldQueue
                     $delta = (float) $item->difference_qty;
                     $itemUnitCost = (float) ($item->unit_cost ?? 0);
 
-                    // Weighted-average avg_cost recalc:
-                    // - Delta positif dengan unit_cost > 0 → hitung weighted rata-rata baru
-                    //   supaya nilai persediaan konsisten dengan nilai barang yang masuk.
-                    // - Delta negatif → avg_cost tetap (COGS pakai avg_cost sebelumnya).
-                    // - Kalau pre-stock 0 & unit_cost > 0 → langsung pakai unit_cost.
                     if ($delta > 0 && $itemUnitCost > 0) {
                         $newOnHand = $preOnHand + $delta;
                         $newAvg = $newOnHand > 0
@@ -72,8 +67,6 @@ class ProcessStockAdjustmentJob implements ShouldQueue
                         $inventory->avg_cost = round($newAvg, 2);
                     }
 
-                    // Nilai movement: delta positif pakai unit_cost user (belanja baru),
-                    // delta negatif pakai avg_cost pre (COGS keluar).
                     $movementCost = $delta > 0 && $itemUnitCost > 0 ? $itemUnitCost : $preAvgCost;
                     $signedValue = $delta * $movementCost;
                     $totalSignedValue += $signedValue;
@@ -104,7 +97,7 @@ class ProcessStockAdjustmentJob implements ShouldQueue
             app(AutoJournalService::class)->forStockAdjustment(
                 $adjustment->adjustment_no,
                 $adjustment->id,
-                $adjustment->approved_at ?? now(),
+                now(),
                 $totalSignedValue,
             );
         } catch (\Throwable $e) {

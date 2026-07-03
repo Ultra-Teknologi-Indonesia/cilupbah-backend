@@ -33,18 +33,11 @@ class InventoryMovementSourceMap
         'REVALUATION',
     ];
 
-    /**
-     * Get meta for a single source enum.
-     */
     public static function meta(string $source): array
     {
         return self::SOURCES[$source] ?? ['category' => 'OTHER', 'label' => $source];
     }
 
-    /**
-     * Filter options untuk FE (dropdown Sumber + Mutasi).
-     * Value = comma-separated list of source enums yang termasuk category itu.
-     */
     public static function filterOptions(): array
     {
         $groups = [];

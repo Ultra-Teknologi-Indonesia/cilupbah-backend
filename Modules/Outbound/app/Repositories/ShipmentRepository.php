@@ -19,7 +19,7 @@ class ShipmentRepository
                 ->whereColumn('shipment_orders.shipment_id', 'shipments.id'),
             ])
             ->allowedFilters(
-                // Multi-value status: filter[status]=SCHEDULED,HANDED_OVER
+
                 AllowedFilter::callback('status', function ($query, $value) {
                     $values = is_array($value) ? $value : explode(',', (string) $value);
                     $values = array_filter(array_map('trim', $values));

@@ -198,19 +198,19 @@ class OutboundFulfillmentService
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('shipping_provider'),
                 AllowedFilter::exact('channel_shop_id'),
-                // Multi-value channel_status: filter[channel_status]=SHIPPED,PROCESSED
+
                 AllowedFilter::callback('channel_status', function ($query, $value) {
                     $values = is_array($value) ? $value : explode(',', (string) $value);
                     $values = array_filter(array_map('trim', $values));
                     if (! empty($values)) $query->whereIn('channel_status', $values);
                 }),
-                // Metode pembayaran: cod | noncod
+
                 AllowedFilter::callback('payment', function ($query, $value) {
                     $v = strtolower((string) $value);
                     if ($v === 'cod') $query->where('is_cod', true);
                     elseif ($v === 'noncod') $query->where(function ($q) { $q->where('is_cod', false)->orWhereNull('is_cod'); });
                 }),
-                // Tipe pengiriman (order-scope): regular | instant → shipping_provider regex.
+
                 AllowedFilter::callback('courier_type', function ($query, $value) {
                     $v = strtolower((string) $value);
                     $rx = 'instant|instan|same[- ]?day|grab|gojek|gosend|lalamove|paxel same';
@@ -219,20 +219,20 @@ class OutboundFulfillmentService
                         $q->whereNull('shipping_provider')->orWhereRaw('LOWER(shipping_provider) NOT REGEXP ?', [$rx]);
                     });
                 }),
-                // Status cetak label: yes = pernah dicetak (untuk cetak ulang) | no = belum
+
                 AllowedFilter::callback('label_printed', function ($query, $value) {
                     $v = strtolower((string) $value);
                     if ($v === 'yes') $query->whereNotNull('shipping_label_prepared_at');
                     elseif ($v === 'no') $query->whereNull('shipping_label_prepared_at');
                 }),
-                // Rentang tanggal transaksi
+
                 AllowedFilter::callback('date_from', function ($query, $value) {
                     if ($value) $query->whereDate('transaction_date', '>=', $value);
                 }),
                 AllowedFilter::callback('date_to', function ($query, $value) {
                     if ($value) $query->whereDate('transaction_date', '<=', $value);
                 }),
-                // Exclude Transit / lokasi non-warehouse (untuk Picking sub "Belum")
+
                 AllowedFilter::callback('exclude_transit', function ($query, $value) {
                     if (in_array(strtolower((string) $value), ['1', 'true', 'yes'], true)) {
                         $query->whereHas('location', function ($q) { $q->where('is_warehouse', true); });

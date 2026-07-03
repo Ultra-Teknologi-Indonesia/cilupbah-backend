@@ -21,7 +21,6 @@ class SyncOrderFinance extends Command
         $source = $this->option('source');
         $force = (bool) $this->option('force');
 
-        // Lazada tidak punya status COMPLETED — order selesai berhenti di DELIVERED.
         $query = SalesOrder::query()
             ->whereIn('channel_status', ['COMPLETED', 'DELIVERED'])
             ->whereIn('source', $source ? [$source] : ['shopee', 'tiktok', 'lazada'])

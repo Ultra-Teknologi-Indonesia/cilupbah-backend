@@ -25,7 +25,6 @@ class LazadaTransactionMapper
                 continue;
             }
 
-            // Net payout = jumlah semua baris statement (fee bernilai negatif).
             $settlement += $amount;
 
             $feeName = strtolower((string) ($tx['fee_name'] ?? ''));

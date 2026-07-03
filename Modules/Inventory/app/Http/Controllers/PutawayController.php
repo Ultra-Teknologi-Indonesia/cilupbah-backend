@@ -552,7 +552,6 @@ class PutawayController extends Controller
             $plan = [];
             $usedBinIds = [];
 
-            // Priority 1: bins already containing the same variant
             $itemStocks = $byItem->get($item->item_id, collect());
             foreach ($itemStocks as $stock) {
                 if ($remaining <= 0) break;
@@ -576,7 +575,6 @@ class PutawayController extends Controller
                 $remaining -= $allocate;
             }
 
-            // Priority 2: empty bins (skip bins that contain a different variant)
             if ($remaining > 0) {
                 foreach ($allBins as $bin) {
                     if ($remaining <= 0) break;

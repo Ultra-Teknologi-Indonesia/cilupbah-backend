@@ -16,14 +16,6 @@ use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
 
-/**
- * Import Penyesuaian Stok — template terpadu delta + final.
- *
- * Aturan per baris: user WAJIB isi salah satu dari `delta_qty` atau `final_qty`.
- * - delta_qty: selisih (+/-) yang mau ditambah/dikurangi dari on_hand sekarang.
- * - final_qty: stok akhir absolut (menimpa on_hand).
- * Sistem normalize keduanya ke `actual_qty` untuk masuk ke StockAdjustmentService::create.
- */
 class StockAdjustmentImportService
 {
     public const CACHE_PREFIX = 'stock-adjustment-import:';
@@ -35,12 +27,6 @@ class StockAdjustmentImportService
         protected InventoryRepository $inventoryRepository,
     ) {}
 
-    /**
-     * Parse + validasi file. Cache hasil pakai token supaya confirm bisa reuse
-     * tanpa upload ulang.
-     *
-     * @return array{token: string, items: array, errors: array, warnings: array, summary: array}
-     */
     public function preview(UploadedFile $file, string $locationId): array
     {
         $rows = $this->readDataRows($file);
@@ -53,7 +39,6 @@ class StockAdjustmentImportService
             throw new \Exception('Maksimal ' . self::MAX_ROWS . ' baris. File berisi ' . count($rows) . ' baris.');
         }
 
-        // Batch lookup SKU → variant untuk hindari N+1.
         $skus = collect($rows)->pluck('item_code')->filter()->map(fn ($s) => trim((string) $s))->unique()->values()->all();
         $variants = ProductVariant::whereIn('sku', $skus)
             ->get(['id', 'sku', 'product_id'])
@@ -61,14 +46,12 @@ class StockAdjustmentImportService
 
         $variantsById = $variants->keyBy('id');
 
-        // Batch lookup bin by code di lokasi terpilih
         $binCodes = collect($rows)->pluck('bin_final_code')->filter()->map(fn ($s) => trim((string) $s))->unique()->values()->all();
         $bins = LocationBin::where('location_id', $locationId)
             ->whereIn('bin_final_code', $binCodes)
             ->get(['id', 'bin_final_code'])
             ->keyBy('bin_final_code');
 
-        // Ambil product names untuk display
         $productNames = \Modules\Product\Models\Product::whereIn('id', $variants->pluck('product_id')->filter()->unique())
             ->pluck('name', 'id');
 
@@ -77,9 +60,8 @@ class StockAdjustmentImportService
         $warnings = [];
 
         foreach ($rows as $idx => $row) {
-            $rowNo = $idx + 2; // Excel row (header di baris 1, data mulai baris 2)
+            $rowNo = $idx + 2; 
 
-            // 1. item_code wajib
             $sku = trim((string) ($row['item_code'] ?? ''));
             if ($sku === '') {
                 $errors[] = ['row' => $rowNo, 'field' => 'item_code', 'error' => 'SKU wajib diisi'];
@@ -92,7 +74,6 @@ class StockAdjustmentImportService
                 continue;
             }
 
-            // 2. XOR delta vs final
             $deltaRaw = $row['delta_qty'] ?? null;
             $finalRaw = $row['final_qty'] ?? null;
 
@@ -117,7 +98,6 @@ class StockAdjustmentImportService
                 continue;
             }
 
-            // 3. Resolve bin — kalau kosong, pakai rak utama item
             $binCode = trim((string) ($row['bin_final_code'] ?? ''));
             $binId = null;
             $binResolved = null;
@@ -131,7 +111,7 @@ class StockAdjustmentImportService
                 $binId = $bin->id;
                 $binResolved = $bin->bin_final_code;
             } else {
-                // Cari rak utama = inventory paling awal dengan on_hand > 0 (skip DEFAULT)
+
                 $primary = Inventory::where('item_id', $variant->id)
                     ->where('location_id', $locationId)
                     ->whereNotNull('bin_id')
@@ -158,7 +138,6 @@ class StockAdjustmentImportService
                 $binResolved = $primary->bin?->bin_final_code;
             }
 
-            // 4. Hitung system_qty di bin yang dipilih
             $inventory = Inventory::where('item_id', $variant->id)
                 ->where('location_id', $locationId)
                 ->where('bin_id', $binId)
@@ -166,7 +145,6 @@ class StockAdjustmentImportService
 
             $systemQty = $inventory ? (int) $inventory->on_hand : 0;
 
-            // 5. Normalize ke actual_qty
             $actualQty = $mode === 'DELTA' ? $systemQty + $inputValue : $inputValue;
 
             if ($actualQty < 0) {
@@ -174,7 +152,6 @@ class StockAdjustmentImportService
                 continue;
             }
 
-            // 6. HPP opsional
             $hppRaw = $row['hpp'] ?? null;
             $unitCost = null;
             if ($hppRaw !== null && $hppRaw !== '') {
@@ -187,7 +164,6 @@ class StockAdjustmentImportService
 
             $noteText = trim((string) ($row['notes'] ?? ''));
 
-            // Warning: item inactive
             if (isset($variant->is_active) && ! $variant->is_active) {
                 $warnings[] = ['row' => $rowNo, 'field' => 'item_code', 'warning' => "SKU '{$sku}' berstatus non-aktif"];
             }
@@ -209,8 +185,6 @@ class StockAdjustmentImportService
             ];
         }
 
-        // Validasi kapasitas rak: agregasi delta per bin di semua item valid.
-        // Bin yang total setelah delta > max_qty → error, item-nya di-mark invalid.
         $deltaByBin = [];
         foreach ($items as $it) {
             $delta = $it['actual_qty'] - $it['system_qty'];
@@ -282,9 +256,6 @@ class StockAdjustmentImportService
         ];
     }
 
-    /**
-     * Ambil preview dari cache untuk dijadikan payload StockAdjustmentService::create.
-     */
     public function getPreview(string $token): ?array
     {
         return Cache::get(self::CACHE_PREFIX . $token);
@@ -295,9 +266,6 @@ class StockAdjustmentImportService
         Cache::forget(self::CACHE_PREFIX . $token);
     }
 
-    /**
-     * Baca sheet "Pengisian Data" dan return array of rows dengan key = header.
-     */
     protected function readDataRows(UploadedFile $file): array
     {
         $reader = IOFactory::createReader('Xlsx');
@@ -317,7 +285,7 @@ class StockAdjustmentImportService
 
         $rows = [];
         foreach ($data as $row) {
-            // Skip baris kosong
+
             $nonEmpty = array_filter($row, fn ($v) => $v !== null && $v !== '');
             if (empty($nonEmpty)) continue;
 
@@ -332,14 +300,10 @@ class StockAdjustmentImportService
         return $rows;
     }
 
-    /**
-     * Bikin file template kosong siap-download.
-     */
     public function generateTemplate(): Spreadsheet
     {
         $spreadsheet = new Spreadsheet();
 
-        // Sheet 1: Instruksi
         $instr = $spreadsheet->getActiveSheet();
         $instr->setTitle('Instruksi');
         $instr->setCellValue('A1', 'Import Penyesuaian Stok Cilupbah');
@@ -364,7 +328,6 @@ class StockAdjustmentImportService
         }
         $instr->getColumnDimension('A')->setWidth(90);
 
-        // Sheet 2: Tata Cara Pengisian
         $tata = $spreadsheet->createSheet();
         $tata->setTitle('Tata Cara Pengisian');
         $tataRows = [
@@ -391,12 +354,10 @@ class StockAdjustmentImportService
             $tata->getColumnDimension($col)->setAutoSize(true);
         }
 
-        // Note khusus XOR
         $tata->setCellValue('A10', 'PENTING: delta_qty DAN final_qty adalah "salah satu" — isi hanya salah satu per baris.');
         $tata->getStyle('A10')->getFont()->setBold(true)->getColor()->setRGB('B22222');
         $tata->mergeCells('A10:E10');
 
-        // Sheet 3: Pengisian Data
         $data = $spreadsheet->createSheet();
         $data->setTitle(self::DATA_SHEET_NAME);
         $headers = ['item_code', 'bin_final_code', 'delta_qty', 'final_qty', 'hpp', 'notes'];
@@ -408,7 +369,7 @@ class StockAdjustmentImportService
         $data->getStyle('A1:F1')->getFill()
             ->setFillType(Fill::FILL_SOLID)
             ->getStartColor()->setRGB('FFF2CC');
-        // Kolom wajib item_code + salah satu delta/final → orange
+
         $data->getStyle('A1')->getFill()
             ->setFillType(Fill::FILL_SOLID)
             ->getStartColor()->setRGB('FFD9B3');
@@ -416,7 +377,6 @@ class StockAdjustmentImportService
             ->setFillType(Fill::FILL_SOLID)
             ->getStartColor()->setRGB('FFD9B3');
 
-        // Contoh baris
         $examples = [
             ['SKU-EXAMPLE-1', '', 10, '', 2000, 'Contoh: mode DELTA (tambah 10 unit)'],
             ['SKU-EXAMPLE-2', 'L1-B1-K1-R2', -3, '', '', 'Contoh: mode DELTA negatif dengan rak spesifik'],

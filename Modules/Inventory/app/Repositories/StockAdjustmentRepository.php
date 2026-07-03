@@ -14,7 +14,6 @@ class StockAdjustmentRepository
         return QueryBuilder::for(StockAdjustment::class)
             ->with(['location:id,location_name', 'items'])
             ->allowedFilters(
-                AllowedFilter::exact('status'),
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::partial('q', 'adjustment_no'),
                 AllowedFilter::exact('is_beginning_balance'),
@@ -45,11 +44,6 @@ class StockAdjustmentRepository
         return StockAdjustmentItem::create($data);
     }
 
-    public function updateStatus(string $id, string $status, array $extra = []): bool
-    {
-        return StockAdjustment::where('id', $id)->update(array_merge(['status' => $status], $extra));
-    }
-
     public function delete(string $id): bool
     {
         return StockAdjustment::where('id', $id)->delete();
@@ -57,19 +51,14 @@ class StockAdjustmentRepository
 
     public function generateAdjustmentNo(): string
     {
-        $date = now()->format('Ymd');
-        $prefix = "ADJ-{$date}-";
+        $prefix = 'ADJ-';
 
-        $last = StockAdjustment::where('adjustment_no', 'like', "{$prefix}%")
-            ->orderByDesc('adjustment_no')
+        $last = StockAdjustment::whereRaw("adjustment_no ~ '^ADJ-[0-9]+$'")
+            ->orderByRaw("CAST(SUBSTRING(adjustment_no FROM 5) AS INTEGER) DESC")
             ->value('adjustment_no');
 
-        if ($last) {
-            $seq = (int) substr($last, -4) + 1;
-        } else {
-            $seq = 1;
-        }
+        $seq = $last ? ((int) substr($last, strlen($prefix)) + 1) : 1;
 
-        return $prefix . str_pad($seq, 4, '0', STR_PAD_LEFT);
+        return $prefix . str_pad((string) $seq, 9, '0', STR_PAD_LEFT);
     }
 }

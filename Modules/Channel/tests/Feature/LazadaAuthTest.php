@@ -106,7 +106,6 @@ class LazadaAuthTest extends TestCase
         $this->assertStringContainsString('response_type=code', $url);
         $this->assertStringContainsString('redirect_uri=', $url);
 
-        // force_auth=true memaksa layar otorisasi bersih, menghindari "Missing parameter".
         $this->assertStringContainsString('force_auth=true', $url);
     }
 

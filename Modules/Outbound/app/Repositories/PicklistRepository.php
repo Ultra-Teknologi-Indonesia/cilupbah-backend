@@ -26,7 +26,7 @@ class PicklistRepository
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('picker_id'),
                 AllowedFilter::partial('q', 'picklist_no'),
-                // Filter kurir/toko/channel/tanggal/label: via order via picklist_items.order_id -> sales_orders.
+
                 AllowedFilter::callback('shipping_provider', function ($query, $value) {
                     $query->whereHas('items.order', fn ($q) => $q->where('shipping_provider', $value));
                 }),
@@ -47,7 +47,7 @@ class PicklistRepository
                     if ($v === 'yes') $query->whereHas('items.order', fn ($q) => $q->whereNotNull('shipping_label_prepared_at'));
                     elseif ($v === 'no') $query->whereHas('items.order', fn ($q) => $q->whereNull('shipping_label_prepared_at'));
                 }),
-                // Filter zona: cocokkan zona bin (rekomendasi) yang dilekatkan di picklist_items.
+
                 AllowedFilter::callback('zone_id', function ($query, $value) {
                     $query->whereHas('items.bin', fn ($q) => $q->where('zone_id', $value));
                 }),

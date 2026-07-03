@@ -280,11 +280,6 @@ class SalesOrderService
         return $result;
     }
 
-    /**
-     * @param array $options Opsi cetak per channel:
-     *   - tiktok: document_type (SHIPPING_LABEL|PACKING_LIST|SHIPPING_LABEL_AND_PACKING_LIST), document_size (A6|A5|...)
-     *   - shopee: document_type (NORMAL_AIR_WAYBILL|THERMAL_AIR_WAYBILL|SELF_DESIGN)
-     */
     public function getShippingLabel(SalesOrder $order, array $options = []): array
     {
         $source = $order->source;
@@ -346,10 +341,8 @@ class SalesOrderService
         if ($source === 'shopee') {
             $shopeeService = app(\Modules\Channel\Services\ShopeeOrderService::class);
 
-            // Tipe dokumen yang diminta user (mis. NORMAL_AIR_WAYBILL / THERMAL_AIR_WAYBILL).
             $requestedDocType = $options['document_type'] ?? null;
 
-            // Pakai cache hanya bila tipe yang diminta sama dengan yang sudah disiapkan.
             $cacheUsable = $order->shipping_label_status === 'ready'
                 && $order->shipping_label_doc_type
                 && (! $requestedDocType || $requestedDocType === $order->shipping_label_doc_type);
@@ -871,10 +864,6 @@ class SalesOrderService
                 SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
             }
 
-            // Sync finance dispatch untuk SEMUA order marketplace (bukan cuma yang
-            // sudah COMPLETED/DELIVERED). Kalau escrow belum tersedia, mapper
-            // channel akan return null-null → FE render 0. Sekali is_settled=true,
-            // skip supaya tidak overwrite data final.
             if (! $order->is_settled && $order->source && $order->channel_shop_id) {
                 \Modules\Sales\Jobs\SyncOrderFinanceJob::dispatch($order->id)
                     ->onQueue(config('queue.names.channel_sync'));

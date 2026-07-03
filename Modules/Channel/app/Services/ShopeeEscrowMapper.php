@@ -22,7 +22,6 @@ class ShopeeEscrowMapper
 
         $settlement = $this->num($income, 'escrow_amount');
 
-        // "Voucher bayar": diskon yang didanai kanal pembayaran (promo pembayaran, koin, promo kartu kredit).
         $paymentPromo = $this->num($income, 'payment_promotion');
         $coins = $this->num($income, 'coins');
         $ccPromo = $this->num($income, 'credit_card_promotion');

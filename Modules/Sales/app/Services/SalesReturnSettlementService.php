@@ -126,9 +126,6 @@ class SalesReturnSettlementService
         });
     }
 
-    /**
-     * Total settlement = potongan faktur + refund tunai.
-     */
     private function recomputeTotal(string $settlementId): void
     {
         $settlement = SalesReturnSettlement::findOrFail($settlementId);
