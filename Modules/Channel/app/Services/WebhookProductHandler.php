@@ -8,6 +8,9 @@ use Modules\Channel\Jobs\SyncStockToChannelsJob;
 
 class WebhookProductHandler
 {
+    public function __construct(
+        protected ChannelDownloadService $downloadService,
+    ) {}
 
     public function handleProductStatusChange(array $data, string $shopId): void
     {
@@ -54,6 +57,12 @@ class WebhookProductHandler
         if (!$mapping) {
             Log::info("TikTok Webhook Product Update: Mapping not found for external_id {$externalProductId}");
             return;
+        }
+
+        try {
+            $this->downloadService->downloadProductDebounced('tiktok', $shopId, (string) $externalProductId);
+        } catch (\Throwable $e) {
+            Log::warning('TikTok re-sync produk gagal: ' . $e->getMessage(), ['product_id' => $externalProductId]);
         }
 
         if (!empty($data['skus'])) {

@@ -2,6 +2,7 @@
 
 namespace Modules\Channel\Services;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Jobs\DownloadProductsJob;
 use Modules\Channel\Models\DownloadTransaction;
@@ -145,6 +146,17 @@ class ChannelDownloadService
         }
 
         return true;
+    }
+
+    public function downloadProductDebounced(string $channel, string $shopId, string $externalProductId, int $seconds = 20): bool
+    {
+        $key = 'channel_pull_debounce:' . strtolower($channel) . ":{$shopId}:{$externalProductId}";
+
+        if (! Cache::add($key, true, $seconds)) {
+            return true;
+        }
+
+        return $this->downloadProduct($channel, $shopId, $externalProductId);
     }
 
     protected function assertSupported(string $channel): void

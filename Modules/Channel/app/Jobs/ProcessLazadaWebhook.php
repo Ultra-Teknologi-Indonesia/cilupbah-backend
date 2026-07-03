@@ -9,9 +9,9 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Services\ChannelDownloadService;
 use Modules\Channel\Services\LazadaAuthService;
 use Modules\Channel\Services\LazadaOrderService;
-use Modules\Channel\Services\LazadaProductService;
 use Modules\Product\Models\ProductChannelMapping;
 
 class ProcessLazadaWebhook implements ShouldQueue
@@ -34,7 +34,7 @@ class ProcessLazadaWebhook implements ShouldQueue
 
     public function handle(
         LazadaOrderService $orderService,
-        LazadaProductService $productService,
+        ChannelDownloadService $downloadService,
         LazadaAuthService $authService,
     ): void {
         $sellerId = (string) ($this->payload['seller_id'] ?? '');
@@ -55,7 +55,7 @@ class ProcessLazadaWebhook implements ShouldQueue
 
         match ($messageType) {
             self::MSG_ORDER => $this->handleOrderEvent($orderService, $sellerId, $data),
-            self::MSG_PRODUCT, self::MSG_PRODUCT_ALT => $this->handleProductEvent($productService, $sellerId, $data),
+            self::MSG_PRODUCT, self::MSG_PRODUCT_ALT => $this->handleProductEvent($downloadService, $sellerId, $data),
             default => $this->handleUnknown($orderService, $sellerId, $data, $messageType),
         };
     }
@@ -100,19 +100,17 @@ class ProcessLazadaWebhook implements ShouldQueue
         $orderService->pullOrderById($sellerId, $orderId);
     }
 
-    protected function handleProductEvent(LazadaProductService $productService, string $sellerId, array $data): void
+    protected function handleProductEvent(ChannelDownloadService $downloadService, string $sellerId, array $data): void
     {
         $itemId = (string) ($data['item_id'] ?? '');
         if ($itemId === '') {
             return;
         }
 
-        if ($this->shouldRepullProduct($data)) {
-            try {
-                $productService->pullProductById($sellerId, $itemId);
-            } catch (\Throwable $e) {
-                Log::warning('Lazada re-sync produk gagal: ' . $e->getMessage(), ['item_id' => $itemId]);
-            }
+        try {
+            $downloadService->downloadProductDebounced('lazada', $sellerId, $itemId);
+        } catch (\Throwable $e) {
+            Log::warning('Lazada re-sync produk gagal: ' . $e->getMessage(), ['item_id' => $itemId]);
         }
 
         $shopUuid = DB::table('channel_shops')->where('shop_id', $sellerId)->value('id');
@@ -179,17 +177,6 @@ class ProcessLazadaWebhook implements ShouldQueue
         $orderStatus = strtolower((string) ($data['order_status'] ?? ''));
 
         return str_contains($orderStatus, 'return') || str_contains($orderStatus, 'reverse');
-    }
-
-    protected function shouldRepullProduct(array $data): bool
-    {
-        foreach (['quantity', 'price', 'skus', 'sku_list', 'stock', 'SkuList'] as $key) {
-            if (array_key_exists($key, $data)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     public function failed(\Throwable $e): void

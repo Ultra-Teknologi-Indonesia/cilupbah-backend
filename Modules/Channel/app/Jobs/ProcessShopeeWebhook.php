@@ -9,6 +9,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Services\ChannelDownloadService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Product\Models\ProductChannelMapping;
 
@@ -38,7 +39,7 @@ class ProcessShopeeWebhook implements ShouldQueue
         $this->onQueue('default');
     }
 
-    public function handle(ShopeeOrderService $orderService): void
+    public function handle(ShopeeOrderService $orderService, ChannelDownloadService $downloadService): void
     {
         $shopId = (string) ($this->payload['shop_id'] ?? '');
         $code = (int) ($this->payload['code'] ?? -1);
@@ -61,7 +62,7 @@ class ProcessShopeeWebhook implements ShouldQueue
             self::PUSH_PACKAGE_FULFILLMENT,
             self::PUSH_COURIER_DELIVERY_BINDING => $this->handleOrderEvent($orderService, $shopId, $data),
             self::PUSH_ORDER_REFUND => $this->handleReturnEvent($orderService, $shopId, $data),
-            self::PUSH_ITEM_UPDATE => $this->logItemEvent($shopId, $data),
+            self::PUSH_ITEM_UPDATE => $this->logItemEvent($downloadService, $shopId, $data),
             default => Log::info("Shopee webhook code {$code} belum ditangani — diabaikan.", ['shop_id' => $shopId]),
         };
     }
@@ -126,7 +127,7 @@ class ProcessShopeeWebhook implements ShouldQueue
         }
     }
 
-    protected function logItemEvent(string $shopId, array $data): void
+    protected function logItemEvent(ChannelDownloadService $downloadService, string $shopId, array $data): void
     {
         $itemId = (string) ($data['item_id'] ?? '');
         if ($itemId === '') {
@@ -144,6 +145,12 @@ class ProcessShopeeWebhook implements ShouldQueue
 
         if (! $mapping) {
             return;
+        }
+
+        try {
+            $downloadService->downloadProductDebounced('shopee', $shopId, $itemId);
+        } catch (\Throwable $e) {
+            Log::warning('Shopee re-sync produk gagal: ' . $e->getMessage(), ['item_id' => $itemId]);
         }
 
         $status = strtolower((string) ($data['status'] ?? ''));

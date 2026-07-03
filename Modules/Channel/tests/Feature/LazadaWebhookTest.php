@@ -132,7 +132,7 @@ class LazadaWebhookTest extends TestCase
             ], 200),
         ]);
 
-        (new ProcessLazadaWebhook($this->orderPayload()))->handle(app(\Modules\Channel\Services\LazadaOrderService::class), app(\Modules\Channel\Services\LazadaProductService::class), app(\Modules\Channel\Services\LazadaAuthService::class));
+        (new ProcessLazadaWebhook($this->orderPayload()))->handle(app(\Modules\Channel\Services\LazadaOrderService::class), app(\Modules\Channel\Services\ChannelDownloadService::class), app(\Modules\Channel\Services\LazadaAuthService::class));
 
         $order = SalesOrder::where('salesorder_no', 'LZ-900123')->first();
         $this->assertNotNull($order);
@@ -150,12 +150,24 @@ class LazadaWebhookTest extends TestCase
             'sync_status' => 'synced',
         ]);
 
+        Http::fake([
+            'api.lazada.co.id/rest/product/item/get*' => Http::response([
+                'code' => '0',
+                'data' => [
+                    'item_id' => 555100,
+                    'attributes' => ['name' => 'P Updated', 'description' => 'desc'],
+                    'images' => [],
+                    'skus' => [],
+                ],
+            ], 200),
+        ]);
+
         $payload = $this->orderPayload([
             'message_type' => 1,
             'data' => ['item_id' => '555100', 'qc_status' => 'rejected', 'reasons' => 'Gambar buram'],
         ]);
 
-        (new ProcessLazadaWebhook($payload))->handle(app(\Modules\Channel\Services\LazadaOrderService::class), app(\Modules\Channel\Services\LazadaProductService::class), app(\Modules\Channel\Services\LazadaAuthService::class));
+        (new ProcessLazadaWebhook($payload))->handle(app(\Modules\Channel\Services\LazadaOrderService::class), app(\Modules\Channel\Services\ChannelDownloadService::class), app(\Modules\Channel\Services\LazadaAuthService::class));
 
         $mapping->refresh();
         $this->assertEquals('rejected', $mapping->sync_status);
@@ -166,7 +178,7 @@ class LazadaWebhookTest extends TestCase
     {
         $payload = $this->orderPayload(['message_type' => 99, 'data' => []]);
 
-        (new ProcessLazadaWebhook($payload))->handle(app(\Modules\Channel\Services\LazadaOrderService::class), app(\Modules\Channel\Services\LazadaProductService::class), app(\Modules\Channel\Services\LazadaAuthService::class));
+        (new ProcessLazadaWebhook($payload))->handle(app(\Modules\Channel\Services\LazadaOrderService::class), app(\Modules\Channel\Services\ChannelDownloadService::class), app(\Modules\Channel\Services\LazadaAuthService::class));
 
         $this->assertTrue(true); 
     }

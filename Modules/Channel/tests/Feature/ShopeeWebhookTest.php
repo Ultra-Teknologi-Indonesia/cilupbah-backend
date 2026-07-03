@@ -4,10 +4,16 @@ namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Mockery;
 use Modules\Channel\Helpers\ShopeeSignature;
 use Modules\Channel\Jobs\ProcessShopeeWebhook;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ChannelDownloadService;
+use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Product\Models\Category;
+use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductChannelMapping;
 use Tests\TestCase;
 
 class ShopeeWebhookTest extends TestCase
@@ -114,7 +120,7 @@ class ShopeeWebhookTest extends TestCase
         (new ProcessShopeeWebhook($this->orderPayload([
             'code' => 2,
             'data' => [],
-        ])))->handle(app(\Modules\Channel\Services\ShopeeOrderService::class));
+        ])))->handle(app(\Modules\Channel\Services\ShopeeOrderService::class), app(\Modules\Channel\Services\ChannelDownloadService::class));
 
         $this->assertDatabaseHas('channel_shops', [
             'shop_id' => '778899',
@@ -125,9 +131,35 @@ class ShopeeWebhookTest extends TestCase
 
     public function test_unknown_code_handled_gracefully(): void
     {
-        (new ProcessShopeeWebhook($this->orderPayload(['code' => 99, 'data' => []])))->handle(app(\Modules\Channel\Services\ShopeeOrderService::class));
+        (new ProcessShopeeWebhook($this->orderPayload(['code' => 99, 'data' => []])))->handle(app(\Modules\Channel\Services\ShopeeOrderService::class), app(\Modules\Channel\Services\ChannelDownloadService::class));
 
         $this->assertTrue(true);
+    }
+
+    public function test_item_update_pulls_full_product_content(): void
+    {
+        $shopUuid = ChannelShop::where('shop_id', '778899')->value('id');
+        $category = Category::create(['name' => 'C', 'is_active' => true]);
+        $product = Product::create(['category_id' => $category->id, 'name' => 'P', 'status' => 'master', 'is_active' => true]);
+        ProductChannelMapping::create([
+            'product_id' => $product->id,
+            'channel_shop_id' => $shopUuid,
+            'external_product_id' => 'SP-1',
+            'sync_status' => 'synced',
+        ]);
+
+        $download = Mockery::mock(ChannelDownloadService::class);
+        $download->shouldReceive('downloadProductDebounced')->once()->with('shopee', '778899', 'SP-1');
+
+        (new ProcessShopeeWebhook($this->orderPayload([
+            'code' => 5,
+            'data' => ['item_id' => 'SP-1', 'status' => 'normal'],
+        ])))->handle(app(ShopeeOrderService::class), $download);
+
+        $this->assertDatabaseHas('product_channel_mappings', [
+            'external_product_id' => 'SP-1',
+            'sync_status' => 'synced',
+        ]);
     }
 
     public function test_configured_push_url_used_for_signature(): void

@@ -7,18 +7,18 @@ use Mockery;
 use Modules\Channel\Jobs\ProcessLazadaWebhook;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ChannelDownloadService;
 use Modules\Channel\Services\LazadaAuthService;
 use Modules\Channel\Services\LazadaOrderService;
-use Modules\Channel\Services\LazadaProductService;
 use Tests\TestCase;
 
 class LazadaWebhookRoutingTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function process(array $payload, $order, $product, $auth): void
+    private function process(array $payload, $order, $download, $auth): void
     {
-        (new ProcessLazadaWebhook($payload))->handle($order, $product, $auth);
+        (new ProcessLazadaWebhook($payload))->handle($order, $download, $auth);
     }
 
     public function test_token_expiry_message_triggers_refresh(): void
@@ -35,7 +35,7 @@ class LazadaWebhookRoutingTest extends TestCase
         $this->process(
             ['seller_id' => 'LZ1', 'message_type' => 4, 'data' => []],
             Mockery::mock(LazadaOrderService::class),
-            Mockery::mock(LazadaProductService::class),
+            Mockery::mock(ChannelDownloadService::class),
             $auth,
         );
     }
@@ -54,7 +54,7 @@ class LazadaWebhookRoutingTest extends TestCase
         $this->process(
             ['seller_id' => 'LZ1', 'message_type' => 99, 'data' => ['alert' => 'access_token will expire soon']],
             Mockery::mock(LazadaOrderService::class),
-            Mockery::mock(LazadaProductService::class),
+            Mockery::mock(ChannelDownloadService::class),
             $auth,
         );
     }
@@ -67,33 +67,36 @@ class LazadaWebhookRoutingTest extends TestCase
         $this->process(
             ['seller_id' => 'LZ1', 'message_type' => 99, 'data' => ['reverse_order_id' => 'RO-1']],
             $order,
-            Mockery::mock(LazadaProductService::class),
+            Mockery::mock(ChannelDownloadService::class),
             Mockery::mock(LazadaAuthService::class),
         );
     }
 
     public function test_product_edited_repulls_product(): void
     {
-        $product = Mockery::mock(LazadaProductService::class);
-        $product->shouldReceive('pullProductById')->once()->with('LZ1', 'IT-1');
+        $download = Mockery::mock(ChannelDownloadService::class);
+        $download->shouldReceive('downloadProductDebounced')->once()->with('lazada', 'LZ1', 'IT-1');
 
         $this->process(
             ['seller_id' => 'LZ1', 'message_type' => 1, 'data' => ['item_id' => 'IT-1', 'price' => 1000]],
             Mockery::mock(LazadaOrderService::class),
-            $product,
+            $download,
             Mockery::mock(LazadaAuthService::class),
         );
     }
 
-    public function test_product_qc_only_does_not_repull(): void
+    public function test_product_qc_only_still_repulls(): void
     {
-        $product = Mockery::mock(LazadaProductService::class);
-        $product->shouldReceive('pullProductById')->never();
+        // Perubahan konten (nama/gambar/video) sering datang bareng event QC saja,
+        // jadi setiap event produk selalu memicu pull ulang penuh — tidak lagi
+        // digating oleh keberadaan field price/stock/sku.
+        $download = Mockery::mock(ChannelDownloadService::class);
+        $download->shouldReceive('downloadProductDebounced')->once()->with('lazada', 'LZ1', 'IT-1');
 
         $this->process(
             ['seller_id' => 'LZ1', 'message_type' => 1, 'data' => ['item_id' => 'IT-1', 'qc_status' => 'approved']],
             Mockery::mock(LazadaOrderService::class),
-            $product,
+            $download,
             Mockery::mock(LazadaAuthService::class),
         );
     }
