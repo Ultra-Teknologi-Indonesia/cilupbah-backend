@@ -720,6 +720,25 @@ class InventoryController extends Controller
             ->when($locationId, fn ($q) => $q->where('location_id', $locationId))
             ->sum('on_hand');
 
+        // Daftar rak yang punya stok untuk item ini di lokasi terpilih.
+        // Untuk combobox pilih rak manual — hanya tampilkan rak yang ada barangnya.
+        $availableBins = Inventory::where('item_id', $variant->id)
+            ->whereNotNull('bin_id')
+            ->where('on_hand', '>', 0)
+            ->when($locationId, fn ($q) => $q->where('location_id', $locationId))
+            ->with('bin:id,bin_final_code')
+            ->orderBy('created_at')
+            ->get()
+            ->map(fn ($inv) => [
+                'id'       => $inv->bin_id,
+                'code'     => $inv->bin?->bin_final_code,
+                'on_hand'  => (int) $inv->on_hand,
+                'avg_cost' => (float) $inv->avg_cost,
+            ])
+            ->filter(fn ($b) => $b['code'] !== null)
+            ->values()
+            ->toArray();
+
         // Variant label: "Merah, iPhone 15" — dari options + attribute.
         $variantLabel = $variant->options
             ->map(fn ($o) => $o->value)
@@ -746,9 +765,12 @@ class InventoryController extends Controller
             'on_hand'        => (int) $onHand,
             'avg_cost'       => $primary ? (float) $primary->avg_cost : 0,
             'primary_bin'    => $primary && $primary->bin ? [
-                'id'   => $primary->bin_id,
-                'code' => $primary->bin->bin_final_code,
+                'id'       => $primary->bin_id,
+                'code'     => $primary->bin->bin_final_code,
+                'on_hand'  => (int) $primary->on_hand,
+                'avg_cost' => (float) $primary->avg_cost,
             ] : null,
+            'available_bins' => $availableBins,
         ], 'Produk ditemukan.');
     }
 
