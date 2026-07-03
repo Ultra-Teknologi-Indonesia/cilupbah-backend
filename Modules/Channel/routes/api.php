@@ -12,6 +12,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::patch('marketplace/store/{id}', [ChannelController::class, 'updateStore'])->whereUuid('id');
     Route::delete('marketplace/store/{id}', [ChannelController::class, 'disconnectShop'])->whereUuid('id');
 
+    Route::get('channels/print-label-capabilities', [ChannelController::class, 'printLabelCapabilities'])
+        ->name('channels.print-label-capabilities');
     Route::apiResource('channels', ChannelController::class)->names('channel');
 
     Route::get('download-transactions', [\Modules\Channel\Http\Controllers\DownloadTransactionController::class, 'index']);

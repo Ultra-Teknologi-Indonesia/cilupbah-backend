@@ -343,6 +343,18 @@ class ShipmentService
             return null;
         }
 
+        $order->loadMissing('items');
+        foreach ($order->items as $item) {
+            if (empty($item->item_id)) {
+                Log::info('Auto-create shipment ditolak: order masih memiliki item belum di-download', [
+                    'order_id'       => $order->id,
+                    'salesorder_no'  => $order->salesorder_no,
+                    'channel_status' => $order->channel_status,
+                ]);
+                return null;
+            }
+        }
+
         $shipment = $this->create([
             'location_id'   => $order->location_id,
             'courier_name'  => $order->shipping_provider ?? 'Marketplace',

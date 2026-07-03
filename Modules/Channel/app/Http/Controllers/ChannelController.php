@@ -104,4 +104,19 @@ class ChannelController extends Controller
             return back()->with('error', 'Gagal memperbarui token: ' . $e->getMessage());
         }
     }
+
+    public function printLabelCapabilities(Request $request): JsonResponse
+    {
+        $source = strtolower((string) $request->query('source', ''));
+        $registry = (array) config('channel_print_capabilities', []);
+        $entry = $registry[$source] ?? null;
+
+        $data = [
+            'source' => $source,
+            'document_types' => $entry['document_types'] ?? [],
+            'document_sizes' => $entry['document_sizes'] ?? [],
+        ];
+
+        return $this->successResponse($data, 'Kapabilitas cetak label berhasil diambil');
+    }
 }

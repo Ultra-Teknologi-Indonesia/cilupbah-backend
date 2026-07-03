@@ -711,6 +711,24 @@ class SalesOrderController extends Controller
             'document_size' => $request->query('document_size'),
         ], fn ($v) => $v !== null && $v !== '');
 
+        $source = strtolower((string) ($order->source ?? ''));
+        $capabilities = (array) config("channel_print_capabilities.$source", []);
+        $validTypes = array_column($capabilities['document_types'] ?? [], 'value');
+        $validSizes = array_column($capabilities['document_sizes'] ?? [], 'value');
+
+        if (isset($options['document_type']) && $validTypes && ! in_array($options['document_type'], $validTypes, true)) {
+            return $this->errorResponse(
+                'Jenis dokumen tidak didukung channel. Pilih salah satu: ' . implode(', ', $validTypes),
+                422
+            );
+        }
+        if (isset($options['document_size']) && $validSizes && ! in_array($options['document_size'], $validSizes, true)) {
+            return $this->errorResponse(
+                'Ukuran dokumen tidak didukung channel. Pilih salah satu: ' . implode(', ', $validSizes),
+                422
+            );
+        }
+
         try {
             $result = $this->orderService->getShippingLabel($order, $options);
 

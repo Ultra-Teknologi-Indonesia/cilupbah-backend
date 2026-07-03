@@ -846,6 +846,16 @@ class SalesOrderService
         return $this->orderRepository->variantIdBySku($sku) !== null;
     }
 
+    private function hasUnmappedItems(SalesOrder $order): bool
+    {
+        foreach ($order->items as $item) {
+            if (empty($item->item_id)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private function attemptChannelProductPull(SalesOrder $order, SalesOrderItem $item): void
     {
         $channel = $order->source;
@@ -875,13 +885,38 @@ class SalesOrderService
     {
         $channelStatus = $orderData['channel_status'] ?? 'UNKNOWN';
         $mappedStatus = $this->mapChannelStatusToInternal($channelStatus);
+        $source = $orderData['source'] ?? null;
+        $shopId = $orderData['channel_shop_id'] ?? null;
 
         if (! empty($orderData['channel_order_no']) && empty($orderData['salesorder_no'])) {
             $numbering = $this->generateSalesOrderNo(
-                $orderData['source'] ?? null,
+                $source,
                 $orderData['channel_order_no']
             );
             $orderData['salesorder_no'] = $numbering['salesorder_no'];
+        }
+
+        if ($source && isset($orderData['items']) && is_array($orderData['items'])) {
+            $existingLite = DB::table('sales_orders')
+                ->where('salesorder_no', $orderData['salesorder_no'])
+                ->value('id');
+
+            if (! $existingLite && $mappedStatus !== 'cancelled') {
+                $missing = app(\Modules\Channel\Services\ChannelProductGuard::class)
+                    ->unknownItems($orderData['items'], $source);
+
+                if (! empty($missing)) {
+                    app(\Modules\Channel\Services\ChannelProductGuard::class)->reject(
+                        'sales_order',
+                        (string) $source,
+                        $shopId ? (string) $shopId : null,
+                        (string) ($orderData['channel_order_no'] ?? $orderData['salesorder_no']),
+                        $missing,
+                        ['channel_status' => $channelStatus],
+                    );
+                    return null;
+                }
+            }
         }
 
         try {
@@ -917,6 +952,23 @@ class SalesOrderService
             }
 
             $order->load('items');
+
+            if ($order->source && $this->hasUnmappedItems($order) && $finalStatus !== 'cancelled') {
+                if ($finalStatus !== 'pending') {
+                    Log::info('Channel order quarantined: produk belum di-download', [
+                        'order_id'        => $order->id,
+                        'salesorder_no'   => $order->salesorder_no,
+                        'source'          => $order->source,
+                        'channel_status'  => $channelStatus,
+                        'mapped_status'   => $finalStatus,
+                    ]);
+                }
+                $finalStatus = 'pending';
+                $orderData['status'] = 'pending';
+                if ($order->status !== 'pending') {
+                    $order->update(['status' => 'pending']);
+                }
+            }
 
             $stockMutated = $this->reconcileStockTransition($order, $previousStatus, $finalStatus);
 
