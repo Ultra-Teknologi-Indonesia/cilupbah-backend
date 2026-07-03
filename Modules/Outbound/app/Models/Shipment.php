@@ -33,6 +33,7 @@ class Shipment extends Model
     protected $casts = [
         'shipment_date' => 'date',
         'handed_over_at' => 'datetime',
+        'has_instant' => 'boolean',
     ];
 
     public function orders(): HasMany

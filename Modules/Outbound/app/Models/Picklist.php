@@ -32,6 +32,7 @@ class Picklist extends Model
     protected $casts = [
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
+        'has_instant' => 'boolean',
     ];
 
     public function items(): HasMany

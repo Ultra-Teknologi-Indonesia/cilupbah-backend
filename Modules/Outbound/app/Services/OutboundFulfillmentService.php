@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Services\LazadaOrderService;
+use Modules\Outbound\Support\InstantOrderClassifier;
 
 class OutboundFulfillmentService
 {
@@ -213,11 +214,23 @@ class OutboundFulfillmentService
 
                 AllowedFilter::callback('courier_type', function ($query, $value) {
                     $v = strtolower((string) $value);
-                    $rx = 'instant|instan|same[- ]?day|grab|gojek|gosend|lalamove|paxel same';
-                    if ($v === 'instant') $query->whereRaw('LOWER(shipping_provider) REGEXP ?', [$rx]);
-                    elseif ($v === 'regular') $query->where(function ($q) use ($rx) {
-                        $q->whereNull('shipping_provider')->orWhereRaw('LOWER(shipping_provider) NOT REGEXP ?', [$rx]);
-                    });
+                    $rx = InstantOrderClassifier::REGEX;
+                    if ($v === 'instant') {
+                        $query->where(function ($q) use ($rx) {
+                            $q->whereRaw('LOWER(shipping_provider) REGEXP ?', [$rx])
+                              ->orWhereRaw('LOWER(shipping_type) REGEXP ?', [$rx]);
+                        });
+                    } elseif ($v === 'regular') {
+                        $query->where(function ($q) use ($rx) {
+                            $q->where(function ($qq) use ($rx) {
+                                $qq->whereNull('shipping_provider')
+                                   ->orWhereRaw('LOWER(shipping_provider) NOT REGEXP ?', [$rx]);
+                            })->where(function ($qq) use ($rx) {
+                                $qq->whereNull('shipping_type')
+                                   ->orWhereRaw('LOWER(shipping_type) NOT REGEXP ?', [$rx]);
+                            });
+                        });
+                    }
                 }),
 
                 AllowedFilter::callback('label_printed', function ($query, $value) {
@@ -412,16 +425,22 @@ class OutboundFulfillmentService
 
     private function finishPack()
     {
-        return Order::where('status', 'packed')
-            ->whereDoesntHave('shipmentOrders');
+        return Order::where(function ($q) {
+            $q->where('status', 'packed')
+                ->orWhere(function ($q2) {
+                    $q2->where('status', 'cancelled')
+                        ->whereHas('packlist', fn ($pq) => $pq->where('status', Packlist::STATUS_COMPLETED));
+                });
+        })->whereDoesntHave('shipmentOrders');
     }
 
     private function readyToShipStage()
     {
-        return Order::where('status', 'packed')
-            ->whereHas('shipmentOrders', function ($q) {
-                $q->whereHas('shipment', fn ($sq) => $sq->where('status', 'SCHEDULED'));
-            });
+        return Order::where(function ($q) {
+            $q->where('status', 'packed')->orWhere('status', 'cancelled');
+        })->whereHas('shipmentOrders', function ($q) {
+            $q->whereHas('shipment', fn ($sq) => $sq->where('status', 'SCHEDULED'));
+        });
     }
 
     private function shipped()

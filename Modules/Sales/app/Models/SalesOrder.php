@@ -8,12 +8,15 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 use App\Traits\HasUuid7;
+use Modules\Outbound\Support\InstantOrderClassifier;
 
 class SalesOrder extends Model
 {
     use HasUuid7;
 
     protected $table = 'sales_orders';
+
+    protected $appends = ['is_instant'];
 
     protected $fillable = [
         'salesorder_no',
@@ -164,6 +167,14 @@ class SalesOrder extends Model
     public function returns(): HasMany
     {
         return $this->hasMany(SalesReturn::class, 'order_id');
+    }
+
+    public function getIsInstantAttribute(): bool
+    {
+        return InstantOrderClassifier::isInstant(
+            $this->shipping_provider,
+            $this->shipping_type,
+        );
     }
 
     public function invoices(): HasMany

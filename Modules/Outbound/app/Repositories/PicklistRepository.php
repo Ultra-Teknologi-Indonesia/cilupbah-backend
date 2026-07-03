@@ -4,6 +4,8 @@ namespace Modules\Outbound\Repositories;
 
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
+use Modules\Outbound\Support\InstantOrderClassifier;
+use Illuminate\Support\Facades\DB;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 
@@ -16,6 +18,14 @@ class PicklistRepository
         if (empty(request('filter.status'))) {
             $query->whereNotIn('status', [Picklist::STATUS_COMPLETED, Picklist::STATUS_CANCELLED]);
         }
+
+        $rx = InstantOrderClassifier::REGEX;
+        $query->selectRaw('picklists.*, EXISTS(
+            SELECT 1 FROM picklist_items
+            JOIN sales_orders ON sales_orders.id = picklist_items.order_id
+            WHERE picklist_items.picklist_id = picklists.id
+              AND (LOWER(sales_orders.shipping_provider) REGEXP ? OR LOWER(sales_orders.shipping_type) REGEXP ?)
+        ) AS has_instant', [$rx, $rx]);
 
         return $query->withCount('items')
             ->withSum('items', 'qty_ordered')

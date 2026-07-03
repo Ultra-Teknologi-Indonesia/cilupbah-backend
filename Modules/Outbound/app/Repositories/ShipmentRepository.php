@@ -4,6 +4,7 @@ namespace Modules\Outbound\Repositories;
 
 use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Models\ShipmentOrder;
+use Modules\Outbound\Support\InstantOrderClassifier;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 
@@ -11,6 +12,8 @@ class ShipmentRepository
 {
     public function getAllPaginated(int $limit = 10)
     {
+        $rx = InstantOrderClassifier::REGEX;
+
         return QueryBuilder::for(Shipment::class)
             ->with(['location:id,location_name,location_code'])
             ->withCount('orders')
@@ -18,6 +21,12 @@ class ShipmentRepository
                 ->join('shipment_orders', 'shipment_orders.order_id', '=', 'sales_orders.id')
                 ->whereColumn('shipment_orders.shipment_id', 'shipments.id'),
             ])
+            ->selectRaw('EXISTS(
+                SELECT 1 FROM shipment_orders
+                JOIN sales_orders ON sales_orders.id = shipment_orders.order_id
+                WHERE shipment_orders.shipment_id = shipments.id
+                  AND (LOWER(sales_orders.shipping_provider) REGEXP ? OR LOWER(sales_orders.shipping_type) REGEXP ?)
+            ) AS has_instant', [$rx, $rx])
             ->allowedFilters(
 
                 AllowedFilter::callback('status', function ($query, $value) {
@@ -104,7 +113,7 @@ class ShipmentRepository
     public function findById(string $id): ?Shipment
     {
         return Shipment::with([
-            'orders.order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,tracking_number,source,channel_order_no,order_weight_gram',
+            'orders.order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,shipping_type,tracking_number,source,channel_order_no,order_weight_gram',
             'orders.packlist:id,packlist_no',
             'location:id,location_name,location_code',
         ])->find($id);

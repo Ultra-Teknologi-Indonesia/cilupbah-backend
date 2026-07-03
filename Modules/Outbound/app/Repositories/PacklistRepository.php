@@ -12,7 +12,7 @@ class PacklistRepository
     public function getAllPaginated(int $limit = 10)
     {
         return QueryBuilder::for(Packlist::class)
-            ->with(['location:id,location_name,location_code', 'packer:id,name,email', 'order:id,salesorder_no,customer_name'])
+            ->with(['location:id,location_name,location_code', 'packer:id,name,email', 'order:id,salesorder_no,customer_name,shipping_provider,shipping_type'])
             ->allowedFilters(
                 AllowedFilter::callback('status', function ($query, $value) {
                     $statuses = is_array($value) ? $value : explode(',', $value);
@@ -57,7 +57,7 @@ class PacklistRepository
             'items.orderItem.product.product.media:id,product_id,variant_id,url,is_primary,sort_order',
             'location:id,location_name,location_code',
             'packer:id,name,email',
-            'order:id,salesorder_no,customer_name',
+            'order:id,salesorder_no,customer_name,shipping_provider,shipping_type',
         ])->find($id);
     }
 
