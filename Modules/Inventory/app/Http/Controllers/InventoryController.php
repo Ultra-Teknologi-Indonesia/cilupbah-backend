@@ -676,17 +676,80 @@ class InventoryController extends Controller
             new OA\Response(response: 404, description: 'SKU tidak ditemukan.'),
         ]
     )]
-    public function bySku(string $sku): JsonResponse
+    public function bySku(string $sku, Request $request): JsonResponse
     {
         $variant = \Modules\Product\Models\ProductVariant::where('sku', $sku)
-            ->with(['product:id,name,sku,category_id,status,is_bundle', 'product.category:id,name', 'inventories'])
+            ->with([
+                'product:id,name,sku,category_id,status,is_bundle',
+                'product.category:id,name',
+                'options.attribute:id,name',
+                'media',
+                'product.media',
+            ])
             ->first();
 
         if (! $variant) {
             return $this->errorResponse('SKU tidak ditemukan.', 404);
         }
 
-        return $this->successResponse($variant, 'Produk ditemukan.');
+        $locationId = $request->query('location_id');
+
+        // Primary bin: baris inventory paling awal di lokasi (kalau ada) yang punya bin_id
+        // real (bukan DEFAULT) dengan on_hand>0. Fallback: bin manapun on_hand>0.
+        // Aturan: 1 SKU = 1 rak utama = alokasi pertama admin.
+        $primaryQuery = Inventory::where('item_id', $variant->id)
+            ->whereNotNull('bin_id')
+            ->when($locationId, fn ($q) => $q->where('location_id', $locationId))
+            ->with('bin:id,bin_final_code')
+            ->orderBy('created_at')
+            ->orderBy('id');
+
+        $primary = (clone $primaryQuery)
+            ->where('on_hand', '>', 0)
+            ->whereHas('bin', fn ($q) => $q->where('bin_final_code', '!=', 'DEFAULT'))
+            ->first();
+
+        if (! $primary) {
+            $primary = (clone $primaryQuery)
+                ->where('on_hand', '>', 0)
+                ->first();
+        }
+
+        // Total on_hand di lokasi terpilih (kalau tidak ada, seluruh lokasi).
+        $onHand = Inventory::where('item_id', $variant->id)
+            ->when($locationId, fn ($q) => $q->where('location_id', $locationId))
+            ->sum('on_hand');
+
+        // Variant label: "Merah, iPhone 15" — dari options + attribute.
+        $variantLabel = $variant->options
+            ->map(fn ($o) => $o->value)
+            ->filter()
+            ->implode(', ');
+
+        // Thumbnail: cari primary di media varian; fallback ke media produk.
+        $thumbnail = null;
+        if ($variant->media && $variant->media->isNotEmpty()) {
+            $primaryMedia = $variant->media->firstWhere('is_primary', true) ?? $variant->media->first();
+            $thumbnail = $primaryMedia?->url ?? $primaryMedia?->file_path ?? null;
+        } elseif ($variant->product?->media && $variant->product->media->isNotEmpty()) {
+            $primaryMedia = $variant->product->media->firstWhere('is_primary', true) ?? $variant->product->media->first();
+            $thumbnail = $primaryMedia?->url ?? $primaryMedia?->file_path ?? null;
+        }
+
+        return $this->successResponse([
+            'id'             => $variant->id,
+            'sku'            => $variant->sku,
+            'product_id'     => $variant->product_id,
+            'product_name'   => $variant->product?->name,
+            'variant_label'  => $variantLabel,
+            'thumbnail_url'  => $thumbnail,
+            'on_hand'        => (int) $onHand,
+            'avg_cost'       => $primary ? (float) $primary->avg_cost : 0,
+            'primary_bin'    => $primary && $primary->bin ? [
+                'id'   => $primary->bin_id,
+                'code' => $primary->bin->bin_final_code,
+            ] : null,
+        ], 'Produk ditemukan.');
     }
 
     #[OA\Delete(
