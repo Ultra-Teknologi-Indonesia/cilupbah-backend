@@ -67,6 +67,12 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('inventory/putaway', [InventoryTransactionController::class, 'putaway'])->name('inventory.putaway');
     Route::post('inventory/bin-transfer', [InventoryTransactionController::class, 'binTransfer'])->name('inventory.binTransfer');
 
+    Route::prefix('inventory/adjustments/import')->group(function () {
+        Route::get('/template', [\Modules\Inventory\Http\Controllers\StockAdjustmentImportController::class, 'template'])->name('inventory.adjustments.import.template');
+        Route::post('/preview', [\Modules\Inventory\Http\Controllers\StockAdjustmentImportController::class, 'preview'])->name('inventory.adjustments.import.preview');
+        Route::post('/confirm', [\Modules\Inventory\Http\Controllers\StockAdjustmentImportController::class, 'confirm'])->name('inventory.adjustments.import.confirm');
+    });
+
     Route::prefix('inventory/adjustments/documents')->group(function () {
         Route::get('/', [StockAdjustmentController::class, 'index'])->name('inventory.adjustments.documents.index');
         Route::post('/', [StockAdjustmentController::class, 'store'])->name('inventory.adjustments.documents.store');
