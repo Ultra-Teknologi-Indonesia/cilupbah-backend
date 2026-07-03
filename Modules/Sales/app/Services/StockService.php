@@ -159,6 +159,34 @@ class StockService
         $this->restoreSingle($sku, $itemId, $locationId, $qty, $transactionNumber);
     }
 
+    public function restoreToBin(string $sku, string $itemId, string $locationId, ?string $binId, int $qty, string $transactionNumber, string $source = 'ORDER_RESTORE_CANCEL'): void
+    {
+        if ($binId === null) {
+            $this->restore($sku, $itemId, $locationId, $qty, $transactionNumber);
+            return;
+        }
+
+        $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $binId, $qty, $transactionNumber, $source) {
+            DB::transaction(function () use ($itemId, $locationId, $binId, $qty, $transactionNumber, $source) {
+                $binRow = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, $binId);
+                $binRow->on_hand = ((int) $binRow->on_hand) + $qty;
+                $this->inventoryRepository->updateStock($binRow);
+
+                $this->movementRepository->create([
+                    'item_id'            => $itemId,
+                    'location_id'        => $locationId,
+                    'bin_id'             => $binId,
+                    'transaction_number' => $transactionNumber,
+                    'source'             => $source,
+                    'qty'                => $qty,
+                    'balance'            => $binRow->on_hand,
+                    'transaction_date'   => now(),
+                    'created_by'         => 'system',
+                ]);
+            });
+        });
+    }
+
     private function restoreSingle(string $sku, string $itemId, string $locationId, int $qty, string $transactionNumber): void
     {
         $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
