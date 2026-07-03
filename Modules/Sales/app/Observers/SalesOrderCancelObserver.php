@@ -13,16 +13,11 @@ class SalesOrderCancelObserver
             && $order->cancel_requested_at
             && ! $order->cancel_accepted_at;
 
-        $becamePacked = $order->wasChanged('status')
-            && $order->status === 'packed'
-            && $order->cancel_requested_at
-            && ! $order->cancel_accepted_at;
-
-        if (! $gainedCancelRequest && ! $becamePacked) {
+        if (! $gainedCancelRequest) {
             return;
         }
 
-        if ($order->status !== 'packed') {
+        if ($order->status === 'cancelled') {
             return;
         }
 

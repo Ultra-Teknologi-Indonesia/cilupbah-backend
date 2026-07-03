@@ -37,10 +37,6 @@ class AutoAcceptCancelRequestJob implements ShouldQueue
             return;
         }
 
-        if ($order->status !== 'packed') {
-            return;
-        }
-
         if (! $order->cancel_requested_at) {
             return;
         }
@@ -50,7 +46,7 @@ class AutoAcceptCancelRequestJob implements ShouldQueue
         }
 
         try {
-            $orderService->acceptCancelRequest($order->id, auto: true);
+            $orderService->autoResolveCancelRequest($order->id);
         } catch (\Throwable $e) {
             Log::warning('AutoAcceptCancelRequestJob failed', [
                 'order_id'  => $order->id,

@@ -230,4 +230,107 @@ class CancelRequestFlowTest extends TestCase
             'qty'     => 2,
         ]);
     }
+
+    private function seedShipmentAssignment(string $orderId, string $locationId, string $shipmentStatus = 'SCHEDULED'): void
+    {
+        $shipmentId = Str::uuid()->toString();
+        DB::table('shipments')->insert([
+            'id' => $shipmentId,
+            'shipment_no' => 'SHP-' . substr($shipmentId, 0, 6),
+            'location_id' => $locationId,
+            'shipment_type' => 'REGULAR',
+            'shipment_date' => now()->toDateString(),
+            'status' => $shipmentStatus,
+            'created_by' => 'system:test',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        DB::table('shipment_orders')->insert([
+            'id' => Str::uuid()->toString(),
+            'shipment_id' => $shipmentId,
+            'order_id' => $orderId,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    public function test_auto_resolve_accepts_cancel_when_order_still_reserved(): void
+    {
+        SalesOrderSetting::query()->firstOrCreate([], ['auto_accept_cancel_on_packed' => true]);
+
+        [$orderId, , , $binId] = $this->seedBaseOrder('reserved');
+
+        app(SalesOrderService::class)->autoResolveCancelRequest($orderId);
+
+        $order = SalesOrder::find($orderId);
+        $this->assertSame('cancelled', $order->status);
+        $this->assertTrue((bool) $order->is_canceled);
+        $this->assertSame('auto', $order->cancel_channel);
+        $this->assertNotNull($order->cancel_accepted_at);
+    }
+
+    public function test_auto_resolve_accepts_cancel_when_order_still_picked(): void
+    {
+        SalesOrderSetting::query()->firstOrCreate([], ['auto_accept_cancel_on_packed' => true]);
+
+        [$orderId] = $this->seedBaseOrder('picked');
+
+        app(SalesOrderService::class)->autoResolveCancelRequest($orderId);
+
+        $order = SalesOrder::find($orderId);
+        $this->assertSame('cancelled', $order->status);
+        $this->assertTrue((bool) $order->is_canceled);
+        $this->assertSame('auto', $order->cancel_channel);
+    }
+
+    public function test_auto_resolve_rejects_cancel_when_packed_and_already_scheduled_for_shipment(): void
+    {
+        SalesOrderSetting::query()->firstOrCreate([], ['auto_accept_cancel_on_packed' => true]);
+
+        [$orderId, , $locationId, $binId] = $this->seedBaseOrder('packed');
+        $this->seedShipmentAssignment($orderId, $locationId, 'SCHEDULED');
+
+        app(SalesOrderService::class)->autoResolveCancelRequest($orderId);
+
+        $order = SalesOrder::find($orderId);
+        $this->assertSame('packed', $order->status);
+        $this->assertNull($order->cancel_requested_at);
+        $this->assertNull($order->cancel_accepted_at);
+        $this->assertNotNull($order->cancel_rejected_at);
+        $this->assertNull($order->cancel_rejected_by);
+
+        $inv = DB::table('inventories')->where('bin_id', $binId)->first();
+        $this->assertSame(0, (int) $inv->on_hand);
+    }
+
+    public function test_auto_resolve_converts_to_return_when_already_shipped(): void
+    {
+        SalesOrderSetting::query()->firstOrCreate([], ['auto_accept_cancel_on_packed' => true]);
+
+        [$orderId, , , $binId] = $this->seedBaseOrder('shipped');
+
+        app(SalesOrderService::class)->autoResolveCancelRequest($orderId);
+
+        $order = SalesOrder::find($orderId);
+        $this->assertSame('shipped', $order->status);
+        $this->assertNotNull($order->cancel_accepted_at);
+        $this->assertDatabaseHas('sales_returns', ['order_id' => $orderId]);
+
+        $inv = DB::table('inventories')->where('bin_id', $binId)->first();
+        $this->assertSame(0, (int) $inv->on_hand);
+    }
+
+    public function test_job_auto_resolves_reserved_status_now_that_packed_only_guard_is_removed(): void
+    {
+        SalesOrderSetting::query()->firstOrCreate([], ['auto_accept_cancel_on_packed' => true]);
+
+        [$orderId] = $this->seedBaseOrder('reserved');
+
+        (new AutoAcceptCancelRequestJob($orderId))->handle(
+            app(SalesOrderService::class),
+            app(\Modules\Sales\Services\SalesOrderSettingService::class),
+        );
+
+        $order = SalesOrder::find($orderId);
+        $this->assertSame('cancelled', $order->status);
+    }
 }

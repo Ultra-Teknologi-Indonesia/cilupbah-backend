@@ -22,6 +22,8 @@ use Modules\Sales\Models\SalesOrderItem;
 use Modules\Sales\Repositories\SalesOrderRepository;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
+use Modules\Outbound\Models\Shipment;
+use Modules\Outbound\Models\ShipmentOrder;
 
 class SalesOrderService
 {
@@ -222,7 +224,7 @@ class SalesOrderService
         });
     }
 
-    public function rejectCancelRequest(string $orderId, ?string $reason = null): SalesOrder
+    public function rejectCancelRequest(string $orderId, ?string $reason = null, bool $auto = false): SalesOrder
     {
         $order = SalesOrder::findOrFail($orderId);
 
@@ -230,7 +232,7 @@ class SalesOrderService
             throw new \InvalidArgumentException('Pesanan ini tidak memiliki permintaan pembatalan.');
         }
 
-        $actorId = Auth::id() ?: null;
+        $actorId = $auto ? null : (Auth::id() ?: null);
 
         $order->update([
             'cancel_requested_at'   => null,
@@ -242,6 +244,32 @@ class SalesOrderService
         ]);
 
         return $order->fresh();
+    }
+
+    public function autoResolveCancelRequest(string $orderId): SalesOrder
+    {
+        $order = SalesOrder::findOrFail($orderId);
+
+        if (! $order->cancel_requested_at || $order->cancel_accepted_at || $order->status === 'cancelled') {
+            return $order;
+        }
+
+        if ($order->status === 'packed' && $this->hasScheduledShipmentAssignment($order)) {
+            return $this->rejectCancelRequest(
+                $order->id,
+                'Pesanan sudah dijadwalkan pengiriman (siap kirim). Pembatalan otomatis ditolak, proses dilanjutkan.',
+                auto: true,
+            );
+        }
+
+        return $this->acceptCancelRequest($order->id, auto: true);
+    }
+
+    private function hasScheduledShipmentAssignment(SalesOrder $order): bool
+    {
+        return ShipmentOrder::where('order_id', $order->id)
+            ->whereHas('shipment', fn ($q) => $q->where('status', Shipment::STATUS_SCHEDULED))
+            ->exists();
     }
 
     public function markAsComplete(array $orderIds): int
