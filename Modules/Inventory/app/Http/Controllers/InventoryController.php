@@ -855,10 +855,18 @@ class InventoryController extends Controller
             ->paginate($perPage);
 
         $paginated->getCollection()->transform(function ($variant) {
-            $variantLabel = $variant->options
-                ?->map(fn ($o) => $o->value)
-                ->filter()
-                ->implode(', ') ?? '';
+            $variationValues = ($variant->options ?? collect())
+                ->map(fn ($o) => [
+                    'label' => $o->attribute?->name ?? '',
+                    'value' => $o->value ?? '',
+                ])
+                ->filter(fn ($v) => $v['value'] !== '')
+                ->values()
+                ->all();
+
+            $variantLabel = collect($variationValues)
+                ->map(fn ($v) => $v['value'])
+                ->implode(', ');
 
             $thumbnail = null;
             $variantMedia = $variant->media?->firstWhere('media_type', 'image')
@@ -874,12 +882,14 @@ class InventoryController extends Controller
             }
 
             return [
-                'item_id'       => $variant->id,
-                'sku'           => $variant->sku,
-                'product_name'  => $variant->product?->name,
-                'variant_label' => $variantLabel,
-                'thumbnail_url' => $thumbnail,
-                'total_on_hand' => (int) ($variant->total_on_hand ?? 0),
+                'item_id'          => $variant->id,
+                'sku'              => $variant->sku,
+                'product_id'       => $variant->product_id,
+                'product_name'     => $variant->product?->name,
+                'variant_label'    => $variantLabel,
+                'variation_values' => $variationValues,
+                'thumbnail_url'    => $thumbnail,
+                'total_on_hand'    => (int) ($variant->total_on_hand ?? 0),
             ];
         });
 
