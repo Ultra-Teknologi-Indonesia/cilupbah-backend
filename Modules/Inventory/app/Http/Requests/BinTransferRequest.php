@@ -3,6 +3,8 @@
 namespace Modules\Inventory\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
+use Modules\Warehouse\Models\LocationBin;
 
 class BinTransferRequest extends FormRequest
 {
@@ -42,5 +44,51 @@ class BinTransferRequest extends FormRequest
             'items.*.destination_bin_id.required' => 'Rak tujuan wajib diisi.',
             'items.*.destination_bin_id.different' => 'Rak asal dan rak tujuan harus berbeda.',
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $v) {
+            $locationId = $this->input('location_id');
+            $items = $this->input('items', []);
+            if (! $locationId || ! is_array($items)) {
+                return;
+            }
+
+            $binIds = [];
+            foreach ($items as $it) {
+                if (! empty($it['source_bin_id'])) {
+                    $binIds[$it['source_bin_id']] = true;
+                }
+                if (! empty($it['destination_bin_id'])) {
+                    $binIds[$it['destination_bin_id']] = true;
+                }
+            }
+            if (empty($binIds)) {
+                return;
+            }
+
+            $binLocations = LocationBin::whereIn('id', array_keys($binIds))
+                ->pluck('location_id', 'id')
+                ->all();
+
+            foreach ($items as $idx => $it) {
+                $srcId = $it['source_bin_id'] ?? null;
+                $destId = $it['destination_bin_id'] ?? null;
+
+                if ($srcId && isset($binLocations[$srcId]) && $binLocations[$srcId] !== $locationId) {
+                    $v->errors()->add(
+                        "items.$idx.source_bin_id",
+                        'Rak asal harus milik lokasi yang dipilih.',
+                    );
+                }
+                if ($destId && isset($binLocations[$destId]) && $binLocations[$destId] !== $locationId) {
+                    $v->errors()->add(
+                        "items.$idx.destination_bin_id",
+                        'Rak tujuan harus milik lokasi yang dipilih.',
+                    );
+                }
+            }
+        });
     }
 }

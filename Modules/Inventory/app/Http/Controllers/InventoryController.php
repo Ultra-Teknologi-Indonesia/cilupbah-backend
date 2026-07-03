@@ -739,6 +739,10 @@ class InventoryController extends Controller
             ->values()
             ->toArray();
 
+        if ($locationId && $request->boolean('require_stock') && empty($availableBins)) {
+            return $this->errorResponse('SKU tidak punya stok di gudang ini.', 404);
+        }
+
         $variantLabel = $variant->options
             ->map(fn ($o) => $o->value)
             ->filter()

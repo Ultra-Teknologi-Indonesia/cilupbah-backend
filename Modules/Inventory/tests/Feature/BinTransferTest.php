@@ -146,6 +146,86 @@ class BinTransferTest extends TestCase
         ]);
     }
 
+    public function test_request_rejects_bin_from_different_location(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $wh1 = Location::create([
+            'location_code' => 'WH-A', 'location_name' => 'Gudang A',
+            'location_type' => 'warehouse', 'is_warehouse' => true, 'is_active' => true,
+        ]);
+        $wh2 = Location::create([
+            'location_code' => 'WH-B', 'location_name' => 'Gudang B',
+            'location_type' => 'warehouse', 'is_warehouse' => true, 'is_active' => true,
+        ]);
+        $binA1 = LocationBin::create(['location_id' => $wh1->id, 'bin_code' => 'A1', 'bin_final_code' => 'WH-A-1']);
+        $binA2 = LocationBin::create(['location_id' => $wh1->id, 'bin_code' => 'A2', 'bin_final_code' => 'WH-A-2']);
+        $binForeign = LocationBin::create(['location_id' => $wh2->id, 'bin_code' => 'B1', 'bin_final_code' => 'WH-B-1']);
+
+        $catId = DB::table('categories')->insertGetId(['name' => 'C', 'created_at' => now(), 'updated_at' => now()]);
+        $product = Product::create(['category_id' => $catId, 'name' => 'P', 'sku' => 'P', 'is_active' => true]);
+        $variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V']);
+        Inventory::create([
+            'item_id' => $variant->id, 'location_id' => $wh1->id, 'bin_id' => $binA1->id,
+            'on_hand' => 5, 'reserved' => 0, 'available' => 5, 'avg_cost' => 100,
+        ]);
+
+        $user = \App\Models\User::factory()->create();
+        $this->actingAs($user);
+
+        $res = $this->postJson('/api/v1/inventory/bin-transfers', [
+            'location_id' => $wh1->id,
+            'created_by' => 'tester',
+            'items' => [
+                ['item_id' => $variant->id, 'source_bin_id' => $binForeign->id, 'destination_bin_id' => $binA2->id, 'qty' => 1],
+            ],
+        ]);
+        $res->assertStatus(422)
+            ->assertJsonValidationErrors(['items.0.source_bin_id']);
+        $this->assertStringContainsString(
+            'Rak asal harus milik lokasi yang dipilih.',
+            json_encode($res->json('errors')),
+        );
+
+        $res2 = $this->postJson('/api/v1/inventory/bin-transfers', [
+            'location_id' => $wh1->id,
+            'created_by' => 'tester',
+            'items' => [
+                ['item_id' => $variant->id, 'source_bin_id' => $binA1->id, 'destination_bin_id' => $binForeign->id, 'qty' => 1],
+            ],
+        ]);
+        $res2->assertStatus(422)
+            ->assertJsonValidationErrors(['items.0.destination_bin_id']);
+        $this->assertStringContainsString(
+            'Rak tujuan harus milik lokasi yang dipilih.',
+            json_encode($res2->json('errors')),
+        );
+    }
+
+    public function test_by_sku_returns_404_when_require_stock_and_no_stock_at_location(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $wh = Location::create([
+            'location_code' => 'WH-S', 'location_name' => 'Gudang S',
+            'location_type' => 'warehouse', 'is_warehouse' => true, 'is_active' => true,
+        ]);
+        $catId = DB::table('categories')->insertGetId(['name' => 'CS', 'created_at' => now(), 'updated_at' => now()]);
+        $product = Product::create(['category_id' => $catId, 'name' => 'PS', 'sku' => 'PS', 'is_active' => true]);
+        $variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V-STOCKLESS']);
+
+        $user = \App\Models\User::factory()->create();
+        $this->actingAs($user);
+
+        $res = $this->getJson("/api/v1/inventory/stock/by-sku/V-STOCKLESS?location_id={$wh->id}&require_stock=1");
+        $res->assertStatus(404);
+        $res->assertJsonPath('message', 'SKU tidak punya stok di gudang ini.');
+
+        $res2 = $this->getJson("/api/v1/inventory/stock/by-sku/V-STOCKLESS?location_id={$wh->id}");
+        $res2->assertStatus(200);
+        $res2->assertJsonPath('data.available_bins', []);
+    }
+
     public function test_bin_transfer_number_is_sequential(): void
     {
         Queue::fake();
