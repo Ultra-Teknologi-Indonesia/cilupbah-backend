@@ -320,13 +320,6 @@ class ProductService
                         }
                     }
 
-                    if (!empty($variant['channel_prices'])) {
-                        foreach ($variant['channel_prices'] as $cp) {
-                            $pcmId = $this->writeRepository->findOrCreateProductChannelMapping($productId, $cp['channel_shop_id']);
-                            $this->writeRepository->upsertVariantChannelOverridePrice($pcmId, $variantId, $cp['price']);
-                        }
-                    }
-
                     if (array_key_exists('unlimited_shop_ids', $variant)) {
                         $this->writeRepository->deleteUnlimitedShops($variantId);
                         if (!empty($variant['unlimited_shop_ids'])) {
@@ -834,12 +827,6 @@ class ProductService
                         $this->writeRepository->insertWholesalePrices($wholesales);
                     }
 
-                    if (!empty($variant['channel_prices'])) {
-                        foreach ($variant['channel_prices'] as $cp) {
-                            $pcmId = $this->writeRepository->findOrCreateProductChannelMapping($productId, $cp['channel_shop_id']);
-                            $this->writeRepository->insertVariantChannelOverridePrice($pcmId, $variantId, $cp['price']);
-                        }
-                    }
                 }
             }
 

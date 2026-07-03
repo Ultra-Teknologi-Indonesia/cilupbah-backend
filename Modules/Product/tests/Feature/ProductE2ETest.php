@@ -95,7 +95,7 @@ class ProductE2ETest extends TestCase
             'sell_price' => 100000,
         ]);
 
-        $this->assertDatabaseHas('product_variant_channel_mappings', [
+        $this->assertDatabaseMissing('product_variant_channel_mappings', [
             'override_price' => 125000,
         ]);
     }
@@ -133,9 +133,7 @@ class ProductE2ETest extends TestCase
          $readResponse->assertStatus(200)
                      ->assertJsonPath('data.name', 'Produk E2E Read')
                      ->assertJsonPath('data.variants.0.sku', 'E2E-VAR-READ')
-                     ->assertJsonPath('data.variants.0.sell_price', '50000.00')
-                     ->assertJsonPath('data.variants.0.channel_prices.0.channel_shop_id', $this->channelShop->id)
-                     ->assertJsonPath('data.variants.0.channel_prices.0.price', '55000.00');
+                     ->assertJsonPath('data.variants.0.sell_price', '50000.00');
     }
 
     public function test_can_update_product_and_overrides()
@@ -191,7 +189,7 @@ class ProductE2ETest extends TestCase
             'sell_price' => 20000,
         ]);
 
-        $this->assertDatabaseHas('product_variant_channel_mappings', [
+        $this->assertDatabaseMissing('product_variant_channel_mappings', [
             'override_price' => 30000,
         ]);
     }

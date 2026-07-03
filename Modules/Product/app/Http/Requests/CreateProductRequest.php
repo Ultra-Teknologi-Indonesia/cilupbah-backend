@@ -96,10 +96,6 @@ class CreateProductRequest extends FormRequest
             'variants.*.wholesale_prices.*.min_qty' => 'required|integer|min:1',
             'variants.*.wholesale_prices.*.price' => 'required|numeric|min:0',
             'variants.*.wholesale_prices.*.customer_type' => 'nullable|string',
-
-            'variants.*.channel_prices' => 'nullable|array',
-            'variants.*.channel_prices.*.channel_shop_id' => 'required|uuid|exists:channel_shops,id',
-            'variants.*.channel_prices.*.price' => 'required|numeric|min:0',
         ];
     }
 

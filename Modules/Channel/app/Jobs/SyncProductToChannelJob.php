@@ -65,16 +65,6 @@ class SyncProductToChannelJob implements ShouldQueue
             return;
         }
 
-        foreach ($product->variants as $variant) {
-            $mapping = $variant->channelMappings->first(function ($map) use ($shop) {
-                return $map->channelMapping && $map->channelMapping->channel_shop_id === $shop->id;
-            });
-
-            if ($mapping && $mapping->override_price !== null) {
-                $variant->sell_price = $mapping->override_price;
-            }
-        }
-
         $channelCode = $shop->channel->code ?? 'tiktok';
 
         $shop = $this->ensureFreshToken($shop, $channelCode);

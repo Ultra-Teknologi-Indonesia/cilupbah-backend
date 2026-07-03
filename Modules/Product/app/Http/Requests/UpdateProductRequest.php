@@ -82,9 +82,6 @@ class UpdateProductRequest extends FormRequest
             'variants.*.height' => 'sometimes|nullable|numeric|min:0',
             'variants.*.unlimited_shop_ids' => 'sometimes|nullable|array',
             'variants.*.unlimited_shop_ids.*' => 'uuid|distinct|exists:channel_shops,id',
-            'variants.*.channel_prices' => 'sometimes|nullable|array',
-            'variants.*.channel_prices.*.channel_shop_id' => 'required_with:variants.*.channel_prices|uuid',
-            'variants.*.channel_prices.*.price' => 'required_with:variants.*.channel_prices|numeric|min:0',
 
             'variants.*.media' => 'sometimes|array',
             'variants.*.media.*.media_uuid' => 'required_without:variants.*.media.*.url|bail|uuid|exists:media,uuid',
