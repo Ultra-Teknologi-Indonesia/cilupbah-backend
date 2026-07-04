@@ -525,6 +525,45 @@ class InventoryTransactionController extends Controller
         }
     }
 
+    public function binTransferItemDestroy(\Illuminate\Http\Request $request, string $id, string $itemId): JsonResponse
+    {
+        $validated = $request->validate([
+            'qty' => 'nullable|integer|min:1',
+        ]);
+
+        try {
+            $userId = (string) ($request->user()->id ?? 'system');
+            $transfer = $this->inventoryService->reverseBinTransferItem(
+                $id,
+                $itemId,
+                $validated['qty'] ?? null,
+                $userId,
+            );
+
+            return $this->successResponse($transfer, 'Baris pindah bin berhasil dikoreksi.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function binTransferItemsDestroy(\Illuminate\Http\Request $request, string $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.item_id' => 'required|string',
+            'items.*.qty' => 'nullable|integer|min:1',
+        ]);
+
+        try {
+            $userId = (string) ($request->user()->id ?? 'system');
+            $transfer = $this->inventoryService->reverseBinTransferItems($id, $validated['items'], $userId);
+
+            return $this->successResponse($transfer, 'Baris pindah bin berhasil dikoreksi.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
     public function binTransferIndex(\Illuminate\Http\Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 10);

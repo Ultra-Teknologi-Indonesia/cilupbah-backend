@@ -221,6 +221,69 @@ class PacklistService
         ]);
     }
 
+    /**
+     * Koreksi salah scan pack: kurangi qty_packed pada satu baris.
+     * Packing tidak mengubah stok, jadi cukup menurunkan qty_packed (+ reset verifikasi barcode).
+     */
+    public function unpackItem(string $packlistId, string $itemId, ?int $qty): void
+    {
+        $this->unpackItems($packlistId, [
+            ['item_id' => $itemId, 'qty' => $qty],
+        ]);
+    }
+
+    /**
+     * Koreksi massal: kurangi qty_packed beberapa baris sekaligus dalam 1 transaksi.
+     * $items = [['item_id' => ..., 'qty' => ?int], ...]
+     */
+    public function unpackItems(string $packlistId, array $items): void
+    {
+        if (empty($items)) {
+            throw new \Exception('Tidak ada baris yang dipilih untuk dikoreksi.');
+        }
+
+        DB::transaction(function () use ($packlistId, $items) {
+            $packlist = $this->packlistRepository->findById($packlistId);
+
+            if (! $packlist) {
+                throw new \Exception('Packlist tidak ditemukan.');
+            }
+
+            if (! in_array($packlist->status, [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS], true)) {
+                throw new \Exception("Packlist tidak bisa dikoreksi (status saat ini: {$packlist->status}).");
+            }
+
+            $itemsDict = $packlist->items->keyBy('id');
+
+            foreach ($items as $entry) {
+                $itemId = $entry['item_id'] ?? null;
+                $qty = $entry['qty'] ?? null;
+
+                if (! $itemId) {
+                    throw new \Exception('item_id wajib diisi.');
+                }
+
+                $item = $itemsDict->get($itemId);
+                if (! $item) {
+                    throw new \Exception('Item packlist tidak ditemukan.');
+                }
+
+                $qtyRev = $qty ?? (int) $item->qty_packed;
+
+                if ($qtyRev <= 0 || $qtyRev > (int) $item->qty_packed) {
+                    throw new \Exception("Qty koreksi tidak valid (maksimal {$item->qty_packed}).");
+                }
+
+                $newQty = max(0, (int) $item->qty_packed - $qtyRev);
+
+                $this->packlistRepository->updateItem($itemId, [
+                    'qty_packed' => $newQty,
+                    'barcode_verified' => $newQty > 0 ? $item->barcode_verified : false,
+                ]);
+            }
+        });
+    }
+
     public function verifyBarcode(string $packlistId, string $barcode): array
     {
         $item = PacklistItem::where('packlist_id', $packlistId)

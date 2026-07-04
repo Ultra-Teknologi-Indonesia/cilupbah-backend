@@ -185,6 +185,145 @@ class InventoryService
         });
     }
 
+    /**
+     * Reverse a two-bin stock move (koreksi salah scan).
+     *
+     * Memindahkan `qty` kembali dari `from_bin_id` (rak yang saat ini menampung stok,
+     * biasanya bin tujuan scan) ke `to_bin_id` (rak asal scan). Mencatat 2 movement
+     * dengan `source` reversal sebagai jejak audit; movement forward TIDAK dihapus.
+     *
+     * Dipakai bersama oleh koreksi Putaway (#1) dan Pindah Bin (#6).
+     *
+     * required: item_id, location_id, from_bin_id, to_bin_id, qty, source, transaction_number, created_by
+     * optional: batch_no, serial_no
+     */
+    public function reverseBinMove(array $data): void
+    {
+        DB::transaction(function () use ($data) {
+            $qty = (int) $data['qty'];
+            if ($qty <= 0) {
+                throw new \Exception('Qty koreksi harus lebih dari 0.');
+            }
+
+            if (empty($data['from_bin_id']) || empty($data['to_bin_id'])) {
+                throw new \Exception('Rak asal dan rak tujuan koreksi wajib diisi.');
+            }
+
+            $from = $this->inventoryRepository->findExactForUpdate(
+                $data['item_id'],
+                $data['location_id'],
+                $data['from_bin_id'],
+                $data['batch_no'] ?? '',
+                $data['serial_no'] ?? '',
+            );
+
+            if (! $from || $from->on_hand < $qty) {
+                $current = $from ? $from->on_hand : 0;
+                throw new \Exception("Stok di rak tujuan tidak cukup untuk dikoreksi (tersedia: {$current}, diminta: {$qty}). Kemungkinan sudah dipakai proses lain.");
+            }
+
+            $unitCost = (float) ($from->avg_cost ?? 0);
+
+            $from->on_hand -= $qty;
+            $this->inventoryRepository->updateStock($from);
+
+            $this->movementRepository->create([
+                'item_id'            => $data['item_id'],
+                'location_id'        => $data['location_id'],
+                'bin_id'             => $data['from_bin_id'],
+                'transaction_number' => $data['transaction_number'],
+                'source'             => $data['source'],
+                'qty'                => -$qty,
+                'balance'            => $from->on_hand,
+                'cost_per_unit'      => $unitCost > 0 ? $unitCost : null,
+                'total_cost'         => $unitCost > 0 ? round($unitCost * $qty, 2) : null,
+                'transaction_date'   => now(),
+                'created_by'         => $data['created_by'],
+            ]);
+
+            $to = $this->inventoryRepository->findOrCreateForUpdate(
+                $data['item_id'],
+                $data['location_id'],
+                $data['to_bin_id'],
+                $data['batch_no'] ?? '',
+                $data['serial_no'] ?? '',
+            );
+
+            $preOnHand = (float) $to->on_hand;
+            $preAvg = (float) ($to->avg_cost ?? 0);
+
+            $to->on_hand += $qty;
+
+            if ($unitCost > 0) {
+                $newTotal = $preOnHand + $qty;
+                $to->avg_cost = $newTotal > 0
+                    ? round((($preOnHand * $preAvg) + ($qty * $unitCost)) / $newTotal, 2)
+                    : $unitCost;
+            }
+
+            $this->inventoryRepository->updateStock($to);
+
+            $this->movementRepository->create([
+                'item_id'            => $data['item_id'],
+                'location_id'        => $data['location_id'],
+                'bin_id'             => $data['to_bin_id'],
+                'transaction_number' => $data['transaction_number'],
+                'source'             => $data['source'],
+                'qty'                => $qty,
+                'balance'            => $to->on_hand,
+                'cost_per_unit'      => $unitCost > 0 ? $unitCost : null,
+                'total_cost'         => $unitCost > 0 ? round($unitCost * $qty, 2) : null,
+                'transaction_date'   => now(),
+                'created_by'         => $data['created_by'],
+            ]);
+        });
+
+        $this->notifyChannelStock([$data['item_id']]);
+    }
+
+    /**
+     * Kembalikan stok hasil pick yang salah scan ke rak asalnya (koreksi Picking #4).
+     * Menaikkan on_hand + reserved di bin, mencatat movement PICKING_REVERSAL.
+     *
+     * required: item_id, location_id, bin_id, qty, transaction_number, created_by
+     */
+    public function reversePick(array $data): void
+    {
+        DB::transaction(function () use ($data) {
+            $qty = (int) $data['qty'];
+            if ($qty <= 0) {
+                throw new \Exception('Qty koreksi harus lebih dari 0.');
+            }
+
+            $inventory = $this->inventoryRepository->findOrCreateForUpdate(
+                $data['item_id'],
+                $data['location_id'],
+                $data['bin_id'],
+                $data['batch_no'] ?? '',
+                $data['serial_no'] ?? '',
+            );
+
+            $inventory->on_hand += $qty;
+            $inventory->reserved += $qty;
+            $inventory->recalculateAvailable();
+            $this->inventoryRepository->updateStock($inventory);
+
+            $this->movementRepository->create([
+                'item_id'            => $data['item_id'],
+                'location_id'        => $data['location_id'],
+                'bin_id'             => $data['bin_id'],
+                'transaction_number' => $data['transaction_number'],
+                'source'             => 'PICKING_REVERSAL',
+                'qty'                => $qty,
+                'balance'            => $inventory->on_hand,
+                'transaction_date'   => now(),
+                'created_by'         => $data['created_by'],
+            ]);
+        });
+
+        $this->notifyChannelStock([$data['item_id']]);
+    }
+
     public function binTransfer(array $data): BinTransfer
     {
         $items = $this->normalizeBinTransferItems($data);
@@ -315,6 +454,82 @@ class InventoryService
         $this->notifyChannelStock($variantIds);
 
         return $binTransfer;
+    }
+
+    /**
+     * Koreksi salah scan Pindah Bin: kembalikan (sebagian/seluruh) stok satu baris bin transfer
+     * dari rak tujuan kembali ke rak asal, lalu kurangi/hapus baris tersebut.
+     */
+    public function reverseBinTransferItem(string $binTransferId, string $itemRowId, ?int $qty, string $userId): BinTransfer
+    {
+        return $this->reverseBinTransferItems($binTransferId, [
+            ['item_id' => $itemRowId, 'qty' => $qty],
+        ], $userId);
+    }
+
+    /**
+     * Koreksi massal: kembalikan beberapa baris bin transfer sekaligus dalam 1 transaksi.
+     * $items = [['item_id' => <bin_transfer_item_id>, 'qty' => ?int], ...]
+     */
+    public function reverseBinTransferItems(string $binTransferId, array $items, string $userId): BinTransfer
+    {
+        if (empty($items)) {
+            throw new \Exception('Tidak ada baris yang dipilih untuk dikoreksi.');
+        }
+
+        return DB::transaction(function () use ($binTransferId, $items, $userId) {
+            $header = BinTransfer::where('id', $binTransferId)->lockForUpdate()->first();
+
+            if (! $header) {
+                throw new \Exception('Dokumen Pindah Bin tidak ditemukan.');
+            }
+
+            foreach ($items as $entry) {
+                $rowId = $entry['item_id'] ?? null;
+                $qty = $entry['qty'] ?? null;
+
+                if (! $rowId) {
+                    throw new \Exception('item_id (baris) wajib diisi.');
+                }
+
+                $row = BinTransferItem::where('id', $rowId)
+                    ->where('bin_transfer_id', $binTransferId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $row) {
+                    throw new \Exception('Baris Pindah Bin tidak ditemukan.');
+                }
+
+                $qtyRev = $qty ?? (int) $row->qty;
+
+                if ($qtyRev <= 0 || $qtyRev > (int) $row->qty) {
+                    throw new \Exception("Qty koreksi tidak valid (maksimal {$row->qty}).");
+                }
+
+                // Balik stok: dari rak tujuan kembali ke rak asal.
+                $this->reverseBinMove([
+                    'item_id'            => $row->item_id,
+                    'location_id'        => $header->location_id,
+                    'from_bin_id'        => $row->destination_bin_id,
+                    'to_bin_id'          => $row->source_bin_id,
+                    'qty'                => $qtyRev,
+                    'batch_no'           => $row->batch_no ?? '',
+                    'serial_no'          => $row->serial_no ?? '',
+                    'source'             => 'BIN_TRANSFER_REVERSAL',
+                    'transaction_number' => $header->transfer_number . '-KOREKSI',
+                    'created_by'         => "user:{$userId}",
+                ]);
+
+                if ($qtyRev >= (int) $row->qty) {
+                    $row->delete();
+                } else {
+                    $row->decrement('qty', $qtyRev);
+                }
+            }
+
+            return BinTransfer::with('items')->find($binTransferId);
+        });
     }
 
     protected function normalizeBinTransferItems(array $data): array

@@ -73,6 +73,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('inventory/bin-transfers', [InventoryTransactionController::class, 'binTransfer'])->name('inventory.binTransfers.store');
     Route::get('inventory/bin-transfers/{id}', [InventoryTransactionController::class, 'binTransferShow'])->name('inventory.binTransfers.show');
     Route::patch('inventory/bin-transfers/{id}', [InventoryTransactionController::class, 'binTransferUpdate'])->name('inventory.binTransfers.update');
+    Route::delete('inventory/bin-transfers/{id}/items', [InventoryTransactionController::class, 'binTransferItemsDestroy'])->name('inventory.binTransfers.itemsDestroy');
+    Route::delete('inventory/bin-transfers/{id}/items/{itemId}', [InventoryTransactionController::class, 'binTransferItemDestroy'])->name('inventory.binTransfers.itemDestroy');
 
     Route::prefix('inventory/adjustments/import')->group(function () {
         Route::get('/template', [\Modules\Inventory\Http\Controllers\StockAdjustmentImportController::class, 'template'])->name('inventory.adjustments.import.template');
@@ -83,8 +85,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::prefix('inventory/adjustments/documents')->group(function () {
         Route::get('/', [StockAdjustmentController::class, 'index'])->name('inventory.adjustments.documents.index');
         Route::post('/', [StockAdjustmentController::class, 'store'])->name('inventory.adjustments.documents.store');
+        Route::post('/bulk/pdf', [StockAdjustmentController::class, 'bulkPdf'])->name('inventory.adjustments.documents.bulkPdf');
+        Route::post('/bulk/delete', [StockAdjustmentController::class, 'bulkDelete'])->name('inventory.adjustments.documents.bulkDelete');
         Route::get('/{id}', [StockAdjustmentController::class, 'show'])->name('inventory.adjustments.documents.show');
         Route::get('/{id}/items', [StockAdjustmentController::class, 'items'])->name('inventory.adjustments.documents.items');
+        Route::get('/{id}/pdf', [StockAdjustmentController::class, 'pdf'])->name('inventory.adjustments.documents.pdf');
         Route::delete('/{id}', [StockAdjustmentController::class, 'destroy'])->name('inventory.adjustments.documents.destroy');
     });
 
@@ -184,6 +189,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('/assign-staff', [PutawayController::class, 'assignStaff'])->name('putaway.assignStaff');
         Route::post('/{id}/start', [PutawayController::class, 'start'])->name('putaway.start');
         Route::post('/{id}/items/{itemId}/process', [PutawayController::class, 'processItem'])->name('putaway.processItem');
+        Route::delete('/{id}/placements', [PutawayController::class, 'deletePlacements'])->name('putaway.deletePlacements');
+        Route::delete('/{id}/items/{itemId}/placements/{placementId}', [PutawayController::class, 'deletePlacement'])->name('putaway.deletePlacement');
         Route::post('/{id}/complete', [PutawayController::class, 'complete'])->name('putaway.complete');
     });
 

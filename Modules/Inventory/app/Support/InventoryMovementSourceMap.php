@@ -11,6 +11,7 @@ class InventoryMovementSourceMap
         'PURCHASE_RETURN'  => ['category' => 'PURCHASE_RETURN', 'label' => 'Retur Pembelian'],
         'SALES_RETURN'     => ['category' => 'SALES_RETURN', 'label' => 'Retur Penjualan'],
         'PICKING'          => ['category' => 'PICKING', 'label' => 'Barang di-pick'],
+        'PICKING_REVERSAL' => ['category' => 'PICKING', 'label' => 'Koreksi Pick'],
         'ORDER_SHIP'          => ['category' => 'PESANAN', 'label' => 'Pesanan Dikirim'],
         'ORDER_RESTORE'       => ['category' => 'PESANAN', 'label' => 'Pesanan Dibatalkan'],
         'ORDER_RESTORE_CANCEL' => ['category' => 'PESANAN', 'label' => 'Pesanan Dibatalkan'],
@@ -20,8 +21,10 @@ class InventoryMovementSourceMap
         'TRANSFER_OUT'     => ['category' => 'TRANSFER', 'label' => 'Transfer'],
         'BIN_TRANSFER_IN'  => ['category' => 'TRANSFER', 'label' => 'Transfer'],
         'BIN_TRANSFER_OUT' => ['category' => 'TRANSFER', 'label' => 'Transfer'],
+        'BIN_TRANSFER_REVERSAL' => ['category' => 'TRANSFER', 'label' => 'Koreksi Pindah Bin'],
         'PUTAWAY_IN'       => ['category' => 'TRANSFER', 'label' => 'Transfer'],
         'PUTAWAY_OUT'      => ['category' => 'TRANSFER', 'label' => 'Transfer'],
+        'PUTAWAY_REVERSAL' => ['category' => 'TRANSFER', 'label' => 'Koreksi Penempatan'],
         'REVALUATION'      => ['category' => 'REVALUATION', 'label' => 'Ubah Nilai Stok'],
     ];
 

@@ -253,6 +253,38 @@ class PacklistController extends Controller
         return $this->successResponse(null, 'Item berhasil di-pack.');
     }
 
+    public function unpackItem(string $id, string $itemId, Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'qty' => 'nullable|integer|min:1',
+        ]);
+
+        try {
+            $this->packlistService->unpackItem($id, $itemId, $validated['qty'] ?? null);
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
+        return $this->successResponse(null, 'Pack berhasil dikoreksi.');
+    }
+
+    public function unpackItems(string $id, Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.item_id' => 'required|string',
+            'items.*.qty' => 'nullable|integer|min:1',
+        ]);
+
+        try {
+            $this->packlistService->unpackItems($id, $validated['items']);
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
+        return $this->successResponse(null, 'Pack berhasil dikoreksi.');
+    }
+
     #[OA\Post(
         path: '/api/v1/outbound/packlists/{id}/verify-barcode',
         summary: 'Verify barcode/SKU in packlist',

@@ -3,11 +3,14 @@
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Services\StockAdjustmentService;
 use Modules\Inventory\Http\Requests\StoreStockAdjustmentRequest;
 use OpenApi\Attributes as OA;
+use Throwable;
 
 #[OA\Tag(name: 'Stock Adjustment', description: 'API Endpoints for Document-based Stock Adjustment')]
 class StockAdjustmentController extends Controller
@@ -154,5 +157,149 @@ class StockAdjustmentController extends Controller
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inventory/adjustments/documents/{id}/pdf',
+        summary: 'Cetak Laporan Penyesuaian sebagai PDF (A4 portrait)',
+        security: [['bearerAuth' => []]],
+        tags: ['Stock Adjustment'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'PDF stream', content: new OA\MediaType(mediaType: 'application/pdf')),
+            new OA\Response(response: 404, description: 'Dokumen tidak ditemukan'),
+        ]
+    )]
+    public function pdf(string $id)
+    {
+        try {
+            $adjustment = StockAdjustment::with([
+                'items.product.product',
+                'items.bin',
+                'location',
+            ])->find($id);
+
+            if (!$adjustment) {
+                return $this->errorResponse('Dokumen adjustment tidak ditemukan.', 404);
+            }
+
+            $filename = 'Laporan-Penyesuaian-' . $adjustment->adjustment_no . '.pdf';
+
+            $pdf = Pdf::loadView('inventory::pdf.stock-adjustment', [
+                'adjustment' => $adjustment,
+            ])->setPaper('a4', 'portrait');
+
+            return $pdf->stream($filename);
+        } catch (Throwable $e) {
+            report($e);
+            return $this->errorResponse('Gagal membuat PDF penyesuaian: ' . $e->getMessage(), 500);
+        }
+    }
+
+    #[OA\Post(
+        path: '/api/v1/inventory/adjustments/documents/bulk/pdf',
+        summary: 'Cetak banyak Laporan Penyesuaian dalam 1 PDF multi-halaman',
+        security: [['bearerAuth' => []]],
+        tags: ['Stock Adjustment'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['ids'],
+            properties: [
+                new OA\Property(property: 'ids', type: 'array', items: new OA\Items(type: 'string')),
+            ]
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'PDF stream', content: new OA\MediaType(mediaType: 'application/pdf')),
+            new OA\Response(response: 404, description: 'Sebagian dokumen tidak ditemukan'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+        ]
+    )]
+    public function bulkPdf(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1|max:50',
+            'ids.*' => 'required|string',
+        ]);
+
+        try {
+            $ids = $validated['ids'];
+
+            $adjustments = StockAdjustment::with([
+                'items.product.product',
+                'items.bin',
+                'location',
+            ])
+                ->whereIn('id', $ids)
+                ->orderBy('transaction_date')
+                ->orderBy('adjustment_no')
+                ->get();
+
+            if ($adjustments->count() !== count($ids)) {
+                $foundIds = $adjustments->pluck('id')->all();
+                $missing = array_values(array_diff($ids, $foundIds));
+                return $this->errorResponse(
+                    'Sebagian dokumen tidak ditemukan: ' . implode(', ', $missing),
+                    404
+                );
+            }
+
+            $filename = 'Laporan-Penyesuaian-Bulk-' . now()->format('Ymd-His') . '.pdf';
+
+            $pdf = Pdf::loadView('inventory::pdf.stock-adjustment-bulk', [
+                'adjustments' => $adjustments,
+            ])->setPaper('a4', 'portrait');
+
+            return $pdf->stream($filename);
+        } catch (Throwable $e) {
+            report($e);
+            return $this->errorResponse('Gagal membuat PDF penyesuaian bulk: ' . $e->getMessage(), 500);
+        }
+    }
+
+    #[OA\Post(
+        path: '/api/v1/inventory/adjustments/documents/bulk/delete',
+        summary: 'Hapus banyak dokumen penyesuaian sekaligus (soft delete)',
+        security: [['bearerAuth' => []]],
+        tags: ['Stock Adjustment'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['ids'],
+            properties: [
+                new OA\Property(property: 'ids', type: 'array', items: new OA\Items(type: 'string')),
+            ]
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'Dokumen dihapus (partial success mungkin terjadi)'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+        ]
+    )]
+    public function bulkDelete(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1|max:100',
+            'ids.*' => 'required|string',
+        ]);
+
+        $deleted = 0;
+        $failed = [];
+
+        foreach ($validated['ids'] as $id) {
+            try {
+                $this->adjustmentService->delete($id);
+                $deleted++;
+            } catch (\Throwable $e) {
+                $failed[] = [
+                    'id' => $id,
+                    'reason' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return $this->successResponse(
+            ['deleted' => $deleted, 'failed' => $failed],
+            $deleted > 0
+                ? "{$deleted} dokumen dihapus" . (count($failed) > 0 ? ", " . count($failed) . " gagal" : "")
+                : 'Tidak ada dokumen yang berhasil dihapus.'
+        );
     }
 }

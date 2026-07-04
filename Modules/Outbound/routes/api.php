@@ -38,6 +38,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('picklists/{id}/start', [PicklistController::class, 'start'])->name('outbound.picklists.start');
     Route::post('picklists/{id}/scan', [PicklistController::class, 'scan'])->name('outbound.picklists.scan');
     Route::post('picklists/{id}/items/{itemId}/pick', [PicklistController::class, 'pickItem'])->name('outbound.picklists.pick-item');
+    Route::delete('picklists/{id}/pick', [PicklistController::class, 'unpickItems'])->name('outbound.picklists.unpick-items');
+    Route::delete('picklists/{id}/items/{itemId}/pick', [PicklistController::class, 'unpickItem'])->name('outbound.picklists.unpick-item');
     Route::post('picklists/{id}/complete', [PicklistController::class, 'complete'])->name('outbound.picklists.complete');
     Route::post('picklists/{id}/fail', [PicklistController::class, 'fail'])->name('outbound.picklists.fail');
     Route::post('picklists/{id}/cancel', [PicklistController::class, 'cancel'])->name('outbound.picklists.cancel');
@@ -51,6 +53,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('packlists/{id}/assign-packer', [PacklistController::class, 'assignPacker'])->name('outbound.packlists.assign-packer');
     Route::post('packlists/{id}/start', [PacklistController::class, 'start'])->name('outbound.packlists.start');
     Route::post('packlists/{id}/items/{itemId}/pack', [PacklistController::class, 'packItem'])->name('outbound.packlists.pack-item');
+    Route::delete('packlists/{id}/pack', [PacklistController::class, 'unpackItems'])->name('outbound.packlists.unpack-items');
+    Route::delete('packlists/{id}/items/{itemId}/pack', [PacklistController::class, 'unpackItem'])->name('outbound.packlists.unpack-item');
     Route::post('packlists/{id}/verify-barcode', [PacklistController::class, 'verifyBarcode'])->name('outbound.packlists.verify-barcode');
     Route::post('packlists/{id}/complete', [PacklistController::class, 'complete'])->name('outbound.packlists.complete');
     Route::post('packlists/{id}/cancel', [PacklistController::class, 'cancel'])->name('outbound.packlists.cancel');

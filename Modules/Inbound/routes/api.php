@@ -19,6 +19,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('inbounds/assignments/{assignmentId}/start', [InboundController::class, 'startAssignment'])->name('inbounds.startAssignment');
 
     Route::post('inbounds/{id}/receive', [InboundController::class, 'receive'])->name('inbounds.receive');
+    Route::delete('inbounds/{id}/received', [InboundController::class, 'correctReceivedLines'])->name('inbounds.correctReceivedBulk');
+    Route::delete('inbounds/{id}/items/{itemId}/received', [InboundController::class, 'correctReceivedLine'])->name('inbounds.correctReceived');
     Route::post('inbounds/{id}/close-receiving', [InboundController::class, 'closeReceiving'])->name('inbounds.closeReceiving');
     Route::post('inbounds/{id}/putaway', [InboundController::class, 'putaway'])->name('inbounds.putaway');
     Route::post('inbounds/{id}/auto-putaway', [InboundController::class, 'autoPutaway'])->name('inbounds.autoPutaway');

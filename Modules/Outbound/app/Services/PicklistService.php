@@ -241,7 +241,22 @@ class PicklistService
      */
     public function unpickItem(string $picklistId, string $itemId, ?int $qty, string $userId): Picklist
     {
-        return DB::transaction(function () use ($picklistId, $itemId, $qty, $userId) {
+        return $this->unpickItems($picklistId, [
+            ['item_id' => $itemId, 'qty' => $qty],
+        ], $userId);
+    }
+
+    /**
+     * Koreksi massal: batalkan pick beberapa baris sekaligus dalam 1 transaksi.
+     * $items = [['item_id' => ..., 'qty' => ?int], ...]
+     */
+    public function unpickItems(string $picklistId, array $items, string $userId): Picklist
+    {
+        if (empty($items)) {
+            throw new OutboundValidationException('Tidak ada baris yang dipilih untuk dikoreksi.');
+        }
+
+        return DB::transaction(function () use ($picklistId, $items, $userId) {
             $picklist = $this->picklistRepository->findById($picklistId);
 
             if (! $picklist) {
@@ -252,37 +267,46 @@ class PicklistService
                 throw new OutboundValidationException("Picklist tidak bisa dikoreksi (status saat ini: {$picklist->status}).");
             }
 
-            $item = PicklistItem::where('picklist_id', $picklistId)
-                ->where('id', $itemId)
-                ->lockForUpdate()
-                ->first();
+            foreach ($items as $entry) {
+                $itemId = $entry['item_id'] ?? null;
+                $qty = $entry['qty'] ?? null;
 
-            if (! $item) {
-                throw new OutboundValidationException('Item picklist tidak ditemukan.');
+                if (! $itemId) {
+                    throw new OutboundValidationException('item_id wajib diisi.');
+                }
+
+                $item = PicklistItem::where('picklist_id', $picklistId)
+                    ->where('id', $itemId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $item) {
+                    throw new OutboundValidationException('Item picklist tidak ditemukan.');
+                }
+
+                $qtyRev = $qty ?? (int) $item->qty_picked;
+
+                if ($qtyRev <= 0 || $qtyRev > (int) $item->qty_picked) {
+                    throw new OutboundValidationException("Qty koreksi tidak valid (maksimal {$item->qty_picked}).");
+                }
+
+                if (empty($item->bin_id)) {
+                    throw new OutboundValidationException('Baris ini tidak punya rak asal pick, tidak bisa dikoreksi.');
+                }
+
+                $this->inventoryService->reversePick([
+                    'item_id'            => $item->item_id,
+                    'location_id'        => $picklist->location_id,
+                    'bin_id'             => $item->bin_id,
+                    'qty'                => $qtyRev,
+                    'transaction_number' => $picklist->picklist_no . '-KOREKSI',
+                    'created_by'         => (string) ($userId ?: 'system'),
+                ]);
+
+                $this->picklistRepository->updateItem($itemId, [
+                    'qty_picked' => max(0, (int) $item->qty_picked - $qtyRev),
+                ]);
             }
-
-            $qtyRev = $qty ?? (int) $item->qty_picked;
-
-            if ($qtyRev <= 0 || $qtyRev > (int) $item->qty_picked) {
-                throw new OutboundValidationException("Qty koreksi tidak valid (maksimal {$item->qty_picked}).");
-            }
-
-            if (empty($item->bin_id)) {
-                throw new OutboundValidationException('Baris ini tidak punya rak asal pick, tidak bisa dikoreksi.');
-            }
-
-            $this->inventoryService->reversePick([
-                'item_id'            => $item->item_id,
-                'location_id'        => $picklist->location_id,
-                'bin_id'             => $item->bin_id,
-                'qty'                => $qtyRev,
-                'transaction_number' => $picklist->picklist_no . '-KOREKSI',
-                'created_by'         => (string) ($userId ?: 'system'),
-            ]);
-
-            $this->picklistRepository->updateItem($itemId, [
-                'qty_picked' => max(0, (int) $item->qty_picked - $qtyRev),
-            ]);
 
             $this->revertPicklistCompletion($picklistId);
 

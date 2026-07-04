@@ -291,6 +291,40 @@ class InboundController extends Controller
         }
     }
 
+    public function correctReceivedLine(string $id, string $itemId, Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'qty' => 'nullable|integer|min:1',
+        ]);
+
+        try {
+            $userId = (string) ($request->user()->id ?? 'system');
+            $inbound = $this->inboundService->correctReceivedLine($id, $itemId, $validated['qty'] ?? null, $userId);
+
+            return $this->successResponse($inbound, 'Penerimaan berhasil dikoreksi.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function correctReceivedLines(string $id, Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.item_id' => 'required|string',
+            'items.*.qty' => 'nullable|integer|min:1',
+        ]);
+
+        try {
+            $userId = (string) ($request->user()->id ?? 'system');
+            $inbound = $this->inboundService->correctReceivedLines($id, $validated['items'], $userId);
+
+            return $this->successResponse($inbound, 'Penerimaan berhasil dikoreksi.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
     #[OA\Post(
         path: '/api/v1/inbounds/{id}/close-receiving',
         summary: 'Close receiving (mark discrepancy and move to putaway)',

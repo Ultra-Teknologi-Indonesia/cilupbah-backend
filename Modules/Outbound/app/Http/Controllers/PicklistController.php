@@ -314,6 +314,24 @@ class PicklistController extends Controller
         }
     }
 
+    public function unpickItems(string $id, Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.item_id' => 'required|string',
+            'items.*.qty' => 'nullable|integer|min:1',
+        ]);
+
+        try {
+            $userId = (string) ($request->user()->id ?? 'system');
+            $picklist = $this->picklistService->unpickItems($id, $validated['items'], $userId);
+
+            return $this->successResponse($picklist, 'Pick berhasil dikoreksi.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
     #[OA\Post(
         path: '/api/v1/outbound/picklists/{id}/scan',
         summary: 'Resolve SKU→bin: auto-suggest bin from inventory kalau bin_code kosong; strict validate kalau diberi (no stock mutation)',

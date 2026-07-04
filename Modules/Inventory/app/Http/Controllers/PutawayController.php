@@ -329,6 +329,93 @@ class PutawayController extends Controller
         }
     }
 
+    #[OA\Delete(
+        path: '/api/v1/putaway/{id}/items/{itemId}/placements/{placementId}',
+        summary: 'Hapus/koreksi satu penempatan (salah scan rak/qty) dan kembalikan stok ke rak asal',
+        security: [['bearerAuth' => []]],
+        tags: ['Putaway'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'itemId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'placementId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(required: false, content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: 'qty', type: 'integer', nullable: true, description: 'Qty yang dikoreksi; kosong = seluruh baris'),
+            ]
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'Penempatan berhasil dikoreksi.'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+        ]
+    )]
+    public function deletePlacement(Request $request, string $id, string $itemId, string $placementId): JsonResponse
+    {
+        $validated = $request->validate([
+            'qty' => 'nullable|integer|min:1',
+        ]);
+
+        try {
+            $userId = (string) ($request->user()->id ?? 'system');
+            $putaway = $this->putawayService->deletePlacement(
+                $id,
+                $itemId,
+                $placementId,
+                $validated['qty'] ?? null,
+                $userId,
+            );
+
+            return $this->successResponse($putaway, 'Penempatan berhasil dikoreksi.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Delete(
+        path: '/api/v1/putaway/{id}/placements',
+        summary: 'Koreksi massal beberapa penempatan sekaligus dalam 1 request',
+        security: [['bearerAuth' => []]],
+        tags: ['Putaway'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['items'],
+            properties: [
+                new OA\Property(property: 'items', type: 'array', items: new OA\Items(
+                    required: ['item_id', 'placement_id'],
+                    properties: [
+                        new OA\Property(property: 'item_id', type: 'string'),
+                        new OA\Property(property: 'placement_id', type: 'string'),
+                        new OA\Property(property: 'qty', type: 'integer', nullable: true),
+                    ]
+                )),
+            ]
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'Penempatan berhasil dikoreksi.'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+        ]
+    )]
+    public function deletePlacements(Request $request, string $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.item_id' => 'required|string',
+            'items.*.placement_id' => 'required|string',
+            'items.*.qty' => 'nullable|integer|min:1',
+        ]);
+
+        try {
+            $userId = (string) ($request->user()->id ?? 'system');
+            $putaway = $this->putawayService->deletePlacements($id, $validated['items'], $userId);
+
+            return $this->successResponse($putaway, 'Penempatan berhasil dikoreksi.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
     #[OA\Post(
         path: '/api/v1/putaway/{id}/complete',
         summary: 'Complete a putaway process',

@@ -6,6 +6,10 @@ use Modules\Inventory\Repositories\PutawayRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Models\Putaway;
+use Modules\Inventory\Models\PutawayPlacement;
+use Modules\Inventory\Services\InventoryService;
+use Modules\Inbound\Models\Inbound;
+use Modules\Inbound\Models\InboundItem;
 use Modules\Inventory\Jobs\ProcessPutawayItemJob;
 use Modules\Notification\Events\TaskAssigned;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +20,7 @@ class PutawayService
         protected PutawayRepository $putawayRepository,
         protected InventoryRepository $inventoryRepository,
         protected InventoryMovementRepository $movementRepository,
+        protected InventoryService $inventoryService,
     ) {}
 
     public function getAllPaginated(int $limit = 10)
@@ -186,5 +191,139 @@ class PutawayService
 
             return $this->putawayRepository->findById($id);
         });
+    }
+
+    /**
+     * Koreksi salah scan penempatan: hapus 1 baris placement (atau sebagian qty-nya)
+     * dan kembalikan stok dari rak tujuan ke rak asal.
+     */
+    public function deletePlacement(string $putawayId, string $itemId, string $placementId, ?int $qty, string $userId): Putaway
+    {
+        return $this->deletePlacements($putawayId, [
+            ['item_id' => $itemId, 'placement_id' => $placementId, 'qty' => $qty],
+        ], $userId);
+    }
+
+    /**
+     * Koreksi massal: hapus beberapa placement sekaligus dalam 1 transaksi (1 hit API).
+     * $items = [['item_id' => ..., 'placement_id' => ..., 'qty' => ?int], ...]
+     */
+    public function deletePlacements(string $putawayId, array $items, string $userId): Putaway
+    {
+        if (empty($items)) {
+            throw new \Exception('Tidak ada penempatan yang dipilih untuk dikoreksi.');
+        }
+
+        return DB::transaction(function () use ($putawayId, $items, $userId) {
+            $putaway = $this->putawayRepository->findByIdForUpdate($putawayId);
+
+            if (! $putaway) {
+                throw new \Exception('Putaway tidak ditemukan.');
+            }
+
+            if (! in_array($putaway->status, [Putaway::STATUS_IN_PROGRESS, Putaway::STATUS_COMPLETED], true)) {
+                throw new \Exception("Hanya putaway IN_PROGRESS atau COMPLETED yang bisa dikoreksi (status saat ini: {$putaway->status}).");
+            }
+
+            foreach ($items as $entry) {
+                $this->reverseOnePlacement($putaway, $entry, $userId);
+            }
+
+            // Revert status putaway bila sebelumnya COMPLETED (kini ada item yang belum penuh).
+            if ($putaway->status === Putaway::STATUS_COMPLETED) {
+                $this->putawayRepository->updateStatus($putawayId, Putaway::STATUS_IN_PROGRESS, [
+                    'completed_at' => null,
+                ]);
+            }
+
+            // Revert status inbound turunan (hitung sekali setelah semua item diproses).
+            if ($putaway->source_type === 'INBOUND' && $putaway->source_id) {
+                $inbound = Inbound::with('items')->find($putaway->source_id);
+                if ($inbound && $inbound->status === Inbound::STATUS_COMPLETED) {
+                    $allPutaway = $inbound->items->every(fn ($i) => $i->isFullyPutaway());
+                    if (! $allPutaway) {
+                        $inbound->update(['status' => Inbound::STATUS_PUTAWAY_IN_PROGRESS]);
+                    }
+                }
+            }
+
+            return $this->putawayRepository->findById($putawayId);
+        });
+    }
+
+    private function reverseOnePlacement(Putaway $putaway, array $entry, string $userId): void
+    {
+        $itemId = $entry['item_id'] ?? null;
+        $placementId = $entry['placement_id'] ?? null;
+        $qty = $entry['qty'] ?? null;
+
+        if (! $itemId || ! $placementId) {
+            throw new \Exception('item_id dan placement_id wajib diisi.');
+        }
+
+        $item = $this->putawayRepository->findItemForUpdate($putaway->id, $itemId);
+
+        if (! $item) {
+            throw new \Exception('Item putaway tidak ditemukan.');
+        }
+
+        if (empty($item->source_bin_id)) {
+            throw new \Exception('Item putaway tidak punya rak asal, tidak bisa dikoreksi.');
+        }
+
+        $placement = PutawayPlacement::where('id', $placementId)
+            ->where('putaway_item_id', $item->id)
+            ->lockForUpdate()
+            ->first();
+
+        if (! $placement) {
+            throw new \Exception('Penempatan tidak ditemukan.');
+        }
+
+        $qtyRev = $qty ?? (int) $placement->qty;
+
+        if ($qtyRev <= 0 || $qtyRev > (int) $placement->qty) {
+            throw new \Exception("Qty koreksi tidak valid (maksimal {$placement->qty}).");
+        }
+
+        // Balik stok: dari rak tujuan (placement->bin_id) kembali ke rak asal (item->source_bin_id).
+        $this->inventoryService->reverseBinMove([
+            'item_id'            => $item->item_id,
+            'location_id'        => $putaway->location_id,
+            'from_bin_id'        => $placement->bin_id,
+            'to_bin_id'          => $item->source_bin_id,
+            'qty'                => $qtyRev,
+            'batch_no'           => $item->batch_no ?? '',
+            'serial_no'          => $item->serial_no ?? '',
+            'source'             => 'PUTAWAY_REVERSAL',
+            'transaction_number' => $putaway->putaway_no . '-KOREKSI',
+            'created_by'         => "user:{$userId}",
+        ]);
+
+        // Kurangi qty placement / hapus baris bila habis.
+        if ($qtyRev >= (int) $placement->qty) {
+            $placement->delete();
+        } else {
+            $placement->decrement('qty', $qtyRev);
+        }
+
+        // Kurangi putaway_qty item.
+        $newPutawayQty = max(0, (int) $item->putaway_qty - $qtyRev);
+        $item->putaway_qty = $newPutawayQty;
+        if ($newPutawayQty === 0) {
+            $item->destination_bin_id = null;
+        }
+        $item->save();
+
+        // Sinkron ke inbound bila sumbernya INBOUND.
+        if ($putaway->source_type === 'INBOUND' && $putaway->source_id) {
+            $inboundItem = InboundItem::where('inbound_id', $putaway->source_id)
+                ->where('item_id', $item->item_id)
+                ->first();
+
+            if ($inboundItem) {
+                $inboundItem->decrement('putaway_qty', min($qtyRev, (int) $inboundItem->putaway_qty));
+            }
+        }
     }
 }

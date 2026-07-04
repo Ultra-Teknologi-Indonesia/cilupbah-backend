@@ -550,6 +550,85 @@ class InboundService
             ]);
     }
 
+    /**
+     * Koreksi salah terima (received_qty berlebih) pada satu baris inbound.
+     * Mengurangi received_qty dan mengembalikan stok di bin inbound. Hanya stok yang
+     * belum di-putaway yang bisa dikoreksi.
+     */
+    public function correctReceivedLine(string $inboundId, string $inboundItemId, ?int $qty, string $userId): Inbound
+    {
+        return $this->correctReceivedLines($inboundId, [
+            ['item_id' => $inboundItemId, 'qty' => $qty],
+        ], $userId);
+    }
+
+    /**
+     * Koreksi massal salah terima: kurangi received_qty beberapa baris sekaligus dalam 1 transaksi.
+     * $items = [['item_id' => <inbound_item_uuid>, 'qty' => ?int], ...]
+     */
+    public function correctReceivedLines(string $inboundId, array $items, string $userId): Inbound
+    {
+        if (empty($items)) {
+            throw new \Exception('Tidak ada baris yang dipilih untuk dikoreksi.');
+        }
+
+        return DB::transaction(function () use ($inboundId, $items, $userId) {
+            $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
+
+            if (! $inbound) {
+                throw new \Exception("Dokumen Inbound tidak ditemukan.");
+            }
+
+            if ($inbound->status === Inbound::STATUS_CANCELLED) {
+                throw new \Exception("Inbound sudah dibatalkan.");
+            }
+
+            $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
+            if (! $defaultBin) {
+                throw new \Exception("Gudang ini belum memiliki Bin Inbound default.");
+            }
+
+            foreach ($items as $entry) {
+                $inboundItemId = $entry['item_id'] ?? null;
+                $qty = $entry['qty'] ?? null;
+
+                if (! $inboundItemId) {
+                    throw new \Exception('item_id wajib diisi.');
+                }
+
+                $item = $this->inboundRepository->findItemByUuidForUpdate($inboundItemId);
+
+                if (! $item || $item->inbound_id !== $inbound->id) {
+                    throw new \Exception("Item inbound tidak ditemukan.");
+                }
+
+                $qtyRev = $qty ?? (int) $item->received_qty;
+
+                if ($qtyRev <= 0 || $qtyRev > (int) $item->received_qty) {
+                    throw new \Exception("Qty koreksi tidak valid (maksimal {$item->received_qty}).");
+                }
+
+                $available = (int) $item->received_qty - (int) $item->putaway_qty;
+                if ($qtyRev > $available) {
+                    throw new \Exception("Sebagian barang sudah di-putaway; hanya {$available} unit yang masih di bin inbound dan bisa dikoreksi.");
+                }
+
+                $this->inventoryService->adjust([
+                    'item_id'            => $item->item_id,
+                    'location_id'        => $inbound->location_id,
+                    'bin_id'             => $defaultBin->id,
+                    'qty'                => -$qtyRev,
+                    'transaction_number' => $inbound->transaction_number . '-KOREKSI',
+                    'created_by'         => "user:{$userId}",
+                ]);
+
+                $this->inboundRepository->updateItemReceivedQty($item->id, -$qtyRev);
+            }
+
+            return $this->getById($inboundId);
+        });
+    }
+
     public function cancel(string $inboundId): Inbound
     {
         return DB::transaction(function () use ($inboundId) {
