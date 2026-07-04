@@ -846,7 +846,7 @@ class SalesOrderController extends Controller
                     'driver_call_message'      => $order->driver_call_message,
                     'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
                 ],
-            ], 502);
+            ], 422);
         }
 
         $options = array_filter([
