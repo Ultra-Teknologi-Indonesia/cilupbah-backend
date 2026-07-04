@@ -33,6 +33,9 @@ class StoreSalesOrderManualRequest extends FormRequest
             'shipping_cost'       => ['nullable', 'numeric', 'min:0'],
             'shipping_discount'   => ['nullable', 'numeric', 'min:0'],
             'insurance_cost'      => ['nullable', 'numeric', 'min:0'],
+            'service_fee'         => ['nullable', 'numeric', 'min:0'],
+            'seller_voucher'      => ['nullable', 'numeric', 'min:0'],
+            'order_processing_fee' => ['nullable', 'numeric', 'min:0'],
             'grand_total'         => ['nullable', 'numeric', 'min:0'],
             'price_includes_tax'  => ['nullable', 'boolean'],
 

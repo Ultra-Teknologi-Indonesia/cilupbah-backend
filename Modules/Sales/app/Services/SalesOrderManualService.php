@@ -57,6 +57,9 @@ class SalesOrderManualService
                 'shipping_cost'       => (float) ($payload['shipping_cost'] ?? 0),
                 'shipping_discount'   => (float) ($payload['shipping_discount'] ?? 0),
                 'insurance_cost'      => (float) ($payload['insurance_cost'] ?? 0),
+                'service_fee'         => (float) ($payload['service_fee'] ?? 0),
+                'seller_voucher'      => (float) ($payload['seller_voucher'] ?? 0),
+                'order_processing_fee' => (float) ($payload['order_processing_fee'] ?? 0),
                 'grand_total'         => $totals['grand_total'],
                 'price_includes_tax'  => (bool) ($payload['price_includes_tax'] ?? false),
 
@@ -139,18 +142,22 @@ class SalesOrderManualService
             $totalDisc += $disc;
         }
 
-        $otherDisc   = (float) ($payload['other_discount'] ?? 0);
-        $tax         = (float) ($payload['total_tax'] ?? 0);
-        $ship        = (float) ($payload['shipping_cost'] ?? 0);
-        $shipDisc    = (float) ($payload['shipping_discount'] ?? 0);
-        $insurance   = (float) ($payload['insurance_cost'] ?? 0);
-        $priceIncTax = (bool) ($payload['price_includes_tax'] ?? false);
+        $otherDisc     = (float) ($payload['other_discount'] ?? 0);
+        $tax           = (float) ($payload['total_tax'] ?? 0);
+        $ship          = (float) ($payload['shipping_cost'] ?? 0);
+        $shipDisc      = (float) ($payload['shipping_discount'] ?? 0);
+        $insurance     = (float) ($payload['insurance_cost'] ?? 0);
+        $serviceFee    = (float) ($payload['service_fee'] ?? 0);
+        $sellerVoucher = (float) ($payload['seller_voucher'] ?? 0);
+        $procFee       = (float) ($payload['order_processing_fee'] ?? 0);
+        $priceIncTax   = (bool) ($payload['price_includes_tax'] ?? false);
 
         $net = $subTotal - $totalDisc - $otherDisc;
         if (!$priceIncTax) {
             $net += $tax;
         }
-        $grand = $net + max(0, $ship - $shipDisc) + $insurance;
+        $additional = $serviceFee - $sellerVoucher + $insurance + $procFee;
+        $grand = $net + max(0, $ship - $shipDisc) + $additional;
 
         return [
             'sub_total'   => round($subTotal, 2),
