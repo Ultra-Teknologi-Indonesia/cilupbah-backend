@@ -183,6 +183,9 @@ class ContactController extends Controller
         summary: 'Get all contact categories',
         security: [['bearerAuth' => []]],
         tags: ['Contacts'],
+        parameters: [
+            new OA\Parameter(name: 'filter[search]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+        ],
         responses: [new OA\Response(response: 200, description: 'Successful operation')]
     )]
     public function categories(): JsonResponse
