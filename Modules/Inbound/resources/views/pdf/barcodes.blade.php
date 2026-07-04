@@ -62,7 +62,7 @@
 @foreach ($pages as $index => $page)
     <div class="container">
         <div class="content">
-            <img class="qr-image" src="data:image/png;base64, {!! base64_encode(\SimpleSoftwareIO\QrCode\Facades\QrCode::format('png')->size(100)->margin(0)->generate($page['sku'])) !!}" alt="QR">
+            <img class="qr-image" src="data:image/svg+xml;base64,{!! base64_encode(\SimpleSoftwareIO\QrCode\Facades\QrCode::format('svg')->size(100)->margin(0)->generate($page['sku'])) !!}" alt="QR">
             <div class="sku">{{ $page['sku'] }}</div>
             <div class="desc">{{ \Illuminate\Support\Str::limit($page['name'], 25) }}</div>
         </div>
