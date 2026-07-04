@@ -11,6 +11,9 @@ use Modules\Inventory\Models\Inventory;
 use Modules\Outbound\Services\PicklistService;
 use Modules\Outbound\Http\Requests\CreatePicklistRequest;
 use Modules\Outbound\Http\Requests\PickItemRequest;
+use Modules\Outbound\Http\Requests\FailPickItemRequest;
+use Modules\Outbound\Http\Requests\SplitPickItemRequest;
+use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Report\Services\ReportService;
 use OpenApi\Attributes as OA;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
@@ -329,6 +332,136 @@ class PicklistController extends Controller
             return $this->successResponse($picklist, 'Pick berhasil dikoreksi.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Post(
+        path: '/api/v1/outbound/picklists/{id}/items/{itemId}/fail',
+        summary: 'Fail single picklist item (mark SHORT/REJECTED without stock mutation)',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Picklist'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'itemId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['reason_code'],
+                properties: [
+                    new OA\Property(property: 'reason_code', type: 'string', enum: ['STOCK_EMPTY', 'DAMAGED', 'REJECTED', 'MISSING', 'OTHER']),
+                    new OA\Property(property: 'reason_note', type: 'string', nullable: true),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Item ditandai gagal.'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+        ]
+    )]
+    public function failItem(string $id, string $itemId, FailPickItemRequest $request): JsonResponse
+    {
+        try {
+            $userId = (string) ($request->user()->id ?? 'system');
+            $validated = $request->validated();
+            $picklist = $this->picklistService->failPickItem(
+                $id,
+                $itemId,
+                $validated['reason_code'],
+                $validated['reason_note'] ?? null,
+                $userId,
+            );
+
+            return $this->successResponse($picklist, 'Item ditandai gagal.');
+        } catch (OutboundValidationException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        } catch (Throwable $e) {
+            report($e);
+            return $this->errorResponse('Gagal menandai item: ' . $e->getMessage(), 500);
+        }
+    }
+
+    #[OA\Post(
+        path: '/api/v1/outbound/picklists/{id}/items/{itemId}/unfail',
+        summary: 'Undo fail flag on a picklist item',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Picklist'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'itemId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Fail flag di-reset.'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+        ]
+    )]
+    public function unfailItem(string $id, string $itemId, Request $request): JsonResponse
+    {
+        try {
+            $userId = (string) ($request->user()->id ?? 'system');
+            $picklist = $this->picklistService->unfailPickItem($id, $itemId, $userId);
+
+            return $this->successResponse($picklist, 'Fail item dibatalkan.');
+        } catch (OutboundValidationException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        } catch (Throwable $e) {
+            report($e);
+            return $this->errorResponse('Gagal membatalkan fail item: ' . $e->getMessage(), 500);
+        }
+    }
+
+    #[OA\Post(
+        path: '/api/v1/outbound/picklists/{id}/items/{itemId}/split-pick',
+        summary: 'Pick a single item across multiple bins atomically',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Picklist'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'itemId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['allocations'],
+                properties: [
+                    new OA\Property(
+                        property: 'allocations',
+                        type: 'array',
+                        minItems: 2,
+                        items: new OA\Items(
+                            required: ['bin_code', 'qty'],
+                            properties: [
+                                new OA\Property(property: 'bin_code', type: 'string'),
+                                new OA\Property(property: 'qty', type: 'integer', minimum: 1),
+                            ],
+                            type: 'object',
+                        )
+                    ),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Split pick berhasil.'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+        ]
+    )]
+    public function splitPick(string $id, string $itemId, SplitPickItemRequest $request): JsonResponse
+    {
+        try {
+            $userId = (string) ($request->user()->id ?? 'system');
+            $picklist = $this->picklistService->splitPickItem(
+                $id,
+                $itemId,
+                $request->validated()['allocations'],
+                $userId,
+            );
+
+            return $this->successResponse($picklist, 'Split pick berhasil.');
+        } catch (OutboundValidationException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        } catch (Throwable $e) {
+            report($e);
+            return $this->errorResponse('Split pick gagal: ' . $e->getMessage(), 500);
         }
     }
 

@@ -5,8 +5,10 @@ namespace Modules\Outbound\Services;
 use Modules\Outbound\Repositories\PicklistRepository;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
+use Modules\Outbound\Models\PicklistItemAllocation;
 use Modules\Outbound\Jobs\ProcessPicklistCompleteJob;
 use Modules\Outbound\Exceptions\OutboundValidationException;
+use Modules\Outbound\Events\PicklistItemFailed;
 use Modules\Notification\Events\TaskAssigned;
 use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Inventory\Models\Inventory;
@@ -171,40 +173,13 @@ class PicklistService
 
         if ($delta > 0) {
             DB::transaction(function () use ($item, $bin, $picklist, $data, $delta, $itemId) {
-                $inventory = Inventory::where('item_id', $item->item_id)
-                    ->where('location_id', $picklist->location_id)
-                    ->where('bin_id', $bin->id)
-                    ->lockForUpdate()
-                    ->first();
+                $userId = (string) (Auth::id() ?? $picklist->picker_id ?? 'system');
 
-                if (!$inventory) {
-                    throw new \Exception("SKU ini tidak ditemukan di rak {$bin->bin_final_code}. Silahkan pilih rak lain.");
-                }
-
-                if ($inventory->on_hand < $delta) {
-                    throw new \Exception("Stok tidak cukup di rak {$bin->bin_final_code}. Tersedia: {$inventory->on_hand}, dibutuhkan: {$delta}. Silahkan pilih rak lain.");
-                }
-
-                $inventory->on_hand -= $delta;
-                $inventory->reserved = max(0, $inventory->reserved - $delta);
-                $inventory->recalculateAvailable();
-                $inventory->save();
+                $this->commitPickAllocation($picklist, $item, $bin, $delta, $userId);
 
                 $this->picklistRepository->updateItem($itemId, [
                     'qty_picked' => $data['qty_picked'],
                     'bin_id' => $bin->id,
-                ]);
-
-                $this->movementRepository->create([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $picklist->location_id,
-                    'bin_id'             => $bin->id,
-                    'transaction_number' => $picklist->picklist_no,
-                    'source'             => 'PICKING',
-                    'qty'                => -$delta,
-                    'balance'            => $inventory->on_hand,
-                    'transaction_date'   => now(),
-                    'created_by'         => (string) (Auth::id() ?? $picklist->picker_id ?? 'system'),
                 ]);
             });
         } elseif ($delta < 0) {
@@ -505,9 +480,17 @@ class PicklistService
             throw new OutboundValidationException("Hanya picklist DRAFT/IN_PROGRESS yang bisa di-complete (saat ini: {$picklist->status}).");
         }
 
-        $unpicked = $picklist->items->filter(fn ($item) => $item->qty_picked < $item->qty_ordered);
-        if ($unpicked->isNotEmpty()) {
-            throw new OutboundValidationException("Masih ada {$unpicked->count()} item yang belum selesai di-pick.");
+        $unfinished = $picklist->items->filter(function ($item) {
+            $picked = (int) $item->qty_picked;
+            $ordered = (int) $item->qty_ordered;
+            if ($picked >= $ordered) {
+                return false;
+            }
+            $status = $item->item_status;
+            return !in_array($status, [PicklistItem::STATUS_SHORT, PicklistItem::STATUS_REJECTED], true);
+        });
+        if ($unfinished->isNotEmpty()) {
+            throw new OutboundValidationException("Masih ada {$unfinished->count()} item yang belum di-pick atau di-fail.");
         }
 
         $this->picklistRepository->update($id, [
@@ -518,6 +501,229 @@ class PicklistService
         ProcessPicklistCompleteJob::dispatch($id);
 
         return $this->picklistRepository->findById($id);
+    }
+
+    /**
+     * Mark a single picklist item as failed (SHORT/REJECTED). No inventory mutation.
+     */
+    public function failPickItem(string $picklistId, string $itemId, string $reasonCode, ?string $reasonNote, string $userId): Picklist
+    {
+        $reasonCode = strtoupper($reasonCode);
+        $allowed = [
+            PicklistItem::REASON_STOCK_EMPTY,
+            PicklistItem::REASON_DAMAGED,
+            PicklistItem::REASON_REJECTED,
+            PicklistItem::REASON_MISSING,
+            PicklistItem::REASON_OTHER,
+        ];
+        if (!in_array($reasonCode, $allowed, true)) {
+            throw new OutboundValidationException("Alasan gagal tidak valid: {$reasonCode}.");
+        }
+
+        return DB::transaction(function () use ($picklistId, $itemId, $reasonCode, $reasonNote, $userId) {
+            $picklist = $this->picklistRepository->findById($picklistId);
+
+            if (!$picklist) {
+                throw new OutboundValidationException('Picklist tidak ditemukan.');
+            }
+
+            if (!in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS], true)) {
+                throw new OutboundValidationException("Item hanya bisa di-fail saat picklist DRAFT/IN_PROGRESS (saat ini: {$picklist->status}).");
+            }
+
+            $item = PicklistItem::where('picklist_id', $picklistId)
+                ->where('id', $itemId)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$item) {
+                throw new OutboundValidationException('Item picklist tidak ditemukan.');
+            }
+
+            if ((int) $item->qty_picked >= (int) $item->qty_ordered) {
+                throw new OutboundValidationException('Item sudah selesai di-pick. Batalkan pick dulu (unpick) sebelum tandai gagal.');
+            }
+
+            // Reject → REJECTED; Damaged → REJECTED; else (STOCK_EMPTY, MISSING, OTHER) → SHORT.
+            $itemStatus = in_array($reasonCode, [PicklistItem::REASON_DAMAGED, PicklistItem::REASON_REJECTED], true)
+                ? PicklistItem::STATUS_REJECTED
+                : PicklistItem::STATUS_SHORT;
+
+            $failedQty = (int) $item->qty_ordered - (int) $item->qty_picked;
+
+            $this->picklistRepository->updateItem($itemId, [
+                'item_status'      => $itemStatus,
+                'fail_reason_code' => $reasonCode,
+                'fail_reason_note' => $reasonNote,
+                'failed_qty'       => $failedQty,
+                'failed_at'        => now(),
+                'failed_by'        => $userId ?: null,
+            ]);
+
+            PicklistItemFailed::dispatch($picklistId, $itemId, $reasonCode, $failedQty, (string) ($userId ?: 'system'));
+
+            return $this->picklistRepository->findById($picklistId);
+        });
+    }
+
+    /**
+     * Undo a fail flag on a single picklist item. Restores item_status to null (derive).
+     */
+    public function unfailPickItem(string $picklistId, string $itemId, string $userId): Picklist
+    {
+        return DB::transaction(function () use ($picklistId, $itemId) {
+            $picklist = $this->picklistRepository->findById($picklistId);
+
+            if (!$picklist) {
+                throw new OutboundValidationException('Picklist tidak ditemukan.');
+            }
+
+            if (!in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS], true)) {
+                throw new OutboundValidationException("Undo fail hanya bisa saat picklist DRAFT/IN_PROGRESS (saat ini: {$picklist->status}).");
+            }
+
+            $item = PicklistItem::where('picklist_id', $picklistId)
+                ->where('id', $itemId)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$item) {
+                throw new OutboundValidationException('Item picklist tidak ditemukan.');
+            }
+
+            $this->picklistRepository->updateItem($itemId, [
+                'item_status'      => null,
+                'fail_reason_code' => null,
+                'fail_reason_note' => null,
+                'failed_qty'       => null,
+                'failed_at'        => null,
+                'failed_by'        => null,
+            ]);
+
+            return $this->picklistRepository->findById($picklistId);
+        });
+    }
+
+    /**
+     * Pick a single item across multiple bins in one atomic call.
+     * $allocations = [['bin_code' => 'LX-BX-KX-RX6', 'qty' => 5], ...]
+     */
+    public function splitPickItem(string $picklistId, string $itemId, array $allocations, string $userId): Picklist
+    {
+        if (count($allocations) < 2) {
+            throw new OutboundValidationException('Split pick minimal 2 alokasi rak.');
+        }
+
+        return DB::transaction(function () use ($picklistId, $itemId, $allocations, $userId) {
+            $picklist = $this->picklistRepository->findById($picklistId);
+
+            if (!$picklist) {
+                throw new OutboundValidationException('Picklist tidak ditemukan.');
+            }
+
+            if (!in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS], true)) {
+                throw new OutboundValidationException("Picklist tidak bisa di-pick (status saat ini: {$picklist->status}).");
+            }
+
+            $item = PicklistItem::where('picklist_id', $picklistId)
+                ->where('id', $itemId)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$item) {
+                throw new OutboundValidationException('Item picklist tidak ditemukan.');
+            }
+
+            $remaining = (int) $item->qty_ordered - (int) $item->qty_picked;
+            if ($remaining <= 0) {
+                throw new OutboundValidationException('Item sudah selesai di-pick.');
+            }
+
+            $sum = 0;
+            foreach ($allocations as $alloc) {
+                $sum += (int) ($alloc['qty'] ?? 0);
+            }
+
+            if ($sum > $remaining) {
+                throw new OutboundValidationException("Total qty alokasi ({$sum}) melebihi sisa yang perlu di-pick ({$remaining}).");
+            }
+
+            $lastBinId = null;
+            $totalNewlyPicked = 0;
+            foreach ($allocations as $alloc) {
+                $binCode = (string) ($alloc['bin_code'] ?? '');
+                $qty = (int) ($alloc['qty'] ?? 0);
+                if ($qty <= 0 || $binCode === '') {
+                    throw new OutboundValidationException('Alokasi tidak valid.');
+                }
+
+                $bin = $this->resolveBin($picklist, $binCode);
+                $this->commitPickAllocation($picklist, $item, $bin, $qty, $userId);
+                $lastBinId = $bin->id;
+                $totalNewlyPicked += $qty;
+            }
+
+            $this->picklistRepository->updateItem($itemId, [
+                'qty_picked' => (int) $item->qty_picked + $totalNewlyPicked,
+                'bin_id'     => $lastBinId,
+            ]);
+
+            return $this->picklistRepository->findById($picklistId);
+        });
+    }
+
+    /**
+     * Shared low-level allocation commit: lock inventory row, assert stock, decrement,
+     * write movement, and record picklist_item_allocations row.
+     *
+     * Caller is responsible for wrapping in DB::transaction and updating
+     * picklist_items.qty_picked / bin_id.
+     */
+    private function commitPickAllocation(Picklist $picklist, PicklistItem $item, LocationBin $bin, int $qty, string $userId): void
+    {
+        if ($qty <= 0) {
+            return;
+        }
+
+        $inventory = Inventory::where('item_id', $item->item_id)
+            ->where('location_id', $picklist->location_id)
+            ->where('bin_id', $bin->id)
+            ->lockForUpdate()
+            ->first();
+
+        if (!$inventory) {
+            throw new OutboundValidationException("SKU ini tidak ditemukan di rak {$bin->bin_final_code}. Silahkan pilih rak lain.");
+        }
+
+        if ($inventory->on_hand < $qty) {
+            throw new OutboundValidationException("Stok tidak cukup di rak {$bin->bin_final_code}. Tersedia: {$inventory->on_hand}, dibutuhkan: {$qty}. Silahkan pilih rak lain.");
+        }
+
+        $inventory->on_hand -= $qty;
+        $inventory->reserved = max(0, $inventory->reserved - $qty);
+        $inventory->recalculateAvailable();
+        $inventory->save();
+
+        $movement = $this->movementRepository->create([
+            'item_id'            => $item->item_id,
+            'location_id'        => $picklist->location_id,
+            'bin_id'             => $bin->id,
+            'transaction_number' => $picklist->picklist_no,
+            'source'             => 'PICKING',
+            'qty'                => -$qty,
+            'balance'            => $inventory->on_hand,
+            'transaction_date'   => now(),
+            'created_by'         => $userId ?: 'system',
+        ]);
+
+        PicklistItemAllocation::create([
+            'picklist_item_id' => $item->id,
+            'bin_id'           => $bin->id,
+            'qty'              => $qty,
+            'picked_at'        => now(),
+            'picked_by'        => $userId ?: null,
+            'movement_id'      => is_object($movement) ? ($movement->id ?? null) : null,
+        ]);
     }
 
     public function failPick(string $id, ?string $reason = null): Picklist

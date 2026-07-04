@@ -40,6 +40,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('picklists/{id}/items/{itemId}/pick', [PicklistController::class, 'pickItem'])->name('outbound.picklists.pick-item');
     Route::delete('picklists/{id}/pick', [PicklistController::class, 'unpickItems'])->name('outbound.picklists.unpick-items');
     Route::delete('picklists/{id}/items/{itemId}/pick', [PicklistController::class, 'unpickItem'])->name('outbound.picklists.unpick-item');
+    Route::post('picklists/{id}/items/{itemId}/fail', [PicklistController::class, 'failItem'])->name('outbound.picklists.fail-item');
+    Route::post('picklists/{id}/items/{itemId}/unfail', [PicklistController::class, 'unfailItem'])->name('outbound.picklists.unfail-item');
+    Route::post('picklists/{id}/items/{itemId}/split-pick', [PicklistController::class, 'splitPick'])->name('outbound.picklists.split-pick');
     Route::post('picklists/{id}/complete', [PicklistController::class, 'complete'])->name('outbound.picklists.complete');
     Route::post('picklists/{id}/fail', [PicklistController::class, 'fail'])->name('outbound.picklists.fail');
     Route::post('picklists/{id}/cancel', [PicklistController::class, 'cancel'])->name('outbound.picklists.cancel');
