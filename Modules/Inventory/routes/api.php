@@ -10,6 +10,7 @@ use Modules\Inventory\Http\Controllers\StockOpnameController;
 use Modules\Inventory\Http\Controllers\StockRevaluationController;
 use Modules\Inventory\Http\Controllers\PriceListController;
 use Modules\Inventory\Http\Controllers\BundleController;
+use Modules\Inventory\Http\Controllers\StockReplenishmentController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inventory', [InventoryController::class, 'stockItems'])->name('inventory.index');
@@ -184,5 +185,13 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('/{id}/start', [PutawayController::class, 'start'])->name('putaway.start');
         Route::post('/{id}/items/{itemId}/process', [PutawayController::class, 'processItem'])->name('putaway.processItem');
         Route::post('/{id}/complete', [PutawayController::class, 'complete'])->name('putaway.complete');
+    });
+
+    Route::prefix('stock-replenishment')->group(function () {
+        Route::get('/', [StockReplenishmentController::class, 'index'])->name('stockReplenishment.index');
+        Route::get('/pending-count', [StockReplenishmentController::class, 'pendingCount'])->name('stockReplenishment.pendingCount');
+        Route::post('/', [StockReplenishmentController::class, 'store'])->name('stockReplenishment.store');
+        Route::post('/{id}/accept', [StockReplenishmentController::class, 'accept'])->name('stockReplenishment.accept');
+        Route::post('/{id}/reject', [StockReplenishmentController::class, 'reject'])->name('stockReplenishment.reject');
     });
 });
