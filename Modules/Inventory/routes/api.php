@@ -187,11 +187,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('/{id}/complete', [PutawayController::class, 'complete'])->name('putaway.complete');
     });
 
-    Route::prefix('stock-replenishment')->group(function () {
-        Route::get('/', [StockReplenishmentController::class, 'index'])->name('stockReplenishment.index');
-        Route::get('/pending-count', [StockReplenishmentController::class, 'pendingCount'])->name('stockReplenishment.pendingCount');
-        Route::post('/', [StockReplenishmentController::class, 'store'])->name('stockReplenishment.store');
-        Route::post('/{id}/accept', [StockReplenishmentController::class, 'accept'])->name('stockReplenishment.accept');
-        Route::post('/{id}/reject', [StockReplenishmentController::class, 'reject'])->name('stockReplenishment.reject');
+    Route::prefix('inventory/stock-replenishment')->group(function () {
+        Route::get('/', [StockReplenishmentController::class, 'index'])->name('inventory.stockReplenishment.index');
+        Route::get('/pending-count', [StockReplenishmentController::class, 'pendingCount'])->name('inventory.stockReplenishment.pendingCount');
+        Route::post('/', [StockReplenishmentController::class, 'store'])->name('inventory.stockReplenishment.store');
+        Route::post('/{id}/accept', [StockReplenishmentController::class, 'accept'])->name('inventory.stockReplenishment.accept');
+        Route::post('/{id}/reject', [StockReplenishmentController::class, 'reject'])->name('inventory.stockReplenishment.reject');
     });
 });
