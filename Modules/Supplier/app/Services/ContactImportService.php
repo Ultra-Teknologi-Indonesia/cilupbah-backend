@@ -195,7 +195,12 @@ class ContactImportService
                 $addError(['No. Telepon', 'Email'], 'No. Telepon atau Email wajib diisi (minimal salah satu)');
             }
             if (! empty($raw['No. Telepon'])) {
-                $mapped['phone'] = $raw['No. Telepon'];
+                $phone = $this->normalizePhone($raw['No. Telepon']);
+                if ($phone === null) {
+                    $addError('No. Telepon', 'Format No. Telepon tidak valid (contoh: +628123456789 atau 08123456789)');
+                } else {
+                    $mapped['phone'] = $phone;
+                }
             }
             if (! empty($raw['Email'])) {
                 if (! filter_var($raw['Email'], FILTER_VALIDATE_EMAIL)) {
@@ -246,6 +251,31 @@ class ContactImportService
             'valid_count'   => count($valid),
             'invalid_count' => count($invalid),
         ];
+    }
+
+    /**
+     * Normalisasi nomor telepon ke E.164: 08xx → +628xx, 62xx → +62xx,
+     * 00xx → +xx. Mengembalikan null jika hasilnya bukan nomor valid.
+     */
+    private function normalizePhone(string $value): ?string
+    {
+        $digits = preg_replace('/[\s().\-]/', '', trim($value));
+
+        if (str_starts_with($digits, '+')) {
+            $normalized = $digits;
+        } elseif (str_starts_with($digits, '00')) {
+            $normalized = '+' . substr($digits, 2);
+        } elseif (str_starts_with($digits, '0')) {
+            $normalized = '+62' . ltrim($digits, '0');
+        } elseif (str_starts_with($digits, '62')) {
+            $normalized = '+' . $digits;
+        } else {
+            $normalized = '+62' . $digits;
+        }
+
+        return preg_match('/^\+[1-9][0-9]{6,14}$/', $normalized) === 1
+            ? $normalized
+            : null;
     }
 
     public function saveRows(array $rows): int

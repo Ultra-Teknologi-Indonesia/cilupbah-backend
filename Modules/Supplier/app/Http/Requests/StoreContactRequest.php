@@ -17,9 +17,9 @@ class StoreContactRequest extends FormRequest
             'name'                    => 'required|string|max:255',
             'company_name'            => 'nullable|string|max:255',
             'email'                   => 'nullable|email|max:255',
-            'phone'                   => 'nullable|string|max:30',
-            'mobile'                  => 'nullable|string|max:30',
-            'fax'                     => 'nullable|string|max:30',
+            'phone'                   => ['nullable', 'string', 'max:30', 'regex:/^\+[1-9][0-9]{6,14}$/'],
+            'mobile'                  => ['nullable', 'string', 'max:30', 'regex:/^\+[1-9][0-9]{6,14}$/'],
+            'fax'                     => ['nullable', 'string', 'max:30', 'regex:/^\+[1-9][0-9]{6,14}$/'],
             'address'                 => 'required|string',
             'city'                    => 'nullable|string|max:255',
             'province'                => 'nullable|string|max:255',
@@ -52,6 +52,15 @@ class StoreContactRequest extends FormRequest
             'npwp_use_different'      => 'nullable|boolean',
             'npwp_name'               => 'nullable|string|max:255',
             'npwp_address'            => 'nullable|string',
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'phone.regex'  => 'Format No. Telepon tidak valid. Gunakan format internasional, contoh: +628123456789.',
+            'mobile.regex' => 'Format No. HP tidak valid. Gunakan format internasional, contoh: +628123456789.',
+            'fax.regex'    => 'Format Fax tidak valid. Gunakan format internasional, contoh: +62211234567.',
         ];
     }
 }

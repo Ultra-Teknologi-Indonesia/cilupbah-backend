@@ -22,7 +22,7 @@ class UpdateLocationRequest extends FormRequest
             'address' => 'nullable|string',
             'village_id' => 'nullable|string|exists:villages,id',
             'post_code' => 'nullable|string|max:20',
-            'phone' => 'nullable|string|max:30',
+            'phone' => ['nullable', 'string', 'max:30', 'regex:/^\+[1-9][0-9]{6,14}$/'],
             'email' => 'nullable|email|max:255',
             'coordinate' => 'nullable|string|max:100',
             'is_warehouse' => 'nullable|boolean',
@@ -43,6 +43,13 @@ class UpdateLocationRequest extends FormRequest
             'layout.*.racks.*.bin_code' => 'required|string|max:20',
             'layout.*.racks.*.bin_final_code' => 'required|string|max:100',
             'layout.*.racks.*.max_qty' => 'nullable|integer|min:0',
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'phone.regex' => 'Format No. Telepon tidak valid. Gunakan format internasional, contoh: +628123456789.',
         ];
     }
 }

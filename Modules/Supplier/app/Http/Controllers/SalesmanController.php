@@ -26,10 +26,12 @@ class SalesmanController extends Controller
             $request->validate([
                 'name' => 'required|string|max:255',
                 'code' => 'nullable|string|max:20|unique:salesmen,code',
-                'phone' => 'nullable|string|max:30',
+                'phone' => ['nullable', 'string', 'max:30', 'regex:/^\+[1-9][0-9]{6,14}$/'],
                 'email' => 'nullable|email|max:255',
                 'status' => 'nullable|string|in:active,inactive',
                 'notes' => 'nullable|string',
+            ], [
+                'phone.regex' => 'Format Telepon tidak valid. Gunakan format internasional, contoh: +628123456789.',
             ]);
             $salesman = $this->salesmanService->create($request->all());
             return $this->successResponse($salesman, 'Salesman berhasil ditambahkan');
@@ -53,10 +55,12 @@ class SalesmanController extends Controller
             $request->validate([
                 'name' => 'nullable|string|max:255',
                 'code' => 'nullable|string|max:20|unique:salesmen,code,' . $id,
-                'phone' => 'nullable|string|max:30',
+                'phone' => ['nullable', 'string', 'max:30', 'regex:/^\+[1-9][0-9]{6,14}$/'],
                 'email' => 'nullable|email|max:255',
                 'status' => 'nullable|string|in:active,inactive',
                 'notes' => 'nullable|string',
+            ], [
+                'phone.regex' => 'Format Telepon tidak valid. Gunakan format internasional, contoh: +628123456789.',
             ]);
             $salesman = $this->salesmanService->update($id, $request->all());
             return $this->successResponse($salesman, 'Salesman berhasil diperbarui');
