@@ -4,8 +4,10 @@ namespace Modules\IssueTracker\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Storage;
 use Modules\IssueTracker\Http\Requests\StoreIssueRequest;
 use Modules\IssueTracker\Models\Issue;
+use Modules\IssueTracker\Models\IssueAttachment;
 use Modules\IssueTracker\Models\IssueCategory;
 use Modules\IssueTracker\Services\IssueService;
 
@@ -124,6 +126,22 @@ class IssueController extends Controller
         ], $request->file('attachments', []));
 
         return back()->with('success', 'Komentar berhasil ditambahkan.');
+    }
+
+    public function attachment(IssueAttachment $attachment)
+    {
+        $disk = Storage::disk('public');
+
+        if (!$disk->exists($attachment->file_path)) {
+            abort(404, 'File tidak ditemukan.');
+        }
+
+        return $disk->response(
+            $attachment->file_path,
+            $attachment->file_name,
+            ['Content-Type' => $attachment->mime_type ?: 'application/octet-stream'],
+            'inline'
+        );
     }
 
     public function export(Request $request)

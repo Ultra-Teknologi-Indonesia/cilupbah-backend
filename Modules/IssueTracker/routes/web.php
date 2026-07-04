@@ -8,6 +8,7 @@ Route::prefix('issues')->name('issues.')->group(function () {
     Route::get('/create', [IssueController::class, 'create'])->name('create');
     Route::post('/', [IssueController::class, 'store'])->middleware('throttle:5,1')->name('store');
     Route::get('/export', [IssueController::class, 'export'])->name('export');
+    Route::get('/attachments/{attachment}', [IssueController::class, 'attachment'])->name('attachments.show');
     Route::get('/track/{token}', [IssueController::class, 'track'])->name('track');
     Route::get('/{issue}', [IssueController::class, 'show'])->name('show');
     Route::put('/{issue}/status', [IssueController::class, 'updateStatus'])->name('status');

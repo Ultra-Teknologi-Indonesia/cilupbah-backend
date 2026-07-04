@@ -54,10 +54,11 @@
                     <p class="mb-2 text-xs font-medium text-gray-500">Lampiran:</p>
                     <div class="flex flex-wrap gap-2">
                         @foreach($issue->attachments->where('comment_id', null) as $att)
-                            <a href="{{ asset('storage/' . $att->file_path) }}" target="_blank"
+                            <a href="{{ route('issues.attachments.show', $att) }}" target="_blank" rel="noopener"
                                class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100">
                                 <svg class="mr-1 h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
-                                {{ $att->original_name }}
+                                <span class="max-w-[220px] truncate">{{ $att->file_name }}</span>
+                                <span class="ml-1.5 text-[10px] text-gray-400">{{ number_format($att->file_size / 1024, 0) }} KB</span>
                             </a>
                         @endforeach
                     </div>
@@ -110,9 +111,9 @@
                             @if($comment->attachments->count())
                                 <div class="mt-2 flex flex-wrap gap-1.5">
                                     @foreach($comment->attachments as $att)
-                                        <a href="{{ asset('storage/' . $att->file_path) }}" target="_blank"
+                                        <a href="{{ route('issues.attachments.show', $att) }}" target="_blank" rel="noopener"
                                            class="inline-flex items-center rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] text-gray-500 hover:bg-gray-100">
-                                            {{ $att->original_name }}
+                                            <span class="max-w-[180px] truncate">{{ $att->file_name }}</span>
                                         </a>
                                     @endforeach
                                 </div>
