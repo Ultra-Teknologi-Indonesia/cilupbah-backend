@@ -24,6 +24,7 @@ use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
 use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Models\ShipmentOrder;
+use Modules\Warehouse\Models\Location;
 
 class SalesOrderService
 {
@@ -1343,11 +1344,27 @@ class SalesOrderService
 
     private function resolveLocationId(SalesOrder $order): string
     {
-        if ($order->location_id) {
+        // Semua pesanan dari channel (Shopee/TikTok/Lazada/dst) selalu
+        // di-assign ke Gudang Kecil, terlepas dari mapping historis di
+        // channel_warehouses. Hanya pesanan manual yang boleh menghormati
+        // location_id yang sudah di-set user.
+        $isManual = $this->isManualSource($order->source);
+
+        if ($isManual && $order->location_id) {
             return $order->location_id;
         }
 
-        if ($order->channel_shop_id) {
+        $kecilId = DB::table('locations')
+            ->where('location_code', Location::SYSTEM_KECIL_CODE)
+            ->value('id');
+
+        if ($kecilId) {
+            return $kecilId;
+        }
+
+        // Fallback aman: kalau Gudang Kecil belum di-seed di environment ini,
+        // pertahankan perilaku lama supaya order tidak gagal disimpan.
+        if (! $isManual && $order->channel_shop_id) {
             $mapping = DB::table('channel_warehouses')
                 ->where('store_id', $order->channel_shop_id)
                 ->first();
@@ -1357,7 +1374,10 @@ class SalesOrderService
             }
         }
 
-        $defaultLocation = DB::table('locations')->where('is_warehouse', true)->where('is_active', true)->first();
+        $defaultLocation = DB::table('locations')
+            ->where('is_warehouse', true)
+            ->where('is_active', true)
+            ->first();
 
         if (! $defaultLocation) {
             throw new LocationNotConfiguredException($order->salesorder_no ?? 'unknown');

@@ -4,6 +4,7 @@ namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Warehouse\Models\Location;
 
 class ChannelStockResolver
 {
@@ -37,37 +38,17 @@ class ChannelStockResolver
         return $result;
     }
 
+    /**
+     * Semua stok yang di-broadcast ke marketplace channel harus berasal dari
+     * Gudang Kecil, terlepas dari mapping historis di channel_warehouses.
+     *
+     * $shop tidak dipakai lagi untuk memilih lokasi — dipertahankan di
+     * signature supaya kompatibel dengan pemanggil existing.
+     */
     protected function resolveLocationId(ChannelShop $shop): ?string
     {
-        $cw = DB::table('channel_warehouses')->where('store_id', $shop->shop_id)->first();
-        if ($cw) {
-            return $cw->location_id;
-        }
-
-        $defaultLocation = DB::table('locations')
-            ->where('is_warehouse', true)
-            ->where('is_active', true)
-            ->where(function ($q) {
-                $q->whereNull('location_type')
-                    ->orWhere('location_type', '!=', 'TRANSIT');
-            })
-            ->orderBy('created_at')
-            ->first();
-
-        if (! $defaultLocation) {
-            return null;
-        }
-
-        DB::table('channel_warehouses')->insert([
-            'location_id' => $defaultLocation->id,
-            'channel_id' => $shop->channel_id,
-            'store_id' => $shop->shop_id,
-            'channel_location_id' => null,
-            'channel_location_type' => null,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        return $defaultLocation->id;
+        return DB::table('locations')
+            ->where('location_code', Location::SYSTEM_KECIL_CODE)
+            ->value('id');
     }
 }
