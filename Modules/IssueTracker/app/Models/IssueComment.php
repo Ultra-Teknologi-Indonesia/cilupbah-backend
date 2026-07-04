@@ -2,12 +2,17 @@
 
 namespace Modules\IssueTracker\Models;
 
+use App\Concerns\HasUploadableMedia;
+use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Spatie\MediaLibrary\HasMedia;
 
-class IssueComment extends Model
+class IssueComment extends Model implements HasMedia
 {
+    use HasUuid7, HasUploadableMedia;
+
     protected $table = 'issue_tracker_comments';
 
     protected $fillable = [
@@ -21,6 +26,11 @@ class IssueComment extends Model
     protected $casts = [
         'is_internal' => 'boolean',
     ];
+
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection(Issue::MEDIA_COLLECTION);
+    }
 
     public function issue(): BelongsTo
     {

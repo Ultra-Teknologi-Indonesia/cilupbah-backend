@@ -6,7 +6,6 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
 use Modules\IssueTracker\Models\Issue;
 use Modules\IssueTracker\Models\IssueActivity;
-use Modules\IssueTracker\Models\IssueAttachment;
 use Modules\IssueTracker\Models\IssueComment;
 
 class IssueService
@@ -92,21 +91,14 @@ class IssueService
 
     protected function handleAttachments(Issue $issue, ?IssueComment $comment, array $files): void
     {
+        $target = $comment ?? $issue;
+
         foreach ($files as $file) {
             if (!$file instanceof UploadedFile) {
                 continue;
             }
 
-            $path = $file->store('issue-tracker/' . $issue->id, 'public');
-
-            IssueAttachment::create([
-                'issue_id' => $issue->id,
-                'comment_id' => $comment?->id,
-                'file_path' => $path,
-                'file_name' => $file->getClientOriginalName(),
-                'mime_type' => $file->getMimeType(),
-                'file_size' => $file->getSize(),
-            ]);
+            $target->uploadMedia($file, Issue::MEDIA_COLLECTION);
         }
     }
 }

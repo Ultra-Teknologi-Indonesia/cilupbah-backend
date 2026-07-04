@@ -2,6 +2,7 @@
 
 namespace Modules\IssueTracker\Providers;
 
+use Modules\IssueTracker\Console\MigrateAttachmentsToMediaLibraryCommand;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class IssueTrackerServiceProvider extends ModuleServiceProvider
@@ -12,5 +13,9 @@ class IssueTrackerServiceProvider extends ModuleServiceProvider
 
     protected array $providers = [
         RouteServiceProvider::class,
+    ];
+
+    protected array $commands = [
+        MigrateAttachmentsToMediaLibraryCommand::class,
     ];
 }

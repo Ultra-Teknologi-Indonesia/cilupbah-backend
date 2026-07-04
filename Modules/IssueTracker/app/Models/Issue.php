@@ -2,12 +2,19 @@
 
 namespace Modules\IssueTracker\Models;
 
+use App\Concerns\HasUploadableMedia;
+use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Spatie\MediaLibrary\HasMedia;
 
-class Issue extends Model
+class Issue extends Model implements HasMedia
 {
+    use HasUuid7, HasUploadableMedia;
+
+    public const MEDIA_COLLECTION = 'attachments';
+
     protected $table = 'issue_tracker_issues';
 
     protected $fillable = [
@@ -27,6 +34,11 @@ class Issue extends Model
     protected $casts = [
         'resolved_at' => 'datetime',
     ];
+
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection(self::MEDIA_COLLECTION);
+    }
 
     public function category(): BelongsTo
     {

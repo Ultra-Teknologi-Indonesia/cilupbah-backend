@@ -7,9 +7,10 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Storage;
 use Modules\IssueTracker\Http\Requests\StoreIssueRequest;
 use Modules\IssueTracker\Models\Issue;
-use Modules\IssueTracker\Models\IssueAttachment;
 use Modules\IssueTracker\Models\IssueCategory;
+use Modules\IssueTracker\Models\IssueComment;
 use Modules\IssueTracker\Services\IssueService;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class IssueController extends Controller
 {
@@ -79,7 +80,7 @@ class IssueController extends Controller
 
     public function show(Issue $issue)
     {
-        $issue->load(['category', 'comments.attachments', 'attachments', 'activities']);
+        $issue->load(['category', 'comments.media', 'media', 'activities']);
 
         return view('issue-tracker::show', compact('issue'));
     }
@@ -128,18 +129,23 @@ class IssueController extends Controller
         return back()->with('success', 'Komentar berhasil ditambahkan.');
     }
 
-    public function attachment(IssueAttachment $attachment)
+    public function attachment(Media $media)
     {
-        $disk = Storage::disk('public');
+        if (!in_array($media->model_type, [Issue::class, IssueComment::class], true)) {
+            abort(404);
+        }
 
-        if (!$disk->exists($attachment->file_path)) {
+        $disk = Storage::disk($media->disk);
+        $path = $media->getPathRelativeToRoot();
+
+        if (!$disk->exists($path)) {
             abort(404, 'File tidak ditemukan.');
         }
 
         return $disk->response(
-            $attachment->file_path,
-            $attachment->file_name,
-            ['Content-Type' => $attachment->mime_type ?: 'application/octet-stream'],
+            $path,
+            $media->file_name,
+            ['Content-Type' => $media->mime_type ?: 'application/octet-stream'],
             'inline'
         );
     }
