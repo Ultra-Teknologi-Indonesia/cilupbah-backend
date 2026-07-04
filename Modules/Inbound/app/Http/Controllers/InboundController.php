@@ -244,6 +244,30 @@ class InboundController extends Controller
         return $this->successResponse($inbound, 'Detail Inbound berhasil diambil');
     }
 
+    #[OA\Get(
+        path: '/api/v1/inbounds/{id}/items',
+        summary: 'Get paginated inbound items with SKU filter/sort',
+        security: [['bearerAuth' => []]],
+        tags: ['Inbounds'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 1)),
+            new OA\Parameter(name: 'filter[sku]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[search]', in: 'query', required: false, description: 'Fuzzy SKU + product name', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'sku|-sku|expected_qty|-expected_qty|received_qty|-received_qty|putaway_qty|-putaway_qty|created_at|-created_at', schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Successful operation'),
+        ]
+    )]
+    public function items(string $id, Request $request): JsonResponse
+    {
+        $perPage = (int) $request->query('per_page', 10);
+        $items = $this->inboundService->getPaginatedItems($id, $perPage);
+        return $this->successPaginatedResponse($items, 'Daftar item Inbound berhasil diambil');
+    }
+
     #[OA\Post(
         path: '/api/v1/inbounds',
         summary: 'Create a draft inbound (GRN)',

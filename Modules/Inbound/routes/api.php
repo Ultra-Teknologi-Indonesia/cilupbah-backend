@@ -12,6 +12,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inbounds', [InboundController::class, 'index'])->name('inbounds.index');
     Route::post('inbounds', [InboundController::class, 'store'])->name('inbounds.store');
     Route::get('inbounds/{id}', [InboundController::class, 'show'])->name('inbounds.show');
+    Route::get('inbounds/{id}/items', [InboundController::class, 'items'])->name('inbounds.items');
     Route::get('inbounds/{id}/barcodes', [InboundController::class, 'downloadBarcodes'])->name('inbounds.downloadBarcodes');
 
     Route::post('inbounds/{id}/assign', [InboundController::class, 'assign'])->name('inbounds.assign');

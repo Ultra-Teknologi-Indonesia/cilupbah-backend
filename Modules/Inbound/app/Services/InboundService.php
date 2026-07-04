@@ -31,6 +31,11 @@ class InboundService
         return $this->inboundRepository->getAllPaginated($limit);
     }
 
+    public function getPaginatedItems(string $inboundId, int $perPage = 10)
+    {
+        return $this->inboundRepository->getPaginatedItems($inboundId, $perPage);
+    }
+
     public function getById(string $id): ?Inbound
     {
         return $this->inboundRepository->findById($id);

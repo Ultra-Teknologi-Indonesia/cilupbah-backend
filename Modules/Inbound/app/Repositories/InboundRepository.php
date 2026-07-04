@@ -8,6 +8,7 @@ use Modules\Inbound\Models\InboundItem;
 use Modules\Inbound\Models\InboundReceipt;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\AllowedSort;
 
 class InboundRepository
 {
@@ -96,6 +97,45 @@ class InboundRepository
     public function createReceipt(array $data): InboundReceipt
     {
         return InboundReceipt::create($data);
+    }
+
+    public function getPaginatedItems(string $inboundId, int $perPage)
+    {
+        $base = InboundItem::query()
+            ->where('inbound_id', $inboundId)
+            ->with([
+                'variant:id,sku,product_id',
+                'variant.product:id,name',
+                'variant.media',
+                'variant.product.media',
+                'receipts.bin',
+            ]);
+
+        return QueryBuilder::for($base)
+            ->allowedFilters([
+                AllowedFilter::partial('sku', 'variant.sku'),
+                AllowedFilter::callback('search', function ($query, $value) {
+                    $query->whereHas('variant', function ($q) use ($value) {
+                        $q->where('sku', 'ILIKE', "%{$value}%")
+                          ->orWhereHas('product', fn ($p) => $p->where('name', 'ILIKE', "%{$value}%"));
+                    });
+                }),
+            ])
+            ->allowedSorts([
+                AllowedSort::callback('sku', function ($query, bool $descending) {
+                    $query
+                        ->leftJoin('product_variants', 'inbound_items.item_id', '=', 'product_variants.id')
+                        ->orderBy('product_variants.sku', $descending ? 'desc' : 'asc')
+                        ->select('inbound_items.*');
+                }),
+                'expected_qty',
+                'received_qty',
+                'putaway_qty',
+                'created_at',
+            ])
+            ->defaultSort('created_at')
+            ->paginate($perPage)
+            ->appends(request()->query());
     }
 
     public function getReceivedItemsPaginated(int $limit = 10)

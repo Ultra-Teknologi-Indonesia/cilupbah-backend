@@ -6,6 +6,7 @@ use Modules\Purchase\Models\PurchaseOrder;
 use Modules\Purchase\Models\PurchaseOrderItem;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\AllowedSort;
 use App\Filters\FuzzyFilter;
 
 class PurchaseOrderRepository
@@ -53,9 +54,34 @@ class PurchaseOrderRepository
 
     public function getPaginatedItems(string $poId, int $perPage)
     {
-        return PurchaseOrderItem::with(['variant.product:id,name', 'variant.media', 'variant.product.media', 'variant.options'])
+        $base = PurchaseOrderItem::query()
             ->where('purchase_order_id', $poId)
-            ->paginate($perPage);
+            ->with(['variant.product:id,name', 'variant.media', 'variant.product.media', 'variant.options']);
+
+        return QueryBuilder::for($base)
+            ->allowedFilters([
+                AllowedFilter::partial('sku', 'variant.sku'),
+                AllowedFilter::callback('search', function ($query, $value) {
+                    $query->whereHas('variant', function ($q) use ($value) {
+                        $q->where('sku', 'ILIKE', "%{$value}%")
+                          ->orWhereHas('product', fn ($p) => $p->where('name', 'ILIKE', "%{$value}%"));
+                    });
+                }),
+            ])
+            ->allowedSorts([
+                AllowedSort::callback('sku', function ($query, bool $descending) {
+                    $query
+                        ->leftJoin('product_variants', 'purchase_order_items.item_id', '=', 'product_variants.id')
+                        ->orderBy('product_variants.sku', $descending ? 'desc' : 'asc')
+                        ->select('purchase_order_items.*');
+                }),
+                'qty',
+                'received_qty',
+                'created_at',
+            ])
+            ->defaultSort('created_at')
+            ->paginate($perPage)
+            ->appends(request()->query());
     }
 
     public function findByIdForUpdate(string $id): ?PurchaseOrder
