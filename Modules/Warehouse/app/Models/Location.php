@@ -55,6 +55,8 @@ class Location extends Model
     ];
 
     public const SYSTEM_TRANSIT_CODE = 'SYS-TRANSIT';
+    public const SYSTEM_PUSAT_CODE   = 'WH-PUSAT';
+    public const SYSTEM_KECIL_CODE   = 'WH-KECIL';
 
     public function village(): BelongsTo
     {

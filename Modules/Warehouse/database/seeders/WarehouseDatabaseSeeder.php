@@ -10,10 +10,21 @@ class WarehouseDatabaseSeeder extends Seeder
     public function run(): void
     {
 
-        if (! DB::table('locations')->where('location_code', 'WH-PUSAT')->exists()) {
+        if (! DB::table('locations')->where('location_code', \Modules\Warehouse\Models\Location::SYSTEM_PUSAT_CODE)->exists()) {
             $this->insertLocationWithDefaultBin([
-                'location_code' => 'WH-PUSAT',
+                'location_code' => \Modules\Warehouse\Models\Location::SYSTEM_PUSAT_CODE,
                 'location_name' => 'Gudang Pusat',
+                'location_type' => 'Gudang',
+                'is_warehouse' => true,
+                'is_system' => true,
+                'is_locked' => false,
+            ]);
+        }
+
+        if (! DB::table('locations')->where('location_code', \Modules\Warehouse\Models\Location::SYSTEM_KECIL_CODE)->exists()) {
+            $this->insertLocationWithDefaultBin([
+                'location_code' => \Modules\Warehouse\Models\Location::SYSTEM_KECIL_CODE,
+                'location_name' => 'Gudang Kecil',
                 'location_type' => 'Gudang',
                 'is_warehouse' => true,
                 'is_system' => true,
