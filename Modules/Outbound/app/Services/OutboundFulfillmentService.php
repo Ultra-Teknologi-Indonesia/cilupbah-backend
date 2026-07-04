@@ -57,12 +57,23 @@ class OutboundFulfillmentService
                 switch ($source) {
                     case 'shopee':
                         $this->assertChannelRefs($source, $shopId, $channelOrderNo);
-                        $ship = $this->shopeeOrderService->shipOrder($shopId, $channelOrderNo);
-                        if (!empty($ship['shipped'])) {
-                            $results[] = $this->result($order, 'success', 'Shopee: berhasil dikirim (RTS).');
+                        
+                        if ($order->channel_status === 'RETRY_SHIP') {
+                            $ship = $this->shopeeOrderService->retryPickup($shopId, $channelOrderNo);
+                            if (!empty($ship['updated'])) {
+                                $results[] = $this->result($order, 'success', 'Shopee: berhasil dijadwalkan ulang (Retry Pickup).');
+                            } else {
+                                $err = is_array($ship) ? ($ship['error'] ?? null) : null;
+                                $results[] = $this->result($order, 'failed', 'Shopee: gagal retry pickup' . ($err ? " ({$err})" : '') . '.');
+                            }
                         } else {
-                            $err = is_array($ship) ? ($ship['error'] ?? null) : null;
-                            $results[] = $this->result($order, 'failed', 'Shopee: gagal ship_order' . ($err ? " ({$err})" : '') . '.');
+                            $ship = $this->shopeeOrderService->shipOrder($shopId, $channelOrderNo);
+                            if (!empty($ship['shipped'])) {
+                                $results[] = $this->result($order, 'success', 'Shopee: berhasil dikirim (RTS).');
+                            } else {
+                                $err = is_array($ship) ? ($ship['error'] ?? null) : null;
+                                $results[] = $this->result($order, 'failed', 'Shopee: gagal ship_order' . ($err ? " ({$err})" : '') . '.');
+                            }
                         }
                         break;
 

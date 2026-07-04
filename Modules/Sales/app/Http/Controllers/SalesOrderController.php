@@ -807,8 +807,13 @@ class SalesOrderController extends Controller
         $driverCallMessage = null;
 
         try {
-            $result = $shopee->shipOrder($shopId, $orderSn);
-            $shipped = (bool) ($result['shipped'] ?? false);
+            if ($order->channel_status === 'RETRY_SHIP') {
+                $result = $shopee->retryPickup($shopId, $orderSn);
+                $shipped = (bool) ($result['updated'] ?? false);
+            } else {
+                $result = $shopee->shipOrder($shopId, $orderSn);
+                $shipped = (bool) ($result['shipped'] ?? false);
+            }
             $error = (string) ($result['error'] ?? '');
             $alreadyShipped = $error !== '' && preg_match('/already|duplicate|shipped/i', $error);
 

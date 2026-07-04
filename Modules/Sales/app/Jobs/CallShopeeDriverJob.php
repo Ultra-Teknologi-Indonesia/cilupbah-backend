@@ -64,7 +64,11 @@ class CallShopeeDriverJob implements ShouldQueue
         ]);
 
         try {
-            $result = $shopee->shipOrder($shopId, $orderSn);
+            if ($order->channel_status === 'RETRY_SHIP') {
+                $result = $shopee->retryPickup($shopId, $orderSn);
+            } else {
+                $result = $shopee->shipOrder($shopId, $orderSn);
+            }
         } catch (\Throwable $e) {
             $order->update([
                 'driver_call_status'  => 'failed',
