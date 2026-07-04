@@ -337,7 +337,11 @@ class OutboundFulfillmentController extends Controller
         $query = User::query();
 
         if ($request->filled('location_id')) {
-            $query->where('warehouse_id', $request->query('location_id'));
+            $locationId = $request->query('location_id');
+            $query->where(function ($q) use ($locationId) {
+                $q->where('warehouse_id', $locationId)
+                  ->orWhereNull('warehouse_id');
+            });
         }
 
         if ($request->filled('role')) {
