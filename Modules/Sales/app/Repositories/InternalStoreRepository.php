@@ -11,7 +11,7 @@ class InternalStoreRepository
     public function getAllPaginated(int $perPage = 20)
     {
         return QueryBuilder::for(InternalStore::class)
-            ->allowedFilters([
+            ->allowedFilters(
                 AllowedFilter::exact('is_active'),
                 AllowedFilter::callback('search', function ($query, $value) {
                     $query->where(function ($q) use ($value) {
@@ -19,8 +19,8 @@ class InternalStoreRepository
                             ->orWhere('code', 'like', "%{$value}%");
                     });
                 }),
-            ])
-            ->allowedSorts(['name', 'code', 'created_at'])
+            )
+            ->allowedSorts('name', 'code', 'created_at')
             ->defaultSort('-created_at')
             ->paginate($perPage);
     }
