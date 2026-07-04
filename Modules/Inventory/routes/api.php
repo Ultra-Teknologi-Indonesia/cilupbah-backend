@@ -191,6 +191,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('/', [StockReplenishmentController::class, 'index'])->name('inventory.stockReplenishment.index');
         Route::get('/pending-count', [StockReplenishmentController::class, 'pendingCount'])->name('inventory.stockReplenishment.pendingCount');
         Route::post('/', [StockReplenishmentController::class, 'store'])->name('inventory.stockReplenishment.store');
+        Route::get('/{id}', [StockReplenishmentController::class, 'show'])->name('inventory.stockReplenishment.show');
         Route::post('/{id}/accept', [StockReplenishmentController::class, 'accept'])->name('inventory.stockReplenishment.accept');
         Route::post('/{id}/reject', [StockReplenishmentController::class, 'reject'])->name('inventory.stockReplenishment.reject');
     });

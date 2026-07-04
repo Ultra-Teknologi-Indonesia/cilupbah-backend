@@ -53,6 +53,27 @@ class StockReplenishmentController extends Controller
         return $this->successResponse(['count' => $count], 'Jumlah permintaan pending');
     }
 
+    public function show(string $id): JsonResponse
+    {
+        $req = StockReplenishmentRequest::with([
+            'items',
+            'fromLocation',
+            'toLocation',
+            'assignee',
+            'requester',
+            'transferOut',
+        ])->find($id);
+
+        if (! $req) {
+            return $this->errorResponse('Permintaan tidak ditemukan', 404);
+        }
+
+        return $this->successResponse(
+            new StockReplenishmentResource($req),
+            'Detail permintaan pengisian stok',
+        );
+    }
+
     public function store(StoreStockReplenishmentRequest $request): JsonResponse
     {
         $req = $this->service->create($request->validated());
