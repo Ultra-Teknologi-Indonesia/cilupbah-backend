@@ -279,9 +279,44 @@ class PicklistController extends Controller
         return $this->successResponse(null, 'Item berhasil di-pick.');
     }
 
+    #[OA\Delete(
+        path: '/api/v1/outbound/picklists/{id}/items/{itemId}/pick',
+        summary: 'Koreksi salah scan pick: kembalikan stok yang sudah di-pick ke rak asal',
+        security: [['bearerAuth' => []]],
+        tags: ['Picklist'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'itemId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(required: false, content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: 'qty', type: 'integer', nullable: true, description: 'Qty yang dikoreksi; kosong = seluruh qty yang sudah di-pick'),
+            ]
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'Pick berhasil dikoreksi.'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+        ]
+    )]
+    public function unpickItem(string $id, string $itemId, Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'qty' => 'nullable|integer|min:1',
+        ]);
+
+        try {
+            $userId = (string) ($request->user()->id ?? 'system');
+            $picklist = $this->picklistService->unpickItem($id, $itemId, $validated['qty'] ?? null, $userId);
+
+            return $this->successResponse($picklist, 'Pick berhasil dikoreksi.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
     #[OA\Post(
         path: '/api/v1/outbound/picklists/{id}/scan',
-        summary: 'Validate SKU against active bin before opening qty modal (no stock mutation)',
+        summary: 'Resolve SKU→bin: auto-suggest bin from inventory kalau bin_code kosong; strict validate kalau diberi (no stock mutation)',
         security: [['bearerAuth' => []]],
         tags: ['Outbound - Picklist'],
         parameters: [
@@ -290,10 +325,11 @@ class PicklistController extends Controller
         requestBody: new OA\RequestBody(
             required: true,
             content: new OA\JsonContent(
-                required: ['sku', 'bin_code'],
+                required: ['sku'],
                 properties: [
                     new OA\Property(property: 'sku', type: 'string'),
-                    new OA\Property(property: 'bin_code', type: 'string'),
+                    new OA\Property(property: 'bin_code', type: 'string', nullable: true, description: 'Override manual. Kalau diisi → jalur strict. Kalau tidak → BE auto-resolve dari inventory.'),
+                    new OA\Property(property: 'hint_active_bin_code', type: 'string', nullable: true, description: 'Rak aktif di UI. Dipakai BE untuk prefer bin ini kalau masih valid.'),
                 ]
             )
         ),
@@ -306,10 +342,16 @@ class PicklistController extends Controller
     {
         $validated = $request->validate([
             'sku' => 'required|string',
-            'bin_code' => 'required|string',
+            'bin_code' => 'nullable|string',
+            'hint_active_bin_code' => 'nullable|string',
         ]);
 
-        $result = $this->picklistService->scanForPick($id, $validated['sku'], $validated['bin_code']);
+        $result = $this->picklistService->scanForPick(
+            $id,
+            $validated['sku'],
+            $validated['bin_code'] ?? null,
+            $validated['hint_active_bin_code'] ?? null,
+        );
 
         return $this->successResponse($result);
     }

@@ -11,6 +11,7 @@ use Modules\Notification\Events\TaskAssigned;
 use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
+use Modules\Inventory\Services\InventoryService;
 use Modules\Warehouse\Models\LocationBin;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +21,7 @@ class PicklistService
     public function __construct(
         protected PicklistRepository $picklistRepository,
         protected InventoryMovementRepository $movementRepository,
+        protected InventoryService $inventoryService,
     ) {}
 
     public function getAllPaginated(int $limit = 10)
@@ -205,15 +207,102 @@ class PicklistService
                     'created_by'         => (string) (Auth::id() ?? $picklist->picker_id ?? 'system'),
                 ]);
             });
-        } else {
+        } elseif ($delta < 0) {
+            // Koreksi turun: kembalikan stok yang sudah di-pick ke rak asalnya.
+            // Rak asal = bin tempat item terakhir di-pick (item->bin_id), fallback ke bin yang di-scan.
+            $returnQty = -$delta;
+            $returnBinId = $item->bin_id ?? $bin->id;
+
+            $this->inventoryService->reversePick([
+                'item_id'            => $item->item_id,
+                'location_id'        => $picklist->location_id,
+                'bin_id'             => $returnBinId,
+                'qty'                => $returnQty,
+                'transaction_number' => $picklist->picklist_no . '-KOREKSI',
+                'created_by'         => (string) (Auth::id() ?? $picklist->picker_id ?? 'system'),
+            ]);
+
             $this->picklistRepository->updateItem($itemId, [
                 'qty_picked' => $data['qty_picked'],
+            ]);
+
+            $this->revertPicklistCompletion($picklistId);
+        } else {
+            // delta == 0: hanya perbarui rak.
+            $this->picklistRepository->updateItem($itemId, [
                 'bin_id' => $bin->id,
             ]);
         }
     }
 
-    public function scanForPick(string $picklistId, string $sku, string $binCode): array
+    /**
+     * Koreksi salah scan pick: batalkan (sebagian/seluruh) qty yang sudah di-pick pada satu baris,
+     * kembalikan stok ke rak asalnya.
+     */
+    public function unpickItem(string $picklistId, string $itemId, ?int $qty, string $userId): Picklist
+    {
+        return DB::transaction(function () use ($picklistId, $itemId, $qty, $userId) {
+            $picklist = $this->picklistRepository->findById($picklistId);
+
+            if (! $picklist) {
+                throw new \Exception('Picklist tidak ditemukan.');
+            }
+
+            if (! in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS, Picklist::STATUS_COMPLETED], true)) {
+                throw new OutboundValidationException("Picklist tidak bisa dikoreksi (status saat ini: {$picklist->status}).");
+            }
+
+            $item = PicklistItem::where('picklist_id', $picklistId)
+                ->where('id', $itemId)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $item) {
+                throw new OutboundValidationException('Item picklist tidak ditemukan.');
+            }
+
+            $qtyRev = $qty ?? (int) $item->qty_picked;
+
+            if ($qtyRev <= 0 || $qtyRev > (int) $item->qty_picked) {
+                throw new OutboundValidationException("Qty koreksi tidak valid (maksimal {$item->qty_picked}).");
+            }
+
+            if (empty($item->bin_id)) {
+                throw new OutboundValidationException('Baris ini tidak punya rak asal pick, tidak bisa dikoreksi.');
+            }
+
+            $this->inventoryService->reversePick([
+                'item_id'            => $item->item_id,
+                'location_id'        => $picklist->location_id,
+                'bin_id'             => $item->bin_id,
+                'qty'                => $qtyRev,
+                'transaction_number' => $picklist->picklist_no . '-KOREKSI',
+                'created_by'         => (string) ($userId ?: 'system'),
+            ]);
+
+            $this->picklistRepository->updateItem($itemId, [
+                'qty_picked' => max(0, (int) $item->qty_picked - $qtyRev),
+            ]);
+
+            $this->revertPicklistCompletion($picklistId);
+
+            return $this->picklistRepository->findById($picklistId);
+        });
+    }
+
+    private function revertPicklistCompletion(string $picklistId): void
+    {
+        $picklist = $this->picklistRepository->findById($picklistId);
+
+        if ($picklist && $picklist->status === Picklist::STATUS_COMPLETED) {
+            $this->picklistRepository->update($picklistId, [
+                'status' => Picklist::STATUS_IN_PROGRESS,
+                'completed_at' => null,
+            ]);
+        }
+    }
+
+    public function scanForPick(string $picklistId, string $sku, ?string $binCode = null, ?string $hintActiveBinCode = null): array
     {
         $picklist = $this->picklistRepository->findById($picklistId);
 
@@ -231,10 +320,51 @@ class PicklistService
             throw new OutboundValidationException("{$item->sku} sudah selesai di-pick.");
         }
 
-        $bin = $this->resolveBin($picklist, $binCode);
+        $remaining = $item->qty_ordered - $item->qty_picked;
 
+        if ($binCode !== null && $binCode !== '') {
+            $bin = $this->resolveBin($picklist, $binCode);
+            $available = $this->assertInventoryForPick($item, $picklist->location_id, $bin);
+
+            return [
+                'item_id' => $item->id,
+                'sku' => $item->sku,
+                'bin_code' => $bin->bin_final_code,
+                'available_in_bin' => $available,
+                'remaining_to_pick' => $remaining,
+                'max_pickable' => min($available, $remaining),
+                'bin_source' => 'manual',
+                'candidates' => [],
+            ];
+        }
+
+        $candidates = $this->suggestBinsForItem($picklist, $item);
+
+        $default = $this->pickDefaultCandidate($candidates, $remaining, $hintActiveBinCode);
+        $binSource = $hintActiveBinCode !== null && strcasecmp($default['bin_code'], $hintActiveBinCode) === 0
+            ? 'hint'
+            : 'auto';
+
+        return [
+            'item_id' => $item->id,
+            'sku' => $item->sku,
+            'bin_code' => $default['bin_code'],
+            'available_in_bin' => $default['on_hand'],
+            'remaining_to_pick' => $remaining,
+            'max_pickable' => min($default['on_hand'], $remaining),
+            'bin_source' => $binSource,
+            'candidates' => $candidates->values()->all(),
+        ];
+    }
+
+    /**
+     * Validasi (item, location, bin, on_hand > 0) tanpa mutasi. Sumber kebenaran tunggal
+     * untuk jalur scan manual & suggest. Race-safety commit tetap di pickItem() lockForUpdate.
+     */
+    private function assertInventoryForPick(PicklistItem $item, string $locationId, LocationBin $bin): int
+    {
         $inventory = Inventory::where('item_id', $item->item_id)
-            ->where('location_id', $picklist->location_id)
+            ->where('location_id', $locationId)
             ->where('bin_id', $bin->id)
             ->first();
 
@@ -243,20 +373,66 @@ class PicklistService
         }
 
         $available = (int) $inventory->on_hand;
-        $remaining = $item->qty_ordered - $item->qty_picked;
 
         if ($available <= 0) {
             throw new OutboundValidationException("Stok tidak cukup di rak {$bin->bin_final_code}. Tersedia: {$available}. Silahkan pilih rak lain.");
         }
 
-        return [
-            'item_id' => $item->id,
-            'sku' => $item->sku,
-            'bin_code' => $bin->bin_final_code,
-            'available_in_bin' => $available,
-            'remaining_to_pick' => $remaining,
-            'max_pickable' => min($available, $remaining),
-        ];
+        return $available;
+    }
+
+    /**
+     * Cari semua bin (di lokasi picklist) yang menyimpan item ini dengan on_hand > 0.
+     * Urutan FIFO by inventory.created_at. Tolak kalau kosong (butuh replenishment).
+     */
+    private function suggestBinsForItem(Picklist $picklist, PicklistItem $item): \Illuminate\Support\Collection
+    {
+        $rows = Inventory::where('item_id', $item->item_id)
+            ->where('location_id', $picklist->location_id)
+            ->where('on_hand', '>', 0)
+            ->with(['bin:id,bin_final_code'])
+            ->orderBy('created_at')
+            ->get();
+
+        $candidates = $rows
+            ->filter(fn ($inv) => $inv->bin !== null)
+            ->map(fn ($inv) => [
+                'bin_id' => $inv->bin_id,
+                'bin_code' => $inv->bin->bin_final_code,
+                'on_hand' => (int) $inv->on_hand,
+            ]);
+
+        if ($candidates->isEmpty()) {
+            throw new OutboundValidationException("Stok {$item->sku} kosong di gudang ini. Butuh replenishment.");
+        }
+
+        return $candidates;
+    }
+
+    /**
+     * Prioritas default candidate: (1) hint bin yang qty-nya cukup, (2) hint bin apapun,
+     * (3) kandidat pertama yang on_hand >= remaining, (4) kandidat pertama FIFO.
+     * @param \Illuminate\Support\Collection<int, array{bin_id:string,bin_code:string,on_hand:int}> $candidates
+     * @return array{bin_id:string,bin_code:string,on_hand:int}
+     */
+    private function pickDefaultCandidate(\Illuminate\Support\Collection $candidates, int $remaining, ?string $hintActiveBinCode): array
+    {
+        if ($hintActiveBinCode !== null && $hintActiveBinCode !== '') {
+            $hinted = $candidates->first(fn ($c) => strcasecmp($c['bin_code'], $hintActiveBinCode) === 0);
+            if ($hinted && $hinted['on_hand'] >= $remaining) {
+                return $hinted;
+            }
+            if ($hinted) {
+                return $hinted;
+            }
+        }
+
+        $enough = $candidates->first(fn ($c) => $c['on_hand'] >= $remaining);
+        if ($enough) {
+            return $enough;
+        }
+
+        return $candidates->first();
     }
 
     private function resolveItemBySku(Picklist $picklist, string $sku): PicklistItem
