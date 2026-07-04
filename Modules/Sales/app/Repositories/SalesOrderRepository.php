@@ -121,33 +121,34 @@ class SalesOrderRepository
 
     public function getTabCounts(): array
     {
+        $emptyStockItemConstraint = fn ($q) => $q->whereRaw(
+            "sales_order_items.qty_in_base > COALESCE((
+                SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
+                FROM inventories
+                WHERE inventories.item_id = sales_order_items.item_id
+                  AND inventories.location_id = sales_orders.location_id
+            ), 0)"
+        );
+
         return [
-            'all'              => $this->visibleOrders()->count(),
+            'all'              => $this->visibleOrders()
+                ->where(fn ($q) => $q
+                    ->where('status', '!=', 'reserved')
+                    ->orWhereDoesntHave('items', $emptyStockItemConstraint))
+                ->count(),
             'unpaid'           => $this->visibleOrders()->where('status', 'pending')->where('is_paid', false)->count(),
             'failed'           => $this->scopeFailedDownload(SalesOrder::query())->count(),
             'ready-to-process' => $this->visibleOrders()->where('status', 'reserved')
                 ->whereDoesntHave('picklistItems')
                 ->whereDoesntHave('items', $this->unmappedItemsConstraint())
-                ->whereDoesntHave('items', fn ($q) => $q->whereRaw(
-                    "sales_order_items.qty_in_base > COALESCE((
-                        SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
-                        FROM inventories
-                        WHERE inventories.item_id = sales_order_items.item_id
-                    ), 0)"
-                ))
+                ->whereDoesntHave('items', $emptyStockItemConstraint)
                 ->count(),
             'in-transit'       => $this->visibleOrders()->where('status', 'shipped')
                 ->whereNull('received_date')->count(),
             'completed'        => $this->visibleOrders()->where('status', 'shipped')
                 ->whereNotNull('received_date')->count(),
             'empty-stock'      => $this->visibleOrders()->where('status', 'reserved')
-                ->whereHas('items', fn ($q) => $q->whereRaw(
-                    "sales_order_items.qty_in_base > COALESCE((
-                        SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
-                        FROM inventories
-                        WHERE inventories.item_id = sales_order_items.item_id
-                    ), 0)"
-                ))
+                ->whereHas('items', $emptyStockItemConstraint)
                 ->count(),
             'failed-pick'      => $this->visibleOrders()->where('status', 'reserved')
                 ->whereHas('picklistItems', fn ($q) => $q->whereHas('picklist', fn ($p) => $p->where('status', 'FAILED')))
@@ -232,6 +233,17 @@ class SalesOrderRepository
                 ->whereHas('picklistItems', fn ($q) => $q->whereHas('picklist', fn ($p) => $p->where('status', 'FAILED'))),
             'cancellation'     => $this->applyCancellationSubScope($query, $sub),
             'returned'         => $this->applyReturnSubScope($query, $sub),
+            'all'              => $query->where(fn ($q) => $q
+                ->where('status', '!=', 'reserved')
+                ->orWhereDoesntHave('items', fn ($qi) => $qi->whereRaw(
+                    "sales_order_items.qty_in_base > COALESCE((
+                        SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
+                        FROM inventories
+                        WHERE inventories.item_id = sales_order_items.item_id
+                          AND inventories.location_id = sales_orders.location_id
+                    ), 0)"
+                ))
+            ),
             default            => $query,
         };
     }
