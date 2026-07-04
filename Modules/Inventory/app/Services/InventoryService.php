@@ -643,6 +643,7 @@ class InventoryService
     public function getActiveLocations(): array
     {
         return Location::where('is_active', true)
+            ->where('location_code', '!=', Location::SYSTEM_TRANSIT_CODE)
             ->select('id', 'location_name')
             ->get()
             ->map(fn ($loc) => [
