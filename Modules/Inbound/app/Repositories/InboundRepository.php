@@ -116,13 +116,13 @@ class InboundRepository
 
         return QueryBuilder::for($base)
             ->allowedSearch('product_variants.sku', 'products.name')
-            ->allowedSorts([
+            ->allowedSorts(
                 AllowedSort::field('sku', 'product_variants.sku'),
                 AllowedSort::field('expected_qty', 'inbound_items.expected_qty'),
                 AllowedSort::field('received_qty', 'inbound_items.received_qty'),
                 AllowedSort::field('putaway_qty', 'inbound_items.putaway_qty'),
                 AllowedSort::field('created_at', 'inbound_items.created_at'),
-            ])
+            )
             ->defaultSort('created_at')
             ->paginate($perPage)
             ->appends(request()->query());

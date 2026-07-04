@@ -63,12 +63,12 @@ class PurchaseOrderRepository
 
         return QueryBuilder::for($base)
             ->allowedSearch('product_variants.sku', 'products.name')
-            ->allowedSorts([
+            ->allowedSorts(
                 AllowedSort::field('sku', 'product_variants.sku'),
                 AllowedSort::field('qty', 'purchase_order_items.qty'),
                 AllowedSort::field('received_qty', 'purchase_order_items.received_qty'),
                 AllowedSort::field('created_at', 'purchase_order_items.created_at'),
-            ])
+            )
             ->defaultSort('created_at')
             ->paginate($perPage)
             ->appends(request()->query());
