@@ -214,6 +214,7 @@ class SalesOrderRepository
                         SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
                         FROM inventories
                         WHERE inventories.item_id = sales_order_items.item_id
+                          AND inventories.location_id = sales_orders.location_id
                     ), 0)"
                 )),
             'in-transit'       => $query->where('status', 'shipped')->whereNull('received_date'),
@@ -224,6 +225,7 @@ class SalesOrderRepository
                         SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
                         FROM inventories
                         WHERE inventories.item_id = sales_order_items.item_id
+                          AND inventories.location_id = sales_orders.location_id
                     ), 0)"
                 )),
             'failed-pick'      => $query->where('status', 'reserved')

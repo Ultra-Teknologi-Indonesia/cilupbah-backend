@@ -1421,12 +1421,21 @@ class SalesOrderService
 
         $order = SalesOrder::findOrFail($orderId);
 
-        $order->update([
+        $updates = [
             'customer_decision' => $decision,
             'decision_at'       => now(),
             'decision_by'       => Auth::id() ?: null,
             'contact_note'      => $note ?? $order->contact_note,
-        ]);
+        ];
+
+        if ($decision === 'cancel' && empty($order->cancel_requested_at)) {
+            $updates['cancel_requested_at']  = now();
+            $updates['cancel_requested_by']  = Auth::id() ?: null;
+            $updates['cancel_channel']       = 'manual';
+            $updates['cancel_request_reason'] = $note ?? $order->cancel_request_reason ?? 'Pembeli tidak menghendaki (stok kosong).';
+        }
+
+        $order->update($updates);
 
         return $order->fresh();
     }
