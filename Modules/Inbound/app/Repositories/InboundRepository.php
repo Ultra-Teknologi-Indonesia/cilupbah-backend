@@ -111,6 +111,7 @@ class InboundRepository
                 'variant.product:id,name',
                 'variant.media',
                 'variant.product.media',
+                'variant.options',
                 'receipts.bin',
             ]);
 
