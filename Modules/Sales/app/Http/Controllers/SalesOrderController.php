@@ -12,6 +12,9 @@ use Modules\Sales\Exports\CancelledOrdersExport;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
 use Modules\Sales\Http\Resources\SalesOrderResource;
+use Modules\Sales\Jobs\CallShopeeDriverJob;
+use Modules\Sales\Support\ShopeeInstantEligibility;
+use Modules\Channel\Services\ShopeeOrderService;
 
 #[OA\Tag(name: 'Sales Orders', description: 'API Endpoints for Sales Orders')]
 #[OA\Schema(
@@ -753,6 +756,141 @@ class SalesOrderController extends Controller
         } catch (\InvalidArgumentException $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
+    }
+
+    public function printWithDriverCall(string $id, Request $request, ShopeeOrderService $shopee)
+    {
+        $order = SalesOrder::findOrFail($id);
+
+        if (! ShopeeInstantEligibility::isEligible($order)) {
+            return $this->errorResponse(
+                'Endpoint ini hanya untuk pesanan Shopee Instant atau Same Day.',
+                422
+            );
+        }
+
+        $shopId = (string) $order->channel_shop_id;
+        $orderSn = (string) $order->channel_order_no;
+        if ($shopId === '' || $orderSn === '') {
+            return $this->errorResponse('channel_shop_id / channel_order_no kosong pada pesanan.', 422);
+        }
+
+        $forceLabel = (bool) $request->query('force_label', false);
+
+        $order->update([
+            'driver_call_status'       => 'pending',
+            'driver_call_attempted_at' => now(),
+        ]);
+
+        $driverCallSuccess = false;
+        $driverCallMessage = null;
+
+        try {
+            $result = $shopee->shipOrder($shopId, $orderSn);
+            $shipped = (bool) ($result['shipped'] ?? false);
+            $error = (string) ($result['error'] ?? '');
+            $alreadyShipped = $error !== '' && preg_match('/already|duplicate|shipped/i', $error);
+
+            if ($shipped || $alreadyShipped) {
+                $driverCallSuccess = true;
+                $order->update([
+                    'driver_call_status'   => 'success',
+                    'driver_call_message'  => null,
+                    'driver_call_response' => $result,
+                ]);
+            } else {
+                $driverCallMessage = $error !== '' ? $error : 'ship_order gagal tanpa pesan';
+                $order->update([
+                    'driver_call_status'   => 'failed',
+                    'driver_call_message'  => mb_substr($driverCallMessage, 0, 500),
+                    'driver_call_response' => $result,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            $driverCallMessage = $e->getMessage();
+            $order->update([
+                'driver_call_status'  => 'failed',
+                'driver_call_message' => mb_substr($driverCallMessage, 0, 500),
+            ]);
+        }
+
+        $order->refresh();
+
+        if (! $driverCallSuccess && ! $forceLabel) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Panggilan driver Shopee gagal. Tambahkan ?force_label=1 untuk tetap mencetak label.',
+                'data' => [
+                    'driver_call_status'       => $order->driver_call_status,
+                    'driver_call_message'      => $order->driver_call_message,
+                    'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
+                ],
+            ], 502);
+        }
+
+        $options = array_filter([
+            'doc_type'      => $request->query('doc_type'),
+            'document_type' => $request->query('document_type'),
+            'document_size' => $request->query('document_size'),
+        ], fn ($v) => $v !== null && $v !== '');
+
+        try {
+            $labelResult = $this->orderService->getShippingLabel($order, $options);
+        } catch (\Modules\Sales\Exceptions\ShippingLabelPreparingException $e) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Driver berhasil dipanggil, label masih disiapkan. Coba unduh dalam beberapa detik.',
+                'data' => [
+                    'driver_call_status'       => $order->driver_call_status,
+                    'driver_call_message'      => $order->driver_call_message,
+                    'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
+                    'label' => null,
+                    'label_preparing' => true,
+                    'label_message' => $e->getMessage(),
+                ],
+            ], 202);
+        } catch (\InvalidArgumentException|\RuntimeException $e) {
+            return response()->json([
+                'success' => $driverCallSuccess,
+                'message' => 'Driver berhasil dipanggil namun label gagal diambil: ' . $e->getMessage(),
+                'data' => [
+                    'driver_call_status'       => $order->driver_call_status,
+                    'driver_call_message'      => $order->driver_call_message,
+                    'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
+                    'label' => null,
+                    'label_error' => $e->getMessage(),
+                ],
+            ], 422);
+        }
+
+        return $this->successResponse([
+            'driver_call_status'       => $order->driver_call_status,
+            'driver_call_message'      => $order->driver_call_message,
+            'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
+            'label' => $labelResult,
+        ], $driverCallSuccess
+            ? 'Driver Shopee terpanggil dan label siap diunduh.'
+            : 'Label siap; panggilan driver gagal — silakan retry.');
+    }
+
+    public function retryDriverCall(string $id)
+    {
+        $order = SalesOrder::findOrFail($id);
+
+        if (! ShopeeInstantEligibility::isEligible($order)) {
+            return $this->errorResponse('Endpoint ini hanya untuk pesanan Shopee Instant atau Same Day.', 422);
+        }
+
+        $order->update([
+            'driver_call_status'  => 'pending',
+            'driver_call_message' => null,
+        ]);
+
+        CallShopeeDriverJob::dispatch($order->id);
+
+        return $this->successResponse([
+            'driver_call_status' => 'pending',
+        ], 'Panggilan driver dicoba ulang. Status akan diperbarui dalam beberapa detik.', 202);
     }
 
     #[OA\Put(
