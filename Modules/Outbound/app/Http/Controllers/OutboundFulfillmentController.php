@@ -344,9 +344,8 @@ class OutboundFulfillmentController extends Controller
             });
         }
 
-        if ($request->filled('role')) {
-            $query->role($request->query('role'));
-        }
+        $roleFilter = $request->filled('role') ? $request->query('role') : 'picker';
+        $query->role($roleFilter);
 
         $pickers = $query
             ->orderBy('name')
