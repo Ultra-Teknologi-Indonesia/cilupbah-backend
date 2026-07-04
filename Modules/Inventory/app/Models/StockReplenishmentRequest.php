@@ -24,6 +24,7 @@ class StockReplenishmentRequest extends Model
         'to_location_id',
         'status',
         'assignee_user_id',
+        'transfer_out_id',
         'accepted_by_user_id',
         'rejected_by_user_id',
         'requested_at',
@@ -64,5 +65,10 @@ class StockReplenishmentRequest extends Model
     public function requester(): BelongsTo
     {
         return $this->belongsTo(\App\Models\User::class, 'requested_by_user_id');
+    }
+
+    public function transferOut(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Inventory\Models\InventoryTransfer::class, 'transfer_out_id');
     }
 }

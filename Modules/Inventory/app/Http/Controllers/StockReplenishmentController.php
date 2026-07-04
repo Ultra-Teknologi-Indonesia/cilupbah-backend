@@ -26,7 +26,7 @@ class StockReplenishmentController extends Controller
         $perPage = min(100, max(1, (int) $request->query('per_page', 20)));
 
         $query = StockReplenishmentRequest::query()
-            ->with(['items', 'fromLocation', 'toLocation', 'assignee', 'requester'])
+            ->with(['items', 'fromLocation', 'toLocation', 'assignee', 'requester', 'transferOut'])
             ->orderByDesc('requested_at');
 
         if ($status) {
@@ -58,7 +58,7 @@ class StockReplenishmentController extends Controller
         $req = $this->service->create($request->validated());
 
         return $this->successResponse(
-            new StockReplenishmentResource($req->load(['items', 'fromLocation', 'toLocation'])),
+            new StockReplenishmentResource($req->load(['items', 'fromLocation', 'toLocation', 'transferOut'])),
             'Permintaan pengisian stok berhasil dibuat',
             201,
         );
@@ -77,7 +77,7 @@ class StockReplenishmentController extends Controller
         }
 
         return $this->successResponse(
-            new StockReplenishmentResource($req->load(['items', 'fromLocation', 'toLocation', 'assignee'])),
+            new StockReplenishmentResource($req->load(['items', 'fromLocation', 'toLocation', 'assignee', 'transferOut'])),
             'Permintaan disetujui',
         );
     }
