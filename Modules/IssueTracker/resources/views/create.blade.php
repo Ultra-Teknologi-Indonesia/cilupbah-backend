@@ -15,7 +15,9 @@
         <h1 class="mb-1 text-xl font-bold text-gray-900">Laporkan Issue</h1>
         <p class="mb-6 text-sm text-gray-500">Isi form di bawah untuk melaporkan masalah. Semua kolom bertanda <span class="text-red-500">*</span> wajib diisi.</p>
 
-        <form method="POST" action="{{ route('issues.store') }}" enctype="multipart/form-data" class="space-y-5">
+        <form method="POST" action="{{ route('issues.store') }}" enctype="multipart/form-data" class="space-y-5"
+              x-data="{ submitting: false }"
+              @submit="submitting = true">
             @csrf
 
             {{-- Judul --}}
@@ -110,21 +112,34 @@
             {{-- Lampiran --}}
             <div>
                 <label class="mb-1 block text-sm font-medium text-gray-700">Lampiran (maks 5 file, 10MB/file)</label>
-                <div x-data="{ files: [] }" class="space-y-2">
-                    <label class="flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-gray-300 px-4 py-6 text-center hover:border-brand-400 hover:bg-brand-50/30">
+                <div x-data="attachmentPicker()" class="space-y-2">
+                    <label class="flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-gray-300 px-4 py-6 text-center hover:border-brand-400 hover:bg-brand-50/30"
+                           :class="files.length >= max ? 'opacity-50 cursor-not-allowed' : ''">
                         <div>
                             <svg class="mx-auto mb-1 h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
-                            <span class="text-sm text-gray-500">Klik untuk upload gambar/video/pdf</span>
+                            <span class="text-sm text-gray-500" x-text="files.length >= max ? `Maksimal ${max} file` : 'Klik untuk upload gambar/video/pdf'"></span>
+                            <span class="mt-0.5 block text-[11px] text-gray-400" x-text="`${files.length}/${max} file`"></span>
                         </div>
-                        <input type="file" name="attachments[]" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.mp4,.webm,.pdf" class="sr-only"
-                               @change="files = Array.from($event.target.files).map(f => f.name)">
+                        <input type="file" name="attachments[]" multiple x-ref="input"
+                               accept=".jpg,.jpeg,.png,.gif,.webp,.mp4,.webm,.pdf" class="sr-only"
+                               :disabled="files.length >= max"
+                               @change="addFiles($event)">
                     </label>
+
+                    <p x-show="error" x-text="error" class="text-xs text-red-500"></p>
+
                     <template x-if="files.length > 0">
                         <ul class="space-y-1">
-                            <template x-for="f in files" :key="f">
-                                <li class="flex items-center rounded bg-gray-50 px-3 py-1.5 text-xs text-gray-600">
-                                    <svg class="mr-1.5 h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
-                                    <span x-text="f"></span>
+                            <template x-for="(f, idx) in files" :key="f._key">
+                                <li class="flex items-center justify-between rounded bg-gray-50 px-3 py-1.5 text-xs text-gray-600">
+                                    <span class="flex min-w-0 items-center">
+                                        <svg class="mr-1.5 h-3.5 w-3.5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+                                        <span class="truncate" x-text="f.name"></span>
+                                        <span class="ml-2 shrink-0 text-[11px] text-gray-400" x-text="formatSize(f.size)"></span>
+                                    </span>
+                                    <button type="button" @click="removeFile(idx)" class="ml-2 shrink-0 text-red-500 hover:text-red-700" title="Hapus">
+                                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                    </button>
                                 </li>
                             </template>
                         </ul>
@@ -135,12 +150,63 @@
             </div>
 
             <div class="pt-2">
-                <button type="submit"
-                        class="w-full rounded-lg bg-brand-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2">
-                    Kirim Laporan Issue
+                <button type="submit" :disabled="submitting"
+                        class="inline-flex w-full items-center justify-center rounded-lg bg-brand-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70">
+                    <svg x-show="submitting" class="mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                    </svg>
+                    <span x-text="submitting ? 'Mengirim laporan...' : 'Kirim Laporan Issue'"></span>
                 </button>
+                <p x-show="submitting" class="mt-2 text-center text-xs text-gray-500">Mohon tunggu, jangan tutup halaman. File sedang diupload.</p>
             </div>
         </form>
     </div>
 </div>
+
+<script>
+    function attachmentPicker() {
+        return {
+            files: [],
+            max: 5,
+            maxSize: 10 * 1024 * 1024,
+            error: '',
+            addFiles(event) {
+                this.error = '';
+                const incoming = Array.from(event.target.files || []);
+                for (const f of incoming) {
+                    if (this.files.length >= this.max) {
+                        this.error = `Maksimal ${this.max} file. Sisanya diabaikan.`;
+                        break;
+                    }
+                    if (f.size > this.maxSize) {
+                        this.error = `"${f.name}" melebihi 10MB, dilewati.`;
+                        continue;
+                    }
+                    if (this.files.some(x => x.name === f.name && x.size === f.size)) {
+                        continue;
+                    }
+                    f._key = `${f.name}-${f.size}-${f.lastModified}-${Math.random()}`;
+                    this.files.push(f);
+                }
+                this.syncInput();
+            },
+            removeFile(idx) {
+                this.files.splice(idx, 1);
+                this.error = '';
+                this.syncInput();
+            },
+            syncInput() {
+                const dt = new DataTransfer();
+                this.files.forEach(f => dt.items.add(f));
+                this.$refs.input.files = dt.files;
+            },
+            formatSize(bytes) {
+                if (bytes < 1024) return bytes + ' B';
+                if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+                return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+            },
+        };
+    }
+</script>
 @endsection
