@@ -13,6 +13,11 @@ class RegionService
         $this->regionRepository = $regionRepository;
     }
 
+    public function getCountries()
+    {
+        return $this->regionRepository->getCountries();
+    }
+
     public function getProvinces()
     {
         return $this->regionRepository->getProvinces();

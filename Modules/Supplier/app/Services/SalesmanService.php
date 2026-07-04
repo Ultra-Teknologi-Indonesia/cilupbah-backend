@@ -45,9 +45,6 @@ class SalesmanService
         if (! $salesman) {
             throw new \Exception('Salesman tidak ditemukan.');
         }
-        if ($salesman->contacts()->count() > 0) {
-            throw new \Exception('Salesman masih ditugaskan ke ' . $salesman->contacts()->count() . ' kontak.');
-        }
         return $this->salesmanRepository->delete($salesman);
     }
 

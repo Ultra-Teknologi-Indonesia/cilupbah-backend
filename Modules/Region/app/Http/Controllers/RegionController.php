@@ -16,6 +16,12 @@ class RegionController extends Controller
         $this->regionService = $regionService;
     }
 
+    public function countries(): JsonResponse
+    {
+        $data = $this->regionService->getCountries();
+        return $this->successResponse($data, 'success');
+    }
+
     public function provinces(): JsonResponse
     {
         $data = $this->regionService->getProvinces();

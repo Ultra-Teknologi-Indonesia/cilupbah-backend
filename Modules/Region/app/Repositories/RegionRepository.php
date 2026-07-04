@@ -2,6 +2,7 @@
 
 namespace Modules\Region\Repositories;
 
+use Modules\Region\Models\Country;
 use Modules\Region\Models\Province;
 use Modules\Region\Models\City;
 use Modules\Region\Models\District;
@@ -11,6 +12,15 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class RegionRepository
 {
+
+    public function getCountries()
+    {
+        return QueryBuilder::for(Country::class)
+            ->select('id', 'alpha2', 'alpha3', 'name')
+            ->allowedSearch('name', 'alpha2', 'alpha3')
+            ->orderBy('name', 'asc')
+            ->get();
+    }
 
     public function getProvinces()
     {

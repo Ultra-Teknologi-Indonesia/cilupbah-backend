@@ -13,7 +13,7 @@ class ContactRepository
     public function getAllPaginated(int $limit = 10)
     {
         return QueryBuilder::for(Contact::class)
-            ->with(['category:id,name,code', 'salesman:id,name,code'])
+            ->with(['category:id,name,code'])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::callback('type', function ($query, $value) {
@@ -37,7 +37,7 @@ class ContactRepository
 
     public function findById(string $id): ?Contact
     {
-        return Contact::with(['category', 'salesman'])->find($id);
+        return Contact::with(['category'])->find($id);
     }
 
     public function create(array $data): Contact
@@ -60,7 +60,7 @@ class ContactRepository
     {
         return QueryBuilder::for(Contact::class)
             ->customers()
-            ->with(['category:id,name,code', 'salesman:id,name,code'])
+            ->with(['category:id,name,code'])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('category_id'),
@@ -101,7 +101,13 @@ class ContactRepository
 
     public function getAllCategories()
     {
-        return ContactCategory::orderBy('name')->get();
+        return QueryBuilder::for(ContactCategory::class)
+            ->allowedFilters(
+                AllowedFilter::custom('search', new FuzzyFilter('code,name'))
+            )
+            ->allowedSorts('name', 'code', 'created_at')
+            ->defaultSort('name')
+            ->get();
     }
 
     public function findCategoryById(string $id): ?\Modules\Supplier\Models\ContactCategory

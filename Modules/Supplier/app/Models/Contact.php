@@ -51,7 +51,6 @@ class Contact extends Model
         'npwp_use_different',
         'npwp_name',
         'npwp_address',
-        'salesman_id',
     ];
 
     protected $casts = [
@@ -77,11 +76,6 @@ class Contact extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(ContactCategory::class, 'category_id');
-    }
-
-    public function salesman(): BelongsTo
-    {
-        return $this->belongsTo(\Modules\Supplier\Models\Salesman::class, 'salesman_id');
     }
 
     public function scopeCustomers($query)

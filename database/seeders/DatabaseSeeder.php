@@ -25,6 +25,7 @@ class DatabaseSeeder extends Seeder
         $owner->assignRole('owner');
 
         $this->call(\Modules\Region\Database\Seeders\RegionDatabaseSeeder::class);
+        $this->call(\Modules\Region\Database\Seeders\CountrySeeder::class);
         $this->call(\Modules\Channel\Database\Seeders\ChannelDatabaseSeeder::class);
         $this->call(\Modules\Warehouse\Database\Seeders\WarehouseDatabaseSeeder::class);
 

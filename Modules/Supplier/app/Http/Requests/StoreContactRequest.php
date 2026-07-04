@@ -52,7 +52,6 @@ class StoreContactRequest extends FormRequest
             'npwp_use_different'      => 'nullable|boolean',
             'npwp_name'               => 'nullable|string|max:255',
             'npwp_address'            => 'nullable|string',
-            'salesman_id'             => 'nullable|exists:salesmen,id',
         ];
     }
 }
