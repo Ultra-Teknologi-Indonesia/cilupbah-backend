@@ -735,9 +735,9 @@ class SalesOrderService
         }
     }
 
-    public function relocateOrder(SalesOrder $order, string $newLocationId): SalesOrder
+    public function relocateOrder(SalesOrder $order, string $newLocationId, bool $enforce = true): SalesOrder
     {
-        return DB::transaction(function () use ($order, $newLocationId) {
+        return DB::transaction(function () use ($order, $newLocationId, $enforce) {
             $oldLocationId = $this->resolveLocationId($order);
 
             if ($order->status === 'reserved' && $oldLocationId !== $newLocationId) {
@@ -770,6 +770,7 @@ class SalesOrderService
                         $newLocationId,
                         $item->qty_in_base,
                         $order->salesorder_no,
+                        $enforce,
                     );
                 }
 
