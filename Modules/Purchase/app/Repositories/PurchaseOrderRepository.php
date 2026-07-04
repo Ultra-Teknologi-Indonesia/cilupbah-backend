@@ -55,29 +55,19 @@ class PurchaseOrderRepository
     public function getPaginatedItems(string $poId, int $perPage)
     {
         $base = PurchaseOrderItem::query()
+            ->select('purchase_order_items.*')
             ->where('purchase_order_id', $poId)
+            ->leftJoin('product_variants', 'purchase_order_items.item_id', '=', 'product_variants.id')
+            ->leftJoin('products', 'products.id', '=', 'product_variants.product_id')
             ->with(['variant.product:id,name', 'variant.media', 'variant.product.media', 'variant.options']);
 
         return QueryBuilder::for($base)
-            ->allowedFilters([
-                AllowedFilter::partial('sku', 'variant.sku'),
-                AllowedFilter::callback('search', function ($query, $value) {
-                    $query->whereHas('variant', function ($q) use ($value) {
-                        $q->where('sku', 'ILIKE', "%{$value}%")
-                          ->orWhereHas('product', fn ($p) => $p->where('name', 'ILIKE', "%{$value}%"));
-                    });
-                }),
-            ])
+            ->allowedSearch('product_variants.sku', 'products.name')
             ->allowedSorts([
-                AllowedSort::callback('sku', function ($query, bool $descending) {
-                    $query
-                        ->leftJoin('product_variants', 'purchase_order_items.item_id', '=', 'product_variants.id')
-                        ->orderBy('product_variants.sku', $descending ? 'desc' : 'asc')
-                        ->select('purchase_order_items.*');
-                }),
-                'qty',
-                'received_qty',
-                'created_at',
+                AllowedSort::field('sku', 'product_variants.sku'),
+                AllowedSort::field('qty', 'purchase_order_items.qty'),
+                AllowedSort::field('received_qty', 'purchase_order_items.received_qty'),
+                AllowedSort::field('created_at', 'purchase_order_items.created_at'),
             ])
             ->defaultSort('created_at')
             ->paginate($perPage)

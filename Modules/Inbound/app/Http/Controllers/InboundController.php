@@ -253,8 +253,7 @@ class InboundController extends Controller
             new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
             new OA\Parameter(name: 'page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 1)),
-            new OA\Parameter(name: 'filter[sku]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
-            new OA\Parameter(name: 'filter[search]', in: 'query', required: false, description: 'Fuzzy SKU + product name', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'search', in: 'query', required: false, description: 'Full-text search SKU + nama produk', schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'sku|-sku|expected_qty|-expected_qty|received_qty|-received_qty|putaway_qty|-putaway_qty|created_at|-created_at', schema: new OA\Schema(type: 'string')),
         ],
         responses: [
