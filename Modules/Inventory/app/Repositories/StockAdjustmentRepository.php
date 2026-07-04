@@ -17,6 +17,8 @@ class StockAdjustmentRepository
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::partial('q', 'adjustment_no'),
                 AllowedFilter::exact('is_beginning_balance'),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('transaction_date', '>=', $value)),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('transaction_date', '<=', $value)),
             )
             ->allowedSorts('transaction_date', 'created_at', 'adjustment_no')
             ->defaultSort('-transaction_date')
