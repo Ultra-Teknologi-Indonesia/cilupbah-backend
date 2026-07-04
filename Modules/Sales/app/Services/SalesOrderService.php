@@ -23,6 +23,7 @@ use Modules\Sales\Repositories\SalesOrderRepository;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
 use Modules\Outbound\Models\Shipment;
+use Modules\Inventory\Jobs\AutoDetectStockReplenishmentJob;
 use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Warehouse\Models\Location;
 
@@ -648,13 +649,27 @@ class SalesOrderService
                 return $order;
             });
         } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
-
             throw new DuplicateOrderException($marketplace, $marketplaceOrderId);
         }
 
         Cache::put($idempotencyKey, true, self::IDEMPOTENCY_TTL);
 
         SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
+
+        try {
+            $kecilId = DB::table('locations')
+                ->where('location_code', Location::SYSTEM_KECIL_CODE)
+                ->value('id');
+
+            if ($kecilId && $order->location_id === $kecilId && ! $this->isManualSource($order->source)) {
+                AutoDetectStockReplenishmentJob::dispatch();
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Gagal dispatch AutoDetectStockReplenishmentJob setelah createOrder', [
+                'order_id' => $order->id ?? null,
+                'error'    => $e->getMessage(),
+            ]);
+        }
 
         return $order->fresh('items');
     }

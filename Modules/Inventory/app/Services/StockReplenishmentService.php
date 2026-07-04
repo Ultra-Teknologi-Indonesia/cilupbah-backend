@@ -131,4 +131,125 @@ class StockReplenishmentService
 
         return $request->fresh();
     }
+
+    /**
+     * Deteksi otomatis kekurangan stok di Gudang Kecil untuk seluruh order
+     * yang berstatus reserved. Jika ada SKU yang kekurangannya belum ter-cover
+     * oleh request PENDING/ACCEPTED sebelumnya, buat satu request PENDING baru
+     * yang mengelompokkan semua SKU kurang tersebut.
+     *
+     * @param  bool  $dryRun  jika true, tidak menulis apapun, hanya kembalikan
+     *                       daftar shortage yang akan dibuat.
+     * @return array  { shortages: [...], request?: StockReplenishmentRequest|null, skipped: bool }
+     */
+    public function autoDetect(bool $dryRun = false): array
+    {
+        $kecilId = DB::table('locations')
+            ->where('location_code', Location::SYSTEM_KECIL_CODE)
+            ->value('id');
+        $pusatId = DB::table('locations')
+            ->where('location_code', Location::SYSTEM_PUSAT_CODE)
+            ->value('id');
+
+        if (! $kecilId || ! $pusatId) {
+            return ['shortages' => [], 'request' => null, 'skipped' => true, 'reason' => 'Gudang Kecil / Gudang Pusat belum di-seed'];
+        }
+
+        // 1. Agregasi kebutuhan pesanan reserved di Gudang Kecil per item_id
+        $demand = DB::table('sales_order_items as i')
+            ->join('sales_orders as o', 'o.id', '=', 'i.order_id')
+            ->where('o.status', 'reserved')
+            ->where('o.location_id', $kecilId)
+            ->whereNotNull('i.item_id')
+            ->groupBy('i.item_id', 'i.sku')
+            ->select('i.item_id', 'i.sku', DB::raw('SUM(i.qty_in_base) as needed'))
+            ->get()
+            ->keyBy('item_id');
+
+        if ($demand->isEmpty()) {
+            return ['shortages' => [], 'request' => null, 'skipped' => false];
+        }
+
+        $itemIds = $demand->keys()->all();
+
+        // 2. Availability di Gudang Kecil per item_id
+        $availability = DB::table('inventories')
+            ->whereIn('item_id', $itemIds)
+            ->where('location_id', $kecilId)
+            ->groupBy('item_id')
+            ->select('item_id', DB::raw('COALESCE(SUM(on_hand),0) as oh'), DB::raw('COALESCE(SUM(reserved),0) as rv'))
+            ->get()
+            ->keyBy('item_id');
+
+        // 3. In-flight replenishment quantities (PENDING atau ACCEPTED) per item_id
+        $inFlight = DB::table('stock_replenishment_request_items as ri')
+            ->join('stock_replenishment_requests as r', 'r.id', '=', 'ri.request_id')
+            ->whereIn('r.status', [
+                StockReplenishmentRequest::STATUS_PENDING,
+                StockReplenishmentRequest::STATUS_ACCEPTED,
+            ])
+            ->where('r.to_location_id', $kecilId)
+            ->whereIn('ri.item_id', $itemIds)
+            ->groupBy('ri.item_id')
+            ->select('ri.item_id', DB::raw('SUM(ri.qty) as inflight'))
+            ->get()
+            ->keyBy('item_id');
+
+        // 4. Hitung shortage bersih
+        $shortages = [];
+        foreach ($demand as $itemId => $row) {
+            $needed   = (int) $row->needed;
+            $onHand   = (int) ($availability[$itemId]->oh ?? 0);
+            $reserved = (int) ($availability[$itemId]->rv ?? 0);
+            $available = max(0, $onHand - $reserved);
+            $covered  = (int) ($inFlight[$itemId]->inflight ?? 0);
+
+            $shortage = $needed - $available - $covered;
+
+            if ($shortage > 0) {
+                $shortages[] = [
+                    'item_id'    => $itemId,
+                    'sku'        => $row->sku,
+                    'qty'        => $shortage,
+                    'needed'     => $needed,
+                    'available'  => $available,
+                    'in_flight'  => $covered,
+                ];
+            }
+        }
+
+        if (empty($shortages)) {
+            return ['shortages' => [], 'request' => null, 'skipped' => false];
+        }
+
+        if ($dryRun) {
+            return ['shortages' => $shortages, 'request' => null, 'skipped' => false];
+        }
+
+        // 5. Buat satu request PENDING agregasi
+        $request = DB::transaction(function () use ($pusatId, $kecilId, $shortages) {
+            $req = StockReplenishmentRequest::create([
+                'requested_by_user_id' => null,
+                'from_location_id'     => $pusatId,
+                'to_location_id'       => $kecilId,
+                'status'               => StockReplenishmentRequest::STATUS_PENDING,
+                'requested_at'         => now(),
+                'note'                 => 'Auto-generated oleh sistem berdasarkan kekurangan stok Gudang Kecil.',
+            ]);
+
+            foreach ($shortages as $s) {
+                StockReplenishmentRequestItem::create([
+                    'request_id' => $req->id,
+                    'item_id'    => $s['item_id'],
+                    'sku'        => $s['sku'],
+                    'qty'        => $s['qty'],
+                    'reason'     => sprintf('Kebutuhan %d, tersedia %d, in-flight %d', $s['needed'], $s['available'], $s['in_flight']),
+                ]);
+            }
+
+            return $req->fresh(['items']);
+        });
+
+        return ['shortages' => $shortages, 'request' => $request, 'skipped' => false];
+    }
 }
