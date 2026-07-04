@@ -2,6 +2,8 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Modules\Sales\Http\Controllers\InternalStoreController;
+use Modules\Sales\Http\Controllers\SalesOrderManualController;
 use Modules\Sales\Http\Controllers\SalesReturnController;
 use Modules\Sales\Http\Controllers\SalesOrderController;
 use Modules\Sales\Http\Controllers\SalesInvoiceController;
@@ -14,6 +16,14 @@ use Modules\Outbound\Http\Controllers\ShipmentController;
 use Modules\Outbound\Http\Controllers\OutboundFulfillmentController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
+
+    Route::get('sales/internal-stores/all', [InternalStoreController::class, 'all'])->name('sales.internal-stores.all');
+    Route::post('sales/internal-stores/{id}/logo', [InternalStoreController::class, 'uploadLogo'])->whereUuid('id')->name('sales.internal-stores.logo.upload');
+    Route::delete('sales/internal-stores/{id}/logo', [InternalStoreController::class, 'deleteLogo'])->whereUuid('id')->name('sales.internal-stores.logo.delete');
+    Route::apiResource('sales/internal-stores', InternalStoreController::class)->whereUuid('internal_store');
+
+    Route::post('sales/manual', [SalesOrderManualController::class, 'store'])->name('sales.manual.store');
+    Route::get('sales/manual/lookup-sku', [SalesOrderManualController::class, 'lookupSku'])->name('sales.manual.lookup-sku');
 
     Route::get('systemsetting/sales-return-setting', [\Modules\Sales\Http\Controllers\SalesReturnSettingController::class, 'index'])->name('sales.returnSetting.index');
     Route::post('systemsetting/sales-return-setting', [\Modules\Sales\Http\Controllers\SalesReturnSettingController::class, 'store'])->name('sales.returnSetting.store');

@@ -8,6 +8,8 @@ class SalesDatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-
+        $this->call([
+            InternalStoreSeeder::class,
+        ]);
     }
 }

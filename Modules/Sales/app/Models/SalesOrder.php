@@ -115,6 +115,16 @@ class SalesOrder extends Model
         'location_id',
         'received_date',
         'handed_to_warehouse_at',
+        'internal_store_id',
+        'salesman_id',
+        'is_manual',
+        'no_ref',
+        'note',
+        'delivery_method',
+        'is_jubelio_shipment',
+        'shipping_discount',
+        'other_discount',
+        'price_includes_tax',
     ];
 
     protected $casts = [
@@ -144,7 +154,34 @@ class SalesOrder extends Model
         'priority_fulfillment'          => 'boolean',
         'is_split_order'                => 'boolean',
         'actual_shipping_fee_confirmed' => 'boolean',
+        'is_manual'                     => 'boolean',
+        'is_jubelio_shipment'           => 'boolean',
+        'price_includes_tax'            => 'boolean',
     ];
+
+    public const DELIVERY_COURIER          = 'COURIER';
+    public const DELIVERY_SELF_PICKUP      = 'SELF_PICKUP';
+    public const DELIVERY_JUBELIO_SHIPMENT = 'JUBELIO_SHIPMENT';
+
+    public function scopeManual($query)
+    {
+        return $query->where('is_manual', true);
+    }
+
+    public function isManual(): bool
+    {
+        return (bool) $this->is_manual;
+    }
+
+    public function internalStore(): BelongsTo
+    {
+        return $this->belongsTo(InternalStore::class);
+    }
+
+    public function salesman(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Supplier\Models\Salesman::class);
+    }
 
     public function items(): HasMany
     {

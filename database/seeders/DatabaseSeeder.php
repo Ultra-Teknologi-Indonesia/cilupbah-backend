@@ -38,6 +38,8 @@ class DatabaseSeeder extends Seeder
 
         $this->call(\Modules\Inventory\Database\Seeders\InventoryDatabaseSeeder::class);
         $this->call(\Modules\Supplier\Database\Seeders\SupplierDatabaseSeeder::class);
+        $this->call(\Modules\Outbound\Database\Seeders\OutboundDatabaseSeeder::class);
+        $this->call(\Modules\Sales\Database\Seeders\SalesDatabaseSeeder::class);
 
         if (app()->environment(['local', 'staging'])) {
             $this->call(TrackingItemsSeeder::class);

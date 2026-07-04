@@ -708,6 +708,13 @@ class SalesOrderController extends Controller
     {
         $order = SalesOrder::findOrFail($id);
 
+        if ($order->isManual()) {
+            return $this->errorResponse(
+                'Pesanan manual (Toko Internal) tidak menggunakan label marketplace. Input resi secara manual.',
+                422
+            );
+        }
+
         $options = array_filter([
             'doc_type'      => $request->query('doc_type'),
             'document_type' => $request->query('document_type'),
@@ -749,6 +756,13 @@ class SalesOrderController extends Controller
     {
         $order = SalesOrder::findOrFail($id);
 
+        if ($order->isManual()) {
+            return $this->errorResponse(
+                'Pesanan manual tidak menggunakan label marketplace.',
+                422
+            );
+        }
+
         try {
             $this->orderService->retryShippingLabel($order);
 
@@ -761,6 +775,13 @@ class SalesOrderController extends Controller
     public function printWithDriverCall(string $id, Request $request, ShopeeOrderService $shopee)
     {
         $order = SalesOrder::findOrFail($id);
+
+        if ($order->isManual()) {
+            return $this->errorResponse(
+                'Pesanan manual tidak memicu panggilan driver Shopee.',
+                422
+            );
+        }
 
         if (! ShopeeInstantEligibility::isEligible($order)) {
             return $this->errorResponse(

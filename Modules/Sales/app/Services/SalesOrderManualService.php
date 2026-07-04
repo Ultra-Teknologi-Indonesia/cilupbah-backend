@@ -1,0 +1,161 @@
+<?php
+
+namespace Modules\Sales\Services;
+
+use Illuminate\Support\Facades\DB;
+use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Models\SalesOrderItem;
+use Modules\Sales\Services\StockService;
+use Modules\Sales\Services\Support\SalesOrderNumberGenerator;
+
+/**
+ * Layanan pembuatan Sales Order MANUAL (Toko Grosir/Reseller Internal).
+ *
+ * Tidak menyentuh alur webhook/marketplace. Semua job/observer marketplace
+ * di titik lain harus di-gate dengan SalesOrder::isManual() atau
+ * $order->is_manual === true supaya bypass untuk order manual.
+ */
+class SalesOrderManualService
+{
+    public function __construct(
+        private SalesOrderNumberGenerator $numberGenerator,
+        private StockService $stockService,
+    ) {}
+
+    /**
+     * @param array $payload Sudah divalidasi via StoreSalesOrderManualRequest
+     */
+    public function create(array $payload): SalesOrder
+    {
+        return DB::transaction(function () use ($payload) {
+            $rawNo = trim((string) ($payload['salesorder_no'] ?? ''));
+            $salesOrderNo = ($rawNo === '' || strcasecmp($rawNo, '[auto]') === 0)
+                ? $this->numberGenerator->nextManualSalesOrderNo()
+                : $rawNo;
+
+            $items    = $payload['items'] ?? [];
+            $totals   = $this->computeTotals($items, $payload);
+
+            $order = SalesOrder::create([
+                'salesorder_no'       => $salesOrderNo,
+                'no_ref'              => $payload['no_ref'] ?? null,
+                'transaction_date'    => $payload['transaction_date'],
+                'internal_store_id'   => $payload['internal_store_id'],
+                'salesman_id'         => $payload['salesman_id'] ?? null,
+                'location_id'         => $payload['location_id'],
+                'customer_name'       => $payload['customer_name'],
+                'note'                => $payload['note'] ?? null,
+
+                'is_manual'           => true,
+                'source'              => null,
+                'channel_shop_id'     => null,
+
+                'sub_total'           => $totals['sub_total'],
+                'total_disc'          => $totals['total_disc'],
+                'other_discount'      => (float) ($payload['other_discount'] ?? 0),
+                'total_tax'           => (float) ($payload['total_tax'] ?? 0),
+                'shipping_cost'       => (float) ($payload['shipping_cost'] ?? 0),
+                'shipping_discount'   => (float) ($payload['shipping_discount'] ?? 0),
+                'insurance_cost'      => (float) ($payload['insurance_cost'] ?? 0),
+                'grand_total'         => $totals['grand_total'],
+                'price_includes_tax'  => (bool) ($payload['price_includes_tax'] ?? false),
+
+                'is_paid'             => (bool) ($payload['is_paid'] ?? false),
+                'is_cod'              => (bool) ($payload['is_cod'] ?? false),
+                'is_jubelio_shipment' => (bool) ($payload['is_jubelio_shipment'] ?? false),
+
+                'delivery_method'     => $payload['delivery_method'],
+                'shipping_provider'   => $payload['shipping_provider'] ?? null,
+                'tracking_number'     => $payload['tracking_number'] ?? null,
+                'order_weight_gram'   => $payload['order_weight_gram'] ?? null,
+
+                'shipping_full_name'  => $payload['shipping_full_name'] ?? $payload['customer_name'],
+                'shipping_phone'      => $payload['shipping_phone'] ?? null,
+                'shipping_address'    => $payload['shipping_address'] ?? null,
+                'shipping_area'       => $payload['shipping_area'] ?? null,
+                'shipping_city'       => $payload['shipping_city'] ?? null,
+                'shipping_province'   => $payload['shipping_province'] ?? null,
+                'shipping_post_code'  => $payload['shipping_post_code'] ?? null,
+                'shipping_country'    => $payload['shipping_country'] ?? 'ID',
+
+                'status'              => 'reserved',
+                'is_canceled'         => false,
+            ]);
+
+            foreach ($items as $item) {
+                $qty     = (int) $item['qty_in_base'];
+                $price   = (float) $item['price'];
+                $percent = (float) ($item['disc_percent'] ?? 0);
+                $flat    = (float) ($item['disc'] ?? 0);
+                $tax     = (float) ($item['tax_amount'] ?? 0);
+                $gross   = $qty * $price;
+                $disc    = $flat > 0 ? $flat : ($gross * $percent / 100);
+                $amount  = max(0, $gross - $disc);
+
+                SalesOrderItem::create([
+                    'order_id'     => $order->id,
+                    'item_id'      => $item['item_id'],
+                    'sku'          => $item['sku'],
+                    'description'  => $item['description'] ?? null,
+                    'qty_in_base'  => $qty,
+                    'price'        => $price,
+                    'disc'         => $disc,
+                    'tax_amount'   => $tax,
+                    'amount'       => $amount,
+                ]);
+
+                // Reserve stok + validasi available. Throws InsufficientStockException
+                // kalau tidak cukup → transaksi rollback → order tidak dibuat.
+                $this->stockService->reserve(
+                    sku: (string) $item['sku'],
+                    itemId: (string) $item['item_id'],
+                    locationId: (string) $payload['location_id'],
+                    qty: $qty,
+                    transactionNumber: $order->salesorder_no,
+                    enforce: true,
+                );
+            }
+
+            return $order->fresh(['items', 'internalStore', 'salesman']);
+        });
+    }
+
+    /**
+     * Hitung ulang totals server-side (source of truth).
+     */
+    private function computeTotals(array $items, array $payload): array
+    {
+        $subTotal   = 0.0;
+        $totalDisc  = 0.0;
+
+        foreach ($items as $item) {
+            $qty     = (int) $item['qty_in_base'];
+            $price   = (float) $item['price'];
+            $percent = (float) ($item['disc_percent'] ?? 0);
+            $flat    = (float) ($item['disc'] ?? 0);
+            $gross   = $qty * $price;
+            $disc    = $flat > 0 ? $flat : ($gross * $percent / 100);
+            $subTotal  += $gross;
+            $totalDisc += $disc;
+        }
+
+        $otherDisc   = (float) ($payload['other_discount'] ?? 0);
+        $tax         = (float) ($payload['total_tax'] ?? 0);
+        $ship        = (float) ($payload['shipping_cost'] ?? 0);
+        $shipDisc    = (float) ($payload['shipping_discount'] ?? 0);
+        $insurance   = (float) ($payload['insurance_cost'] ?? 0);
+        $priceIncTax = (bool) ($payload['price_includes_tax'] ?? false);
+
+        $net = $subTotal - $totalDisc - $otherDisc;
+        if (!$priceIncTax) {
+            $net += $tax;
+        }
+        $grand = $net + max(0, $ship - $shipDisc) + $insurance;
+
+        return [
+            'sub_total'   => round($subTotal, 2),
+            'total_disc'  => round($totalDisc, 2),
+            'grand_total' => round(max(0, $grand), 2),
+        ];
+    }
+}

@@ -152,6 +152,31 @@ class SalesOrderResource extends JsonResource
             'decision_by'        => $this->decision_by,
             'contact_note'       => $this->contact_note,
 
+            'is_manual'           => (bool) $this->is_manual,
+            'no_ref'              => $this->no_ref,
+            'note'                => $this->note,
+            'delivery_method'     => $this->delivery_method,
+            'is_jubelio_shipment' => (bool) $this->is_jubelio_shipment,
+            'is_cod'              => (bool) $this->is_cod,
+            'other_discount'      => (float) ($this->other_discount ?? 0),
+            'shipping_discount'   => (float) ($this->shipping_discount ?? 0),
+            'price_includes_tax'  => (bool) $this->price_includes_tax,
+            'order_weight_gram'   => $this->order_weight_gram,
+
+            'internal_store' => $this->whenLoaded('internalStore', fn () => $this->internalStore ? [
+                'id'         => $this->internalStore->id,
+                'code'       => $this->internalStore->code,
+                'name'       => $this->internalStore->name,
+                'logo_url'   => $this->internalStore->getFirstMediaUrl('logo') ?: null,
+                'logo_thumb' => $this->internalStore->getFirstMediaUrl('logo', 'thumb') ?: null,
+            ] : null),
+
+            'salesman' => $this->whenLoaded('salesman', fn () => $this->salesman ? [
+                'id'   => $this->salesman->id,
+                'code' => $this->salesman->code,
+                'name' => $this->salesman->name,
+            ] : null),
+
             'items' => SalesOrderItemResource::collection($this->whenLoaded('items')),
 
             'created_at' => $this->created_at,

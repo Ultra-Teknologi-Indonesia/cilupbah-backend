@@ -9,6 +9,8 @@ class OutboundDatabaseSeeder extends Seeder
 
     public function run(): void
     {
-
+        $this->call([
+            CourierSeeder::class,
+        ]);
     }
 }
