@@ -40,10 +40,16 @@ class InventoryMovementRepository
             $baseQuery->whereIn('source', InventoryMovementSourceMap::INVOICE_SOURCES);
         }
 
+        if (trim((string) request('search', '')) !== '') {
+            $baseQuery->leftJoin('product_variants', 'product_variants.id', '=', 'inventory_movements.item_id')
+                ->leftJoin('products', 'products.id', '=', 'product_variants.product_id');
+        }
+
         $qb = \Spatie\QueryBuilder\QueryBuilder::for($baseQuery)
             ->select('inventory_movements.*')
-            ->selectRaw('SUM(qty) OVER (PARTITION BY item_id, location_id ORDER BY transaction_date, id) AS total_balance')
+            ->selectRaw('SUM(qty) OVER (PARTITION BY item_id, location_id ORDER BY transaction_date, inventory_movements.id) AS total_balance')
             ->with(['product:id,sku,product_id', 'location:id,location_name', 'bin:id,bin_final_code'])
+            ->allowedSearch('product_variants.sku', 'products.name')
             ->allowedFilters(
                 \Spatie\QueryBuilder\AllowedFilter::exact('item_id'),
                 \Spatie\QueryBuilder\AllowedFilter::exact('location_id'),
