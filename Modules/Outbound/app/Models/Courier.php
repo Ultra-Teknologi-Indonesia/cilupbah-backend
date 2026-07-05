@@ -12,7 +12,6 @@ class Courier extends Model
     protected $fillable = [
         'name',
         'code',
-        'type',
         'tracking_url',
         'logo_url',
         'is_active',

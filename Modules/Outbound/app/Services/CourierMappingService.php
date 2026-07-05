@@ -13,6 +13,7 @@ class CourierMappingService
         'j&t express' => 'jnt',
         'j&t' => 'jnt',
         'jnt express' => 'jnt',
+        'jnt' => 'jnt',
         'jne' => 'jne',
         'jne express' => 'jne',
         'jne reguler' => 'jne',
@@ -20,37 +21,40 @@ class CourierMappingService
         'si cepat' => 'sicepat',
         'sicepat express' => 'sicepat',
         'anteraja' => 'anteraja',
+        'antar aja' => 'anteraja',
         'ninja express' => 'ninja',
         'ninja van' => 'ninja',
         'ninja xpress' => 'ninja',
+        'ninja' => 'ninja',
         'shopee express' => 'spx',
         'spx' => 'spx',
         'spx express' => 'spx',
         'spx standard' => 'spx',
-        'spx instant' => 'spx_instant',
+        // SPX Instant/Same Day tetap 1 kurir kanonik "spx" — kecepatan
+        // pengiriman direkam lewat shipment_type, bukan identitas kurir.
+        'spx instant' => 'spx',
         'shopee xpress' => 'spx',
         'id express' => 'idexpress',
         'idx' => 'idexpress',
         'lion parcel' => 'lionparcel',
+        'lion' => 'lionparcel',
         'gosend' => 'gosend',
+        'go-send same day' => 'gosend',
+        'go-send instant' => 'gosend',
         'grabexpress' => 'grabexpress',
         'grab express' => 'grabexpress',
         'grab' => 'grabexpress',
         'pos indonesia' => 'pos',
+        'pos' => 'pos',
         'tiki' => 'tiki',
         'sap express' => 'sap',
         'sap' => 'sap',
         'wahana' => 'wahana',
         'rex' => 'rex',
+        'paxel' => 'paxel',
         'tiktok shipping' => 'tiktok_shipping',
         'lazada logistics' => 'lazada_logistics',
         'lex id' => 'lex',
-    ];
-
-    private array $instantCourierCodes = [
-        'spx_instant',
-        'gosend',
-        'grabexpress',
     ];
 
     public function resolveCode(string $name): string
@@ -71,11 +75,6 @@ class CourierMappingService
         }
 
         return str_replace([' ', '.', '-'], '_', $lower);
-    }
-
-    public function resolveCourierType(string $code): string
-    {
-        return in_array($code, $this->instantCourierCodes, true) ? 'INSTANT' : 'REGULAR';
     }
 
     public function resolveShipmentType(string $name): string
@@ -99,16 +98,11 @@ class CourierMappingService
 
         $code = $this->resolveCode($externalName);
         $shipmentType = $this->resolveShipmentType($externalName);
-        $courierType = $this->resolveCourierType($code);
 
         $courier = Courier::firstOrCreate(
             ['code' => $code],
-            ['name' => $externalName, 'is_active' => true, 'type' => $courierType],
+            ['name' => $externalName, 'is_active' => true],
         );
-
-        if ($courierType === 'INSTANT' && $courier->type !== 'INSTANT') {
-            $courier->update(['type' => 'INSTANT']);
-        }
 
         $existing = CourierChannelMapping::where('channel_code', $channelCode)
             ->where('external_name', $externalName)

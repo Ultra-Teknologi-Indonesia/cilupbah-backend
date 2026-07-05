@@ -1,0 +1,74 @@
+<?php
+
+namespace Modules\Outbound\Tests\Feature;
+
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\Outbound\Models\Courier;
+use Modules\Outbound\Models\CourierChannelMapping;
+use Tests\TestCase;
+
+class ConsolidateCouriersCommandTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private function seedRawCouriers(): void
+    {
+        foreach (['JNE REG', 'JNE YES', 'JNE OKE', 'JNE Trucking'] as $name) {
+            Courier::create(['name' => $name, 'code' => strtoupper(str_replace(' ', '_', $name)), 'is_active' => true]);
+        }
+        foreach (['Spx', 'SPX Standard', 'SPX Instant', 'SPX Hemat'] as $name) {
+            Courier::create(['name' => $name, 'code' => strtoupper(str_replace(' ', '_', $name)), 'is_active' => true]);
+        }
+        // Kurir lokal yang sah, tidak boleh ikut tergabung.
+        Courier::create(['name' => 'Ambil Sendiri', 'code' => 'AMBIL_SENDIRI', 'is_active' => true]);
+    }
+
+    public function test_dry_run_does_not_modify_database(): void
+    {
+        $this->seedRawCouriers();
+
+        $this->artisan('couriers:consolidate')->assertSuccessful();
+
+        $this->assertSame(9, Courier::where('is_active', true)->count());
+        $this->assertSame(0, CourierChannelMapping::count());
+    }
+
+    public function test_apply_consolidates_jne_and_spx_variants_into_one_row_each(): void
+    {
+        $this->seedRawCouriers();
+
+        $this->artisan('couriers:consolidate', ['--apply' => true])->assertSuccessful();
+
+        $this->assertSame(1, Courier::where('code', 'jne')->where('is_active', true)->count());
+        $this->assertSame('JNE', Courier::where('code', 'jne')->first()->name);
+
+        $this->assertSame(1, Courier::where('code', 'spx')->where('is_active', true)->count());
+        $this->assertSame('SPX', Courier::where('code', 'spx')->first()->name);
+
+        // 4 baris JNE + 4 baris SPX lama dinonaktifkan, bukan dihapus.
+        $this->assertSame(8, Courier::where('is_active', false)->count());
+
+        // Kurir lokal yang memang cuma 1 baris tidak disentuh.
+        $ambilSendiri = Courier::where('name', 'Ambil Sendiri')->first();
+        $this->assertNotNull($ambilSendiri);
+        $this->assertTrue((bool) $ambilSendiri->is_active);
+
+        // Jejak nama mentah tetap ada untuk auto-mapping order berikutnya.
+        $this->assertSame(8, CourierChannelMapping::where('channel_code', 'legacy')->count());
+        $spxInstantMapping = CourierChannelMapping::where('external_name', 'SPX Instant')->first();
+        $this->assertNotNull($spxInstantMapping);
+        $this->assertSame('spx', $spxInstantMapping->courier->code);
+    }
+
+    public function test_apply_is_idempotent(): void
+    {
+        $this->seedRawCouriers();
+
+        $this->artisan('couriers:consolidate', ['--apply' => true])->assertSuccessful();
+        $this->artisan('couriers:consolidate', ['--apply' => true])->assertSuccessful();
+
+        $this->assertSame(1, Courier::where('code', 'jne')->where('is_active', true)->count());
+        $this->assertSame(1, Courier::where('code', 'spx')->where('is_active', true)->count());
+        $this->assertSame(8, CourierChannelMapping::count());
+    }
+}

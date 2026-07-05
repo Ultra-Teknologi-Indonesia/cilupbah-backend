@@ -52,30 +52,27 @@ class CourierMappingServiceTest extends TestCase
         $this->assertSame(1, CourierChannelMapping::where('external_name', 'Mystery Courier')->count());
     }
 
-    public function test_instant_brand_is_typed_instant_in_master_couriers(): void
+    public function test_spx_variants_all_resolve_to_one_canonical_courier(): void
     {
-        $mapping = $this->service->record('shopee', 'SPX Instant', 'SHP-INST');
+        $standard = $this->service->record('shopee', 'SPX Standard', 'SHP-STD');
+        $instant = $this->service->record('shopee', 'SPX Instant', 'SHP-INST');
+        $sameday = $this->service->record('tiktok', 'SPX Same Day', 'TT-SDAY');
 
-        $this->assertSame('spx_instant', $mapping->courier->code);
-        $this->assertSame('INSTANT', $mapping->courier->type);
-        $this->assertTrue(
-            Courier::where('type', 'INSTANT')->where('code', 'spx_instant')->exists()
-        );
-    }
+        $this->assertSame('spx', $standard->courier->code);
+        $this->assertSame($standard->courier_id, $instant->courier_id);
+        $this->assertSame($standard->courier_id, $sameday->courier_id);
+        $this->assertSame(1, Courier::where('code', 'spx')->count());
 
-    public function test_existing_regular_instant_courier_is_promoted_to_instant(): void
-    {
-        $courier = Courier::create(['name' => 'SPX Instant', 'code' => 'spx_instant', 'type' => 'REGULAR']);
-
-        $this->service->record('shopee', 'SPX Instant', 'SHP-INST');
-
-        $this->assertSame('INSTANT', $courier->fresh()->type);
+        // Kecepatan pengiriman tetap terekam lewat shipment_type, bukan lewat
+        // identitas kurir yang terpisah.
+        $this->assertSame('REGULAR', $standard->shipment_type);
+        $this->assertSame('INSTANT', $instant->shipment_type);
+        $this->assertSame('INSTANT', $sameday->shipment_type);
     }
 
     public function test_most_specific_keyword_wins(): void
     {
-
-        $this->assertSame('spx_instant', $this->service->resolveCode('SPX Instant - 2 Jam'));
+        $this->assertSame('spx', $this->service->resolveCode('SPX Instant - 2 Jam'));
         $this->assertSame('spx', $this->service->resolveCode('SPX Standard'));
     }
 
@@ -91,7 +88,7 @@ class CourierMappingServiceTest extends TestCase
 
         $this->assertArrayHasKey('jnt|REGULAR', $groups);
         $this->assertCount(2, $groups['jnt|REGULAR']['orders']);
-        $this->assertArrayHasKey('spx_instant|INSTANT', $groups);
-        $this->assertCount(1, $groups['spx_instant|INSTANT']['orders']);
+        $this->assertArrayHasKey('spx|INSTANT', $groups);
+        $this->assertCount(1, $groups['spx|INSTANT']['orders']);
     }
 }

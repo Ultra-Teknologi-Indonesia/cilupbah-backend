@@ -16,7 +16,6 @@ class CreateCourierRequest extends FormRequest
         return [
             'name' => 'required|string|max:100',
             'code' => 'required|string|max:50|unique:couriers,code',
-            'type' => 'nullable|string|in:REGULAR,EXPRESS,SAME_DAY,CARGO,INSTANT',
             'tracking_url' => 'nullable|string|max:500',
             'logo_url' => 'nullable|string|max:500',
             'is_active' => 'nullable|boolean',

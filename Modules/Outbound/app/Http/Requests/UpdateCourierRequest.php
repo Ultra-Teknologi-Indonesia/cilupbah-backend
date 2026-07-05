@@ -17,7 +17,6 @@ class UpdateCourierRequest extends FormRequest
         return [
             'name' => 'sometimes|string|max:100',
             'code' => ['sometimes', 'string', 'max:50', Rule::unique('couriers', 'code')->ignore($this->route('id'))],
-            'type' => 'sometimes|string|in:REGULAR,EXPRESS,SAME_DAY,CARGO,INSTANT',
             'tracking_url' => 'nullable|string|max:500',
             'logo_url' => 'nullable|string|max:500',
             'is_active' => 'sometimes|boolean',

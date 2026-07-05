@@ -12,7 +12,6 @@ class CourierRepository
     {
         return QueryBuilder::for(Courier::class)
             ->allowedFilters(
-                AllowedFilter::exact('type'),
                 AllowedFilter::exact('is_active'),
                 AllowedFilter::partial('q', 'name'),
             )
@@ -27,7 +26,6 @@ class CourierRepository
             Courier::where('tenant_id', $tenantId)
         )
             ->allowedFilters(
-                AllowedFilter::exact('type'),
                 AllowedFilter::exact('is_active'),
                 AllowedFilter::partial('q', 'name'),
             )

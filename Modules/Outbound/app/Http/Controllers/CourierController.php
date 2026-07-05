@@ -19,7 +19,6 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
         new OA\Property(property: 'name', type: 'string', example: 'JNE'),
         new OA\Property(property: 'code', type: 'string', example: 'jne'),
-        new OA\Property(property: 'type', type: 'string', enum: ['REGULAR', 'EXPRESS', 'SAME_DAY', 'CARGO', 'INSTANT']),
         new OA\Property(property: 'tracking_url', type: 'string', nullable: true),
         new OA\Property(property: 'logo_url', type: 'string', nullable: true),
         new OA\Property(property: 'is_active', type: 'boolean'),
@@ -42,7 +41,6 @@ class CourierController extends Controller
         tags: ['Outbound - Couriers'],
         parameters: [
             new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
-            new OA\Parameter(name: 'filter[type]', in: 'query', required: false, schema: new OA\Schema(type: 'string', enum: ['REGULAR', 'EXPRESS', 'SAME_DAY', 'CARGO', 'INSTANT'])),
             new OA\Parameter(name: 'filter[is_active]', in: 'query', required: false, schema: new OA\Schema(type: 'boolean')),
             new OA\Parameter(name: 'filter[q]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'sort', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
@@ -108,7 +106,6 @@ class CourierController extends Controller
                 properties: [
                     new OA\Property(property: 'name', type: 'string', example: 'JNE'),
                     new OA\Property(property: 'code', type: 'string', example: 'jne'),
-                    new OA\Property(property: 'type', type: 'string', enum: ['REGULAR', 'EXPRESS', 'SAME_DAY', 'CARGO', 'INSTANT']),
                     new OA\Property(property: 'tracking_url', type: 'string', nullable: true),
                     new OA\Property(property: 'logo_url', type: 'string', nullable: true),
                     new OA\Property(property: 'is_active', type: 'boolean'),
@@ -166,7 +163,6 @@ class CourierController extends Controller
                 properties: [
                     new OA\Property(property: 'name', type: 'string'),
                     new OA\Property(property: 'code', type: 'string'),
-                    new OA\Property(property: 'type', type: 'string'),
                     new OA\Property(property: 'tracking_url', type: 'string', nullable: true),
                     new OA\Property(property: 'logo_url', type: 'string', nullable: true),
                     new OA\Property(property: 'is_active', type: 'boolean'),
