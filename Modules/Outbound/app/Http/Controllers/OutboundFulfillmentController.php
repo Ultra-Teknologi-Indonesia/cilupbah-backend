@@ -331,7 +331,9 @@ class OutboundFulfillmentController extends Controller
     public function destroyOrder(Request $request, string $orderId): JsonResponse
     {
         $request->validate([
-            'reason' => 'nullable|string|max:500',
+            'reason' => 'required|string|max:500',
+        ], [
+            'reason.required' => 'Alasan penghapusan wajib diisi (mis. barang apa yang minus).',
         ]);
 
         try {

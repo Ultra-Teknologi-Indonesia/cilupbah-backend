@@ -220,9 +220,9 @@ class RevertStageTest extends TestCase
         return $id;
     }
 
-    // --- PicklistService::revertOrder (single order out of a picklist) ---
+    // --- PicklistService::failPickOrder (single order → Gagal Picking) ---
 
-    public function test_revert_order_reverses_picked_stock_and_returns_order_to_reserved(): void
+    public function test_fail_pick_order_reverses_stock_and_flags_gagal_picking(): void
     {
         $userId = $this->seedUser();
         $locationId = $this->seedLocation();
@@ -234,16 +234,24 @@ class RevertStageTest extends TestCase
         $orderId = $this->seedOrder($locationId, 'picked');
         $orderItemId = $this->seedOrderItem($orderId, $variantId, 'SKU-REV-A', 5);
         $this->seedPicklistItem($picklistId, $orderId, $orderItemId, $variantId, 'SKU-REV-A', 5, 3, $binId);
+        DB::table('sales_orders')->where('id', $orderId)->update(['handed_to_warehouse_at' => now()]);
 
-        app(PicklistService::class)->revertOrder($picklistId, $orderId, $userId);
+        $reversed = app(PicklistService::class)->failPickOrder($picklistId, $orderId, $userId, 'SKU-REV-A minus di rak');
 
+        $this->assertTrue($reversed);
         $this->assertSame(10, (int) Inventory::where('bin_id', $binId)->value('on_hand'));
         $this->assertSame(0, PicklistItem::where('order_id', $orderId)->count());
-        $this->assertNull(DB::table('picklists')->where('id', $picklistId)->first(), 'Picklist harus terhapus setelah order satu-satunya di-revert.');
-        $this->assertSame('reserved', SalesOrder::find($orderId)->status);
+        $this->assertNull(DB::table('picklists')->where('id', $picklistId)->first(), 'Picklist harus terhapus setelah order satu-satunya keluar.');
+
+        $order = SalesOrder::find($orderId);
+        $this->assertSame('reserved', $order->status);
+        $this->assertNotNull($order->pick_failed_at, 'Order harus masuk Gagal Picking.');
+        $this->assertSame($userId, $order->pick_failed_by);
+        $this->assertSame('SKU-REV-A minus di rak', $order->pick_fail_reason);
+        $this->assertNull($order->handed_to_warehouse_at, 'handed_to_warehouse_at harus di-clear agar muncul di daftar Pesanan.');
     }
 
-    public function test_revert_order_from_multi_order_picklist_only_affects_target_order(): void
+    public function test_fail_pick_order_from_multi_order_picklist_only_affects_target(): void
     {
         $userId = $this->seedUser();
         $locationId = $this->seedLocation();
@@ -261,12 +269,13 @@ class RevertStageTest extends TestCase
         $orderItemB = $this->seedOrderItem($orderB, $variantId, 'SKU-REV-B', 6);
         $this->seedPicklistItem($picklistId, $orderB, $orderItemB, $variantId, 'SKU-REV-B', 6, 6, $binId);
 
-        app(PicklistService::class)->revertOrder($picklistId, $orderA, $userId);
+        app(PicklistService::class)->failPickOrder($picklistId, $orderA, $userId, 'minus');
 
         $this->assertSame(0, PicklistItem::where('order_id', $orderA)->count());
-        $this->assertSame(1, PicklistItem::where('order_id', $orderB)->count(), 'Order B tidak boleh ikut ke-revert.');
+        $this->assertSame(1, PicklistItem::where('order_id', $orderB)->count(), 'Order B tidak boleh ikut keluar.');
         $this->assertNotNull(DB::table('picklists')->where('id', $picklistId)->first(), 'Picklist belum kosong, tidak boleh terhapus.');
-        $this->assertSame('reserved', SalesOrder::find($orderA)->status);
+        $this->assertNotNull(SalesOrder::find($orderA)->pick_failed_at, 'Order A masuk Gagal Picking.');
+        $this->assertNull(SalesOrder::find($orderB)->pick_failed_at, 'Order B tidak boleh ikut Gagal Picking.');
         $this->assertSame('picked', SalesOrder::find($orderB)->status, 'Order B tidak boleh ikut berubah status.');
         $this->assertSame(24, (int) Inventory::where('bin_id', $binId)->value('on_hand'), 'Hanya stok order A (4 unit) yang dikembalikan: 20 + 4 = 24.');
     }
@@ -414,10 +423,12 @@ class RevertStageTest extends TestCase
         $shipmentId = $this->seedShipment($locationId, Shipment::STATUS_SCHEDULED);
         $this->seedShipmentOrder($shipmentId, $orderId);
 
-        app(OutboundFulfillmentService::class)->deleteOrderFromFulfillment($orderId, null, 'tester@example.test');
+        app(OutboundFulfillmentService::class)->deleteOrderFromFulfillment($orderId, 'salah manifest', 'tester@example.test');
 
         $this->assertSame(0, DB::table('shipment_orders')->where('order_id', $orderId)->count());
         $this->assertSame('packed', SalesOrder::find($orderId)->status);
+        $this->assertNull(SalesOrder::find($orderId)->pick_failed_at, 'Hapus shipping tidak boleh masuk Gagal Picking.');
+        $this->assertSame('shipping', DB::table('fulfillment_removals')->where('order_id', $orderId)->value('stage'));
     }
 
     public function test_dispatcher_routes_to_packlist_revert_when_order_has_active_packlist(): void
@@ -426,13 +437,15 @@ class RevertStageTest extends TestCase
         $orderId = $this->seedOrder($locationId, 'packed');
         $this->seedPacklist($locationId, $orderId, 'COMPLETED');
 
-        app(OutboundFulfillmentService::class)->deleteOrderFromFulfillment($orderId, null, 'tester@example.test');
+        app(OutboundFulfillmentService::class)->deleteOrderFromFulfillment($orderId, 'salah pack', 'tester@example.test');
 
         $this->assertSame('picked', SalesOrder::find($orderId)->status);
         $this->assertSame(0, Packlist::where('order_id', $orderId)->count());
+        $this->assertNull(SalesOrder::find($orderId)->pick_failed_at, 'Hapus packing tidak boleh masuk Gagal Picking.');
+        $this->assertSame('packing', DB::table('fulfillment_removals')->where('order_id', $orderId)->value('stage'));
     }
 
-    public function test_dispatcher_routes_to_picklist_revert_when_order_has_picklist_items(): void
+    public function test_dispatcher_routes_picking_to_gagal_picking_with_log(): void
     {
         $userId = $this->seedUser();
         $locationId = $this->seedLocation();
@@ -445,11 +458,60 @@ class RevertStageTest extends TestCase
         $orderItemId = $this->seedOrderItem($orderId, $variantId, 'SKU-REV-E', 5);
         $this->seedPicklistItem($picklistId, $orderId, $orderItemId, $variantId, 'SKU-REV-E', 5, 2, $binId);
 
-        app(OutboundFulfillmentService::class)->deleteOrderFromFulfillment($orderId, null, $userId);
+        app(OutboundFulfillmentService::class)->deleteOrderFromFulfillment($orderId, 'barang minus', 'ops@cilupbah.test');
 
         $this->assertSame(7, (int) Inventory::where('bin_id', $binId)->value('on_hand'));
         $this->assertSame(0, PicklistItem::where('order_id', $orderId)->count());
-        $this->assertSame('reserved', SalesOrder::find($orderId)->status);
+
+        $order = SalesOrder::find($orderId);
+        $this->assertSame('reserved', $order->status);
+        $this->assertNotNull($order->pick_failed_at);
+        $this->assertSame('ops@cilupbah.test', $order->pick_failed_by);
+
+        $log = DB::table('fulfillment_removals')->where('order_id', $orderId)->first();
+        $this->assertNotNull($log, 'Jejak fulfillment_removals harus tertulis.');
+        $this->assertSame('picking', $log->stage);
+        $this->assertSame('ops@cilupbah.test', $log->removed_by);
+        $this->assertSame('barang minus', $log->reason);
+        $this->assertTrue((bool) $log->reversed_stock);
+    }
+
+    public function test_gagal_picking_order_appears_in_failed_pick_tab_not_ready_to_process(): void
+    {
+        $userId = $this->seedUser();
+        $locationId = $this->seedLocation();
+        $binId = $this->seedBin($locationId, 'L1-B1-K1-R9');
+        $variantId = $this->seedProductVariant('SKU-REV-T');
+        $this->seedInventory($variantId, $locationId, $binId, 5);
+
+        $picklistId = $this->seedPicklist($locationId);
+        $orderId = $this->seedOrder($locationId, 'reserved');
+        $orderItemId = $this->seedOrderItem($orderId, $variantId, 'SKU-REV-T', 5);
+        $this->seedPicklistItem($picklistId, $orderId, $orderItemId, $variantId, 'SKU-REV-T', 5, 2, $binId);
+        DB::table('sales_orders')->where('id', $orderId)->update(['handed_to_warehouse_at' => now()]);
+
+        app(OutboundFulfillmentService::class)->deleteOrderFromFulfillment($orderId, 'barang minus', $userId);
+
+        $counts = app(\Modules\Sales\Repositories\SalesOrderRepository::class)->getTabCounts();
+        $this->assertSame(1, $counts['failed-pick'], 'Order gagal picking harus muncul di tab Gagal Picking.');
+        $this->assertSame(0, $counts['ready-to-process'], 'Tidak boleh bocor ke Siap Proses.');
+    }
+
+    public function test_move_to_ready_clears_gagal_picking_flag(): void
+    {
+        $locationId = $this->seedLocation();
+        $orderId = $this->seedOrder($locationId, 'reserved');
+        DB::table('sales_orders')->where('id', $orderId)->update([
+            'pick_failed_at'   => now(),
+            'pick_failed_by'   => 'ops@cilupbah.test',
+            'pick_fail_reason' => 'barang minus',
+        ]);
+
+        app(\Modules\Sales\Services\SalesOrderService::class)->moveToReadyToProcess([$orderId]);
+
+        $order = SalesOrder::find($orderId);
+        $this->assertNull($order->pick_failed_at, 'Flag Gagal Picking harus clear setelah Pindahkan ke Siap Proses.');
+        $this->assertNotNull($order->handed_to_warehouse_at);
     }
 
     public function test_dispatcher_rejects_when_order_not_in_any_fulfillment_stage(): void

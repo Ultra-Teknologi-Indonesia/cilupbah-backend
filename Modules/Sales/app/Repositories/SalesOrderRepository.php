@@ -132,6 +132,7 @@ class SalesOrderRepository
 
         return [
             'all'              => $this->visibleOrders()
+                ->whereNull('pick_failed_at')
                 ->where(fn ($q) => $q
                     ->where('status', '!=', 'reserved')
                     ->orWhereDoesntHave('items', $emptyStockItemConstraint))
@@ -139,6 +140,7 @@ class SalesOrderRepository
             'unpaid'           => $this->visibleOrders()->where('status', 'pending')->where('is_paid', false)->count(),
             'failed'           => $this->scopeFailedDownload(SalesOrder::query())->count(),
             'ready-to-process' => $this->visibleOrders()->where('status', 'reserved')
+                ->whereNull('pick_failed_at')
                 ->whereDoesntHave('picklistItems')
                 ->whereDoesntHave('items', $this->unmappedItemsConstraint())
                 ->whereDoesntHave('items', $emptyStockItemConstraint)
@@ -148,10 +150,11 @@ class SalesOrderRepository
             'completed'        => $this->visibleOrders()->where('status', 'shipped')
                 ->whereNotNull('received_date')->count(),
             'empty-stock'      => $this->visibleOrders()->where('status', 'reserved')
+                ->whereNull('pick_failed_at')
                 ->whereHas('items', $emptyStockItemConstraint)
                 ->count(),
             'failed-pick'      => $this->visibleOrders()->where('status', 'reserved')
-                ->whereHas('picklistItems', fn ($q) => $q->whereHas('picklist', fn ($p) => $p->where('status', 'FAILED')))
+                ->whereNotNull('pick_failed_at')
                 ->count(),
             'cancellation'     => $this->visibleOrders()->where(fn ($q) => $q
                 ->where('status', 'cancelled')
@@ -208,6 +211,7 @@ class SalesOrderRepository
             'unpaid'           => $query->where('status', 'pending')->where('is_paid', false),
             'failed'           => $this->scopeFailedDownload($query),
             'ready-to-process' => $query->where('status', 'reserved')
+                ->whereNull('pick_failed_at')
                 ->whereDoesntHave('picklistItems')
                 ->whereDoesntHave('items', $this->unmappedItemsConstraint())
                 ->whereDoesntHave('items', fn ($q) => $q->whereRaw(
@@ -221,6 +225,7 @@ class SalesOrderRepository
             'in-transit'       => $query->where('status', 'shipped')->whereNull('received_date'),
             'completed'        => $query->where('status', 'shipped')->whereNotNull('received_date'),
             'empty-stock'      => $query->where('status', 'reserved')
+                ->whereNull('pick_failed_at')
                 ->whereHas('items', fn ($q) => $q->whereRaw(
                     "sales_order_items.qty_in_base > COALESCE((
                         SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
@@ -230,10 +235,10 @@ class SalesOrderRepository
                     ), 0)"
                 )),
             'failed-pick'      => $query->where('status', 'reserved')
-                ->whereHas('picklistItems', fn ($q) => $q->whereHas('picklist', fn ($p) => $p->where('status', 'FAILED'))),
+                ->whereNotNull('pick_failed_at'),
             'cancellation'     => $this->applyCancellationSubScope($query, $sub),
             'returned'         => $this->applyReturnSubScope($query, $sub),
-            'all'              => $query->where(fn ($q) => $q
+            'all'              => $query->whereNull('pick_failed_at')->where(fn ($q) => $q
                 ->where('status', '!=', 'reserved')
                 ->orWhereDoesntHave('items', fn ($qi) => $qi->whereRaw(
                     "sales_order_items.qty_in_base > COALESCE((

@@ -144,6 +144,10 @@ class SalesOrderResource extends JsonResource
             'cancel_requested_at'    => $this->cancel_requested_at,
             'cancel_request_reason'  => $this->cancel_request_reason,
 
+            'pick_failed_at'     => $this->pick_failed_at,
+            'pick_failed_by'     => $this->pick_failed_by,
+            'pick_fail_reason'   => $this->pick_fail_reason,
+
             'contacted_at'       => $this->contacted_at,
             'contacted_by'       => $this->contacted_by,
             'contact_channel'    => $this->contact_channel,

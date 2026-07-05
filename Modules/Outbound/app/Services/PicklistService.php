@@ -782,13 +782,16 @@ class PicklistService
     }
 
     /**
-     * Keluarkan satu order dari picklist (picklist bisa berisi banyak order/batch):
-     * reverse stok yang sudah di-pick untuk order ini, lepas item-nya, kembalikan
-     * order ke status 'reserved'. Bila picklist jadi kosong, dokumen ikut dihapus.
+     * Keluarkan satu order dari picking karena barang minus / tidak ada di lokasi
+     * (picklist bisa berisi banyak order/batch): reverse stok yang sudah di-pick,
+     * lepas item order ini, lalu tandai order MASUK "Gagal Picking"
+     * (`pick_failed_*`), TIDAK langsung ke Siap Proses. Admin nanti "Pindahkan ke
+     * Siap Proses". Bila picklist jadi kosong, dokumen ikut dihapus.
+     * Return: apakah ada stok yang di-reverse (untuk jejak).
      */
-    public function revertOrder(string $picklistId, string $orderId, string $userId): void
+    public function failPickOrder(string $picklistId, string $orderId, string $userId, string $reason): bool
     {
-        DB::transaction(function () use ($picklistId, $orderId, $userId) {
+        return DB::transaction(function () use ($picklistId, $orderId, $userId, $reason) {
             $picklist = $this->picklistRepository->findById($picklistId);
 
             if (!$picklist) {
@@ -796,11 +799,25 @@ class PicklistService
             }
 
             $this->assertOrderNotProgressedBeyondPicking($orderId);
-            $this->reverseAndDetachOrderFromPicklist($picklist, $orderId, $userId);
+            $reversed = $this->reverseAndDetachOrderFromPicklist($picklist, $orderId, $userId);
+
+            $order = Order::find($orderId);
+            if ($order) {
+                // Kembalikan order ke daftar Pesanan admin (Gagal Picking): clear
+                // handed_to_warehouse_at supaya lolos scopeExcludeHandedToWarehouse.
+                $order->update([
+                    'pick_failed_at'         => now(),
+                    'pick_failed_by'         => $userId,
+                    'pick_fail_reason'       => $reason,
+                    'handed_to_warehouse_at' => null,
+                ]);
+            }
 
             if (!PicklistItem::where('picklist_id', $picklistId)->exists()) {
                 $this->picklistRepository->delete($picklistId);
             }
+
+            return $reversed;
         });
     }
 
@@ -861,12 +878,14 @@ class PicklistService
         }
     }
 
-    private function reverseAndDetachOrderFromPicklist(Picklist $picklist, string $orderId, string $userId): void
+    private function reverseAndDetachOrderFromPicklist(Picklist $picklist, string $orderId, string $userId): bool
     {
         $items = PicklistItem::where('picklist_id', $picklist->id)
             ->where('order_id', $orderId)
             ->lockForUpdate()
             ->get();
+
+        $reversed = false;
 
         foreach ($items as $item) {
             if ((int) $item->qty_picked <= 0) {
@@ -885,6 +904,8 @@ class PicklistService
                 'transaction_number' => $picklist->picklist_no . '-HAPUS',
                 'created_by'         => $userId ?: 'system',
             ]);
+
+            $reversed = true;
         }
 
         PicklistItem::where('picklist_id', $picklist->id)
@@ -896,5 +917,7 @@ class PicklistService
         if ($order && $order->status === 'picked') {
             $order->update(['status' => 'reserved']);
         }
+
+        return $reversed;
     }
 }

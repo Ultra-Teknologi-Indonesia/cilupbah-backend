@@ -620,36 +620,6 @@ class PicklistController extends Controller
         return $this->successResponse(null, 'Picklist dikembalikan, order kembali ke belum dipick.');
     }
 
-    #[OA\Post(
-        path: '/api/v1/outbound/picklists/{id}/orders/{orderId}/revert',
-        summary: 'Keluarkan satu order dari picklist (picklist bisa berisi banyak order)',
-        description: 'Stok yang sudah ter-pick untuk order ini direversal ke rak asal, order kembali ke reserved. Bila picklist jadi kosong, dokumen ikut dihapus.',
-        security: [['bearerAuth' => []]],
-        tags: ['Outbound - Picklist'],
-        parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
-            new OA\Parameter(name: 'orderId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
-        ],
-        responses: [
-            new OA\Response(response: 200, description: 'Success'),
-            new OA\Response(response: 422, description: 'Validation Error'),
-        ]
-    )]
-    public function revertOrder(string $id, string $orderId, Request $request): JsonResponse
-    {
-        try {
-            $userId = (string) ($request->user()->id ?? 'system');
-            $this->picklistService->revertOrder($id, $orderId, $userId);
-        } catch (OutboundValidationException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
-        } catch (Throwable $e) {
-            report($e);
-            return $this->errorResponse('Gagal mengembalikan pesanan: ' . $e->getMessage(), 500);
-        }
-
-        return $this->successResponse(null, 'Pesanan dikembalikan ke belum dipick.');
-    }
-
     protected function attachRecommendedBins($picklist): void
     {
         $items = $picklist->items ?? collect();

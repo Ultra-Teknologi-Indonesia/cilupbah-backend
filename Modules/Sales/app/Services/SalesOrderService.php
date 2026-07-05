@@ -117,7 +117,14 @@ class SalesOrderService
                     ]))
                     ->delete();
 
-                $order->update(['handed_to_warehouse_at' => now()]);
+                // Clear flag Gagal Picking (kalau order datang dari sana) sekaligus
+                // serahkan ke gudang.
+                $order->update([
+                    'handed_to_warehouse_at' => now(),
+                    'pick_failed_at'         => null,
+                    'pick_failed_by'         => null,
+                    'pick_fail_reason'       => null,
+                ]);
 
                 $source = strtolower((string) $order->source);
                 if (

@@ -7,6 +7,7 @@ use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\ShipmentOrder;
+use Modules\Outbound\Models\FulfillmentRemoval;
 use Modules\Inventory\Models\Inventory;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
@@ -482,15 +483,17 @@ class OutboundFulfillmentService
     }
 
     /**
-     * Hapus pesanan tidak sesuai dari proses fulfillment: order TIDAK dihapus dari
-     * sistem, melainkan dikembalikan satu tahap ke belakang (revert), tergantung
-     * tahap fulfillment terjauh yang sudah dicapai order ini:
-     *   - sudah di shipment (SCHEDULED)  -> lepas dari shipment, order tetap 'packed'
-     *   - sudah punya packlist aktif     -> hapus packlist, order -> 'picked'
-     *   - sudah punya item picklist      -> reverse stok ter-pick, order -> 'reserved'
+     * Hapus pesanan dari proses fulfillment (manual, WAJIB alasan). Order TIDAK
+     * dihapus dari sistem. Perilaku tergantung tahap terjauh yang sudah dicapai:
+     *   - Picking (punya item picklist)  -> reverse stok ter-pick, lepas item,
+     *       order MASUK "Gagal Picking" (pick_failed_*), TIDAK langsung Siap Proses.
+     *       Admin lalu "Pindahkan ke Siap Proses".
+     *   - Packing (punya packlist aktif) -> revert packlist, order -> 'picked'.
+     *   - Shipping (di shipment SCHEDULED) -> lepas dari shipment, order tetap 'packed'.
+     * Semua tahap menulis jejak ke `fulfillment_removals` (siapa + alasan).
      * Order berstatus 'shipped' (sudah dikirim fisik) ditolak.
      */
-    public function deleteOrderFromFulfillment(string $orderId, ?string $reason, ?string $revertedBy): void
+    public function deleteOrderFromFulfillment(string $orderId, ?string $reason, ?string $removedBy): void
     {
         $order = Order::findOrFail($orderId);
 
@@ -498,10 +501,13 @@ class OutboundFulfillmentService
             throw new \Exception('Pesanan sudah dikirim — tidak bisa dihapus.');
         }
 
+        $removedBy = $removedBy ?: 'system';
+
         $shipmentId = ShipmentOrder::where('order_id', $order->id)->value('shipment_id');
 
         if ($shipmentId) {
             app(\Modules\Outbound\Services\ShipmentService::class)->removeOrders($shipmentId, [$order->id]);
+            $this->logRemoval($order->id, FulfillmentRemoval::STAGE_SHIPPING, $removedBy, $reason, false);
 
             return;
         }
@@ -512,6 +518,7 @@ class OutboundFulfillmentService
 
         if ($activePacklist) {
             app(\Modules\Outbound\Services\PacklistService::class)->revert($activePacklist->id);
+            $this->logRemoval($order->id, FulfillmentRemoval::STAGE_PACKING, $removedBy, $reason, false);
 
             return;
         }
@@ -519,12 +526,24 @@ class OutboundFulfillmentService
         $picklistId = PicklistItem::where('order_id', $order->id)->value('picklist_id');
 
         if ($picklistId) {
-            app(\Modules\Outbound\Services\PicklistService::class)
-                ->revertOrder($picklistId, $order->id, $revertedBy ?: 'system');
+            $reversed = app(\Modules\Outbound\Services\PicklistService::class)
+                ->failPickOrder($picklistId, $order->id, $removedBy, (string) $reason);
+            $this->logRemoval($order->id, FulfillmentRemoval::STAGE_PICKING, $removedBy, $reason, $reversed);
 
             return;
         }
 
         throw new \Exception('Pesanan belum masuk proses picking/packing/pengiriman — tidak ada yang bisa dikembalikan.');
+    }
+
+    private function logRemoval(string $orderId, string $stage, string $removedBy, ?string $reason, bool $reversedStock): void
+    {
+        FulfillmentRemoval::create([
+            'order_id'       => $orderId,
+            'stage'          => $stage,
+            'removed_by'     => $removedBy,
+            'reason'         => $reason,
+            'reversed_stock' => $reversedStock,
+        ]);
     }
 }
