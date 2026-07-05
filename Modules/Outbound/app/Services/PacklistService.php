@@ -5,6 +5,7 @@ namespace Modules\Outbound\Services;
 use Modules\Outbound\Repositories\PacklistRepository;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\PacklistItem;
+use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Outbound\Jobs\ProcessPacklistCompleteJob;
 use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Notification\Events\TaskAssigned;
@@ -358,5 +359,41 @@ class PacklistService
         }
 
         return $this->packlistRepository->delete($id);
+    }
+
+    /**
+     * Hapus packlist (packlist = 1 order): order kembali ke status 'picked'
+     * (belum dipack). Packing tidak menyentuh stok, jadi tidak ada reversal.
+     * Ditolak bila order sudah masuk shipment atau sudah shipped.
+     */
+    public function revert(string $id): void
+    {
+        DB::transaction(function () use ($id) {
+            $packlist = $this->packlistRepository->findById($id);
+
+            if (!$packlist) {
+                throw new \Exception('Packlist tidak ditemukan.');
+            }
+
+            $order = Order::find($packlist->order_id);
+
+            if ($order) {
+                if ($order->status === 'shipped') {
+                    throw new \Exception('Pesanan sudah dikirim — tidak bisa dihapus.');
+                }
+
+                if (ShipmentOrder::where('order_id', $order->id)->exists()) {
+                    throw new \Exception(
+                        "Pesanan {$order->salesorder_no} sudah masuk pengiriman — kembalikan dari shipment tersebut dulu."
+                    );
+                }
+
+                if ($order->status === 'packed') {
+                    $order->update(['status' => 'picked']);
+                }
+            }
+
+            $this->packlistRepository->delete($id);
+        });
     }
 }

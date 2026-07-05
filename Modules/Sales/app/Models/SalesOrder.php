@@ -6,14 +6,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\SoftDeletes;
 
 use App\Traits\HasUuid7;
 use Modules\Outbound\Support\InstantOrderClassifier;
 
 class SalesOrder extends Model
 {
-    use HasUuid7, SoftDeletes;
+    use HasUuid7;
 
     protected $table = 'sales_orders';
 
@@ -79,8 +78,6 @@ class SalesOrder extends Model
         'cancel_reject_reason',
         'cancel_dismissed_at',
         'cancel_dismissed_by',
-        'deleted_by',
-        'delete_reason',
         'contacted_at',
         'contacted_by',
         'contact_channel',

@@ -381,17 +381,6 @@ class SalesOrderRepository
     {
         $existing = DB::table('sales_orders')->where('salesorder_no', $salesOrderNo)->lockForUpdate()->first();
 
-        // Tombstone: baris trashed memblokir re-ingestion dari channel.
-        // Query raw DB::table melewati global scope SoftDeletes, jadi cek eksplisit.
-        if ($existing && $existing->deleted_at !== null) {
-            Log::info('Upsert dilewati: pesanan sudah dihapus dari sistem (tombstone).', [
-                'salesorder_no' => $salesOrderNo,
-                'deleted_at'    => $existing->deleted_at,
-            ]);
-
-            return null;
-        }
-
         $orderRow = [
             'salesorder_no'       => $orderData['salesorder_no'],
             'channel_order_no'    => $orderData['channel_order_no'] ?? null,

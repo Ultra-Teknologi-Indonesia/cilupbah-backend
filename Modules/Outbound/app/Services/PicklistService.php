@@ -6,6 +6,7 @@ use Modules\Outbound\Repositories\PicklistRepository;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
 use Modules\Outbound\Models\PicklistItemAllocation;
+use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Jobs\ProcessPicklistCompleteJob;
 use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Outbound\Events\PicklistItemFailed;
@@ -778,5 +779,122 @@ class PicklistService
         }
 
         return $this->picklistRepository->delete($id);
+    }
+
+    /**
+     * Keluarkan satu order dari picklist (picklist bisa berisi banyak order/batch):
+     * reverse stok yang sudah di-pick untuk order ini, lepas item-nya, kembalikan
+     * order ke status 'reserved'. Bila picklist jadi kosong, dokumen ikut dihapus.
+     */
+    public function revertOrder(string $picklistId, string $orderId, string $userId): void
+    {
+        DB::transaction(function () use ($picklistId, $orderId, $userId) {
+            $picklist = $this->picklistRepository->findById($picklistId);
+
+            if (!$picklist) {
+                throw new OutboundValidationException('Picklist tidak ditemukan.');
+            }
+
+            $this->assertOrderNotProgressedBeyondPicking($orderId);
+            $this->reverseAndDetachOrderFromPicklist($picklist, $orderId, $userId);
+
+            if (!PicklistItem::where('picklist_id', $picklistId)->exists()) {
+                $this->picklistRepository->delete($picklistId);
+            }
+        });
+    }
+
+    /**
+     * Hapus seluruh picklist (batch): semua order anggotanya kembali ke 'reserved'
+     * (belum dipick), stok yang sudah ter-pick direversal ke rak asal.
+     * Ditolak seluruhnya (all-or-nothing) bila ada order yang sudah lanjut ke
+     * packing/pengiriman — order tsb harus dikembalikan dari tahap itu dulu.
+     */
+    public function revert(string $picklistId, string $userId): void
+    {
+        DB::transaction(function () use ($picklistId, $userId) {
+            $picklist = $this->picklistRepository->findById($picklistId);
+
+            if (!$picklist) {
+                throw new OutboundValidationException('Picklist tidak ditemukan.');
+            }
+
+            $orderIds = PicklistItem::where('picklist_id', $picklistId)
+                ->pluck('order_id')
+                ->unique()
+                ->values();
+
+            foreach ($orderIds as $orderId) {
+                $this->assertOrderNotProgressedBeyondPicking($orderId);
+            }
+
+            foreach ($orderIds as $orderId) {
+                $this->reverseAndDetachOrderFromPicklist($picklist, $orderId, $userId);
+            }
+
+            $this->picklistRepository->delete($picklistId);
+        });
+    }
+
+    private function assertOrderNotProgressedBeyondPicking(string $orderId): void
+    {
+        $order = Order::find($orderId);
+
+        if (!$order) {
+            return;
+        }
+
+        if (in_array($order->status, ['packed', 'shipped'], true)) {
+            throw new OutboundValidationException(
+                "Pesanan {$order->salesorder_no} sudah lanjut ke tahap packing/pengiriman — kembalikan dari tahap tersebut dulu."
+            );
+        }
+
+        $hasActivePacklist = Packlist::where('order_id', $orderId)
+            ->where('status', '!=', Packlist::STATUS_CANCELLED)
+            ->exists();
+
+        if ($hasActivePacklist) {
+            throw new OutboundValidationException(
+                "Pesanan {$order->salesorder_no} sudah memiliki packlist aktif — kembalikan/hapus packlist tersebut dulu."
+            );
+        }
+    }
+
+    private function reverseAndDetachOrderFromPicklist(Picklist $picklist, string $orderId, string $userId): void
+    {
+        $items = PicklistItem::where('picklist_id', $picklist->id)
+            ->where('order_id', $orderId)
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($items as $item) {
+            if ((int) $item->qty_picked <= 0) {
+                continue;
+            }
+
+            if (empty($item->bin_id)) {
+                throw new OutboundValidationException('Baris ini tidak punya rak asal pick, tidak bisa dikembalikan.');
+            }
+
+            $this->inventoryService->reversePick([
+                'item_id'            => $item->item_id,
+                'location_id'        => $picklist->location_id,
+                'bin_id'             => $item->bin_id,
+                'qty'                => (int) $item->qty_picked,
+                'transaction_number' => $picklist->picklist_no . '-HAPUS',
+                'created_by'         => $userId ?: 'system',
+            ]);
+        }
+
+        PicklistItem::where('picklist_id', $picklist->id)
+            ->where('order_id', $orderId)
+            ->delete();
+
+        $order = Order::find($orderId);
+
+        if ($order && $order->status === 'picked') {
+            $order->update(['status' => 'reserved']);
+        }
     }
 }

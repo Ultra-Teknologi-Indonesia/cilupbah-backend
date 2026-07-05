@@ -315,8 +315,8 @@ class OutboundFulfillmentController extends Controller
 
     #[OA\Delete(
         path: '/api/v1/outbound/orders/{orderId}',
-        summary: 'Hapus pesanan tidak sesuai dari proses fulfillment (soft-delete + tombstone)',
-        description: 'Mengembalikan stok ter-pick ke bin asal, melepas pesanan dari picklist/packlist/shipment, lalu soft-delete. Baris trashed memblokir re-download dari webhook channel. Order berstatus shipped ditolak.',
+        summary: 'Hapus pesanan dari tahap fulfillment saat ini (kembalikan ke tahap sebelumnya)',
+        description: 'Order TIDAK dihapus dari sistem. Order dikembalikan satu tahap ke belakang tergantung tahap terjauh yang sudah dicapai (shipment SCHEDULED -> dilepas; punya packlist aktif -> dihapus, balik ke picked; punya item picklist -> stok ter-pick direversal ke rak asal, balik ke reserved). Order berstatus shipped (sudah dikirim) ditolak.',
         security: [['bearerAuth' => []]],
         tags: ['Outbound - Fulfillment'],
         parameters: [
@@ -344,7 +344,7 @@ class OutboundFulfillmentController extends Controller
             return $this->errorResponse($e->getMessage());
         }
 
-        return $this->successResponse(null, 'Pesanan dihapus dari sistem.');
+        return $this->successResponse(null, 'Pesanan dikembalikan ke tahap sebelumnya.');
     }
 
     #[OA\Get(

@@ -48,6 +48,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('picklists/{id}/fail', [PicklistController::class, 'fail'])->name('outbound.picklists.fail');
     Route::post('picklists/{id}/cancel', [PicklistController::class, 'cancel'])->name('outbound.picklists.cancel');
     Route::delete('picklists/{id}', [PicklistController::class, 'destroy'])->name('outbound.picklists.destroy');
+    Route::post('picklists/{id}/revert', [PicklistController::class, 'revert'])->name('outbound.picklists.revert');
+    Route::post('picklists/{id}/orders/{orderId}/revert', [PicklistController::class, 'revertOrder'])->name('outbound.picklists.revert-order');
 
     Route::get('packlists/scan-order', [PacklistController::class, 'scanOrder'])->name('outbound.packlists.scan-order');
     Route::get('packlists', [PacklistController::class, 'index'])->name('outbound.packlists.index');
@@ -63,6 +65,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('packlists/{id}/complete', [PacklistController::class, 'complete'])->name('outbound.packlists.complete');
     Route::post('packlists/{id}/cancel', [PacklistController::class, 'cancel'])->name('outbound.packlists.cancel');
     Route::delete('packlists/{id}', [PacklistController::class, 'destroy'])->name('outbound.packlists.destroy');
+    Route::post('packlists/{id}/revert', [PacklistController::class, 'revert'])->name('outbound.packlists.revert');
 
     Route::get('shipments', [ShipmentController::class, 'index'])->name('outbound.shipments.index');
     Route::post('shipments', [ShipmentController::class, 'store'])->name('outbound.shipments.store');

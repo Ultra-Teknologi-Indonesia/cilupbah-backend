@@ -9,6 +9,7 @@ use Modules\Outbound\Services\PacklistService;
 use Modules\Outbound\Http\Requests\CreatePacklistRequest;
 use Modules\Outbound\Http\Requests\PackItemRequest;
 use OpenApi\Attributes as OA;
+use Throwable;
 
 #[OA\Tag(name: 'Outbound - Packlist', description: 'API Endpoints for Packlist management')]
 #[OA\Schema(
@@ -370,5 +371,30 @@ class PacklistController extends Controller
         $this->packlistService->delete($id);
 
         return $this->successResponse(null, 'Packlist berhasil dihapus.');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/outbound/packlists/{id}/revert',
+        summary: 'Hapus packlist: order kembali ke belum-dipack',
+        description: 'Packlist selalu 1 order. Packing tidak menyentuh stok, jadi tidak ada reversal. Ditolak bila order sudah masuk shipment atau sudah dikirim.',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Packlist'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+        ]
+    )]
+    public function revert(string $id): JsonResponse
+    {
+        try {
+            $this->packlistService->revert($id);
+        } catch (Throwable $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
+        return $this->successResponse(null, 'Packlist dikembalikan, order kembali ke belum dipack.');
     }
 }

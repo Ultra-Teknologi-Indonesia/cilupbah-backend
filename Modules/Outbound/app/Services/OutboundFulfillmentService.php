@@ -482,19 +482,49 @@ class OutboundFulfillmentService
     }
 
     /**
-     * Hapus pesanan tidak sesuai dari proses fulfillment (soft-delete + tombstone).
-     * Stok yang sudah ter-pick kembali ke bin asal; baris trashed memblokir
-     * re-download dari webhook/pull channel.
+     * Hapus pesanan tidak sesuai dari proses fulfillment: order TIDAK dihapus dari
+     * sistem, melainkan dikembalikan satu tahap ke belakang (revert), tergantung
+     * tahap fulfillment terjauh yang sudah dicapai order ini:
+     *   - sudah di shipment (SCHEDULED)  -> lepas dari shipment, order tetap 'packed'
+     *   - sudah punya packlist aktif     -> hapus packlist, order -> 'picked'
+     *   - sudah punya item picklist      -> reverse stok ter-pick, order -> 'reserved'
+     * Order berstatus 'shipped' (sudah dikirim fisik) ditolak.
      */
-    public function deleteOrderFromFulfillment(string $orderId, ?string $reason, ?string $deletedBy): void
+    public function deleteOrderFromFulfillment(string $orderId, ?string $reason, ?string $revertedBy): void
     {
         $order = Order::findOrFail($orderId);
 
         if ($order->status === 'shipped') {
-            throw new \Exception('Pesanan sudah dikirim — tidak bisa dihapus dari sistem.');
+            throw new \Exception('Pesanan sudah dikirim — tidak bisa dihapus.');
         }
 
-        app(\Modules\Sales\Services\SalesOrderService::class)
-            ->deleteOrder($order, $deletedBy, $reason ?: 'Dihapus dari proses fulfillment (pesanan tidak sesuai).');
+        $shipmentId = ShipmentOrder::where('order_id', $order->id)->value('shipment_id');
+
+        if ($shipmentId) {
+            app(\Modules\Outbound\Services\ShipmentService::class)->removeOrders($shipmentId, [$order->id]);
+
+            return;
+        }
+
+        $activePacklist = Packlist::where('order_id', $order->id)
+            ->where('status', '!=', Packlist::STATUS_CANCELLED)
+            ->first();
+
+        if ($activePacklist) {
+            app(\Modules\Outbound\Services\PacklistService::class)->revert($activePacklist->id);
+
+            return;
+        }
+
+        $picklistId = PicklistItem::where('order_id', $order->id)->value('picklist_id');
+
+        if ($picklistId) {
+            app(\Modules\Outbound\Services\PicklistService::class)
+                ->revertOrder($picklistId, $order->id, $revertedBy ?: 'system');
+
+            return;
+        }
+
+        throw new \Exception('Pesanan belum masuk proses picking/packing/pengiriman — tidak ada yang bisa dikembalikan.');
     }
 }
