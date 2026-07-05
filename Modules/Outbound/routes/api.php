@@ -24,6 +24,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('orders/ad-hoc-pick/scan', [AdHocPickController::class, 'scan'])->name('outbound.orders.ad-hoc-pick.scan');
     Route::get('pickers', [OutboundFulfillmentController::class, 'pickers'])->name('outbound.pickers.index');
     Route::get('orders/{stage}', [OutboundFulfillmentController::class, 'ordersByStage'])->name('outbound.orders.stage');
+    Route::delete('orders/{orderId}', [OutboundFulfillmentController::class, 'destroyOrder'])->name('outbound.orders.destroy');
 
     Route::get('picklists/on-picking', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('on-picking', $request))->name('outbound.picklists.on-picking');
     Route::get('packlists/on-packing', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('on-packing', $request))->name('outbound.packlists.on-packing');

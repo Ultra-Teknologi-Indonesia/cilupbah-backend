@@ -313,6 +313,40 @@ class OutboundFulfillmentController extends Controller
         return $this->successResponse($results, 'Proses retry pickup selesai.');
     }
 
+    #[OA\Delete(
+        path: '/api/v1/outbound/orders/{orderId}',
+        summary: 'Hapus pesanan tidak sesuai dari proses fulfillment (soft-delete + tombstone)',
+        description: 'Mengembalikan stok ter-pick ke bin asal, melepas pesanan dari picklist/packlist/shipment, lalu soft-delete. Baris trashed memblokir re-download dari webhook channel. Order berstatus shipped ditolak.',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Fulfillment'],
+        parameters: [
+            new OA\Parameter(name: 'orderId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'reason', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+            new OA\Response(response: 400, description: 'Bad Request'),
+        ]
+    )]
+    public function destroyOrder(Request $request, string $orderId): JsonResponse
+    {
+        $request->validate([
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $this->fulfillmentService->deleteOrderFromFulfillment(
+                $orderId,
+                $request->input('reason'),
+                auth()->user()->email,
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+
+        return $this->successResponse(null, 'Pesanan dihapus dari sistem.');
+    }
+
     #[OA\Get(
         path: '/api/v1/outbound/pickers',
         summary: 'List warehouse users eligible as pickers',

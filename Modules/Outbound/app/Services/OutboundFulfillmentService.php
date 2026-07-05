@@ -480,4 +480,21 @@ class OutboundFulfillmentService
         return Order::whereNotNull('cancel_requested_at')
             ->whereNotIn('status', ['cancelled']);
     }
+
+    /**
+     * Hapus pesanan tidak sesuai dari proses fulfillment (soft-delete + tombstone).
+     * Stok yang sudah ter-pick kembali ke bin asal; baris trashed memblokir
+     * re-download dari webhook/pull channel.
+     */
+    public function deleteOrderFromFulfillment(string $orderId, ?string $reason, ?string $deletedBy): void
+    {
+        $order = Order::findOrFail($orderId);
+
+        if ($order->status === 'shipped') {
+            throw new \Exception('Pesanan sudah dikirim — tidak bisa dihapus dari sistem.');
+        }
+
+        app(\Modules\Sales\Services\SalesOrderService::class)
+            ->deleteOrder($order, $deletedBy, $reason ?: 'Dihapus dari proses fulfillment (pesanan tidak sesuai).');
+    }
 }

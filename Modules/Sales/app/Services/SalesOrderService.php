@@ -623,6 +623,19 @@ class SalesOrderService
             throw new DuplicateOrderException($marketplace, $marketplaceOrderId);
         }
 
+        // Tombstone: pesanan yang sudah dihapus (soft-delete) tidak boleh dibuat ulang.
+        if (SalesOrder::withTrashed()
+            ->where('salesorder_no', $marketplaceOrderId)
+            ->whereNotNull('deleted_at')
+            ->exists()) {
+            Log::info('createOrder dilewati: pesanan sudah dihapus dari sistem (tombstone).', [
+                'salesorder_no' => $marketplaceOrderId,
+                'marketplace'   => $marketplace,
+            ]);
+
+            throw new DuplicateOrderException($marketplace, $marketplaceOrderId);
+        }
+
         try {
             $order = DB::transaction(function () use ($validated) {
                 $order = SalesOrder::create(array_merge($validated, ['status' => 'pending']));
@@ -725,28 +738,73 @@ class SalesOrderService
         return $order->fresh('items');
     }
 
-    public function deleteOrder(SalesOrder $order): void
+    public function deleteOrder(SalesOrder $order, ?string $deletedBy = null, ?string $reason = null): void
     {
         $order->load('items');
         $skus = $order->items->pluck('sku')->filter()->unique()->values()->all();
 
-        if (! in_array($order->status, ['pending', 'cancelled'])) {
-            if ($order->status === 'reserved') {
-                DB::transaction(function () use ($order) {
-                    $this->releaseStockForOrder($order);
-                    $order->delete();
-                });
-            } else {
-                throw new CannotDeleteActiveOrderException($order->status);
-            }
-        } else {
-            $order->delete();
+        if ($order->status === 'shipped') {
+            throw new CannotDeleteActiveOrderException($order->status);
         }
+
+        DB::transaction(function () use ($order, $deletedBy, $reason) {
+            // reserved: lepas reservasi; picked/packed: stok kembali ke bin asal
+            // (restoreStockToOriginBins membaca PicklistItem, jadi harus sebelum detach).
+            if (in_array($order->status, ['reserved', 'picked', 'packed'], true)) {
+                $this->releaseStockForOrder($order);
+            }
+
+            $this->detachFulfillmentDocuments($order);
+
+            $order->forceFill([
+                'deleted_by'    => $deletedBy,
+                'delete_reason' => $reason,
+            ])->save();
+
+            $order->delete();
+        });
 
         Cache::forget($this->idempotencyKey($order->source, $order->salesorder_no));
 
         if (! empty($skus)) {
             SyncStockJob::dispatch(null, $skus)->onQueue(config('queue.names.stock_sync'));
+        }
+    }
+
+    private function detachFulfillmentDocuments(SalesOrder $order): void
+    {
+        $picklistIds = \Modules\Outbound\Models\PicklistItem::where('order_id', $order->id)
+            ->pluck('picklist_id')->unique()->values();
+
+        \Modules\Outbound\Models\PicklistItem::where('order_id', $order->id)->delete();
+
+        foreach ($picklistIds as $picklistId) {
+            $picklist = \Modules\Outbound\Models\Picklist::find($picklistId);
+
+            if ($picklist && ! \Modules\Outbound\Models\PicklistItem::where('picklist_id', $picklistId)->exists()) {
+                $picklist->status === \Modules\Outbound\Models\Picklist::STATUS_DRAFT
+                    ? $picklist->delete()
+                    : $picklist->update(['status' => \Modules\Outbound\Models\Picklist::STATUS_CANCELLED]);
+            }
+        }
+
+        \Modules\Outbound\Models\Packlist::where('order_id', $order->id)
+            ->where('status', '!=', \Modules\Outbound\Models\Packlist::STATUS_COMPLETED)
+            ->update(['status' => \Modules\Outbound\Models\Packlist::STATUS_CANCELLED]);
+
+        $shipmentIds = \Modules\Outbound\Models\ShipmentOrder::where('order_id', $order->id)
+            ->pluck('shipment_id')->unique()->values();
+
+        \Modules\Outbound\Models\ShipmentOrder::where('order_id', $order->id)->delete();
+
+        foreach ($shipmentIds as $shipmentId) {
+            $shipment = \Modules\Outbound\Models\Shipment::find($shipmentId);
+
+            if ($shipment
+                && $shipment->status === \Modules\Outbound\Models\Shipment::STATUS_SCHEDULED
+                && ! \Modules\Outbound\Models\ShipmentOrder::where('shipment_id', $shipmentId)->exists()) {
+                $shipment->update(['status' => \Modules\Outbound\Models\Shipment::STATUS_CANCELLED]);
+            }
         }
     }
 
@@ -954,6 +1012,12 @@ class SalesOrderService
             $orderData['status'] = $finalStatus;
 
             $order = $this->orderRepository->upsertOrderBySalesOrderNo($orderData['salesorder_no'], $orderData);
+
+            if (! $order) {
+                DB::rollBack();
+
+                return null;
+            }
 
             if (! $order->location_id) {
                 try {
