@@ -14,8 +14,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('reports/item-receive-notplace', [ReportController::class, 'itemReceiveNotPlace'])->name('reports.item-receive-notplace');
     Route::get('reports/wms/pick-list', [ReportController::class, 'pickList'])->name('reports.wms.pick-list');
     Route::get('reports/wms/shipping-manifest', [ReportController::class, 'shippingManifest'])->name('reports.wms.shipping-manifest');
-    Route::get('reports/shipping-label', [ReportController::class, 'shippingLabel'])->name('reports.shipping-label');
-    Route::get('reports/lable/print', [ReportController::class, 'labelPrint'])->name('reports.lable.print');
     Route::get('reports/hpp', [ReportController::class, 'hpp'])->name('reports.hpp');
 
     Route::get('lazada/get-document', [ReportController::class, 'lazadaGetDocument'])->name('lazada.get-document');

@@ -3,6 +3,7 @@
 namespace Modules\Inbound\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Inbound\Services\InboundService;
@@ -242,6 +243,45 @@ class InboundController extends Controller
         }
 
         return $this->successResponse($inbound, 'Detail Inbound berhasil diambil');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inbounds/{id}/pdf',
+        summary: 'Cetak dokumen Penerimaan sebagai PDF (A4 portrait)',
+        security: [['bearerAuth' => []]],
+        tags: ['Inbounds'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'PDF stream',
+                content: new OA\MediaType(mediaType: 'application/pdf'),
+            ),
+            new OA\Response(response: 404, description: 'Dokumen Inbound tidak ditemukan')
+        ]
+    )]
+    public function pdf(string $id)
+    {
+        $inbound = $this->inboundService->getById($id);
+
+        if (! $inbound) {
+            return $this->errorResponse('Dokumen Inbound tidak ditemukan', 404);
+        }
+
+        try {
+            $filename = "{$inbound->transaction_number}.pdf";
+
+            $pdf = Pdf::loadView('inbound::pdf.receipt', [
+                'inbound' => $inbound,
+            ])->setPaper('a4', 'portrait');
+
+            return $pdf->stream($filename);
+        } catch (\Throwable $e) {
+            report($e);
+            return $this->errorResponse('Gagal membuat PDF penerimaan: ' . $e->getMessage(), 500);
+        }
     }
 
     #[OA\Get(

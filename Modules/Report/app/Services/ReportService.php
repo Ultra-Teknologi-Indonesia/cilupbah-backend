@@ -243,35 +243,6 @@ class ReportService
         return $this->wrapCollection($query->paginate($filters['limit'] ?? 20), 'shipping_manifest');
     }
 
-    public function shippingLabelReport(array $filters): array
-    {
-        $ids = isset($filters['order_ids']) ? (array) $filters['order_ids'] : [];
-        $id = $filters['id'] ?? null;
-
-        $query = SalesOrder::select([
-                'id', 'salesorder_no', 'customer_name',
-                'shipping_full_name', 'shipping_phone', 'shipping_address',
-                'shipping_area', 'shipping_city', 'shipping_province',
-                'shipping_post_code', 'shipping_country',
-                'tracking_number', 'shipping_provider', 'source',
-            ])
-            ->with('items:id,order_id,sku,description,qty_in_base');
-
-        if ($id) {
-            return $this->wrapSingle($query->findOrFail($id), 'shipping_label');
-        }
-
-        if (! empty($ids)) {
-            $query->whereIn('id', $ids);
-        }
-
-        return [
-            'report_type' => 'shipping_label',
-            'generated_at' => now()->toIso8601String(),
-            'data' => $query->limit(100)->get(),
-        ];
-    }
-
     public function hppReport(string $dateFrom, string $dateTo, ?string $locationId = null): array
     {
 

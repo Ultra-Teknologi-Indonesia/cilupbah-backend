@@ -27,6 +27,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('purchase/purchase-returns', [PurchaseReturnController::class, 'store'])->name('purchase.returns.store');
     Route::post('purchase/purchase-returns/{id}/process', [PurchaseReturnController::class, 'process'])->name('purchase.returns.process');
     Route::get('purchase/purchase-returns/{id}', [PurchaseReturnController::class, 'show'])->name('purchase.returns.show');
+    Route::get('purchase/purchase-returns/{id}/pdf', [PurchaseReturnController::class, 'pdf'])->name('purchase.returns.pdf');
     Route::delete('purchase', [PurchaseReturnController::class, 'destroy'])->name('purchase.returns.destroy');
 
     Route::get('purchase/payments', [PurchasePaymentController::class, 'index'])->name('purchase.payments.index');

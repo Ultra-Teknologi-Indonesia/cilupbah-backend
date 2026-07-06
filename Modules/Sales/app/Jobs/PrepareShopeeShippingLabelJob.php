@@ -49,7 +49,7 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
             return;
         }
 
-        if (in_array($order->shipping_label_status, ['ready', 'self_design_ready'], true)) {
+        if (in_array($order->shipping_label_status, ['ready', 'self_design_required'], true)) {
             return;
         }
 
@@ -79,34 +79,18 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
         }
 
         if ($selfDesign) {
-            try {
-                $rawRes = $shopee->getShippingDocumentDataInfo($shopId, $orderSn);
-                $rawData = $rawRes['response']['data_info_list'][0]
-                    ?? $rawRes['response']['result_list'][0]
-                    ?? $rawRes['response']
-                    ?? [];
+            $order->update([
+                'shipping_label_status'      => 'self_design_required',
+                'shipping_label_doc_type'    => null,
+                'shipping_label_prepared_at' => now(),
+            ]);
 
-                $order->update([
-                    'shipping_label_status'      => 'self_design_ready',
-                    'shipping_label_doc_type'    => 'SELF_DESIGN',
-                    'shipping_label_prepared_at' => now(),
-                    'shipping_label_raw_data'    => $rawData,
-                ]);
+            Log::info('PrepareShopeeShippingLabelJob: channel mengharuskan self-design AWB, tidak ada PDF dari sistem', [
+                'order_id' => $order->id,
+                'order_sn' => $orderSn,
+            ]);
 
-                Log::info('PrepareShopeeShippingLabelJob: self-design AWB siap (BE akan render PDF)', [
-                    'order_id' => $order->id,
-                    'order_sn' => $orderSn,
-                ]);
-
-                return;
-            } catch (\Throwable $e) {
-                Log::error('PrepareShopeeShippingLabelJob: gagal fetch self-design raw data, fallback ke create+poll', [
-                    'order_id'  => $order->id,
-                    'order_sn'  => $orderSn,
-                    'exception' => $e->getMessage(),
-                ]);
-
-            }
+            return;
         }
 
         try {

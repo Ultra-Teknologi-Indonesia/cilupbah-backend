@@ -135,7 +135,7 @@ class SalesOrderService
                 } elseif (
                     $source === 'shopee'
                     && ! empty($order->tracking_number)
-                    && ! in_array($order->shipping_label_status, ['ready', 'self_design_ready', 'preparing'], true)
+                    && ! in_array($order->shipping_label_status, ['ready', 'self_design_required', 'preparing'], true)
                 ) {
                     $shopeeLabelOrderIds[] = $order->id;
                 }
@@ -436,25 +436,11 @@ class SalesOrderService
 
             }
 
-            if ($order->shipping_label_status === 'self_design_ready') {
-                try {
-                    $pdfBase64 = $this->renderSelfDesignAwb($order);
-
-                    return [
-                        'type'                 => 'base64',
-                        'content_type'         => 'application/pdf',
-                        'document_base64'      => $pdfBase64,
-                        'source'               => 'shopee',
-                        'requires_self_design' => true,
-                    ];
-                } catch (\Throwable $e) {
-                    \Illuminate\Support\Facades\Log::error('SalesOrderService: render self-design AWB gagal', [
-                        'order_id'  => $order->id,
-                        'exception' => $e->getMessage(),
-                    ]);
-
-                    throw new \RuntimeException('Gagal render label custom (self-design): ' . $e->getMessage());
-                }
+            if ($order->shipping_label_status === 'self_design_required') {
+                throw new \RuntimeException(
+                    'Shopee mengharuskan label resi ini didesain manual (self-design AWB) di Seller Center. '
+                    . 'Sistem tidak menyediakan cetak resi untuk kasus ini — resi hanya diambil dari channel.'
+                );
             }
 
             if ($order->shipping_label_status === 'preparing') {
@@ -524,64 +510,6 @@ class SalesOrderService
 
         PrepareShopeeShippingLabelJob::dispatch($order->id)
             ->onQueue(config('queue.names.channel_sync'));
-    }
-
-    public function renderSelfDesignAwb(SalesOrder $order): string
-    {
-        $raw = $order->shipping_label_raw_data ?? [];
-
-        $recipientFromOrder = [
-            'name'         => $order->shipping_full_name,
-            'phone'        => $order->shipping_phone,
-            'full_address' => $order->shipping_address,
-            'town'         => $order->shipping_area,
-            'city'         => $order->shipping_city,
-            'state'        => $order->shipping_province,
-            'zipcode'      => $order->shipping_post_code,
-        ];
-
-        if (empty($raw['recipient_address']) && empty($raw['recipient'])) {
-            $raw['recipient_address'] = $recipientFromOrder;
-        }
-
-        $tracking = (string) ($raw['tracking_number']
-            ?? $raw['tracking_no']
-            ?? $order->tracking_number
-            ?? '');
-        $courier = (string) ($raw['shipping_carrier']
-            ?? $raw['carrier']
-            ?? $order->shipping_provider
-            ?? 'COURIER');
-        $orderSn = (string) ($order->channel_order_no ?? $order->salesorder_no);
-
-        $barcodeUri = null;
-        if ($tracking !== '') {
-            try {
-                $svg = \SimpleSoftwareIO\QrCode\Facades\QrCode::format('svg')
-                    ->size(300)
-                    ->margin(0)
-                    ->errorCorrection('M')
-                    ->generate($tracking);
-                $barcodeUri = 'data:image/svg+xml;base64,' . base64_encode((string) $svg);
-            } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::warning('SalesOrderService: QR gen gagal untuk self-design AWB', [
-                    'order_id'  => $order->id,
-                    'exception' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('sales::pdf.self-design-awb', [
-            'data'       => $raw,
-            'orderSn'    => $orderSn,
-            'tracking'   => $tracking,
-            'courier'    => $courier,
-            'barcodeUri' => $barcodeUri,
-        ]);
-
-        $pdf->setPaper([0, 0, 283.46, 425.20], 'portrait');
-
-        return base64_encode($pdf->output());
     }
 
     private function idempotencyKey(?string $source, string $salesOrderNo): string
@@ -910,7 +838,6 @@ class SalesOrderService
         $channelStatus = $orderData['channel_status'] ?? 'UNKNOWN';
         $mappedStatus = $this->mapChannelStatusToInternal($channelStatus);
         $source = $orderData['source'] ?? null;
-        $shopId = $orderData['channel_shop_id'] ?? null;
 
         if (! empty($orderData['channel_order_no']) && empty($orderData['salesorder_no'])) {
             $numbering = $this->generateSalesOrderNo(
@@ -918,29 +845,6 @@ class SalesOrderService
                 $orderData['channel_order_no']
             );
             $orderData['salesorder_no'] = $numbering['salesorder_no'];
-        }
-
-        if ($source && isset($orderData['items']) && is_array($orderData['items'])) {
-            $existingLite = DB::table('sales_orders')
-                ->where('salesorder_no', $orderData['salesorder_no'])
-                ->value('id');
-
-            if (! $existingLite && $mappedStatus !== 'cancelled') {
-                $missing = app(\Modules\Channel\Services\ChannelProductGuard::class)
-                    ->unknownItems($orderData['items'], $source);
-
-                if (! empty($missing)) {
-                    app(\Modules\Channel\Services\ChannelProductGuard::class)->reject(
-                        'sales_order',
-                        (string) $source,
-                        $shopId ? (string) $shopId : null,
-                        (string) ($orderData['channel_order_no'] ?? $orderData['salesorder_no']),
-                        $missing,
-                        ['channel_status' => $channelStatus],
-                    );
-                    return null;
-                }
-            }
         }
 
         try {
@@ -1005,12 +909,26 @@ class SalesOrderService
             DB::commit();
 
             if ($stockMutated) {
-                SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
+                try {
+                    SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
+                } catch (\Throwable $e) {
+                    Log::warning('Dispatch SyncStockJob gagal setelah commit order', [
+                        'order_id' => $order->id,
+                        'error'    => $e->getMessage(),
+                    ]);
+                }
             }
 
             if (! $order->is_settled && $order->source && $order->channel_shop_id) {
-                \Modules\Sales\Jobs\SyncOrderFinanceJob::dispatch($order->id)
-                    ->onQueue(config('queue.names.channel_sync'));
+                try {
+                    \Modules\Sales\Jobs\SyncOrderFinanceJob::dispatch($order->id)
+                        ->onQueue(config('queue.names.channel_sync'));
+                } catch (\Throwable $e) {
+                    Log::warning('Dispatch SyncOrderFinanceJob gagal setelah commit order', [
+                        'order_id' => $order->id,
+                        'error'    => $e->getMessage(),
+                    ]);
+                }
             }
 
             if ($finalStatus === 'packed' && ! empty($orderData['tracking_number'])) {

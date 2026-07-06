@@ -3,11 +3,13 @@
 namespace Modules\Purchase\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Purchase\Services\PurchaseReturnService;
 use Modules\Purchase\Http\Requests\StorePurchaseReturnRequest;
 use OpenApi\Attributes as OA;
+use Throwable;
 
 #[OA\Tag(name: 'Purchase Returns', description: 'API Endpoints for Purchase Returns')]
 class PurchaseReturnController extends Controller
@@ -92,6 +94,42 @@ class PurchaseReturnController extends Controller
             return $this->errorResponse('Purchase return tidak ditemukan', 404);
         }
         return $this->successResponse($return, 'Detail purchase return berhasil diambil');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/purchase/purchase-returns/{id}/pdf',
+        summary: 'Cetak dokumen Retur Pembelian sebagai PDF (A4 portrait)',
+        security: [['bearerAuth' => []]],
+        tags: ['Purchase Returns'],
+        parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'PDF stream',
+                content: new OA\MediaType(mediaType: 'application/pdf'),
+            ),
+            new OA\Response(response: 404, description: 'Purchase return tidak ditemukan'),
+        ]
+    )]
+    public function pdf(string $id)
+    {
+        $return = $this->returnService->getById($id);
+        if (! $return) {
+            return $this->errorResponse('Purchase return tidak ditemukan', 404);
+        }
+
+        try {
+            $filename = "{$return->return_number}.pdf";
+
+            $pdf = Pdf::loadView('purchase::pdf.purchase-return', [
+                'return' => $return,
+            ])->setPaper('a4', 'portrait');
+
+            return $pdf->stream($filename);
+        } catch (Throwable $e) {
+            report($e);
+            return $this->errorResponse('Gagal membuat PDF retur pembelian: ' . $e->getMessage(), 500);
+        }
     }
 
     public function process(string $id, Request $request): JsonResponse

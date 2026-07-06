@@ -14,6 +14,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inbounds/{id}', [InboundController::class, 'show'])->name('inbounds.show');
     Route::get('inbounds/{id}/items', [InboundController::class, 'items'])->name('inbounds.items');
     Route::get('inbounds/{id}/barcodes', [InboundController::class, 'downloadBarcodes'])->name('inbounds.downloadBarcodes');
+    Route::get('inbounds/{id}/pdf', [InboundController::class, 'pdf'])->name('inbounds.pdf');
 
     Route::post('inbounds/{id}/assign', [InboundController::class, 'assign'])->name('inbounds.assign');
     Route::get('inbounds/{id}/assignments', [InboundController::class, 'assignments'])->name('inbounds.assignments');

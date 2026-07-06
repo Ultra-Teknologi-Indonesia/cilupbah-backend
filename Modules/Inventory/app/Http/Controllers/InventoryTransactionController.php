@@ -3,12 +3,14 @@
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Http\Requests\AdjustStockRequest;
 use Modules\Inventory\Http\Requests\TransferStockRequest;
 use Modules\Inventory\Http\Requests\PutawayStockRequest;
 use OpenApi\Attributes as OA;
+use Throwable;
 
 #[OA\Tag(name: 'Inventory Transactions', description: 'API Endpoints for Inventory Transactions')]
 #[OA\Schema(
@@ -267,6 +269,45 @@ class InventoryTransactionController extends Controller
         }
 
         return $this->successResponse($transfer, 'Detail transfer berhasil diambil');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inventory/transfers/{id}/pdf',
+        summary: 'Cetak dokumen Transfer Keluar sebagai PDF (A4 portrait)',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory Transactions'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'PDF stream',
+                content: new OA\MediaType(mediaType: 'application/pdf'),
+            ),
+            new OA\Response(response: 404, description: 'Transfer tidak ditemukan.')
+        ]
+    )]
+    public function transferPdf(string $id)
+    {
+        $transfer = $this->inventoryService->getTransferById($id);
+
+        if (! $transfer) {
+            return $this->errorResponse('Transfer tidak ditemukan', 404);
+        }
+
+        try {
+            $filename = "{$transfer->transfer_number}.pdf";
+
+            $pdf = Pdf::loadView('inventory::pdf.transfer-out', [
+                'transfer' => $transfer,
+            ])->setPaper('a4', 'portrait');
+
+            return $pdf->stream($filename);
+        } catch (Throwable $e) {
+            report($e);
+            return $this->errorResponse('Gagal membuat PDF transfer: ' . $e->getMessage(), 500);
+        }
     }
 
     #[OA\Get(

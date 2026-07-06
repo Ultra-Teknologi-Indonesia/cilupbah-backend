@@ -246,47 +246,6 @@ class ReportController extends Controller
     }
 
     #[OA\Get(
-        path: '/api/v1/reports/shipping-label',
-        summary: 'Print shipping label',
-        security: [['bearerAuth' => []]],
-        tags: ['Reports'],
-        parameters: [
-            new OA\Parameter(name: 'id', in: 'query', required: false, description: 'Single order ID', schema: new OA\Schema(type: 'string')),
-            new OA\Parameter(name: 'order_ids', in: 'query', required: false, description: 'Comma-separated order IDs', schema: new OA\Schema(type: 'string')),
-        ],
-        responses: [
-            new OA\Response(response: 200, description: 'Shipping label data'),
-        ]
-    )]
-    public function shippingLabel(Request $request): JsonResponse
-    {
-        $filters = $request->all();
-        if (is_string($filters['order_ids'] ?? null)) {
-            $filters['order_ids'] = array_filter(explode(',', $filters['order_ids']));
-        }
-        $data = $this->reportService->shippingLabelReport($filters);
-        return $this->successResponse($data, 'Shipping label berhasil diambil.');
-    }
-
-    #[OA\Get(
-        path: '/api/v1/reports/lable/print',
-        summary: 'Print shipping label (alternate route)',
-        security: [['bearerAuth' => []]],
-        tags: ['Reports'],
-        parameters: [
-            new OA\Parameter(name: 'id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
-            new OA\Parameter(name: 'order_ids', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
-        ],
-        responses: [
-            new OA\Response(response: 200, description: 'Shipping label data'),
-        ]
-    )]
-    public function labelPrint(Request $request): JsonResponse
-    {
-        return $this->shippingLabel($request);
-    }
-
-    #[OA\Get(
         path: '/api/v1/lazada/get-document',
         summary: 'Ambil dokumen order Lazada (invoice/shippingLabel/carrierManifest)',
         security: [['bearerAuth' => []]],
