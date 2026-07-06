@@ -211,10 +211,11 @@ class ProductService
         }
 
         if ($productId) {
-            unset($data['category_id']);
-            $this->updateProduct($productId, $data);
-            $this->queueExternalMediaMirroring($productId);
-
+            // Master produk sudah ada (mis. hasil download channel lain atau input manual).
+            // Prinsip: download channel TIDAK menimpa data/atribut/struktur varian lokal.
+            // Cukup kembalikan id-nya; pemetaan channel (product & variant channel mapping)
+            // dibuat oleh pemanggil (mis. ShopeeProductService::persistItem), sehingga satu
+            // master bisa dipetakan ke banyak channel/toko tanpa mengubah varian yang tersimpan.
             return $productId;
         }
 
