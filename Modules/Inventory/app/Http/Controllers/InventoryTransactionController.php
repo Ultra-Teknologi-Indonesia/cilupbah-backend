@@ -5,6 +5,8 @@ namespace Modules\Inventory\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Modules\Inventory\Models\InventoryTransfer;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Http\Requests\AdjustStockRequest;
 use Modules\Inventory\Http\Requests\TransferStockRequest;
@@ -352,6 +354,121 @@ class InventoryTransactionController extends Controller
             return $this->successResponse(null, 'Transfer berhasil dihapus.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Post(
+        path: '/api/v1/inventory/transfers/bulk/delete',
+        summary: 'Hapus/kembalikan banyak transfer sekaligus',
+        description: 'Transfer DRAFT/APPROVED dihapus, transfer IN_TRANSIT dikembalikan ke Baru Dibuat (revert).',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory Transactions'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['ids'],
+            properties: [
+                new OA\Property(property: 'ids', type: 'array', items: new OA\Items(type: 'string')),
+            ]
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'Transfer diproses (partial success mungkin terjadi)'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+        ]
+    )]
+    public function bulkDeleteTransfer(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1|max:100',
+            'ids.*' => 'required|string',
+        ]);
+
+        $actor = $request->user()?->name ?? $request->user()?->email ?? 'system';
+
+        $deleted = 0;
+        $reverted = 0;
+        $failed = [];
+
+        foreach ($validated['ids'] as $id) {
+            try {
+                $transfer = $this->inventoryService->getTransferById($id);
+                if (!$transfer) {
+                    throw new \Exception('Transfer tidak ditemukan.');
+                }
+
+                if ($transfer->status === InventoryTransfer::STATUS_IN_TRANSIT) {
+                    $this->inventoryService->revertToDraft($id, ['actor' => $actor]);
+                    $reverted++;
+                } else {
+                    $this->inventoryService->deleteTransfer($id);
+                    $deleted++;
+                }
+            } catch (\Throwable $e) {
+                $failed[] = [
+                    'id' => $id,
+                    'reason' => $e->getMessage(),
+                ];
+            }
+        }
+
+        $messageParts = [];
+        if ($deleted > 0) $messageParts[] = "{$deleted} dihapus";
+        if ($reverted > 0) $messageParts[] = "{$reverted} dikembalikan ke Baru Dibuat";
+        if (count($failed) > 0) $messageParts[] = count($failed) . " gagal";
+
+        return $this->successResponse(
+            ['deleted' => $deleted, 'reverted' => $reverted, 'failed' => $failed],
+            $messageParts ? implode(', ', $messageParts) : 'Tidak ada transfer diproses'
+        );
+    }
+
+    #[OA\Post(
+        path: '/api/v1/inventory/transfers/bulk/pdf',
+        summary: 'Cetak Surat Jalan untuk banyak transfer sekaligus',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory Transactions'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['ids'],
+            properties: [
+                new OA\Property(property: 'ids', type: 'array', items: new OA\Items(type: 'string')),
+            ]
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'PDF gabungan Surat Jalan'),
+            new OA\Response(response: 404, description: 'Sebagian dokumen tidak ditemukan'),
+        ]
+    )]
+    public function bulkPdfTransfer(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1|max:50',
+            'ids.*' => 'required|string',
+        ]);
+
+        try {
+            $ids = $validated['ids'];
+            $transfers = array_values(array_filter(array_map(
+                fn (string $id) => $this->inventoryService->getTransferById($id),
+                $ids
+            )));
+
+            if (count($transfers) !== count($ids)) {
+                $foundIds = array_map(fn ($t) => $t->id, $transfers);
+                $missing = array_values(array_diff($ids, $foundIds));
+                return $this->errorResponse(
+                    'Sebagian dokumen tidak ditemukan: ' . implode(', ', $missing),
+                    404
+                );
+            }
+
+            $filename = 'Surat-Jalan-Bulk-' . now()->format('Ymd-His') . '.pdf';
+
+            $pdf = Pdf::loadView('inventory::pdf.transfer-out-bulk', [
+                'transfers' => $transfers,
+            ])->setPaper('a4', 'portrait');
+
+            return $pdf->stream($filename);
+        } catch (Throwable $e) {
+            report($e);
+            return $this->errorResponse('Gagal membuat PDF transfer bulk: ' . $e->getMessage(), 500);
         }
     }
 

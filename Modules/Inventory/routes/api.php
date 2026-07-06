@@ -118,6 +118,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inventory/transfers', [InventoryTransactionController::class, 'transfersList'])->name('inventory.transfers.index');
     Route::post('inventory/transfers', [InventoryTransactionController::class, 'transferOut'])->name('inventory.transferOut');
     Route::post('inventory/transfers/draft', [InventoryTransactionController::class, 'createDraft'])->name('inventory.transfers.createDraft');
+    Route::post('inventory/transfers/bulk/delete', [InventoryTransactionController::class, 'bulkDeleteTransfer'])->name('inventory.transfers.bulkDelete');
+    Route::post('inventory/transfers/bulk/pdf', [InventoryTransactionController::class, 'bulkPdfTransfer'])->name('inventory.transfers.bulkPdf');
     Route::patch('inventory/transfers/{id}', [InventoryTransactionController::class, 'updateDraft'])->name('inventory.transfers.updateDraft');
     Route::post('inventory/transfers/{id}/items', [InventoryTransactionController::class, 'addDraftItem'])->name('inventory.transfers.addDraftItem');
     Route::patch('inventory/transfers/{id}/items/{itemId}', [InventoryTransactionController::class, 'updateDraftItem'])->name('inventory.transfers.updateDraftItem');
