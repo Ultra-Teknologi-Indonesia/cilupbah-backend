@@ -843,15 +843,11 @@ class SalesOrderController extends Controller
         $order->refresh();
 
         if (! $driverCallSuccess && ! $forceLabel) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Panggilan driver Shopee gagal. Tambahkan ?force_label=1 untuk tetap mencetak label.',
-                'data' => [
-                    'driver_call_status'       => $order->driver_call_status,
-                    'driver_call_message'      => $order->driver_call_message,
-                    'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
-                ],
-            ], 422);
+            return $this->errorResponse('Panggilan driver Shopee gagal. Tambahkan ?force_label=1 untuk tetap mencetak label.', 422, [
+                'driver_call_status'       => $order->driver_call_status,
+                'driver_call_message'      => $order->driver_call_message,
+                'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
+            ]);
         }
 
         $options = array_filter([
@@ -863,30 +859,23 @@ class SalesOrderController extends Controller
         try {
             $labelResult = $this->orderService->getShippingLabel($order, $options);
         } catch (\Modules\Sales\Exceptions\ShippingLabelPreparingException $e) {
-            return response()->json([
-                'success' => true,
-                'message' => 'Driver berhasil dipanggil, label masih disiapkan. Coba unduh dalam beberapa detik.',
-                'data' => [
-                    'driver_call_status'       => $order->driver_call_status,
-                    'driver_call_message'      => $order->driver_call_message,
-                    'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
-                    'label' => null,
-                    'label_preparing' => true,
-                    'label_message' => $e->getMessage(),
-                ],
-            ], 202);
+            return $this->successResponse([
+                'driver_call_status'       => $order->driver_call_status,
+                'driver_call_message'      => $order->driver_call_message,
+                'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
+                'label' => null,
+                'label_preparing' => true,
+                'label_message' => $e->getMessage(),
+            ], 'Driver berhasil dipanggil, label masih disiapkan. Coba unduh dalam beberapa detik.', 202);
         } catch (\InvalidArgumentException|\RuntimeException $e) {
-            return response()->json([
+            return $this->errorResponse('Driver berhasil dipanggil namun label gagal diambil: ' . $e->getMessage(), 422, [
                 'success' => $driverCallSuccess,
-                'message' => 'Driver berhasil dipanggil namun label gagal diambil: ' . $e->getMessage(),
-                'data' => [
-                    'driver_call_status'       => $order->driver_call_status,
-                    'driver_call_message'      => $order->driver_call_message,
-                    'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
-                    'label' => null,
-                    'label_error' => $e->getMessage(),
-                ],
-            ], 422);
+                'driver_call_status'       => $order->driver_call_status,
+                'driver_call_message'      => $order->driver_call_message,
+                'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
+                'label' => null,
+                'label_error' => $e->getMessage(),
+            ]);
         }
 
         return $this->successResponse([

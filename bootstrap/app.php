@@ -35,12 +35,11 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $exceptions->render(function (\Throwable $e, \Illuminate\Http\Request $request) {
             if ($request->is('api/*')) {
+                $responder = new class { use \App\Traits\ApiResponse; };
+
                 if ($e instanceof DuplicateOrderException
                     || $e instanceof InvalidReturnStateException) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => $e->getMessage(),
-                    ], 409);
+                    return $responder->errorResponse($e->getMessage(), 409);
                 }
 
                 if ($e instanceof InsufficientStockException
@@ -50,54 +49,33 @@ return Application::configure(basePath: dirname(__DIR__))
                     || $e instanceof ProductNotMappableException
                     || $e instanceof CannotDeleteActiveOrderException
                     || $e instanceof OutboundValidationException) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => $e->getMessage(),
-                    ], 422);
+                    return $responder->errorResponse($e->getMessage(), 422);
                 }
 
                 if ($e instanceof \Illuminate\Validation\ValidationException) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'Validation error',
-                        'errors' => $e->errors()
-                    ], 422);
+                    return $responder->errorResponse('Validation error', 422, $e->errors());
                 }
 
                 if ($e instanceof \Illuminate\Auth\AuthenticationException) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'Unauthenticated',
-                        'data' => null
-                    ], 401);
+                    return $responder->errorResponse('Unauthenticated', 401);
                 }
 
                 if ($e instanceof \Symfony\Component\HttpKernel\Exception\NotFoundHttpException ||
                     $e instanceof \Illuminate\Database\Eloquent\ModelNotFoundException) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'Data tidak ditemukan',
-                        'data' => null
-                    ], 404);
+                    return $responder->errorResponse('Data tidak ditemukan', 404);
                 }
 
                 if ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpException) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => $e->getMessage() ?: 'Terjadi kesalahan',
-                        'data' => null
-                    ], $e->getStatusCode());
+                    return $responder->errorResponse($e->getMessage() ?: 'Terjadi kesalahan', $e->getStatusCode());
                 }
 
                 $exposeDetail = ! app()->environment('production');
 
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Internal Server Error',
-                    'error' => $exposeDetail ? $e->getMessage() : null,
-                    'exception' => $exposeDetail ? class_basename($e) : null,
-                    'file' => $exposeDetail ? $e->getFile() . ':' . $e->getLine() : null,
-                ], 500);
+                return $responder->errorResponse('Internal Server Error', 500, $exposeDetail ? [
+                    'error' => $e->getMessage(),
+                    'exception' => class_basename($e),
+                    'file' => $e->getFile() . ':' . $e->getLine(),
+                ] : null);
             }
         });
     })->create();

@@ -6,7 +6,7 @@ use Illuminate\Http\JsonResponse;
 
 trait ApiResponse
 {
-    protected function successResponse($data, ?string $message = null, int $code = 200, ?array $meta = null): JsonResponse
+    public function successResponse($data, ?string $message = null, int $code = 200, ?array $meta = null): JsonResponse
     {
         $response = [
             'status' => 'success',
@@ -21,7 +21,7 @@ trait ApiResponse
         return response()->json($response, $code);
     }
 
-    protected function successPaginatedResponse($paginator, ?string $message = null, int $code = 200): JsonResponse
+    public function successPaginatedResponse($paginator, ?string $message = null, int $code = 200): JsonResponse
     {
         $meta = [
             'current_page' => $paginator->currentPage(),
@@ -33,7 +33,7 @@ trait ApiResponse
         return $this->successResponse($paginator->items(), $message, $code, $meta);
     }
 
-    protected function errorResponse(string $message, int $code = 400, $errors = null): JsonResponse
+    public function errorResponse(string $message, int $code = 400, $errors = null): JsonResponse
     {
         $response = [
             'status' => 'error',

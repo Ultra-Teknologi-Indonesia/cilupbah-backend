@@ -77,10 +77,9 @@ class StorePurchaseOrderRequest extends FormRequest
 
     protected function failedValidation(\Illuminate\Contracts\Validation\Validator $validator)
     {
-        throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
-            'status'  => 'error',
-            'message' => 'Terdapat kesalahan pada input form pesanan. Silakan periksa kembali produk yang Anda pilih.',
-            'errors'  => $validator->errors()
-        ], 422));
+        $responder = new class { use \App\Traits\ApiResponse; };
+        throw new \Illuminate\Http\Exceptions\HttpResponseException(
+            $responder->errorResponse('Terdapat kesalahan pada input form pesanan. Silakan periksa kembali produk yang Anda pilih.', 422, $validator->errors())
+        );
     }
 }

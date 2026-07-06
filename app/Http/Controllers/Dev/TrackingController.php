@@ -23,15 +23,14 @@ class TrackingController extends Controller
             ->orderBy('id')
             ->get();
 
-        return response()->json([
+        return $this->successResponse([
             'items' => $items,
             'summary' => $this->summary(),
-            'meta' => [
-                'domains' => TrackingItem::query()->distinct()->orderBy('domain')->pluck('domain'),
-                'pics' => TrackingItem::query()->whereNotNull('pic')->distinct()->orderBy('pic')->pluck('pic'),
-                'statuses' => TrackingItem::STATUSES,
-                'sources' => ['jubelio', 'epic', 'omnichannel'],
-            ],
+        ], null, 200, [
+            'domains' => TrackingItem::query()->distinct()->orderBy('domain')->pluck('domain'),
+            'pics' => TrackingItem::query()->whereNotNull('pic')->distinct()->orderBy('pic')->pluck('pic'),
+            'statuses' => TrackingItem::STATUSES,
+            'sources' => ['jubelio', 'epic', 'omnichannel'],
         ]);
     }
 
@@ -46,7 +45,7 @@ class TrackingController extends Controller
 
         $item->fill($validated)->save();
 
-        return response()->json([
+        return $this->successResponse([
             'ok' => true,
             'item' => $item->fresh(),
             'summary' => $this->summary(),

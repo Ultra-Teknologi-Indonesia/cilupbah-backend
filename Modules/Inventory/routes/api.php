@@ -105,7 +105,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
             ->select('id', 'name')
             ->orderBy('name')
             ->get();
-        return response()->json(['data' => $users]);
+            
+        $responder = new class { use \App\Traits\ApiResponse; };
+        return $responder->successResponse($users);
     })->name('inventory.warehouseWorkers');
 
     Route::get('inventory/transfers/transit', [InventoryTransactionController::class, 'transitList'])->name('inventory.transfers.transit');
@@ -143,7 +145,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         $product = \Modules\Product\Models\Product::findOrFail($request->input('product_id'));
         $userId = $request->user()->name ?? $request->user()->email;
         $result = app(\Modules\Product\Services\ProductLifecycleService::class)->approve($product, $userId);
-        return response()->json(['success' => true, 'data' => $result, 'message' => 'Product berhasil di-set sebagai master.']);
+        
+        $responder = new class { use \App\Traits\ApiResponse; };
+        return $responder->successResponse($result, 'Product berhasil di-set sebagai master.');
     })->name('inventory.catalog.setMaster');
 
     Route::prefix('inventory/amount-adjustments')->group(function () {
