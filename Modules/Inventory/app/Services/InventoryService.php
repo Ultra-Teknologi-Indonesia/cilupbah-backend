@@ -995,6 +995,87 @@ class InventoryService
         return $transfer;
     }
 
+    /**
+     * Kembalikan transfer ke status DRAFT ("Baru Dibuat") agar bisa diedit/dibatalkan
+     * pengirimannya. Dipakai oleh alur edit (edit transfer yang sudah APPROVED/IN_TRANSIT)
+     * dan "Hapus" pada transfer Sedang Dijalan (revert satu langkah, bukan hard-delete).
+     *
+     * Model stok: DRAFT & APPROVED sama-sama memegang reserve di rak asal + stok transit
+     * (item SYNCED). Jadi APPROVED→DRAFT hanya ganti status. IN_TRANSIT→DRAFT membatalkan
+     * deduksi pengiriman (kembalikan on_hand & reserved di rak asal); transit dibiarkan
+     * (belum dikonsumsi) & item tetap SYNCED sehingga siap dikirim ulang tanpa re-reserve.
+     */
+    public function revertToDraft(string $transferId, array $data = []): InventoryTransfer
+    {
+        $transfer = DB::transaction(function () use ($transferId, $data) {
+            $transfer = $this->transferRepository->findByIdForUpdate($transferId);
+
+            if (! $transfer) {
+                throw new \Exception('Transfer tidak ditemukan.');
+            }
+
+            if ($transfer->status === InventoryTransfer::STATUS_DRAFT) {
+                return $this->transferRepository->findById($transferId);
+            }
+
+            if (! in_array($transfer->status, [InventoryTransfer::STATUS_APPROVED, InventoryTransfer::STATUS_IN_TRANSIT])) {
+                throw new \Exception("Transfer berstatus {$transfer->status} tidak bisa dikembalikan ke Baru Dibuat.");
+            }
+
+            $actor = $data['actor'] ?? $transfer->created_by ?? 'system';
+
+            if ($transfer->status === InventoryTransfer::STATUS_IN_TRANSIT) {
+                foreach ($transfer->items as $item) {
+                    if ($item->sync_status !== InventoryTransferItem::SYNC_SYNCED) {
+                        continue;
+                    }
+
+                    $sourceInventory = $this->inventoryRepository->findExactForUpdate(
+                        $item->item_id,
+                        $transfer->source_location_id,
+                        $item->source_bin_id,
+                        $item->batch_no,
+                        $item->serial_no,
+                    );
+
+                    if ($sourceInventory) {
+                        // Batalkan deduksi shipTransfer/submitDraft: on_hand & reserved naik lagi.
+                        $sourceInventory->on_hand += (int) $item->qty;
+                        $sourceInventory->reserved += (int) $item->qty;
+                        $this->inventoryRepository->updateStock($sourceInventory);
+
+                        $this->movementRepository->create([
+                            'item_id'            => $item->item_id,
+                            'location_id'        => $transfer->source_location_id,
+                            'bin_id'             => $item->source_bin_id,
+                            'transaction_number' => $transfer->transfer_number,
+                            'source'             => 'TRANSFER_OUT',
+                            'qty'                => (int) $item->qty,
+                            'balance'            => $sourceInventory->on_hand,
+                            'transaction_date'   => now(),
+                            'created_by'         => $actor,
+                        ]);
+                    }
+                }
+            }
+
+            $transfer->update([
+                'status'      => InventoryTransfer::STATUS_DRAFT,
+                'shipped_at'  => null,
+                'printed_at'  => null,
+                'printed_by'  => null,
+                'approved_at' => null,
+                'approved_by' => null,
+            ]);
+
+            return $this->transferRepository->findById($transferId);
+        });
+
+        $this->notifyChannelStock($transfer->items->pluck('item_id')->unique()->all());
+
+        return $transfer;
+    }
+
     public function shipTransfer(string $transferId, array $data): InventoryTransfer
     {
         $transfer = DB::transaction(function () use ($transferId, $data) {
@@ -1568,19 +1649,31 @@ class InventoryService
             'sync_status' => InventoryTransferItem::SYNC_PENDING,
         ]);
 
-        SyncTransferDraftItemJob::dispatch(
-            $item->id,
-            SyncTransferDraftItemJob::ACTION_RESERVE,
-            $data['qty'],
-            $transfer->transfer_number,
-            $transfer->created_by,
-        );
+        // Untuk item hasil Permintaan Restock, rak asal belum dipilih dan akan
+        // ditetapkan otomatis (LIFO) saat approveTransfer. Lewati job RESERVE async
+        // agar tidak dobel-reserve / balapan dengan assignAndReserveItemLifo.
+        $deferReserve = ($data['defer_reserve'] ?? false) || empty($data['source_bin_id']);
+
+        if (! $deferReserve) {
+            SyncTransferDraftItemJob::dispatch(
+                $item->id,
+                SyncTransferDraftItemJob::ACTION_RESERVE,
+                $data['qty'],
+                $transfer->transfer_number,
+                $transfer->created_by,
+            );
+        }
 
         return $item->load(['product:id,sku,product_id', 'sourceBin:id,bin_final_code', 'destinationBin:id,bin_final_code']);
     }
 
-    public function updateDraftItemQty(string $transferId, string $itemId, int $newQty): InventoryTransferItem
-    {
+    public function updateDraftItemQty(
+        string $transferId,
+        string $itemId,
+        int $newQty,
+        ?string $newBinId = null,
+        bool $binProvided = false,
+    ): InventoryTransferItem {
         $transfer = $this->transferRepository->findByIdForUpdate($transferId);
 
         if (!$transfer) {
@@ -1594,6 +1687,21 @@ class InventoryService
         $item = InventoryTransferItem::where('id', $itemId)
             ->where('inventory_transfer_id', $transferId)
             ->firstOrFail();
+
+        // Ganti rak asal: lepas reservasi rak lama lalu buat baris baru di rak baru,
+        // memakai primitive teruji (RELEASE + addDraftItem/RESERVE) agar kolom available
+        // & stok transit tetap konsisten. Baris lama dihapus, kembalikan baris baru.
+        if ($binProvided && $newBinId !== $item->source_bin_id) {
+            $this->removeDraftItem($transferId, $itemId);
+
+            return $this->addDraftItem($transferId, [
+                'item_id'       => $item->item_id,
+                'qty'           => $newQty,
+                'source_bin_id' => $newBinId,
+                'batch_no'      => $item->batch_no,
+                'serial_no'     => $item->serial_no,
+            ]);
+        }
 
         $oldQty = $item->qty;
         $delta = $newQty - $oldQty;

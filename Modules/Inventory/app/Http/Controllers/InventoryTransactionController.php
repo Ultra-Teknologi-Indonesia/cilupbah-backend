@@ -499,10 +499,17 @@ class InventoryTransactionController extends Controller
         try {
             $validated = $request->validate([
                 'qty' => 'required|integer|min:1',
+                'source_bin_id' => 'nullable|uuid|exists:location_bins,id',
             ]);
 
-            $result = $this->inventoryService->updateDraftItemQty($transferId, $itemId, $validated['qty']);
-            return $this->successResponse($result, 'Qty item berhasil diperbarui.');
+            $result = $this->inventoryService->updateDraftItemQty(
+                $transferId,
+                $itemId,
+                $validated['qty'],
+                array_key_exists('source_bin_id', $validated) ? $validated['source_bin_id'] : null,
+                $request->has('source_bin_id'),
+            );
+            return $this->successResponse($result, 'Item berhasil diperbarui.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -513,6 +520,17 @@ class InventoryTransactionController extends Controller
         try {
             $this->inventoryService->removeDraftItem($transferId, $itemId);
             return $this->successResponse(null, 'Item berhasil dihapus dari draft.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function revertToDraft(\Illuminate\Http\Request $request, string $id): JsonResponse
+    {
+        try {
+            $actor = $request->user()?->name ?? $request->user()?->email ?? 'system';
+            $result = $this->inventoryService->revertToDraft($id, ['actor' => $actor]);
+            return $this->successResponse($result, 'Transfer dikembalikan ke Baru Dibuat.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }

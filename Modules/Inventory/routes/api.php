@@ -129,6 +129,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('inventory/transfers/{id}/approve', [InventoryTransactionController::class, 'approveTransfer'])->name('inventory.transfers.approve');
     Route::post('inventory/transfers/{id}/cancel', [InventoryTransactionController::class, 'cancelTransfer'])->name('inventory.transfers.cancel');
     Route::post('inventory/transfers/{id}/ship', [InventoryTransactionController::class, 'shipTransfer'])->name('inventory.transfers.ship');
+    Route::post('inventory/transfers/{id}/revert-to-draft', [InventoryTransactionController::class, 'revertToDraft'])->name('inventory.transfers.revertToDraft');
     Route::post('inventory/transfers/{id}/receive', [InventoryTransactionController::class, 'transferIn'])->name('inventory.transferIn');
 
     Route::post('inventory/transfer/mark-printed', [InventoryTransactionController::class, 'markTransferPrinted'])->name('inventory.transfer.markPrinted');
