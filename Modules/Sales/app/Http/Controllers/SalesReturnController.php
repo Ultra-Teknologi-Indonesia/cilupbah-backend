@@ -209,6 +209,32 @@ class SalesReturnController extends Controller
         return $this->successResponse($return, 'Return selesai');
     }
 
+    #[OA\Post(
+        path: '/api/v1/sales/returns/{id}/sync-tracking',
+        summary: 'Tarik ulang nomor resi ekspedisi retur dari marketplace',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Returns'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Successful operation'),
+            new OA\Response(response: 404, description: 'Return tidak ditemukan'),
+        ]
+    )]
+    public function syncTracking(string $id): JsonResponse
+    {
+        $return = $this->returnService->getById($id);
+
+        if (! $return) {
+            return $this->errorResponse('Sales return tidak ditemukan', 404);
+        }
+
+        app(\Modules\Sales\Services\SalesReturnTrackingSyncService::class)->syncOne($return);
+
+        return $this->successResponse($this->returnService->getById($id), 'Sinkronisasi resi retur selesai');
+    }
+
     #[OA\Get(
         path: '/api/v1/sales/sales-returns/unpaid',
         summary: 'Get outstanding (unpaid) returns',

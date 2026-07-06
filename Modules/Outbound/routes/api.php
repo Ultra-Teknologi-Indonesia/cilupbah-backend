@@ -35,6 +35,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::get('picklists/{id}', [PicklistController::class, 'show'])->name('outbound.picklists.show');
     Route::get('picklists/{id}/items', [PicklistController::class, 'items'])->name('outbound.picklists.items');
     Route::get('picklists/{id}/pdf', [PicklistController::class, 'pdf'])->name('outbound.picklists.pdf');
+    Route::post('picklists/documents/bulk/pdf', [PicklistController::class, 'bulkPdf'])->name('outbound.picklists.bulk-pdf');
     Route::post('picklists/{id}/assign-picker', [PicklistController::class, 'assignPicker'])->name('outbound.picklists.assign-picker');
     Route::post('picklists/{id}/start', [PicklistController::class, 'start'])->name('outbound.picklists.start');
     Route::post('picklists/{id}/scan', [PicklistController::class, 'scan'])->name('outbound.picklists.scan');
@@ -81,6 +82,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('shipments/{id}/hand-over', [ShipmentController::class, 'handOver'])->name('outbound.shipments.hand-over');
     Route::post('shipments/{id}/update-handover-qty', [ShipmentController::class, 'updateHandoverQty'])->name('outbound.shipments.update-handover-qty');
     Route::get('shipments/{id}/manifest-pdf', [ShipmentController::class, 'manifestPdf'])->name('outbound.shipments.manifest-pdf');
+    Route::post('shipments/documents/bulk/manifest-pdf', [ShipmentController::class, 'bulkManifestPdf'])->name('outbound.shipments.bulk-manifest-pdf');
     Route::post('shipments/{id}/cancel', [ShipmentController::class, 'cancel'])->name('outbound.shipments.cancel');
     Route::delete('shipments/{id}', [ShipmentController::class, 'destroy'])->name('outbound.shipments.destroy');
 

@@ -21,6 +21,10 @@ class SalesReturn extends Model
         'source',
         'channel_return_id',
         'channel_shop_id',
+        'return_tracking_number',
+        'return_carrier',
+        'return_shipped_at',
+        'tracking_synced_at',
         'customer_name',
         'customer_contact',
         'status',
@@ -33,6 +37,8 @@ class SalesReturn extends Model
 
     protected $casts = [
         'processed_at' => 'datetime',
+        'return_shipped_at' => 'datetime',
+        'tracking_synced_at' => 'datetime',
     ];
 
     const SOURCE_MANUAL      = 'manual';
@@ -69,17 +75,17 @@ class SalesReturn extends Model
 
     public function scopeByStatus($query, string $status)
     {
-        return $query->where('status', $status);
+        return $query->where('sales_returns.status', $status);
     }
 
     public function scopeUnprocessed($query)
     {
-        return $query->where('status', self::STATUS_PENDING);
+        return $query->where('sales_returns.status', self::STATUS_PENDING);
     }
 
     public function scopeMarketplace($query)
     {
-        return $query->where('source', self::SOURCE_MARKETPLACE);
+        return $query->where('sales_returns.source', self::SOURCE_MARKETPLACE);
     }
 
     public function settlement(): HasOne

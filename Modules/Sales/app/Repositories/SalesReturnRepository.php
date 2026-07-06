@@ -6,31 +6,60 @@ use Modules\Sales\Models\SalesReturn;
 use Modules\Sales\Models\SalesReturnItem;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
-use App\Filters\FuzzyFilter;
+use Spatie\QueryBuilder\AllowedSort;
 
 class SalesReturnRepository
 {
+    /**
+     * Kolom yang dicari via macro allowedSearch (?search=), mencakup no. retur,
+     * pelanggan, no. resi ekspedisi retur, dan no. pesanan (join ke sales_orders).
+     */
+    private const SEARCH_COLUMNS = [
+        'sales_returns.return_number',
+        'sales_returns.customer_name',
+        'sales_returns.return_tracking_number',
+        'sales_orders.channel_order_no',
+        'sales_orders.salesorder_no',
+    ];
+
+    private function withOrderJoin(QueryBuilder $query): QueryBuilder
+    {
+        return $query
+            ->leftJoin('sales_orders', 'sales_orders.id', '=', 'sales_returns.order_id')
+            ->select('sales_returns.*');
+    }
+
     public function getAllPaginated(int $limit = 10)
     {
-        return QueryBuilder::for(SalesReturn::class)
+        return $this->withOrderJoin(QueryBuilder::for(SalesReturn::class))
             ->with(['order:id,salesorder_no', 'location:id,location_name', 'items.product:id,sku,product_id', 'items.product.product:id,name'])
             ->allowedFilters(
-                AllowedFilter::exact('status'),
-                AllowedFilter::exact('source'),
-                AllowedFilter::exact('order_id'),
-                AllowedFilter::custom('search', new FuzzyFilter('return_number,customer_name'))
+                AllowedFilter::exact('status', 'sales_returns.status'),
+                AllowedFilter::exact('source', 'sales_returns.source'),
+                AllowedFilter::exact('order_id', 'sales_returns.order_id'),
             )
-            ->allowedSorts('return_number', 'created_at')
+            ->allowedSearch(...self::SEARCH_COLUMNS)
+            ->allowedSorts(
+                AllowedSort::field('return_number', 'sales_returns.return_number'),
+                AllowedSort::field('created_at', 'sales_returns.created_at'),
+            )
             ->defaultSort('-created_at')
             ->paginate($limit);
     }
 
     public function getUnprocessedMarketplace(int $limit = 10)
     {
-        return QueryBuilder::for(SalesReturn::class)
+        return $this->withOrderJoin(QueryBuilder::for(SalesReturn::class))
             ->unprocessed()
             ->marketplace()
             ->with(['order:id,salesorder_no', 'location:id,location_name', 'items.product:id,sku,product_id', 'items.product.product:id,name'])
+            ->allowedFilters(
+                AllowedFilter::exact('location_id', 'sales_returns.location_id'),
+            )
+            ->allowedSearch(...self::SEARCH_COLUMNS)
+            ->allowedSorts(
+                AllowedSort::field('created_at', 'sales_returns.created_at'),
+            )
             ->defaultSort('-created_at')
             ->paginate($limit);
     }
@@ -92,8 +121,8 @@ class SalesReturnRepository
             ->with(['order:id,salesorder_no', 'location:id,location_name', 'items.product:id,sku,product_id'])
             ->allowedFilters(
                 AllowedFilter::exact('source'),
-                AllowedFilter::custom('search', new FuzzyFilter('return_number,customer_name'))
             )
+            ->allowedSearch('return_number', 'customer_name', 'return_tracking_number')
             ->defaultSort('-created_at')
             ->paginate($limit);
     }

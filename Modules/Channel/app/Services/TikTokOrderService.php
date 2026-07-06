@@ -350,6 +350,72 @@ class TikTokOrderService
         return $res;
     }
 
+    /**
+     * Ambil nomor resi ekspedisi retur (paket dikirim balik buyer) dari TikTok Return & Refund API.
+     *
+     * @param  string  $returnId  Return ID mentah (tanpa prefix "tiktok:").
+     * @param  string  $orderId   Fallback: cari retur berdasarkan order bila return_id kosong.
+     * @return array{tracking_number: ?string, carrier: ?string, shipped_at: ?string}
+     *
+     * TODO(verify): konfirmasi nama field ke dokumentasi TikTok return_refund 202309.
+     */
+    public function fetchReturnTracking(string $shopId, ?string $returnId, ?string $orderId = null): array
+    {
+        $empty = ['tracking_number' => null, 'carrier' => null, 'shipped_at' => null];
+
+        try {
+            $shop = $this->shopRepository->findByShopId($shopId);
+            if (! $shop || ! $shop->access_token) {
+                return $empty;
+            }
+
+            $queries = ['shop_cipher' => $shop->shop_cipher ?? '', 'page_size' => 20];
+            $body = [];
+            if ($returnId) {
+                $body['return_ids'] = [$returnId];
+            } elseif ($orderId) {
+                $body['order_ids'] = [$orderId];
+            } else {
+                return $empty;
+            }
+
+            $res = $this->client->request(
+                'POST',
+                '/return_refund/202309/returns/search',
+                $queries,
+                $body,
+                $shop->access_token,
+            );
+
+            $returns = $res['data']['return_orders']
+                ?? $res['data']['returns']
+                ?? [];
+            $ret = $returns[0] ?? [];
+            $shipment = $ret['return_shipment_document'] ?? $ret['shipment'] ?? [];
+
+            $tracking = $ret['return_tracking_number']
+                ?? $shipment['tracking_number']
+                ?? null;
+            $carrier = $ret['return_provider_name']
+                ?? $ret['shipping_provider_name']
+                ?? $shipment['shipping_provider_name']
+                ?? null;
+            $shippedAt = isset($ret['update_time']) && $ret['update_time']
+                ? now()->setTimestamp((int) $ret['update_time'])->toIso8601String()
+                : null;
+
+            return [
+                'tracking_number' => $tracking ? (string) $tracking : null,
+                'carrier'         => $carrier ? (string) $carrier : null,
+                'shipped_at'      => $shippedAt,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning("TikTok: gagal ambil resi retur (return_id={$returnId}): " . $e->getMessage());
+
+            return $empty;
+        }
+    }
+
     public function rejectBuyerCancellation(string $shopId, string $orderId): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);

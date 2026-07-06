@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Modules\Inventory\Models\Inventory;
+use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Services\PicklistService;
 use Modules\Outbound\Http\Requests\CreatePicklistRequest;
 use Modules\Outbound\Http\Requests\PickItemRequest;
@@ -196,6 +197,75 @@ class PicklistController extends Controller
         } catch (Throwable $e) {
             report($e);
             return $this->errorResponse('Gagal membuat PDF picklist: ' . $e->getMessage(), 500);
+        }
+    }
+
+    #[OA\Post(
+        path: '/api/v1/outbound/picklists/documents/bulk/pdf',
+        summary: 'Cetak Picklist untuk banyak pesanan (order_ids) dalam 1 PDF multi-halaman',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Picklist'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['order_ids'],
+            properties: [
+                new OA\Property(property: 'order_ids', type: 'array', items: new OA\Items(type: 'string')),
+            ]
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'PDF stream', content: new OA\MediaType(mediaType: 'application/pdf')),
+            new OA\Response(response: 404, description: 'Tidak ada picklist ditemukan untuk pesanan tersebut'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+        ]
+    )]
+    public function bulkPdf(Request $request)
+    {
+        $validated = $request->validate([
+            'order_ids' => 'required|array|min:1|max:200',
+            'order_ids.*' => 'required|string',
+        ]);
+
+        try {
+            $orderIds = $validated['order_ids'];
+
+            $picklists = Picklist::with([
+                    'items.product:id,product_id,sku',
+                    'items.product.product:id,name',
+                    'items.product.options:id,variant_id,attribute_id,value',
+                    'items.product.media:id,product_id,variant_id,url,is_primary,sort_order',
+                    'items.product.product.media:id,product_id,variant_id,url,is_primary,sort_order',
+                    'items.orderItem:id,order_id,description',
+                    'items.order:id,salesorder_no,customer_name',
+                    'items.bin:id,bin_final_code',
+                    'location:id,location_name,location_code',
+                    'picker:id,name,email',
+                ])
+                ->whereHas('items', fn ($q) => $q->whereIn('order_id', $orderIds))
+                ->orderBy('created_at')
+                ->get();
+
+            if ($picklists->isEmpty()) {
+                return $this->errorResponse('Tidak ada picklist ditemukan untuk pesanan yang dipilih.', 404);
+            }
+
+            foreach ($picklists as $picklist) {
+                $this->attachRecommendedBins($picklist);
+            }
+
+            $qrMap = $picklists->mapWithKeys(
+                fn ($picklist) => [$picklist->id => $this->generateQrDataUri((string) ($picklist->picklist_no ?? ''))]
+            );
+
+            $filename = 'Picklist-Bulk-' . now()->format('Ymd-His') . '.pdf';
+
+            $pdf = Pdf::loadView('outbound::pdf.picklist-bulk', [
+                'picklists' => $picklists,
+                'qrMap' => $qrMap,
+            ])->setPaper('a4', 'portrait');
+
+            return $pdf->stream($filename);
+        } catch (Throwable $e) {
+            report($e);
+            return $this->errorResponse('Gagal membuat PDF picklist bulk: ' . $e->getMessage(), 500);
         }
     }
 

@@ -17,4 +17,6 @@ Schedule::command('products:poll-review-status')->everyThirtyMinutes()->withoutO
 
 Schedule::command('orders:sync-finance')->dailyAt('03:00')->withoutOverlapping();
 
+Schedule::command('returns:sync-tracking')->everyThirtyMinutes()->withoutOverlapping();
+
 Schedule::command('horizon:snapshot')->everyFiveMinutes();

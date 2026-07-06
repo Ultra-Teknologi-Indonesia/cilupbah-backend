@@ -316,6 +316,57 @@ class LazadaOrderService
         return $itemsByOrder;
     }
 
+    /**
+     * Ambil nomor resi ekspedisi retur (reverse order) dari Lazada Reverse API.
+     *
+     * @param  string  $reverseOrderId  Reverse order id mentah (tanpa prefix "lazada:").
+     * @return array{tracking_number: ?string, carrier: ?string, shipped_at: ?string}
+     *
+     * TODO(verify): konfirmasi endpoint & nama field ke dokumentasi Lazada Reverse/RMA.
+     */
+    public function fetchReturnTracking(string $shopId, ?string $reverseOrderId): array
+    {
+        $empty = ['tracking_number' => null, 'carrier' => null, 'shipped_at' => null];
+
+        if (! $reverseOrderId) {
+            return $empty;
+        }
+
+        try {
+            $shop = $this->requireShop($shopId);
+
+            $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+                'GET',
+                '/reverse/order/detail/get',
+                ['reverse_order_id' => $reverseOrderId],
+                $token,
+            ));
+
+            $detail = $res['data'] ?? $res['result'] ?? $res;
+            $logistics = $detail['reverse_logistics'] ?? $detail['logistics'] ?? [];
+
+            $tracking = $detail['tracking_number']
+                ?? $detail['return_tracking_number']
+                ?? $logistics['tracking_number']
+                ?? null;
+            $carrier = $detail['shipping_provider']
+                ?? $logistics['shipping_provider']
+                ?? $logistics['logistics_provider']
+                ?? null;
+            $shippedAt = $detail['ship_time'] ?? $detail['return_ship_time'] ?? null;
+
+            return [
+                'tracking_number' => $tracking ? (string) $tracking : null,
+                'carrier'         => $carrier ? (string) $carrier : null,
+                'shipped_at'      => $shippedAt ? (string) $shippedAt : null,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning("Lazada: gagal ambil resi retur (reverse_order_id={$reverseOrderId}): " . $e->getMessage());
+
+            return $empty;
+        }
+    }
+
     protected function callWithRefresh(object $shop, callable $fn): array
     {
         try {

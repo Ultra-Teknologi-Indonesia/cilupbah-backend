@@ -42,6 +42,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('sales/returns/{id}/accept', [SalesReturnController::class, 'accept'])->whereUuid('id')->name('sales.returns.accept');
     Route::post('sales/returns/{id}/reject', [SalesReturnController::class, 'reject'])->whereUuid('id')->name('sales.returns.reject');
     Route::post('sales/returns/{id}/complete', [SalesReturnController::class, 'complete'])->whereUuid('id')->name('sales.returns.complete');
+    Route::post('sales/returns/{id}/sync-tracking', [SalesReturnController::class, 'syncTracking'])->whereUuid('id')->name('sales.returns.sync-tracking');
 
     Route::get('sales/invoices/unpaid', [SalesInvoiceController::class, 'unpaid'])->name('sales.invoices.unpaid');
     Route::get('sales/invoices/overdue', [SalesInvoiceController::class, 'overdue'])->name('sales.invoices.overdue');

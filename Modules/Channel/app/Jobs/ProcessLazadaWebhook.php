@@ -68,7 +68,7 @@ class ProcessLazadaWebhook implements ShouldQueue
             $channelOrderId = (string) ($data['trade_order_id'] ?? $data['order_id'] ?? $data['reverse_order_id'] ?? '');
             if ($channelOrderId !== '') {
                 try {
-                    app(\Modules\Sales\Services\SalesReturnService::class)->createFromChannel([
+                    $salesReturn = app(\Modules\Sales\Services\SalesReturnService::class)->createFromChannel([
                         'source'            => 'lazada',
                         'channel_order_id'  => $channelOrderId,
                         'channel_return_id' => $data['reverse_order_id'] ?? null,
@@ -76,6 +76,10 @@ class ProcessLazadaWebhook implements ShouldQueue
                         'reason'            => $data['reverse_status'] ?? $data['order_status'] ?? 'Retur Lazada',
                         'created_by'        => 'system:lazada-webhook',
                     ]);
+
+                    if ($salesReturn) {
+                        \Modules\Sales\Jobs\SyncReturnTrackingJob::dispatch((string) $salesReturn->id);
+                    }
                 } catch (\Throwable $e) {
                     Log::warning('Lazada auto SalesReturn gagal: ' . $e->getMessage(), ['channel_order_id' => $channelOrderId]);
                 }

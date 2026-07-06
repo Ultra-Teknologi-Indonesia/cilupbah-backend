@@ -114,7 +114,7 @@ class ProcessShopeeWebhook implements ShouldQueue
         $orderService->pullOrderById($shopId, $orderSn);
 
         try {
-            app(\Modules\Sales\Services\SalesReturnService::class)->createFromChannel([
+            $salesReturn = app(\Modules\Sales\Services\SalesReturnService::class)->createFromChannel([
                 'source'            => 'shopee',
                 'channel_order_id'  => $orderSn,
                 'channel_return_id' => $data['return_sn'] ?? $data['refund_id'] ?? null,
@@ -122,6 +122,10 @@ class ProcessShopeeWebhook implements ShouldQueue
                 'reason'            => $data['reason'] ?? 'Retur Shopee',
                 'created_by'        => 'system:shopee-webhook',
             ]);
+
+            if ($salesReturn) {
+                \Modules\Sales\Jobs\SyncReturnTrackingJob::dispatch((string) $salesReturn->id);
+            }
         } catch (\Throwable $e) {
             Log::warning('Shopee auto SalesReturn gagal: ' . $e->getMessage(), ['ordersn' => $orderSn]);
         }

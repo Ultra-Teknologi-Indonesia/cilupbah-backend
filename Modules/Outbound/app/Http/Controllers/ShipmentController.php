@@ -7,6 +7,7 @@ use App\Traits\ApiResponse;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Services\ShipmentService;
 use Modules\Outbound\Http\Requests\CreateShipmentRequest;
 use Modules\Outbound\Http\Requests\AddShipmentOrdersRequest;
@@ -506,6 +507,64 @@ class ShipmentController extends Controller
         } catch (Throwable $e) {
             report($e);
             return $this->errorResponse('Gagal membuat PDF manifest: ' . $e->getMessage(), 500);
+        }
+    }
+
+    #[OA\Post(
+        path: '/api/v1/outbound/shipments/documents/bulk/manifest-pdf',
+        summary: 'Cetak manifest untuk banyak pesanan (order_ids) dalam 1 PDF multi-halaman',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Shipment'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['order_ids'],
+            properties: [
+                new OA\Property(property: 'order_ids', type: 'array', items: new OA\Items(type: 'string')),
+            ]
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'PDF stream', content: new OA\MediaType(mediaType: 'application/pdf')),
+            new OA\Response(response: 404, description: 'Tidak ada shipment ditemukan untuk pesanan tersebut'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+        ]
+    )]
+    public function bulkManifestPdf(Request $request)
+    {
+        $validated = $request->validate([
+            'order_ids' => 'required|array|min:1|max:200',
+            'order_ids.*' => 'required|string',
+        ]);
+
+        try {
+            $orderIds = $validated['order_ids'];
+
+            $shipments = Shipment::with([
+                    'orders.order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,shipping_type,tracking_number,source,channel_order_no,order_weight_gram',
+                    'orders.packlist:id,packlist_no',
+                    'location:id,location_name,location_code',
+                ])
+                ->whereHas('orders', fn ($q) => $q->whereIn('order_id', $orderIds))
+                ->orderBy('shipment_date')
+                ->get();
+
+            if ($shipments->isEmpty()) {
+                return $this->errorResponse('Tidak ada shipment ditemukan untuk pesanan yang dipilih.', 404);
+            }
+
+            $qrMap = $shipments->mapWithKeys(
+                fn ($shipment) => [$shipment->id => $this->generateQrDataUri((string) ($shipment->shipment_no ?? ''))]
+            );
+
+            $filename = 'Manifest-Bulk-' . now()->format('Ymd-His') . '.pdf';
+
+            $pdf = Pdf::loadView('outbound::pdf.manifest-bulk', [
+                'shipments' => $shipments,
+                'qrMap' => $qrMap,
+            ])->setPaper('a4', 'portrait');
+
+            return $pdf->stream($filename);
+        } catch (Throwable $e) {
+            report($e);
+            return $this->errorResponse('Gagal membuat PDF manifest bulk: ' . $e->getMessage(), 500);
         }
     }
 

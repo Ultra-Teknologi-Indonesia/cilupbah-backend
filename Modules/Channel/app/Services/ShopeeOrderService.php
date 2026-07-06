@@ -135,6 +135,84 @@ class ShopeeOrderService
         }
     }
 
+    /**
+     * Ambil nomor resi ekspedisi retur (paket yang dikirim balik buyer) dari Shopee Returns API.
+     *
+     * @param  string  $returnSn  Return SN mentah (tanpa prefix "shopee:").
+     * @param  string  $orderSn   Fallback: cari retur berdasarkan order bila return_sn kosong.
+     * @return array{tracking_number: ?string, carrier: ?string, shipped_at: ?string}
+     *
+     * TODO(verify): konfirmasi nama field ke dokumentasi Shopee Returns (get_return_detail).
+     */
+    public function fetchReturnTracking(string $shopId, ?string $returnSn, ?string $orderSn = null): array
+    {
+        $empty = ['tracking_number' => null, 'carrier' => null, 'shipped_at' => null];
+
+        try {
+            $shop = $this->requireShop($shopId);
+
+            // Resolve return_sn dari order bila belum diketahui.
+            if (! $returnSn && $orderSn) {
+                $returnSn = $this->resolveReturnSnByOrder($shop, $orderSn);
+            }
+
+            if (! $returnSn) {
+                return $empty;
+            }
+
+            $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+                'GET',
+                '/api/v2/returns/get_return_detail',
+                ['return_sn' => $returnSn],
+                $token,
+                $shop->shop_id,
+            ));
+
+            $detail = $res['response'] ?? [];
+            $logistics = $detail['logistics'] ?? [];
+
+            $tracking = $detail['tracking_number']
+                ?? $logistics['tracking_number']
+                ?? null;
+            $carrier = $detail['shipping_carrier']
+                ?? $logistics['shipping_carrier']
+                ?? $logistics['logistics_name']
+                ?? null;
+            $shippedAt = isset($detail['create_time']) && $detail['create_time']
+                ? now()->setTimestamp((int) $detail['create_time'])->toIso8601String()
+                : null;
+
+            return [
+                'tracking_number' => $tracking ? (string) $tracking : null,
+                'carrier'         => $carrier ? (string) $carrier : null,
+                'shipped_at'      => $shippedAt,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning("Shopee: gagal ambil resi retur (return_sn={$returnSn}): " . $e->getMessage());
+
+            return $empty;
+        }
+    }
+
+    protected function resolveReturnSnByOrder(object $shop, string $orderSn): ?string
+    {
+        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+            'GET',
+            '/api/v2/returns/get_return_list',
+            ['page_no' => 0, 'page_size' => 20],
+            $token,
+            $shop->shop_id,
+        ));
+
+        foreach ($res['response']['return'] ?? [] as $ret) {
+            if (($ret['order_sn'] ?? null) === $orderSn) {
+                return $ret['return_sn'] ?? null;
+            }
+        }
+
+        return null;
+    }
+
     public function getEscrowDetail(string $shopId, string $orderSn): array
     {
         $shop = $this->requireShop($shopId);
