@@ -1089,6 +1089,11 @@ class InventoryService
                 throw new \Exception("Transfer berstatus {$transfer->status}, tidak bisa dikirim.");
             }
 
+            $missingBin = $transfer->items->first(fn ($it) => empty($it->source_bin_id));
+            if ($missingBin) {
+                throw new \Exception("Pilih rak asal untuk semua item sebelum transfer bisa dikirim.");
+            }
+
             foreach ($transfer->items as $item) {
                 $sourceInventory = $this->inventoryRepository->findExactForUpdate(
                     $item->item_id,
@@ -1545,8 +1550,13 @@ class InventoryService
                 throw new \Exception("Minimal harus ada 1 barang untuk diajukan.");
             }
 
-            // Reserve stok berjalan asynchronous (queue). Pastikan semua item sudah
-            // ter-reserve (SYNCED) sebelum finalisasi agar stok tidak dobel/negatif.
+            $missingBin = $transfer->items->first(fn ($it) => empty($it->source_bin_id));
+            if ($missingBin) {
+                throw new \Exception("Pilih rak asal untuk semua item sebelum transfer bisa dikirim.");
+            }
+
+            // Pastikan semua item sudah ter-reserve (SYNCED) sebelum finalisasi
+            // agar stok tidak dobel/negatif.
             $notReady = $transfer->items->first(
                 fn ($it) => $it->sync_status !== InventoryTransferItem::SYNC_SYNCED
             );
@@ -1650,18 +1660,27 @@ class InventoryService
         ]);
 
         // Untuk item hasil Permintaan Restock, rak asal belum dipilih dan akan
-        // ditetapkan otomatis (LIFO) saat approveTransfer. Lewati job RESERVE async
-        // agar tidak dobel-reserve / balapan dengan assignAndReserveItemLifo.
+        // ditetapkan otomatis (LIFO) saat approveTransfer. Lewati reservasi
+        // sinkron agar tidak dobel-reserve / balapan dengan assignAndReserveItemLifo.
         $deferReserve = ($data['defer_reserve'] ?? false) || empty($data['source_bin_id']);
 
         if (! $deferReserve) {
-            SyncTransferDraftItemJob::dispatch(
+            // Dijalankan sinkron (bukan queue) agar stok langsung terpotong
+            // saat item disimpan, tanpa bergantung pada worker queue berjalan.
+            SyncTransferDraftItemJob::dispatchSync(
                 $item->id,
                 SyncTransferDraftItemJob::ACTION_RESERVE,
                 $data['qty'],
                 $transfer->transfer_number,
                 $transfer->created_by,
             );
+
+            $item = $item->fresh();
+            if ($item?->sync_status === InventoryTransferItem::SYNC_FAILED) {
+                $error = $item->sync_error ?? 'Gagal mereservasi stok di rak asal.';
+                $item->delete();
+                throw new \Exception($error);
+            }
         }
 
         return $item->load(['product:id,sku,product_id', 'sourceBin:id,bin_final_code', 'destinationBin:id,bin_final_code']);
@@ -1705,6 +1724,7 @@ class InventoryService
 
         $oldQty = $item->qty;
         $delta = $newQty - $oldQty;
+        $prevStatus = $item->sync_status;
 
         $item->update([
             'qty' => $newQty,
@@ -1712,13 +1732,26 @@ class InventoryService
         ]);
 
         if ($delta !== 0) {
-            SyncTransferDraftItemJob::dispatch(
+            // Dijalankan sinkron agar penyesuaian stok langsung terlihat, tanpa
+            // bergantung pada worker queue berjalan.
+            SyncTransferDraftItemJob::dispatchSync(
                 $item->id,
                 SyncTransferDraftItemJob::ACTION_ADJUST,
                 $delta,
                 $transfer->transfer_number,
                 $transfer->created_by,
             );
+
+            $fresh = $item->fresh();
+            if ($fresh?->sync_status === InventoryTransferItem::SYNC_FAILED) {
+                $error = $fresh->sync_error ?? 'Gagal menyesuaikan reservasi stok.';
+                $fresh->update([
+                    'qty' => $oldQty,
+                    'sync_status' => $prevStatus,
+                    'sync_error' => null,
+                ]);
+                throw new \Exception($error);
+            }
         }
 
         return $item->fresh()->load(['product:id,sku,product_id', 'sourceBin:id,bin_final_code']);
@@ -1742,7 +1775,9 @@ class InventoryService
 
         $qty = $item->qty;
 
-        SyncTransferDraftItemJob::dispatch(
+        // Dijalankan sinkron agar stok yang sudah direservasi langsung
+        // dilepas dan baris item langsung terhapus saat disimpan.
+        SyncTransferDraftItemJob::dispatchSync(
             $item->id,
             SyncTransferDraftItemJob::ACTION_RELEASE,
             $qty,
