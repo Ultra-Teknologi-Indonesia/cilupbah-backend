@@ -71,6 +71,7 @@ class LazadaPushProductTest extends TestCase
         [$shop, $product] = $this->makeProductAndShop();
 
         Http::fake([
+            '*image/migrate*' => Http::response(['code' => '0', 'data' => ['image' => ['url' => 'https://cdn.lazada.co.id/img-migrated.jpg']]], 200),
             '*product/create*' => Http::response(['code' => '0', 'data' => ['item_id' => 'IT-99', 'sku_list' => [['SellerSku' => 'V1', 'SkuId' => 'S1']]]], 200),
         ]);
 
@@ -85,6 +86,18 @@ class LazadaPushProductTest extends TestCase
             'external_product_id' => 'IT-99',
             'sync_status' => 'in_review',
         ]);
+
+        // Gambar eksternal wajib dimigrasikan dulu — payload create tidak boleh
+        // memakai URL asli produk.
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/image/migrate') && ($r['image_url'] ?? null) === 'https://x/img.jpg');
+        Http::assertSent(function ($r) {
+            if (! str_contains($r->url(), '/product/create')) {
+                return false;
+            }
+            $payload = json_decode($r['payload'] ?? '', true);
+
+            return ($payload['Request']['Product']['Images']['Image'][0] ?? null) === 'https://cdn.lazada.co.id/img-migrated.jpg';
+        });
     }
 
     public function test_push_failure_returns_422_not_500(): void
@@ -92,6 +105,7 @@ class LazadaPushProductTest extends TestCase
         [, $product] = $this->makeProductAndShop();
 
         Http::fake([
+            '*image/migrate*' => Http::response(['code' => '0', 'data' => ['image' => ['url' => 'https://cdn.lazada.co.id/img-migrated.jpg']]], 200),
             '*product/create*' => Http::response(['code' => 'IllegalAccessToken', 'message' => 'invalid'], 200),
         ]);
 

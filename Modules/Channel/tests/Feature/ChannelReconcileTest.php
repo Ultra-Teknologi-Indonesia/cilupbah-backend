@@ -113,7 +113,7 @@ class ChannelReconcileTest extends TestCase
         $this->assertDatabaseMissing('products', ['name' => 'Produk Channel Tak Termapping']);
     }
 
-    public function test_refresh_endpoint_queues_supported_shops_and_skips_others(): void
+    public function test_refresh_endpoint_queues_all_supported_channels_including_shopee(): void
     {
         Queue::fake();
 
@@ -125,8 +125,10 @@ class ChannelReconcileTest extends TestCase
         $response = $this->postJson('/api/v1/channel-monitor/refresh');
 
         $response->assertStatus(202);
-        $response->assertJsonPath('data.queued', 2); 
-        $this->assertContains('shopee', $response->json('data.skipped_channels'));
-        Queue::assertPushed(ReconcileChannelDataJob::class, 2);
+        // Shopee sekarang punya reconcileChannelData() sendiri (lihat ShopeeReconcileTest),
+        // jadi tidak lagi masuk skipped_channels — semua 3 toko (tiktok+lazada+shopee) diqueue.
+        $response->assertJsonPath('data.queued', 3);
+        $this->assertEmpty($response->json('data.skipped_channels'));
+        Queue::assertPushed(ReconcileChannelDataJob::class, 3);
     }
 }

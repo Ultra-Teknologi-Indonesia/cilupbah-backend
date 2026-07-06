@@ -73,44 +73,96 @@ class LazadaOrderService
         return 1;
     }
 
-    public function packOrder(string $shopId, string $orderId, ?string $shippingProvider = null): array
+    /**
+     * Pack pesanan via endpoint package-based Lazada.
+     * Hanya item berstatus "pending"/"repacked" yang boleh diproses — wajib panggil
+     * GetOrderItems terlebih dahulu untuk memfilter (aturan Lazada, bukan pilihan kita).
+     */
+    public function fulfillPack(string $shopId, string $orderId, string $shippingProviderId, string $deliveryType = 'dropship'): array
     {
         $shop = $this->requireShop($shopId);
 
-        $itemIds = $this->orderItemIds($shop, $orderId);
-        if (empty($itemIds)) {
-            throw new \Exception("Order {$orderId} tidak punya item untuk diproses.");
+        $items = $this->fetchOrderItemsWithStatus($shop, $orderId);
+        $packableIds = $this->filterItemIdsByStatus($items, ['pending', 'repacked']);
+
+        if (empty($packableIds)) {
+            throw new \Exception("Order {$orderId} tidak punya item berstatus pending/repacked untuk di-pack.");
         }
 
-        $packParams = [
-            'delivery_type' => 'dropship',
-            'order_item_ids' => json_encode($itemIds),
-        ];
-        if ($shippingProvider) {
-            $packParams['shipping_provider'] = $shippingProvider;
-        }
-
-        $packRes = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/order/pack', $packParams, $token));
-
-        $trackingNumber = $packRes['data']['order_items'][0]['tracking_number'] ?? '';
-
-        $rtsParams = [
-            'delivery_type' => 'dropship',
-            'order_item_ids' => json_encode($itemIds),
-            'shipment_provider' => $shippingProvider ?? ($packRes['data']['order_items'][0]['shipment_provider'] ?? ''),
-            'tracking_number' => $trackingNumber,
+        $params = [
+            'delivery_type' => $deliveryType,
+            'shipping_provider_id' => $shippingProviderId,
+            'order_item_ids' => json_encode($packableIds),
         ];
 
-        $rtsRes = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/order/rts', $rtsParams, $token));
+        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/order/fulfill/pack', $params, $token));
 
         $this->resyncLocalOrder($shopId, $orderId);
 
         return [
             'order_id' => $orderId,
-            'order_item_ids' => $itemIds,
-            'tracking_number' => $trackingNumber,
-            'rts' => $rtsRes['data'] ?? [],
+            'order_item_ids' => $packableIds,
+            'pack' => $res['data'] ?? [],
         ];
+    }
+
+    /**
+     * Ready-to-ship via endpoint package-based Lazada.
+     * Hanya item berstatus "packed" yang boleh diproses — panggil GetOrderItems dulu.
+     * Sebaiknya cetak AWB (printAwb()) di antara fulfillPack() dan readyToShip() —
+     * sebagian penyedia logistik menolak RTS bila AWB belum digenerate.
+     */
+    public function readyToShip(string $shopId, string $orderId, ?string $trackingNumber = null, ?string $packageId = null, string $deliveryType = 'dropship'): array
+    {
+        $shop = $this->requireShop($shopId);
+
+        $items = $this->fetchOrderItemsWithStatus($shop, $orderId);
+        $readyIds = $this->filterItemIdsByStatus($items, ['packed']);
+
+        if (empty($readyIds)) {
+            throw new \Exception("Order {$orderId} tidak punya item berstatus packed untuk ready-to-ship.");
+        }
+
+        $params = array_filter([
+            'delivery_type' => $deliveryType,
+            'order_item_ids' => json_encode($readyIds),
+            'tracking_number' => $trackingNumber,
+            'package_id' => $packageId,
+        ], fn ($v) => $v !== null);
+
+        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/order/package/rts', $params, $token));
+
+        $this->resyncLocalOrder($shopId, $orderId);
+
+        return [
+            'order_id' => $orderId,
+            'order_item_ids' => $readyIds,
+            'rts' => $res['data'] ?? [],
+        ];
+    }
+
+    /**
+     * Cetak AWB dengan polling — beberapa penyedia logistik butuh waktu untuk
+     * menyiapkan dokumen setelah fulfillPack(), sebelum bisa diambil.
+     */
+    public function printAwb(string $shopId, string $orderId, int $maxAttempts = 5, int $delayMicroseconds = 1_000_000): array
+    {
+        $attempt = 0;
+
+        do {
+            $document = $this->getDocument($shopId, $orderId, 'shippingLabel');
+
+            if (! empty($document)) {
+                return ['order_id' => $orderId, 'document' => $document];
+            }
+
+            $attempt++;
+            if ($attempt < $maxAttempts) {
+                usleep($delayMicroseconds);
+            }
+        } while ($attempt < $maxAttempts);
+
+        throw new \Exception("Dokumen AWB order {$orderId} belum siap setelah {$maxAttempts} percobaan.");
     }
 
     public function cancelOrder(string $shopId, string $orderId, int|string $reasonId, ?string $reasonDetail = null): array
@@ -172,6 +224,21 @@ class LazadaOrderService
         return $res['data']['shipment_providers'] ?? ($res['data'] ?? []);
     }
 
+    /**
+     * Status item saat ini (lowercase) — dipakai job retry/fallback untuk memutuskan
+     * apakah fulfillPack()/readyToShip() masih perlu dipanggil (idempotensi).
+     */
+    public function itemStatuses(string $shopId, string $orderId): array
+    {
+        $shop = $this->requireShop($shopId);
+        $items = $this->fetchOrderItemsWithStatus($shop, $orderId);
+
+        return array_map(
+            fn (array $row) => strtolower((string) ($row['status'] ?? $row['item_status'] ?? '')),
+            $items
+        );
+    }
+
     public function getDocument(string $shopId, string $orderId, string $docType = 'shippingLabel'): array
     {
         $shop = $this->requireShop($shopId);
@@ -197,6 +264,30 @@ class LazadaOrderService
             fn (array $row) => isset($row['order_item_id']) ? (string) $row['order_item_id'] : null,
             $items
         )));
+    }
+
+    /**
+     * Selalu tarik ulang (bukan cache) — GetOrderItems wajib dipanggil segar sebelum
+     * fulfillPack/readyToShip agar status-gating akurat & retry idempoten.
+     */
+    protected function fetchOrderItemsWithStatus(object $shop, string $orderId): array
+    {
+        return $this->fetchItemsForOrders($shop, [$orderId])[$orderId] ?? [];
+    }
+
+    protected function filterItemIdsByStatus(array $items, array $allowedStatuses): array
+    {
+        $allowed = array_map('strtolower', $allowedStatuses);
+
+        return array_values(array_filter(array_map(function (array $row) use ($allowed) {
+            $status = strtolower((string) ($row['status'] ?? $row['item_status'] ?? ''));
+
+            if (! in_array($status, $allowed, true)) {
+                return null;
+            }
+
+            return isset($row['order_item_id']) ? (string) $row['order_item_id'] : null;
+        }, $items)));
     }
 
     protected function resyncLocalOrder(string $shopId, string $orderId): void

@@ -41,17 +41,14 @@ class LazadaOrderOpsTest extends TestCase
         ]);
     }
 
-    private function fakeOrderApis(string $statusAfter = 'ready_to_ship', array $extra = []): void
+    private function fakeItemsForOrder(array $items, string $statusAfter = 'packed', array $extra = []): void
     {
         Http::fake(array_merge([
             'api.lazada.co.id/rest/orders/items/get*' => Http::response([
                 'code' => '0',
                 'data' => [[
                     'order_id' => 900123,
-                    'order_items' => [
-                        ['order_item_id' => 111, 'name' => 'Kaos', 'sku' => 'SKU-A', 'item_price' => 50000, 'paid_price' => 50000],
-                        ['order_item_id' => 112, 'name' => 'Kaos', 'sku' => 'SKU-A', 'item_price' => 50000, 'paid_price' => 50000],
-                    ],
+                    'order_items' => $items,
                 ]],
             ], 200),
             'api.lazada.co.id/rest/order/get*' => Http::response([
@@ -67,32 +64,100 @@ class LazadaOrderOpsTest extends TestCase
         ], $extra));
     }
 
-    public function test_pack_order_calls_pack_then_rts(): void
+    public function test_fulfill_pack_only_includes_pending_and_repacked_items(): void
     {
-        $this->fakeOrderApis('ready_to_ship', [
-            'api.lazada.co.id/rest/order/pack*' => Http::response([
-                'code' => '0',
-                'data' => ['order_items' => [['order_item_id' => 111, 'tracking_number' => 'LZDTRK-9', 'shipment_provider' => 'LEX ID']]],
-            ], 200),
-            'api.lazada.co.id/rest/order/rts*' => Http::response(['code' => '0', 'data' => ['success' => true]], 200),
+        $this->fakeItemsForOrder([
+            ['order_item_id' => 111, 'status' => 'pending', 'name' => 'Kaos', 'sku' => 'SKU-A', 'item_price' => 50000, 'paid_price' => 50000],
+            ['order_item_id' => 112, 'status' => 'repacked', 'name' => 'Kaos', 'sku' => 'SKU-A', 'item_price' => 50000, 'paid_price' => 50000],
+            ['order_item_id' => 113, 'status' => 'packed', 'name' => 'Kaos', 'sku' => 'SKU-A', 'item_price' => 50000, 'paid_price' => 50000],
+        ], extra: [
+            'api.lazada.co.id/rest/order/fulfill/pack*' => Http::response(['code' => '0', 'data' => ['success' => true]], 200),
         ]);
 
-        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/lazada/sync/pack', [
+        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/lazada/sync/fulfill-pack', [
             'shop_id' => 'LZ-100',
             'order_id' => '900123',
+            'shipping_provider_id' => 'LEX-ID',
         ]);
 
         $response->assertStatus(200)
-            ->assertJsonPath('data.tracking_number', 'LZDTRK-9')
             ->assertJsonPath('data.order_item_ids', ['111', '112']);
 
-        Http::assertSent(fn ($r) => str_contains($r->url(), '/order/pack') && ($r['order_item_ids'] ?? null) === '["111","112"]');
-        Http::assertSent(fn ($r) => str_contains($r->url(), '/order/rts') && ($r['tracking_number'] ?? null) === 'LZDTRK-9');
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/order/fulfill/pack')
+            && ($r['order_item_ids'] ?? null) === '["111","112"]'
+            && ($r['shipping_provider_id'] ?? null) === 'LEX-ID');
+    }
+
+    public function test_fulfill_pack_rejects_when_no_packable_items(): void
+    {
+        $this->fakeItemsForOrder([
+            ['order_item_id' => 111, 'status' => 'packed'],
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/lazada/sync/fulfill-pack', [
+            'shop_id' => 'LZ-100',
+            'order_id' => '900123',
+            'shipping_provider_id' => 'LEX-ID',
+        ])->assertStatus(422);
+    }
+
+    public function test_ready_to_ship_only_includes_packed_items(): void
+    {
+        $this->fakeItemsForOrder([
+            ['order_item_id' => 111, 'status' => 'packed', 'name' => 'Kaos', 'sku' => 'SKU-A', 'item_price' => 50000, 'paid_price' => 50000],
+            ['order_item_id' => 112, 'status' => 'pending', 'name' => 'Kaos', 'sku' => 'SKU-A', 'item_price' => 50000, 'paid_price' => 50000],
+        ], statusAfter: 'ready_to_ship', extra: [
+            'api.lazada.co.id/rest/order/package/rts*' => Http::response(['code' => '0', 'data' => ['success' => true]], 200),
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/lazada/sync/rts', [
+            'shop_id' => 'LZ-100',
+            'order_id' => '900123',
+            'tracking_number' => 'LZDTRK-9',
+        ]);
+
+        $response->assertStatus(200)->assertJsonPath('data.order_item_ids', ['111']);
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/order/package/rts')
+            && ($r['order_item_ids'] ?? null) === '["111"]'
+            && ($r['tracking_number'] ?? null) === 'LZDTRK-9');
+    }
+
+    public function test_ready_to_ship_rejects_when_no_packed_items(): void
+    {
+        $this->fakeItemsForOrder([
+            ['order_item_id' => 111, 'status' => 'pending'],
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/lazada/sync/rts', [
+            'shop_id' => 'LZ-100',
+            'order_id' => '900123',
+        ])->assertStatus(422);
+    }
+
+    public function test_print_awb_returns_document_when_ready(): void
+    {
+        $this->fakeItemsForOrder([
+            ['order_item_id' => 111, 'status' => 'packed'],
+        ], extra: [
+            'api.lazada.co.id/rest/order/document/get*' => Http::response([
+                'code' => '0',
+                'data' => ['document' => ['doc_type' => 'shippingLabel', 'file' => base64_encode('PDF')]],
+            ], 200),
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/lazada/sync/awb?shop_id=LZ-100&order_id=900123')
+            ->assertStatus(200)
+            ->assertJsonPath('data.document.doc_type', 'shippingLabel');
     }
 
     public function test_cancel_order_cancels_each_item_and_syncs_local_status(): void
     {
-        $this->fakeOrderApis('canceled', [
+        $this->fakeItemsForOrder([
+            ['order_item_id' => 111, 'name' => 'Kaos', 'sku' => 'SKU-A', 'item_price' => 50000, 'paid_price' => 50000],
+            ['order_item_id' => 112, 'name' => 'Kaos', 'sku' => 'SKU-A', 'item_price' => 50000, 'paid_price' => 50000],
+        ], statusAfter: 'canceled', extra: [
             'api.lazada.co.id/rest/order/cancel*' => Http::response(['code' => '0', 'data' => ['success' => true]], 200),
         ]);
 
@@ -106,7 +171,6 @@ class LazadaOrderOpsTest extends TestCase
         $response->assertStatus(200)
             ->assertJsonPath('data.cancelled_item_ids', ['111', '112']);
 
-        Http::assertSentCount(5); 
         Http::assertSent(fn ($r) => str_contains($r->url(), '/order/cancel') && ($r['order_item_id'] ?? null) === '111');
         Http::assertSent(fn ($r) => str_contains($r->url(), '/order/cancel') && ($r['order_item_id'] ?? null) === '112');
 
@@ -146,31 +210,14 @@ class LazadaOrderOpsTest extends TestCase
             ->assertJsonCount(2, 'data');
     }
 
-    public function test_get_document_fetches_label_from_lazada(): void
-    {
-        Http::fake([
-            'api.lazada.co.id/rest/orders/items/get*' => Http::response([
-                'code' => '0',
-                'data' => [['order_id' => 900123, 'order_items' => [['order_item_id' => 111]]]],
-            ], 200),
-            'api.lazada.co.id/rest/order/document/get*' => Http::response([
-                'code' => '0',
-                'data' => ['document' => ['doc_type' => 'shippingLabel', 'file' => base64_encode('PDF')]],
-            ], 200),
-        ]);
-
-        $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/v1/lazada/get-document?shop_id=LZ-100&order_id=900123&doc_type=shippingLabel')
-            ->assertStatus(200)
-            ->assertJsonPath('data.data.doc_type', 'shippingLabel');
-
-        Http::assertSent(fn ($r) => str_contains($r->url(), '/order/document/get') && str_contains($r->url(), 'doc_type=shippingLabel'));
-    }
-
-    public function test_pack_unknown_shop_returns_422(): void
+    public function test_fulfill_pack_unknown_shop_returns_422(): void
     {
         $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/v1/lazada/sync/pack', ['shop_id' => 'LZ-GHOST', 'order_id' => '1'])
+            ->postJson('/api/v1/lazada/sync/fulfill-pack', [
+                'shop_id' => 'LZ-GHOST',
+                'order_id' => '1',
+                'shipping_provider_id' => 'LEX-ID',
+            ])
             ->assertStatus(422);
     }
 
@@ -189,13 +236,18 @@ class LazadaOrderOpsTest extends TestCase
         ]);
 
         $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/v1/lazada/sync/pack', ['shop_id' => 'LZ-100', 'order_id' => '900123'])
+            ->postJson('/api/v1/lazada/sync/fulfill-pack', [
+                'shop_id' => 'LZ-100',
+                'order_id' => '900123',
+                'shipping_provider_id' => 'LEX-ID',
+            ])
             ->assertStatus(422);
     }
 
     public function test_ops_require_auth(): void
     {
-        $this->postJson('/api/v1/lazada/sync/pack', [])->assertStatus(401);
+        $this->postJson('/api/v1/lazada/sync/fulfill-pack', [])->assertStatus(401);
+        $this->postJson('/api/v1/lazada/sync/rts', [])->assertStatus(401);
         $this->postJson('/api/v1/lazada/sync/cancel', [])->assertStatus(401);
         $this->getJson('/api/v1/lazada/logistics?shop_id=x')->assertStatus(401);
     }

@@ -5,6 +5,7 @@ namespace Modules\Channel\Services;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Support\TikTokImageUrl;
+use Modules\Product\Models\Product;
 
 class TikTokToInternalProductMapper
 {
@@ -21,7 +22,7 @@ class TikTokToInternalProductMapper
             'is_draft' => ($tiktokProduct['status'] ?? null) !== 'ACTIVATE',
             'is_active' => true,
 
-            'status' => 'master',
+            'status' => Product::STATUS_DOWNLOAD,
             'is_from_channel' => true,
             'verified_at' => now(),
         ];

@@ -523,6 +523,97 @@ class ShopeeProductService
         return $results;
     }
 
+    /**
+     * Sinkronkan mapping lokal dengan status & harga terbaru di Shopee: deteksi listing
+     * yang sudah dihapus (arsipkan mapping lokal, produk internal tidak ikut terhapus)
+     * dan refresh synced_price per varian. Mirror pola reconcileChannelData() milik
+     * Lazada/TikTok supaya ChannelReconcileService tidak lagi men-skip Shopee.
+     */
+    public function reconcileChannelData(string $shopId): int
+    {
+        $shop = $this->requireShop($shopId);
+        $channelShopId = $shop->id;
+
+        $statuses = $this->fetchProductStatuses($shopId);
+
+        $mappings = \Modules\Product\Models\ProductChannelMapping::where('channel_shop_id', $channelShopId)
+            ->whereNotNull('external_product_id')
+            ->get();
+
+        $updated = 0;
+        $activeIds = [];
+
+        foreach ($mappings as $mapping) {
+            $extId = (string) $mapping->external_product_id;
+            $remoteStatus = $statuses[$extId]['status'] ?? null;
+
+            if ($remoteStatus === 'deleted') {
+                // Arsipkan mapping lokal — produk internal TIDAK ikut dihapus/dinonaktifkan
+                // (aturan: hapus/arsip channel tidak boleh cascade balik ke produk internal).
+                $mapping->markAsFailed('Produk sudah dihapus di Shopee (terdeteksi reconcile).');
+                $updated++;
+                continue;
+            }
+
+            $activeIds[] = $extId;
+        }
+
+        foreach (array_chunk($activeIds, 50) as $chunk) {
+            foreach ($this->fetchBaseInfo($shop, $chunk) as $item) {
+                $extId = (string) ($item['item_id'] ?? '');
+                if ($extId === '') {
+                    continue;
+                }
+
+                $mapping = $mappings->firstWhere('external_product_id', $extId);
+                if (! $mapping) {
+                    continue;
+                }
+
+                $item = $this->hydrateModels($shop, $item);
+                $models = $item['model_list'] ?? [];
+
+                if (empty($models)) {
+                    $price = $item['price_info'][0]['current_price'] ?? null;
+                    if ($price !== null) {
+                        \Modules\Product\Models\ProductVariantChannelMapping::where('product_channel_mapping_id', $mapping->id)
+                            ->update(['synced_price' => $price]);
+                    }
+                } else {
+                    foreach ($models as $model) {
+                        $modelId = isset($model['model_id']) ? (string) $model['model_id'] : null;
+                        if ($modelId === null) {
+                            continue;
+                        }
+
+                        $vm = \Modules\Product\Models\ProductVariantChannelMapping::where('product_channel_mapping_id', $mapping->id)
+                            ->where('external_sku_id', $modelId)
+                            ->first();
+                        if (! $vm) {
+                            continue;
+                        }
+
+                        $price = $model['price_info'][0]['current_price'] ?? $model['original_price'] ?? null;
+                        $vmUpdate = [];
+                        if (! empty($model['model_sku'])) {
+                            $vmUpdate['channel_seller_sku'] = $model['model_sku'];
+                        }
+                        if ($price !== null) {
+                            $vmUpdate['synced_price'] = $price;
+                        }
+                        if ($vmUpdate) {
+                            $vm->update($vmUpdate);
+                        }
+                    }
+                }
+
+                $updated++;
+            }
+        }
+
+        return $updated;
+    }
+
     protected function requireShop(string $shopId): object
     {
         $shop = $this->shopRepository->findByShopId($shopId);

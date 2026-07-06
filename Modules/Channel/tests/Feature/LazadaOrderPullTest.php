@@ -133,7 +133,7 @@ class LazadaOrderPullTest extends TestCase
         $category = Category::create(['name' => 'C', 'is_active' => true]);
         $product = Product::create(['category_id' => $category->id, 'name' => 'Kaos', 'status' => 'master', 'is_active' => true]);
         $variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'SKU-LZD-1', 'sell_price' => 70000, 'is_active' => true]);
-        $location = \Modules\Warehouse\Models\Location::factory()->create();
+        $location = \Modules\Warehouse\Models\Location::where('location_code', \Modules\Warehouse\Models\Location::SYSTEM_KECIL_CODE)->firstOrFail();
         DB::table('channel_warehouses')->insert([
             'channel_id' => $this->shop->channel_id,
             'store_id' => 'LZ-100',

@@ -3,6 +3,7 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\DB;
+use Modules\Product\Models\Product;
 
 class ShopeeToInternalProductMapper
 {
@@ -18,7 +19,7 @@ class ShopeeToInternalProductMapper
             'condition' => strtoupper((string) ($shopeeItem['condition'] ?? 'NEW')) === 'USED' ? 'USED' : 'NEW',
             'is_draft' => strtoupper((string) ($shopeeItem['item_status'] ?? '')) !== 'NORMAL',
             'is_active' => true,
-            'status' => 'master',
+            'status' => Product::STATUS_DOWNLOAD,
             'is_from_channel' => true,
             'verified_at' => now(),
             'weight' => (float) ($shopeeItem['weight'] ?? 0),

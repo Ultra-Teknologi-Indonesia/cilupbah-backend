@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Modules\Channel\Adapters\LazadaAdapter;
+use Modules\Channel\Jobs\ProcessLazadaFulfillmentJob;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\ChannelListingValidator;
@@ -208,8 +209,127 @@ class LazadaSyncApiController extends Controller
     }
 
     #[OA\Post(
-        path: '/api/v1/lazada/sync/pack',
-        summary: 'Terima order: pack + Ready-to-Ship',
+        path: '/api/v1/lazada/sync/fulfill-pack',
+        summary: 'Pack order (hanya item pending/repacked)',
+        security: [['bearerAuth' => []]],
+        tags: ['Lazada'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['shop_id', 'order_id', 'shipping_provider_id'],
+                properties: [
+                    new OA\Property(property: 'shop_id', type: 'string'),
+                    new OA\Property(property: 'order_id', type: 'string'),
+                    new OA\Property(property: 'shipping_provider_id', type: 'string', description: 'Dari GET /lazada/logistics'),
+                    new OA\Property(property: 'delivery_type', type: 'string', nullable: true, description: 'Default: dropship'),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Order berhasil di-pack'),
+            new OA\Response(response: 422, description: 'Gagal'),
+        ]
+    )]
+    public function fulfillPack(Request $request)
+    {
+        $validated = $request->validate([
+            'shop_id' => 'required|string',
+            'order_id' => 'required|string',
+            'shipping_provider_id' => 'required|string',
+            'delivery_type' => 'nullable|string',
+        ]);
+
+        try {
+            $result = $this->orderService->fulfillPack(
+                $validated['shop_id'],
+                $validated['order_id'],
+                $validated['shipping_provider_id'],
+                $validated['delivery_type'] ?? 'dropship'
+            );
+
+            return $this->successResponse($result, 'Order berhasil di-pack.');
+        } catch (\Exception $e) {
+            return $this->errorResponse('Gagal memproses pack: ' . $e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Post(
+        path: '/api/v1/lazada/sync/fulfill',
+        summary: 'Proses order otomatis: pack -> AWB -> RTS (antrean, dengan retry)',
+        security: [['bearerAuth' => []]],
+        tags: ['Lazada'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['shop_id', 'order_id', 'shipping_provider_id'],
+                properties: [
+                    new OA\Property(property: 'shop_id', type: 'string'),
+                    new OA\Property(property: 'order_id', type: 'string'),
+                    new OA\Property(property: 'shipping_provider_id', type: 'string'),
+                    new OA\Property(property: 'delivery_type', type: 'string', nullable: true),
+                    new OA\Property(property: 'tracking_number', type: 'string', nullable: true),
+                    new OA\Property(property: 'package_id', type: 'string', nullable: true),
+                ]
+            )
+        ),
+        responses: [new OA\Response(response: 202, description: 'Antrean fulfillment dijadwalkan')]
+    )]
+    public function processFulfillment(Request $request)
+    {
+        $validated = $request->validate([
+            'shop_id' => 'required|string',
+            'order_id' => 'required|string',
+            'shipping_provider_id' => 'required|string',
+            'delivery_type' => 'nullable|string',
+            'tracking_number' => 'nullable|string',
+            'package_id' => 'nullable|string',
+        ]);
+
+        ProcessLazadaFulfillmentJob::dispatch(
+            $validated['shop_id'],
+            $validated['order_id'],
+            $validated['shipping_provider_id'],
+            $validated['delivery_type'] ?? 'dropship',
+            $validated['tracking_number'] ?? null,
+            $validated['package_id'] ?? null,
+        )->afterCommit();
+
+        return $this->successResponse(['order_id' => $validated['order_id']], 'Fulfillment order dijadwalkan diproses.');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/lazada/sync/awb',
+        summary: 'Cetak AWB/shipping label (polling sampai siap)',
+        security: [['bearerAuth' => []]],
+        tags: ['Lazada'],
+        parameters: [
+            new OA\Parameter(name: 'shop_id', in: 'query', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'order_id', in: 'query', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Dokumen AWB siap'),
+            new OA\Response(response: 422, description: 'AWB belum siap / gagal'),
+        ]
+    )]
+    public function printAwb(Request $request)
+    {
+        $validated = $request->validate([
+            'shop_id' => 'required|string',
+            'order_id' => 'required|string',
+        ]);
+
+        try {
+            $result = $this->orderService->printAwb($validated['shop_id'], $validated['order_id']);
+
+            return $this->successResponse($result, 'Dokumen AWB berhasil diambil.');
+        } catch (\Exception $e) {
+            return $this->errorResponse('Gagal mengambil AWB: ' . $e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Post(
+        path: '/api/v1/lazada/sync/rts',
+        summary: 'Ready-to-Ship (hanya item packed)',
         security: [['bearerAuth' => []]],
         tags: ['Lazada'],
         requestBody: new OA\RequestBody(
@@ -219,33 +339,39 @@ class LazadaSyncApiController extends Controller
                 properties: [
                     new OA\Property(property: 'shop_id', type: 'string'),
                     new OA\Property(property: 'order_id', type: 'string'),
-                    new OA\Property(property: 'shipping_provider', type: 'string', nullable: true),
+                    new OA\Property(property: 'tracking_number', type: 'string', nullable: true),
+                    new OA\Property(property: 'package_id', type: 'string', nullable: true),
+                    new OA\Property(property: 'delivery_type', type: 'string', nullable: true, description: 'Default: dropship'),
                 ]
             )
         ),
         responses: [
-            new OA\Response(response: 200, description: 'Order diproses (pack + RTS)'),
+            new OA\Response(response: 200, description: 'Order ready-to-ship'),
             new OA\Response(response: 422, description: 'Gagal'),
         ]
     )]
-    public function packOrder(Request $request)
+    public function readyToShip(Request $request)
     {
         $validated = $request->validate([
             'shop_id' => 'required|string',
             'order_id' => 'required|string',
-            'shipping_provider' => 'nullable|string',
+            'tracking_number' => 'nullable|string',
+            'package_id' => 'nullable|string',
+            'delivery_type' => 'nullable|string',
         ]);
 
         try {
-            $result = $this->orderService->packOrder(
+            $result = $this->orderService->readyToShip(
                 $validated['shop_id'],
                 $validated['order_id'],
-                $validated['shipping_provider'] ?? null
+                $validated['tracking_number'] ?? null,
+                $validated['package_id'] ?? null,
+                $validated['delivery_type'] ?? 'dropship'
             );
 
-            return $this->successResponse($result, 'Order berhasil diproses (pack + ready-to-ship).');
+            return $this->successResponse($result, 'Order berhasil ready-to-ship.');
         } catch (\Exception $e) {
-            return $this->errorResponse('Gagal memproses order: ' . $e->getMessage(), 422);
+            return $this->errorResponse('Gagal memproses ready-to-ship: ' . $e->getMessage(), 422);
         }
     }
 

@@ -3,6 +3,7 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\DB;
+use Modules\Product\Models\Product;
 
 class LazadaToInternalProductMapper
 {
@@ -17,7 +18,7 @@ class LazadaToInternalProductMapper
             'condition' => 'NEW',
             'is_draft' => strtolower((string) ($lazadaProduct['status'] ?? '')) !== 'active',
             'is_active' => true,
-            'status' => 'master',
+            'status' => Product::STATUS_DOWNLOAD,
             'is_from_channel' => true,
             'verified_at' => now(),
         ];

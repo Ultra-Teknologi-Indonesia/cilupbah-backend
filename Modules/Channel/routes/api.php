@@ -74,7 +74,10 @@ Route::prefix('v1/lazada')->group(function () {
         Route::post('sync/category-attributes', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'syncCategoryAttributes'])->name('lazada.sync.category-attributes');
         Route::post('listing/validate', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'validateListing'])->name('lazada.listing.validate');
 
-        Route::post('sync/pack', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'packOrder'])->name('lazada.sync.pack');
+        Route::post('sync/fulfill-pack', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'fulfillPack'])->name('lazada.sync.fulfill-pack');
+        Route::get('sync/awb', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'printAwb'])->name('lazada.sync.awb');
+        Route::post('sync/rts', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'readyToShip'])->name('lazada.sync.rts');
+        Route::post('sync/fulfill', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'processFulfillment'])->name('lazada.sync.fulfill');
         Route::post('sync/cancel', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'cancelOrder'])->name('lazada.sync.cancel');
         Route::get('cancel-reasons', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'cancelReasons'])->name('lazada.cancel-reasons');
         Route::get('logistics', [\Modules\Channel\Http\Controllers\LazadaSyncApiController::class, 'logistics'])->name('lazada.logistics');

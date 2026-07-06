@@ -8,6 +8,7 @@ use Modules\Channel\Contracts\MarketplaceAdapterInterface;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ChannelStockResolver;
 use Modules\Channel\Services\LazadaClient;
+use Modules\Channel\Services\LazadaImageUploader;
 use Modules\Channel\Services\LazadaProductMapper;
 use Modules\Channel\Services\LazadaToInternalProductMapper;
 use Modules\Product\Models\Product;
@@ -19,6 +20,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         protected LazadaProductMapper $outboundMapper,
         protected LazadaToInternalProductMapper $inboundMapper,
         protected ChannelStockResolver $stockResolver,
+        protected LazadaImageUploader $imageUploader,
     ) {}
 
     public function getChannelCode(): string
@@ -100,20 +102,43 @@ class LazadaAdapter implements MarketplaceAdapterInterface
 
     public function activateProduct(ChannelShop $shop, string $externalProductId): array
     {
-
-        return ['success' => false, 'message' => 'Aktivasi produk tidak didukung API Lazada'];
+        return $this->setStatus($shop, $externalProductId, 'active', 'Produk berhasil diaktifkan di Lazada');
     }
 
     public function deactivateProduct(ChannelShop $shop, string $externalProductId): array
     {
-        return ['success' => false, 'message' => 'Deaktivasi produk tidak didukung API Lazada'];
+        return $this->setStatus($shop, $externalProductId, 'inactive', 'Produk berhasil dinonaktifkan di Lazada');
+    }
+
+    protected function setStatus(ChannelShop $shop, string $externalProductId, string $status, string $successMessage): array
+    {
+        $payload = [
+            'Request' => [
+                'Product' => [
+                    'ItemId' => $externalProductId,
+                    'Status' => $status,
+                ],
+            ],
+        ];
+
+        try {
+            $this->client->request('POST', '/product/update', [
+                'payload' => json_encode($payload),
+            ], $shop->access_token);
+
+            return ['success' => true, 'message' => $successMessage];
+        } catch (\Exception $e) {
+            Log::error("Lazada setStatus({$status}) error: " . $e->getMessage());
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
     }
 
     public function syncPriceAndStock(Product $product, ChannelShop $shop, string $externalProductId): array
     {
-        $channelWarehouse = DB::table('channel_warehouses')
-            ->where('store_id', $shop->shop_id)
-            ->first();
+        // Sama seperti buildProductPayload(): stok channel selalu dari Gudang Kecil via
+        // resolver, bukan query manual ke channel_warehouses (dulu tidak konsisten).
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
 
         $skuPayloads = [];
 
@@ -126,13 +151,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
                 continue;
             }
 
-            $availableQty = 0;
-            if ($channelWarehouse) {
-                $availableQty = (int) DB::table('inventories')
-                    ->where('item_id', $variant->id)
-                    ->where('location_id', $channelWarehouse->location_id)
-                    ->sum('available');
-            }
+            $availableQty = $stockByVariant[$variant->id] ?? 0;
 
             $skuPayloads[] = [
                 'SellerSku' => $variant->sku,
@@ -186,6 +205,21 @@ class LazadaAdapter implements MarketplaceAdapterInterface
                 $variantImageById[$variantId] = $url;
             }
         }
+
+        // Lazada menolak URL gambar eksternal di payload produk — semua URL (produk +
+        // varian) wajib dimigrasikan dulu ke CDN Lazada sebelum dipakai di payload.
+        $urlsToMigrate = array_values(array_unique(array_merge($imageUrls, array_values($variantImageById))));
+        $migratedMap = $this->imageUploader->upload($urlsToMigrate, $shop->access_token)['map'];
+
+        $imageUrls = array_values(array_filter(array_map(
+            fn ($url) => $migratedMap[$url] ?? null,
+            $imageUrls
+        )));
+
+        $variantImageById = array_filter(array_map(
+            fn ($url) => $migratedMap[$url] ?? null,
+            $variantImageById
+        ));
 
         $internal = $product->toArray();
         $internal['variants'] = $product->variants->map(function ($variant) use ($variantImageById, $stockByVariant) {

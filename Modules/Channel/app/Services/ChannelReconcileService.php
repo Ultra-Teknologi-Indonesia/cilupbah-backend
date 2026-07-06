@@ -13,6 +13,7 @@ class ChannelReconcileService
         return match (strtolower($channel)) {
             'tiktok' => fn (string $shopId) => app(TikTokProductService::class)->reconcileChannelData($shopId),
             'lazada' => fn (string $shopId) => app(LazadaProductService::class)->reconcileChannelData($shopId),
+            'shopee' => fn (string $shopId) => app(ShopeeProductService::class)->reconcileChannelData($shopId),
             default => null,
         };
     }

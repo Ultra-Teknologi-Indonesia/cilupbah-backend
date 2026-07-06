@@ -8,6 +8,7 @@ class LazadaToInternalOrderMapper
     protected const STATUS_MAP = [
         'unpaid' => 'UNPAID',
         'pending' => 'AWAITING_SHIPMENT',
+        'repacked' => 'AWAITING_SHIPMENT',
         'packed' => 'AWAITING_COLLECTION',
         'ready_to_ship' => 'AWAITING_COLLECTION',
         'ready_to_ship_pending' => 'AWAITING_COLLECTION',
@@ -18,6 +19,24 @@ class LazadaToInternalOrderMapper
         'canceled' => 'CANCELLED',
         'cancelled' => 'CANCELLED',
         'failed' => 'CANCELLED',
+
+        // Jalur reverse-logistics: 'returned' terjadi SETELAH delivered, jadi order tetap
+        // DELIVERED — detail retur dilacak terpisah lewat SalesReturn (dari webhook/API
+        // reverse order), bukan lewat channel_status. Jangan invent enum baru di sini;
+        // channel_status cuma punya vocabulary UNPAID/AWAITING_*/IN_TRANSIT/DELIVERED/CANCELLED
+        // yang dipakai bersama Shopee & TikTok.
+        'returned' => 'DELIVERED',
+
+        // failed_delivery/shipped_back*/lost_by_3pl/damaged_by_3pl bercabang dari 'shipped'
+        // sebelum delivered — paket masih "bergerak" di jalur logistik/retur sampai resolusi
+        // final (Package Scrapped). IN_TRANSIT paling dekat maknanya & aman (bukan CANCELLED,
+        // bukan default UNPAID yang salah total untuk order yang sudah pernah dikirim).
+        'failed_delivery' => 'IN_TRANSIT',
+        'shipped_back' => 'IN_TRANSIT',
+        'shipped_back_success' => 'IN_TRANSIT',
+        'shipped_back_failed' => 'IN_TRANSIT',
+        'lost_by_3pl' => 'IN_TRANSIT',
+        'damaged_by_3pl' => 'IN_TRANSIT',
     ];
 
     public function map(array $lazadaOrder, array $orderItems, string $shopId): array

@@ -141,12 +141,14 @@ class LazadaProductSyncTest extends TestCase
         ]);
         $pcm->variantMappings()->create(['variant_id' => $variant->id, 'external_sku_id' => '777001']);
 
-        $location = \Modules\Warehouse\Models\Location::factory()->create();
-        DB::table('channel_warehouses')->insert([
-            'channel_id' => $this->lazada->id, 'store_id' => 'LZ-100',
-            'channel_location_id' => 'LZ-WH-1', 'location_id' => $location->id,
-            'created_at' => now(), 'updated_at' => now(),
-        ]);
+        // Stok channel SELALU dari Gudang Kecil (ChannelStockResolver), bukan lagi dari
+        // mapping channel_warehouses manual — lihat LazadaAdapter::syncPriceAndStock().
+        // Gudang Kecil sudah ter-seed via migrasi, jadi pakai firstOrCreate agar tidak
+        // bentrok dengan unique constraint location_code.
+        $location = \Modules\Warehouse\Models\Location::firstOrCreate(
+            ['location_code' => \Modules\Warehouse\Models\Location::SYSTEM_KECIL_CODE],
+            \Modules\Warehouse\Models\Location::factory()->make()->toArray()
+        );
         Inventory::create([
             'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => null,
             'on_hand' => 9, 'on_order' => 0, 'reserved' => 2, 'available' => 7,
@@ -208,12 +210,52 @@ class LazadaProductSyncTest extends TestCase
         });
     }
 
-    public function test_activate_deactivate_not_supported_graceful(): void
+    public function test_activate_product_uses_native_product_update_status(): void
     {
-        $adapter = app(LazadaAdapter::class);
+        Http::fake([
+            'api.lazada.co.id/rest/product/update*' => Http::response(['code' => '0', 'data' => []], 200),
+        ]);
 
-        $this->assertFalse($adapter->activateProduct($this->shop, '1')['success']);
-        $this->assertFalse($adapter->deactivateProduct($this->shop, '1')['success']);
+        $result = app(LazadaAdapter::class)->activateProduct($this->shop, '555001');
+
+        $this->assertTrue($result['success']);
+        Http::assertSent(function ($request) {
+            parse_str(parse_url($request->url(), PHP_URL_QUERY) ?? '', $query);
+            $payload = json_decode($query['payload'] ?? ($request['payload'] ?? ''), true);
+
+            return ($payload['Request']['Product']['ItemId'] ?? null) === '555001'
+                && ($payload['Request']['Product']['Status'] ?? null) === 'active';
+        });
+    }
+
+    public function test_deactivate_product_uses_native_product_update_status(): void
+    {
+        Http::fake([
+            'api.lazada.co.id/rest/product/update*' => Http::response(['code' => '0', 'data' => []], 200),
+        ]);
+
+        $result = app(LazadaAdapter::class)->deactivateProduct($this->shop, '555001');
+
+        $this->assertTrue($result['success']);
+        Http::assertSent(function ($request) {
+            parse_str(parse_url($request->url(), PHP_URL_QUERY) ?? '', $query);
+            $payload = json_decode($query['payload'] ?? ($request['payload'] ?? ''), true);
+
+            return ($payload['Request']['Product']['ItemId'] ?? null) === '555001'
+                && ($payload['Request']['Product']['Status'] ?? null) === 'inactive';
+        });
+    }
+
+    public function test_activate_product_failure_returns_graceful_error(): void
+    {
+        Http::fake([
+            'api.lazada.co.id/*' => Http::response(['code' => '500', 'message' => 'item not found'], 200),
+        ]);
+
+        $result = app(LazadaAdapter::class)->activateProduct($this->shop, '999999');
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('item not found', $result['message']);
     }
 
     private function sampleLazadaProduct(): array
