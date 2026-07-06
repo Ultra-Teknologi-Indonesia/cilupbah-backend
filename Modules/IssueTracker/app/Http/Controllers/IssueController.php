@@ -129,6 +129,17 @@ class IssueController extends Controller
         return back()->with('success', 'Komentar berhasil ditambahkan.');
     }
 
+    public function destroy(Request $request, Issue $issue)
+    {
+        $request->validate([
+            'actor_name' => ['required', 'string', 'max:100'],
+        ]);
+
+        $this->service->deleteIssue($issue, $request->input('actor_name'));
+
+        return redirect()->route('issues.index')->with('success', 'Issue berhasil dihapus.');
+    }
+
     public function attachment(Media $media)
     {
         if (!in_array($media->model_type, [Issue::class, IssueComment::class], true)) {

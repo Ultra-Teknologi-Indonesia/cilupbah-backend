@@ -3,6 +3,7 @@
 namespace Modules\IssueTracker\Services;
 
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\IssueTracker\Models\Issue;
 use Modules\IssueTracker\Models\IssueActivity;
@@ -87,6 +88,18 @@ class IssueService
             'actor_name' => $actorName,
             'metadata' => ['assigned_to' => $assignee],
         ]);
+    }
+
+    public function deleteIssue(Issue $issue, string $actorName): void
+    {
+        Log::info('Issue deleted', [
+            'issue_id' => $issue->id,
+            'tracking_token' => $issue->tracking_token,
+            'title' => $issue->title,
+            'actor_name' => $actorName,
+        ]);
+
+        $issue->delete();
     }
 
     protected function handleAttachments(Issue $issue, ?IssueComment $comment, array $files): void

@@ -230,6 +230,19 @@
                 <button type="submit" class="w-full rounded-lg bg-gray-800 px-3 py-2 text-xs font-semibold text-white hover:bg-gray-900">Assign</button>
             </form>
         </div>
+
+        {{-- Danger zone --}}
+        <div class="rounded-xl border border-red-200 bg-white p-4 shadow-sm">
+            <h3 class="mb-3 text-xs font-bold uppercase tracking-wider text-red-400">Hapus Issue</h3>
+            <form method="POST" action="{{ route('issues.destroy', $issue) }}" class="space-y-2.5"
+                  onsubmit="return confirm('Yakin hapus issue ini? Komentar, lampiran, dan riwayat aktivitas akan ikut terhapus dan tidak bisa dikembalikan.');">
+                @csrf
+                @method('DELETE')
+                <input type="text" name="actor_name" required placeholder="Nama Anda"
+                       class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/20">
+                <button type="submit" class="w-full rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700">Hapus Issue</button>
+            </form>
+        </div>
     </div>
 </div>
 @endsection

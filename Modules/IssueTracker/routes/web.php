@@ -14,4 +14,5 @@ Route::prefix('issues')->name('issues.')->group(function () {
     Route::put('/{issue}/status', [IssueController::class, 'updateStatus'])->name('status');
     Route::put('/{issue}/assign', [IssueController::class, 'assign'])->name('assign');
     Route::post('/{issue}/comment', [IssueController::class, 'comment'])->middleware('throttle:10,1')->name('comment');
+    Route::delete('/{issue}', [IssueController::class, 'destroy'])->name('destroy');
 });
