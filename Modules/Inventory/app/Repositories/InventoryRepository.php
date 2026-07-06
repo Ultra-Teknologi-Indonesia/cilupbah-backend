@@ -193,6 +193,11 @@ class InventoryRepository
 
     public function getStockItems(int $limit = 10)
     {
+        // Saat difilter per lokasi, batasi juga inventory yang dimuat ke lokasi itu
+        // supaya angka On Hand/Reserved/Available (totalStocks & locationStocks di
+        // StockItemResource) mencerminkan gudang terpilih — bukan total lintas gudang.
+        $locationFilter = request('filter.location_id');
+
         return QueryBuilder::for(
             ProductVariant::query()
                 ->join('products', 'products.id', '=', 'product_variants.product_id')
@@ -204,6 +209,9 @@ class InventoryRepository
                 'product.media' => fn ($q) => $q->whereNull('variant_id')->orderBy('sort_order'),
                 'media' => fn ($q) => $q->orderBy('sort_order'),
                 'options.attribute:id,name',
+                'inventories' => fn ($q) => $locationFilter
+                    ? $q->where('location_id', $locationFilter)
+                    : $q,
                 'inventories.location:id,location_name',
             ])
             ->allowedFilters(
