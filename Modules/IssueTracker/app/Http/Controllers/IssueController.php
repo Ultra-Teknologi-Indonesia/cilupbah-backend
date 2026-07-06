@@ -132,10 +132,10 @@ class IssueController extends Controller
     public function destroy(Request $request, Issue $issue)
     {
         $request->validate([
-            'actor_name' => ['required', 'string', 'max:100'],
+            'actor_name' => ['nullable', 'string', 'max:100'],
         ]);
 
-        $this->service->deleteIssue($issue, $request->input('actor_name'));
+        $this->service->deleteIssue($issue, $request->input('actor_name', 'Sistem'));
 
         return redirect()->route('issues.index')->with('success', 'Issue berhasil dihapus.');
     }
