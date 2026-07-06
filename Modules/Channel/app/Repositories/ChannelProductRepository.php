@@ -3,6 +3,7 @@
 namespace Modules\Channel\Repositories;
 
 use Illuminate\Support\Facades\DB;
+use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Ramsey\Uuid\Uuid;
 
 class ChannelProductRepository
@@ -186,7 +187,8 @@ class ChannelProductRepository
         string $shopId,
         ?string $externalProductId = null,
         string $syncStatus = 'synced',
-        ?array $channelAttributes = null
+        ?array $channelAttributes = null,
+        bool $pushInitialStock = false
     ): string {
         $channelShop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
         if (!$channelShop) {
@@ -234,6 +236,17 @@ class ChannelProductRepository
             'created_at'          => $now,
             'updated_at'          => $now,
         ]);
+
+        // Mapping BARU (toko ini pertama kali di-link ke produk ini). Kalau produk
+        // sudah ada di internal ($pushInitialStock === true), dorong stok available
+        // internal ke channel supaya listing langsung mengikuti available internal
+        // tanpa menunggu mutasi stok berikutnya. Delay singkat memberi jeda agar
+        // pemetaan varian (product_variant_channel_mappings) selesai dibuat oleh
+        // pemanggil sebelum job push berjalan.
+        if ($pushInitialStock) {
+            SyncProductToChannelJob::dispatch($productId, $channelShop->id, 'sync_price_stock')
+                ->delay(now()->addSeconds(15));
+        }
 
         return $pcmId;
     }

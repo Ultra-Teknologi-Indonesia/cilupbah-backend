@@ -354,7 +354,7 @@ class ShopeeProductService
     protected function persistItem(object $shop, string $shopId, array $item, ShopeeToInternalProductMapper $mapper, $productService): bool
     {
         $internalData = app(ChannelAssetImporter::class)->import($mapper->map($item, $shopId));
-        $insertedId = $productService->upsertFromChannel($internalData);
+        $insertedId = $productService->upsertFromChannel($internalData, $matchedExisting);
         if (! $insertedId) {
             return false;
         }
@@ -364,7 +364,8 @@ class ShopeeProductService
             $shopId,
             (string) ($item['item_id'] ?? ''),
             'synced',
-            null
+            null,
+            (bool) $matchedExisting
         );
 
         $models = $item['model_list'] ?? [];

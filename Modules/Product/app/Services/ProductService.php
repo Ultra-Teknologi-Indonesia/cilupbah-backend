@@ -187,7 +187,7 @@ class ProductService
         return ['success' => $success, 'failed' => count($errors), 'errors' => $errors];
     }
 
-    public function upsertFromChannel(array $data)
+    public function upsertFromChannel(array $data, ?bool &$matchedExisting = null)
     {
         $parentSku = $data['sku'] ?? null;
         $productId = null;
@@ -211,6 +211,7 @@ class ProductService
         }
 
         if ($productId) {
+            $matchedExisting = true;
             // Master produk sudah ada (mis. hasil download channel lain atau input manual).
             // Prinsip: download channel TIDAK menimpa data/atribut/struktur varian lokal.
             // Cukup kembalikan id-nya; pemetaan channel (product & variant channel mapping)
@@ -219,6 +220,7 @@ class ProductService
             return $productId;
         }
 
+        $matchedExisting = false;
         $productId = $this->createProduct($data);
         $this->queueExternalMediaMirroring($productId);
 

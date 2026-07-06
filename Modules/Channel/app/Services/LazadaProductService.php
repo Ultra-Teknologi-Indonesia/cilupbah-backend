@@ -314,7 +314,7 @@ class LazadaProductService
 
         try {
             $internalData = app(ChannelAssetImporter::class)->import($this->inboundMapper->map($item, $shopId));
-            $insertedId = $productService->upsertFromChannel($internalData);
+            $insertedId = $productService->upsertFromChannel($internalData, $matchedExisting);
         } catch (\Throwable $e) {
             Log::error('Lazada: gagal re-sync produk ' . $itemId . ': ' . $e->getMessage());
 
@@ -329,7 +329,9 @@ class LazadaProductService
             (string) $insertedId,
             $shopId,
             (string) ($item['item_id'] ?? $itemId),
-            'synced'
+            'synced',
+            null,
+            (bool) $matchedExisting
         );
 
         return true;
@@ -430,7 +432,7 @@ class LazadaProductService
             foreach ($products as $item) {
                 try {
                     $internalData = app(ChannelAssetImporter::class)->import($this->inboundMapper->map($item, $shopId));
-                    $insertedId = $productService->upsertFromChannel($internalData);
+                    $insertedId = $productService->upsertFromChannel($internalData, $matchedExisting);
 
                     if ($insertedId) {
                         $pcmId = $this->productRepository->upsertChannelMapping(
@@ -438,7 +440,8 @@ class LazadaProductService
                             $shopId,
                             (string) ($item['item_id'] ?? ''),
                             'synced',
-                            (! empty($item['attributes']) && is_array($item['attributes'])) ? $item['attributes'] : null
+                            (! empty($item['attributes']) && is_array($item['attributes'])) ? $item['attributes'] : null,
+                            (bool) $matchedExisting
                         );
 
                         foreach ($item['skus'] ?? [] as $skuData) {

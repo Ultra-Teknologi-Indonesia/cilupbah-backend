@@ -354,7 +354,7 @@ class TikTokProductService
 
                     $detail       = $details[(string) ($item['id'] ?? '')] ?? $item;
                     $internalData = app(ChannelAssetImporter::class)->import($mapper->map($detail, $shopId));
-                    $insertedId   = $productService->upsertFromChannel($internalData);
+                    $insertedId   = $productService->upsertFromChannel($internalData, $matchedExisting);
 
                     if ($insertedId) {
                         $attrs = [];
@@ -372,7 +372,8 @@ class TikTokProductService
                             $shopId,
                             (string) $item['id'],
                             'synced',
-                            $attrs ?: null
+                            $attrs ?: null,
+                            (bool) $matchedExisting
                         );
 
                         foreach ($detail['skus'] ?? [] as $skuData) {
@@ -518,7 +519,7 @@ class TikTokProductService
         }
 
         $internalData = app(ChannelAssetImporter::class)->import($mapper->map($detail, $shopId));
-        $insertedId   = $productService->upsertFromChannel($internalData);
+        $insertedId   = $productService->upsertFromChannel($internalData, $matchedExisting);
 
         if (!$insertedId) {
             return false;
@@ -539,7 +540,8 @@ class TikTokProductService
             $shopId,
             (string) ($detail['id'] ?? $externalProductId),
             'synced',
-            $attrs ?: null
+            $attrs ?: null,
+            (bool) $matchedExisting
         );
 
         foreach ($detail['skus'] ?? [] as $skuData) {
