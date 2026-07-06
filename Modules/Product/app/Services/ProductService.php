@@ -343,6 +343,13 @@ class ProductService
             $this->propagateVariantChangeToChannels($productId);
         }
 
+        // Harga/stok varian selalu di-push ke channel (mis. ubah sell_price di
+        // internal langsung ter-update ke marketplace), tidak menunggu mutasi stok
+        // dan tidak bergantung flag push konten.
+        if (! empty($data['variants'])) {
+            $this->propagatePriceStockToChannels($productId);
+        }
+
         return $result;
     }
 
@@ -584,6 +591,20 @@ class ProductService
 
         foreach ($channelShopIds as $channelShopId) {
             SyncProductToChannelJob::dispatch($productId, $channelShopId, 'update');
+        }
+    }
+
+    /**
+     * Push harga (sell_price) + stok varian ke semua channel yang ter-link setiap
+     * kali data varian diperbarui dari internal. Sengaja TIDAK bergantung pada
+     * flag auto_push_product_content: harga/stok adalah source-of-truth internal
+     * yang selalu disinkronkan (via action sync_price_stock → /update_price),
+     * terpisah dari push konten (judul/deskripsi/gambar) yang tetap opsional.
+     */
+    private function propagatePriceStockToChannels(string $productId): void
+    {
+        foreach ($this->writeRepository->channelShopIdsForStockPriceSync($productId) as $channelShopId) {
+            SyncProductToChannelJob::dispatch($productId, $channelShopId, 'sync_price_stock');
         }
     }
 

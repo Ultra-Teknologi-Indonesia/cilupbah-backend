@@ -217,6 +217,21 @@ class ProductWriteRepository
             ->pluck('channel_shop_id');
     }
 
+    /**
+     * Toko tujuan sinkronisasi harga/stok: hanya mapping yang sudah benar-benar
+     * listing di channel (punya external_product_id) dan bukan deactivated/pending.
+     * Syarat external_product_id mencegah update harga memicu pembuatan listing
+     * baru (fallback pushProduct) di channel yang belum/ gagal listing.
+     */
+    public function channelShopIdsForStockPriceSync(string $productId): Collection
+    {
+        return DB::table('product_channel_mappings')
+            ->where('product_id', $productId)
+            ->whereNotIn('sync_status', ['pending', 'deactivated'])
+            ->whereNotNull('external_product_id')
+            ->pluck('channel_shop_id');
+    }
+
     public function categoryAttributesForValidation(int $categoryId): Collection
     {
         return DB::table('category_attributes as cga')
