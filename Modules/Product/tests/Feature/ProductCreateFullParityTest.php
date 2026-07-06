@@ -151,7 +151,6 @@ class ProductCreateFullParityTest extends TestCase
             'purchase_lead_time' => 14,
             'package_contents' => '5 band + pouch',
             'weight' => 500,
-            'length' => 20,
             'sales_account_id' => $this->revenue->id,
             'inventory_account_id' => $this->asset->id,
             'cogs_account_id' => $this->expense->id,

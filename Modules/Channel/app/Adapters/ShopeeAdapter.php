@@ -256,9 +256,9 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
             $product->weight_unit ?? 'kg'
         ) ?: 0.1;
 
-        $length = (int) ($product->length ?? 10);
-        $width = (int) ($product->width ?? 10);
-        $height = (int) ($product->height ?? 10);
+        $length = 10;
+        $width = 10;
+        $height = 10;
 
         $instantEligible = $weightKg <= 20.0 && $length <= 50 && $width <= 50 && $height <= 50;
         $instantKeywords = ['instant', 'same day', '2 jam', 'sameday'];

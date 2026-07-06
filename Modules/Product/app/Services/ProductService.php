@@ -251,7 +251,7 @@ class ProductService
             $productData = Arr::only($data, [
                 'name', 'sku', 'description', 'category_id', 'search_keyword',
                 'order_type', 'indent_days', 'condition', 'status',
-                'weight', 'weight_unit', 'length', 'width', 'height', 'is_active', 'is_cod_allowed',
+                'weight', 'weight_unit', 'is_active', 'is_cod_allowed',
                 'is_bundle', 'is_consignment', 'package_contents',
                 'is_stored', 'is_sold', 'is_purchased', 'purchase_lead_time',
             ]);
@@ -290,7 +290,7 @@ class ProductService
                     $variantData = Arr::only($variant, [
                         'sell_price', 'buy_price', 'barcode', 'is_active',
                         'sales_tax_id', 'purchase_tax_id', 'min_stock', 'safe_stock',
-                        'weight', 'length', 'width', 'height',
+                        'weight',
                     ]);
                     if (!empty($variant['sales_tax_id'])) {
                         $variantData['tax_rate'] = $this->taxRate($variant['sales_tax_id']);
@@ -353,6 +353,17 @@ class ProductService
         return $result;
     }
 
+    /**
+     * Kunci normalisasi untuk membandingkan nilai opsi varian.
+     * Case-insensitive + trim whitespace, agar nilai lama seperti "15 "
+     * (dengan spasi ekor, mis. dari import) tetap cocok dengan payload "15"
+     * yang sudah dipangkas middleware TrimStrings.
+     */
+    private function normalizeOptionValue(string $value): string
+    {
+        return mb_strtolower(trim($value));
+    }
+
     private function syncVariantStructure(string $productId, array $data): void
     {
         $types = $data['variation_types'] ?? [];
@@ -368,14 +379,14 @@ class ProductService
         $existingValues = []; 
         foreach ($optRows as $o) {
             $setByVariant[$o->variant_id][(int) $o->attribute_id] = (string) $o->value;
-            $existingValues[(int) $o->attribute_id][mb_strtolower((string) $o->value)] = (string) $o->value;
+            $existingValues[(int) $o->attribute_id][$this->normalizeOptionValue((string) $o->value)] = (string) $o->value;
         }
 
         $payloadTypes = array_map(static fn ($t) => (int) $t['attribute_id'], $types);
         $payloadValues = [];
         foreach ($payloadVariants as $v) {
             foreach ($v['options'] ?? [] as $opt) {
-                $payloadValues[(int) $opt['attribute_id']][mb_strtolower((string) $opt['value'])] = true;
+                $payloadValues[(int) $opt['attribute_id']][$this->normalizeOptionValue((string) $opt['value'])] = true;
             }
         }
 
@@ -394,15 +405,15 @@ class ProductService
 
         $this->assertVariationConstraints($data);
 
-        $keyOfOpts = static function (array $opts): string {
+        $keyOfOpts = function (array $opts): string {
             $p = [];
-            foreach ($opts as $o) { $p[(int) $o['attribute_id']] = mb_strtolower((string) $o['value']); }
+            foreach ($opts as $o) { $p[(int) $o['attribute_id']] = $this->normalizeOptionValue((string) $o['value']); }
             ksort($p);
             return implode('|', array_map(static fn ($k, $v) => "{$k}:{$v}", array_keys($p), $p));
         };
-        $keyOfSet = static function (array $set): string {
+        $keyOfSet = function (array $set): string {
             $p = [];
-            foreach ($set as $a => $v) { $p[(int) $a] = mb_strtolower((string) $v); }
+            foreach ($set as $a => $v) { $p[(int) $a] = $this->normalizeOptionValue((string) $v); }
             ksort($p);
             return implode('|', array_map(static fn ($k, $v) => "{$k}:{$v}", array_keys($p), $p));
         };
@@ -447,7 +458,7 @@ class ProductService
                 $this->writeRepository->insertVariantOptions([[
                     'variant_id' => $variantId,
                     'attribute_id' => (int) $o['attribute_id'],
-                    'value' => (string) $o['value'],
+                    'value' => trim((string) $o['value']),
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]]);
@@ -496,7 +507,7 @@ class ProductService
         $f = Arr::only($v, [
             'buy_price', 'barcode', 'is_active',
             'sales_tax_id', 'purchase_tax_id', 'min_stock', 'safe_stock',
-            'weight', 'length', 'width', 'height',
+            'weight',
         ]);
         if (array_key_exists('sell_price', $v) && $v['sell_price'] !== null) {
             $f['sell_price'] = $v['sell_price'];
@@ -514,14 +525,14 @@ class ProductService
     private function ancestorPrice(array $opts, $activeVariants, array $setByVariant): ?float
     {
         $combo = [];
-        foreach ($opts as $o) { $combo[(int) $o['attribute_id']] = mb_strtolower((string) $o['value']); }
+        foreach ($opts as $o) { $combo[(int) $o['attribute_id']] = $this->normalizeOptionValue((string) $o['value']); }
 
         foreach ($activeVariants as $av) {
             $set = $setByVariant[$av->id] ?? [];
             if (empty($set)) { continue; }
             $subset = true;
             foreach ($set as $a => $val) {
-                if (($combo[(int) $a] ?? null) !== mb_strtolower((string) $val)) { $subset = false; break; }
+                if (($combo[(int) $a] ?? null) !== $this->normalizeOptionValue((string) $val)) { $subset = false; break; }
             }
             if ($subset) { return (float) $av->sell_price; }
         }
@@ -635,7 +646,7 @@ class ProductService
 
             $combo = collect($options)
                 ->sortBy('attribute_id')
-                ->map(static fn ($o) => $o['attribute_id'] . ':' . $o['value'])
+                ->map(fn ($o) => $o['attribute_id'] . ':' . $this->normalizeOptionValue((string) $o['value']))
                 ->implode('|');
 
             if ($combo !== '' && isset($seenCombos[$combo])) {
@@ -736,7 +747,7 @@ class ProductService
             $productData = Arr::only($data, [
                 'category_id', 'name', 'sku', 'description',
                 'order_type', 'indent_days',
-                'weight', 'weight_unit', 'length', 'width', 'height', 'is_active',
+                'weight', 'weight_unit', 'is_active',
                 'is_bundle', 'is_consignment', 'is_from_channel',
                 'is_stored', 'is_sold', 'is_purchased',
                 'purchase_lead_time', 'package_contents',
@@ -797,7 +808,7 @@ class ProductService
                     $variantData = Arr::only($variant, [
                         'sku', 'barcode', 'buy_price', 'sell_price', 'is_active',
                         'sales_tax_id', 'purchase_tax_id', 'min_stock', 'safe_stock',
-                        'weight', 'length', 'width', 'height',
+                        'weight',
                     ]);
 
                     if (!empty($variant['sales_tax_id'])) {
@@ -821,7 +832,7 @@ class ProductService
                             return [
                                 'variant_id' => $variantId,
                                 'attribute_id' => $opt['attribute_id'],
-                                'value' => $opt['value'],
+                                'value' => trim((string) $opt['value']),
                                 'created_at' => now(),
                                 'updated_at' => now(),
                             ];

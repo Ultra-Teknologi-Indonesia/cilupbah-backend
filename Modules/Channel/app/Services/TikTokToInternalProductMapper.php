@@ -27,12 +27,6 @@ class TikTokToInternalProductMapper
             'verified_at' => now(),
         ];
 
-        if (isset($tiktokProduct['package_dimensions'])) {
-            $internal['length'] = $tiktokProduct['package_dimensions']['length'] ?? 0;
-            $internal['width'] = $tiktokProduct['package_dimensions']['width'] ?? 0;
-            $internal['height'] = $tiktokProduct['package_dimensions']['height'] ?? 0;
-        }
-
         if (isset($tiktokProduct['package_weight'])) {
 
             $w = (float) ($tiktokProduct['package_weight']['value'] ?? 0);

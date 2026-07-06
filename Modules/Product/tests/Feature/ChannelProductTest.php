@@ -58,9 +58,6 @@ class ChannelProductTest extends TestCase
             'category_id' => 1,
             'description' => 'A test product for channel operations.',
             'weight' => 1.5,
-            'length' => 12,
-            'width' => 10,
-            'height' => 4,
             'is_active' => true,
         ]);
 

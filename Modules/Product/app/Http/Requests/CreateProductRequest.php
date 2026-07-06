@@ -40,9 +40,6 @@ class CreateProductRequest extends FormRequest
             'cogs_account_id' => ['nullable', 'uuid', Rule::exists('accounts', 'id')->where('account_type', 'expense')],
 
             'weight' => 'nullable|numeric|min:0',
-            'length' => 'nullable|numeric|min:0',
-            'width' => 'nullable|numeric|min:0',
-            'height' => 'nullable|numeric|min:0',
             'package_contents' => 'nullable|string|max:2000',
 
             'media' => 'required|array|min:1|max:10',
@@ -73,9 +70,6 @@ class CreateProductRequest extends FormRequest
             'variants.*.safe_stock' => 'nullable|integer|min:0',
             'variants.*.is_active' => 'nullable|boolean',
             'variants.*.weight' => 'nullable|numeric|min:0',
-            'variants.*.length' => 'nullable|numeric|min:0',
-            'variants.*.width' => 'nullable|numeric|min:0',
-            'variants.*.height' => 'nullable|numeric|min:0',
 
             'variants.*.unlimited_shop_ids' => 'nullable|array',
             'variants.*.unlimited_shop_ids.*' => 'uuid|distinct|exists:channel_shops,id',

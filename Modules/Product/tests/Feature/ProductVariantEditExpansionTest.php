@@ -120,6 +120,36 @@ class ProductVariantEditExpansionTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_saved_option_value_with_legacy_trailing_space_is_not_rejected(): void
+    {
+        // Data lama (mis. hasil import) menyimpan opsi dengan spasi ekor "Blue ".
+        // Payload dari FE sudah dipangkas middleware TrimStrings jadi "Blue".
+        // Perbandingan yang normalisasi whitespace harus menganggapnya sama,
+        // bukan menolak dengan "Opsi varian '...' tidak boleh dihapus."
+        $id = $this->createIp17();
+
+        $blue = DB::table('product_variants')->where('product_id', $id)->where('sku', 'IP17-BLUE')->first();
+        DB::table('variant_options')
+            ->where('variant_id', $blue->id)
+            ->where('attribute_id', $this->warna->id)
+            ->update(['value' => 'Blue ']); // spasi ekor disengaja
+
+        $this->putJson("/api/v1/products/{$id}", [
+            'variation_types' => [['attribute_id' => $this->warna->id, 'sort_order' => 0]],
+            'variants' => [
+                ['sku' => 'IP17-BLUE', 'sell_price' => 7000, 'is_active' => true,
+                    'options' => [['attribute_id' => $this->warna->id, 'value' => 'Blue']]],
+                ['sku' => 'IP17-RED', 'sell_price' => 7000, 'is_active' => true,
+                    'options' => [['attribute_id' => $this->warna->id, 'value' => 'Red']]],
+            ],
+        ])->assertOk();
+
+        // Varian Blue harus dicocokkan ke baris yang sama (bukan supersede + insert ulang).
+        $this->assertDatabaseHas('product_variants', ['id' => $blue->id, 'is_active' => true]);
+        $this->assertNull(DB::table('product_variants')->where('id', $blue->id)->value('superseded_at'));
+        $this->assertEquals(2, DB::table('product_variants')->where('product_id', $id)->where('is_active', true)->count());
+    }
+
     public function test_new_combo_inherits_price_from_ancestor_when_omitted(): void
     {
         $id = $this->createIp17(price: 9000);

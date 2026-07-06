@@ -59,9 +59,6 @@ class ProductResource extends JsonResource
             'package_contents' => $this->package_contents,
             'weight' => $this->weight,
             'weight_unit' => $this->weight_unit ?? 'kg',
-            'length' => $this->length,
-            'width' => $this->width,
-            'height' => $this->height,
             'accounts' => [
                 'sales' => $this->accountInfo('salesAccount'),
                 'sales_return' => $this->accountInfo('salesReturnAccount'),
@@ -131,10 +128,7 @@ class ProductResource extends JsonResource
                         'safe_stock' => $variant->safe_stock,
                         'is_active' => $variant->is_active,
                         'weight' => $variant->weight,
-                        'length' => $variant->length,
-                        'width' => $variant->width,
-                        'height' => $variant->height,
-                        'sales_tax' => ($variant->relationLoaded('salesTax') && $variant->salesTax) ? [
+                        'sales_tax' =>($variant->relationLoaded('salesTax') && $variant->salesTax) ? [
                             'id' => $variant->salesTax->id,
                             'name' => $variant->salesTax->name,
                             'rate' => (float) $variant->salesTax->rate,

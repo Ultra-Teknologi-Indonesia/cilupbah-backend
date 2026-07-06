@@ -23,9 +23,6 @@ class ProductImportService
                 'name' => $productName,
                 'description' => $row['description'] ?? '',
                 'weight' => $row['package_weight'] ?? 0,
-                'length' => $row['package_length'] ?? 0,
-                'width' => $row['package_width'] ?? 0,
-                'height' => $row['package_height'] ?? 0,
 
                 'status' => Product::STATUS_MASTER,
                 'is_active' => true,

@@ -37,9 +37,9 @@ class TikTokProductMapper
                 'unit' => 'KILOGRAM'
             ],
             'package_dimensions' => [
-                'length' => (string)(int)(($internalProduct['length'] ?? null) ?: 10),
-                'width' => (string)(int)(($internalProduct['width'] ?? null) ?: 10),
-                'height' => (string)(int)(($internalProduct['height'] ?? null) ?: 10),
+                'length' => '10',
+                'width' => '10',
+                'height' => '10',
                 'unit' => 'CENTIMETER'
             ],
             'product_attributes' => $attributes ?: [],

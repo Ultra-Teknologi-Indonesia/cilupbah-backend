@@ -10,8 +10,6 @@ class ShopeeToInternalProductMapper
     public function map(array $shopeeItem, string $shopId): array
     {
 
-        $dimension = $shopeeItem['dimension'] ?? [];
-
         $internal = [
             'category_id' => $this->resolveCategoryId($shopId, $shopeeItem['category_id'] ?? null),
             'name' => $shopeeItem['item_name'] ?? 'Shopee Product',
@@ -23,9 +21,6 @@ class ShopeeToInternalProductMapper
             'is_from_channel' => true,
             'verified_at' => now(),
             'weight' => (float) ($shopeeItem['weight'] ?? 0),
-            'length' => (float) ($dimension['package_length'] ?? 0),
-            'width' => (float) ($dimension['package_width'] ?? 0),
-            'height' => (float) ($dimension['package_height'] ?? 0),
         ];
 
         $internal['media'] = [];

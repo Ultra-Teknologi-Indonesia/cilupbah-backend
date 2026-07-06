@@ -57,9 +57,6 @@ class ProductE2ETest extends TestCase
             'category_id' => $this->category->id,
             'description' => 'Deskripsi produk E2E',
             'weight' => 2.5,
-            'length' => 10,
-            'width' => 10,
-            'height' => 10,
             'is_active' => true,
             'is_bundle' => true,
             'is_consignment' => false,
@@ -105,9 +102,6 @@ class ProductE2ETest extends TestCase
             'category_id' => $this->category->id,
             'media' => [['url' => 'https://img.test/a.jpg', 'media_type' => 'image']],
             'weight' => 1,
-            'length' => 1,
-            'width' => 1,
-            'height' => 1,
             'variants' => [
                 [
                     'sku' => 'E2E-VAR-READ',
