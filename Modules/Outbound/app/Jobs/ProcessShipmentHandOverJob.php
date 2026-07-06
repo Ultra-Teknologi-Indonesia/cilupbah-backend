@@ -39,7 +39,7 @@ class ProcessShipmentHandOverJob implements ShouldQueue
                     'status' => 'shipped',
                     'shipping_provider' => $shipment->courier_name,
                     'tracking_number' => $shipmentOrder->tracking_number,
-                ]);
+                ], $shipment->created_by ? ['email' => $shipment->created_by] : null);
             }
         }
     }

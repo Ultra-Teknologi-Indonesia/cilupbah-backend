@@ -28,7 +28,7 @@ class ProcessPicklistCompleteJob implements ShouldQueue
 
     public function handle(OrderService $orderService): void
     {
-        $picklist = Picklist::with('items.order', 'items.orderItem')->find($this->picklistId);
+        $picklist = Picklist::with('items.order', 'items.orderItem', 'picker')->find($this->picklistId);
 
         if (!$picklist || $picklist->status !== Picklist::STATUS_COMPLETED) {
             return;
@@ -94,7 +94,7 @@ class ProcessPicklistCompleteJob implements ShouldQueue
 
                 // No shortages — proceed as before.
                 if ($order->status === 'reserved') {
-                    $orderService->updateOrder($order, ['status' => 'picked']);
+                    $orderService->updateOrder($order, ['status' => 'picked'], $picklist->picker);
                 }
             }
         });

@@ -379,6 +379,7 @@ class SalesOrderRepository
 
         return QueryBuilder::for(SalesOrder::class)
             ->allowedIncludes('items')
+            ->with('statusHistory')
             ->find($id);
     }
 

@@ -240,4 +240,9 @@ class SalesOrder extends Model
     {
         return $this->hasMany(SalesInvoice::class, 'order_id');
     }
+
+    public function statusHistory(): HasMany
+    {
+        return $this->hasMany(SalesOrderStatusHistory::class, 'salesorder_id')->orderBy('created_at');
+    }
 }

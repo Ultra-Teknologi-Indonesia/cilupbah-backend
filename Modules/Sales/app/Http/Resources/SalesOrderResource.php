@@ -183,6 +183,16 @@ class SalesOrderResource extends JsonResource
 
             'items' => SalesOrderItemResource::collection($this->whenLoaded('items')),
 
+            'status_history' => $this->whenLoaded('statusHistory', fn () =>
+                $this->statusHistory->map(fn ($h) => [
+                    'action'      => $h->action,
+                    'action_id'   => $h->action_id,
+                    'actor_email' => $h->actor_email,
+                    'actor_name'  => $h->actor_name,
+                    'created_at'  => $h->created_at,
+                ])->values()
+            ),
+
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

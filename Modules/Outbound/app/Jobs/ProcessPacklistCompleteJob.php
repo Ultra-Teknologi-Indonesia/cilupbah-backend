@@ -25,7 +25,7 @@ class ProcessPacklistCompleteJob implements ShouldQueue
 
     public function handle(OrderService $orderService): void
     {
-        $packlist = Packlist::with('order')->find($this->packlistId);
+        $packlist = Packlist::with('order', 'packer')->find($this->packlistId);
 
         if (!$packlist || $packlist->status !== Packlist::STATUS_COMPLETED) {
             return;
@@ -34,7 +34,7 @@ class ProcessPacklistCompleteJob implements ShouldQueue
         $order = $packlist->order;
 
         if ($order && $order->status === 'picked') {
-            $orderService->updateOrder($order, ['status' => 'packed']);
+            $orderService->updateOrder($order, ['status' => 'packed'], $packlist->packer);
         }
     }
 }

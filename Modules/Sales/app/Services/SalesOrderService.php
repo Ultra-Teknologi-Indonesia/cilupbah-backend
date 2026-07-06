@@ -19,6 +19,7 @@ use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Jobs\SyncStockJob;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderItem;
+use Modules\Sales\Models\SalesOrderStatusHistory;
 use Modules\Sales\Repositories\SalesOrderRepository;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
@@ -36,6 +37,26 @@ class SalesOrderService
         'packed'    => ['shipped', 'cancelled'],
         'shipped'   => [],
         'cancelled' => [],
+    ];
+
+    // Alur pengerjaan: aksi yang dicatat lewat updateOrder() per status tujuan.
+    private const STATUS_HISTORY_ACTIONS = [
+        'reserved'  => 'PROCESS',
+        'picked'    => 'FINISH_PICK',
+        'packed'    => 'FINISH_PACK',
+        'shipped'   => 'SHIPPED',
+        'cancelled' => 'CANCELLED',
+    ];
+
+    private const STATUS_HISTORY_ACTION_IDS = [
+        'CREATED'     => '100',
+        'PAID'        => '120',
+        'PROCESS'     => '200',
+        'FINISH_PICK' => '600',
+        'FINISH_PACK' => '800',
+        'SHIPPED'     => '999',
+        'COMPLETED'   => '912',
+        'CANCELLED'   => '000',
     ];
 
     private const IDEMPOTENCY_TTL = 172800;
@@ -294,6 +315,7 @@ class SalesOrderService
 
                 $this->reconcileStockTransition($order, $order->status, 'shipped');
                 $order->update(['status' => 'shipped']);
+                $this->logStatusHistory($order, 'COMPLETED', ['to' => 'shipped']);
                 SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
                 $count++;
             }
@@ -329,6 +351,7 @@ class SalesOrderService
             'paid_time'      => $data['paid_time'] ?? now(),
             'payment_method' => $data['payment_method'] ?? $order->payment_method,
         ]);
+        $this->logStatusHistory($order, 'PAID');
 
         return $order->fresh();
     }
@@ -561,6 +584,7 @@ class SalesOrderService
         try {
             $order = DB::transaction(function () use ($validated) {
                 $order = SalesOrder::create(array_merge($validated, ['status' => 'pending']));
+                $this->logStatusHistory($order, 'CREATED', ['to' => 'pending']);
 
                 if (! $order->location_id) {
                     try {
@@ -580,6 +604,7 @@ class SalesOrderService
 
                 $order->status = 'reserved';
                 $order->save();
+                $this->logStatusHistory($order, 'PROCESS', ['from' => 'pending', 'to' => 'reserved']);
 
                 return $order;
             });
@@ -609,13 +634,47 @@ class SalesOrderService
         return $order->fresh('items');
     }
 
-    public function updateOrder(SalesOrder $order, array $validated): SalesOrder
+    /**
+     * Catat satu baris riwayat status ("alur pengerjaan") untuk order.
+     * $actor: instance \App\Models\User, array ['email'=>?,'name'=>?,'id'=>?], atau null (fallback ke auth()->user()).
+     */
+    public function logStatusHistory(SalesOrder $order, string $action, ?array $metadata = null, $actor = null): void
+    {
+        if ($actor instanceof \App\Models\User) {
+            $email = $actor->email;
+            $name  = $actor->name;
+            $id    = $actor->id;
+        } elseif (is_array($actor)) {
+            $email = $actor['email'] ?? null;
+            $name  = $actor['name'] ?? null;
+            $id    = $actor['id'] ?? null;
+        } else {
+            $authUser = auth()->user();
+            $email = $authUser?->email;
+            $name  = $authUser?->name;
+            $id    = $authUser?->id;
+        }
+
+        SalesOrderStatusHistory::create([
+            'salesorder_id' => $order->id,
+            'action_id'     => self::STATUS_HISTORY_ACTION_IDS[$action] ?? '000',
+            'action'        => $action,
+            'actor_email'   => $email ?? 'system',
+            'actor_id'      => $id,
+            'actor_name'    => $name ?? 'System',
+            'metadata'      => $metadata,
+            'created_at'    => now(),
+        ]);
+    }
+
+    public function updateOrder(SalesOrder $order, array $validated, $actor = null): SalesOrder
     {
         $stockMutated = false;
 
         if (isset($validated['status']) && $validated['status'] !== $order->status) {
             $newStatus = $validated['status'];
             $this->validateTransition($order->status, $newStatus);
+            $previousStatus = $order->status;
 
             $cancelReason = $newStatus === 'cancelled'
                 ? ($validated['cancel_reason'] ?? 'seller_cancel_reason_out_of_stock')
@@ -632,6 +691,15 @@ class SalesOrderService
 
                 $order->save();
             });
+
+            if (isset(self::STATUS_HISTORY_ACTIONS[$newStatus])) {
+                $this->logStatusHistory(
+                    $order,
+                    self::STATUS_HISTORY_ACTIONS[$newStatus],
+                    ['from' => $previousStatus, 'to' => $newStatus],
+                    $actor,
+                );
+            }
 
             $stockMutated = true;
 
