@@ -110,7 +110,7 @@ class LocationService
             }
 
             $this->binRepository->deleteByZone($zone->id);
-            $this->zoneRepository->delete($zone->id);
+            $this->zoneRepository->delete($zone);
         }
 
         foreach ($layout as $zoneData) {
