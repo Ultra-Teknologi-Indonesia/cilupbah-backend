@@ -7,9 +7,9 @@ use Modules\Channel\Services\TikTokAuthService;
 
 class TikTokRefreshTokens extends Command
 {
-    protected $signature = 'tiktok:refresh-tokens {--hours=24 : Refresh token yang kedaluwarsa dalam N jam ke depan}';
+    protected $signature = 'tiktok:refresh-tokens {--hours=2 : Refresh token yang kedaluwarsa dalam N jam ke depan}';
 
-    protected $description = 'Refresh access token toko TikTok yang mendekati kedaluwarsa';
+    protected $description = 'Refresh access token toko TikTok yang mendekati kedaluwarsa (token TikTok hanya 2 jam)';
 
     public function handle(TikTokAuthService $authService): int
     {

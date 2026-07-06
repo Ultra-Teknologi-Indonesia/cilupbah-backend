@@ -9,9 +9,9 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('lazada:refresh-tokens')->dailyAt('02:00')->withoutOverlapping();
-Schedule::command('tiktok:refresh-tokens')->dailyAt('02:30')->withoutOverlapping();
 
 Schedule::command('shopee:refresh-tokens')->hourly()->withoutOverlapping();
+Schedule::command('tiktok:refresh-tokens')->hourly()->withoutOverlapping();
 
 Schedule::command('products:poll-review-status')->everyThirtyMinutes()->withoutOverlapping();
 
