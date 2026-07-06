@@ -55,7 +55,7 @@ class ShopeeToInternalProductMapper
 
         if (empty($internal['variants'])) {
             $internal['variants'][] = [
-                'sku' => 'SHP-' . ($shopeeItem['item_id'] ?? uniqid()),
+                'sku' => ! empty($shopeeItem['item_sku']) ? $shopeeItem['item_sku'] : null,
                 'sell_price' => (float) ($shopeeItem['price_info'][0]['current_price'] ?? 0),
                 'is_active' => true,
             ];
@@ -85,9 +85,7 @@ class ShopeeToInternalProductMapper
         $variants = [];
 
         foreach ($shopeeItem['model_list'] ?? [] as $model) {
-            $sku = ! empty($model['model_sku'])
-                ? $model['model_sku']
-                : ('SHP-' . ($model['model_id'] ?? uniqid()));
+            $sku = ! empty($model['model_sku']) ? $model['model_sku'] : null;
 
             $price = (float) ($model['price_info'][0]['current_price'] ?? $model['original_price'] ?? 0);
 

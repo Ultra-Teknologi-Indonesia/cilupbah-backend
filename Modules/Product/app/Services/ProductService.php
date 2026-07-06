@@ -187,8 +187,9 @@ class ProductService
         return ['success' => $success, 'failed' => count($errors), 'errors' => $errors];
     }
 
-    public function upsertFromChannel(array $data, ?bool &$matchedExisting = null)
+    public function upsertFromChannel(array $data, ?bool &$matchedExisting = null, ?array &$variantIds = null)
     {
+        $variantIds = [];
         $parentSku = $data['sku'] ?? null;
         $productId = null;
 
@@ -221,7 +222,7 @@ class ProductService
         }
 
         $matchedExisting = false;
-        $productId = $this->createProduct($data);
+        $productId = $this->createProduct($data, $variantIds);
         $this->queueExternalMediaMirroring($productId);
 
         return $productId;
@@ -737,13 +738,14 @@ class ProductService
         }
     }
 
-    public function createProduct(array $data)
+    public function createProduct(array $data, ?array &$variantIds = null)
     {
         $this->resolveCustomAttributes($data);
         $this->assertVariationConstraints($data);
         $this->assertCategoryAttributes($data['category_id'] ?? null, $data, true);
+        $variantIds = [];
 
-        return DB::transaction(function () use ($data) {
+        return DB::transaction(function () use ($data, &$variantIds) {
             $productData = Arr::only($data, [
                 'category_id', 'name', 'sku', 'description',
                 'order_type', 'indent_days',
@@ -816,6 +818,7 @@ class ProductService
                     }
 
                     $variantId = \Ramsey\Uuid\Uuid::uuid7()->toString();
+                    $variantIds[] = $variantId;
                     $this->writeRepository->insertVariantRow(array_merge($variantData, [
                         'id' => $variantId,
                         'product_id' => $productId,

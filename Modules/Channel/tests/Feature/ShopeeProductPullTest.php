@@ -162,7 +162,7 @@ class ShopeeProductPullTest extends TestCase
 
         $this->assertTrue($ok);
 
-        $variant = DB::table('product_variants')->where('sku', 'SHP-555200')->first();
+        $variant = DB::table('product_variants')->where('sku', 'TOPI-1')->first();
         $this->assertNotNull($variant);
 
         $pcm = DB::table('product_channel_mappings')

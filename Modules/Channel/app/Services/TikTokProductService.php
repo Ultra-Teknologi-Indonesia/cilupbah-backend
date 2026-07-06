@@ -354,7 +354,7 @@ class TikTokProductService
 
                     $detail       = $details[(string) ($item['id'] ?? '')] ?? $item;
                     $internalData = app(ChannelAssetImporter::class)->import($mapper->map($detail, $shopId));
-                    $insertedId   = $productService->upsertFromChannel($internalData, $matchedExisting);
+                    $insertedId   = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
 
                     if ($insertedId) {
                         $attrs = [];
@@ -376,26 +376,7 @@ class TikTokProductService
                             (bool) $matchedExisting
                         );
 
-                        foreach ($detail['skus'] ?? [] as $skuData) {
-                            $sku = !empty($skuData['seller_sku'])
-                                ? $skuData['seller_sku']
-                                : ('TK-' . $skuData['id']);
-
-                            $variant = $this->productRepository->getVariantByProductIdAndSku((string) $insertedId, $sku);
-
-                            if ($variant) {
-                                $salesAttr = $skuData['sales_attributes'][0] ?? null;
-                                $this->productRepository->upsertVariantChannelMapping(
-                                    $pcmId,
-                                    $variant->id,
-                                    $skuData['id'] ?? null,
-                                    $skuData['seller_sku'] ?? null,
-                                    $skuData['price']['tax_exclusive_price'] ?? null,
-                                    $salesAttr['id'] ?? null,
-                                    $salesAttr['name'] ?? null
-                                );
-                            }
-                        }
+                        $this->mapSkusToVariants($pcmId, (string) $insertedId, $detail['skus'] ?? [], $matchedExisting, $variantIds);
 
                         $count++;
                         if ($onProgress) {
@@ -519,7 +500,7 @@ class TikTokProductService
         }
 
         $internalData = app(ChannelAssetImporter::class)->import($mapper->map($detail, $shopId));
-        $insertedId   = $productService->upsertFromChannel($internalData, $matchedExisting);
+        $insertedId   = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
 
         if (!$insertedId) {
             return false;
@@ -544,26 +525,7 @@ class TikTokProductService
             (bool) $matchedExisting
         );
 
-        foreach ($detail['skus'] ?? [] as $skuData) {
-            $sku = !empty($skuData['seller_sku'])
-                ? $skuData['seller_sku']
-                : ('TK-' . ($skuData['id'] ?? ''));
-
-            $variant = $this->productRepository->getVariantByProductIdAndSku((string) $insertedId, $sku);
-
-            if ($variant) {
-                $salesAttr = $skuData['sales_attributes'][0] ?? null;
-                $this->productRepository->upsertVariantChannelMapping(
-                    $pcmId,
-                    $variant->id,
-                    $skuData['id'] ?? null,
-                    $skuData['seller_sku'] ?? null,
-                    $skuData['price']['tax_exclusive_price'] ?? null,
-                    $salesAttr['id'] ?? null,
-                    $salesAttr['name'] ?? null
-                );
-            }
-        }
+        $this->mapSkusToVariants($pcmId, (string) $insertedId, $detail['skus'] ?? [], $matchedExisting, $variantIds);
 
         ProductSyncLog::record([
             'channel_shop_id' => $channelShopId,
@@ -573,6 +535,44 @@ class TikTokProductService
         ]);
 
         return true;
+    }
+
+    /**
+     * @param array $variantIds Urutan variant id hasil createProduct, selaras dengan urutan $skus (produk baru saja).
+     */
+    protected function mapSkusToVariants(string $pcmId, string $insertedId, array $skus, bool $matchedExisting, array $variantIds): void
+    {
+        foreach ($skus as $idx => $skuData) {
+            $salesAttr = $skuData['sales_attributes'][0] ?? null;
+
+            if (! $matchedExisting) {
+                $variantId = $variantIds[$idx] ?? null;
+                if (! $variantId) {
+                    continue;
+                }
+            } else {
+                $sku = $skuData['seller_sku'] ?? null;
+                if (! $sku) {
+                    continue;
+                }
+
+                $variant = $this->productRepository->getVariantByProductIdAndSku($insertedId, $sku);
+                if (! $variant) {
+                    continue;
+                }
+                $variantId = $variant->id;
+            }
+
+            $this->productRepository->upsertVariantChannelMapping(
+                $pcmId,
+                $variantId,
+                $skuData['id'] ?? null,
+                $skuData['seller_sku'] ?? null,
+                $skuData['price']['tax_exclusive_price'] ?? null,
+                $salesAttr['id'] ?? null,
+                $salesAttr['name'] ?? null
+            );
+        }
     }
 
     public function reconcileChannelData(string $shopId): int

@@ -38,9 +38,7 @@ class LazadaToInternalProductMapper
 
         $internal['variants'] = [];
         foreach ($lazadaProduct['skus'] ?? [] as $skuData) {
-            $sku = ! empty($skuData['SellerSku'])
-                ? $skuData['SellerSku']
-                : ('LZ-' . ($skuData['SkuId'] ?? uniqid()));
+            $sku = ! empty($skuData['SellerSku']) ? $skuData['SellerSku'] : null;
 
             $price = (float) ($skuData['special_price'] ?? 0) ?: (float) ($skuData['price'] ?? 0);
 
@@ -62,7 +60,7 @@ class LazadaToInternalProductMapper
 
         if (empty($internal['variants'])) {
             $internal['variants'][] = [
-                'sku' => 'LZ-' . ($lazadaProduct['item_id'] ?? uniqid()),
+                'sku' => null,
                 'sell_price' => 0,
                 'is_active' => true,
             ];

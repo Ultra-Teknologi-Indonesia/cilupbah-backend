@@ -432,7 +432,7 @@ class LazadaProductService
             foreach ($products as $item) {
                 try {
                     $internalData = app(ChannelAssetImporter::class)->import($this->inboundMapper->map($item, $shopId));
-                    $insertedId = $productService->upsertFromChannel($internalData, $matchedExisting);
+                    $insertedId = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
 
                     if ($insertedId) {
                         $pcmId = $this->productRepository->upsertChannelMapping(
@@ -444,20 +444,24 @@ class LazadaProductService
                             (bool) $matchedExisting
                         );
 
-                        foreach ($item['skus'] ?? [] as $skuData) {
-                            $sku = ! empty($skuData['SellerSku'])
-                                ? $skuData['SellerSku']
-                                : ('LZ-' . ($skuData['SkuId'] ?? ''));
+                        foreach ($item['skus'] ?? [] as $idx => $skuData) {
+                            if (! $matchedExisting) {
+                                $variantId = $variantIds[$idx] ?? null;
+                            } else {
+                                $sku = $skuData['SellerSku'] ?? null;
+                                $variant = $sku
+                                    ? DB::table('product_variants')
+                                        ->where('product_id', $insertedId)
+                                        ->where('sku', $sku)
+                                        ->first()
+                                    : null;
+                                $variantId = $variant->id ?? null;
+                            }
 
-                            $variant = DB::table('product_variants')
-                                ->where('product_id', $insertedId)
-                                ->where('sku', $sku)
-                                ->first();
-
-                            if ($variant) {
+                            if ($variantId) {
                                 $this->productRepository->upsertVariantChannelMapping(
                                     $pcmId,
-                                    $variant->id,
+                                    $variantId,
                                     isset($skuData['SkuId']) ? (string) $skuData['SkuId'] : null,
                                     $skuData['SellerSku'] ?? null,
                                     $skuData['price'] ?? null

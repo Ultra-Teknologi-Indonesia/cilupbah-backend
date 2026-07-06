@@ -354,7 +354,7 @@ class ShopeeProductService
     protected function persistItem(object $shop, string $shopId, array $item, ShopeeToInternalProductMapper $mapper, $productService): bool
     {
         $internalData = app(ChannelAssetImporter::class)->import($mapper->map($item, $shopId));
-        $insertedId = $productService->upsertFromChannel($internalData, $matchedExisting);
+        $insertedId = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
         if (! $insertedId) {
             return false;
         }
@@ -371,13 +371,18 @@ class ShopeeProductService
         $models = $item['model_list'] ?? [];
 
         if (empty($models)) {
+            if (! $matchedExisting) {
+                $variantId = $variantIds[0] ?? null;
+            } else {
+                $sku = $item['item_sku'] ?? null;
+                $variant = $sku ? $this->productRepository->getVariantByProductIdAndSku((string) $insertedId, $sku) : null;
+                $variantId = $variant->id ?? null;
+            }
 
-            $sku = 'SHP-' . ($item['item_id'] ?? '');
-            $variant = $this->productRepository->getVariantByProductIdAndSku((string) $insertedId, $sku);
-            if ($variant) {
+            if ($variantId) {
                 $this->productRepository->upsertVariantChannelMapping(
                     $pcmId,
-                    $variant->id,
+                    $variantId,
                     null,
                     $item['item_sku'] ?? null,
                     $item['price_info'][0]['current_price'] ?? null
@@ -387,19 +392,22 @@ class ShopeeProductService
             return true;
         }
 
-        foreach ($models as $model) {
-            $sku = ! empty($model['model_sku'])
-                ? $model['model_sku']
-                : ('SHP-' . ($model['model_id'] ?? ''));
+        foreach ($models as $idx => $model) {
+            if (! $matchedExisting) {
+                $variantId = $variantIds[$idx] ?? null;
+            } else {
+                $sku = $model['model_sku'] ?? null;
+                $variant = $sku ? $this->productRepository->getVariantByProductIdAndSku((string) $insertedId, $sku) : null;
+                $variantId = $variant->id ?? null;
+            }
 
-            $variant = $this->productRepository->getVariantByProductIdAndSku((string) $insertedId, $sku);
-            if (! $variant) {
+            if (! $variantId) {
                 continue;
             }
 
             $this->productRepository->upsertVariantChannelMapping(
                 $pcmId,
-                $variant->id,
+                $variantId,
                 isset($model['model_id']) ? (string) $model['model_id'] : null,
                 $model['model_sku'] ?? null,
                 $model['price_info'][0]['current_price'] ?? $model['original_price'] ?? null
