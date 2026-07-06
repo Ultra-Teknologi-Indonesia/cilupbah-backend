@@ -200,6 +200,15 @@ class ReportService
 
     public function pickListReport(array $filters): array
     {
+        $orderIds = $filters['order_ids'] ?? null;
+        if (is_string($orderIds)) {
+            $orderIds = array_filter(array_map('trim', explode(',', $orderIds)), fn ($v) => $v !== '');
+        } elseif (is_array($orderIds)) {
+            $orderIds = array_filter($orderIds, fn ($v) => $v !== null && $v !== '');
+        } else {
+            $orderIds = null;
+        }
+
         $query = Picklist::with([
                 'items.product:id,product_id,sku',
                 'items.product.product:id,name',
@@ -216,6 +225,7 @@ class ReportService
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
             ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
             ->when($filters['date_to'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '<=', $v))
+            ->when(! empty($orderIds), fn ($q) => $q->whereHas('items', fn ($q2) => $q2->whereIn('order_id', $orderIds)))
             ->orderByDesc('created_at');
 
         $id = $filters['id'] ?? $filters['picklist_id'] ?? null;
@@ -228,12 +238,22 @@ class ReportService
 
     public function shippingManifestReport(array $filters): array
     {
+        $orderIds = $filters['order_ids'] ?? null;
+        if (is_string($orderIds)) {
+            $orderIds = array_filter(array_map('trim', explode(',', $orderIds)), fn ($v) => $v !== '');
+        } elseif (is_array($orderIds)) {
+            $orderIds = array_filter($orderIds, fn ($v) => $v !== null && $v !== '');
+        } else {
+            $orderIds = null;
+        }
+
         $query = Shipment::with(['orders.order:id,salesorder_no,customer_name,tracking_number,shipping_provider,shipping_full_name,shipping_address,shipping_city,order_weight_gram,status', 'location:id,location_name,location_code'])
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
             ->when($filters['courier_code'] ?? null, fn ($q, $v) => $q->where('courier_code', $v))
             ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('shipment_date', '>=', $v))
             ->when($filters['date_to'] ?? null, fn ($q, $v) => $q->whereDate('shipment_date', '<=', $v))
+            ->when(! empty($orderIds), fn ($q) => $q->whereHas('orders', fn ($q2) => $q2->whereIn('order_id', $orderIds)))
             ->orderByDesc('shipment_date');
 
         if ($id = $filters['id'] ?? null) {
