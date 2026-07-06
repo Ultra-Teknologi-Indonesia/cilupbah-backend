@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Product\Models\ProductChannelMapping;
+use Modules\Warehouse\Models\Location;
 
 use App\Traits\HasUuid7;
 
@@ -27,6 +28,8 @@ class ChannelShop extends Model
         'integration_status',
         'last_error',
         'last_synced_at',
+        'stock_source_mode',
+        'stock_source_location_id',
     ];
 
     protected $casts = [
@@ -52,5 +55,10 @@ class ChannelShop extends Model
     public function productMappings(): HasMany
     {
         return $this->hasMany(ProductChannelMapping::class);
+    }
+
+    public function stockSourceLocation(): BelongsTo
+    {
+        return $this->belongsTo(Location::class, 'stock_source_location_id');
     }
 }

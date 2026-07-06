@@ -25,6 +25,20 @@ class ChannelShopRepository
             ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
+
+    public function getPaginatedShopsForStockAllocation()
+    {
+        return QueryBuilder::for(ChannelShop::class)
+            ->with(['channel', 'stockSourceLocation'])
+            ->whereNull('disconnected_at')
+            ->allowedSearch('shop_name')
+            ->allowedFilters('channel_id')
+            ->allowedSorts('shop_name', 'created_at')
+            ->defaultSort('channel_id', 'shop_name')
+            ->paginate(request('per_page', 50))
+            ->appends(request()->query());
+    }
+
     public function findByShopId(string $shopId)
     {
         return DB::table('channel_shops')->where('shop_id', $shopId)->first();

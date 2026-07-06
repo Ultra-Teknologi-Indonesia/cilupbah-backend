@@ -18,14 +18,14 @@ class ChannelStockResolver
             return $result;
         }
 
-        $locationId = $this->resolveLocationId($shop);
-        if (! $locationId) {
+        $locationIds = $this->sourceLocationIds($shop);
+        if (empty($locationIds)) {
             return $result;
         }
 
         $stocks = DB::table('inventories')
             ->whereIn('item_id', $variantIds)
-            ->where('location_id', $locationId)
+            ->whereIn('location_id', $locationIds)
             ->groupBy('item_id')
             ->selectRaw('item_id, SUM(on_hand) as oh, SUM(reserved) as r')
             ->get();
@@ -39,16 +39,25 @@ class ChannelStockResolver
     }
 
     /**
-     * Semua stok yang di-broadcast ke marketplace channel harus berasal dari
-     * Gudang Kecil, terlepas dari mapping historis di channel_warehouses.
-     *
-     * $shop tidak dipakai lagi untuk memilih lokasi — dipertahankan di
-     * signature supaya kompatibel dengan pemanggil existing.
+     * Sumber stok available yang di-broadcast ke marketplace, per toko:
+     * - mode 'total'    → semua gudang aktif (kecuali lokasi sistem transit)
+     * - mode 'location' → satu gudang pilihan admin, fallback ke Gudang Kecil
+     *   kalau belum diset / gudangnya sudah terhapus.
      */
-    protected function resolveLocationId(ChannelShop $shop): ?string
+    public function sourceLocationIds(ChannelShop $shop): array
     {
-        return DB::table('locations')
-            ->where('location_code', Location::SYSTEM_KECIL_CODE)
-            ->value('id');
+        if ($shop->stock_source_mode === 'total') {
+            return DB::table('locations')
+                ->where('is_warehouse', true)
+                ->where('is_active', true)
+                ->where('location_code', '!=', Location::SYSTEM_TRANSIT_CODE)
+                ->pluck('id')
+                ->all();
+        }
+
+        $id = $shop->stock_source_location_id
+            ?: DB::table('locations')->where('location_code', Location::SYSTEM_KECIL_CODE)->value('id');
+
+        return $id ? [$id] : [];
     }
 }

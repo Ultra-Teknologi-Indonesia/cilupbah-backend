@@ -3,6 +3,7 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Modules\Channel\Jobs\ResyncShopStockJob;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
@@ -31,6 +32,11 @@ class ChannelService
         return $this->channelShopRepository->getPaginatedShops();
     }
 
+    public function getStockAllocationStores()
+    {
+        return $this->channelShopRepository->getPaginatedShopsForStockAllocation();
+    }
+
     public function updateStoreFlags(string $id, array $data): ChannelShop
     {
         $shop = $this->channelShopRepository->findById($id);
@@ -39,9 +45,37 @@ class ChannelService
             throw new ModelNotFoundException('Toko tidak ditemukan.');
         }
 
+        $data = $this->mapStockSourceFields($data);
+
+        $stockSourceChanged = (array_key_exists('stock_source_mode', $data) && $data['stock_source_mode'] !== $shop->stock_source_mode)
+            || (array_key_exists('stock_source_location_id', $data) && $data['stock_source_location_id'] !== $shop->stock_source_location_id);
+
         $this->channelShopRepository->updateShop($shop, $data);
 
+        if ($stockSourceChanged) {
+            ResyncShopStockJob::dispatch($shop->id)->afterCommit();
+        }
+
         return $shop->fresh('channel');
+    }
+
+    /**
+     * Field publik `location_id` (kontrak API, konsisten dgn response list)
+     * dipetakan ke kolom `stock_source_location_id`. Mode 'total' selalu
+     * mengosongkan gudang pilihan.
+     */
+    private function mapStockSourceFields(array $data): array
+    {
+        if (array_key_exists('location_id', $data)) {
+            $data['stock_source_location_id'] = $data['location_id'];
+            unset($data['location_id']);
+        }
+
+        if (($data['stock_source_mode'] ?? null) === 'total') {
+            $data['stock_source_location_id'] = null;
+        }
+
+        return $data;
     }
 
     public function disconnectStore(string $id): void

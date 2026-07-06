@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Modules\Channel\Http\Requests\UpdateChannelShopRequest;
 use Modules\Channel\Http\Resources\ChannelResource;
 use Modules\Channel\Http\Resources\ChannelShopResource;
+use Modules\Channel\Http\Resources\StockAllocationResource;
 use Modules\Channel\Services\ChannelService;
 use Modules\Channel\Services\TikTokAuthService;
 
@@ -30,6 +31,14 @@ class ChannelController extends Controller
         return $this->successPaginatedResponse(
             ChannelShopResource::collection($this->channelService->getConnectedStores()),
             'Daftar toko marketplace berhasil diambil'
+        );
+    }
+
+    public function stockAllocation(): JsonResponse
+    {
+        return $this->successPaginatedResponse(
+            StockAllocationResource::collection($this->channelService->getStockAllocationStores()),
+            'Daftar alokasi stok toko berhasil diambil'
         );
     }
 

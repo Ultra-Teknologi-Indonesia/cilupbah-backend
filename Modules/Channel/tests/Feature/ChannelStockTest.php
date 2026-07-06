@@ -66,6 +66,7 @@ class ChannelStockTest extends TestCase
             'channel_location_id' => 'SHP-WH-1', 'location_id' => $location->id,
             'created_at' => now(), 'updated_at' => now(),
         ]);
+        $this->shop->update(['stock_source_mode' => 'location', 'stock_source_location_id' => $location->id]);
         Inventory::create([
             'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => null,
             'on_hand' => $available + 2, 'on_order' => 0, 'reserved' => 2, 'available' => $available,
