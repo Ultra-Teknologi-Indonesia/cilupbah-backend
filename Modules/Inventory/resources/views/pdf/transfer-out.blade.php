@@ -1,14 +1,17 @@
 @php
     /** @var object $transfer */
-    $companyName = config('app.company_name', 'PT ULTRA TEKNOLOGI INDONESIA');
     $printedAt = now()->format('d M Y H:i');
     $items = collect($transfer->items ?? []);
+    $sourceName = optional($transfer->sourceLocation ?? $transfer->source_location ?? null)->location_name ?? '-';
+    $destName = optional($transfer->destinationLocation ?? $transfer->destination_location ?? null)->location_name ?? '-';
+    $tanggal = optional($transfer->created_at)->format('d M Y') ?? '-';
+    $totalQty = (int) $items->sum('qty');
 @endphp
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Transfer Keluar {{ $transfer->transfer_number }}</title>
+    <title>Surat Jalan {{ $transfer->transfer_number }}</title>
     <style>
         @page { margin: 14mm 12mm 16mm 12mm; }
         body {
@@ -19,21 +22,19 @@
             padding: 0;
             line-height: 1.35;
         }
-        .header { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
-        .header td { vertical-align: top; }
-        .header .company {
-            font-size: 11px;
+        .title {
+            text-align: center;
+            font-size: 20px;
             font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.4px;
+            margin: 4px 0 18px;
         }
-        .header .title { font-size: 20px; font-weight: 700; margin-top: 2px; }
-        .header .right { text-align: right; }
-        .header .doc-no { font-size: 12px; font-weight: 700; margin-top: 4px; }
-        .info-grid { width: 100%; border-collapse: collapse; margin: 10px 0 14px; }
-        .info-grid td { padding: 3px 0; font-size: 10px; vertical-align: top; }
-        .info-grid .label { color: #555; width: 110px; }
-        .info-grid .value { font-weight: 700; }
+        .info-grid { width: 100%; border-collapse: collapse; margin: 0 0 12px; }
+        .info-grid td { padding: 2px 0; font-size: 10px; vertical-align: top; }
+        .info-grid .label { color: #333; width: 70px; font-weight: 700; }
+        .info-grid .sep { width: 10px; }
+        .info-grid .value { }
+        .info-grid .r-label { text-align: right; width: 90px; font-weight: 700; }
+        .info-grid .r-value { text-align: right; width: 130px; }
         table.items { width: 100%; border-collapse: collapse; margin-top: 2px; }
         table.items th, table.items td {
             border: 1px solid #555;
@@ -52,6 +53,13 @@
         .mono { font-family: DejaVu Sans Mono, monospace; }
         .center { text-align: center; }
         .num { text-align: right; }
+        .total-row td {
+            border: none;
+            padding-top: 6px;
+            font-weight: 700;
+            font-size: 10px;
+        }
+        .catatan { margin-top: 14px; font-size: 10px; }
         .footer {
             position: fixed;
             bottom: -8mm;
@@ -66,30 +74,22 @@
     </style>
 </head>
 <body>
-    <table class="header">
-        <tr>
-            <td>
-                <div class="company">{{ $companyName }}</div>
-                <div class="title">Transfer Keluar</div>
-            </td>
-            <td class="right">
-                <div class="doc-no">{{ $transfer->transfer_number }}</div>
-            </td>
-        </tr>
-    </table>
+    <div class="title">Surat Jalan</div>
 
     <table class="info-grid">
         <tr>
-            <td class="label">Lokasi Asal</td>
-            <td class="value">{{ optional($transfer->sourceLocation ?? $transfer->source_location ?? null)->location_name ?? '-' }}</td>
-            <td class="label">Status</td>
-            <td class="value">{{ $transfer->status }}</td>
+            <td class="label">DARI</td>
+            <td class="sep">:</td>
+            <td class="value">{{ $sourceName }}</td>
+            <td class="r-label">No. Transfer</td>
+            <td class="r-value mono">{{ $transfer->transfer_number }}</td>
         </tr>
         <tr>
-            <td class="label">Lokasi Tujuan</td>
-            <td class="value">{{ optional($transfer->destinationLocation ?? $transfer->destination_location ?? null)->location_name ?? '-' }}</td>
-            <td class="label">Dibuat oleh</td>
-            <td class="value">{{ $transfer->created_by ?? '-' }}</td>
+            <td class="label">TUJUAN</td>
+            <td class="sep">:</td>
+            <td class="value">{{ $destName }}</td>
+            <td class="r-label">Tanggal</td>
+            <td class="r-value">{{ $tanggal }}</td>
         </tr>
     </table>
 
@@ -97,10 +97,13 @@
         <thead>
             <tr>
                 <th style="width:24px">No</th>
-                <th>SKU</th>
-                <th>Nama Produk</th>
-                <th style="width:60px">Qty</th>
-                <th style="width:80px">Qty Diterima</th>
+                <th style="width:90px">Rak</th>
+                <th style="width:90px">Lokasi</th>
+                <th style="width:110px">SKU</th>
+                <th>Nama Barang</th>
+                <th style="width:44px">Qty</th>
+                <th style="width:44px">Unit</th>
+                <th style="width:110px">Keterangan</th>
             </tr>
         </thead>
         <tbody>
@@ -109,21 +112,36 @@
                     $variant = $item->product ?? null;
                     $sku = optional($variant)->sku ?? '-';
                     $name = optional(optional($variant)->product)->name ?? '-';
+                    $rak = optional($item->sourceBin ?? null)->bin_final_code ?? '-';
+                    $ket = $item->item_notes ?? '';
                 @endphp
                 <tr>
                     <td class="center mono">{{ $i + 1 }}</td>
+                    <td class="mono">{{ $rak }}</td>
+                    <td>{{ $destName }}</td>
                     <td class="mono">{{ $sku }}</td>
                     <td>{{ $name }}</td>
                     <td class="num mono">{{ (int) $item->qty }}</td>
-                    <td class="num mono">{{ (int) ($item->received_qty ?? 0) }}</td>
+                    <td class="center">Buah</td>
+                    <td>{{ $ket }}</td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="5" class="center" style="padding: 18px;">Tidak ada item.</td>
+                    <td colspan="8" class="center" style="padding: 18px;">Tidak ada item.</td>
                 </tr>
             @endforelse
         </tbody>
     </table>
+
+    <table style="width:100%; border-collapse:collapse;">
+        <tr class="total-row">
+            <td class="num">Total Qty</td>
+            <td class="num mono" style="width:44px">{{ $totalQty }}</td>
+            <td style="width:110px"></td>
+        </tr>
+    </table>
+
+    <div class="catatan">Catatan : {{ $transfer->notes ?? '' }}</div>
 
     <div class="footer">
         <table>

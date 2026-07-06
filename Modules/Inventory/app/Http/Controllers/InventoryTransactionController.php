@@ -378,9 +378,11 @@ class InventoryTransactionController extends Controller
     public function draftList(\Illuminate\Http\Request $request): JsonResponse
     {
         $limit = $request->query('limit', 10);
-        $transfers = $this->inventoryService->getTransfersPaginated(['status' => 'DRAFT'], $limit);
+        // "Baru Dibuat" = dokumen yang belum dikirim: DRAFT (transfer manual) +
+        // APPROVED (mis. hasil Permintaan Restock yang sudah di-approve & di-assign rak).
+        $transfers = $this->inventoryService->getTransfersPaginated(['statuses' => ['DRAFT', 'APPROVED']], $limit);
 
-        return $this->successPaginatedResponse($transfers, 'Daftar transfer draft (menunggu approval).');
+        return $this->successPaginatedResponse($transfers, 'Daftar transfer baru dibuat (belum dikirim).');
     }
 
     public function approvedList(\Illuminate\Http\Request $request): JsonResponse
@@ -437,6 +439,7 @@ class InventoryTransactionController extends Controller
                 'source_location_id' => 'nullable|uuid|exists:locations,id',
                 'destination_location_id' => 'nullable|uuid|exists:locations,id',
                 'notes' => 'nullable|string',
+                'transfer_number' => 'nullable|string|max:100|unique:inventory_transfers,transfer_number',
             ]);
 
             $result = $this->inventoryService->createDraft($validated);

@@ -668,7 +668,7 @@ class InventoryService
     {
         $transfer = DB::transaction(function () use ($data) {
             [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
-            $transferNumber = 'TRFO-' . now()->format('Ymd') . '-' . Str::upper(Str::random(4));
+            $transferNumber = $this->generateTransferNumber();
 
             $transfer = $this->transferRepository->create([
                 'transfer_number'          => $transferNumber,
@@ -752,7 +752,7 @@ class InventoryService
 
     public function approveTransfer(string $transferId, array $data): InventoryTransfer
     {
-        return DB::transaction(function () use ($transferId, $data) {
+        $transfer = DB::transaction(function () use ($transferId, $data) {
             $transfer = $this->transferRepository->findByIdForUpdate($transferId);
 
             if (! $transfer) {
@@ -761,6 +761,22 @@ class InventoryService
 
             if ($transfer->status !== InventoryTransfer::STATUS_DRAFT) {
                 throw new \Exception("Transfer berstatus {$transfer->status}, hanya draft yang bisa di-approve.");
+            }
+
+            if (! $transfer->source_location_id) {
+                throw new \Exception('Gudang asal belum diatur, tidak bisa di-approve.');
+            }
+
+            // Untuk item yang belum punya rak asal (mis. hasil Permintaan Restock),
+            // tetapkan rak otomatis dengan logika LIFO (stok masuk terakhir diambil dulu)
+            // lalu reserve stoknya dari rak tersebut. Item yang sudah punya rak
+            // (mis. dari transfer manual) dianggap sudah ter-reserve dan dilewati.
+            foreach ($transfer->items()->get() as $item) {
+                if (! empty($item->source_bin_id)) {
+                    continue;
+                }
+
+                $this->assignAndReserveItemLifo($transfer, $item, $data['approved_by']);
             }
 
             $transfer->update([
@@ -772,6 +788,118 @@ class InventoryService
 
             return $this->transferRepository->findById($transferId);
         });
+
+        $this->notifyChannelStock($transfer->items->pluck('item_id')->unique()->all());
+
+        return $transfer;
+    }
+
+    /**
+     * Alokasikan rak asal untuk satu item transfer memakai LIFO
+     * (baris inventory terbaru diambil lebih dulu), pecah item menjadi
+     * beberapa baris bila stok tersebar di banyak rak, lalu reserve stok
+     * dari tiap rak dan siapkan stok transit.
+     */
+    protected function assignAndReserveItemLifo(InventoryTransfer $transfer, InventoryTransferItem $item, string $actor): void
+    {
+        $needed = (int) $item->qty;
+        if ($needed <= 0) {
+            return;
+        }
+
+        // LIFO: baris inventory terbaru (created_at DESC) yang masih punya available.
+        $rows = Inventory::where('item_id', $item->item_id)
+            ->where('location_id', $transfer->source_location_id)
+            ->whereNotNull('bin_id')
+            ->where('available', '>', 0)
+            ->orderByDesc('created_at')
+            ->lockForUpdate()
+            ->get();
+
+        $totalAvailable = (int) $rows->sum('available');
+        if ($totalAvailable < $needed) {
+            $sku = optional($item->product)->sku ?? $item->item_id;
+            throw new \Exception("Stok tidak mencukupi di gudang asal untuk SKU {$sku} (butuh {$needed}, tersedia {$totalAvailable}).");
+        }
+
+        [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
+
+        $remaining = $needed;
+        $first = true;
+
+        foreach ($rows as $row) {
+            if ($remaining <= 0) {
+                break;
+            }
+
+            $take = min($remaining, (int) $row->available);
+            if ($take <= 0) {
+                continue;
+            }
+            $remaining -= $take;
+
+            // Baris pertama memakai item yang sudah ada; sisa alokasi jadi baris baru.
+            if ($first) {
+                $item->update([
+                    'source_bin_id' => $row->bin_id,
+                    'qty'           => $take,
+                    'batch_no'      => $row->batch_no,
+                    'serial_no'     => $row->serial_no,
+                    'sync_status'   => InventoryTransferItem::SYNC_SYNCED,
+                    'sync_error'    => null,
+                ]);
+                $first = false;
+            } else {
+                $this->transferRepository->createItem([
+                    'inventory_transfer_id' => $transfer->id,
+                    'item_id'               => $item->item_id,
+                    'qty'                   => $take,
+                    'source_bin_id'         => $row->bin_id,
+                    'batch_no'              => $row->batch_no,
+                    'serial_no'             => $row->serial_no,
+                    'sync_status'           => InventoryTransferItem::SYNC_SYNCED,
+                ]);
+            }
+
+            // Reserve di rak asal: available turun; on_hand tetap sampai barang dikirim.
+            $row->reserved += $take;
+            $this->inventoryRepository->updateStock($row);
+
+            $this->movementRepository->create([
+                'item_id'            => $item->item_id,
+                'location_id'        => $transfer->source_location_id,
+                'bin_id'             => $row->bin_id,
+                'transaction_number' => $transfer->transfer_number,
+                'source'             => 'TRANSFER_OUT',
+                'qty'                => -$take,
+                'balance'            => $row->on_hand,
+                'transaction_date'   => now(),
+                'created_by'         => $actor,
+            ]);
+
+            // Siapkan stok transit.
+            $transitInventory = $this->inventoryRepository->findOrCreateForUpdate(
+                $item->item_id,
+                $transitLocationId,
+                $transitBinId,
+                $row->batch_no ?? '',
+                $row->serial_no ?? '',
+            );
+            $transitInventory->on_hand += $take;
+            $this->inventoryRepository->updateStock($transitInventory);
+
+            $this->movementRepository->create([
+                'item_id'            => $item->item_id,
+                'location_id'        => $transitLocationId,
+                'bin_id'             => $transitBinId,
+                'transaction_number' => $transfer->transfer_number,
+                'source'             => 'TRANSIT_IN',
+                'qty'                => $take,
+                'balance'            => $transitInventory->on_hand,
+                'transaction_date'   => now(),
+                'created_by'         => $actor,
+            ]);
+        }
     }
 
     public function cancelTransfer(string $transferId, array $data): InventoryTransfer
@@ -787,7 +915,17 @@ class InventoryService
                 throw new \Exception("Transfer berstatus {$transfer->status}, hanya bisa dibatalkan sebelum dikirim.");
             }
 
+            [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
+
             foreach ($transfer->items as $item) {
+                // Hanya item yang sudah ter-reserve (SYNCED) yang perlu dilepas
+                // stoknya. Item yang belum ter-reserve (mis. draft yang reserve-nya
+                // gagal / belum jalan) tidak menyentuh stok, jadi dilewati.
+                if ($item->sync_status !== InventoryTransferItem::SYNC_SYNCED) {
+                    continue;
+                }
+
+                // Lepas reserve di rak asal.
                 $sourceInventory = $this->inventoryRepository->findExactForUpdate(
                     $item->item_id,
                     $transfer->source_location_id,
@@ -797,8 +935,48 @@ class InventoryService
                 );
 
                 if ($sourceInventory) {
-                    $sourceInventory->reserved -= $item->qty;
+                    $releaseQty = min((int) $item->qty, (int) $sourceInventory->reserved);
+                    $sourceInventory->reserved -= $releaseQty;
                     $this->inventoryRepository->updateStock($sourceInventory);
+
+                    $this->movementRepository->create([
+                        'item_id'            => $item->item_id,
+                        'location_id'        => $transfer->source_location_id,
+                        'bin_id'             => $item->source_bin_id,
+                        'transaction_number' => $transfer->transfer_number,
+                        'source'             => 'TRANSFER_OUT',
+                        'qty'                => $releaseQty,
+                        'balance'            => $sourceInventory->on_hand,
+                        'transaction_date'   => now(),
+                        'created_by'         => $data['cancelled_by'],
+                    ]);
+                }
+
+                // Tarik kembali stok yang sudah disiapkan di transit.
+                $transitInventory = $this->inventoryRepository->findExactForUpdate(
+                    $item->item_id,
+                    $transitLocationId,
+                    $transitBinId,
+                    $item->batch_no ?? '',
+                    $item->serial_no ?? '',
+                );
+
+                if ($transitInventory) {
+                    $deductQty = min((int) $item->qty, (int) $transitInventory->on_hand);
+                    $transitInventory->on_hand -= $deductQty;
+                    $this->inventoryRepository->updateStock($transitInventory);
+
+                    $this->movementRepository->create([
+                        'item_id'            => $item->item_id,
+                        'location_id'        => $transitLocationId,
+                        'bin_id'             => $transitBinId,
+                        'transaction_number' => $transfer->transfer_number,
+                        'source'             => 'TRANSIT_OUT',
+                        'qty'                => -$deductQty,
+                        'balance'            => $transitInventory->on_hand,
+                        'transaction_date'   => now(),
+                        'created_by'         => $data['cancelled_by'],
+                    ]);
                 }
             }
 
@@ -1161,9 +1339,27 @@ class InventoryService
         return $result;
     }
 
+    /**
+     * Nomor transfer keluar: format TRFO-XXXXXXXXX (tanpa tanggal), dijamin unik.
+     */
+    public function generateTransferNumber(): string
+    {
+        do {
+            $number = 'TRFO-' . str_pad((string) random_int(1, 999999999), 9, '0', STR_PAD_LEFT);
+        } while (InventoryTransfer::where('transfer_number', $number)->exists());
+
+        return $number;
+    }
+
     public function createDraft(array $data): InventoryTransfer
     {
-        $transferNumber = 'TRFO-' . now()->format('Ymd') . '-' . Str::upper(Str::random(4));
+        $manualNumber = isset($data['transfer_number']) ? trim((string) $data['transfer_number']) : '';
+
+        if ($manualNumber !== '' && InventoryTransfer::where('transfer_number', $manualNumber)->exists()) {
+            throw new \Exception("Nomor transfer \"{$manualNumber}\" sudah digunakan.");
+        }
+
+        $transferNumber = $manualNumber !== '' ? $manualNumber : $this->generateTransferNumber();
 
         $transfer = $this->transferRepository->create([
             'transfer_number' => $transferNumber,
@@ -1196,6 +1392,18 @@ class InventoryService
 
             if ($transfer->items->isEmpty()) {
                 throw new \Exception("Minimal harus ada 1 barang untuk diajukan.");
+            }
+
+            // Reserve stok berjalan asynchronous (queue). Pastikan semua item sudah
+            // ter-reserve (SYNCED) sebelum finalisasi agar stok tidak dobel/negatif.
+            $notReady = $transfer->items->first(
+                fn ($it) => $it->sync_status !== InventoryTransferItem::SYNC_SYNCED
+            );
+            if ($notReady) {
+                $reason = $notReady->sync_status === InventoryTransferItem::SYNC_FAILED
+                    ? ($notReady->sync_error ?? 'stok tidak mencukupi di rak asal')
+                    : 'stok masih diproses, mohon tunggu beberapa detik lalu coba lagi';
+                throw new \Exception("Transfer belum siap dikirim: {$reason}.");
             }
 
             foreach ($transfer->items as $item) {

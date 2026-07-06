@@ -38,6 +38,10 @@ class InventoryTransferRepository
             $query->where('status', $filters['status']);
         }
 
+        if (isset($filters['statuses']) && is_array($filters['statuses'])) {
+            $query->whereIn('status', $filters['statuses']);
+        }
+
         if (isset($filters['source_location_id'])) {
             $query->where('source_location_id', $filters['source_location_id']);
         }
