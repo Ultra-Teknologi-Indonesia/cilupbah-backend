@@ -89,6 +89,14 @@ class StockReplenishmentService
                 }
             }
 
+            // Menerima permintaan = menyetujui transfer keluar: tetapkan rak asal
+            // otomatis (LIFO) & reserve stok, sehingga transfer langsung berstatus
+            // APPROVED dan siap dicetak/dikirim (tanpa langkah approve manual).
+            $this->inventoryService->approveTransfer($transfer->id, [
+                'approved_by' => $actorId ?? 'system',
+                'assigned_to' => $assigneeUserId,
+            ]);
+
             $request->update([
                 'status'              => StockReplenishmentRequest::STATUS_ACCEPTED,
                 'accepted_at'         => now(),

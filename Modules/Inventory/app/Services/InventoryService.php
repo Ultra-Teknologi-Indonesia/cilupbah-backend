@@ -1246,17 +1246,87 @@ class InventoryService
 
     public function deleteTransfer(string $id): void
     {
-        $transfer = $this->transferRepository->findByIdForUpdate($id);
+        $itemIds = DB::transaction(function () use ($id) {
+            $transfer = $this->transferRepository->findByIdForUpdate($id);
 
-        if (!$transfer) {
-            throw new \Exception('Transfer tidak ditemukan.');
-        }
+            if (!$transfer) {
+                throw new \Exception('Transfer tidak ditemukan.');
+            }
 
-        if ($transfer->status !== InventoryTransfer::STATUS_DRAFT) {
-            throw new \Exception("Hanya transfer DRAFT yang bisa dihapus (status saat ini: {$transfer->status}).");
-        }
+            if (!in_array($transfer->status, [InventoryTransfer::STATUS_DRAFT, InventoryTransfer::STATUS_APPROVED])) {
+                throw new \Exception("Hanya transfer yang belum dikirim (Draft/Disetujui) yang bisa dihapus (status saat ini: {$transfer->status}).");
+            }
 
-        $this->transferRepository->delete($id);
+            $itemIds = $transfer->items->pluck('item_id')->unique()->all();
+            $actor = $transfer->created_by ?? 'system';
+
+            [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
+
+            // Lepas reserve + tarik balik transit untuk item yang sudah ter-reserve
+            // (mis. transfer manual DRAFT atau APPROVED hasil restock), agar stok
+            // tidak nyangkut setelah dokumen dihapus.
+            foreach ($transfer->items as $item) {
+                if ($item->sync_status !== InventoryTransferItem::SYNC_SYNCED) {
+                    continue;
+                }
+
+                $sourceInventory = $this->inventoryRepository->findExactForUpdate(
+                    $item->item_id,
+                    $transfer->source_location_id,
+                    $item->source_bin_id,
+                    $item->batch_no,
+                    $item->serial_no,
+                );
+                if ($sourceInventory) {
+                    $releaseQty = min((int) $item->qty, (int) $sourceInventory->reserved);
+                    $sourceInventory->reserved -= $releaseQty;
+                    $this->inventoryRepository->updateStock($sourceInventory);
+
+                    $this->movementRepository->create([
+                        'item_id'            => $item->item_id,
+                        'location_id'        => $transfer->source_location_id,
+                        'bin_id'             => $item->source_bin_id,
+                        'transaction_number' => $transfer->transfer_number,
+                        'source'             => 'TRANSFER_OUT',
+                        'qty'                => $releaseQty,
+                        'balance'            => $sourceInventory->on_hand,
+                        'transaction_date'   => now(),
+                        'created_by'         => $actor,
+                    ]);
+                }
+
+                $transitInventory = $this->inventoryRepository->findExactForUpdate(
+                    $item->item_id,
+                    $transitLocationId,
+                    $transitBinId,
+                    $item->batch_no ?? '',
+                    $item->serial_no ?? '',
+                );
+                if ($transitInventory) {
+                    $deductQty = min((int) $item->qty, (int) $transitInventory->on_hand);
+                    $transitInventory->on_hand -= $deductQty;
+                    $this->inventoryRepository->updateStock($transitInventory);
+
+                    $this->movementRepository->create([
+                        'item_id'            => $item->item_id,
+                        'location_id'        => $transitLocationId,
+                        'bin_id'             => $transitBinId,
+                        'transaction_number' => $transfer->transfer_number,
+                        'source'             => 'TRANSIT_OUT',
+                        'qty'                => -$deductQty,
+                        'balance'            => $transitInventory->on_hand,
+                        'transaction_date'   => now(),
+                        'created_by'         => $actor,
+                    ]);
+                }
+            }
+
+            $this->transferRepository->delete($id);
+
+            return $itemIds;
+        });
+
+        $this->notifyChannelStock($itemIds);
     }
 
     public function markTransferPrinted(string $transferId, string $printedBy): InventoryTransfer

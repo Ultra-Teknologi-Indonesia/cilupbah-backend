@@ -59,6 +59,10 @@ class InventoryTransferRepository
             'sourceLocation',
             'destinationLocation',
             'items.product:id,sku,product_id',
+            'items.product.product:id,name',
+            'items.product.media',
+            'items.product.product.media',
+            'items.product.options',
             'items.sourceBin:id,bin_final_code',
             'items.destinationBin:id,bin_final_code',
         ])->find($id);
