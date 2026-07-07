@@ -541,6 +541,10 @@ class SalesOrderRepository
             'paid_time'           => $orderData['paid_time'] ?? null,
             'ship_by_date'        => $orderData['ship_by_date'] ?? null,
             'pickup_done_time'    => $orderData['pickup_done_time'] ?? null,
+            // pickup_code = existing-wins: JANGAN timpa kode/PIN pengambilan yang
+            // sudah diisi manual (Fase 1) saat re-sync. Channel hanya mengisi kalau
+            // kolom masih kosong. Kebalikan dari tracking_number (channel-wins).
+            'pickup_code'         => ($existing->pickup_code ?? null) ?: ($orderData['pickup_code'] ?? null),
             'channel_updated_at'  => $orderData['channel_updated_at'] ?? null,
             'return_due_date'     => $orderData['return_due_date'] ?? null,
             'source'              => $orderData['source'],

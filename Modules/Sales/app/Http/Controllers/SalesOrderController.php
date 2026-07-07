@@ -13,6 +13,7 @@ use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Sales\Exports\CancelledOrdersExport;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
+use Modules\Sales\Http\Requests\SaveCourierPickupRequest;
 use Modules\Sales\Http\Resources\SalesOrderResource;
 use Modules\Sales\Jobs\CallShopeeDriverJob;
 use Modules\Sales\Support\ShopeeInstantEligibility;
@@ -543,6 +544,81 @@ class SalesOrderController extends Controller
         $order = $this->orderService->saveReceivedDate($validated);
 
         return $this->successResponse(new SalesOrderResource($order), 'Received date berhasil disimpan');
+    }
+
+    #[OA\Put(
+        path: '/api/v1/sales/{id}/courier-pickup',
+        summary: 'Save courier pickup proof (name, phone, pickup code)',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(required: false, content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: 'courier_name', type: 'string', nullable: true),
+                new OA\Property(property: 'courier_phone', type: 'string', nullable: true),
+                new OA\Property(property: 'pickup_code', type: 'string', nullable: true),
+            ]
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'Bukti pickup kurir berhasil disimpan'),
+            new OA\Response(response: 404, description: 'Order not found'),
+        ]
+    )]
+    public function saveCourierPickup(SaveCourierPickupRequest $request, string $id)
+    {
+        $order = $this->orderService->saveCourierPickup(
+            $id,
+            $request->only(['courier_name', 'courier_phone', 'pickup_code'])
+        );
+
+        return $this->successResponse(new SalesOrderResource($order), 'Bukti pickup kurir berhasil disimpan');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/sales/{id}/courier-pickup/photo',
+        summary: 'Upload courier ID photo (pickup proof)',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Foto identitas kurir berhasil diunggah'),
+            new OA\Response(response: 404, description: 'Order not found'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+        ]
+    )]
+    public function uploadCourierIdPhoto(Request $request, string $id)
+    {
+        $request->validate([
+            'photo' => ['required', 'file', 'image', 'max:4096'],
+        ]);
+
+        $order = $this->orderService->replaceCourierIdPhoto($id, $request->file('photo'));
+
+        return $this->successResponse(new SalesOrderResource($order), 'Foto identitas kurir berhasil diunggah');
+    }
+
+    #[OA\Delete(
+        path: '/api/v1/sales/{id}/courier-pickup/photo',
+        summary: 'Delete courier ID photo (pickup proof)',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Foto identitas kurir berhasil dihapus'),
+            new OA\Response(response: 404, description: 'Order not found'),
+        ]
+    )]
+    public function deleteCourierIdPhoto(string $id)
+    {
+        $order = $this->orderService->deleteCourierIdPhoto($id);
+
+        return $this->successResponse(new SalesOrderResource($order), 'Foto identitas kurir berhasil dihapus');
     }
 
     #[OA\Post(

@@ -96,6 +96,7 @@ class LazadaToInternalOrderMapper
             'payment_method_name' => $lazadaOrder['payment_method'] ?? null,
             'tracking_number' => $orderItems[0]['tracking_code'] ?? null,
             'shipping_provider' => $orderItems[0]['shipment_provider'] ?? null,
+            'pickup_code' => $this->extractPickupCode($lazadaOrder, $orderItems),
             'buyer_message' => $lazadaOrder['remarks'] ?? null,
             'seller_note' => null,
             'paid_time' => $isPaid ? $this->parseDate($lazadaOrder['updated_at'] ?? $lazadaOrder['created_at'] ?? null) : null,
@@ -106,6 +107,34 @@ class LazadaToInternalOrderMapper
             'priority_fulfillment' => false,
             'items' => $items,
         ];
+    }
+
+    /**
+     * Kode pengambilan (pickup code) untuk pesanan instant/sameday.
+     *
+     * CATATAN (Fase 2 — lihat PLANNING-BUKTI-PICKUP-KURIR.md §7):
+     * Response `orders/get` & `order/get` Lazada saat ini tidak mengekspos field
+     * kode pengambilan. Helper best-effort: memindai root order & item pertama;
+     * kalau tidak ada, null → `pickup_code` mengikuti input manual (existing-wins).
+     * Untuk auto-fill penuh: konfirmasi endpoint/field fulfillment Lazada.
+     */
+    protected function extractPickupCode(array $lazadaOrder, array $orderItems): ?string
+    {
+        $keys = ['pickup_code', 'collection_code', 'pickup_pin', 'drop_off_code'];
+
+        foreach ([$lazadaOrder, $orderItems[0] ?? []] as $source) {
+            if (! is_array($source)) {
+                continue;
+            }
+            foreach ($keys as $key) {
+                $val = $source[$key] ?? null;
+                if (is_string($val) && trim($val) !== '') {
+                    return trim($val);
+                }
+            }
+        }
+
+        return null;
     }
 
     protected function groupItems(array $orderItems): array

@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Services;
 
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -339,6 +340,45 @@ class SalesOrderService
     {
         $order = SalesOrder::findOrFail($data['order_id']);
         $order->update(['received_date' => $data['received_date'] ?? now()]);
+
+        return $order->fresh();
+    }
+
+    /**
+     * Simpan/ubah identitas kurir + kode pengambilan (bukti pickup kurir).
+     * Hanya field teks; foto identitas ditangani terpisah via media.
+     */
+    public function saveCourierPickup(string $id, array $data): SalesOrder
+    {
+        $order = SalesOrder::findOrFail($id);
+        $order->update([
+            'courier_name'               => $data['courier_name'] ?? null,
+            'courier_phone'              => $data['courier_phone'] ?? null,
+            'pickup_code'                => $data['pickup_code'] ?? null,
+            'courier_pickup_recorded_at' => now(),
+            'courier_pickup_recorded_by' => Auth::id() ?: null,
+        ]);
+
+        return $order->fresh();
+    }
+
+    public function replaceCourierIdPhoto(string $id, UploadedFile $photo): SalesOrder
+    {
+        $order = SalesOrder::findOrFail($id);
+        $order->clearMediaCollection('courier_id');
+        $order->addMedia($photo)->toMediaCollection('courier_id');
+        $order->update([
+            'courier_pickup_recorded_at' => now(),
+            'courier_pickup_recorded_by' => Auth::id() ?: null,
+        ]);
+
+        return $order->fresh();
+    }
+
+    public function deleteCourierIdPhoto(string $id): SalesOrder
+    {
+        $order = SalesOrder::findOrFail($id);
+        $order->clearMediaCollection('courier_id');
 
         return $order->fresh();
     }

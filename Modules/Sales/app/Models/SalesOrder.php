@@ -9,10 +9,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 use App\Traits\HasUuid7;
 use Modules\Outbound\Support\InstantOrderClassifier;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
-class SalesOrder extends Model
+class SalesOrder extends Model implements HasMedia
 {
-    use HasUuid7;
+    use HasUuid7, InteractsWithMedia;
 
     protected $table = 'sales_orders';
 
@@ -59,6 +62,11 @@ class SalesOrder extends Model
         'shipping_country',
         'dropshipper_name',
         'dropshipper_phone',
+        'courier_name',
+        'courier_phone',
+        'pickup_code',
+        'courier_pickup_recorded_at',
+        'courier_pickup_recorded_by',
         'status',
         'is_paid',
         'is_canceled',
@@ -146,6 +154,7 @@ class SalesOrder extends Model
         'decision_at'         => 'datetime',
         'received_date'       => 'datetime',
         'handed_to_warehouse_at' => 'datetime',
+        'courier_pickup_recorded_at' => 'datetime',
         'shipping_label_prepared_at' => 'datetime',
         'shipping_label_raw_data'    => 'array',
         'driver_call_attempted_at'   => 'datetime',
@@ -244,6 +253,22 @@ class SalesOrder extends Model
             $this->shipping_provider,
             $this->shipping_type,
         );
+    }
+
+    public function registerMediaCollections(): void
+    {
+        // Foto identitas kurir (bukti pickup). 1 foto per pesanan (Fase 1).
+        $this->addMediaCollection('courier_id')
+            ->singleFile()
+            ->acceptsMimeTypes(['image/png', 'image/jpeg', 'image/webp']);
+    }
+
+    public function registerMediaConversions(?Media $media = null): void
+    {
+        $this->addMediaConversion('thumb')
+            ->width(256)
+            ->height(256)
+            ->nonQueued();
     }
 
     public function invoices(): HasMany

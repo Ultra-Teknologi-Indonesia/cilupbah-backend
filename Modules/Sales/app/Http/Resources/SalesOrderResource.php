@@ -135,6 +135,16 @@ class SalesOrderResource extends JsonResource
                 'tracking_number' => $this->tracking_number,
             ],
 
+            'courier_pickup' => [
+                'courier_name'  => $this->courier_name,
+                'courier_phone' => $this->courier_phone,
+                'pickup_code'   => $this->pickup_code,
+                'id_photo_url'   => $this->getFirstMediaUrl('courier_id') ?: null,
+                'id_photo_thumb' => $this->getFirstMediaUrl('courier_id', 'thumb') ?: null,
+                'recorded_at'   => $this->courier_pickup_recorded_at,
+                'recorded_by'   => $this->courier_pickup_recorded_by,
+            ],
+
             'buyer_message' => $this->buyer_message,
             'seller_note'   => $this->seller_note,
 

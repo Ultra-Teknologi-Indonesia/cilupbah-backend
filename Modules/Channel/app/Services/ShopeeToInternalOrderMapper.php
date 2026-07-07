@@ -102,11 +102,35 @@ class ShopeeToInternalOrderMapper
             'paid_time' => $isPaid ? $this->parseTimestamp($shopeeOrder['pay_time'] ?? $shopeeOrder['create_time'] ?? null) : null,
             'ship_by_date' => $this->parseTimestampNullable($shopeeOrder['ship_by_date'] ?? null),
             'pickup_done_time' => $this->parseTimestampNullable($shopeeOrder['pickup_done_time'] ?? null),
+            'pickup_code' => $this->extractPickupCode($shopeeOrder),
             'channel_updated_at' => $this->parseTimestampNullable($shopeeOrder['update_time'] ?? null),
             'return_due_date' => $this->parseTimestampNullable($shopeeOrder['return_request_due_date'] ?? null),
             'source' => 'shopee',
             'items' => $items,
         ];
+    }
+
+    /**
+     * Kode pengambilan (pickup code / PIN kurir) untuk pesanan instant/sameday.
+     *
+     * CATATAN (Fase 2 — lihat PLANNING-BUKTI-PICKUP-KURIR.md §7):
+     * Response `get_order_detail` Shopee saat ini TIDAK memuat field kode
+     * pengambilan yang terkonfirmasi. Helper ini best-effort — memindai key yang
+     * paling mungkin; kalau tidak ada, mengembalikan null sehingga `pickup_code`
+     * mengikuti input manual (existing-wins di upsert). Untuk mengaktifkan auto-fill
+     * penuh: konfirmasi field via `get_package_detail` / `get_shipping_parameter`
+     * lalu teruskan nilainya ke sini (mis. dari `package_list[]`).
+     */
+    protected function extractPickupCode(array $shopeeOrder): ?string
+    {
+        foreach (['pickup_code', 'pickup_pin', 'collection_code', 'drop_off_code'] as $key) {
+            $val = $shopeeOrder[$key] ?? null;
+            if (is_string($val) && trim($val) !== '') {
+                return trim($val);
+            }
+        }
+
+        return null;
     }
 
     protected function mapItems(array $itemList): array

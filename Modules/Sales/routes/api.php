@@ -119,6 +119,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('sales/{id}/driver-call/retry', [SalesOrderController::class, 'retryDriverCall'])->whereUuid('id')->name('sales.orders.driver-call.retry');
     Route::put('sales/{id}/relocate', [SalesOrderController::class, 'relocate'])->whereUuid('id')->name('sales.orders.relocate');
 
+    Route::match(['put', 'patch'], 'sales/{id}/courier-pickup', [SalesOrderController::class, 'saveCourierPickup'])->whereUuid('id')->name('sales.orders.courier-pickup.save');
+    Route::post('sales/{id}/courier-pickup/photo', [SalesOrderController::class, 'uploadCourierIdPhoto'])->whereUuid('id')->name('sales.orders.courier-pickup.photo.upload');
+    Route::delete('sales/{id}/courier-pickup/photo', [SalesOrderController::class, 'deleteCourierIdPhoto'])->whereUuid('id')->name('sales.orders.courier-pickup.photo.delete');
+
     Route::post('sales/{id}/items/{itemId}/download', [SalesOrderController::class, 'downloadOrderItem'])
         ->whereUuid('id')->whereUuid('itemId')->name('sales.orders.items.download');
 

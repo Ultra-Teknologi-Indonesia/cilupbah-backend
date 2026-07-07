@@ -127,6 +127,7 @@ class TikTokToInternalOrderMapper
             'ship_by_date'         => ! empty($tiktokOrder['shipping_due_time']) ? date('Y-m-d H:i:s', $tiktokOrder['shipping_due_time'])
                                         : (! empty($tiktokOrder['rts_sla_time']) ? date('Y-m-d H:i:s', $tiktokOrder['rts_sla_time']) : null),
             'pickup_done_time'     => ! empty($tiktokOrder['collection_time']) ? date('Y-m-d H:i:s', $tiktokOrder['collection_time']) : null,
+            'pickup_code'          => $this->extractPickupCode($tiktokOrder),
             'channel_updated_at'   => ! empty($tiktokOrder['update_time']) ? date('Y-m-d H:i:s', $tiktokOrder['update_time']) : null,
             'source'               => 'tiktok',
 
@@ -136,6 +137,42 @@ class TikTokToInternalOrderMapper
 
             'items'                => $items,
         ];
+    }
+
+    /**
+     * Kode pengambilan (pickup code / collection code) untuk pesanan instant/sameday.
+     *
+     * CATATAN (Fase 2 — lihat PLANNING-BUKTI-PICKUP-KURIR.md §7):
+     * Field kode pengambilan TikTok belum terkonfirmasi dari dokumentasi API
+     * (v202309). Helper best-effort: memindai root order dan tiap `packages[]`;
+     * kalau tidak ada, null → `pickup_code` mengikuti input manual (existing-wins).
+     * Untuk auto-fill penuh: konfirmasi nama field (mis. di `packages[]`) via docs
+     * Bytedance lalu sesuaikan daftar key di bawah.
+     */
+    protected function extractPickupCode(array $tiktokOrder): ?string
+    {
+        $keys = ['pickup_code', 'collection_code', 'pickup_pin', 'otp'];
+
+        foreach ($keys as $key) {
+            $val = $tiktokOrder[$key] ?? null;
+            if (is_string($val) && trim($val) !== '') {
+                return trim($val);
+            }
+        }
+
+        foreach ($tiktokOrder['packages'] ?? [] as $package) {
+            if (! is_array($package)) {
+                continue;
+            }
+            foreach ($keys as $key) {
+                $val = $package[$key] ?? null;
+                if (is_string($val) && trim($val) !== '') {
+                    return trim($val);
+                }
+            }
+        }
+
+        return null;
     }
 
     protected function resolveChannelStatus(mixed $rawStatus, string $orderId): string
