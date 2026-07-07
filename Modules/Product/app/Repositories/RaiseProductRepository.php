@@ -41,7 +41,7 @@ class RaiseProductRepository
                 AllowedSort::field('created_at', 'raise_products.created_at'),
             )
             ->defaultSort('-raise_products.created_at')
-            ->paginate(request('per_page', 12))
+            ->paginate(request('per_page', 10))
             ->appends(request()->query());
     }
 
@@ -157,7 +157,7 @@ class RaiseProductRepository
                 AllowedSort::field('created_at', 'raise_product_details.created_at'),
             )
             ->defaultSort('raise_product_details.created_at')
-            ->paginate(request('per_page', 12))
+            ->paginate(request('per_page', 10))
             ->appends(request()->query());
     }
 
@@ -175,7 +175,7 @@ class RaiseProductRepository
                 AllowedSort::field('end_time', 'raise_product_details.end_time'),
             )
             ->defaultSort('-raise_product_details.end_time')
-            ->paginate(request('per_page', 12))
+            ->paginate(request('per_page', 10))
             ->appends(request()->query());
     }
 }

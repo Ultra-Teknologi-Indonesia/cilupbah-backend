@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ShopeeProductService;
 use Modules\Product\Jobs\RaiseProductJob;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
@@ -171,6 +172,12 @@ class RaiseProductManageTest extends TestCase
         $raise = RaiseProduct::create(['channel_shop_id' => $shop->id, 'is_active' => true]);
         $mapping = $this->makeMapping($shop, 'EXT-E-1');
         $detail = RaiseProductDetail::create(['raise_product_id' => $raise->id, 'product_channel_mapping_id' => $mapping->id, 'is_active' => true]);
+
+        $this->mock(ShopeeProductService::class, function ($mock) {
+            $mock->shouldReceive('boostItem')
+                ->once()
+                ->andReturn(['EXT-E-1' => ['success' => true, 'reason' => null]]);
+        });
 
         (new RaiseProductJob($raise->id, null))->handle(app(RaiseProductService::class));
 
