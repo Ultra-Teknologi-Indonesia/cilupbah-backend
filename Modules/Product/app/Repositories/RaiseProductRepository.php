@@ -34,7 +34,13 @@ class RaiseProductRepository
             ->allowedSearch('channel_shops.shop_name')
             ->allowedFilters(
                 AllowedFilter::callback('channel', fn ($query, $value) => $query->whereHas('channelShop.channel', fn ($channel) => $channel->where('code', $value))),
-                AllowedFilter::callback('shop_id', fn ($query, $value) => $query->whereHas('channelShop', fn ($shop) => $shop->where('shop_id', $value))),
+                AllowedFilter::callback('shop_id', fn ($query, $value) => $query->whereHas('channelShop', fn ($shop) => $shop->where(function ($q) use ($value) {
+                    if (\Illuminate\Support\Str::isUuid($value)) {
+                        $q->where('id', $value)->orWhere('shop_id', $value);
+                    } else {
+                        $q->where('shop_id', $value);
+                    }
+                }))),
                 AllowedFilter::callback('is_active', fn ($query, $value) => $query->where('raise_products.is_active', filter_var($value, FILTER_VALIDATE_BOOLEAN))),
             )
             ->allowedSorts(

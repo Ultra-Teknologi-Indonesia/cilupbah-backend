@@ -25,7 +25,13 @@ class ChannelProductListingRepository
             ->allowedSearch('products.name', 'products.sku')
             ->allowedFilters(
                 AllowedFilter::callback('channel', fn ($query, $value) => $query->whereHas('channelShop.channel', fn ($channel) => $channel->where('code', $value))),
-                AllowedFilter::callback('shop_id', fn ($query, $value) => $query->whereHas('channelShop', fn ($shop) => $shop->where('shop_id', $value))),
+                AllowedFilter::callback('shop_id', fn ($query, $value) => $query->whereHas('channelShop', fn ($shop) => $shop->where(function ($q) use ($value) {
+                    if (\Illuminate\Support\Str::isUuid($value)) {
+                        $q->where('id', $value)->orWhere('shop_id', $value);
+                    } else {
+                        $q->where('shop_id', $value);
+                    }
+                }))),
                 AllowedFilter::callback('sync_status', fn ($query, $value) => $query->where('product_channel_mappings.sync_status', $value)),
                 AllowedFilter::callback('min_price', fn ($query, $value) => $this->filterByPrice($query, '>=', $value)),
                 AllowedFilter::callback('max_price', fn ($query, $value) => $this->filterByPrice($query, '<=', $value)),
@@ -35,7 +41,7 @@ class ChannelProductListingRepository
                 AllowedSort::field('last_synced_at', 'product_channel_mappings.last_synced_at'),
             )
             ->defaultSort('-product_channel_mappings.created_at')
-            ->paginate(request('per_page', 20))
+            ->paginate(request('per_page', 10))
             ->appends(request()->query());
     }
 
