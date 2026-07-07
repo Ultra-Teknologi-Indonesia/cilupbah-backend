@@ -23,9 +23,18 @@ class SalesOrderRepository
         $query = QueryBuilder::for(SalesOrder::class)
             ->with(['items.product.media', 'items.product.product.media', 'location:id,location_name', 'shop:shop_id,shop_name,channel_id', 'shop.channel:id,code,name'])
             ->allowedFilters(
-                AllowedFilter::exact('source'),
-                AllowedFilter::exact('channel_shop_id'),
+                AllowedFilter::exact('channel', 'source'),
+                AllowedFilter::exact('store_id', 'channel_shop_id'),
                 AllowedFilter::exact('location_id'),
+                AllowedFilter::exact('shipping_provider'),
+                AllowedFilter::exact('decision', 'customer_decision'),
+                AllowedFilter::scope('date_from', 'whereDateFrom'),
+                AllowedFilter::scope('date_to', 'whereDateTo'),
+                AllowedFilter::callback('content_type', fn ($q, $value) => $this->applyContentTypeFilter($q, $value)),
+                AllowedFilter::callback('payment', fn ($q, $value) => $this->applyPaymentFilter($q, $value)),
+                AllowedFilter::callback('label_printed', fn ($q, $value) => $this->applyLabelPrintedFilter($q, $value)),
+                AllowedFilter::callback('contact_status', fn ($q, $value) => $this->applyContactStatusFilter($q, $value)),
+                AllowedFilter::callback('status', fn ($q, $value) => $this->applyStatusFilterScope($q, (array) $value)),
             )
             ->allowedSorts(...self::ORDER_SORTS)
             ->defaultSort('-created_at');
@@ -43,52 +52,10 @@ class SalesOrderRepository
             $query = $this->scopeExcludeFailedDownload($query);
         }
 
-        $query = $this->scopeExcludeHandedToWarehouse($query);
-
-        if ($channel = request('channel')) {
-            $query->where('source', $channel);
-        }
-        if ($storeId = request('store_id')) {
-            $query->where('channel_shop_id', $storeId);
-        }
-        if ($locationId = request('location_id')) {
-            $query->where('location_id', $locationId);
-        }
-        if ($dateFrom = request('date_from')) {
-            $query->whereDate('transaction_date', '>=', $dateFrom);
-        }
-        if ($dateTo = request('date_to')) {
-            $query->whereDate('transaction_date', '<=', $dateTo);
-        }
-        if ($contentType = request('content_type')) {
-            $query = $this->applyContentTypeFilter($query, $contentType);
-        }
-        if ($shippingProvider = request('shipping_provider')) {
-            $query->where('shipping_provider', $shippingProvider);
-        }
-
-        if ($payment = request('payment')) {
-            $p = strtolower((string) $payment);
-            if ($p === 'cod') $query->where('is_cod', true);
-            elseif ($p === 'noncod') $query->where(function ($q) { $q->where('is_cod', false)->orWhereNull('is_cod'); });
-        }
-
-        if ($labelPrinted = request('label_printed')) {
-            $lp = strtolower((string) $labelPrinted);
-            if ($lp === 'yes') $query->whereNotNull('shipping_label_prepared_at');
-            elseif ($lp === 'no') $query->whereNull('shipping_label_prepared_at');
-        }
-
-        if ($contactStatus = request('contact_status')) {
-            $cs = strtolower((string) $contactStatus);
-            if ($cs === 'contacted') $query->whereNotNull('contacted_at');
-            elseif ($cs === 'not_contacted') $query->whereNull('contacted_at');
-        }
-
-        if ($decision = request('decision')) {
-            if (in_array($decision, ['waiting', 'cancel', 'replace'], true)) {
-                $query->where('customer_decision', $decision);
-            }
+        if ($tab && $tab !== 'all') {
+            // Tab "Semua" tetap menampilkan order yang sudah diserahkan ke gudang
+            // (untuk histori/audit) — action-nya disembunyikan di FE, bukan di-exclude di sini.
+            $query = $this->scopeExcludeHandedToWarehouse($query);
         }
 
         if ($q = request('q')) {
@@ -131,7 +98,9 @@ class SalesOrderRepository
         );
 
         return [
-            'all'              => $this->visibleOrders()
+            // Selaras dengan getPaginatedOrders(): tab "Semua" tidak exclude order yang
+            // sudah diserahkan ke gudang, jadi badge count di sini juga tidak boleh exclude.
+            'all'              => $this->scopeExcludeFailedDownload(SalesOrder::query())
                 ->whereNull('pick_failed_at')
                 ->where(fn ($q) => $q
                     ->where('status', '!=', 'reserved')
@@ -280,6 +249,95 @@ class SalesOrderRepository
         };
     }
 
+    /**
+     * Bucket status granular untuk filter multi-select "Semua" (mirip "Cari status" Jubelio).
+     * Checkbox = OR antar bucket yang dipilih. Beda dari applyTabScope(): dipanggil TANPA
+     * exclude handed-to-warehouse (tab "Semua" tetap menampilkan order yang sudah di gudang),
+     * jadi tiap bucket post-handover menyatakan sendiri kondisinya secara eksplisit.
+     */
+    private const STATUS_FILTER_KEYS = [
+        'cancelled', 'unpaid', 'cancel-requested', 'completed', 'in-transit',
+        'ready-to-process', 'empty-stock', 'failed-pick',
+        'picking-belum', 'picking-diproses', 'picking-selesai',
+        'packing-diproses', 'ready-to-ship', 'waiting-shipment',
+    ];
+
+    protected function applyStatusFilterScope($query, array $statuses)
+    {
+        $keys = array_values(array_unique(array_intersect($statuses, self::STATUS_FILTER_KEYS)));
+
+        if (empty($keys)) {
+            return $query;
+        }
+
+        return $query->where(function ($q) use ($keys) {
+            foreach ($keys as $key) {
+                $q->orWhere(fn ($qq) => $this->applyStatusBucket($qq, $key));
+            }
+        });
+    }
+
+    protected function applyStatusBucket($query, string $key)
+    {
+        $emptyStockConstraint = fn ($q) => $q->whereRaw(
+            "sales_order_items.qty_in_base > COALESCE((
+                SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
+                FROM inventories
+                WHERE inventories.item_id = sales_order_items.item_id
+                  AND inventories.location_id = sales_orders.location_id
+            ), 0)"
+        );
+
+        return match ($key) {
+            'cancelled'        => $query->where('status', 'cancelled'),
+            'unpaid'           => $query->where('status', 'pending')->where('is_paid', false),
+            'cancel-requested' => $query->whereNotNull('cancel_requested_at')->where('status', '!=', 'cancelled'),
+            'completed'        => $query->where('status', 'shipped')->whereNotNull('received_date'),
+            'in-transit'       => $query->where('status', 'shipped')->whereNull('received_date'),
+
+            // Siap Proses: order lunas/masuk sistem, admin sales BELUM tekan "Proses" (belum di-handover).
+            'ready-to-process' => $query->where('status', 'reserved')
+                ->whereNull('pick_failed_at')
+                ->whereNull('handed_to_warehouse_at')
+                ->whereDoesntHave('picklistItems')
+                ->whereDoesntHave('items', $this->unmappedItemsConstraint())
+                ->whereDoesntHave('items', $emptyStockConstraint),
+            'empty-stock'      => $query->where('status', 'reserved')
+                ->whereNull('pick_failed_at')
+                ->whereNull('handed_to_warehouse_at')
+                ->whereHas('items', $emptyStockConstraint),
+            'failed-pick'      => $query->where('status', 'reserved')->whereNotNull('pick_failed_at'),
+
+            // Pengambilan Belum: sudah di-handover ke gudang, tapi picklist belum dibuat/belum dimulai.
+            'picking-belum'    => $query->where('status', 'reserved')
+                ->whereNotNull('handed_to_warehouse_at')
+                ->whereNull('pick_failed_at')
+                ->where(fn ($q) => $q
+                    ->whereDoesntHave('picklistItems')
+                    ->orWhereHas('picklistItems.picklist', fn ($qq) => $qq->where('status', 'DRAFT'))
+                ),
+            // Pengambilan Diproses: picklist terkait sedang berjalan.
+            'picking-diproses' => $query->where('status', 'reserved')
+                ->whereNull('pick_failed_at')
+                ->whereHas('picklistItems.picklist', fn ($q) => $q->where('status', 'IN_PROGRESS')),
+            // Pengambilan Selesai: picking selesai, belum ada packing aktif.
+            'picking-selesai'  => $query->where('status', 'picked')
+                ->whereDoesntHave('packlist', fn ($q) => $q->where('status', 'IN_PROGRESS')),
+
+            'packing-diproses' => $query->where('status', 'picked')
+                ->whereHas('packlist', fn ($q) => $q->where('status', 'IN_PROGRESS')),
+
+            // Siap Kirim: packing selesai, belum dibuatkan Shipment sama sekali.
+            'ready-to-ship'    => $query->where('status', 'packed')
+                ->whereDoesntHave('shipmentOrders'),
+            // Menunggu Kirim: Shipment sudah dibuat (resi keluar), belum diserahkan ke kurir.
+            'waiting-shipment' => $query->where('status', 'packed')
+                ->whereHas('shipmentOrders.shipment', fn ($q) => $q->where('status', 'SCHEDULED')),
+
+            default            => $query->whereRaw('1 = 0'),
+        };
+    }
+
     protected function applyContentTypeFilter($query, string $contentType)
     {
         return match ($contentType) {
@@ -289,6 +347,33 @@ class SalesOrderRepository
             'single_nqty' => $query->has('items', '=', 1)
                 ->whereHas('items', fn ($q) => $q->where('qty_in_base', '>', 1)),
             default       => $query,
+        };
+    }
+
+    protected function applyPaymentFilter($query, $value)
+    {
+        return match (strtolower((string) $value)) {
+            'cod'    => $query->where('is_cod', true),
+            'noncod' => $query->where(fn ($q) => $q->where('is_cod', false)->orWhereNull('is_cod')),
+            default  => $query,
+        };
+    }
+
+    protected function applyLabelPrintedFilter($query, $value)
+    {
+        return match (strtolower((string) $value)) {
+            'yes'   => $query->whereNotNull('shipping_label_prepared_at'),
+            'no'    => $query->whereNull('shipping_label_prepared_at'),
+            default => $query,
+        };
+    }
+
+    protected function applyContactStatusFilter($query, $value)
+    {
+        return match (strtolower((string) $value)) {
+            'contacted'     => $query->whereNotNull('contacted_at'),
+            'not_contacted' => $query->whereNull('contacted_at'),
+            default         => $query,
         };
     }
 

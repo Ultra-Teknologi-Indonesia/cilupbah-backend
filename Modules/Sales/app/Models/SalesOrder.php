@@ -172,6 +172,16 @@ class SalesOrder extends Model
         return $query->where('is_manual', true);
     }
 
+    public function scopeWhereDateFrom($query, $date)
+    {
+        return $query->whereDate('transaction_date', '>=', $date);
+    }
+
+    public function scopeWhereDateTo($query, $date)
+    {
+        return $query->whereDate('transaction_date', '<=', $date);
+    }
+
     public function isManual(): bool
     {
         return (bool) $this->is_manual;
