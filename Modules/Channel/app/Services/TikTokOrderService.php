@@ -3,6 +3,7 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
+use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Services\SalesOrderService as OrderService;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Repositories\ChannelOrderRepository;
@@ -65,6 +66,7 @@ class TikTokOrderService
 
             foreach ($res['data']['orders'] as $item) {
                 try {
+                    $this->dumpInstantPayloadForResearch($item, $shopId);
                     $internalData = $this->mapper->map($item, $shopId);
                     $internalData = $this->enrichTrackingFromPackages($internalData, $item, $shopCipher, $accessToken);
                     $this->orderService->upsertFromChannel($internalData);
@@ -104,6 +106,7 @@ class TikTokOrderService
         $count = 0;
         foreach ($res['data']['orders'] as $item) {
             try {
+                $this->dumpInstantPayloadForResearch($item, $shopId);
                 $internalData = $this->mapper->map($item, $shopId);
                 $internalData = $this->enrichTrackingFromPackages($internalData, $item, $shopCipher, $accessToken);
                 $this->orderService->upsertFromChannel($internalData);
@@ -114,6 +117,43 @@ class TikTokOrderService
         }
 
         return $count;
+    }
+
+    /**
+     * DEBUG-only (Fase 2 — riset kode pengambilan TikTok): kalau
+     * `services.tiktok.dump_instant_payload` (env TIKTOK_DUMP_INSTANT_PAYLOAD) aktif,
+     * log STRUKTUR order instant/sameday — daftar key top-level + array `packages`
+     * (lokasi paling mungkin field pickup code) + field shipping — TANPA PII pembeli
+     * dan HANYA untuk order instant, jadi tidak membanjiri log. Matikan lagi setelah
+     * nama field dikonfirmasi. Lihat PLANNING-BUKTI-PICKUP-KURIR.md §7.
+     */
+    protected function dumpInstantPayloadForResearch(array $item, string $shopId): void
+    {
+        if (! config('services.tiktok.dump_instant_payload')) {
+            return;
+        }
+
+        $provider = $item['packages'][0]['shipping_provider_name']
+            ?? ($item['line_items'][0]['shipping_provider_name'] ?? null);
+        $fulfillmentType = (string) ($item['fulfillment_type'] ?? '');
+
+        $isInstant = InstantOrderClassifier::isInstant($provider, $item['shipping_type'] ?? null)
+            || preg_match('/instant|same[- ]?day/i', $fulfillmentType) === 1;
+
+        if (! $isInstant) {
+            return;
+        }
+
+        Log::info('TikTok instant/sameday order payload (riset pickup_code)', [
+            'shop_id'            => $shopId,
+            'order_id'           => $item['id'] ?? null,
+            'top_level_keys'     => array_keys($item),
+            'shipping_type'      => $item['shipping_type'] ?? null,
+            'fulfillment_type'   => $item['fulfillment_type'] ?? null,
+            'delivery_option_id' => $item['delivery_option_id'] ?? null,
+            'tracking_number'    => $item['tracking_number'] ?? null,
+            'packages'           => $item['packages'] ?? null,
+        ]);
     }
 
     protected function enrichTrackingFromPackages(array $internalData, array $tiktokOrder, string $shopCipher, string $accessToken): array

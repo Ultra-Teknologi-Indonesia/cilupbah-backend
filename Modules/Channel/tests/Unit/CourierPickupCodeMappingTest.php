@@ -76,14 +76,17 @@ class CourierPickupCodeMappingTest extends TestCase
         $this->assertNull($result['pickup_code']);
     }
 
-    public function test_lazada_pickup_code_extracted_when_present(): void
+    public function test_lazada_pickup_code_always_null(): void
     {
+        // Terkonfirmasi: Lazada B2C tidak punya kode pengambilan kurir (pickup_order_no
+        // yang ada = JIT, bukan ini). Sengaja selalu null meski ada key nyasar.
         $result = (new LazadaToInternalOrderMapper())->map(
             ['order_id' => 900123, 'statuses' => ['pending'], 'price' => '100000.00'],
             [['pickup_code' => 'LZ-PIN-77']],
             'LZ-1',
         );
 
-        $this->assertSame('LZ-PIN-77', $result['pickup_code']);
+        $this->assertArrayHasKey('pickup_code', $result);
+        $this->assertNull($result['pickup_code']);
     }
 }

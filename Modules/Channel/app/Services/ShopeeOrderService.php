@@ -112,7 +112,9 @@ class ShopeeOrderService
         $orders = $res['response']['order_list'] ?? [];
 
         foreach ($orders as &$order) {
-            $order['tracking_number'] = $this->resolveTrackingNumber($shop, (string) ($order['order_sn'] ?? ''), (string) ($order['order_status'] ?? ''));
+            $logistics = $this->resolveLogistics($shop, (string) ($order['order_sn'] ?? ''), (string) ($order['order_status'] ?? ''));
+            $order['tracking_number'] = $logistics['tracking_number'];
+            $order['pickup_code'] = $logistics['pickup_code'];
         }
 
         return $orders;
@@ -120,18 +122,37 @@ class ShopeeOrderService
 
     public function resolveTrackingNumber(object $shop, string $orderSn, string $status): ?string
     {
+        return $this->resolveLogistics($shop, $orderSn, $status)['tracking_number'];
+    }
+
+    /**
+     * Ambil tracking_number + pickup_code dari satu panggilan get_tracking_number.
+     *
+     * `pickup_code` (kode pengambilan kurir) hanya dikembalikan Shopee untuk order
+     * ID lokal yang memakai pengiriman instant/sameday — untuk order lain field ini
+     * absen dan bernilai null. Digabung ke satu call agar tidak menambah request.
+     *
+     * @return array{tracking_number: ?string, pickup_code: ?string}
+     */
+    public function resolveLogistics(object $shop, string $orderSn, string $status): array
+    {
+        $empty = ['tracking_number' => null, 'pickup_code' => null];
+
         if ($orderSn === '' || ! in_array(strtoupper($status), ['READY_TO_SHIP', 'PROCESSED', 'SHIPPED', 'TO_CONFIRM_RECEIVE', 'COMPLETED'], true)) {
-            return null;
+            return $empty;
         }
 
         try {
             $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/logistics/get_tracking_number', ['order_sn' => $orderSn], $token, $shop->shop_id));
 
-            return $res['response']['tracking_number'] ?? null;
+            return [
+                'tracking_number' => $res['response']['tracking_number'] ?? null,
+                'pickup_code'     => $res['response']['pickup_code'] ?? null,
+            ];
         } catch (\Throwable $e) {
             Log::warning("Shopee: gagal ambil tracking number {$orderSn}: " . $e->getMessage());
 
-            return null;
+            return $empty;
         }
     }
 

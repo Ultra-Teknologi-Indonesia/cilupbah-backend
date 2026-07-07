@@ -113,24 +113,19 @@ class ShopeeToInternalOrderMapper
     /**
      * Kode pengambilan (pickup code / PIN kurir) untuk pesanan instant/sameday.
      *
-     * CATATAN (Fase 2 — lihat PLANNING-BUKTI-PICKUP-KURIR.md §7):
-     * Response `get_order_detail` Shopee saat ini TIDAK memuat field kode
-     * pengambilan yang terkonfirmasi. Helper ini best-effort — memindai key yang
-     * paling mungkin; kalau tidak ada, mengembalikan null sehingga `pickup_code`
-     * mengikuti input manual (existing-wins di upsert). Untuk mengaktifkan auto-fill
-     * penuh: konfirmasi field via `get_package_detail` / `get_shipping_parameter`
-     * lalu teruskan nilainya ke sini (mis. dari `package_list[]`).
+     * Sumber terkonfirmasi (docs Shopee): field `pickup_code` di response
+     * `v2.logistics.get_tracking_number` — "Only returned for ID local orders who
+     * using instant+sameday for delivery". `ShopeeOrderService::resolveLogistics()`
+     * sudah menyuntikkan nilainya ke `$shopeeOrder['pickup_code']` sebelum mapping,
+     * jadi di sini tinggal dibaca. Untuk order non-instant field ini absen → null,
+     * dan `pickup_code` mengikuti input manual (existing-wins di upsert).
+     * Lihat PLANNING-BUKTI-PICKUP-KURIR.md §7.
      */
     protected function extractPickupCode(array $shopeeOrder): ?string
     {
-        foreach (['pickup_code', 'pickup_pin', 'collection_code', 'drop_off_code'] as $key) {
-            $val = $shopeeOrder[$key] ?? null;
-            if (is_string($val) && trim($val) !== '') {
-                return trim($val);
-            }
-        }
+        $val = $shopeeOrder['pickup_code'] ?? null;
 
-        return null;
+        return is_string($val) && trim($val) !== '' ? trim($val) : null;
     }
 
     protected function mapItems(array $itemList): array

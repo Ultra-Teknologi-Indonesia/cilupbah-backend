@@ -112,28 +112,16 @@ class LazadaToInternalOrderMapper
     /**
      * Kode pengambilan (pickup code) untuk pesanan instant/sameday.
      *
-     * CATATAN (Fase 2 — lihat PLANNING-BUKTI-PICKUP-KURIR.md §7):
-     * Response `orders/get` & `order/get` Lazada saat ini tidak mengekspos field
-     * kode pengambilan. Helper best-effort: memindai root order & item pertama;
-     * kalau tidak ada, null → `pickup_code` mengikuti input manual (existing-wins).
-     * Untuk auto-fill penuh: konfirmasi endpoint/field fulfillment Lazada.
+     * TERKONFIRMASI TIDAK ADA (docs Lazada Open API): untuk order B2C standar,
+     * Lazada tidak mengekspos field kode pengambilan terpisah — hanya mengandalkan
+     * `tracking_number`. Field `pickup_order_no` yang ada di API spesifik untuk model
+     * Just-In-Time (JIT) ke gudang transit, BUKAN kode kurir instant/sameday, jadi
+     * sengaja tidak dipetakan ke sini. Akibatnya `pickup_code` di Lazada selalu
+     * mengikuti input manual (existing-wins di upsert).
+     * Lihat PLANNING-BUKTI-PICKUP-KURIR.md §7.
      */
     protected function extractPickupCode(array $lazadaOrder, array $orderItems): ?string
     {
-        $keys = ['pickup_code', 'collection_code', 'pickup_pin', 'drop_off_code'];
-
-        foreach ([$lazadaOrder, $orderItems[0] ?? []] as $source) {
-            if (! is_array($source)) {
-                continue;
-            }
-            foreach ($keys as $key) {
-                $val = $source[$key] ?? null;
-                if (is_string($val) && trim($val) !== '') {
-                    return trim($val);
-                }
-            }
-        }
-
         return null;
     }
 

@@ -99,6 +99,59 @@ class ShopeeOrderSyncTest extends TestCase
         $this->assertCount(1, $order->items);
     }
 
+    public function test_pull_orders_captures_pickup_code_from_tracking_number_response(): void
+    {
+        // Shopee mengembalikan pickup_code di get_tracking_number khusus order
+        // ID lokal instant/sameday. Pastikan ter-thread sampai ke sales_orders.
+        Http::fake([
+            'partner.shopeemobile.com/api/v2/order/get_order_list*' => Http::response([
+                'response' => [
+                    'order_list' => [['order_sn' => '2606SHOPEE01']],
+                    'more' => false,
+                    'next_cursor' => '',
+                ],
+            ], 200),
+            'partner.shopeemobile.com/api/v2/order/get_order_detail*' => Http::response([
+                'response' => ['order_list' => [$this->orderDetail(['order_status' => 'READY_TO_SHIP'])]],
+            ], 200),
+            'partner.shopeemobile.com/api/v2/logistics/get_tracking_number*' => Http::response([
+                'response' => ['tracking_number' => 'SPXID123456', 'pickup_code' => '482913'],
+            ], 200),
+        ]);
+
+        app(ShopeeOrderService::class)->pullOrders('778899');
+
+        $order = SalesOrder::where('salesorder_no', 'SP-2606SHOPEE01')->first();
+        $this->assertNotNull($order);
+        $this->assertEquals('SPXID123456', $order->tracking_number);
+        $this->assertEquals('482913', $order->pickup_code);
+    }
+
+    public function test_pull_orders_leaves_pickup_code_null_when_absent(): void
+    {
+        Http::fake([
+            'partner.shopeemobile.com/api/v2/order/get_order_list*' => Http::response([
+                'response' => [
+                    'order_list' => [['order_sn' => '2606SHOPEE01']],
+                    'more' => false,
+                    'next_cursor' => '',
+                ],
+            ], 200),
+            'partner.shopeemobile.com/api/v2/order/get_order_detail*' => Http::response([
+                'response' => ['order_list' => [$this->orderDetail(['order_status' => 'READY_TO_SHIP'])]],
+            ], 200),
+            'partner.shopeemobile.com/api/v2/logistics/get_tracking_number*' => Http::response([
+                'response' => ['tracking_number' => 'SPXID999'],
+            ], 200),
+        ]);
+
+        app(ShopeeOrderService::class)->pullOrders('778899');
+
+        $order = SalesOrder::where('salesorder_no', 'SP-2606SHOPEE01')->first();
+        $this->assertEquals('SPXID999', $order->tracking_number);
+        $this->assertNull($order->pickup_code);
+    }
+
     public function test_webhook_order_event_pulls_single_order(): void
     {
         Http::fake([
