@@ -519,14 +519,22 @@ class InventoryTransactionController extends Controller
             'page' => 'nullable|integer|min:1',
         ]);
 
-        $filters = ['status' => 'IN_TRANSIT'];
+        // Tab "Transfer Masuk" menampilkan transfer yang sedang dalam perjalanan
+        // maupun yang sudah diterima (badge status "Diterima"), bukan cuma yang
+        // masih menunggu. Hormati filter status eksplisit dari FE bila dikirim,
+        // supaya transfer yang baru selesai diterima tidak hilang dari daftar.
+        $statusFilter = $request->input('filter.status');
+        $filters = $statusFilter
+            ? ['status' => $statusFilter]
+            : ['statuses' => [InventoryTransfer::STATUS_IN_TRANSIT, InventoryTransfer::STATUS_RECEIVED]];
+
         if (!empty($validated['location_id'])) {
             $filters['destination_location_id'] = $validated['location_id'];
         }
 
         $transfers = $this->inventoryService->getTransfersPaginated($filters, (int) $request->query('limit', 10));
 
-        return $this->successPaginatedResponse($transfers, 'Daftar transfer masuk (menunggu diterima).');
+        return $this->successPaginatedResponse($transfers, 'Daftar transfer masuk.');
     }
 
     public function transfersOut(\Illuminate\Http\Request $request): JsonResponse

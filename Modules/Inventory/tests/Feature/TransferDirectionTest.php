@@ -82,15 +82,29 @@ class TransferDirectionTest extends TestCase
             ->assertStatus(422);
     }
 
-    public function test_in_without_location_returns_all_in_transit(): void
+    public function test_in_without_location_returns_in_transit_and_received(): void
+    {
+        $this->makeTransfer($this->a->id, $this->b->id, 'IN_TRANSIT');
+        $this->makeTransfer($this->b->id, $this->a->id, 'IN_TRANSIT');
+        $this->makeTransfer($this->a->id, $this->b->id, 'RECEIVED');
+
+        // Transfer yang sudah diterima harus tetap tampil (badge "Diterima"),
+        // bukan hilang dari daftar begitu status berubah jadi RECEIVED.
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/inventory/transfers/in')
+            ->assertStatus(200)
+            ->assertJsonCount(3, 'data');
+    }
+
+    public function test_in_with_explicit_status_filter_narrows_results(): void
     {
         $this->makeTransfer($this->a->id, $this->b->id, 'IN_TRANSIT');
         $this->makeTransfer($this->b->id, $this->a->id, 'IN_TRANSIT');
         $this->makeTransfer($this->a->id, $this->b->id, 'RECEIVED');
 
         $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/v1/inventory/transfers/in')
+            ->getJson('/api/v1/inventory/transfers/in?filter[status]=RECEIVED')
             ->assertStatus(200)
-            ->assertJsonCount(2, 'data');
+            ->assertJsonCount(1, 'data');
     }
 }
