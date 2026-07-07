@@ -378,6 +378,127 @@ class StockIntegrationTest extends TestCase
         ]);
     }
 
+    public function test_po_receive_with_qc_rejection_only_accepts_passing_qty(): void
+    {
+        $createResponse = $this->postJson('/api/v1/purchase/orders', [
+            'contact_id' => $this->contact->id,
+            'location_id' => $this->location->id,
+            'order_date'  => now()->toDateString(),
+            'created_by'  => 'admin',
+            'items'       => [
+                ['item_id' => $this->variant->id, 'qty' => 20, 'unit_price' => 80000],
+            ],
+        ]);
+        $poId = $createResponse->json('data.id');
+
+        $this->postJson("/api/v1/purchase/orders/{$poId}/approve");
+
+        $po = \Modules\Purchase\Models\PurchaseOrder::find($poId);
+        $poItem = $po->items->first();
+
+        $receiveResponse = $this->postJson("/api/v1/purchase/orders/{$poId}/receive", [
+            'received_by' => 'staff-gudang',
+            'items'       => [
+                [
+                    'purchase_order_item_id' => $poItem->id,
+                    'qty'                    => 15,
+                    'rejected_qty'           => 5,
+                    'rejection_note'         => 'Kemasan rusak',
+                ],
+            ],
+        ]);
+        $receiveResponse->assertOk();
+
+        // Hanya qty lolos QC (15) yang masuk stok bin inbound
+        $binInventory = Inventory::where('item_id', $this->variant->id)
+            ->where('location_id', $this->location->id)
+            ->where('bin_id', $this->binInbound->id)
+            ->first();
+        $this->assertNotNull($binInventory);
+        $this->assertEquals(15, $binInventory->on_hand);
+
+        // Inbound item mencatat pemisahan diterima vs ditolak
+        $this->assertDatabaseHas('inbound_items', [
+            'item_id'        => $this->variant->id,
+            'expected_qty'   => 20,
+            'received_qty'   => 15,
+            'rejected_qty'   => 5,
+            'rejection_note' => 'Kemasan rusak',
+        ]);
+
+        // PO tertutup penuh (tanpa retur): 15 + 5 = 20
+        $po->refresh();
+        $this->assertEquals('FULLY_RECEIVED', $po->status);
+    }
+
+    public function test_po_receive_item_fully_rejected_adds_no_stock(): void
+    {
+        $createResponse = $this->postJson('/api/v1/purchase/orders', [
+            'contact_id' => $this->contact->id,
+            'location_id' => $this->location->id,
+            'order_date'  => now()->toDateString(),
+            'created_by'  => 'admin',
+            'items'       => [
+                ['item_id' => $this->variant->id, 'qty' => 10, 'unit_price' => 80000],
+            ],
+        ]);
+        $poId = $createResponse->json('data.id');
+
+        $this->postJson("/api/v1/purchase/orders/{$poId}/approve");
+
+        $po = \Modules\Purchase\Models\PurchaseOrder::find($poId);
+        $poItem = $po->items->first();
+
+        $this->postJson("/api/v1/purchase/orders/{$poId}/receive", [
+            'received_by' => 'staff',
+            'items'       => [
+                [
+                    'purchase_order_item_id' => $poItem->id,
+                    'qty'                    => 0,
+                    'rejected_qty'           => 10,
+                    'rejection_note'         => 'Barang cacat semua',
+                ],
+            ],
+        ])->assertOk();
+
+        $binInventory = Inventory::where('item_id', $this->variant->id)
+            ->where('location_id', $this->location->id)
+            ->where('bin_id', $this->binInbound->id)
+            ->first();
+        $this->assertTrue($binInventory === null || (int) $binInventory->on_hand === 0);
+
+        $this->assertDatabaseHas('inbound_items', [
+            'item_id'      => $this->variant->id,
+            'received_qty' => 0,
+            'rejected_qty' => 10,
+        ]);
+    }
+
+    public function test_po_receive_rejects_empty_qc_line(): void
+    {
+        $createResponse = $this->postJson('/api/v1/purchase/orders', [
+            'contact_id' => $this->contact->id,
+            'location_id' => $this->location->id,
+            'order_date'  => now()->toDateString(),
+            'created_by'  => 'admin',
+            'items'       => [
+                ['item_id' => $this->variant->id, 'qty' => 10, 'unit_price' => 80000],
+            ],
+        ]);
+        $poId = $createResponse->json('data.id');
+        $this->postJson("/api/v1/purchase/orders/{$poId}/approve");
+
+        $po = \Modules\Purchase\Models\PurchaseOrder::find($poId);
+        $poItem = $po->items->first();
+
+        $this->postJson("/api/v1/purchase/orders/{$poId}/receive", [
+            'received_by' => 'staff',
+            'items'       => [
+                ['purchase_order_item_id' => $poItem->id, 'qty' => 0, 'rejected_qty' => 0],
+            ],
+        ])->assertStatus(422);
+    }
+
     public function test_po_partial_receive(): void
     {
         $createResponse = $this->postJson('/api/v1/purchase/orders', [

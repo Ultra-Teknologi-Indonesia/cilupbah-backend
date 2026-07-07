@@ -105,8 +105,9 @@
                 <th style="width:24px">No</th>
                 <th>SKU</th>
                 <th>Nama Produk</th>
-                <th style="width:70px">Qty Diharapkan</th>
-                <th style="width:70px">Qty Diterima</th>
+                <th style="width:64px">Qty Diharapkan</th>
+                <th style="width:60px">Qty Diterima</th>
+                <th style="width:56px">Qty Ditolak</th>
                 <th>Catatan</th>
             </tr>
         </thead>
@@ -116,6 +117,11 @@
                     $variant = $item->variant ?? null;
                     $sku = optional($variant)->sku ?? '-';
                     $name = optional(optional($variant)->product)->name ?? '-';
+                    $rejected = (int) ($item->rejected_qty ?? 0);
+                    $noteParts = array_filter([
+                        $item->notes ?? null,
+                        $rejected > 0 && ! empty($item->rejection_note) ? 'Ditolak: ' . $item->rejection_note : null,
+                    ]);
                 @endphp
                 <tr>
                     <td class="center mono">{{ $i + 1 }}</td>
@@ -123,11 +129,12 @@
                     <td>{{ $name }}</td>
                     <td class="num mono">{{ (int) $item->expected_qty }}</td>
                     <td class="num mono">{{ (int) ($item->received_qty ?? 0) }}</td>
-                    <td>{{ $item->notes ?? '-' }}</td>
+                    <td class="num mono">{{ $rejected }}</td>
+                    <td>{{ count($noteParts) ? implode(' — ', $noteParts) : '-' }}</td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="6" class="center" style="padding: 18px;">Tidak ada item.</td>
+                    <td colspan="7" class="center" style="padding: 18px;">Tidak ada item.</td>
                 </tr>
             @endforelse
         </tbody>
