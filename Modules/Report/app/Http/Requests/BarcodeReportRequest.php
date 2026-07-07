@@ -27,6 +27,12 @@ class BarcodeReportRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator) {
+            // Jangan query DB kalau aturan dasar (uuid, dsb.) sudah gagal —
+            // mencegah SQLSTATE 22P02 saat ids ter-encode/malformed.
+            if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
+
             $ids = $this->input('ids', []);
             if (! is_array($ids) || empty($ids)) {
                 return;
