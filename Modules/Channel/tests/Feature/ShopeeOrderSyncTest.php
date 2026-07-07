@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Modules\Channel\Jobs\ProcessShopeeWebhook;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ChannelDownloadService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\ShopeeToInternalOrderMapper;
 use Modules\Sales\Models\SalesOrder;
@@ -167,7 +168,10 @@ class ShopeeOrderSyncTest extends TestCase
             'data' => ['ordersn' => '2606SHOPEE01', 'status' => 'UNPAID'],
         ];
 
-        (new ProcessShopeeWebhook($payload))->handle(app(ShopeeOrderService::class));
+        (new ProcessShopeeWebhook($payload))->handle(
+            app(ShopeeOrderService::class),
+            app(ChannelDownloadService::class),
+        );
 
         $this->assertNotNull(SalesOrder::where('salesorder_no', 'SP-2606SHOPEE01')->first());
     }
