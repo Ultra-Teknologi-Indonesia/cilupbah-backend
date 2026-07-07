@@ -5,7 +5,10 @@ namespace Modules\Report\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Modules\Report\Http\Requests\BarcodeReportRequest;
 use Modules\Report\Http\Requests\HppReportRequest;
+use Modules\Report\Http\Requests\PenyesuaianStokPdfRequest;
 use Modules\Report\Services\ReportService;
 use OpenApi\Attributes as OA;
 
@@ -283,6 +286,52 @@ class ReportController extends Controller
         );
 
         return $this->successResponse($data, 'Laporan HPP berhasil diambil.');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/reports/barcode/preview',
+        summary: 'Preview data label barcode barang (per SKU / SKU induk, dengan/tanpa harga)',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        responses: [
+            new OA\Response(response: 200, description: 'Data label barcode berhasil diambil.'),
+            new OA\Response(response: 422, description: 'Validasi gagal.'),
+        ]
+    )]
+    public function barcodePreview(BarcodeReportRequest $request): JsonResponse
+    {
+        $data = $this->reportService->barcodeBuild($request->validated());
+
+        return $this->successResponse($data, 'Data label barcode berhasil diambil.');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/reports/penyesuaian-stok/pdf',
+        summary: 'Cetak PDF Daftar Penyesuaian Stok (periode, multi produk, multi lokasi)',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        responses: [
+            new OA\Response(response: 200, description: 'PDF Daftar Penyesuaian Stok.'),
+            new OA\Response(response: 422, description: 'Validasi gagal.'),
+        ]
+    )]
+    public function penyesuaianStokPdf(PenyesuaianStokPdfRequest $request): Response
+    {
+        $validated = $request->validated();
+        $pdf = $this->reportService->penyesuaianStokBuild($validated);
+
+        $filename = sprintf(
+            'Daftar-Penyesuaian-Stok_%s_%s.pdf',
+            $validated['start_date'],
+            $validated['end_date'],
+        );
+
+        $disposition = ($validated['download'] ?? false) ? 'attachment' : 'inline';
+
+        return response($pdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => "{$disposition}; filename=\"{$filename}\"",
+        ]);
     }
 
     public function lazadaGetDocument(Request $request): JsonResponse

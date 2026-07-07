@@ -2,6 +2,7 @@
 
 namespace Modules\Report\Services;
 
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
@@ -9,6 +10,9 @@ use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Models\StockOpname;
 use Modules\Inbound\Models\Inbound;
+use Modules\Product\Models\ProductChannelMapping;
+use Modules\Product\Models\ProductVariant;
+use Modules\Product\Models\ProductVariantChannelMapping;
 use Modules\Purchase\Models\PurchaseOrder;
 use Modules\Purchase\Models\PurchaseOrderItem;
 use Modules\Purchase\Models\PurchaseReturn;
@@ -336,6 +340,139 @@ class ReportService
                 'hpp_periode_snapshot' => round($hppPeriode, 2),
             ],
         ];
+    }
+
+    public function barcodeBuild(array $data): array
+    {
+        $jenis = $data['jenis'];
+        $ids = $data['ids'];
+        $harga = $data['harga'];
+
+        $variants = $jenis === 'sku_induk'
+            ? ProductVariant::where('is_active', true)->whereIn('product_id', $ids)->with('product:id,name')->orderBy('sku')->get()
+            : ProductVariant::whereIn('id', $ids)->with('product:id,name')->orderBy('sku')->get();
+
+        $onlineMappings = collect();
+        if ($harga === 'online' && $variants->isNotEmpty()) {
+            $onlineMappings = ProductVariantChannelMapping::whereIn('variant_id', $variants->pluck('id'))
+                ->whereHas('channelMapping', fn ($q) => $q->where('sync_status', ProductChannelMapping::STATUS_SYNCED))
+                ->with('channelMapping.channelShop.channel')
+                ->get()
+                ->groupBy('variant_id');
+        }
+
+        $labels = [];
+
+        foreach ($variants as $variant) {
+            $prices = [];
+
+            if ($harga === 'default') {
+                $prices[] = [
+                    'store_name' => null,
+                    'channel_code' => 'default',
+                    'price' => $variant->sell_price !== null ? (float) $variant->sell_price : null,
+                ];
+            } elseif ($harga === 'online') {
+                $variantMappings = $onlineMappings->get($variant->id, collect());
+                if ($variantMappings->isEmpty()) {
+                    continue;
+                }
+                foreach ($variantMappings as $mapping) {
+                    $shop = $mapping->channelMapping?->channelShop;
+                    $price = $mapping->synced_price ?? $variant->sell_price;
+                    $prices[] = [
+                        'store_name' => $shop?->shop_name,
+                        'channel_code' => $shop?->channel?->code,
+                        'price' => $price !== null ? (float) $price : null,
+                    ];
+                }
+            }
+
+            $labels[] = [
+                'sku' => $variant->sku,
+                'name' => $variant->product?->name ?? '-',
+                'prices' => $prices,
+            ];
+        }
+
+        $totalLabels = $harga === 'online'
+            ? collect($labels)->sum(fn ($l) => max(count($l['prices']), 1))
+            : count($labels);
+
+        return [
+            'report_type' => 'barcode',
+            'generated_at' => now()->toIso8601String(),
+            'meta' => [
+                'jenis' => $jenis,
+                'harga' => $harga,
+                'total_variants' => $variants->count(),
+                'total_labels' => $totalLabels,
+            ],
+            'labels' => $labels,
+        ];
+    }
+
+    public function penyesuaianStokBuild(array $data)
+    {
+        $startDate = $data['start_date'];
+        $endDate = $data['end_date'];
+        $productIds = $data['product_ids'] ?? [];
+        $locationIds = $data['location_ids'] ?? [];
+
+        $adjustments = StockAdjustment::with([
+                'items' => fn ($q) => $q->when(! empty($productIds), fn ($q2) => $q2->whereIn('item_id', $productIds)),
+                'items.product:id,product_id,sku',
+                'items.product.product:id,name',
+            ])
+            ->whereDate('transaction_date', '>=', $startDate)
+            ->whereDate('transaction_date', '<=', $endDate)
+            ->when(! empty($locationIds), fn ($q) => $q->whereIn('location_id', $locationIds))
+            ->orderBy('transaction_date')
+            ->get();
+
+        $rows = collect();
+
+        foreach ($adjustments as $adjustment) {
+            foreach ($adjustment->items as $item) {
+                $variant = $item->product;
+                if (! $variant) {
+                    continue;
+                }
+
+                $rows->push([
+                    'sku' => $variant->sku,
+                    'name' => $variant->product?->name ?? '-',
+                    'date' => $adjustment->transaction_date,
+                    'source' => $adjustment->adjustment_no,
+                    'note' => $item->notes ?: $adjustment->notes,
+                    'qty' => (float) $item->difference_qty,
+                ]);
+            }
+        }
+
+        $groups = $rows->groupBy('sku')
+            ->map(function ($items, $sku) {
+                $sorted = $items->sortBy('date')->values();
+
+                return [
+                    'sku' => $sku,
+                    'name' => $sorted->first()['name'],
+                    'unit' => 'Buah',
+                    'rows' => $sorted->all(),
+                    'total' => $sorted->sum('qty'),
+                ];
+            })
+            ->sortKeys()
+            ->values();
+
+        $pdf = Pdf::loadView('report::pdf.penyesuaian-stok', [
+            'groups' => $groups,
+            'start' => $startDate,
+            'end' => $endDate,
+        ]);
+        $pdf->setPaper('a4', 'portrait');
+
+        return $pdf;
     }
 
     private function wrapSingle($model, string $type): array
