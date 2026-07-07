@@ -289,20 +289,27 @@ class ReportController extends Controller
     }
 
     #[OA\Post(
-        path: '/api/v1/reports/barcode/preview',
-        summary: 'Preview data label barcode barang (per SKU / SKU induk, dengan/tanpa harga)',
+        path: '/api/v1/reports/barcode/pdf',
+        summary: 'Cetak PDF label QR barang (per SKU / SKU induk; Tanpa Harga / Default / Online)',
         security: [['bearerAuth' => []]],
         tags: ['Reports'],
         responses: [
-            new OA\Response(response: 200, description: 'Data label barcode berhasil diambil.'),
+            new OA\Response(response: 200, description: 'PDF label QR barang.'),
             new OA\Response(response: 422, description: 'Validasi gagal.'),
         ]
     )]
-    public function barcodePreview(BarcodeReportRequest $request): JsonResponse
+    public function barcodePdf(BarcodeReportRequest $request): Response
     {
-        $data = $this->reportService->barcodeBuild($request->validated());
+        $validated = $request->validated();
+        $pdf = $this->reportService->barcodePdf($validated);
 
-        return $this->successResponse($data, 'Data label barcode berhasil diambil.');
+        $filename = sprintf('Barcode-Barang_%s.pdf', now()->format('Ymd-His'));
+        $disposition = ($validated['download'] ?? false) ? 'attachment' : 'inline';
+
+        return response($pdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => "{$disposition}; filename=\"{$filename}\"",
+        ]);
     }
 
     #[OA\Post(

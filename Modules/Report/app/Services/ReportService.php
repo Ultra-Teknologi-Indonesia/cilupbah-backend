@@ -4,6 +4,7 @@ namespace Modules\Report\Services;
 
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\DB;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\Putaway;
@@ -342,8 +343,20 @@ class ReportService
         ];
     }
 
-    public function barcodeBuild(array $data): array
+    /**
+     * Bangun PDF label QR barang.
+     *
+     * Mode harga:
+     *  - tanpa_harga : 1 label per SKU (nama + QR + SKU)
+     *  - default     : 1 label per SKU (+ harga jual default)
+     *  - online      : 1 label per (SKU × toko yang listing-nya sudah SYNCED), tampil nama toko + harga channel
+     */
+    public function barcodePdf(array $data)
     {
+        // Label bisa ratusan (SKU induk × banyak varian × toko) — DomPDF butuh headroom.
+        ini_set('memory_limit', '1024M');
+        set_time_limit(120);
+
         $jenis = $data['jenis'];
         $ids = $data['ids'];
         $harga = $data['harga'];
@@ -361,18 +374,23 @@ class ReportService
                 ->groupBy('variant_id');
         }
 
-        $labels = [];
+        // Satu "cell" = satu label yang dicetak di grid PDF.
+        $cells = [];
+        $qrCache = [];
 
         foreach ($variants as $variant) {
-            $prices = [];
+            $sku = (string) $variant->sku;
+            if ($sku === '') {
+                continue;
+            }
+            $name = $variant->product?->name ?? '-';
 
-            if ($harga === 'default') {
-                $prices[] = [
-                    'store_name' => null,
-                    'channel_code' => 'default',
-                    'price' => $variant->sell_price !== null ? (float) $variant->sell_price : null,
-                ];
-            } elseif ($harga === 'online') {
+            if (! isset($qrCache[$sku])) {
+                $qrCache[$sku] = $this->qrDataUri($sku);
+            }
+            $qr = $qrCache[$sku];
+
+            if ($harga === 'online') {
                 $variantMappings = $onlineMappings->get($variant->id, collect());
                 if ($variantMappings->isEmpty()) {
                     continue;
@@ -380,40 +398,59 @@ class ReportService
                 foreach ($variantMappings as $mapping) {
                     $shop = $mapping->channelMapping?->channelShop;
                     $price = $mapping->synced_price ?? $variant->sell_price;
-                    $prices[] = [
+                    $cells[] = [
+                        'sku' => $sku,
+                        'name' => $name,
+                        'qr' => $qr,
                         'store_name' => $shop?->shop_name,
-                        'channel_code' => $shop?->channel?->code,
                         'price' => $price !== null ? (float) $price : null,
                     ];
                 }
+            } else {
+                $cells[] = [
+                    'sku' => $sku,
+                    'name' => $name,
+                    'qr' => $qr,
+                    'store_name' => null,
+                    'price' => $harga === 'default' && $variant->sell_price !== null
+                        ? (float) $variant->sell_price
+                        : null,
+                ];
             }
-
-            $labels[] = [
-                'sku' => $variant->sku,
-                'name' => $variant->product?->name ?? '-',
-                'prices' => $prices,
-            ];
         }
 
-        $totalLabels = $harga === 'online'
-            ? collect($labels)->sum(fn ($l) => max(count($l['prices']), 1))
-            : count($labels);
+        $pdf = Pdf::loadView('report::pdf.barcode', [
+            'cells' => $cells,
+            'mode' => $harga,
+        ]);
+        $pdf->setPaper('a4', 'portrait');
 
-        return [
-            'report_type' => 'barcode',
-            'generated_at' => now()->toIso8601String(),
-            'meta' => [
-                'jenis' => $jenis,
-                'harga' => $harga,
-                'total_variants' => $variants->count(),
-                'total_labels' => $totalLabels,
-            ],
-            'labels' => $labels,
-        ];
+        return $pdf;
+    }
+
+    private function qrDataUri(string $content): ?string
+    {
+        try {
+            $svg = QrCode::format('svg')
+                ->size(120)
+                ->margin(0)
+                ->errorCorrection('M')
+                ->generate($content);
+
+            return 'data:image/svg+xml;base64,' . base64_encode((string) $svg);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
     }
 
     public function penyesuaianStokBuild(array $data)
     {
+        // Tabel rowspan bisa besar untuk rentang lebar — DomPDF butuh headroom.
+        ini_set('memory_limit', '1024M');
+        set_time_limit(120);
+
         $startDate = $data['start_date'];
         $endDate = $data['end_date'];
         $productIds = $data['product_ids'] ?? [];
