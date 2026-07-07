@@ -58,10 +58,12 @@ class PicklistFailAndSplitTest extends TestCase
 
     private function seedProductVariant(string $sku): string
     {
+        DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Umum']);
         $productId = Str::uuid()->toString();
         DB::table('products')->insert([
             'id' => $productId,
             'name' => 'Prod-'.$sku,
+            'category_id' => 1,
             'created_at' => now(), 'updated_at' => now(),
         ]);
         $variantId = Str::uuid()->toString();
@@ -93,10 +95,10 @@ class PicklistFailAndSplitTest extends TestCase
         $id = Str::uuid()->toString();
         DB::table('sales_order_items')->insert([
             'id' => $id,
-            'sales_order_id' => $orderId,
+            'order_id' => $orderId,
             'item_id' => $itemId,
             'sku' => $sku,
-            'qty' => $qty,
+            'qty_in_base' => $qty,
             'created_at' => now(), 'updated_at' => now(),
         ]);
         return $id;
@@ -276,6 +278,7 @@ class PicklistFailAndSplitTest extends TestCase
         $ids = $this->seedPicklistWithItem($locationId, $variantId, 'SKU-G', 5);
 
         // Hit HTTP layer to exercise FormRequest validation.
+        $this->actingAs(\App\Models\User::find($userId), 'sanctum');
         $response = $this->postJson(
             "/api/v1/outbound/picklists/{$ids['picklist_id']}/items/{$ids['item_id']}/fail",
             ['reason_code' => 'OTHER'],

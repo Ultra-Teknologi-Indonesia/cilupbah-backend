@@ -117,15 +117,17 @@ class BundleStockCascadeTest extends TestCase
         $this->assertDatabaseHas('inventories', ['item_id' => $b->id, 'reserved' => 0]);
     }
 
-    public function test_pick_deducts_component_on_hand(): void
+    public function test_pick_drains_component_reservation_without_cutting_on_hand(): void
     {
         [$a, $b, $bundleVar] = $this->makeBundle(100, 100);
 
         $this->stock()->reserve('BUNDLE-1', $bundleVar->id, $this->locationId, 4, 'SO-1');
         $this->stock()->pick('BUNDLE-1', $bundleVar->id, $this->locationId, 4, 'SO-1');
 
-        $this->assertDatabaseHas('inventories', ['item_id' => $a->id, 'on_hand' => 92, 'reserved' => 0]);
-        $this->assertDatabaseHas('inventories', ['item_id' => $b->id, 'on_hand' => 88, 'reserved' => 0]);
+        // StockService::pickSingle() sengaja hanya drain reserved di row aggregate; pemotongan
+        // on_hand fisik terjadi di PicklistService::pickItem() per-scan, bukan di sini.
+        $this->assertDatabaseHas('inventories', ['item_id' => $a->id, 'on_hand' => 100, 'reserved' => 0]);
+        $this->assertDatabaseHas('inventories', ['item_id' => $b->id, 'on_hand' => 100, 'reserved' => 0]);
     }
 
     public function test_insufficient_component_stock_is_atomic(): void
