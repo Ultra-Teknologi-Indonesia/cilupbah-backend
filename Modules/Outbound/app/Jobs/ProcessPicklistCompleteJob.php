@@ -49,19 +49,32 @@ class ProcessPicklistCompleteJob implements ShouldQueue
                     true,
                 ));
 
-                // Update sales_order_items.fulfillment_status per item.
-                foreach ($items as $it) {
-                    if (in_array($it->item_status, [PicklistItem::STATUS_SHORT, PicklistItem::STATUS_REJECTED], true)) {
+                // Update sales_order_items.fulfillment_status per order_item
+                // (bundle items expand to multiple picklist rows for the same order_item_id).
+                $itemsByOrderItem = $items->groupBy('order_item_id');
+                foreach ($itemsByOrderItem as $orderItemId => $parts) {
+                    $anyShort = $parts->contains(fn ($it) => in_array(
+                        $it->item_status,
+                        [PicklistItem::STATUS_SHORT, PicklistItem::STATUS_REJECTED],
+                        true,
+                    ));
+
+                    if ($anyShort) {
+                        $shortPart = $parts->first(fn ($it) => in_array(
+                            $it->item_status,
+                            [PicklistItem::STATUS_SHORT, PicklistItem::STATUS_REJECTED],
+                            true,
+                        ));
                         DB::table('sales_order_items')
-                            ->where('id', $it->order_item_id)
+                            ->where('id', $orderItemId)
                             ->update([
-                                'fulfillment_status' => $it->item_status,
-                                'short_qty'          => (int) ($it->failed_qty ?? 0),
+                                'fulfillment_status' => $shortPart->item_status,
+                                'short_qty'          => $parts->sum(fn ($it) => (int) ($it->failed_qty ?? 0)),
                                 'updated_at'         => now(),
                             ]);
-                    } elseif ((int) $it->qty_picked >= (int) $it->qty_ordered) {
+                    } elseif ($parts->every(fn ($it) => (int) $it->qty_picked >= (int) $it->qty_ordered)) {
                         DB::table('sales_order_items')
-                            ->where('id', $it->order_item_id)
+                            ->where('id', $orderItemId)
                             ->update([
                                 'fulfillment_status' => 'PICKED',
                                 'updated_at'         => now(),

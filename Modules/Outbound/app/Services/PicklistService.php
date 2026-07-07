@@ -15,6 +15,7 @@ use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Services\InventoryService;
+use Modules\Product\Repositories\ProductRepository;
 use Modules\Warehouse\Models\LocationBin;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +26,7 @@ class PicklistService
         protected PicklistRepository $picklistRepository,
         protected InventoryMovementRepository $movementRepository,
         protected InventoryService $inventoryService,
+        protected ProductRepository $productRepository,
     ) {}
 
     public function getAllPaginated(int $limit = 10)
@@ -68,16 +70,33 @@ class PicklistService
 
             foreach ($orders as $order) {
                 foreach ($order->items as $orderItem) {
-                    $this->picklistRepository->createItem([
-                        'picklist_id' => $picklist->id,
-                        'order_id' => $order->id,
-                        'order_item_id' => $orderItem->id,
-                        'item_id' => $orderItem->item_id,
-                        'sku' => $orderItem->sku,
-                        'bin_id' => null,
-                        'qty_ordered' => $orderItem->qty_in_base,
-                        'qty_picked' => 0,
-                    ]);
+                    $components = $this->productRepository->bundleComponentsForVariant($orderItem->item_id);
+
+                    if ($components !== null) {
+                        foreach ($components as $comp) {
+                            $this->picklistRepository->createItem([
+                                'picklist_id' => $picklist->id,
+                                'order_id' => $order->id,
+                                'order_item_id' => $orderItem->id,
+                                'item_id' => $comp['variant_id'],
+                                'sku' => $comp['sku'] ?? $orderItem->sku,
+                                'bin_id' => null,
+                                'qty_ordered' => $orderItem->qty_in_base * $comp['qty'],
+                                'qty_picked' => 0,
+                            ]);
+                        }
+                    } else {
+                        $this->picklistRepository->createItem([
+                            'picklist_id' => $picklist->id,
+                            'order_id' => $order->id,
+                            'order_item_id' => $orderItem->id,
+                            'item_id' => $orderItem->item_id,
+                            'sku' => $orderItem->sku,
+                            'bin_id' => null,
+                            'qty_ordered' => $orderItem->qty_in_base,
+                            'qty_picked' => 0,
+                        ]);
+                    }
                 }
             }
 
@@ -340,6 +359,14 @@ class PicklistService
 
         $candidates = $this->suggestBinsForItem($picklist, $item);
 
+        if ($candidates->isEmpty()) {
+            $isBundle = $this->productRepository->bundleComponentsForVariant($item->item_id) !== null;
+            $msg = $isBundle
+                ? "Stok komponen bundle {$item->sku} kosong di gudang ini. Pastikan semua komponen sudah di-receive & putaway."
+                : "Stok {$item->sku} kosong di gudang ini. Butuh replenishment.";
+            throw new OutboundValidationException($msg);
+        }
+
         $default = $this->pickDefaultCandidate($candidates, $remaining, $hintActiveBinCode);
         $binSource = $hintActiveBinCode !== null && strcasecmp($default['bin_code'], $hintActiveBinCode) === 0
             ? 'hint'
@@ -383,7 +410,7 @@ class PicklistService
 
     /**
      * Cari semua bin (di lokasi picklist) yang menyimpan item ini dengan on_hand > 0.
-     * Urutan FIFO by inventory.created_at. Tolak kalau kosong (butuh replenishment).
+     * Urutan FIFO by inventory.created_at. Koleksi kosong kalau tidak ada stok di bin.
      */
     private function suggestBinsForItem(Picklist $picklist, PicklistItem $item): \Illuminate\Support\Collection
     {
@@ -394,19 +421,13 @@ class PicklistService
             ->orderBy('created_at')
             ->get();
 
-        $candidates = $rows
+        return $rows
             ->filter(fn ($inv) => $inv->bin !== null)
             ->map(fn ($inv) => [
                 'bin_id' => $inv->bin_id,
                 'bin_code' => $inv->bin->bin_final_code,
                 'on_hand' => (int) $inv->on_hand,
             ]);
-
-        if ($candidates->isEmpty()) {
-            throw new OutboundValidationException("Stok {$item->sku} kosong di gudang ini. Butuh replenishment.");
-        }
-
-        return $candidates;
     }
 
     /**
