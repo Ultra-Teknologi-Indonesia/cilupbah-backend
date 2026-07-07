@@ -7,6 +7,8 @@ use App\Traits\ApiResponse;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Maatwebsite\Excel\Facades\Excel;
+use Modules\Outbound\Exports\ShipmentManifestExport;
 use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Services\ShipmentService;
 use Modules\Outbound\Http\Requests\CreateShipmentRequest;
@@ -507,6 +509,42 @@ class ShipmentController extends Controller
         } catch (Throwable $e) {
             report($e);
             return $this->errorResponse('Gagal membuat PDF manifest: ' . $e->getMessage(), 500);
+        }
+    }
+
+    #[OA\Get(
+        path: '/api/v1/outbound/shipments/{id}/manifest-excel',
+        summary: 'Unduh manifest pengiriman sebagai Excel (.xlsx)',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Shipment'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'XLSX file stream',
+                content: new OA\MediaType(mediaType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+            ),
+            new OA\Response(response: 404, description: 'Shipment tidak ditemukan'),
+        ]
+    )]
+    public function manifestExcel(string $id)
+    {
+        $shipment = $this->shipmentService->getById($id);
+
+        if (!$shipment) {
+            return $this->errorResponse('Shipment tidak ditemukan.', 404);
+        }
+
+        try {
+            $shipmentNo = $shipment->shipment_no ?? 'SHP';
+            $filename = "{$shipmentNo}-manifest.xlsx";
+
+            return Excel::download(new ShipmentManifestExport($shipment), $filename);
+        } catch (Throwable $e) {
+            report($e);
+            return $this->errorResponse('Gagal membuat Excel manifest: ' . $e->getMessage(), 500);
         }
     }
 
