@@ -42,11 +42,13 @@ class ConsolidateCouriersCommandTest extends TestCase
         $this->assertSame(1, Courier::where('code', 'jne')->where('is_active', true)->count());
         $this->assertSame('JNE', Courier::where('code', 'jne')->first()->name);
 
-        $this->assertSame(1, Courier::where('code', 'spx')->where('is_active', true)->count());
-        $this->assertSame('SPX', Courier::where('code', 'spx')->first()->name);
+        $this->assertSame(1, Courier::where('name', 'SPX')->where('is_active', true)->count());
 
-        // 4 baris JNE + 4 baris SPX lama dinonaktifkan, bukan dihapus.
-        $this->assertSame(8, Courier::where('is_active', false)->count());
+        // "Spx" adalah kurir kanonik (SPX) — dipertahankan & diperbaiki casing-nya,
+        // BUKAN dilebur ke baris baru. Jadi hanya 3 varian SPX mentah + 4 varian
+        // JNE mentah = 7 baris dinonaktifkan.
+        $this->assertSame(7, Courier::where('is_active', false)->count());
+        $this->assertSame(0, Courier::where('name', 'Spx')->count());
 
         // Kurir lokal yang memang cuma 1 baris tidak disentuh.
         $ambilSendiri = Courier::where('name', 'Ambil Sendiri')->first();
@@ -54,10 +56,10 @@ class ConsolidateCouriersCommandTest extends TestCase
         $this->assertTrue((bool) $ambilSendiri->is_active);
 
         // Jejak nama mentah tetap ada untuk auto-mapping order berikutnya.
-        $this->assertSame(8, CourierChannelMapping::where('channel_code', 'legacy')->count());
+        $this->assertSame(7, CourierChannelMapping::where('channel_code', 'legacy')->count());
         $spxInstantMapping = CourierChannelMapping::where('external_name', 'SPX Instant')->first();
         $this->assertNotNull($spxInstantMapping);
-        $this->assertSame('spx', $spxInstantMapping->courier->code);
+        $this->assertSame('SPX', $spxInstantMapping->courier->name);
     }
 
     public function test_apply_is_idempotent(): void
@@ -68,7 +70,7 @@ class ConsolidateCouriersCommandTest extends TestCase
         $this->artisan('couriers:consolidate', ['--apply' => true])->assertSuccessful();
 
         $this->assertSame(1, Courier::where('code', 'jne')->where('is_active', true)->count());
-        $this->assertSame(1, Courier::where('code', 'spx')->where('is_active', true)->count());
-        $this->assertSame(8, CourierChannelMapping::count());
+        $this->assertSame(1, Courier::where('name', 'SPX')->where('is_active', true)->count());
+        $this->assertSame(7, CourierChannelMapping::count());
     }
 }

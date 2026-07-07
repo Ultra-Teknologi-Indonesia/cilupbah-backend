@@ -16,11 +16,12 @@ use Modules\Outbound\Models\Courier;
  *   duplikasi record per tenant harus dilakukan dengan seeder lain.
  * - Kode di-generate deterministik dari nama (slug uppercase). Bentrok
  *   diselesaikan dengan suffix `_2`, `_3`, dst.
- * - Daftar ini sudah dikonsolidasi (lihat PLANNING-KONSOLIDASI-KURIR.md di root
- *   repo & `ConsolidateCouriersCommand`): varian per-layanan channel (mis.
- *   "JNE REG"/"JNE YES"/"JNE OKE", "SPX Instant"/"SPX Standard") sudah digabung
- *   jadi satu nama kanonik per kurir (JNE, SPX, dst), supaya seed di environment
- *   baru tidak menghasilkan lagi daftar kurir yang pecah/berlebihan.
+ * - Daftar nama dibaca dari file JSON `database/seeders/data/couriers.json`
+ *   (persis 141 kurir kanonik bentuk Jubelio). SATU sumber kebenaran, dipakai
+ *   juga oleh `couriers:sync-master`. Untuk ubah master: edit JSON itu (tinggal
+ *   paste array {courier_id, courier_name}) lalu seed / `couriers:sync-master`.
+ *   Karena tetap, seed di environment baru tidak lagi menghasilkan daftar kurir
+ *   yang pecah/berlebihan (lihat PLANNING-KONSOLIDASI-KURIR.md).
  *
  * Cara jalan (production):
  *   php artisan module:seed Outbound --class=CourierSeeder
@@ -31,7 +32,7 @@ class CourierSeeder extends Seeder
 {
     public function run(): void
     {
-        $names = $this->courierNames();
+        $names = self::canonicalNames();
 
         DB::transaction(function () use ($names) {
             foreach ($names as $name) {
@@ -40,7 +41,7 @@ class CourierSeeder extends Seeder
                     continue;
                 }
 
-                $code = $this->uniqueCodeFor($normalized);
+                $code = self::uniqueCodeFor($normalized);
 
                 Courier::firstOrCreate(
                     ['code' => $code],
@@ -58,9 +59,9 @@ class CourierSeeder extends Seeder
         });
     }
 
-    private function uniqueCodeFor(string $name): string
+    public static function uniqueCodeFor(string $name): string
     {
-        $base = $this->makeCode($name);
+        $base = self::makeCode($name);
         $code = $base;
         $i = 2;
 
@@ -76,7 +77,7 @@ class CourierSeeder extends Seeder
         return $code;
     }
 
-    private function makeCode(string $name): string
+    public static function makeCode(string $name): string
     {
         $slug = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $name);
         if ($slug === false || $slug === '') {
@@ -99,327 +100,41 @@ class CourierSeeder extends Seeder
     }
 
     /**
+     * Daftar kurir kanonik — SATU sumber kebenaran untuk seeder & command
+     * `couriers:sync-master`. Persis daftar yang diminta (bentuk Jubelio).
+     *
      * @return string[]
      */
-    private function courierNames(): array
+    public static function canonicalNames(): array
     {
-        return [
-            '21 Express',
-            'ABC TRANSPORT',
-            'ACC CARGO',
-            'ACC LOGISTIK',
-            'ADAM JAYA SAKTI',
-            'AGUNG PRIMA',
-            'AJU-EXPRESS',
-            'ALKEN LINES',
-            'AMAN SAMUDERA',
-            'AMAN SURYA NUSA',
-            'AN Putra Transport',
-            'ANEKA LOGISTIK',
-            'ANGKASA DIRGAMANDIRI',
-            'ANTARIKSA ANTARNUSA',
-            'AR KARYATI',
-            'ARIFIN DIRGANTARA',
-            'ARMADA JAYA',
-            'ASM EKSPEDISI',
-            'ATLAS',
-            'ATOM MULTI A',
-            'Acm',
-            'Adam',
-            'Agung',
-            'Agung Mabes',
-            'Al-Kafii Cargo',
-            'Amalindo Indonesia',
-            'Ambil Sendiri',
-            'Ambil Sendiri di PT Behaestex (Khusus Gresik)',
-            'Ambil ke pabrik',
-            'Ambil ke toko',
-            'Ambra Logistik',
-            'Angkunas',
-            'AnterAja',
-            'Anugerah Selamat Sejahtera',
-            'Armada Pabrik',
-            'Armada Pratama',
-            'Auto Cargo',
-            'BALI PRIMA',
-            'BANYUWANGI CEPAT',
-            'BARAKA SARANA TAMA',
-            'BERKAH CAHAYA TRANS',
-            'BERKAT SEJATI',
-            'BINA USAHA',
-            'BINTANG MAS',
-            'BNE',
-            'BUANA LANGGENG JAYA',
-            'BUANA RAYA EKSPRES',
-            'BUANA TRAVEL',
-            'Baraka',
-            'Bariz',
-            'Berkat',
-            'Berkat Abadi Jaya',
-            'Berkat Maju Jaya',
-            'Berkat Maju Sentosa',
-            'Blitz Marketplace',
-            'Blitz-ID INSTANT',
-            'Buana Raya Express',
-            'Bus',
-            'CANDRA DEWI',
-            'CATUR MANDIRITAMA',
-            'CKB CARGO',
-            'CMC',
-            'CMC Express',
-            'CNT Cargo',
-            'CV. Alwi Jaya Transport',
-            'Cargo',
-            'Charter Pick-Up',
-            'Cinta Saudara',
-            'Cipta Maju',
-            'Citra Express',
-            'Cosmos Pusat',
-            'Custom Courier',
-            'Custom Logistik Service Normal',
-            'C²',
-            'D\'SEA LOGISTIC',
-            'DAKOGA BUANA SEMESTA',
-            'DAMAI',
-            'DELTA',
-            'DEPO SPILL',
-            'DEPO TEMAS',
-            'DEWATA LINTAS JAYA',
-            'DIKIRIM PENJUAL',
-            'DINOYO BARU BERSATU',
-            'DINOYO PUTRA',
-            'DMX Cargo',
-            'DRATRANS',
-            'DSS',
-            'DUTA TRANS',
-            'Dakota Cargo',
-            'Deliveree',
-            'Den Logistik',
-            'Depo Samas Surabaya',
-            'Dot Ekspres',
-            'Duta Cargo',
-            'EMS KERETA API',
-            'EMS TRUCK',
-            'Ekspedisi Cokro',
-            'Ekspedisi Lintas Jawa-Sumatra',
-            'Ekspedisi Margomulyo Baru',
-            'Ekspedisi Transpapua',
-            'Etobee',
-            'Exp Sindo',
-            'Express Jaya Gemilang',
-            'FAJAR',
-            'FIRST LOGISTIK',
-            'FREE',
-            'GARUDA LINTAS',
-            'GARUDA LINTAS BORNEO',
-            'GENDHIS',
-            'GLOBAL',
-            'GOJEK',
-            'Gemilang Asri Maju',
-            'GoSend',
-            'GoTo Logistics GTL Standard',
-            'Gocar',
-            'GrabExpress',
-            'Graha Mas Kapuk',
-            'HARAPAN JAYA',
-            'HASIL BUNI',
-            'HD-Express',
-            'HERONA',
-            'HImeji',
-            'HWU',
-            'Herona Express',
-            'Hira',
-            'Hira Logistic',
-            'Hyra',
-            'ID DFOD',
-            'ID Express',
-            'INTERNAL',
-            'Indah Cargo',
-            'J&T',
-            'J-Express',
-            'JAGO EXPRESS',
-            'JAVA EXPRESS',
-            'JAYA MAS SURABAYA',
-            'JAYA MULYA',
-            'JNE',
-            'JX',
-            'JX Standart',
-            'Jago Jaya Express',
-            'Jago Pack',
-            'Jaya Alam Laksana',
-            'Jaya Express',
-            'KALIMAS',
-            'KALOG created',
-            'KARTIKA',
-            'KARYATI',
-            'KBI - EXPEDISI KERETA',
-            'KIA Cargo',
-            'KM INDAH',
-            'KRESNA',
-            'KRISNA JAYA',
-            'KS',
-            'KWK',
-            'Karuna Travel',
-            'Karunia Cipta Logistic',
-            'Karunia Indah 8 (KI8)',
-            'Karya Agung',
-            'Kedaton Jaya',
-            'Kereta',
-            'Kerry Express',
-            'Kirim Sendiri',
-            'Kobra',
-            'Kresna Jaya Ekspedisi',
-            'Kurir Rekomendasi',
-            'Kurir Toko',
-            'Kurir Toko ST-Toms',
-            'LAKUSIX NEW',
-            'LEL EXPRESS',
-            'LESTARI',
-            'LEX MP',
-            'LIMA JAYA',
-            'LIOON - Regpack',
-            'LJR',
-            'LNP',
-            'LSJ Express',
-            'Lalamove',
-            'Laris Cargo',
-            'Lintas Abadi',
-            'Lion Parcel',
-            'MEDIA LOGISTIK',
-            'MEGA EXPRESS',
-            'MEKAR JAYA',
-            'MERDEKA',
-            'MEX',
-            'MKS',
-            'MKS BERKAT MAJU JAYA',
-            'MPS',
-            'MULIO CITRA ANGKASA',
-            'MULTI JAYA',
-            'MULYA BAKTI',
-            'MUTIARA',
-            'Mail Express',
-            'Maju Bersama',
-            'Maju Express',
-            'Malaysia',
-            'Maxim',
-            'Merah Jaya',
-            'Merpati',
-            'Merpati Travel',
-            'Meta Baru Kapuk',
-            'Mex Berlian',
-            'Micro',
-            'Mitra Wibowo',
-            'Muat Cargo',
-            'Mulio Angkasa',
-            'Multi Express',
-            'NASRU',
-            'NN Mandiri',
-            'NUSANTARA EXPRESS',
-            'NWF AJH',
-            'Naga Lintas',
-            'Naga Lintas Wahid',
-            'New Putra Duta',
-            'Ninja Xpress',
-            'Nirmala Sunter',
-            'Nusantara',
-            'OEXPRESS',
-            'Olympic Abadi (PT. Angkasa Dirga Mandiri)',
-            'PAHALA KEBCANA',
-            'PANDUSIWI',
-            'PCP Regular',
-            'PERSADA MULIA',
-            'PEXPRESS',
-            'PODO HASIL',
-            'PRIMA JASA ABADI',
-            'PRISMA CARGO',
-            'PT. Angkutan Utama Perkasa',
-            'PT. Arthalapan Strategi Logistik',
-            'PT. Soekini',
-            'Panca Jaya',
-            'Papandayan Cargo',
-            'Pasific Jaya Express',
-            'Paxel',
-            'Pegasus',
-            'Pelunasan Shopee',
-            'Pickup in Pusat',
-            'Pickup: Gojek, Delivery: Go-Jek MP',
-            'Pickup: LEX ID, Delivery: LEX ID',
-            'Pos Indonesia',
-            'Putra Bengawan',
-            'RAX CARGO',
-            'RAYSPEED',
-            'RAYSPEED - MY',
-            'RAYSPEED - SG (REG)',
-            'RCL (Red Carpet Logistics)',
-            'REX',
-            'RIZKI AGUNG',
-            'RM Ekspress',
-            'RM Express',
-            'RPX PAS Economy',
-            'RPX PAS Heavy Weight',
-            'RPX PAS NextDay',
-            'RPX PAS Regular',
-            'RPX PAS SameDay',
-            'Rahayu Express',
-            'Raya Kita',
-            'Rayspeed Asia',
-            'Red Ex',
-            'Riona Cargo',
-            'SAHABAT BELITUNG EXPRESS',
-            'SAKURA EXPRES',
-            'SAP Express',
-            'SARANA UTAMA CARGO',
-            'SDR',
-            'SEGARA',
-            'SHP Cargo',
-            'SINAR JAYA',
-            'SPX',
-            'SRIWIJAYA PRIMA',
-            'STAR CARGO',
-            'SUBOKA PRATAMA',
-            'SULUNG',
-            'SUMBER AGUNG',
-            'SUMBER BARU',
-            'SUMBER SARI',
-            'SUMBER URIP CARGO',
-            'Sajira',
-            'Samas Express',
-            'Sentral Cargo',
-            'Sentral Cargo Darat',
-            'Sentral Cargo Udara',
-            'SiCepat',
-            'Sinar Dagang',
-            'Sinar Jaya Ekspedisi',
-            'Sinar Mandiri Cepat',
-            'Sinar Shuttle',
-            'Sinar Trans Express',
-            'Speedy',
-            'Sumber Urip',
-            'TIKI',
-            'TLX Rajawali',
-            'TRIJAYA',
-            'TRIJAYA LINTAS',
-            'TRIWARNO',
-            'Tam Cargo',
-            'Teba',
-            'Teman Express',
-            'Terang Bersaudara Kapuk',
-            'Timbul Jaya',
-            'Titian Mas',
-            'Travel',
-            'Tri Tunggal',
-            'Triadhipa Logistics',
-            'Trijasa Jaya Utama',
-            'Tritunggal Jakarta',
-            'Trobos Ekspedisi',
-            'UBZR',
-            'Virgotrans Surabaya',
-            'Wahana',
-            'Warrior Cargo',
-            'Warrior Express',
-            'Wira Agung',
-            'YUDA PERKASA',
-            'kurir 4848',
-        ];
+        static $cache = null;
+        if ($cache !== null) {
+            return $cache;
+        }
+
+        // Daftar kanonik dibaca dari file JSON (bentuk yang dikirim user:
+        // array objek {courier_id, courier_name}). Untuk mengubah master kurir,
+        // cukup edit database/seeders/data/couriers.json lalu jalankan ulang
+        // seeder atau `php artisan couriers:sync-master --apply`.
+        $path = __DIR__ . '/data/couriers.json';
+        $raw = @file_get_contents($path);
+        $rows = ($raw === false) ? [] : (json_decode($raw, true) ?: []);
+
+        $names = [];
+        $seen = [];
+        foreach ($rows as $row) {
+            $name = trim((string) ($row['courier_name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $key = mb_strtolower($name);
+            if (isset($seen[$key])) {
+                continue; // buang duplikat case-insensitive
+            }
+            $seen[$key] = true;
+            $names[] = $name;
+        }
+
+        return $cache = $names;
     }
 }

@@ -5,34 +5,37 @@ namespace Modules\Outbound\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Outbound\Database\Seeders\CourierSeeder;
 use Modules\Outbound\Models\Courier;
-use Modules\Outbound\Services\CourierMappingService;
 use Tests\TestCase;
 
 /**
- * Regresi untuk PLANNING-KONSOLIDASI-KURIR.md — memastikan CourierSeeder tidak
- * lagi menghasilkan baris ganda per-varian-layanan (mis. "JNE REG"/"JNE YES").
- * Kalau test ini gagal, kemungkinan ada nama baru masuk ke courierNames() yang
- * seharusnya digabung ke kurir kanonik yang sudah ada.
+ * CourierSeeder harus menghasilkan PERSIS daftar kurir kanonik yang diminta
+ * (bentuk Jubelio, lihat PLANNING-KONSOLIDASI-KURIR.md). Daftar kanonik adalah
+ * satu sumber kebenaran (`CourierSeeder::canonicalNames()`) yang juga dipakai
+ * command `couriers:sync-master`.
  */
 class CourierSeederTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_seeder_does_not_produce_duplicate_couriers_per_brand(): void
+    public function test_seeder_produces_exactly_the_canonical_list(): void
     {
         (new CourierSeeder())->run();
 
-        $mapper = app(CourierMappingService::class);
-        $duplicates = Courier::where('is_active', true)
-            ->get()
-            ->groupBy(fn (Courier $c) => $mapper->resolveCode($c->name))
-            ->filter(fn ($rows) => $rows->count() > 1);
+        $seeded = Courier::where('is_active', true)->pluck('name')->sort()->values()->all();
+        $expected = collect(CourierSeeder::canonicalNames())->sort()->values()->all();
 
-        $this->assertTrue(
-            $duplicates->isEmpty(),
-            'Ditemukan kurir yang seharusnya sudah digabung: ' . $duplicates->map(
-                fn ($rows, $code) => "{$code}: " . $rows->pluck('name')->implode(', ')
-            )->implode(' | ')
+        $this->assertSame($expected, $seeded);
+    }
+
+    public function test_canonical_list_has_no_duplicate_names(): void
+    {
+        $names = CourierSeeder::canonicalNames();
+        $normalized = collect($names)->map(fn (string $n) => mb_strtolower(trim($n)));
+
+        $this->assertSame(
+            $normalized->count(),
+            $normalized->unique()->count(),
+            'Ada nama kurir kanonik yang duplikat (case-insensitive).'
         );
     }
 
