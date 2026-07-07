@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
+use Modules\Inventory\Models\ImpexActivity;
+use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Product\Exports\BundleTemplateExport;
 use Modules\Product\Exports\ImportErrorReportExport;
 use Modules\Product\Exports\ProductTemplateExport;
@@ -17,7 +19,10 @@ class ProductImportController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private ImportBatchService $batchService) {}
+    public function __construct(
+        private ImportBatchService $batchService,
+        private ImpexActivityService $activityService,
+    ) {}
 
     public function importSingle(Request $request)
     {
@@ -39,6 +44,15 @@ class ProductImportController extends Controller
             $request->file('file'),
             $type,
             $request->user()?->id
+        );
+
+        $this->activityService->record(
+            ImpexActivity::DIRECTION_IMPORT,
+            $type === ProductImportBatch::TYPE_BUNDLE ? 'Import Produk Bundle' : 'Import Produk',
+            $request->user()?->id,
+            null,
+            'product_import_batch',
+            $batch->id,
         );
 
         ProcessProductImportJob::dispatch($batch->id);

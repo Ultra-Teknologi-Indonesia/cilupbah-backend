@@ -11,8 +11,15 @@ use Modules\Inventory\Http\Controllers\StockRevaluationController;
 use Modules\Inventory\Http\Controllers\PriceListController;
 use Modules\Inventory\Http\Controllers\BundleController;
 use Modules\Inventory\Http\Controllers\StockReplenishmentController;
+use Modules\Inventory\Http\Controllers\ImpexActivityController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
+    Route::prefix('impex/activities')->group(function () {
+        Route::post('export/record', [ImpexActivityController::class, 'recordExport'])->name('impex.activities.recordExport');
+        Route::get('{direction}', [ImpexActivityController::class, 'index'])->name('impex.activities.index')->where('direction', 'import|export');
+        Route::get('{direction}/{id}/details', [ImpexActivityController::class, 'details'])->name('impex.activities.details')->where('direction', 'import|export');
+    });
+
     Route::get('inventory', [InventoryController::class, 'stockItems'])->name('inventory.index');
     Route::get('inventory/{itemId}', [InventoryController::class, 'stockItemShow'])->name('inventory.show')->where('itemId', '[0-9a-f-]{32,36}');
     Route::get('inventory/stocks', [InventoryController::class, 'index'])->name('inventory.stocks.index');

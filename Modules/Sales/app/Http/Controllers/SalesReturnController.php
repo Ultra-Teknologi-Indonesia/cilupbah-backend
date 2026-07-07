@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
+use Modules\Inventory\Models\ImpexActivity;
+use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Sales\Exports\SalesReturnReportExport;
 use Modules\Sales\Http\Requests\StoreSalesReturnRequest;
 use Modules\Sales\Http\Resources\SalesReturnReportResource;
@@ -16,7 +18,8 @@ use OpenApi\Attributes as OA;
 class SalesReturnController extends Controller
 {
     public function __construct(
-        protected SalesReturnService $returnService
+        protected SalesReturnService $returnService,
+        protected ImpexActivityService $activityService,
     ) {}
 
     #[OA\Get(
@@ -388,6 +391,12 @@ class SalesReturnController extends Controller
             'laporan-retur-%s-%s.xlsx',
             $dateFrom ?? 'semua',
             $dateTo ?? $today
+        );
+
+        $this->activityService->recordCompleted(
+            ImpexActivity::DIRECTION_EXPORT,
+            'Export Laporan Retur',
+            $request->user()?->id,
         );
 
         return Excel::download($export, $filename);

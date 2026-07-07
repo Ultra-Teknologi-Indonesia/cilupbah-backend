@@ -8,6 +8,8 @@ use OpenApi\Attributes as OA;
 
 use App\Traits\ApiResponse;
 use Maatwebsite\Excel\Facades\Excel;
+use Modules\Inventory\Models\ImpexActivity;
+use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Sales\Exports\CancelledOrdersExport;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
@@ -77,7 +79,7 @@ class SalesOrderController extends Controller
 
     protected SalesOrderService $orderService;
 
-    public function __construct(SalesOrderService $orderService)
+    public function __construct(SalesOrderService $orderService, protected ImpexActivityService $activityService)
     {
         $this->orderService = $orderService;
     }
@@ -349,6 +351,12 @@ class SalesOrderController extends Controller
             'cancel-orders-%s-%s.xlsx',
             $validated['date_from'] ?? 'all',
             $validated['date_to'] ?? now()->format('Y-m-d'),
+        );
+
+        $this->activityService->recordCompleted(
+            ImpexActivity::DIRECTION_EXPORT,
+            'Export Pesanan Dibatalkan',
+            $request->user()?->id,
         );
 
         return Excel::download($export, $filename);

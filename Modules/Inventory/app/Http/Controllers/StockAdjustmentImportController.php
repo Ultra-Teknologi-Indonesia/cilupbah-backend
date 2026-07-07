@@ -5,6 +5,8 @@ namespace Modules\Inventory\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Inventory\Models\ImpexActivity;
+use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Inventory\Services\StockAdjustmentImportService;
 use Modules\Inventory\Services\StockAdjustmentService;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
@@ -15,6 +17,7 @@ class StockAdjustmentImportController extends Controller
     public function __construct(
         protected StockAdjustmentImportService $importService,
         protected StockAdjustmentService $adjustmentService,
+        protected ImpexActivityService $activityService,
     ) {}
 
     public function template(): StreamedResponse
@@ -70,6 +73,12 @@ class StockAdjustmentImportController extends Controller
             return $this->errorResponse('Tidak ada item valid untuk di-import.', 422);
         }
 
+        $activity = $this->activityService->record(
+            ImpexActivity::DIRECTION_IMPORT,
+            'Import Penyesuaian Stok',
+            $request->user()?->id,
+        );
+
         try {
             $adjustment = $this->adjustmentService->create([
                 'adjustment_no'    => $request->input('adjustment_no') ?: null,
@@ -87,9 +96,12 @@ class StockAdjustmentImportController extends Controller
             ]);
 
             $this->importService->forgetPreview($request->input('preview_token'));
+            $this->activityService->markSuccess($activity);
 
             return $this->successResponse($adjustment, 'Import penyesuaian stok berhasil diterapkan.');
         } catch (\Exception $e) {
+            $this->activityService->markFailed($activity, $e->getMessage());
+
             return $this->errorResponse($e->getMessage(), 500);
         }
     }
