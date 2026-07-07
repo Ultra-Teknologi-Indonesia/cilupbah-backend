@@ -47,6 +47,7 @@ use OpenApi\Attributes as OA;
                 new OA\Property(property: 'seller_shipping_borne', type: 'number', format: 'float', nullable: true, example: 0),
                 new OA\Property(property: 'platform_shipping_rebate', type: 'number', format: 'float', nullable: true, example: 10000),
                 new OA\Property(property: 'settlement_amount', type: 'number', format: 'float', nullable: true, example: 98900),
+                new OA\Property(property: 'refund_total', type: 'number', format: 'float', example: 0, description: 'Total dana yang dikembalikan dari retur berstatus settlement'),
                 new OA\Property(property: 'currency', type: 'string', example: 'IDR'),
                 new OA\Property(property: 'is_settled', type: 'boolean', example: false),
                 new OA\Property(property: 'synced_at', type: 'string', format: 'date-time', nullable: true, example: null),
@@ -116,6 +117,7 @@ class SalesOrderResource extends JsonResource
                 'seller_shipping_borne'    => $this->floatOrNull($this->seller_shipping_borne),
                 'platform_shipping_rebate' => $this->floatOrNull($this->platform_shipping_rebate),
                 'settlement_amount'        => $this->floatOrNull($this->settlement_amount),
+                'refund_total'             => $this->refundTotal(),
                 'currency'                 => $this->fee_currency ?? 'IDR',
                 'is_settled'               => (bool) $this->is_settled,
                 'synced_at'                => $this->finance_synced_at,
@@ -201,5 +203,16 @@ class SalesOrderResource extends JsonResource
     private function floatOrNull($value): ?float
     {
         return $value === null ? null : (float) $value;
+    }
+
+    private function refundTotal(): float
+    {
+        if (! $this->relationLoaded('returns')) {
+            return 0.0;
+        }
+
+        return (float) $this->returns->sum(
+            fn ($return) => (float) ($return->settlement->total_amount ?? 0)
+        );
     }
 }

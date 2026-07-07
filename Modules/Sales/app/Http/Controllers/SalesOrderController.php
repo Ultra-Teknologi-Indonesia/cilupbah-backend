@@ -1149,4 +1149,31 @@ class SalesOrderController extends Controller
 
         return $pdf->stream($filename);
     }
+
+    public function breakdown(string $id)
+    {
+        $order = SalesOrder::with(['items', 'returns.settlement', 'invoices'])->find($id);
+
+        if (! $order) {
+            return $this->errorResponse('Pesanan tidak ditemukan', 404);
+        }
+
+        $shipping = (object) [
+            'full_name' => $order->shipping_full_name,
+            'phone'     => $order->shipping_phone,
+            'address'   => $order->shipping_address,
+            'city'      => $order->shipping_city,
+            'province'  => $order->shipping_province,
+            'post_code' => $order->shipping_post_code,
+        ];
+        $order->shipping = $shipping;
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('sales::pdf.order-breakdown', [
+            'order' => $order,
+        ])->setPaper('a4', 'portrait');
+
+        $filename = "RINCIAN-{$order->salesorder_no}.pdf";
+
+        return $pdf->stream($filename);
+    }
 }

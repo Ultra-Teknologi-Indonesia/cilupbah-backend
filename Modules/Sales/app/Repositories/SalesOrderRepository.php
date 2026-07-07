@@ -464,7 +464,7 @@ class SalesOrderRepository
 
         return QueryBuilder::for(SalesOrder::class)
             ->allowedIncludes('items')
-            ->with('statusHistory')
+            ->with(['statusHistory', 'returns.settlement'])
             ->find($id);
     }
 
@@ -507,13 +507,13 @@ class SalesOrderRepository
             'insurance_cost'      => $orderData['insurance_cost'],
             'grand_total'         => $orderData['grand_total'],
             'order_weight_gram'   => $orderData['order_weight_gram'] ?? null,
-            'shipping_full_name'  => $orderData['shipping_full_name'],
-            'shipping_phone'      => $orderData['shipping_phone'],
-            'shipping_address'    => $orderData['shipping_address'],
-            'shipping_city'       => $orderData['shipping_city'],
-            'shipping_province'   => $orderData['shipping_province'],
-            'shipping_post_code'  => $orderData['shipping_post_code'],
-            'shipping_country'    => $orderData['shipping_country'],
+            'shipping_full_name'  => $orderData['shipping_full_name'] ?? null,
+            'shipping_phone'      => $orderData['shipping_phone'] ?? null,
+            'shipping_address'    => $orderData['shipping_address'] ?? null,
+            'shipping_city'       => $orderData['shipping_city'] ?? null,
+            'shipping_province'   => $orderData['shipping_province'] ?? null,
+            'shipping_post_code'  => $orderData['shipping_post_code'] ?? null,
+            'shipping_country'    => $orderData['shipping_country'] ?? null,
             'dropshipper_name'    => $orderData['dropshipper_name'] ?? null,
             'dropshipper_phone'   => $orderData['dropshipper_phone'] ?? null,
             'channel_status'      => $orderData['channel_status'],
