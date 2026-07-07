@@ -44,58 +44,113 @@ class PutawayController extends Controller
     )]
         #[OA\Post(
         path: '/api/v1/putaway',
-        summary: 'Create a new putaway manually from an inbound document',
+        summary: 'Create a putaway manually from one or more inbound documents (merged into one progress)',
         security: [['bearerAuth' => []]],
         tags: ['Putaway'],
         requestBody: new OA\RequestBody(
             required: true,
             content: new OA\JsonContent(
-                required: ['inbound_id'],
+                required: ['inbound_ids'],
                 properties: [
-                    new OA\Property(property: 'inbound_id', type: 'string'),
+                    new OA\Property(property: 'inbound_ids', type: 'array', items: new OA\Items(type: 'string')),
+                    new OA\Property(property: 'inbound_id', type: 'string', nullable: true, description: 'Deprecated, single-inbound backward-compat'),
                     new OA\Property(property: 'assigned_to', type: 'string', nullable: true),
                 ]
             )
         ),
         responses: [
             new OA\Response(response: 201, description: 'Putaway created successfully'),
-            new OA\Response(response: 400, description: 'Bad request')
+            new OA\Response(response: 400, description: 'Bad request'),
+            new OA\Response(response: 422, description: 'Validation error'),
         ]
     )]
     public function store(Request $request): JsonResponse
     {
+        // Backward-compat: terima inbound_id tunggal sebagai inbound_ids berisi 1 elemen.
+        if ($request->filled('inbound_id') && ! $request->filled('inbound_ids')) {
+            $request->merge(['inbound_ids' => [$request->input('inbound_id')]]);
+        }
+
         $request->validate([
-            'inbound_id' => 'required|string|exists:inbounds,id',
+            'inbound_ids' => 'required|array|min:1',
+            'inbound_ids.*' => 'required|string|distinct|exists:inbounds,id',
             'assigned_to' => 'nullable|string|exists:users,id',
         ]);
 
         try {
-            $inbound = \Modules\Inbound\Models\Inbound::with('items')->findOrFail($request->inbound_id);
-            $defaultBin = app(\Modules\Warehouse\Services\LocationBinService::class)->getDefaultBin($inbound->location_id);
+            $inbounds = \Modules\Inbound\Models\Inbound::with(['items', 'putaways:id,status'])
+                ->whereIn('id', $request->inbound_ids)
+                ->get();
+
+            // Semua penerimaan wajib satu lokasi (putaways.location_id tunggal).
+            if ($inbounds->pluck('location_id')->unique()->count() > 1) {
+                return $this->errorResponse('Penerimaan harus dari lokasi/gudang yang sama untuk digabung.', 422);
+            }
+
+            // Tolak penerimaan yang sudah tuntas/batal atau sedang punya penempatan aktif.
+            foreach ($inbounds as $inbound) {
+                if (in_array($inbound->status, [\Modules\Inbound\Models\Inbound::STATUS_COMPLETED, \Modules\Inbound\Models\Inbound::STATUS_CANCELLED], true)) {
+                    return $this->errorResponse("Penerimaan {$inbound->transaction_number} sudah {$inbound->status}, tidak bisa dibuat penempatan.", 422);
+                }
+
+                $hasActive = $inbound->putaways->contains(
+                    fn ($p) => ! in_array($p->status, [Putaway::STATUS_COMPLETED, Putaway::STATUS_CANCELLED], true)
+                );
+                if ($hasActive) {
+                    return $this->errorResponse("Penerimaan {$inbound->transaction_number} sudah memiliki penempatan aktif.", 422);
+                }
+            }
+
+            $locationId = $inbounds->first()->location_id;
+            $defaultBin = app(\Modules\Warehouse\Services\LocationBinService::class)->getDefaultBin($locationId);
             $userId = $request->user()->id ?? 'system';
 
-            $items = $inbound->items
-                ->filter(fn ($item) => $item->received_qty > 0)
-                ->map(fn ($item) => [
-                    'item_id'            => $item->item_id,
-                    'source_bin_id'      => $defaultBin ? $defaultBin->id : null,
-                    'destination_bin_id' => null,
-                    'qty'                => $item->received_qty,
-                    'batch_no'           => null,
-                    'serial_no'          => null,
-                ])
-                ->values()
-                ->toArray();
+            // Gabung per-SKU lintas penerimaan; simpan rincian asal (inbound_item_id, qty) tiap item.
+            $merged = [];
+            foreach ($inbounds as $inbound) {
+                foreach ($inbound->items as $item) {
+                    $pending = max(0, (int) $item->received_qty - (int) $item->putaway_qty);
+                    if ($pending <= 0) {
+                        continue;
+                    }
+
+                    if (! isset($merged[$item->item_id])) {
+                        $merged[$item->item_id] = [
+                            'item_id'            => $item->item_id,
+                            'source_bin_id'      => $defaultBin ? $defaultBin->id : null,
+                            'destination_bin_id' => null,
+                            'qty'                => 0,
+                            'batch_no'           => null,
+                            'serial_no'          => null,
+                            'sources'            => [],
+                        ];
+                    }
+
+                    $merged[$item->item_id]['qty'] += $pending;
+                    $merged[$item->item_id]['sources'][] = [
+                        'inbound_item_id' => $item->id,
+                        'qty'             => $pending,
+                    ];
+                }
+            }
+
+            $items = array_values($merged);
 
             if (empty($items)) {
                 return $this->errorResponse('Tidak ada item untuk di-putaway.', 400);
             }
 
+            $notes = $inbounds->count() === 1
+                ? "Manual Putaway from Inbound {$inbounds->first()->transaction_number}"
+                : 'Manual Putaway gabungan dari ' . $inbounds->count() . ' penerimaan: ' . $inbounds->pluck('transaction_number')->implode(', ');
+
             $putaway = $this->putawayService->create([
-                'location_id' => $inbound->location_id,
+                'location_id' => $locationId,
                 'source_type' => 'INBOUND',
-                'source_id'   => $inbound->id,
-                'notes'       => "Manual Putaway from Inbound {$inbound->transaction_number}",
+                // source_id tetap diisi untuk penerimaan tunggal (kompat tampilan lama); null bila gabungan.
+                'source_id'   => $inbounds->count() === 1 ? $inbounds->first()->id : null,
+                'sources'     => $inbounds->pluck('id')->all(),
+                'notes'       => $notes,
                 'created_by'  => $userId,
                 'items'       => $items,
             ]);
@@ -563,7 +618,7 @@ class PutawayController extends Controller
             $putawayNo = $putaway->putaway_no ?? 'PUT';
             $filename = "PUTAWAY-{$putawayNo}.pdf";
 
-            $putaway->load('inbound');
+            $putaway->load(['inbound', 'sources:id,reference_number,transaction_number']);
 
             $this->attachRecommendedBins($putaway);
 
@@ -694,10 +749,22 @@ class PutawayController extends Controller
 
     protected function resolveSourceLabel($putaway): string
     {
-        if ($putaway->source_type === 'INBOUND' && $putaway->inbound) {
-            return $putaway->inbound->reference_number
-                ?? $putaway->inbound->transaction_number
-                ?? '-';
+        if ($putaway->source_type === 'INBOUND') {
+            // Penerimaan tunggal (jalur lama): pakai relasi inbound via source_id.
+            if ($putaway->inbound) {
+                return $putaway->inbound->reference_number
+                    ?? $putaway->inbound->transaction_number
+                    ?? '-';
+            }
+
+            // Penerimaan gabungan: rangkai dari pivot sources.
+            $sources = $putaway->relationLoaded('sources') ? $putaway->sources : collect();
+            if ($sources->isNotEmpty()) {
+                return $sources
+                    ->map(fn ($i) => $i->reference_number ?? $i->transaction_number)
+                    ->filter()
+                    ->implode(', ') ?: '-';
+            }
         }
 
         return '-';

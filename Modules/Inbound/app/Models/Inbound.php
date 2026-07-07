@@ -5,6 +5,7 @@ namespace Modules\Inbound\Models;
 use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Warehouse\Models\Location;
 
@@ -62,9 +63,18 @@ class Inbound extends Model
         return $this->hasMany(InboundAssignment::class);
     }
 
-    public function putaways(): HasMany
+    /**
+     * Putaway yang bersumber dari penerimaan ini. Kini lewat pivot putaway_sources
+     * agar 1 putaway bisa berasal dari banyak penerimaan (data lama di-backfill).
+     */
+    public function putaways(): BelongsToMany
     {
-        return $this->hasMany(\Modules\Inventory\Models\Putaway::class, 'source_id')->where('source_type', 'INBOUND');
+        return $this->belongsToMany(
+            \Modules\Inventory\Models\Putaway::class,
+            'putaway_sources',
+            'inbound_id',
+            'putaway_id',
+        )->withTimestamps();
     }
 
     public function scopeByStatus($query, string $status)

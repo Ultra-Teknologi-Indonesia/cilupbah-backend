@@ -4,6 +4,7 @@ namespace Modules\Inventory\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Traits\HasUuid7;
 
@@ -53,6 +54,27 @@ class Putaway extends Model
     public function inbound(): BelongsTo
     {
         return $this->belongsTo(\Modules\Inbound\Models\Inbound::class, 'source_id');
+    }
+
+    /**
+     * Baris pivot penerimaan sumber (mendukung 1 putaway dari banyak penerimaan).
+     */
+    public function sourceRows(): HasMany
+    {
+        return $this->hasMany(PutawaySource::class);
+    }
+
+    /**
+     * Daftar penerimaan (inbound) yang digabung ke dalam putaway ini.
+     */
+    public function sources(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            \Modules\Inbound\Models\Inbound::class,
+            'putaway_sources',
+            'putaway_id',
+            'inbound_id',
+        )->withTimestamps();
     }
 
     public function creator(): BelongsTo

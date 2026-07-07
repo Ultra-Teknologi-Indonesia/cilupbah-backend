@@ -12,7 +12,7 @@ class PutawayRepository
     public function getAllPaginated(int $limit = 10)
     {
         return QueryBuilder::for(Putaway::class)
-            ->with(['location:id,location_name', 'assignee:id,name', 'creator:id,name', 'items:id,putaway_id,item_id,qty,putaway_qty', 'inbound:id,reference_number,created_at'])
+            ->with(['location:id,location_name', 'assignee:id,name', 'creator:id,name', 'items:id,putaway_id,item_id,qty,putaway_qty', 'inbound:id,reference_number,created_at', 'sources:id,reference_number,transaction_number'])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('location_id'),
@@ -54,6 +54,7 @@ class PutawayRepository
             'assignee:id,name',
             'creator:id,name',
             'inbound:id,reference_number,transaction_number',
+            'sources:id,reference_number,transaction_number',
         ])->find($id);
     }
 

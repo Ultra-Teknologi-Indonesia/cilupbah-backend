@@ -13,7 +13,9 @@ use Modules\Inventory\Models\PutawayPlacement;
 use Modules\Inventory\Repositories\PutawayRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
+use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundItem;
+use Modules\Inventory\Models\PutawayItemSource;
 use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
 
@@ -160,10 +162,49 @@ class ProcessPutawayItemJob implements ShouldQueue
                     ]);
                 }
 
-                if ($putaway->source_type === 'INBOUND' && $putaway->source_id) {
-                    InboundItem::where('inbound_id', $putaway->source_id)
-                        ->where('item_id', $putawayItem->item_id)
-                        ->increment('putaway_qty', $qty);
+                if ($putaway->source_type === 'INBOUND') {
+                    // Distribusi qty ke rincian sumber (FIFO: penerimaan terlama dulu),
+                    // lalu sinkron putaway_qty ke tiap inbound_item terkait.
+                    $sources = PutawayItemSource::query()
+                        ->where('putaway_item_sources.putaway_item_id', $putawayItem->id)
+                        ->join('inbound_items', 'inbound_items.id', '=', 'putaway_item_sources.inbound_item_id')
+                        ->join('inbounds', 'inbounds.id', '=', 'inbound_items.inbound_id')
+                        ->orderBy('inbounds.created_at')
+                        ->lockForUpdate()
+                        ->select('putaway_item_sources.*', 'inbound_items.inbound_id as inbound_id')
+                        ->get();
+
+                    $affectedInboundIds = [];
+
+                    if ($sources->isNotEmpty()) {
+                        $remaining = $qty;
+                        foreach ($sources as $src) {
+                            if ($remaining <= 0) {
+                                break;
+                            }
+                            $capacity = (int) $src->qty - (int) $src->putaway_qty;
+                            if ($capacity <= 0) {
+                                continue;
+                            }
+                            $take = min($capacity, $remaining);
+                            $src->increment('putaway_qty', $take);
+                            InboundItem::where('id', $src->inbound_item_id)->increment('putaway_qty', $take);
+                            $affectedInboundIds[$src->inbound_id] = true;
+                            $remaining -= $take;
+                        }
+                    } elseif ($putaway->source_id) {
+                        // Fallback dokumen lama tanpa rincian sumber.
+                        InboundItem::where('inbound_id', $putaway->source_id)
+                            ->where('item_id', $putawayItem->item_id)
+                            ->increment('putaway_qty', $qty);
+                        $affectedInboundIds[$putaway->source_id] = true;
+                    }
+
+                    // Sinkron status tiap penerimaan yang terpengaruh (auto-complete di sini,
+                    // bukan lewat PutawayService::complete()).
+                    foreach (array_keys($affectedInboundIds) as $inboundId) {
+                        $this->recomputeInboundStatus($inboundId);
+                    }
                 }
 
                 $allDone = PutawayItem::where('putaway_id', $this->putawayId)
@@ -180,5 +221,32 @@ class ProcessPutawayItemJob implements ShouldQueue
                 }
             });
         });
+    }
+
+    /**
+     * Hitung ulang status penerimaan dari progres putaway itemnya.
+     * Semua item tuntas → COMPLETED; sebagian → PUTAWAY_IN_PROGRESS; nol → RECEIVED.
+     * Status DRAFT/CANCELLED tidak disentuh.
+     */
+    private function recomputeInboundStatus(string $inboundId): void
+    {
+        $inbound = Inbound::with('items')->find($inboundId);
+
+        if (! $inbound
+            || $inbound->items->isEmpty()
+            || in_array($inbound->status, [Inbound::STATUS_DRAFT, Inbound::STATUS_CANCELLED], true)) {
+            return;
+        }
+
+        $allPutaway = $inbound->items->every(fn ($i) => $i->isFullyPutaway());
+        $anyPutaway = $inbound->items->contains(fn ($i) => (int) $i->putaway_qty > 0);
+
+        $newStatus = $allPutaway
+            ? Inbound::STATUS_COMPLETED
+            : ($anyPutaway ? Inbound::STATUS_PUTAWAY_IN_PROGRESS : Inbound::STATUS_RECEIVED);
+
+        if ($inbound->status !== $newStatus) {
+            $inbound->update(['status' => $newStatus]);
+        }
     }
 }

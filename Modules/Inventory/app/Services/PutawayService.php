@@ -7,6 +7,8 @@ use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Models\PutawayPlacement;
+use Modules\Inventory\Models\PutawaySource;
+use Modules\Inventory\Models\PutawayItemSource;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundItem;
@@ -65,7 +67,7 @@ class PutawayService
             ]);
 
             foreach ($data['items'] as $itemData) {
-                $this->putawayRepository->createItem([
+                $putawayItem = $this->putawayRepository->createItem([
                     'putaway_id' => $putaway->id,
                     'item_id' => $itemData['item_id'],
                     'source_bin_id' => $itemData['source_bin_id'],
@@ -74,6 +76,24 @@ class PutawayService
                     'putaway_qty' => 0,
                     'batch_no' => $itemData['batch_no'] ?? null,
                     'serial_no' => $itemData['serial_no'] ?? null,
+                ]);
+
+                // Rincian asal qty per inbound_item (untuk sinkron balik ke penerimaan).
+                foreach ($itemData['sources'] ?? [] as $src) {
+                    PutawayItemSource::create([
+                        'putaway_item_id' => $putawayItem->id,
+                        'inbound_item_id' => $src['inbound_item_id'],
+                        'qty' => $src['qty'],
+                        'putaway_qty' => 0,
+                    ]);
+                }
+            }
+
+            // Header pivot: daftar penerimaan sumber (mendukung gabungan banyak penerimaan).
+            foreach (array_unique($data['sources'] ?? []) as $inboundId) {
+                PutawaySource::create([
+                    'putaway_id' => $putaway->id,
+                    'inbound_id' => $inboundId,
                 ]);
             }
 
@@ -177,15 +197,9 @@ class PutawayService
                 'completed_at' => now(),
             ]);
 
-            if ($putaway->source_type === 'INBOUND' && $putaway->source_id) {
-                $inbound = \Modules\Inbound\Models\Inbound::with('items')->find($putaway->source_id);
-                if ($inbound) {
-                    $allPutaway = $inbound->items->every(fn ($item) => $item->isFullyPutaway());
-                    $inbound->update([
-                        'status' => $allPutaway
-                            ? \Modules\Inbound\Models\Inbound::STATUS_COMPLETED
-                            : \Modules\Inbound\Models\Inbound::STATUS_PUTAWAY_IN_PROGRESS,
-                    ]);
+            if ($putaway->source_type === 'INBOUND') {
+                foreach ($this->sourceInbounds($putaway) as $inbound) {
+                    $this->recomputeInboundStatus($inbound);
                 }
             }
 
@@ -237,13 +251,9 @@ class PutawayService
             }
 
             // Revert status inbound turunan (hitung sekali setelah semua item diproses).
-            if ($putaway->source_type === 'INBOUND' && $putaway->source_id) {
-                $inbound = Inbound::with('items')->find($putaway->source_id);
-                if ($inbound && $inbound->status === Inbound::STATUS_COMPLETED) {
-                    $allPutaway = $inbound->items->every(fn ($i) => $i->isFullyPutaway());
-                    if (! $allPutaway) {
-                        $inbound->update(['status' => Inbound::STATUS_PUTAWAY_IN_PROGRESS]);
-                    }
+            if ($putaway->source_type === 'INBOUND') {
+                foreach ($this->sourceInbounds($putaway) as $inbound) {
+                    $this->recomputeInboundStatus($inbound);
                 }
             }
 
@@ -315,15 +325,85 @@ class PutawayService
         }
         $item->save();
 
-        // Sinkron ke inbound bila sumbernya INBOUND.
-        if ($putaway->source_type === 'INBOUND' && $putaway->source_id) {
-            $inboundItem = InboundItem::where('inbound_id', $putaway->source_id)
-                ->where('item_id', $item->item_id)
-                ->first();
+        // Sinkron balik ke penerimaan bila sumbernya INBOUND.
+        if ($putaway->source_type === 'INBOUND') {
+            $sources = PutawayItemSource::query()
+                ->where('putaway_item_sources.putaway_item_id', $item->id)
+                ->join('inbound_items', 'inbound_items.id', '=', 'putaway_item_sources.inbound_item_id')
+                ->join('inbounds', 'inbounds.id', '=', 'inbound_items.inbound_id')
+                ->orderByDesc('inbounds.created_at') // LIFO: kembalikan dari penerimaan terbaru dulu
+                ->lockForUpdate()
+                ->select('putaway_item_sources.*')
+                ->get();
 
-            if ($inboundItem) {
-                $inboundItem->decrement('putaway_qty', min($qtyRev, (int) $inboundItem->putaway_qty));
+            if ($sources->isNotEmpty()) {
+                $remaining = $qtyRev;
+                foreach ($sources as $src) {
+                    if ($remaining <= 0) {
+                        break;
+                    }
+                    $take = min((int) $src->putaway_qty, $remaining);
+                    if ($take <= 0) {
+                        continue;
+                    }
+                    $src->decrement('putaway_qty', $take);
+                    InboundItem::where('id', $src->inbound_item_id)->decrement('putaway_qty', $take);
+                    $remaining -= $take;
+                }
+            } elseif ($putaway->source_id) {
+                // Fallback dokumen lama tanpa rincian sumber.
+                $inboundItem = InboundItem::where('inbound_id', $putaway->source_id)
+                    ->where('item_id', $item->item_id)
+                    ->first();
+
+                if ($inboundItem) {
+                    $inboundItem->decrement('putaway_qty', min($qtyRev, (int) $inboundItem->putaway_qty));
+                }
             }
+        }
+    }
+
+    /**
+     * Daftar penerimaan sumber putaway: dari pivot putaway_sources, fallback ke source_id lama.
+     */
+    private function sourceInbounds(Putaway $putaway)
+    {
+        $ids = $putaway->sourceRows()->pluck('inbound_id');
+
+        if ($ids->isEmpty() && $putaway->source_id) {
+            $ids = collect([$putaway->source_id]);
+        }
+
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+
+        return Inbound::with('items')->whereIn('id', $ids->all())->get();
+    }
+
+    /**
+     * Hitung ulang status penerimaan dari progres putaway itemnya.
+     * Semua item tuntas → COMPLETED; ada sebagian → PUTAWAY_IN_PROGRESS; nol → RECEIVED.
+     * Status DRAFT/CANCELLED tidak disentuh.
+     */
+    private function recomputeInboundStatus(Inbound $inbound): void
+    {
+        $inbound->loadMissing('items');
+
+        if ($inbound->items->isEmpty()
+            || in_array($inbound->status, [Inbound::STATUS_DRAFT, Inbound::STATUS_CANCELLED], true)) {
+            return;
+        }
+
+        $allPutaway = $inbound->items->every(fn ($i) => $i->isFullyPutaway());
+        $anyPutaway = $inbound->items->contains(fn ($i) => (int) $i->putaway_qty > 0);
+
+        $newStatus = $allPutaway
+            ? Inbound::STATUS_COMPLETED
+            : ($anyPutaway ? Inbound::STATUS_PUTAWAY_IN_PROGRESS : Inbound::STATUS_RECEIVED);
+
+        if ($inbound->status !== $newStatus) {
+            $inbound->update(['status' => $newStatus]);
         }
     }
 }
