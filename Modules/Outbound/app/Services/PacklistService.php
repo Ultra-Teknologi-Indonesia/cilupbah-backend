@@ -10,12 +10,14 @@ use Modules\Outbound\Jobs\ProcessPacklistCompleteJob;
 use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Notification\Events\TaskAssigned;
 use Modules\Sales\Models\SalesOrder as Order;
+use Modules\Product\Repositories\ProductRepository;
 use Illuminate\Support\Facades\DB;
 
 class PacklistService
 {
     public function __construct(
         protected PacklistRepository $packlistRepository,
+        protected ProductRepository $productRepository,
     ) {}
 
     public function getAllPaginated(int $limit = 10)
@@ -118,6 +120,28 @@ class PacklistService
             ]);
 
             foreach ($order->items as $orderItem) {
+                // Bundle tidak punya wujud fisik: packer memegang komponen yang sama dengan
+                // yang dipick. Ledakkan bundle → baris komponen agar scan barcode & verifikasi
+                // konsisten dengan picklist. Packing tidak menyentuh stok (stok dipotong saat
+                // ship, digerakkan dari order item + cascadeBundle), jadi aman.
+                $components = $this->productRepository->bundleComponentsForVariant($orderItem->item_id);
+
+                if ($components !== null) {
+                    foreach ($components as $comp) {
+                        $this->packlistRepository->createItem([
+                            'packlist_id' => $packlist->id,
+                            'order_item_id' => $orderItem->id,
+                            'item_id' => $comp['variant_id'],
+                            'sku' => $comp['sku'] ?? $orderItem->sku,
+                            'qty_ordered' => $orderItem->qty_in_base * $comp['qty'],
+                            'qty_packed' => 0,
+                            'barcode_verified' => false,
+                        ]);
+                    }
+
+                    continue;
+                }
+
                 $this->packlistRepository->createItem([
                     'packlist_id' => $packlist->id,
                     'order_item_id' => $orderItem->id,

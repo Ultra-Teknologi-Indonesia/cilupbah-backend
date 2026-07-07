@@ -91,9 +91,4 @@ class ProductVariant extends Model
     {
         return $this->hasMany(WholesalePrice::class, 'variant_id');
     }
-
-    public function bundleComponents(): HasMany
-    {
-        return $this->hasMany(ProductBundle::class, 'bundle_variant_id');
-    }
 }

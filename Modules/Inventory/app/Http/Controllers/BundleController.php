@@ -6,12 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
+use Modules\Product\Repositories\ProductRepository;
 
 class BundleController extends Controller
 {
     use ApiResponse;
+
+    public function __construct(private ProductRepository $productRepository) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -34,9 +38,23 @@ class BundleController extends Controller
             'category_id' => 'nullable|exists:categories,id',
             'sell_price' => 'nullable|numeric|min:0',
             'components' => 'required|array|min:1',
-            'components.*.variant_id' => 'required|exists:product_variants,id',
+            'components.*.variant_id' => [
+                'required',
+                Rule::exists('product_variants', 'id')->where(fn ($q) => $q->where('is_active', true)),
+            ],
             'components.*.qty' => 'required|integer|min:1',
+        ], [
+            'components.*.variant_id.exists' => 'Varian komponen tidak ditemukan atau tidak aktif.',
         ]);
+
+        // Guard bundle-in-bundle: komponen tidak boleh berupa varian dari produk bundle.
+        $componentVariantIds = array_values(array_filter(array_column($request->input('components'), 'variant_id')));
+        if ($this->productRepository->variantIdsFromBundleProducts($componentVariantIds) !== []) {
+            return $this->errorResponse(
+                'Komponen bundle tidak boleh berisi produk bundle (bundle-in-bundle tidak diizinkan).',
+                422,
+            );
+        }
 
         $id = $request->input('id');
 

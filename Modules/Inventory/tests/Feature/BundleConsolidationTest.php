@@ -48,7 +48,64 @@ class BundleConsolidationTest extends TestCase
             'component_variant_id' => $componentVariant->id,
             'qty' => 2,
         ]);
-        $this->assertDatabaseCount('product_bundles', 0);
         $this->assertDatabaseHas('products', ['id' => $bundleProductId, 'is_bundle' => true]);
+    }
+
+    public function test_store_rejects_bundle_in_bundle(): void
+    {
+        DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Umum']);
+        $user = User::factory()->create();
+
+        $innerBundle = Product::create([
+            'name' => 'Inner Bundle',
+            'category_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+            'is_bundle' => true,
+        ]);
+        $innerVariant = ProductVariant::create([
+            'product_id' => $innerBundle->id,
+            'sku' => 'INNER-BND',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/inventory/items/bundle', [
+            'name' => 'Outer Bundle',
+            'sku' => 'OUTER-BND',
+            'category_id' => 1,
+            'components' => [
+                ['variant_id' => $innerVariant->id, 'qty' => 1],
+            ],
+        ])->assertStatus(422);
+
+        $this->assertDatabaseMissing('products', ['sku' => 'OUTER-BND']);
+    }
+
+    public function test_store_rejects_inactive_component(): void
+    {
+        DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Umum']);
+        $user = User::factory()->create();
+
+        $product = Product::create([
+            'name' => 'Produk Nonaktif',
+            'category_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+            'is_bundle' => false,
+        ]);
+        $inactive = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'INACTIVE-C',
+            'is_active' => false,
+        ]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/inventory/items/bundle', [
+            'name' => 'Bundle Invalid',
+            'sku' => 'BUNDLE-INV',
+            'category_id' => 1,
+            'components' => [
+                ['variant_id' => $inactive->id, 'qty' => 1],
+            ],
+        ])->assertStatus(422);
     }
 }

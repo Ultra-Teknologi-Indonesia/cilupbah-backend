@@ -96,9 +96,84 @@ class ChannelStockTest extends TestCase
         $this->assertSame(0, $stocks[$variant->id]);
     }
 
+    /**
+     * Buat bundle: satu produk bundle (punya variant sendiri, tanpa inventory) yang
+     * tersusun dari beberapa komponen ber-stok di satu lokasi sumber toko.
+     *
+     * @param  array<int, array{available:int, qty:int}>  $components
+     * @return ProductVariant  variant milik produk bundle
+     */
+    private function makeBundleWithComponents(string $bundleSku, array $components): ProductVariant
+    {
+        $category = Category::create(['name' => 'C' . uniqid(), 'is_active' => true]);
+        $location = Location::factory()->create();
+        DB::table('channel_warehouses')->insert([
+            'channel_id' => $this->shopee->id, 'store_id' => '778899',
+            'channel_location_id' => 'SHP-WH-B', 'location_id' => $location->id,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->shop->update(['stock_source_mode' => 'location', 'stock_source_location_id' => $location->id]);
+
+        $bundleProduct = Product::create([
+            'category_id' => $category->id, 'name' => 'Bundle ' . $bundleSku,
+            'status' => 'master', 'is_active' => true, 'is_bundle' => true,
+        ]);
+        $bundleVariant = ProductVariant::create([
+            'product_id' => $bundleProduct->id, 'sku' => $bundleSku, 'sell_price' => 100000, 'is_active' => true,
+        ]);
+
+        foreach ($components as $i => $spec) {
+            $compProduct = Product::create([
+                'category_id' => $category->id, 'name' => "Komponen {$bundleSku} {$i}",
+                'status' => 'master', 'is_active' => true,
+            ]);
+            $compVariant = ProductVariant::create([
+                'product_id' => $compProduct->id, 'sku' => "{$bundleSku}-C{$i}", 'sell_price' => 1000, 'is_active' => true,
+            ]);
+            Inventory::create([
+                'item_id' => $compVariant->id, 'location_id' => $location->id, 'bin_id' => null,
+                'on_hand' => $spec['available'] + 2, 'on_order' => 0, 'reserved' => 2, 'available' => $spec['available'],
+            ]);
+            $bundleProduct->bundleItems()->create([
+                'component_variant_id' => $compVariant->id, 'qty' => $spec['qty'],
+            ]);
+        }
+
+        return $bundleVariant->fresh();
+    }
+
+    public function test_stock_resolver_derives_bundle_stock_as_min_floor(): void
+    {
+        // Komponen A: 10 available, qty 2 -> 5 bundle. Komponen B: 8 available, qty 1 -> 8 bundle.
+        // Bundle available = min(5, 8) = 5.
+        $bundleVariant = $this->makeBundleWithComponents('BND-A', [
+            ['available' => 10, 'qty' => 2],
+            ['available' => 8, 'qty' => 1],
+        ]);
+
+        $stocks = app(ChannelStockResolver::class)->availableByVariant($this->shop, collect([$bundleVariant]));
+
+        $this->assertSame(5, $stocks[$bundleVariant->id]);
+    }
+
+    public function test_stock_resolver_bundle_is_zero_when_a_component_is_out_of_stock(): void
+    {
+        $bundleVariant = $this->makeBundleWithComponents('BND-B', [
+            ['available' => 10, 'qty' => 1],
+            ['available' => 0, 'qty' => 1],
+        ]);
+
+        $stocks = app(ChannelStockResolver::class)->availableByVariant($this->shop, collect([$bundleVariant]));
+
+        $this->assertSame(0, $stocks[$bundleVariant->id]);
+    }
+
     public function test_shopee_push_sends_real_stock(): void
     {
         Http::fake([
+            'partner.shopeemobile.com/api/v2/logistics/get_channel_list*' => Http::response([
+                'response' => ['logistics_channel_list' => []],
+            ], 200),
             'partner.shopeemobile.com/api/v2/product/add_item*' => Http::response([
                 'response' => ['item_id' => 555001, 'model_list' => []],
             ], 200),
@@ -129,8 +204,8 @@ class ChannelStockTest extends TestCase
 
         $payload = app(ShopeeProductMapper::class)->map($product, ['img']);
 
-        $this->assertSame(5, $payload['model_list'][0]['seller_stock'][0]['stock']);
-        $this->assertSame(9, $payload['model_list'][1]['seller_stock'][0]['stock']);
+        $this->assertSame(5, $payload['_model_list'][0]['seller_stock'][0]['stock']);
+        $this->assertSame(9, $payload['_model_list'][1]['seller_stock'][0]['stock']);
     }
 
     public function test_lazada_mapper_uses_variant_stock(): void

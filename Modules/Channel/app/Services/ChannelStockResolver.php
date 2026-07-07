@@ -23,16 +23,69 @@ class ChannelStockResolver
             return $result;
         }
 
+        // Variant mana yang merupakan variant produk bundle. Bundle tidak punya baris
+        // inventory sendiri; stok available-nya diturunkan dari komponen dengan formula
+        // min(floor(komponen_available / qty)) — lihat Modules\Product\Support\BundleStock,
+        // tapi di sini di-scope ke lokasi sumber toko agar konsisten dengan variant biasa.
+        $bundleProductIdByVariant = DB::table('product_variants')
+            ->join('products', 'products.id', '=', 'product_variants.product_id')
+            ->whereIn('product_variants.id', $variantIds)
+            ->where('products.is_bundle', true)
+            ->pluck('product_variants.product_id', 'product_variants.id')
+            ->all();
+
+        $componentsByBundle = [];
+        $componentVariantIds = [];
+
+        if (! empty($bundleProductIdByVariant)) {
+            $rows = DB::table('product_bundle_items')
+                ->whereIn('bundle_product_id', array_values(array_unique($bundleProductIdByVariant)))
+                ->get(['bundle_product_id', 'component_variant_id', 'qty']);
+
+            foreach ($rows as $row) {
+                $componentsByBundle[$row->bundle_product_id][] = [
+                    'variant_id' => $row->component_variant_id,
+                    'qty' => max(1, (int) $row->qty),
+                ];
+                $componentVariantIds[] = $row->component_variant_id;
+            }
+        }
+
+        // Satu query stok untuk variant non-bundle + seluruh komponen bundle sekaligus.
+        $lookupIds = array_values(array_unique(array_merge($variantIds, $componentVariantIds)));
+
+        $availByItem = [];
         $stocks = DB::table('inventories')
-            ->whereIn('item_id', $variantIds)
+            ->whereIn('item_id', $lookupIds)
             ->whereIn('location_id', $locationIds)
             ->groupBy('item_id')
             ->selectRaw('item_id, SUM(on_hand) as oh, SUM(reserved) as r')
             ->get();
 
         foreach ($stocks as $row) {
-            $qty = (int) $row->oh - (int) $row->r;
-            $result[$row->item_id] = max(0, $qty);
+            $availByItem[$row->item_id] = max(0, (int) $row->oh - (int) $row->r);
+        }
+
+        foreach ($variantIds as $variantId) {
+            if (! isset($bundleProductIdByVariant[$variantId])) {
+                $result[$variantId] = $availByItem[$variantId] ?? 0;
+                continue;
+            }
+
+            $components = $componentsByBundle[$bundleProductIdByVariant[$variantId]] ?? [];
+
+            if (empty($components)) {
+                $result[$variantId] = 0;
+                continue;
+            }
+
+            $bundleAvailable = null;
+            foreach ($components as $component) {
+                $perBundle = intdiv($availByItem[$component['variant_id']] ?? 0, $component['qty']);
+                $bundleAvailable = $bundleAvailable === null ? $perBundle : min($bundleAvailable, $perBundle);
+            }
+
+            $result[$variantId] = max(0, (int) $bundleAvailable);
         }
 
         return $result;
