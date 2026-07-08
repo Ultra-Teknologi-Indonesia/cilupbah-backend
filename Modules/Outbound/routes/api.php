@@ -75,6 +75,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::get('shipments/completed/{type}/{courierIds}', [ShipmentController::class, 'completed'])->name('outbound.shipments.completed');
     Route::get('shipments/by-courier/{courierCode}', [ShipmentController::class, 'byCourier'])->name('outbound.shipments.by-courier');
     Route::get('shipments/{id}', [ShipmentController::class, 'show'])->name('outbound.shipments.show');
+    Route::get('shipments/{id}/orders', [ShipmentController::class, 'orders'])->name('outbound.shipments.orders');
     Route::post('shipments/{id}/scan-order', [ShipmentController::class, 'scanOrder'])->name('outbound.shipments.scan-order');
     Route::post('shipments/{id}/add-orders', [ShipmentController::class, 'addOrders'])->name('outbound.shipments.add-orders');
     Route::post('shipments/{id}/remove-orders', [ShipmentController::class, 'removeOrders'])->name('outbound.shipments.remove-orders');

@@ -272,6 +272,28 @@ class ShipmentController extends Controller
         return $this->successResponse($shipment);
     }
 
+    #[OA\Get(
+        path: '/api/v1/outbound/shipments/{id}/orders',
+        summary: 'Get paginated orders for a shipment',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Shipment'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+            new OA\Parameter(name: 'filter[q]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+        ]
+    )]
+    public function orders(string $id, Request $request): JsonResponse
+    {
+        $limit = $request->query('limit', 20);
+        $data = $this->shipmentService->getOrdersPaginated($id, $limit);
+
+        return $this->successResponse($data);
+    }
+
     #[OA\Post(
         path: '/api/v1/outbound/shipments/{id}/add-orders',
         summary: 'Add orders to shipment',

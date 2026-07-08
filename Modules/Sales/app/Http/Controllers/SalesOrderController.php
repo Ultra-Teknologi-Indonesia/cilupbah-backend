@@ -462,9 +462,20 @@ class SalesOrderController extends Controller
             'order_ids.*' => 'required|bail|uuid|exists:sales_orders,id',
         ]);
 
-        $count = $this->orderService->moveToReadyToProcess($validated['order_ids']);
+        $result = $this->orderService->moveToReadyToProcess($validated['order_ids']);
+        $moved = $result['moved'];
+        $skipped = $result['skipped'];
 
-        return $this->successResponse(['moved' => $count], "{$count} order berhasil dipindahkan ke siap proses");
+        $message = "{$moved} order berhasil dipindahkan ke siap proses";
+        if (! empty($skipped)) {
+            $skippedCount = count($skipped);
+            $message .= " · {$skippedCount} order dilewati karena stok kosong (cek tab Stok Kosong)";
+        }
+
+        return $this->successResponse([
+            'moved'   => $moved,
+            'skipped' => $skipped,
+        ], $message);
     }
 
     #[OA\Post(

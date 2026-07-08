@@ -120,10 +120,32 @@ class SalesOrderService
         return $this->orderRepository->bulkDeleteCancelled($ids);
     }
 
-    public function moveToReadyToProcess(array $orderIds): int
+    /**
+     * @return array{moved:int, skipped:array<int, array{id:string, salesorder_no:?string}>}
+     */
+    public function moveToReadyToProcess(array $orderIds): array
     {
-        [$count, $awbOrderIds, $shopeeLabelOrderIds] = DB::transaction(function () use ($orderIds) {
-            $orders = SalesOrder::whereIn('id', $orderIds)
+        // Guard stok kosong: order yang masih punya item shortfall di Gudang Kecil
+        // TIDAK boleh masuk Proses Pesanan — biarkan parkir di tab Stok Kosong.
+        $skippedIds = SalesOrder::whereIn('id', $orderIds)
+            ->where('status', 'reserved')
+            ->hasStockShortfall()
+            ->pluck('salesorder_no', 'id')
+            ->all();
+
+        $skipped = [];
+        foreach ($skippedIds as $id => $orderNo) {
+            $skipped[] = ['id' => (string) $id, 'salesorder_no' => $orderNo];
+        }
+
+        $eligibleIds = array_values(array_diff($orderIds, array_keys($skippedIds)));
+
+        if (empty($eligibleIds)) {
+            return ['moved' => 0, 'skipped' => $skipped];
+        }
+
+        [$count, $awbOrderIds, $shopeeLabelOrderIds] = DB::transaction(function () use ($eligibleIds) {
+            $orders = SalesOrder::whereIn('id', $eligibleIds)
                 ->where('status', 'reserved')
                 ->get();
 
@@ -191,7 +213,7 @@ class SalesOrderService
             }
         }
 
-        return $count;
+        return ['moved' => $count, 'skipped' => $skipped];
     }
 
     public function acceptCancelRequest(string $orderId, bool $auto = false, ?string $reason = null): SalesOrder
@@ -1526,7 +1548,24 @@ class SalesOrderService
                 throw new \InvalidArgumentException('Item pesanan tidak ditemukan.');
             }
 
+            // Snapshot reservasi lama sebelum item diubah (untuk sinkronisasi stok).
+            $reservesStock = $order->status === 'reserved' && $item->item_id;
+            $oldItemId = $item->item_id;
+            $oldSku    = $item->sku ?? "item:{$item->item_id}";
+            $oldQty    = (int) $item->qty_in_base;
+
             $updates = array_intersect_key($data, array_flip(['sku', 'description', 'qty_in_base', 'price', 'disc', 'disc_amount', 'tax_amount']));
+
+            // Ganti SKU → resolve item_id baru dari master produk agar reservasi &
+            // picking memakai variant yang benar (bukan cuma ganti teks SKU).
+            if (array_key_exists('sku', $updates) && $updates['sku'] !== null && $updates['sku'] !== $item->sku) {
+                $newItemId = DB::table('product_variants')->where('sku', $updates['sku'])->value('id');
+                if (! $newItemId) {
+                    throw new \InvalidArgumentException("SKU {$updates['sku']} tidak ditemukan di master produk.");
+                }
+                $updates['item_id'] = $newItemId;
+            }
+
             if ($updates) {
                 $qty = (float) ($updates['qty_in_base'] ?? $item->qty_in_base);
                 $price = (float) ($updates['price'] ?? $item->price);
@@ -1534,6 +1573,25 @@ class SalesOrderService
                 $taxAmount = (float) ($updates['tax_amount'] ?? $item->tax_amount);
                 $updates['amount'] = ($price * $qty) - $discAmount + $taxAmount;
                 $item->update($updates);
+            }
+
+            // Sinkronkan reservasi: lepas yang lama, pasang yang baru (enforce=false
+            // supaya kompensasi tetap boleh walau stok baru masih kurang — order
+            // akan tetap di tab Stok Kosong bila memang belum cukup).
+            if ($reservesStock) {
+                $item->refresh();
+                $newItemId = $item->item_id;
+                $newSku    = $item->sku ?? "item:{$newItemId}";
+                $newQty    = (int) $item->qty_in_base;
+
+                $changed = $oldItemId !== $newItemId || $oldSku !== $newSku || $oldQty !== $newQty;
+                if ($changed) {
+                    $locationId = $this->resolveLocationId($order);
+                    $this->stockService->cancel($oldSku, $oldItemId, $locationId, $oldQty, $order->salesorder_no);
+                    if ($newItemId) {
+                        $this->stockService->reserve($newSku, $newItemId, $locationId, $newQty, $order->salesorder_no, false);
+                    }
+                }
             }
 
             $this->recomputeOrderTotals($order->fresh(['items']));
@@ -1557,6 +1615,17 @@ class SalesOrderService
                 throw new \InvalidArgumentException('Pesanan harus memiliki minimal satu item. Batalkan pesanan bila ingin menghapus item terakhir.');
             }
 
+            // Lepas reservasi item yang dihapus supaya stok reserved tidak nyangkut.
+            if ($order->status === 'reserved' && $item->item_id) {
+                $this->stockService->cancel(
+                    $item->sku ?? "item:{$item->item_id}",
+                    $item->item_id,
+                    $this->resolveLocationId($order),
+                    (int) $item->qty_in_base,
+                    $order->salesorder_no,
+                );
+            }
+
             $item->delete();
             $this->recomputeOrderTotals($order->fresh(['items']));
 
@@ -1564,11 +1633,36 @@ class SalesOrderService
         });
     }
 
+    /**
+     * Apakah order sedang dalam kondisi "stok kosong" (punya item shortfall di
+     * gudangnya). Konsisten dengan tab empty-stock & guard proses.
+     */
+    public function isEmptyStock(SalesOrder $order): bool
+    {
+        return SalesOrder::whereKey($order->getKey())->hasStockShortfall()->exists();
+    }
+
     private function assertEditableInternally(SalesOrder $order): void
     {
-        if (! in_array($order->status, ['pending'], true)) {
-            throw new \InvalidArgumentException('Item pesanan hanya bisa diubah/dihapus saat status masih Menunggu (belum direservasi/dipick).');
+        // Status Menunggu: selalu boleh (belum ada reservasi/pick).
+        if ($order->status === 'pending') {
+            return;
         }
+
+        // Kompensasi stok kosong: order reserved yang masih di tab Stok Kosong,
+        // belum diserahkan ke gudang & belum punya picklist, boleh diedit/hapus
+        // (hapus item kosong / ganti SKU / ganti qty) — internal, tanpa sync channel.
+        $editableEmptyStock = $order->status === 'reserved'
+            && is_null($order->handed_to_warehouse_at)
+            && is_null($order->pick_failed_at)
+            && ! $order->picklistItems()->exists()
+            && $this->isEmptyStock($order);
+
+        if ($editableEmptyStock) {
+            return;
+        }
+
+        throw new \InvalidArgumentException('Item pesanan hanya bisa diubah/dihapus saat status Menunggu, atau saat pesanan berada di Stok Kosong dan belum diproses gudang.');
     }
 
     private function assertContactChannel(?string $channel): void

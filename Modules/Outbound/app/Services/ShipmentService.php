@@ -45,6 +45,11 @@ class ShipmentService
         return $this->shipmentRepository->findById($id);
     }
 
+    public function getOrdersPaginated(string $id, int $limit = 20)
+    {
+        return $this->shipmentRepository->getOrdersPaginated($id, $limit);
+    }
+
     public function create(array $data): Shipment
     {
         $shipmentNo = !empty($data['shipment_no'])

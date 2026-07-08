@@ -110,6 +110,28 @@ class ShipmentRepository
             ->paginate($limit);
     }
 
+    public function getOrdersPaginated(string $shipmentId, int $limit = 20)
+    {
+        $query = ShipmentOrder::where('shipment_orders.shipment_id', $shipmentId)
+            ->join('sales_orders', 'sales_orders.id', '=', 'shipment_orders.order_id')
+            ->select('shipment_orders.*')
+            ->with([
+                'order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,shipping_type,tracking_number,source,channel_order_no,order_weight_gram',
+                'packlist:id,packlist_no',
+            ]);
+
+        return QueryBuilder::for($query)
+            ->allowedFilters([
+                AllowedFilter::callback('q', function ($query, $value) {
+                    $query->where(function ($q) use ($value) {
+                        $q->where('sales_orders.salesorder_no', 'ilike', "%{$value}%")
+                          ->orWhere('sales_orders.tracking_number', 'ilike', "%{$value}%");
+                    });
+                }),
+            ])
+            ->paginate($limit);
+    }
+
     public function findById(string $id): ?Shipment
     {
         return Shipment::with([

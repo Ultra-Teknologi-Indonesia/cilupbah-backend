@@ -213,6 +213,42 @@ class SalesOrder extends Model implements HasMedia
         return $this->hasMany(SalesOrderItem::class, 'order_id');
     }
 
+    /**
+     * Sumber tunggal kondisi item "stok kosong" (SQL, level sales_order_items):
+     * qty item melebihi stok tersedia (on_hand - reserved) di gudang order.
+     *
+     * Item bundle DIKECUALIKAN: variant bundle tidak punya inventory sendiri
+     * (stok ada di komponen, dicek saat picking via cascadeBundle), jadi kalau
+     * tidak dikecualikan setiap order bundle akan salah terdeteksi stok kosong.
+     *
+     * Dipakai bersama oleh scopeHasStockShortfall (guard proses) & tab
+     * empty-stock/ready-to-process di SalesOrderRepository supaya konsisten.
+     */
+    public static function shortfallItemWhereRaw(): string
+    {
+        return "sales_order_items.qty_in_base > COALESCE((
+                    SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
+                    FROM inventories
+                    WHERE inventories.item_id = sales_order_items.item_id
+                      AND inventories.location_id = sales_orders.location_id
+                ), 0)
+                AND NOT EXISTS (
+                    SELECT 1 FROM product_variants pv
+                    JOIN products p ON p.id = pv.product_id
+                    WHERE pv.id = sales_order_items.item_id
+                      AND p.is_bundle = true
+                )";
+    }
+
+    /**
+     * Order punya minimal satu item stok kosong (bukan bundle). Dipakai oleh
+     * guard proses (Sales + Outbound) agar konsisten dengan tab empty-stock.
+     */
+    public function scopeHasStockShortfall($query)
+    {
+        return $query->whereHas('items', fn ($q) => $q->whereRaw(static::shortfallItemWhereRaw()));
+    }
+
     public function feeLines(): HasMany
     {
         return $this->hasMany(SalesOrderFeeLine::class, 'order_id');

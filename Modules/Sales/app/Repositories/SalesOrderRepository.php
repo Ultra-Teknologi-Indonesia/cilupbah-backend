@@ -88,14 +88,7 @@ class SalesOrderRepository
 
     public function getTabCounts(): array
     {
-        $emptyStockItemConstraint = fn ($q) => $q->whereRaw(
-            "sales_order_items.qty_in_base > COALESCE((
-                SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
-                FROM inventories
-                WHERE inventories.item_id = sales_order_items.item_id
-                  AND inventories.location_id = sales_orders.location_id
-            ), 0)"
-        );
+        $emptyStockItemConstraint = fn ($q) => $q->whereRaw(SalesOrder::shortfallItemWhereRaw());
 
         return [
             // Selaras dengan getPaginatedOrders(): tab "Semua" tidak exclude order yang
@@ -183,14 +176,7 @@ class SalesOrderRepository
                 ->whereNull('pick_failed_at')
                 ->whereDoesntHave('picklistItems')
                 ->whereDoesntHave('items', $this->unmappedItemsConstraint())
-                ->whereDoesntHave('items', fn ($q) => $q->whereRaw(
-                    "sales_order_items.qty_in_base > COALESCE((
-                        SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
-                        FROM inventories
-                        WHERE inventories.item_id = sales_order_items.item_id
-                          AND inventories.location_id = sales_orders.location_id
-                    ), 0)"
-                )),
+                ->whereDoesntHave('items', fn ($q) => $q->whereRaw(SalesOrder::shortfallItemWhereRaw())),
             'in-transit'       => $query->where('status', 'shipped')->whereNull('received_date'),
             'completed'        => $query->where('status', 'shipped')->whereNotNull('received_date'),
             'empty-stock'      => $this->applyEmptyStockSubScope($query, $sub),
@@ -200,14 +186,7 @@ class SalesOrderRepository
             'returned'         => $this->applyReturnSubScope($query, $sub),
             'all'              => $query->whereNull('pick_failed_at')->where(fn ($q) => $q
                 ->where('status', '!=', 'reserved')
-                ->orWhereDoesntHave('items', fn ($qi) => $qi->whereRaw(
-                    "sales_order_items.qty_in_base > COALESCE((
-                        SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
-                        FROM inventories
-                        WHERE inventories.item_id = sales_order_items.item_id
-                          AND inventories.location_id = sales_orders.location_id
-                    ), 0)"
-                ))
+                ->orWhereDoesntHave('items', fn ($qi) => $qi->whereRaw(SalesOrder::shortfallItemWhereRaw()))
             ),
             default            => $query,
         };
@@ -217,14 +196,7 @@ class SalesOrderRepository
     {
         $baseQuery = $query->where('status', 'reserved')
             ->whereNull('pick_failed_at')
-            ->whereHas('items', fn ($q) => $q->whereRaw(
-                "sales_order_items.qty_in_base > COALESCE((
-                    SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
-                    FROM inventories
-                    WHERE inventories.item_id = sales_order_items.item_id
-                      AND inventories.location_id = sales_orders.location_id
-                ), 0)"
-            ));
+            ->whereHas('items', fn ($q) => $q->whereRaw(SalesOrder::shortfallItemWhereRaw()));
 
         return match ($sub) {
             'waiting'   => $baseQuery->whereNull('contacted_at'),
@@ -290,14 +262,7 @@ class SalesOrderRepository
 
     protected function applyStatusBucket($query, string $key)
     {
-        $emptyStockConstraint = fn ($q) => $q->whereRaw(
-            "sales_order_items.qty_in_base > COALESCE((
-                SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
-                FROM inventories
-                WHERE inventories.item_id = sales_order_items.item_id
-                  AND inventories.location_id = sales_orders.location_id
-            ), 0)"
-        );
+        $emptyStockConstraint = fn ($q) => $q->whereRaw(SalesOrder::shortfallItemWhereRaw());
 
         return match ($key) {
             'cancelled'        => $query->where('status', 'cancelled'),
