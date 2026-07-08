@@ -607,9 +607,12 @@ class InboundController extends Controller
     {
         $assignments = $this->inboundService->getMyAssignments(
             $request->user()->id,
-            $request->query('status')
+            $request->query('status'),
+            (int) $request->query('per_page', 10),
+            $request->query('search'),
+            $request->query('sort', '-created_at'),
         );
-        return $this->successResponse($assignments, 'Daftar assignment Anda');
+        return $this->successPaginatedResponse($assignments, 'Daftar assignment Anda');
     }
 
     #[OA\Post(
