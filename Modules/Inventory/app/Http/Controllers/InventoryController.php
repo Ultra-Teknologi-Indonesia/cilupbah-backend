@@ -330,6 +330,7 @@ class InventoryController extends Controller
         $base = \Modules\Inventory\Support\InventoryMovementSourceMap::filterOptions();
 
         $locations = \Modules\Warehouse\Models\Location::where('is_active', true)
+            ->where('location_name', 'not like', '%Transit%')
             ->orderBy('location_name')
             ->get(['id', 'location_name'])
             ->map(fn ($l) => ['value' => (string) $l->id, 'label' => $l->location_name])
