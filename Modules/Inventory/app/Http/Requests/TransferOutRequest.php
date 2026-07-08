@@ -15,7 +15,7 @@ class TransferOutRequest extends FormRequest
     {
         return [
             'source_location_id'          => ['required', 'string', 'exists:locations,id'],
-            'destination_location_id'     => ['required', 'string', 'exists:locations,id', 'different:source_location_id'],
+            'destination_location_id'     => ['required', 'string', 'exists:locations,id'],
             'notes'                       => ['nullable', 'string'],
             'created_by'                  => ['required', 'string', 'max:100'],
             'items'                       => ['required', 'array', 'min:1'],
