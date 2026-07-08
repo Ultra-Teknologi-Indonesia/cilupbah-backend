@@ -168,7 +168,7 @@ class ShipmentService
         $shipment = Shipment::where('shipment_no', $barcode)->first();
 
         if (!$shipment) {
-            $shipmentOrder = \Modules\Outbound\Models\ShipmentOrder::where('tracking_number', $barcode)->first();
+            $shipmentOrder = ShipmentOrder::where('tracking_number', $barcode)->first();
             if ($shipmentOrder) {
                 $shipment = $this->shipmentRepository->findById($shipmentOrder->shipment_id);
             }

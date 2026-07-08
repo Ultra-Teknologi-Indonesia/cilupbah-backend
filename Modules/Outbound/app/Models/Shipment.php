@@ -7,6 +7,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Traits\HasUuid7;
 
+/**
+ * @property \Illuminate\Database\Eloquent\Collection $orders
+ */
 class Shipment extends Model
 {
     use HasUuid7;
