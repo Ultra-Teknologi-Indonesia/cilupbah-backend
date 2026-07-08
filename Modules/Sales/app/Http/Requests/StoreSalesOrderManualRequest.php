@@ -60,6 +60,7 @@ class StoreSalesOrderManualRequest extends FormRequest
             'shipping_province'   => ['nullable', 'string', 'max:120'],
             'shipping_post_code'  => ['nullable', 'string', 'max:16'],
             'shipping_country'    => ['nullable', 'string', 'max:120'],
+            'shipping_coordinate' => ['nullable', 'string', 'max:64'],
 
             'items'                    => ['required', 'array', 'min:1'],
             'items.*.item_id'          => ['required', 'string', 'max:64'],

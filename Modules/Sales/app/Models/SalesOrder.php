@@ -60,6 +60,7 @@ class SalesOrder extends Model implements HasMedia
         'shipping_province',
         'shipping_post_code',
         'shipping_country',
+        'shipping_coordinate',
         'dropshipper_name',
         'dropshipper_phone',
         'courier_name',

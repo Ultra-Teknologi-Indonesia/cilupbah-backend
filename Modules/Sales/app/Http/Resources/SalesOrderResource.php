@@ -131,6 +131,7 @@ class SalesOrderResource extends JsonResource
                 'province'      => $this->shipping_province,
                 'post_code'     => $this->shipping_post_code,
                 'country'       => $this->shipping_country,
+                'coordinate'    => $this->shipping_coordinate,
                 'provider'      => $this->shipping_provider,
                 'tracking_number' => $this->tracking_number,
             ],

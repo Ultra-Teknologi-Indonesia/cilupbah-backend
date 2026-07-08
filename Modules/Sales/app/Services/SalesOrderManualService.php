@@ -80,6 +80,7 @@ class SalesOrderManualService
                 'shipping_province'   => $payload['shipping_province'] ?? null,
                 'shipping_post_code'  => $payload['shipping_post_code'] ?? null,
                 'shipping_country'    => $payload['shipping_country'] ?? 'ID',
+                'shipping_coordinate' => $payload['shipping_coordinate'] ?? null,
 
                 'status'              => 'reserved',
                 'is_canceled'         => false,
