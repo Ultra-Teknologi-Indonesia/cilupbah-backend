@@ -107,7 +107,7 @@ class InboundReceivingTestSeeder extends Seeder
                 'source_type'      => 'seeder',
                 'status'           => $status,
                 'expected_date'    => $createdAt->copy()->addDays(3),
-                'created_by'       => 'seeder',
+                'created_by'       => $admin->id,
                 'notes'            => "Test penerimaan #{$seq}",
                 'created_at'       => $createdAt,
                 'updated_at'       => $createdAt,

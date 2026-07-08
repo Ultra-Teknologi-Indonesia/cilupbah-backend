@@ -104,7 +104,7 @@ class PutawaySeeder extends Seeder
                 'assigned_to' => $staff->id,
                 'assigned_by' => 'Owner Cilupbah',
                 'notes' => $note,
-                'created_by' => 'seeder',
+                'created_by' => $staff->id,
                 'created_at' => $createdAt,
                 'updated_at' => $createdAt,
             ];

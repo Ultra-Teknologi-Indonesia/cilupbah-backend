@@ -106,7 +106,7 @@ class MultiRackPicklistSeeder extends Seeder
                 'assigned_by' => 'Owner Cilupbah',
                 'status' => Picklist::STATUS_IN_PROGRESS,
                 'notes' => 'Test multi-rak picking: keyboard di 3 rak, mouse di 2 rak',
-                'created_by' => 'seeder',
+                'created_by' => $staff->id,
                 'started_at' => now(),
             ]
         );
