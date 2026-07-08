@@ -179,7 +179,11 @@ class InboundService
                     throw new \Exception("Item ID {$receiptData['inbound_item_id']} tidak terkait dengan Inbound ini.");
                 }
 
-                $newTotal = $inboundItem->received_qty + $receiptData['qty'];
+                $condition = $receiptData['condition'] ?? 'GOOD';
+                $isDamage = $condition === 'DAMAGE';
+
+                $currentTotal = $inboundItem->received_qty + ($inboundItem->rejected_qty ?? 0);
+                $newTotal = $currentTotal + $receiptData['qty'];
                 if ($newTotal > $inboundItem->expected_qty) {
                     throw new \Exception("Jumlah terima melebihi ekspektasi untuk item {$inboundItem->item_id} (expected: {$inboundItem->expected_qty}, total: {$newTotal}).");
                 }
@@ -190,27 +194,34 @@ class InboundService
                     'bin_id'          => $defaultBin->id,
                     'batch_no'        => $receiptData['batch_no'] ?? null,
                     'serial_no'       => $receiptData['serial_no'] ?? null,
-                    'condition'       => $receiptData['condition'] ?? 'GOOD',
+                    'condition'       => $condition,
                     'received_by'     => $data['received_by'],
                     'received_date'   => now(),
                 ]);
 
-                $this->inboundRepository->updateItemReceivedQty($inboundItem->id, $receiptData['qty']);
-                $inboundItem->received_qty = $newTotal;
+                if ($isDamage) {
+                    $this->inboundRepository->updateItemRejectedQty($inboundItem->id, $receiptData['qty']);
+                    $inboundItem->rejected_qty = ($inboundItem->rejected_qty ?? 0) + $receiptData['qty'];
+                } else {
+                    $this->inboundRepository->updateItemReceivedQty($inboundItem->id, $receiptData['qty']);
+                    $inboundItem->received_qty += $receiptData['qty'];
+                }
 
-                $this->inventoryService->adjust([
-                    'item_id'            => $inboundItem->item_id,
-                    'location_id'        => $inbound->location_id,
-                    'bin_id'             => $defaultBin->id,
-                    'batch_no'           => $receiptData['batch_no'] ?? '',
-                    'serial_no'          => $receiptData['serial_no'] ?? '',
-                    'qty'                => $receiptData['qty'],
-                    'transaction_number' => $inbound->transaction_number,
-                    'created_by'         => $data['received_by'],
-                ]);
+                if (! $isDamage) {
+                    $this->inventoryService->adjust([
+                        'item_id'            => $inboundItem->item_id,
+                        'location_id'        => $inbound->location_id,
+                        'bin_id'             => $defaultBin->id,
+                        'batch_no'           => $receiptData['batch_no'] ?? '',
+                        'serial_no'          => $receiptData['serial_no'] ?? '',
+                        'qty'                => $receiptData['qty'],
+                        'transaction_number' => $inbound->transaction_number,
+                        'created_by'         => $data['received_by'],
+                    ]);
+                }
 
                 $landedCost = (float) ($landedCostMap[$inboundItem->item_id] ?? 0);
-                if ($landedCost > 0) {
+                if ($landedCost > 0 && ! $isDamage) {
                     $this->inventoryService->recalculateAverageCost(
                         $inboundItem->item_id,
                         $inbound->location_id,
@@ -252,6 +263,12 @@ class InboundService
                     }
                 }
 
+                $inbound->assignments()
+                    ->where('status', InboundAssignment::STATUS_IN_PROGRESS)
+                    ->update([
+                        'status'       => InboundAssignment::STATUS_COMPLETED,
+                        'completed_at' => now(),
+                    ]);
             }
 
             return $this->getById($inboundId);
@@ -451,9 +468,9 @@ class InboundService
         return $this->inboundRepository->getAssignmentsByInbound($inboundId);
     }
 
-    public function getMyAssignments(string $userId, ?string $status = null)
+    public function getMyAssignments(string $userId, ?string $status = null, int $perPage = 10, ?string $search = null, string $sort = '-created_at')
     {
-        return $this->inboundRepository->getAssignmentsByWorker($userId, $status);
+        return $this->inboundRepository->getAssignmentsByWorker($userId, $status, $perPage, $search, $sort);
     }
 
     public function startAssignment(string $assignmentId, string $userId): InboundAssignment

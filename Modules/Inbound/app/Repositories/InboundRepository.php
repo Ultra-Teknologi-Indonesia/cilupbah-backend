@@ -76,6 +76,16 @@ class InboundRepository
         return false;
     }
 
+    public function updateItemRejectedQty(string $itemId, int $addedQty): bool
+    {
+        $item = InboundItem::where('id', $itemId)->lockForUpdate()->first();
+        if ($item) {
+            $item->rejected_qty = ($item->rejected_qty ?? 0) + $addedQty;
+            return $item->save();
+        }
+        return false;
+    }
+
     public function updateItemPutawayQty(string $itemId, int $addedQty): bool
     {
         $item = InboundItem::where('id', $itemId)->lockForUpdate()->first();
@@ -178,7 +188,7 @@ class InboundRepository
             ->get();
     }
 
-    public function getAssignmentsByWorker(string $userId, ?string $status = null)
+    public function getAssignmentsByWorker(string $userId, ?string $status = null, int $perPage = 10, ?string $search = null, string $sort = '-created_at')
     {
         $query = InboundAssignment::where('assigned_to', $userId)
             ->with(['inbound.location:id,location_name', 'inbound.items']);
@@ -187,6 +197,21 @@ class InboundRepository
             $query->where('status', $status);
         }
 
-        return $query->orderBy('created_at', 'desc')->get();
+        if ($search) {
+            $query->whereHas('inbound', function ($q) use ($search) {
+                $q->where('transaction_number', 'like', "%{$search}%")
+                  ->orWhere('reference_number', 'like', "%{$search}%");
+            });
+        }
+
+        $direction = str_starts_with($sort, '-') ? 'desc' : 'asc';
+        $column = ltrim($sort, '-');
+        $allowed = ['created_at'];
+        if (! in_array($column, $allowed)) {
+            $column = 'created_at';
+            $direction = 'desc';
+        }
+
+        return $query->orderBy($column, $direction)->paginate($perPage);
     }
 }
