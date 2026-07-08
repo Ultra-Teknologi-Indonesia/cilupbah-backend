@@ -69,7 +69,7 @@ class ChannelStockTest extends TestCase
         $this->shop->update(['stock_source_mode' => 'location', 'stock_source_location_id' => $location->id]);
         $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
             ['location_id' => $location->id, 'bin_final_code' => 'RACK-A1'],
-            ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false, 'max_qty' => 0]
+            ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false]
         );
         Inventory::create([
             'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $bin->id,
@@ -136,7 +136,7 @@ class ChannelStockTest extends TestCase
             ]);
             $compBin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
                 ['location_id' => $location->id, 'bin_final_code' => 'RACK-A1'],
-                ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false, 'max_qty' => 0]
+                ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false]
             );
             Inventory::create([
                 'item_id' => $compVariant->id, 'location_id' => $location->id, 'bin_id' => $compBin->id,

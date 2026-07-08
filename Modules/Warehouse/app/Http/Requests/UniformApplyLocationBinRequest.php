@@ -19,7 +19,6 @@ class UniformApplyLocationBinRequest extends FormRequest
             'ids' => 'required_if:scope,selected|array',
             'ids.*' => 'uuid',
             'values' => 'required|array',
-            'values.max_qty' => 'nullable|integer|min:0',
             'values.is_stock_acknowledged' => 'nullable|boolean',
             'values.is_large_bin' => 'nullable|boolean',
             'values.category' => 'nullable|string|max:255',

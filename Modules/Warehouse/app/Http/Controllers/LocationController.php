@@ -50,7 +50,6 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'column_code', type: 'string', example: 'C1'),
         new OA\Property(property: 'bin_code', type: 'string', example: 'B1'),
         new OA\Property(property: 'bin_final_code', type: 'string', example: 'FL1-RW1-C1-B1'),
-        new OA\Property(property: 'max_qty', type: 'integer', example: 100),
     ]
 )]
 #[OA\Schema(

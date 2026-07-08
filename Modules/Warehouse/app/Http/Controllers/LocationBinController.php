@@ -33,7 +33,6 @@ use Throwable;
         new OA\Property(property: 'column_code', type: 'string', example: 'COL-A', nullable: true),
         new OA\Property(property: 'bin_code', type: 'string', example: 'BIN-100', nullable: true),
         new OA\Property(property: 'bin_final_code', type: 'string', example: 'FL01-RW02-COLA-BIN100', nullable: true),
-        new OA\Property(property: 'max_qty', type: 'integer', example: 100, nullable: true),
         new OA\Property(property: 'is_inbound', type: 'boolean', example: false, nullable: true),
         new OA\Property(property: 'created_at', type: 'string', format: 'date-time'),
         new OA\Property(property: 'updated_at', type: 'string', format: 'date-time'),
@@ -133,7 +132,6 @@ class LocationBinController extends Controller
                     new OA\Property(property: 'qty_column', type: 'integer', example: 3),
                     new OA\Property(property: 'bin_code', type: 'string', example: 'B'),
                     new OA\Property(property: 'qty_bin', type: 'integer', example: 4),
-                    new OA\Property(property: 'max_qty', type: 'integer', example: 100),
                 ]
             )
         ),
@@ -230,7 +228,6 @@ class LocationBinController extends Controller
             'bins' => 'required|array|min:1',
             'bins.*.id' => 'required|uuid',
             'bins.*.bin_final_code' => 'required|string|max:255',
-            'bins.*.max_qty' => 'required|integer|min:0',
             'bins.*.is_stock_acknowledged' => 'required|boolean',
             'bins.*.is_large_bin' => 'required|boolean',
             'bins.*.category' => 'nullable|string|max:255',

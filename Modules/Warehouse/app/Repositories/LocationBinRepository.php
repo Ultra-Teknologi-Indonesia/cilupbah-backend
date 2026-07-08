@@ -43,7 +43,6 @@ class LocationBinRepository
                 'row_code',
                 'column_code',
                 'bin_code',
-                'max_qty',
                 'created_at'
             )
             ->defaultSort('bin_final_code')

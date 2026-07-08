@@ -50,7 +50,6 @@ class LocationService
             $this->binRepository->create([
                 'location_id' => $location->id,
                 'bin_final_code' => 'DEFAULT',
-                'max_qty' => 0,
                 'is_inbound' => true,
             ]);
 
@@ -134,7 +133,6 @@ class LocationService
                         'column_code' => $rack['column_code'],
                         'bin_code' => $rack['bin_code'],
                         'bin_final_code' => $rack['bin_final_code'],
-                        'max_qty' => $rack['max_qty'] ?? 0,
                         'is_inbound' => false,
                     ];
                 }

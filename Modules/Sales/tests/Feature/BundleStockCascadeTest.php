@@ -69,7 +69,7 @@ class BundleStockCascadeTest extends TestCase
         // on_hand/available pada model stok terbaru.
         $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
             ['location_id' => $this->locationId, 'bin_final_code' => 'RACK-A1'],
-            ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false, 'max_qty' => 0]
+            ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false]
         );
 
         DB::table('inventories')->insert([

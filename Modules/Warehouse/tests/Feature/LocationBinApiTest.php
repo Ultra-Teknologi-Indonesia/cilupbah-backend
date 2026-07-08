@@ -67,7 +67,6 @@ class LocationBinApiTest extends TestCase
             'row_code' => 'B1',
             'column_code' => 'K1',
             'bin_code' => 'R1',
-            'max_qty' => 10,
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')

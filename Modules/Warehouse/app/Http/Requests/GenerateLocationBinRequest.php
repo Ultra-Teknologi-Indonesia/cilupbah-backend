@@ -22,7 +22,6 @@ class GenerateLocationBinRequest extends FormRequest
             'qty_column' => 'required|integer|min:1',
             'bin_code' => 'required|string|max:10',
             'qty_bin' => 'required|integer|min:1',
-            'max_qty' => 'nullable|integer|min:0',
             'page' => 'nullable|integer|min:1',
             'per_page' => 'nullable|integer|min:1|max:1000',
         ];

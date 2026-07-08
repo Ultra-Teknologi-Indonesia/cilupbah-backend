@@ -42,7 +42,6 @@ class UpdateLocationRequest extends FormRequest
             'layout.*.racks.*.column_code' => 'required|string|max:20',
             'layout.*.racks.*.bin_code' => 'required|string|max:20',
             'layout.*.racks.*.bin_final_code' => 'required|string|max:100',
-            'layout.*.racks.*.max_qty' => 'nullable|integer|min:0',
         ];
     }
 

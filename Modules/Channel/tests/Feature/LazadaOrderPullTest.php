@@ -146,7 +146,7 @@ class LazadaOrderPullTest extends TestCase
         // agregat bin_id NULL (lihat StockService::reserveSingle).
         $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
             ['location_id' => $location->id, 'bin_final_code' => 'RACK-A1'],
-            ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false, 'max_qty' => 0]
+            ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false]
         );
         Inventory::create([
             'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $bin->id,

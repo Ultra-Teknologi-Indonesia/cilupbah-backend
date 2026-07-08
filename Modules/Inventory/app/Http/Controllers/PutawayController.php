@@ -525,7 +525,7 @@ class PutawayController extends Controller
             $query->where('bin_final_code', 'like', "%{$search}%");
         }
 
-        $bins = $query->get(['id', 'bin_final_code', 'max_qty']);
+        $bins = $query->get(['id', 'bin_final_code']);
 
         $binCurrentQty = Inventory::where('location_id', $locationId)
             ->where('on_hand', '>', 0)
@@ -541,9 +541,7 @@ class PutawayController extends Controller
             return [
                 'id' => $bin->id,
                 'bin_final_code' => $bin->bin_final_code,
-                'max_qty' => $bin->max_qty,
                 'current_qty' => $currentQty,
-                'remaining_capacity' => $bin->max_qty ? max(0, $bin->max_qty - $currentQty) : null,
             ];
         });
 
@@ -588,7 +586,6 @@ class PutawayController extends Controller
             ->sum('on_hand');
 
         $bin->current_qty = (int) $currentQty;
-        $bin->remaining_capacity = $bin->max_qty ? max(0, $bin->max_qty - (int) $currentQty) : null;
 
         return $this->successResponse($bin, 'Bin ditemukan.');
     }
@@ -658,7 +655,7 @@ class PutawayController extends Controller
             ->where('on_hand', '>', 0)
             ->whereNotNull('bin_id')
             ->whereHas('bin', fn ($q) => $q->where('is_inbound', false))
-            ->with('bin:id,bin_final_code,max_qty')
+            ->with('bin:id,bin_final_code')
             ->orderByDesc('on_hand')
             ->get(['id', 'item_id', 'bin_id', 'on_hand']);
 
@@ -667,15 +664,7 @@ class PutawayController extends Controller
         $allBins = LocationBin::where('location_id', $locationId)
             ->where('is_inbound', false)
             ->orderBy('bin_final_code')
-            ->get(['id', 'bin_final_code', 'max_qty']);
-
-        $binCurrentQty = Inventory::where('location_id', $locationId)
-            ->where('on_hand', '>', 0)
-            ->whereNotNull('bin_id')
-            ->groupBy('bin_id')
-            ->selectRaw('bin_id, SUM(on_hand) as total')
-            ->pluck('total', 'bin_id')
-            ->map(fn ($v) => (int) $v);
+            ->get(['id', 'bin_final_code']);
 
         $binItemIds = Inventory::where('location_id', $locationId)
             ->where('on_hand', '>', 0)
@@ -686,7 +675,6 @@ class PutawayController extends Controller
             ->groupBy('bin_id')
             ->map(fn ($rows) => $rows->pluck('item_id')->unique()->values()->all());
 
-        $usedCapacity = [];
         $usedBinItems = [];
 
         foreach ($items as $item) {
@@ -705,13 +693,8 @@ class PutawayController extends Controller
                     continue;
                 }
 
-                $currentInBin = ($binCurrentQty[$bin->id] ?? 0) + ($usedCapacity[$bin->id] ?? 0);
-                $binRemaining = $bin->max_qty ? max(0, $bin->max_qty - $currentInBin) : $remaining;
-                if ($binRemaining <= 0) continue;
-
-                $allocate = min($remaining, $binRemaining);
+                $allocate = $remaining;
                 $plan[] = ['code' => $bin->bin_final_code, 'qty' => $allocate];
-                $usedCapacity[$bin->id] = ($usedCapacity[$bin->id] ?? 0) + $allocate;
                 $usedBinItems[$bin->id][] = $item->item_id;
                 $usedBinIds[] = $bin->id;
                 $remaining -= $allocate;
@@ -730,13 +713,8 @@ class PutawayController extends Controller
                         continue;
                     }
 
-                    $currentInBin = ($binCurrentQty[$bin->id] ?? 0) + ($usedCapacity[$bin->id] ?? 0);
-                    $binRemaining = $bin->max_qty ? max(0, $bin->max_qty - $currentInBin) : $remaining;
-                    if ($binRemaining <= 0) continue;
-
-                    $allocate = min($remaining, $binRemaining);
+                    $allocate = $remaining;
                     $plan[] = ['code' => $bin->bin_final_code, 'qty' => $allocate];
-                    $usedCapacity[$bin->id] = ($usedCapacity[$bin->id] ?? 0) + $allocate;
                     $usedBinItems[$bin->id][] = $item->item_id;
                     $usedBinIds[] = $bin->id;
                     $remaining -= $allocate;

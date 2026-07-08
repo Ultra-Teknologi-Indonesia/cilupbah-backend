@@ -47,7 +47,6 @@ class InboundDatabaseSeeder extends Seeder
                 'column_code'    => 'C0',
                 'bin_code'       => 'INBOUND',
                 'bin_final_code' => 'F1-R0-C0-INBOUND',
-                'max_qty'        => 0,
             ]
         );
 
@@ -58,7 +57,6 @@ class InboundDatabaseSeeder extends Seeder
                 'row_code'    => 'R1',
                 'column_code' => 'C1',
                 'bin_code'    => 'B1',
-                'max_qty'     => 500,
                 'is_inbound'  => false,
             ]
         );
@@ -70,7 +68,6 @@ class InboundDatabaseSeeder extends Seeder
                 'row_code'    => 'R1',
                 'column_code' => 'C2',
                 'bin_code'    => 'B1',
-                'max_qty'     => 500,
                 'is_inbound'  => false,
             ]
         );
@@ -83,7 +80,6 @@ class InboundDatabaseSeeder extends Seeder
                 'column_code'    => 'C0',
                 'bin_code'       => 'INBOUND',
                 'bin_final_code' => 'F1-R0-C0-INBOUND',
-                'max_qty'        => 0,
             ]
         );
 
@@ -144,7 +140,6 @@ class InboundDatabaseSeeder extends Seeder
                 'column_code' => '1',
                 'bin_code'    => 'A-1',
                 'is_inbound'  => false,
-                'max_qty'     => 0,
             ]
         );
 

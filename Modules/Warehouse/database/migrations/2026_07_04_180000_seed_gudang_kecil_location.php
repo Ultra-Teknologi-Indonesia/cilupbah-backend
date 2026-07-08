@@ -45,7 +45,6 @@ return new class extends Migration
             'column_code'    => null,
             'bin_code'       => null,
             'bin_final_code' => 'DEFAULT',
-            'max_qty'        => 0,
             'is_inbound'     => true,
             'created_at'     => now(),
             'updated_at'     => now(),

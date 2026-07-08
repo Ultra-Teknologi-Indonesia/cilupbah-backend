@@ -1725,7 +1725,7 @@ class InventoryService
 
         $bin = LocationBin::firstOrCreate(
             ['location_id' => $transit->id, 'bin_final_code' => 'DEFAULT'],
-            ['max_qty' => 0, 'is_inbound' => true]
+            ['is_inbound' => true]
         );
 
         return [$transit->id, $bin->id];

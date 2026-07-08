@@ -20,7 +20,6 @@ class StoreLocationBinRequest extends FormRequest
             'row_code' => 'required|string|max:10',
             'column_code' => 'required|string|max:10',
             'bin_code' => 'required|string|max:10',
-            'max_qty' => 'nullable|integer|min:0',
             'is_inbound' => 'nullable|boolean',
         ];
     }

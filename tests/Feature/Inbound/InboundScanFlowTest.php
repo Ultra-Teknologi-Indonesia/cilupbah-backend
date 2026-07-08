@@ -52,7 +52,6 @@ class InboundScanFlowTest extends TestCase
             'column_code'    => 'C0',
             'bin_code'       => 'INBOUND',
             'bin_final_code' => 'F1-R0-C0-INBOUND',
-            'max_qty'        => 0,
             'is_inbound'     => true,
         ]);
 
@@ -63,7 +62,6 @@ class InboundScanFlowTest extends TestCase
             'column_code'    => 'C1',
             'bin_code'       => 'B1',
             'bin_final_code' => 'F1-R1-C1-B1',
-            'max_qty'        => 500,
             'is_inbound'     => false,
         ]);
 

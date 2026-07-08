@@ -67,16 +67,6 @@ class WarehouseNo500GuardTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors('location_id');
     }
 
-    public function test_store_bin_decimal_max_qty_returns_422(): void
-    {
-        $loc = Location::factory()->create();
-        $this->auth()->postJson('/api/v1/bins', [
-            'location_id' => $loc->id,
-            'floor_code' => 'F1', 'row_code' => 'R1', 'column_code' => 'C1', 'bin_code' => 'B1',
-            'max_qty' => 10.5,
-        ])->assertStatus(422)->assertJsonValidationErrors('max_qty');
-    }
-
     public function test_channel_warehouse_delete_non_numeric_returns_404(): void
     {
         $this->auth()->deleteJson('/api/v1/channel-warehouses/abc')->assertStatus(404);

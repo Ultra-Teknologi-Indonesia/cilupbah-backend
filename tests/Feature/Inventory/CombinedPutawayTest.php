@@ -50,17 +50,17 @@ class CombinedPutawayTest extends TestCase
         $this->inboundBin = LocationBin::create([
             'location_id' => $this->wh->id, 'floor_code' => 'F1', 'row_code' => 'R0',
             'column_code' => 'C0', 'bin_code' => 'INB', 'bin_final_code' => 'F1-R0-C0-INB',
-            'max_qty' => 0, 'is_inbound' => true,
+            'is_inbound' => true,
         ]);
         $this->inboundBin2 = LocationBin::create([
             'location_id' => $this->wh2->id, 'floor_code' => 'F1', 'row_code' => 'R0',
             'column_code' => 'C0', 'bin_code' => 'INB', 'bin_final_code' => 'F1-R0-C0-INB2',
-            'max_qty' => 0, 'is_inbound' => true,
+            'is_inbound' => true,
         ]);
         $this->storageBin = LocationBin::create([
             'location_id' => $this->wh->id, 'floor_code' => 'F1', 'row_code' => 'R1',
             'column_code' => 'C1', 'bin_code' => 'B1', 'bin_final_code' => 'F1-R1-C1-B1',
-            'max_qty' => 1000, 'is_inbound' => false,
+            'is_inbound' => false,
         ]);
 
         $categoryId = \DB::table('categories')->insertGetId([

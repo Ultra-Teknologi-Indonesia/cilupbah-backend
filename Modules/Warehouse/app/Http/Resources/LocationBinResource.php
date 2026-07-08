@@ -18,7 +18,6 @@ class LocationBinResource extends JsonResource
             'column_code' => $this->column_code,
             'bin_code' => $this->bin_code,
             'bin_final_code' => $this->bin_final_code,
-            'max_qty' => (int) $this->max_qty,
             'is_inbound' => (bool) $this->is_inbound,
             'is_stock_acknowledged' => (bool) $this->is_stock_acknowledged,
             'is_large_bin' => (bool) $this->is_large_bin,

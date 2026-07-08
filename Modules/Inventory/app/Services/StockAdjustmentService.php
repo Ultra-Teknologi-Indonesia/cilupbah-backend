@@ -34,8 +34,6 @@ class StockAdjustmentService
 
     public function create(array $data): StockAdjustment
     {
-        $this->validateBinCapacity($data);
-
         $adjustment = DB::transaction(function () use ($data) {
             $adjustmentNo = ! empty($data['adjustment_no'])
                 ? $data['adjustment_no']
@@ -80,55 +78,6 @@ class StockAdjustmentService
         ProcessStockAdjustmentJob::dispatch($adjustment->id, $data['created_by']);
 
         return $adjustment;
-    }
-
-    protected function validateBinCapacity(array $data): void
-    {
-        $locationId = $data['location_id'];
-
-        $deltaByBin = [];
-        foreach ($data['items'] as $it) {
-            $binId = $it['bin_id'] ?? null;
-            if (! $binId) continue;
-
-            $inventory = $this->inventoryRepository->findExact(
-                $it['item_id'],
-                $locationId,
-                $binId,
-            );
-            $systemQty = $inventory ? (int) $inventory->on_hand : 0;
-            $delta = (int) $it['actual_qty'] - $systemQty;
-
-            if ($delta <= 0) continue;
-
-            $deltaByBin[$binId] = ($deltaByBin[$binId] ?? 0) + $delta;
-        }
-
-        if (empty($deltaByBin)) return;
-
-        $bins = \Modules\Warehouse\Models\LocationBin::whereIn('id', array_keys($deltaByBin))
-            ->get(['id', 'bin_final_code', 'max_qty']);
-
-        foreach ($bins as $bin) {
-            if (! $bin->max_qty || $bin->max_qty <= 0) continue;
-
-            $currentSum = (int) \Modules\Inventory\Models\Inventory::where('bin_id', $bin->id)
-                ->where('location_id', $locationId)
-                ->sum('on_hand');
-
-            $newTotal = $currentSum + $deltaByBin[$bin->id];
-
-            if ($newTotal > $bin->max_qty) {
-                throw new \Exception(sprintf(
-                    'Kapasitas rak %s tidak cukup: max %d, saat ini %d, akan jadi %d (over %d).',
-                    $bin->bin_final_code,
-                    $bin->max_qty,
-                    $currentSum,
-                    $newTotal,
-                    $newTotal - $bin->max_qty,
-                ));
-            }
-        }
     }
 
     public function delete(string $id): bool

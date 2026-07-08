@@ -88,9 +88,7 @@ class LocationBinService
             throw new ModelNotFoundException('Lokasi tidak ditemukan.');
         }
 
-        $maxQty = $data['max_qty'] ?? 0;
-
-        return DB::transaction(function () use ($locationId, $data, $maxQty) {
+        return DB::transaction(function () use ($locationId, $data) {
             $created = 0;
 
             for ($f = 1; $f <= $data['qty_floor']; $f++) {
@@ -110,7 +108,6 @@ class LocationBinService
                                 $locationId,
                                 $finalCode,
                                 array_merge($codes, [
-                                    'max_qty' => $maxQty,
                                     'is_inbound' => false,
                                     'is_stock_acknowledged' => true,
                                     'is_large_bin' => false,
@@ -148,7 +145,6 @@ class LocationBinService
             $updated = 0;
             foreach ($bins as $binData) {
                 $payload = [
-                    'max_qty' => $binData['max_qty'],
                     'is_stock_acknowledged' => $binData['is_stock_acknowledged'],
                     'is_large_bin' => $binData['is_large_bin'],
                     'category' => $binData['category'] ?? null,
@@ -173,7 +169,6 @@ class LocationBinService
         $qtyRow = (int) $data['qty_row'];
         $qtyColumn = (int) $data['qty_column'];
         $qtyBin = (int) $data['qty_bin'];
-        $maxQty = $data['max_qty'] ?? 0;
 
         $total = $qtyFloor * $qtyRow * $qtyColumn * $qtyBin;
         $perPage = max(1, min($perPage, 1000));
@@ -185,7 +180,7 @@ class LocationBinService
         if ($offset < $total) {
             $end = min($offset + $perPage, $total);
             for ($i = $offset; $i < $end; $i++) {
-                $items[] = $this->buildPreviewRowAtIndex($i, $data, $maxQty);
+                $items[] = $this->buildPreviewRowAtIndex($i, $data);
             }
         }
 
@@ -200,7 +195,7 @@ class LocationBinService
         ];
     }
 
-    protected function buildPreviewRowAtIndex(int $index, array $data, int $maxQty): array
+    protected function buildPreviewRowAtIndex(int $index, array $data): array
     {
         $qtyRow = (int) $data['qty_row'];
         $qtyColumn = (int) $data['qty_column'];
@@ -226,7 +221,6 @@ class LocationBinService
 
         return array_merge($codes, [
             'bin_final_code' => $this->generateFinalCode($codes),
-            'max_qty' => $maxQty,
         ]);
     }
 
@@ -236,7 +230,6 @@ class LocationBinService
         $values = $payload['values'];
 
         $updateData = array_filter([
-            'max_qty' => $values['max_qty'] ?? null,
             'is_stock_acknowledged' => array_key_exists('is_stock_acknowledged', $values) ? (bool) $values['is_stock_acknowledged'] : null,
             'is_large_bin' => array_key_exists('is_large_bin', $values) ? (bool) $values['is_large_bin'] : null,
             'category' => array_key_exists('category', $values) ? $values['category'] : null,

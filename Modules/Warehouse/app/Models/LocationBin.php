@@ -24,7 +24,6 @@ class LocationBin extends Model
         'column_code',
         'bin_code',
         'bin_final_code',
-        'max_qty',
         'is_inbound',
         'is_stock_acknowledged',
         'is_large_bin',

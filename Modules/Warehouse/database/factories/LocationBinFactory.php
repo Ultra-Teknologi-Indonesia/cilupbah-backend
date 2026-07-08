@@ -24,7 +24,6 @@ class LocationBinFactory extends Factory
             'column_code' => $col,
             'bin_code' => $bin,
             'bin_final_code' => "{$floor}-{$row}-{$col}-{$bin}",
-            'max_qty' => $this->faker->numberBetween(0, 100),
             'is_inbound' => false,
         ];
     }
