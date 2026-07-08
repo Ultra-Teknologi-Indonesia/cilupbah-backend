@@ -457,7 +457,7 @@ class InboundService
             'inbound',
             $inbound->transaction_number,
             $assignedBy,
-            ['inbound_id' => $inboundId],
+            ['inbound_id' => $inboundId, 'assignment_id' => $assignment->id],
         );
 
         return $assignment;

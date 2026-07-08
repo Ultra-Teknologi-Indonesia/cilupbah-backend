@@ -17,6 +17,7 @@ Route::prefix('v1/auth')->group(function () {
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/profile', [AuthController::class, 'profile'])->name('auth.profile');
     Route::put('/profile/avatar', [AuthController::class, 'updateAvatar'])->name('auth.profile.avatar');
+    Route::put('/profile/password', [AuthController::class, 'changePassword'])->name('auth.profile.password');
 
     Route::get('/systemsetting/users', [UserController::class, 'lookup'])->name('auth.users.lookup');
 
