@@ -120,15 +120,12 @@ class ShipmentRepository
                 'packlist:id,packlist_no',
             ]);
 
+        if ($q = request('filter.q') ?? request('q')) {
+            request()->query->set('search', $q);
+            $query->allowedSearch('sales_orders.salesorder_no', 'sales_orders.channel_order_no', 'sales_orders.tracking_number');
+        }
+
         return QueryBuilder::for($query)
-            ->allowedFilters([
-                AllowedFilter::callback('q', function ($query, $value) {
-                    $query->where(function ($q) use ($value) {
-                        $q->where('sales_orders.salesorder_no', 'ilike', "%{$value}%")
-                          ->orWhere('sales_orders.tracking_number', 'ilike', "%{$value}%");
-                    });
-                }),
-            ])
             ->paginate($limit);
     }
 

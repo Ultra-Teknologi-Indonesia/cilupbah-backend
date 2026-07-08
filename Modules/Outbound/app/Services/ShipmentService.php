@@ -183,7 +183,7 @@ class ShipmentService
 
     public function updateTrackingNumber(string $shipmentId, string $orderId, string $trackingNumber): void
     {
-        $shipmentOrder = \Modules\Outbound\Models\ShipmentOrder::where('shipment_id', $shipmentId)
+        $shipmentOrder = ShipmentOrder::where('shipment_id', $shipmentId)
             ->where('order_id', $orderId)
             ->first();
 
