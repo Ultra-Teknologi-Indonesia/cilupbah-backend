@@ -726,9 +726,9 @@ class InboundService
         }
     }
 
-    public function cancel(string $inboundId): Inbound
+    public function cancel(string $inboundId, ?string $userId = null): Inbound
     {
-        return DB::transaction(function () use ($inboundId) {
+        return DB::transaction(function () use ($inboundId, $userId) {
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
 
             if (! $inbound) {
@@ -743,7 +743,7 @@ class InboundService
                 throw new \Exception("Inbound sudah dibatalkan.");
             }
 
-            $this->reverseReceivedStock($inbound);
+            $this->reverseReceivedStock($inbound, $userId);
 
             $this->inboundRepository->updateStatus($inbound, Inbound::STATUS_CANCELLED);
 
@@ -751,9 +751,30 @@ class InboundService
         });
     }
 
-    private function reverseReceivedStock(Inbound $inbound): void
+    /**
+     * Batalkan (hapus) beberapa penerimaan sekaligus. Tiap dokumen dibatalkan di
+     * transaksinya sendiri; yang gagal dikumpulkan tanpa menggagalkan yang lain.
+     */
+    public function cancelMany(array $ids, ?string $userId = null): array
+    {
+        $result = ['cancelled' => [], 'failed' => []];
+
+        foreach ($ids as $id) {
+            try {
+                $this->cancel($id, $userId);
+                $result['cancelled'][] = $id;
+            } catch (\Throwable $e) {
+                $result['failed'][] = ['id' => $id, 'message' => $e->getMessage()];
+            }
+        }
+
+        return $result;
+    }
+
+    private function reverseReceivedStock(Inbound $inbound, ?string $userId = null): void
     {
         $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
+        $createdBy = $userId ? "user:{$userId}" : 'system';
 
         foreach ($inbound->items as $item) {
             if ($item->received_qty <= 0) {
@@ -768,7 +789,7 @@ class InboundService
                     'bin_id'             => $defaultBin->id,
                     'qty'                => -$reverseQty,
                     'transaction_number' => $inbound->transaction_number . '-CANCEL',
-                    'created_by'         => 'system',
+                    'created_by'         => $createdBy,
                 ]);
             }
         }

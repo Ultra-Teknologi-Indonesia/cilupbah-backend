@@ -8,6 +8,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inbounds/my-assignments', [InboundController::class, 'myAssignments'])->name('inbounds.myAssignments');
     Route::get('inbounds/scan/{qrCode}', [InboundController::class, 'scanQr'])->name('inbounds.scanQr');
     Route::post('inbounds/scan-putaway', [InboundController::class, 'scanPutaway'])->name('inbounds.scanPutaway');
+    Route::post('inbounds/bulk-cancel', [InboundController::class, 'bulkCancel'])->name('inbounds.bulkCancel');
 
     Route::get('inbounds', [InboundController::class, 'index'])->name('inbounds.index');
     Route::post('inbounds', [InboundController::class, 'store'])->name('inbounds.store');

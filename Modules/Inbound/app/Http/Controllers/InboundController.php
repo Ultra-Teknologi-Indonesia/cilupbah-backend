@@ -426,6 +426,40 @@ class InboundController extends Controller
     }
 
     #[OA\Post(
+        path: '/api/v1/inbounds/bulk-cancel',
+        summary: 'Batalkan (hapus) beberapa penerimaan sekaligus',
+        security: [['bearerAuth' => []]],
+        tags: ['Inbounds'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['ids'],
+                properties: [new OA\Property(property: 'ids', type: 'array', items: new OA\Items(type: 'string'))]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Penerimaan terpilih diproses'),
+            new OA\Response(response: 422, description: 'Validasi gagal'),
+        ]
+    )]
+    public function bulkCancel(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids'   => 'required|array|min:1',
+            'ids.*' => 'required|string|distinct|exists:inbounds,id',
+        ]);
+
+        try {
+            $userId = (string) ($request->user()->id ?? 'system');
+            $result = $this->inboundService->cancelMany($validated['ids'], $userId);
+
+            return $this->successResponse($result, 'Penerimaan terpilih diproses.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Post(
         path: '/api/v1/inbounds/{id}/close-receiving',
         summary: 'Close receiving (mark discrepancy and move to putaway)',
         security: [['bearerAuth' => []]],
