@@ -20,6 +20,8 @@ class LocationRepository
     public function getAllPaginated()
     {
         return QueryBuilder::for(Location::class)
+            ->where('location_name', 'not like', '%Transit%')
+            ->where('location_name', 'not like', '%Virtual%')
             ->with('village.district.city.province')
             ->allowedSearch('location_name')
             ->allowedFilters(
