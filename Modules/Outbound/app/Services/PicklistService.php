@@ -361,6 +361,21 @@ class PicklistService
 
         if ($candidates->isEmpty()) {
             $isBundle = $this->productRepository->bundleComponentsForVariant($item->item_id) !== null;
+
+            // Bedakan "belum ditempatkan" vs benar-benar kosong: kalau masih ada stok fisik
+            // yang menunggu penempatan (Bin Inbound / bin_id NULL), arahkan ke Penempatan,
+            // bukan replenishment.
+            $pending = (int) Inventory::where('item_id', $item->item_id)
+                ->where('location_id', $picklist->location_id)
+                ->pendingPlacement()
+                ->sum('on_hand');
+
+            if ($pending > 0 && ! $isBundle) {
+                throw new OutboundValidationException(
+                    "Stok {$item->sku} ada {$pending} tapi belum ditempatkan ke rak. Lakukan Penempatan (putaway) dulu sebelum picking."
+                );
+            }
+
             $msg = $isBundle
                 ? "Stok komponen bundle {$item->sku} kosong di gudang ini. Pastikan semua komponen sudah di-receive & putaway."
                 : "Stok {$item->sku} kosong di gudang ini. Butuh replenishment.";
@@ -390,6 +405,13 @@ class PicklistService
      */
     private function assertInventoryForPick(PicklistItem $item, string $locationId, LocationBin $bin): int
     {
+        // Bin Inbound menampung stok yang belum ditempatkan → tidak bisa dipick langsung.
+        if ($bin->is_inbound) {
+            throw new OutboundValidationException(
+                "Rak {$bin->bin_final_code} adalah Bin Inbound (stok belum ditempatkan). Lakukan Penempatan dulu, lalu pick dari rak final."
+            );
+        }
+
         $inventory = Inventory::where('item_id', $item->item_id)
             ->where('location_id', $locationId)
             ->where('bin_id', $bin->id)
@@ -416,6 +438,7 @@ class PicklistService
     {
         $rows = Inventory::where('item_id', $item->item_id)
             ->where('location_id', $picklist->location_id)
+            ->placed()
             ->where('on_hand', '>', 0)
             ->with(['bin:id,bin_final_code'])
             ->orderBy('created_at')

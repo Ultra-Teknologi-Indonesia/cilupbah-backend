@@ -65,11 +65,18 @@ class BundleStockCascadeTest extends TestCase
 
     private function setInventory(string $variantId, int $onHand): void
     {
+        // Stok ditempatkan di rak final (is_inbound=false) agar dihitung sebagai
+        // on_hand/available pada model stok terbaru.
+        $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
+            ['location_id' => $this->locationId, 'bin_final_code' => 'RACK-A1'],
+            ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false, 'max_qty' => 0]
+        );
+
         DB::table('inventories')->insert([
             'id' => Str::uuid()->toString(),
             'item_id' => $variantId,
             'location_id' => $this->locationId,
-            'bin_id' => null,
+            'bin_id' => $bin->id,
             'on_hand' => $onHand,
             'on_order' => 0,
             'reserved' => 0,

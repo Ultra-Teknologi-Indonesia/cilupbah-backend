@@ -54,12 +54,19 @@ class ChannelStockResolver
         // Satu query stok untuk variant non-bundle + seluruh komponen bundle sekaligus.
         $lookupIds = array_values(array_unique(array_merge($variantIds, $componentVariantIds)));
 
+        // Stok yang di-broadcast ke marketplace hanya yang SUDAH DITEMPATKAN di rak final
+        // (bin is_inbound=false). Stok yang baru diterima tapi belum ditempatkan (Bin Inbound
+        // atau bin_id NULL) tidak sellable → mencegah oversell. reserved dijumlahkan lintas
+        // semua baris (agregat reserved di baris bin_id NULL).
         $availByItem = [];
-        $stocks = DB::table('inventories')
-            ->whereIn('item_id', $lookupIds)
-            ->whereIn('location_id', $locationIds)
-            ->groupBy('item_id')
-            ->selectRaw('item_id, SUM(on_hand) as oh, SUM(reserved) as r')
+        $stocks = DB::table('inventories as i')
+            ->leftJoin('location_bins as b', 'b.id', '=', 'i.bin_id')
+            ->whereIn('i.item_id', $lookupIds)
+            ->whereIn('i.location_id', $locationIds)
+            ->groupBy('i.item_id')
+            ->selectRaw('i.item_id as item_id')
+            ->selectRaw('COALESCE(SUM(CASE WHEN b.id IS NOT NULL AND b.is_inbound = false THEN i.on_hand ELSE 0 END),0) as oh')
+            ->selectRaw('COALESCE(SUM(i.reserved),0) as r')
             ->get();
 
         foreach ($stocks as $row) {

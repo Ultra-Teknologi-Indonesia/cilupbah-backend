@@ -147,10 +147,12 @@ class ProductResource extends JsonResource
                     ];
 
                     if ($variant->relationLoaded('inventories')) {
+                        $summary = \Modules\Inventory\Support\StockSummary::partitionLoaded($variant->inventories);
                         $data['stock'] = [
-                            'on_hand'   => (int) $variant->inventories->sum('on_hand'),
-                            'reserved'  => (int) $variant->inventories->sum('reserved'),
-                            'on_order'  => (int) $variant->inventories->sum('on_order'),
+                            'on_hand'   => $summary['on_hand'],
+                            'pending_placement' => $summary['pending_placement'],
+                            'reserved'  => $summary['reserved'],
+                            'on_order'  => $summary['on_order'],
                             'available' => (int) $variant->inventories->sum('available'),
                         ];
                     }
@@ -208,7 +210,8 @@ class ProductResource extends JsonResource
                     ])->values()
                     : [],
                 'stock' => ($variant && $variant->relationLoaded('inventories')) ? [
-                    'on_hand' => (int) $variant->inventories->sum('on_hand'),
+                    'on_hand' => \Modules\Inventory\Support\StockSummary::partitionLoaded($variant->inventories)['on_hand'],
+                    'pending_placement' => \Modules\Inventory\Support\StockSummary::partitionLoaded($variant->inventories)['pending_placement'],
                     'reserved' => (int) $variant->inventories->sum('reserved'),
                     'on_order' => (int) $variant->inventories->sum('on_order'),
                     'available' => (int) $variant->inventories->sum('available'),

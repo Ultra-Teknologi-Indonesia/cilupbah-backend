@@ -93,6 +93,7 @@ class InventoryController extends Controller
                     'media' => fn ($q) => $q->orderBy('sort_order'),
                     'options.attribute:id,name',
                     'inventories.location:id,location_name',
+                    'inventories.bin:id,is_inbound',
                 ])
                 ->findOrFail($itemId);
 
@@ -271,12 +272,19 @@ class InventoryController extends Controller
     {
         $limit = $request->query('limit', 10);
 
+        // on_hand hanya menghitung stok yang sudah ditempatkan (rak final, is_inbound=false);
+        // `available` sudah placed-only (di-maintain di Inventory::recalculateAvailable()).
         $stocks = QueryBuilder::for(Inventory::class)
-            ->select('item_id', DB::raw('SUM(on_hand) as total_on_hand'), DB::raw('SUM(reserved) as total_reserved'), DB::raw('SUM(available) as total_available'))
-            ->groupBy('item_id')
+            ->leftJoin('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
+            ->select('inventories.item_id')
+            ->selectRaw('COALESCE(SUM(CASE WHEN location_bins.id IS NOT NULL AND location_bins.is_inbound = false THEN inventories.on_hand ELSE 0 END),0) as total_on_hand')
+            ->selectRaw('COALESCE(SUM(CASE WHEN location_bins.id IS NULL OR location_bins.is_inbound = true THEN inventories.on_hand ELSE 0 END),0) as total_pending_placement')
+            ->selectRaw('COALESCE(SUM(inventories.reserved),0) as total_reserved')
+            ->selectRaw('COALESCE(SUM(inventories.available),0) as total_available')
+            ->groupBy('inventories.item_id')
             ->with(['product:id,sku,product_id'])
             ->allowedFilters(
-                AllowedFilter::exact('item_id'),
+                AllowedFilter::exact('item_id', 'inventories.item_id'),
             )
             ->allowedSorts('total_on_hand', 'total_available')
             ->paginate($limit);
@@ -322,6 +330,7 @@ class InventoryController extends Controller
         $base = \Modules\Inventory\Support\InventoryMovementSourceMap::filterOptions();
 
         $locations = \Modules\Warehouse\Models\Location::where('is_active', true)
+            ->where('location_name', 'not like', '%Transit%')
             ->orderBy('location_name')
             ->get(['id', 'location_name'])
             ->map(fn ($l) => ['value' => (string) $l->id, 'label' => $l->location_name])

@@ -142,12 +142,18 @@ class LazadaOrderPullTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        $inventory = Inventory::create([
-            'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => null,
+        // Stok ditempatkan di rak final (is_inbound=false); reservasi masuk ke baris
+        // agregat bin_id NULL (lihat StockService::reserveSingle).
+        $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
+            ['location_id' => $location->id, 'bin_final_code' => 'RACK-A1'],
+            ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false, 'max_qty' => 0]
+        );
+        Inventory::create([
+            'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $bin->id,
             'on_hand' => 10, 'on_order' => 0, 'reserved' => 0, 'available' => 10,
         ]);
 
-        $this->fakeOrdersApi('pending'); 
+        $this->fakeOrdersApi('pending');
 
         $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/lazada/sync/pull', ['shop_id' => 'LZ-100'])
@@ -157,9 +163,13 @@ class LazadaOrderPullTest extends TestCase
         $order = SalesOrder::where('salesorder_no', 'LZ-900123')->first();
         $this->assertEquals('reserved', $order->status);
 
-        $inventory->refresh();
-        $this->assertEquals(2, $inventory->reserved);
-        $this->assertEquals(8, $inventory->available);
+        // reserved dijumlahkan lintas baris (agregat di bin_id NULL); available =
+        // stok ditempatkan (10) - reserved (2) = 8.
+        $reserved = (int) Inventory::where('item_id', $variant->id)
+            ->where('location_id', $location->id)->sum('reserved');
+        $summary = \Modules\Inventory\Support\StockSummary::forItem($variant->id, $location->id);
+        $this->assertEquals(2, $reserved);
+        $this->assertEquals(8, $summary['available']);
     }
 
     public function test_cancelled_order_maps_to_cancelled(): void

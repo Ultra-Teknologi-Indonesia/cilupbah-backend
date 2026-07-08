@@ -156,6 +156,7 @@ class SalesOrderResource extends JsonResource
             'has_unmapped_items' => $this->whenLoaded('items', fn () => $this->items->contains(fn ($item) => $item->item_id === null), false),
             'cancel_requested_at'    => $this->cancel_requested_at,
             'cancel_request_reason'  => $this->cancel_request_reason,
+            'handed_to_warehouse_at' => $this->handed_to_warehouse_at,
 
             'pick_failed_at'     => $this->pick_failed_at,
             'pick_failed_by'     => $this->pick_failed_by,

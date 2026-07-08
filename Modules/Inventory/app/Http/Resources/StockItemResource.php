@@ -54,32 +54,60 @@ class StockItemResource extends JsonResource
         return number_format($weightedSum / $totalQty, 4, '.', '');
     }
 
+    /**
+     * Baris inventory "sudah ditempatkan" = punya bin rak final (is_inbound=false).
+     * Hanya baris ini yang dihitung sebagai on_hand. bin_id NULL / Bin Inbound =
+     * "menunggu penempatan".
+     */
+    protected function isPlaced($inv): bool
+    {
+        if ($inv->bin_id === null) {
+            return false;
+        }
+
+        // bin relation di-eager-load dengan is_inbound; kalau null anggap belum ditempatkan.
+        return $inv->relationLoaded('bin') && $inv->bin !== null && ! (bool) $inv->bin->is_inbound;
+    }
+
     protected function locationStocks($inventories): array
     {
         if ($inventories->isEmpty()) {
             return [];
         }
 
-        return $inventories->map(fn ($inv) => [
-            'item_id' => $this->id,
-            'location_id' => $inv->location_id,
-            'location_name' => $inv->relationLoaded('location') ? $inv->location?->location_name : null,
-            'on_hand' => (int) $inv->on_hand,
-            'on_order' => (int) $inv->on_order,
-            'reserved' => (int) $inv->reserved,
-            'available' => (int) $inv->available,
-        ])->values()->toArray();
+        return $inventories
+            ->groupBy('location_id')
+            ->map(function ($rows, $locationId) {
+                $placedOnHand = (int) $rows->filter(fn ($inv) => $this->isPlaced($inv))->sum('on_hand');
+                $pending = (int) $rows->reject(fn ($inv) => $this->isPlaced($inv))->sum('on_hand');
+                $reserved = (int) $rows->sum('reserved');
+                $first = $rows->first();
+
+                return [
+                    'item_id' => $this->id,
+                    'location_id' => $locationId,
+                    'location_name' => $first && $first->relationLoaded('location') ? $first->location?->location_name : null,
+                    'on_hand' => $placedOnHand,
+                    'pending_placement' => $pending,
+                    'on_order' => (int) $rows->sum('on_order'),
+                    'reserved' => $reserved,
+                    'available' => max(0, $placedOnHand - $reserved),
+                ];
+            })
+            ->values()
+            ->toArray();
     }
 
     protected function totalStocks($inventories): array
     {
-
-        $onHand = (int) $inventories->sum('on_hand');
+        $onHand = (int) $inventories->filter(fn ($inv) => $this->isPlaced($inv))->sum('on_hand');
+        $pending = (int) $inventories->reject(fn ($inv) => $this->isPlaced($inv))->sum('on_hand');
         $onOrder = (int) $inventories->sum('on_order');
         $reserved = (int) $inventories->sum('reserved');
 
         return [
             'on_hand' => $onHand,
+            'pending_placement' => $pending,
             'on_order' => $onOrder,
             'reserved' => $reserved,
             'available' => max(0, $onHand - $reserved),

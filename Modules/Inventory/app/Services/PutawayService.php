@@ -406,4 +406,64 @@ class PutawayService
             $inbound->update(['status' => $newStatus]);
         }
     }
+
+    /**
+     * Susutkan target penempatan yang BELUM ditempatkan pada dokumen putaway
+     * yang masih terbuka, saat jumlah diterima diturunkan. Hanya porsi yang
+     * belum tertempat yang disusutkan (stok yang sudah di rak tidak disentuh).
+     * Dokumen yang jadi tuntas otomatis di-COMPLETED agar tidak menggantung.
+     * Mengembalikan jumlah yang benar-benar disusutkan.
+     */
+    public function reduceOpenTargetForInboundItem(string $inboundItemId, int $amount): int
+    {
+        if ($amount <= 0) {
+            return 0;
+        }
+
+        $sources = PutawayItemSource::where('inbound_item_id', $inboundItemId)
+            ->whereHas('putawayItem.putaway', function ($q) {
+                $q->whereNotIn('status', [Putaway::STATUS_COMPLETED, Putaway::STATUS_CANCELLED]);
+            })
+            ->with('putawayItem.putaway')
+            ->lockForUpdate()
+            ->get();
+
+        $remaining = $amount;
+
+        foreach ($sources as $src) {
+            if ($remaining <= 0) {
+                break;
+            }
+
+            $srcUnplaced = (int) $src->qty - (int) $src->putaway_qty;
+            if ($srcUnplaced <= 0) {
+                continue;
+            }
+
+            $take = min($srcUnplaced, $remaining);
+
+            $src->qty = (int) $src->qty - $take;
+            $src->save();
+
+            $item = $src->putawayItem;
+            if ($item) {
+                $item->qty = max((int) $item->putaway_qty, (int) $item->qty - $take);
+                $item->save();
+
+                // Dokumen tuntas tertempat → tutup otomatis supaya tidak menggantung.
+                $putaway = $item->putaway;
+                if ($putaway
+                    && $putaway->status === Putaway::STATUS_IN_PROGRESS
+                    && $putaway->items()->get()->every(fn ($i) => (int) $i->putaway_qty >= (int) $i->qty)) {
+                    $this->putawayRepository->updateStatus($putaway->id, Putaway::STATUS_COMPLETED, [
+                        'completed_at' => now(),
+                    ]);
+                }
+            }
+
+            $remaining -= $take;
+        }
+
+        return $amount - $remaining;
+    }
 }

@@ -8,6 +8,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inbounds/my-assignments', [InboundController::class, 'myAssignments'])->name('inbounds.myAssignments');
     Route::get('inbounds/scan/{qrCode}', [InboundController::class, 'scanQr'])->name('inbounds.scanQr');
     Route::post('inbounds/scan-putaway', [InboundController::class, 'scanPutaway'])->name('inbounds.scanPutaway');
+    Route::post('inbounds/bulk-cancel', [InboundController::class, 'bulkCancel'])->name('inbounds.bulkCancel');
 
     Route::get('inbounds', [InboundController::class, 'index'])->name('inbounds.index');
     Route::post('inbounds', [InboundController::class, 'store'])->name('inbounds.store');
@@ -21,6 +22,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('inbounds/assignments/{assignmentId}/start', [InboundController::class, 'startAssignment'])->name('inbounds.startAssignment');
 
     Route::post('inbounds/{id}/receive', [InboundController::class, 'receive'])->name('inbounds.receive');
+    Route::patch('inbounds/{id}/items/{itemId}/received-qty', [InboundController::class, 'setReceivedQty'])->name('inbounds.setReceivedQty');
     Route::delete('inbounds/{id}/received', [InboundController::class, 'correctReceivedLines'])->name('inbounds.correctReceivedBulk');
     Route::delete('inbounds/{id}/items/{itemId}/received', [InboundController::class, 'correctReceivedLine'])->name('inbounds.correctReceived');
     Route::post('inbounds/{id}/close-receiving', [InboundController::class, 'closeReceiving'])->name('inbounds.closeReceiving');

@@ -23,11 +23,16 @@ class MonitorStockRepository
     {
         $locationId = $filters['location_id'] ?? null;
 
+        // on_hand hanya dari stok yang sudah ditempatkan (bin rak final, is_inbound=false);
+        // `available` sudah placed-only (di-maintain di Inventory::recalculateAvailable()).
         $inv = DB::table('inventories')
-            ->select('item_id')
-            ->selectRaw('SUM(on_hand) as on_hand, SUM(available) as available, SUM(on_order) as on_order')
-            ->when($locationId, fn ($q) => $q->where('location_id', $locationId))
-            ->groupBy('item_id');
+            ->leftJoin('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
+            ->select('inventories.item_id as item_id')
+            ->selectRaw('COALESCE(SUM(CASE WHEN location_bins.id IS NOT NULL AND location_bins.is_inbound = false THEN inventories.on_hand ELSE 0 END),0) as on_hand')
+            ->selectRaw('COALESCE(SUM(inventories.available),0) as available')
+            ->selectRaw('COALESCE(SUM(inventories.on_order),0) as on_order')
+            ->when($locationId, fn ($q) => $q->where('inventories.location_id', $locationId))
+            ->groupBy('inventories.item_id');
 
         $query = ProductVariant::query()
             ->join('products', 'products.id', '=', 'product_variants.product_id')
