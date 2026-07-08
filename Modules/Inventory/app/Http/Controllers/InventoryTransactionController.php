@@ -704,12 +704,121 @@ class InventoryTransactionController extends Controller
                 $data['created_by'] = $request->user()->name ?? $request->user()->email;
             }
 
-            $transfer = $this->inventoryService->binTransfer($data);
+            $transfer = $this->inventoryService->createBinTransferDraft($data);
 
-            return $this->successResponse($transfer, 'Pindah bin berhasil.', 201);
+            return $this->successResponse($transfer, 'Transfer internal berhasil dibuat.', 201);
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
+    }
+
+    /**
+     * Cetak surat jalan transfer internal: Baru Dibuat -> Sedang Dijalan (stok pindah ke transit).
+     */
+    public function binTransferPrint(\Illuminate\Http\Request $request, string $id): JsonResponse
+    {
+        try {
+            $printedBy = $request->user()->name ?? $request->user()->email ?? 'system';
+            $transfer = $this->inventoryService->printBinTransfer($id, $printedBy);
+
+            return $this->successResponse($transfer, 'Surat jalan dicetak, transfer sedang dijalan.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function binTransferPdf(string $id)
+    {
+        $transfer = $this->inventoryService->getBinTransfer($id);
+
+        if (! $transfer) {
+            return $this->errorResponse('Transfer internal tidak ditemukan.', 404);
+        }
+
+        try {
+            $pdf = Pdf::loadView('inventory::pdf.bin-transfer-out', [
+                'transfer' => $transfer,
+            ])->setPaper('a4', 'portrait');
+
+            return $pdf->stream("{$transfer->transfer_number}.pdf");
+        } catch (Throwable $e) {
+            report($e);
+            return $this->errorResponse('Gagal membuat PDF transfer internal: ' . $e->getMessage(), 500);
+        }
+    }
+
+    public function binTransferRevertPrint(\Illuminate\Http\Request $request, string $id): JsonResponse
+    {
+        try {
+            $actor = $request->user()->name ?? $request->user()->email ?? 'system';
+            $transfer = $this->inventoryService->revertBinTransferPrint($id, $actor);
+
+            return $this->successResponse($transfer, 'Transfer dikembalikan ke Baru Dibuat.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    /**
+     * Penerimaan transfer internal (langkah Selesai): tempatkan stok transit ke rak tujuan.
+     */
+    public function binTransferReceive(\Illuminate\Http\Request $request, string $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'notes' => 'nullable|string',
+            'received_by' => 'nullable|string|max:100',
+            'items' => 'required|array|min:1',
+            'items.*.bin_transfer_item_id' => 'required|uuid|exists:bin_transfer_items,id',
+            'items.*.destination_bin_id' => 'required|uuid|exists:location_bins,id',
+            'items.*.qty' => 'required|integer|min:1',
+        ]);
+
+        try {
+            if (empty($validated['received_by'])) {
+                $validated['received_by'] = $request->user()->name ?? $request->user()->email ?? 'system';
+            }
+
+            $receipt = $this->inventoryService->receiveBinTransfer($id, $validated);
+
+            return $this->successResponse($receipt, 'Penerimaan transfer internal berhasil.', 201);
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function binTransferDestroy(string $id): JsonResponse
+    {
+        try {
+            $this->inventoryService->deleteBinTransferDraft($id);
+            return $this->successResponse(null, 'Transfer internal berhasil dihapus.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    public function binTransferReceiptsIndex(\Illuminate\Http\Request $request): JsonResponse
+    {
+        $perPage = (int) $request->query('per_page', 10);
+        $filters = array_filter([
+            'q' => $request->query('filter.q') ?? $request->query('q'),
+            'location_id' => $request->query('filter.location_id') ?? $request->query('location_id'),
+            'date_from' => $request->query('filter.date_from') ?? $request->query('date_from'),
+            'date_to' => $request->query('filter.date_to') ?? $request->query('date_to'),
+        ]);
+
+        $paginated = $this->inventoryService->getBinTransferReceipts($filters, $perPage);
+
+        return $this->successPaginatedResponse($paginated, 'Daftar penerimaan transfer internal berhasil diambil.');
+    }
+
+    public function binTransferReceiptShow(string $id): JsonResponse
+    {
+        $receipt = $this->inventoryService->getBinTransferReceipt($id);
+        if (! $receipt) {
+            return $this->errorResponse('Penerimaan transfer internal tidak ditemukan.', 404);
+        }
+
+        return $this->successResponse($receipt, 'Detail penerimaan transfer internal berhasil diambil.');
     }
 
     public function binTransferItemDestroy(\Illuminate\Http\Request $request, string $id, string $itemId): JsonResponse
@@ -757,6 +866,7 @@ class InventoryTransactionController extends Controller
         $filters = [
             'q' => $request->query('filter.q') ?? $request->query('q'),
             'location_id' => $request->query('filter.location_id') ?? $request->query('location_id'),
+            'status' => $request->query('filter.status') ?? $request->query('status'),
             'date_from' => $request->query('filter.date_from') ?? $request->query('date_from'),
             'date_to' => $request->query('filter.date_to') ?? $request->query('date_to'),
         ];

@@ -18,7 +18,7 @@ class BinTransferTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_bin_transfer_moves_multi_item_across_different_bins(): void
+    public function test_two_step_flow_draft_print_receive(): void
     {
         Queue::fake();
 
@@ -39,83 +39,126 @@ class BinTransferTest extends TestCase
         $variant1 = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V-BT-1']);
         $variant2 = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V-BT-2']);
 
-        // V1 tersedia di rak A
         Inventory::create([
             'item_id' => $variant1->id, 'location_id' => $location->id, 'bin_id' => $binA->id,
             'on_hand' => 10, 'reserved' => 0, 'available' => 10, 'avg_cost' => 2500,
         ]);
-        // V2 tersedia di rak C
         Inventory::create([
             'item_id' => $variant2->id, 'location_id' => $location->id, 'bin_id' => $binC->id,
             'on_hand' => 3, 'reserved' => 0, 'available' => 3, 'avg_cost' => 1000,
         ]);
 
-        $transfer = app(InventoryService::class)->binTransfer([
+        $svc = app(InventoryService::class);
+
+        // --- Langkah 1: buat draft (rak tujuan belum ditentukan, stok TIDAK bergerak) ---
+        $transfer = $svc->createBinTransferDraft([
             'location_id' => $location->id,
             'created_by' => 'tester',
             'items' => [
-                ['item_id' => $variant1->id, 'source_bin_id' => $binA->id, 'destination_bin_id' => $binB->id, 'qty' => 4],
-                ['item_id' => $variant2->id, 'source_bin_id' => $binC->id, 'destination_bin_id' => $binD->id, 'qty' => 2],
+                ['item_id' => $variant1->id, 'source_bin_id' => $binA->id, 'qty' => 4],
+                ['item_id' => $variant2->id, 'source_bin_id' => $binC->id, 'qty' => 2],
             ],
         ]);
 
         $this->assertInstanceOf(BinTransfer::class, $transfer);
-        $this->assertStringStartsWith('TRFI-', $transfer->transfer_number);
+        $this->assertStringStartsWith('TRFO-', $transfer->transfer_number);
+        $this->assertSame(BinTransfer::STATUS_BARU_DIBUAT, $transfer->status);
         $this->assertCount(2, $transfer->items);
+        $this->assertSame(10, (int) Inventory::where('bin_id', $binA->id)->where('item_id', $variant1->id)->first()->on_hand);
+        $this->assertSame(3, (int) Inventory::where('bin_id', $binC->id)->where('item_id', $variant2->id)->first()->on_hand);
 
-        $src1 = Inventory::where('bin_id', $binA->id)->where('item_id', $variant1->id)->first();
-        $dst1 = Inventory::where('bin_id', $binB->id)->where('item_id', $variant1->id)->first();
-        $src2 = Inventory::where('bin_id', $binC->id)->where('item_id', $variant2->id)->first();
-        $dst2 = Inventory::where('bin_id', $binD->id)->where('item_id', $variant2->id)->first();
-
-        $this->assertSame(6, (int) $src1->on_hand);
-        $this->assertSame(4, (int) $dst1->on_hand);
-        $this->assertSame(1, (int) $src2->on_hand);
-        $this->assertSame(2, (int) $dst2->on_hand);
-
+        // --- Langkah 2: cetak surat jalan -> Sedang Dijalan (stok rak asal -> transit) ---
+        $transfer = $svc->printBinTransfer($transfer->id, 'tester');
+        $this->assertSame(BinTransfer::STATUS_SEDANG_DIJALAN, $transfer->status);
+        $this->assertNotNull($transfer->printed_at);
+        $this->assertSame(6, (int) Inventory::where('bin_id', $binA->id)->where('item_id', $variant1->id)->first()->on_hand);
+        $this->assertSame(1, (int) Inventory::where('bin_id', $binC->id)->where('item_id', $variant2->id)->first()->on_hand);
         $this->assertDatabaseHas('inventory_movements', [
             'bin_id' => $binA->id, 'source' => 'BIN_TRANSFER_OUT', 'qty' => -4,
             'transaction_number' => $transfer->transfer_number,
         ]);
+        // Rak tujuan belum ada isinya sebelum diterima.
+        $this->assertNull(Inventory::where('bin_id', $binB->id)->where('item_id', $variant1->id)->first());
+
+        // --- Langkah 3: penerimaan -> tempatkan ke rak tujuan yang benar ---
+        $item1 = $transfer->items->firstWhere('item_id', $variant1->id);
+        $item2 = $transfer->items->firstWhere('item_id', $variant2->id);
+
+        $receipt = $svc->receiveBinTransfer($transfer->id, [
+            'received_by' => 'tester',
+            'items' => [
+                ['bin_transfer_item_id' => $item1->id, 'destination_bin_id' => $binB->id, 'qty' => 4],
+                ['bin_transfer_item_id' => $item2->id, 'destination_bin_id' => $binD->id, 'qty' => 2],
+            ],
+        ]);
+
+        $this->assertStringStartsWith('TRFI-', $receipt->receipt_number);
+        $this->assertSame(4, (int) Inventory::where('bin_id', $binB->id)->where('item_id', $variant1->id)->first()->on_hand);
+        $this->assertSame(2, (int) Inventory::where('bin_id', $binD->id)->where('item_id', $variant2->id)->first()->on_hand);
         $this->assertDatabaseHas('inventory_movements', [
             'bin_id' => $binD->id, 'source' => 'BIN_TRANSFER_IN', 'qty' => 2,
-            'transaction_number' => $transfer->transfer_number,
+            'transaction_number' => $receipt->receipt_number,
         ]);
-        $this->assertDatabaseHas('bin_transfer_items', [
-            'bin_transfer_id' => $transfer->id, 'item_id' => $variant1->id,
-            'source_bin_id' => $binA->id, 'destination_bin_id' => $binB->id, 'qty' => 4,
-        ]);
+        $this->assertSame(BinTransfer::STATUS_SELESAI, $transfer->fresh()->status);
     }
 
-    public function test_bin_transfer_rejects_when_source_equals_destination_per_item(): void
+    public function test_partial_receipt_keeps_transfer_in_transit_and_rejects_over_receive(): void
     {
         Queue::fake();
 
         $location = Location::create([
-            'location_code' => 'WH-EQ', 'location_name' => 'Gudang Eq',
+            'location_code' => 'WH-PR', 'location_name' => 'Gudang PR',
             'location_type' => 'warehouse', 'is_warehouse' => true, 'is_active' => true,
         ]);
-        $binA = LocationBin::create(['location_id' => $location->id, 'bin_code' => 'A', 'bin_final_code' => 'WH-EQ-A']);
-        $categoryId = DB::table('categories')->insertGetId(['name' => 'Cat Eq', 'created_at' => now(), 'updated_at' => now()]);
-        $product = Product::create(['category_id' => $categoryId, 'name' => 'P-EQ', 'sku' => 'P-EQ', 'is_active' => true]);
-        $variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V-EQ']);
+        $src = LocationBin::create(['location_id' => $location->id, 'bin_code' => 'S', 'bin_final_code' => 'WH-PR-S']);
+        $dst = LocationBin::create(['location_id' => $location->id, 'bin_code' => 'D', 'bin_final_code' => 'WH-PR-D']);
+
+        $categoryId = DB::table('categories')->insertGetId(['name' => 'Cat PR', 'created_at' => now(), 'updated_at' => now()]);
+        $product = Product::create(['category_id' => $categoryId, 'name' => 'P-PR', 'sku' => 'P-PR', 'is_active' => true]);
+        $variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V-PR']);
         Inventory::create([
-            'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $binA->id,
-            'on_hand' => 5, 'reserved' => 0, 'available' => 5, 'avg_cost' => 100,
+            'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $src->id,
+            'on_hand' => 7, 'reserved' => 0, 'available' => 7, 'avg_cost' => 100,
         ]);
 
-        $this->expectException(\Exception::class);
-
-        app(InventoryService::class)->binTransfer([
-            'location_id' => $location->id,
-            'created_by' => 'tester',
-            'items' => [
-                ['item_id' => $variant->id, 'source_bin_id' => $binA->id, 'destination_bin_id' => $binA->id, 'qty' => 1],
-            ],
+        $svc = app(InventoryService::class);
+        $transfer = $svc->createBinTransferDraft([
+            'location_id' => $location->id, 'created_by' => 'tester',
+            'items' => [['item_id' => $variant->id, 'source_bin_id' => $src->id, 'qty' => 7]],
         ]);
+        $transfer = $svc->printBinTransfer($transfer->id, 'tester');
+        $item = $transfer->items->first();
+
+        // Terima sebagian (4 dari 7) -> transfer tetap Sedang Dijalan, sisa 3 di transit.
+        $svc->receiveBinTransfer($transfer->id, [
+            'received_by' => 'tester',
+            'items' => [['bin_transfer_item_id' => $item->id, 'destination_bin_id' => $dst->id, 'qty' => 4]],
+        ]);
+        $this->assertSame(BinTransfer::STATUS_SEDANG_DIJALAN, $transfer->fresh()->status);
+        $this->assertSame(4, (int) $item->fresh()->placed_qty);
+        $this->assertSame(4, (int) Inventory::where('bin_id', $dst->id)->where('item_id', $variant->id)->first()->on_hand);
+
+        // Terima melebihi sisa (3) -> ditolak.
+        try {
+            $svc->receiveBinTransfer($transfer->id, [
+                'received_by' => 'tester',
+                'items' => [['bin_transfer_item_id' => $item->id, 'destination_bin_id' => $dst->id, 'qty' => 5]],
+            ]);
+            $this->fail('Seharusnya menolak qty terima melebihi sisa.');
+        } catch (\Exception $e) {
+            $this->assertStringContainsString('melebihi jumlah yang tersedia', $e->getMessage());
+        }
+
+        // Terima sisa (3) -> Selesai.
+        $svc->receiveBinTransfer($transfer->id, [
+            'received_by' => 'tester',
+            'items' => [['bin_transfer_item_id' => $item->id, 'destination_bin_id' => $dst->id, 'qty' => 3]],
+        ]);
+        $this->assertSame(BinTransfer::STATUS_SELESAI, $transfer->fresh()->status);
+        $this->assertSame(7, (int) Inventory::where('bin_id', $dst->id)->where('item_id', $variant->id)->first()->on_hand);
     }
 
-    public function test_bin_transfer_rejects_insufficient_stock(): void
+    public function test_create_draft_rejects_insufficient_stock(): void
     {
         Queue::fake();
 
@@ -124,7 +167,6 @@ class BinTransferTest extends TestCase
             'location_type' => 'warehouse', 'is_warehouse' => true, 'is_active' => true,
         ]);
         $binA = LocationBin::create(['location_id' => $location->id, 'bin_code' => 'A', 'bin_final_code' => 'WH-BT2-A']);
-        $binB = LocationBin::create(['location_id' => $location->id, 'bin_code' => 'B', 'bin_final_code' => 'WH-BT2-B']);
 
         $categoryId = DB::table('categories')->insertGetId(['name' => 'Cat BT2', 'created_at' => now(), 'updated_at' => now()]);
         $product = Product::create(['category_id' => $categoryId, 'name' => 'P-BT2', 'sku' => 'P-BT2', 'is_active' => true]);
@@ -137,11 +179,11 @@ class BinTransferTest extends TestCase
 
         $this->expectException(\Exception::class);
 
-        app(InventoryService::class)->binTransfer([
+        app(InventoryService::class)->createBinTransferDraft([
             'location_id' => $location->id,
             'created_by' => 'tester',
             'items' => [
-                ['item_id' => $variant->id, 'source_bin_id' => $binA->id, 'destination_bin_id' => $binB->id, 'qty' => 5],
+                ['item_id' => $variant->id, 'source_bin_id' => $binA->id, 'qty' => 5],
             ],
         ]);
     }
@@ -309,18 +351,18 @@ class BinTransferTest extends TestCase
 
         $svc = app(InventoryService::class);
 
-        $first = $svc->binTransfer([
+        $first = $svc->createBinTransferDraft([
             'location_id' => $location->id, 'created_by' => 'tester',
-            'items' => [['item_id' => $variant->id, 'source_bin_id' => $binA->id, 'destination_bin_id' => $binB->id, 'qty' => 1]],
+            'items' => [['item_id' => $variant->id, 'source_bin_id' => $binA->id, 'qty' => 1]],
         ]);
-        $second = $svc->binTransfer([
+        $second = $svc->createBinTransferDraft([
             'location_id' => $location->id, 'created_by' => 'tester',
-            'items' => [['item_id' => $variant->id, 'source_bin_id' => $binA->id, 'destination_bin_id' => $binB->id, 'qty' => 1]],
+            'items' => [['item_id' => $variant->id, 'source_bin_id' => $binA->id, 'qty' => 1]],
         ]);
 
         $firstNo = (int) substr($first->transfer_number, 5);
         $secondNo = (int) substr($second->transfer_number, 5);
         $this->assertSame($firstNo + 1, $secondNo);
-        $this->assertMatchesRegularExpression('/^TRFI-\d{9}$/', $first->transfer_number);
+        $this->assertMatchesRegularExpression('/^TRFO-\d{9}$/', $first->transfer_number);
     }
 }

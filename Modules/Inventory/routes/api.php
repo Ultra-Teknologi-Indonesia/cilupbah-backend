@@ -78,8 +78,16 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('inventory/bin-transfer', [InventoryTransactionController::class, 'binTransfer'])->name('inventory.binTransfer');
     Route::get('inventory/bin-transfers', [InventoryTransactionController::class, 'binTransferIndex'])->name('inventory.binTransfers.index');
     Route::post('inventory/bin-transfers', [InventoryTransactionController::class, 'binTransfer'])->name('inventory.binTransfers.store');
+    // Penerimaan transfer internal (dokumen TRFI) — tab Selesai. Daftar sebelum route {id}.
+    Route::get('inventory/bin-transfer-receipts', [InventoryTransactionController::class, 'binTransferReceiptsIndex'])->name('inventory.binTransferReceipts.index');
+    Route::get('inventory/bin-transfer-receipts/{id}', [InventoryTransactionController::class, 'binTransferReceiptShow'])->name('inventory.binTransferReceipts.show');
     Route::get('inventory/bin-transfers/{id}', [InventoryTransactionController::class, 'binTransferShow'])->name('inventory.binTransfers.show');
+    Route::get('inventory/bin-transfers/{id}/pdf', [InventoryTransactionController::class, 'binTransferPdf'])->name('inventory.binTransfers.pdf');
     Route::patch('inventory/bin-transfers/{id}', [InventoryTransactionController::class, 'binTransferUpdate'])->name('inventory.binTransfers.update');
+    Route::post('inventory/bin-transfers/{id}/print', [InventoryTransactionController::class, 'binTransferPrint'])->name('inventory.binTransfers.print');
+    Route::post('inventory/bin-transfers/{id}/revert-print', [InventoryTransactionController::class, 'binTransferRevertPrint'])->name('inventory.binTransfers.revertPrint');
+    Route::post('inventory/bin-transfers/{id}/receipts', [InventoryTransactionController::class, 'binTransferReceive'])->name('inventory.binTransfers.receive');
+    Route::delete('inventory/bin-transfers/{id}', [InventoryTransactionController::class, 'binTransferDestroy'])->name('inventory.binTransfers.destroy');
     Route::delete('inventory/bin-transfers/{id}/items', [InventoryTransactionController::class, 'binTransferItemsDestroy'])->name('inventory.binTransfers.itemsDestroy');
     Route::delete('inventory/bin-transfers/{id}/items/{itemId}', [InventoryTransactionController::class, 'binTransferItemDestroy'])->name('inventory.binTransfers.itemDestroy');
 

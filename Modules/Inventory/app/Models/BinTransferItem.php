@@ -2,8 +2,10 @@
 
 namespace Modules\Inventory\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Traits\HasUuid7;
 
 class BinTransferItem extends Model
@@ -16,6 +18,7 @@ class BinTransferItem extends Model
         'source_bin_id',
         'destination_bin_id',
         'qty',
+        'placed_qty',
         'batch_no',
         'serial_no',
         'expired_date',
@@ -23,12 +26,29 @@ class BinTransferItem extends Model
     ];
 
     protected $casts = [
+        'qty' => 'integer',
+        'placed_qty' => 'integer',
         'expired_date' => 'date',
     ];
+
+    protected $appends = ['remaining_qty'];
+
+    /**
+     * Sisa qty yang masih menggantung di transit (belum ditempatkan ke rak tujuan).
+     */
+    protected function remainingQty(): Attribute
+    {
+        return Attribute::get(fn () => max(0, (int) $this->qty - (int) $this->placed_qty));
+    }
 
     public function binTransfer(): BelongsTo
     {
         return $this->belongsTo(BinTransfer::class);
+    }
+
+    public function receiptItems(): HasMany
+    {
+        return $this->hasMany(BinTransferReceiptItem::class);
     }
 
     public function product(): BelongsTo

@@ -148,13 +148,19 @@ class ScanCorrectionTest extends TestCase
         ]);
 
         $svc = app(InventoryService::class);
-        $transfer = $svc->binTransfer([
+        // Bangun transfer lewat alur 2-langkah lalu selesaikan supaya stok ada di rak tujuan.
+        $transfer = $svc->createBinTransferDraft([
             'location_id' => $location->id, 'created_by' => 'tester',
-            'items' => [['item_id' => $variant->id, 'source_bin_id' => $binA->id, 'destination_bin_id' => $binB->id, 'qty' => 4]],
+            'items' => [['item_id' => $variant->id, 'source_bin_id' => $binA->id, 'qty' => 4]],
+        ]);
+        $transfer = $svc->printBinTransfer($transfer->id, 'tester');
+        $row = $transfer->items->first();
+        $svc->receiveBinTransfer($transfer->id, [
+            'received_by' => 'tester',
+            'items' => [['bin_transfer_item_id' => $row->id, 'destination_bin_id' => $binB->id, 'qty' => 4]],
         ]);
 
-        $row = $transfer->items->first();
-
+        // Koreksi: kembalikan stok dari rak tujuan ke rak asal.
         $svc->reverseBinTransferItem($transfer->id, $row->id, null, '99');
 
         $this->assertSame(10, (int) Inventory::where('bin_id', $binA->id)->where('item_id', $variant->id)->value('on_hand'));

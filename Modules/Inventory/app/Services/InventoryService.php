@@ -9,6 +9,8 @@ use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryTransfer;
 use Modules\Inventory\Models\BinTransfer;
 use Modules\Inventory\Models\BinTransferItem;
+use Modules\Inventory\Models\BinTransferReceipt;
+use Modules\Inventory\Models\BinTransferReceiptItem;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Modules\Channel\Models\ChannelShop;
@@ -324,7 +326,12 @@ class InventoryService
         $this->notifyChannelStock([$data['item_id']]);
     }
 
-    public function binTransfer(array $data): BinTransfer
+    /**
+     * Langkah 1 (Baru Dibuat): buat dokumen transfer internal TANPA menggerakkan stok.
+     * Rak tujuan belum ditentukan (diisi saat penerimaan). Stok baru pindah ke Transit
+     * saat surat jalan dicetak (printBinTransfer).
+     */
+    public function createBinTransferDraft(array $data): BinTransfer
     {
         $items = $this->normalizeBinTransferItems($data);
 
@@ -333,22 +340,21 @@ class InventoryService
         }
 
         foreach ($items as $idx => $it) {
-            if (empty($it['source_bin_id']) || empty($it['destination_bin_id'])) {
-                throw new \Exception('Setiap baris produk wajib punya rak asal dan rak tujuan.');
+            if (empty($it['source_bin_id'])) {
+                throw new \Exception('Setiap baris produk wajib punya rak asal pada baris ke-' . ($idx + 1) . '.');
             }
-            if ($it['source_bin_id'] === $it['destination_bin_id']) {
-                throw new \Exception('Rak asal dan rak tujuan harus berbeda pada baris ke-' . ($idx + 1) . '.');
+            if ((int) ($it['qty'] ?? 0) <= 0) {
+                throw new \Exception('Qty setiap produk harus lebih dari 0.');
             }
         }
 
-        $variantIds = [];
-
-        $binTransfer = DB::transaction(function () use ($data, $items, &$variantIds) {
-            $transferNumber = $data['transfer_number'] ?? $this->generateBinTransferNumber();
+        return DB::transaction(function () use ($data, $items) {
+            $transferNumber = $data['transfer_number'] ?? $this->generateTrfoNumber();
 
             $header = BinTransfer::create([
                 'transfer_number' => $transferNumber,
                 'location_id'     => $data['location_id'],
+                'status'          => BinTransfer::STATUS_BARU_DIBUAT,
                 'transfer_date'   => $data['transfer_date'] ?? now()->toDateString(),
                 'created_by'      => $data['created_by'],
                 'notes'           => $data['notes'] ?? null,
@@ -356,13 +362,9 @@ class InventoryService
 
             foreach ($items as $itemData) {
                 $qty = (int) $itemData['qty'];
-                if ($qty <= 0) {
-                    throw new \Exception('Qty setiap produk harus lebih dari 0.');
-                }
-
                 $sourceBinId = $itemData['source_bin_id'];
-                $destBinId = $itemData['destination_bin_id'];
 
+                // Validasi awal (tidak memotong stok) supaya draft yang jelas salah ketahuan dini.
                 $source = $this->inventoryRepository->findExactForUpdate(
                     $itemData['item_id'],
                     $data['location_id'],
@@ -376,84 +378,411 @@ class InventoryService
                     throw new \Exception("Stok di rak asal tidak mencukupi untuk produk {$itemData['item_id']} (tersedia: {$current}, diminta: {$qty}).");
                 }
 
+                BinTransferItem::create([
+                    'bin_transfer_id'    => $header->id,
+                    'item_id'            => $itemData['item_id'],
+                    'source_bin_id'      => $sourceBinId,
+                    'destination_bin_id' => null,
+                    'qty'                => $qty,
+                    'placed_qty'         => 0,
+                    'batch_no'           => $itemData['batch_no'] ?? null,
+                    'serial_no'          => $itemData['serial_no'] ?? null,
+                    'expired_date'       => $itemData['expired_date'] ?? null,
+                    'notes'              => $itemData['notes'] ?? null,
+                ]);
+            }
+
+            return $header->fresh(['items']);
+        });
+    }
+
+    /**
+     * Langkah 2 (cetak surat jalan): Baru Dibuat -> Sedang Dijalan.
+     * Stok rak asal dipotong dan dipindahkan ke lokasi Transit (menggantung) sampai diterima.
+     */
+    public function printBinTransfer(string $id, string $printedBy): BinTransfer
+    {
+        $variantIds = [];
+
+        $result = DB::transaction(function () use ($id, $printedBy, &$variantIds) {
+            $header = BinTransfer::where('id', $id)->lockForUpdate()->first();
+
+            if (! $header) {
+                throw new \Exception('Transfer internal tidak ditemukan.');
+            }
+            if ($header->status !== BinTransfer::STATUS_BARU_DIBUAT) {
+                throw new \Exception('Hanya transfer berstatus Baru Dibuat yang bisa dicetak.');
+            }
+
+            [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
+            $items = $header->items()->lockForUpdate()->get();
+
+            foreach ($items as $item) {
+                $qty = (int) $item->qty;
+
+                $source = $this->inventoryRepository->findExactForUpdate(
+                    $item->item_id,
+                    $header->location_id,
+                    $item->source_bin_id,
+                    $item->batch_no ?? '',
+                    $item->serial_no ?? '',
+                );
+
+                if (! $source || $source->on_hand < $qty) {
+                    $current = $source ? $source->on_hand : 0;
+                    throw new \Exception("Stok di rak asal tidak mencukupi untuk salah satu produk (tersedia: {$current}, diminta: {$qty}). Batalkan/ubah transfer.");
+                }
+
                 $unitCost = (float) ($source->avg_cost ?? 0);
 
                 $source->on_hand -= $qty;
                 $this->inventoryRepository->updateStock($source);
 
                 $this->movementRepository->create([
-                    'item_id'            => $itemData['item_id'],
-                    'location_id'        => $data['location_id'],
-                    'bin_id'             => $sourceBinId,
-                    'transaction_number' => $transferNumber,
+                    'item_id'            => $item->item_id,
+                    'location_id'        => $header->location_id,
+                    'bin_id'             => $item->source_bin_id,
+                    'transaction_number' => $header->transfer_number,
                     'source'             => 'BIN_TRANSFER_OUT',
                     'qty'                => -$qty,
                     'balance'            => $source->on_hand,
                     'cost_per_unit'      => $unitCost > 0 ? $unitCost : null,
                     'total_cost'         => $unitCost > 0 ? round($unitCost * $qty, 2) : null,
                     'transaction_date'   => now(),
-                    'created_by'         => $data['created_by'],
+                    'created_by'         => $printedBy,
                 ]);
 
-                $dest = $this->inventoryRepository->findOrCreateForUpdate(
-                    $itemData['item_id'],
-                    $data['location_id'],
-                    $destBinId,
-                    $itemData['batch_no'] ?? '',
-                    $itemData['serial_no'] ?? '',
-                    ['expired_date' => $itemData['expired_date'] ?? null],
+                $transit = $this->inventoryRepository->findOrCreateForUpdate(
+                    $item->item_id,
+                    $transitLocationId,
+                    $transitBinId,
+                    $item->batch_no ?? '',
+                    $item->serial_no ?? '',
+                    ['expired_date' => $item->expired_date ?? null],
                 );
 
-                $dest->on_hand += $qty;
-                $this->inventoryRepository->updateStock($dest);
+                $transit->on_hand += $qty;
+                $this->inventoryRepository->updateStock($transit);
 
                 if ($unitCost > 0) {
                     $this->recalculateAverageCost(
-                        $itemData['item_id'],
-                        $data['location_id'],
-                        $destBinId,
+                        $item->item_id,
+                        $transitLocationId,
+                        $transitBinId,
                         (float) $qty,
                         $unitCost,
-                        $itemData['batch_no'] ?? '',
-                        $itemData['serial_no'] ?? '',
+                        $item->batch_no ?? '',
+                        $item->serial_no ?? '',
                     );
                 }
 
                 $this->movementRepository->create([
-                    'item_id'            => $itemData['item_id'],
-                    'location_id'        => $data['location_id'],
-                    'bin_id'             => $destBinId,
-                    'transaction_number' => $transferNumber,
-                    'source'             => 'BIN_TRANSFER_IN',
+                    'item_id'            => $item->item_id,
+                    'location_id'        => $transitLocationId,
+                    'bin_id'             => $transitBinId,
+                    'transaction_number' => $header->transfer_number,
+                    'source'             => 'TRANSIT_IN',
                     'qty'                => $qty,
-                    'balance'            => $dest->on_hand,
-                    'cost_per_unit'      => $unitCost > 0 ? $unitCost : null,
-                    'total_cost'         => $unitCost > 0 ? round($unitCost * $qty, 2) : null,
+                    'balance'            => $transit->on_hand,
                     'transaction_date'   => now(),
-                    'created_by'         => $data['created_by'],
+                    'created_by'         => $printedBy,
                 ]);
 
-                BinTransferItem::create([
-                    'bin_transfer_id'    => $header->id,
-                    'item_id'            => $itemData['item_id'],
-                    'source_bin_id'      => $sourceBinId,
-                    'destination_bin_id' => $destBinId,
-                    'qty'                => $qty,
-                    'batch_no'           => $itemData['batch_no'] ?? null,
-                    'serial_no'          => $itemData['serial_no'] ?? null,
-                    'expired_date'       => $itemData['expired_date'] ?? null,
-                    'notes'              => $itemData['notes'] ?? null,
-                ]);
-
-                $variantIds[] = $itemData['item_id'];
+                $variantIds[] = $item->item_id;
             }
+
+            $header->update([
+                'status'     => BinTransfer::STATUS_SEDANG_DIJALAN,
+                'printed_at' => now(),
+                'printed_by' => $printedBy,
+            ]);
 
             return $header->fresh(['items']);
         });
 
         $this->notifyChannelStock($variantIds);
 
-        return $binTransfer;
+        return $result;
+    }
+
+    /**
+     * Kembalikan Sedang Dijalan -> Baru Dibuat (batal cetak). Stok transit dikembalikan ke rak asal.
+     * Hanya boleh bila belum ada penerimaan sama sekali (semua placed_qty = 0).
+     */
+    public function revertBinTransferPrint(string $id, string $actor): BinTransfer
+    {
+        $variantIds = [];
+
+        $result = DB::transaction(function () use ($id, $actor, &$variantIds) {
+            $header = BinTransfer::where('id', $id)->lockForUpdate()->first();
+
+            if (! $header) {
+                throw new \Exception('Transfer internal tidak ditemukan.');
+            }
+            if ($header->status !== BinTransfer::STATUS_SEDANG_DIJALAN) {
+                throw new \Exception('Hanya transfer Sedang Dijalan yang bisa dikembalikan ke Baru Dibuat.');
+            }
+
+            $items = $header->items()->lockForUpdate()->get();
+
+            if ($items->sum('placed_qty') > 0) {
+                throw new \Exception('Sudah ada penerimaan sebagian. Tidak bisa dikembalikan ke Baru Dibuat.');
+            }
+
+            [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
+            $txnNumber = $header->transfer_number . '-BATAL';
+
+            foreach ($items as $item) {
+                $qty = (int) $item->qty;
+
+                // Transit -> kembali ke rak asal (lintas lokasi: Transit -> gudang).
+                $transit = $this->inventoryRepository->findExactForUpdate(
+                    $item->item_id,
+                    $transitLocationId,
+                    $transitBinId,
+                    $item->batch_no ?? '',
+                    $item->serial_no ?? '',
+                );
+
+                if (! $transit || $transit->on_hand < $qty) {
+                    $current = $transit ? $transit->on_hand : 0;
+                    throw new \Exception("Stok transit tidak cukup untuk dikembalikan (tersedia: {$current}, diminta: {$qty}).");
+                }
+
+                $unitCost = (float) ($transit->avg_cost ?? 0);
+
+                $transit->on_hand -= $qty;
+                $this->inventoryRepository->updateStock($transit);
+
+                $this->movementRepository->create([
+                    'item_id'            => $item->item_id,
+                    'location_id'        => $transitLocationId,
+                    'bin_id'             => $transitBinId,
+                    'transaction_number' => $txnNumber,
+                    'source'             => 'TRANSIT_OUT',
+                    'qty'                => -$qty,
+                    'balance'            => $transit->on_hand,
+                    'transaction_date'   => now(),
+                    'created_by'         => $actor,
+                ]);
+
+                $source = $this->inventoryRepository->findOrCreateForUpdate(
+                    $item->item_id,
+                    $header->location_id,
+                    $item->source_bin_id,
+                    $item->batch_no ?? '',
+                    $item->serial_no ?? '',
+                    ['expired_date' => $item->expired_date ?? null],
+                );
+
+                $source->on_hand += $qty;
+                $this->inventoryRepository->updateStock($source);
+
+                if ($unitCost > 0) {
+                    $this->recalculateAverageCost(
+                        $item->item_id,
+                        $header->location_id,
+                        $item->source_bin_id,
+                        (float) $qty,
+                        $unitCost,
+                        $item->batch_no ?? '',
+                        $item->serial_no ?? '',
+                    );
+                }
+
+                $this->movementRepository->create([
+                    'item_id'            => $item->item_id,
+                    'location_id'        => $header->location_id,
+                    'bin_id'             => $item->source_bin_id,
+                    'transaction_number' => $txnNumber,
+                    'source'             => 'BIN_TRANSFER_REVERSAL',
+                    'qty'                => $qty,
+                    'balance'            => $source->on_hand,
+                    'cost_per_unit'      => $unitCost > 0 ? $unitCost : null,
+                    'total_cost'         => $unitCost > 0 ? round($unitCost * $qty, 2) : null,
+                    'transaction_date'   => now(),
+                    'created_by'         => $actor,
+                ]);
+
+                $variantIds[] = $item->item_id;
+            }
+
+            $header->update([
+                'status'     => BinTransfer::STATUS_BARU_DIBUAT,
+                'printed_at' => null,
+                'printed_by' => null,
+            ]);
+
+            return $header->fresh(['items']);
+        });
+
+        $this->notifyChannelStock($variantIds);
+
+        return $result;
+    }
+
+    /**
+     * Langkah 3 (penerimaan): tempatkan stok dari Transit ke rak tujuan yang benar.
+     * Terbit dokumen TRFI. Qty terima > sisa ditolak; qty terima < sisa membuat sisanya tetap
+     * menggantung di transit (transfer tetap Sedang Dijalan). Bila semua item habis -> Selesai.
+     */
+    public function receiveBinTransfer(string $id, array $data): BinTransferReceipt
+    {
+        $variantIds = [];
+
+        $result = DB::transaction(function () use ($id, $data, &$variantIds) {
+            $header = BinTransfer::where('id', $id)->lockForUpdate()->first();
+
+            if (! $header) {
+                throw new \Exception('Transfer internal tidak ditemukan.');
+            }
+            if ($header->status !== BinTransfer::STATUS_SEDANG_DIJALAN) {
+                throw new \Exception('Hanya transfer Sedang Dijalan yang bisa diterima.');
+            }
+
+            $lines = collect($data['items'] ?? [])->filter(fn ($l) => (int) ($l['qty'] ?? 0) > 0);
+            if ($lines->isEmpty()) {
+                throw new \Exception('Minimal satu baris dengan qty terima harus diisi.');
+            }
+
+            [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
+
+            $receipt = BinTransferReceipt::create([
+                'receipt_number'  => $this->generateTrfiNumber(),
+                'bin_transfer_id' => $header->id,
+                'location_id'     => $header->location_id,
+                'received_by'     => $data['received_by'],
+                'received_at'     => now(),
+                'notes'           => $data['notes'] ?? null,
+            ]);
+
+            foreach ($lines as $line) {
+                $rowId = $line['bin_transfer_item_id'] ?? $line['item_id'] ?? null;
+                $destBinId = $line['destination_bin_id'] ?? null;
+                $qtyTerima = (int) $line['qty'];
+
+                if (! $rowId) {
+                    throw new \Exception('bin_transfer_item_id wajib diisi pada setiap baris penerimaan.');
+                }
+                if (! $destBinId) {
+                    throw new \Exception('Rak tujuan wajib diisi pada setiap baris penerimaan.');
+                }
+
+                $item = BinTransferItem::where('id', $rowId)
+                    ->where('bin_transfer_id', $header->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $item) {
+                    throw new \Exception('Baris transfer tidak ditemukan.');
+                }
+
+                $remaining = (int) $item->qty - (int) $item->placed_qty;
+                if ($qtyTerima > $remaining) {
+                    $item->loadMissing('product.product');
+                    $name = $item->product?->product?->name
+                        ?? $item->product?->sku
+                        ?? $item->item_id;
+                    throw new \Exception("Jumlah transfer untuk {$name} melebihi jumlah yang tersedia.");
+                }
+
+                // Transit -> rak tujuan.
+                $transit = $this->inventoryRepository->findExactForUpdate(
+                    $item->item_id,
+                    $transitLocationId,
+                    $transitBinId,
+                    $item->batch_no ?? '',
+                    $item->serial_no ?? '',
+                );
+
+                if (! $transit || $transit->on_hand < $qtyTerima) {
+                    $current = $transit ? $transit->on_hand : 0;
+                    throw new \Exception("Stok transit tidak mencukupi (tersedia: {$current}, diminta: {$qtyTerima}).");
+                }
+
+                $unitCost = (float) ($transit->avg_cost ?? 0);
+
+                $transit->on_hand -= $qtyTerima;
+                $this->inventoryRepository->updateStock($transit);
+
+                $this->movementRepository->create([
+                    'item_id'            => $item->item_id,
+                    'location_id'        => $transitLocationId,
+                    'bin_id'             => $transitBinId,
+                    'transaction_number' => $receipt->receipt_number,
+                    'source'             => 'TRANSIT_OUT',
+                    'qty'                => -$qtyTerima,
+                    'balance'            => $transit->on_hand,
+                    'transaction_date'   => now(),
+                    'created_by'         => $data['received_by'],
+                ]);
+
+                $dest = $this->inventoryRepository->findOrCreateForUpdate(
+                    $item->item_id,
+                    $header->location_id,
+                    $destBinId,
+                    $item->batch_no ?? '',
+                    $item->serial_no ?? '',
+                    ['expired_date' => $item->expired_date ?? null],
+                );
+
+                $dest->on_hand += $qtyTerima;
+                $this->inventoryRepository->updateStock($dest);
+
+                if ($unitCost > 0) {
+                    $this->recalculateAverageCost(
+                        $item->item_id,
+                        $header->location_id,
+                        $destBinId,
+                        (float) $qtyTerima,
+                        $unitCost,
+                        $item->batch_no ?? '',
+                        $item->serial_no ?? '',
+                    );
+                }
+
+                $this->movementRepository->create([
+                    'item_id'            => $item->item_id,
+                    'location_id'        => $header->location_id,
+                    'bin_id'             => $destBinId,
+                    'transaction_number' => $receipt->receipt_number,
+                    'source'             => 'BIN_TRANSFER_IN',
+                    'qty'                => $qtyTerima,
+                    'balance'            => $dest->on_hand,
+                    'cost_per_unit'      => $unitCost > 0 ? $unitCost : null,
+                    'total_cost'         => $unitCost > 0 ? round($unitCost * $qtyTerima, 2) : null,
+                    'transaction_date'   => now(),
+                    'created_by'         => $data['received_by'],
+                ]);
+
+                BinTransferReceiptItem::create([
+                    'bin_transfer_receipt_id' => $receipt->id,
+                    'bin_transfer_item_id'    => $item->id,
+                    'destination_bin_id'      => $destBinId,
+                    'qty'                     => $qtyTerima,
+                ]);
+
+                $item->placed_qty = (int) $item->placed_qty + $qtyTerima;
+                $item->destination_bin_id = $destBinId; // simpan rak tujuan terakhir untuk tampilan detail
+                $item->save();
+
+                $variantIds[] = $item->item_id;
+            }
+
+            // Bila semua item sudah ditempatkan penuh, transfer selesai.
+            $allPlaced = $header->items()->get()
+                ->every(fn ($it) => (int) $it->placed_qty >= (int) $it->qty);
+
+            if ($allPlaced) {
+                $header->update(['status' => BinTransfer::STATUS_SELESAI]);
+            }
+
+            return $receipt->fresh(['items.destinationBin', 'binTransfer']);
+        });
+
+        $this->notifyChannelStock(array_values(array_unique($variantIds)));
+
+        return $result;
     }
 
     /**
@@ -554,13 +883,25 @@ class InventoryService
         return [];
     }
 
-    protected function generateBinTransferNumber(): string
+    /**
+     * Nomor dokumen transfer internal (TRFO, dokumen keluar/asal) & penerimaan (TRFI, dokumen masuk).
+     * Keduanya berbagi satu sequence supaya nomornya berurutan (mis. TRFO-000108690 lalu TRFI-000108691).
+     */
+    protected function nextBinTransferSeq(): int
     {
-        $seqId = DB::table('bin_transfer_sequences')->insertGetId([
+        return DB::table('bin_transfer_sequences')->insertGetId([
             'created_at' => now(),
         ]);
+    }
 
-        return 'TRFI-' . str_pad((string) $seqId, 9, '0', STR_PAD_LEFT);
+    protected function generateTrfoNumber(): string
+    {
+        return 'TRFO-' . str_pad((string) $this->nextBinTransferSeq(), 9, '0', STR_PAD_LEFT);
+    }
+
+    protected function generateTrfiNumber(): string
+    {
+        return 'TRFI-' . str_pad((string) $this->nextBinTransferSeq(), 9, '0', STR_PAD_LEFT);
     }
 
     public function getBinTransfers(array $filters = [], int $perPage = 10)
@@ -575,6 +916,11 @@ class InventoryService
 
         if (! empty($filters['location_id'])) {
             $query->where('location_id', $filters['location_id']);
+        }
+
+        if (! empty($filters['status'])) {
+            $statuses = is_array($filters['status']) ? $filters['status'] : [$filters['status']];
+            $query->whereIn('status', $statuses);
         }
 
         if (! empty($filters['date_from'])) {
@@ -599,7 +945,72 @@ class InventoryService
             'items.product.product.media' => fn ($q) => $q->orderByDesc('is_primary')->orderBy('sort_order'),
             'items.sourceBin:id,bin_final_code,location_id',
             'items.destinationBin:id,bin_final_code,location_id',
+            'receipts' => fn ($q) => $q->orderByDesc('received_at'),
+            'receipts.items.destinationBin:id,bin_final_code,location_id',
         ])->find($id);
+    }
+
+    /**
+     * Daftar dokumen penerimaan transfer internal (tab Selesai). Tiap baris = satu TRFI.
+     */
+    public function getBinTransferReceipts(array $filters = [], int $perPage = 10)
+    {
+        $query = BinTransferReceipt::query()
+            ->with([
+                'binTransfer:id,transfer_number,transfer_date',
+                'location:id,location_name',
+            ])
+            ->withCount('items');
+
+        if (! empty($filters['q'])) {
+            $query->where(function ($q) use ($filters) {
+                $q->where('receipt_number', 'like', '%' . $filters['q'] . '%')
+                    ->orWhereHas('binTransfer', fn ($sub) => $sub->where('transfer_number', 'like', '%' . $filters['q'] . '%'));
+            });
+        }
+
+        if (! empty($filters['location_id'])) {
+            $query->where('location_id', $filters['location_id']);
+        }
+
+        if (! empty($filters['date_from'])) {
+            $query->whereDate('received_at', '>=', $filters['date_from']);
+        }
+        if (! empty($filters['date_to'])) {
+            $query->whereDate('received_at', '<=', $filters['date_to']);
+        }
+
+        return $query->orderByDesc('received_at')->paginate($perPage);
+    }
+
+    public function getBinTransferReceipt(string $id): ?BinTransferReceipt
+    {
+        return BinTransferReceipt::with([
+            'location:id,location_name,location_code',
+            'binTransfer:id,transfer_number,transfer_date,location_id',
+            'items.destinationBin:id,bin_final_code,location_id',
+            'items.transferItem.product',
+            'items.transferItem.product.product:id,name',
+        ])->find($id);
+    }
+
+    /**
+     * Hapus dokumen transfer internal. Hanya boleh saat masih Baru Dibuat (belum ada stok bergerak).
+     */
+    public function deleteBinTransferDraft(string $id): void
+    {
+        DB::transaction(function () use ($id) {
+            $transfer = BinTransfer::where('id', $id)->lockForUpdate()->first();
+            if (! $transfer) {
+                throw new \Exception('Transfer internal tidak ditemukan.');
+            }
+            if ($transfer->status !== BinTransfer::STATUS_BARU_DIBUAT) {
+                throw new \Exception('Hanya transfer Baru Dibuat yang bisa dihapus. Kembalikan dulu ke Baru Dibuat bila sedang dijalan.');
+            }
+
+            $transfer->items()->delete();
+            $transfer->delete();
+        });
     }
 
     public function updateBinTransferMetadata(string $id, array $data): BinTransfer
