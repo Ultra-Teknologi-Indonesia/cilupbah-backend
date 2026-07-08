@@ -30,7 +30,7 @@ class PicklistRepository
         return $query->withCount('items')
             ->withSum('items', 'qty_ordered')
             ->withSum('items', 'qty_picked')
-            ->with(['location:id,location_name,location_code', 'picker:id,name,email'])
+            ->with(['location:id,location_name,location_code', 'picker:id,name,email', 'creator:id,name'])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('location_id'),
@@ -78,6 +78,7 @@ class PicklistRepository
             'items.order:id,salesorder_no,customer_name',
             'location:id,location_name,location_code',
             'picker:id,name,email',
+            'creator:id,name',
         ])->find($id);
     }
 

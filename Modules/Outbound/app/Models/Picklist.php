@@ -49,4 +49,9 @@ class Picklist extends Model
     {
         return $this->belongsTo(\App\Models\User::class, 'picker_id');
     }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\User::class, 'created_by');
+    }
 }
