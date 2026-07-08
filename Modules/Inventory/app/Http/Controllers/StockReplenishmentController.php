@@ -26,7 +26,7 @@ class StockReplenishmentController extends Controller
         $perPage = min(100, max(1, (int) $request->query('per_page', 20)));
 
         $query = StockReplenishmentRequest::query()
-            ->with(['items.variant.product', 'fromLocation', 'toLocation', 'assignee', 'requester', 'transferOut'])
+            ->with(['items.variant.media', 'items.variant.product.media', 'fromLocation', 'toLocation', 'assignee', 'requester', 'transferOut'])
             ->orderByDesc('requested_at');
 
         if ($status) {
@@ -56,7 +56,8 @@ class StockReplenishmentController extends Controller
     public function show(string $id): JsonResponse
     {
         $req = StockReplenishmentRequest::with([
-            'items.variant.product',
+            'items.variant.media',
+            'items.variant.product.media',
             'fromLocation',
             'toLocation',
             'assignee',
@@ -180,7 +181,8 @@ class StockReplenishmentController extends Controller
     {
         return new StockReplenishmentResource(
             StockReplenishmentRequest::with([
-                'items.variant.product',
+                'items.variant.media',
+                'items.variant.product.media',
                 'fromLocation',
                 'toLocation',
                 'assignee',

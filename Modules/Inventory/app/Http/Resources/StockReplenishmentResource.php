@@ -29,15 +29,37 @@ class StockReplenishmentResource extends JsonResource
             'reject_reason'       => $this->reject_reason,
             'note'                => $this->note,
             'items'               => $this->whenLoaded('items', fn () => $this->items->map(fn ($it) => [
-                'id'           => $it->id,
-                'item_id'      => $it->item_id,
-                'sku'          => $it->sku,
-                'product_name' => $it->variant?->product?->name,
-                'qty'          => (int) $it->qty,
-                'reason'       => $it->reason,
+                'id'            => $it->id,
+                'item_id'       => $it->item_id,
+                'sku'           => $it->sku,
+                'product_name'  => $it->variant?->product?->name,
+                'thumbnail_url' => self::resolveThumbnail($it->variant),
+                'qty'           => (int) $it->qty,
+                'reason'        => $it->reason,
             ])),
             'created_at'          => $this->created_at,
             'updated_at'          => $this->updated_at,
         ];
+    }
+
+    /**
+     * Ambil URL thumbnail: media varian (gambar) lebih dulu, fallback ke media produk.
+     */
+    private static function resolveThumbnail($variant): ?string
+    {
+        if (! $variant) {
+            return null;
+        }
+
+        $variantMedia = $variant->media?->firstWhere('media_type', 'image')
+            ?? $variant->media?->first();
+        if ($variantMedia?->url) {
+            return $variantMedia->url;
+        }
+
+        $productMedia = $variant->product?->media?->firstWhere('media_type', 'image')
+            ?? $variant->product?->media?->first();
+
+        return $productMedia?->url;
     }
 }
