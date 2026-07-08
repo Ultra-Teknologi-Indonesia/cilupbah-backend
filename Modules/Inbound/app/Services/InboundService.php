@@ -668,9 +668,10 @@ class InboundService
                 return $this->getById($inboundId);
             }
 
-            // Tidak boleh di bawah yang sudah ditempatkan (stok itu sudah pindah ke rak).
+            // Menurunkan di bawah yang sudah ditempatkan ke rak tidak mungkin tanpa
+            // menarik stok keluar dari rak — arahkan user membatalkan penempatan dulu.
             if ($targetQty < (int) $item->putaway_qty) {
-                throw new \Exception("Tidak bisa kurang dari yang sudah ditempatkan ({$item->putaway_qty}).");
+                throw new \Exception("Jumlah diterima tidak bisa di bawah yang sudah ditempatkan ke rak ({$item->putaway_qty}). Batalkan/kurangi penempatan dulu.");
             }
 
             $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
