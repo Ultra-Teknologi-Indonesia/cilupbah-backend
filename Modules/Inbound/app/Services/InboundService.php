@@ -634,6 +634,97 @@ class InboundService
         });
     }
 
+    /**
+     * Set jumlah diterima aktual pada satu baris penerimaan (boleh naik/turun).
+     * - Menyesuaikan stok di Bin Inbound lewat movement (naik = tambah, turun = kurang),
+     *   sehingga perubahan TERCATAT sebagai riwayat dengan created_by = pelaku.
+     * - Bila turun, target penempatan yang belum ditempatkan ikut disusutkan.
+     * - Status penerimaan dihitung ulang.
+     * Tidak ada konsep "selisih": angka tinggal diedit, sistem merapikan sisanya.
+     */
+    public function setReceivedQty(string $inboundId, string $inboundItemId, int $targetQty, string $userId): Inbound
+    {
+        if ($targetQty < 0) {
+            throw new \Exception('Jumlah tidak boleh negatif.');
+        }
+
+        return DB::transaction(function () use ($inboundId, $inboundItemId, $targetQty, $userId) {
+            $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
+            if (! $inbound) {
+                throw new \Exception('Dokumen Inbound tidak ditemukan.');
+            }
+            if ($inbound->status === Inbound::STATUS_CANCELLED) {
+                throw new \Exception('Inbound sudah dibatalkan.');
+            }
+
+            $item = $this->inboundRepository->findItemByUuidForUpdate($inboundItemId);
+            if (! $item || $item->inbound_id !== $inbound->id) {
+                throw new \Exception('Item inbound tidak ditemukan.');
+            }
+
+            $current = (int) $item->received_qty;
+            $delta = $targetQty - $current;
+            if ($delta === 0) {
+                return $this->getById($inboundId);
+            }
+
+            // Tidak boleh di bawah yang sudah ditempatkan (stok itu sudah pindah ke rak).
+            if ($targetQty < (int) $item->putaway_qty) {
+                throw new \Exception("Tidak bisa kurang dari yang sudah ditempatkan ({$item->putaway_qty}).");
+            }
+
+            $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
+            if (! $defaultBin) {
+                throw new \Exception('Gudang ini belum memiliki Bin Inbound default.');
+            }
+
+            // Sesuaikan stok Bin Inbound (+ naik / − turun). Movement mencatat pelaku.
+            $this->inventoryService->adjust([
+                'item_id'            => $item->item_id,
+                'location_id'        => $inbound->location_id,
+                'bin_id'             => $defaultBin->id,
+                'qty'                => $delta,
+                'transaction_number' => $inbound->transaction_number . '-EDIT-QTY',
+                'created_by'         => "user:{$userId}",
+            ]);
+
+            $this->inboundRepository->updateItemReceivedQty($item->id, $delta);
+
+            // Turun → susutkan target penempatan yang belum ditempatkan.
+            if ($delta < 0) {
+                $this->putawayService->reduceOpenTargetForInboundItem($item->id, -$delta);
+            }
+
+            $this->recomputeStatus($inbound->fresh('items'));
+
+            return $this->getById($inboundId);
+        });
+    }
+
+    /**
+     * Hitung ulang status penerimaan dari progres putaway itemnya.
+     * Semua tuntas → COMPLETED; ada sebagian → PUTAWAY_IN_PROGRESS; nol → RECEIVED.
+     * DRAFT/CANCELLED tidak disentuh.
+     */
+    private function recomputeStatus(Inbound $inbound): void
+    {
+        if ($inbound->items->isEmpty()
+            || in_array($inbound->status, [Inbound::STATUS_DRAFT, Inbound::STATUS_CANCELLED], true)) {
+            return;
+        }
+
+        $allPutaway = $inbound->items->every(fn ($i) => $i->isFullyPutaway());
+        $anyPutaway = $inbound->items->contains(fn ($i) => (int) $i->putaway_qty > 0);
+
+        $newStatus = $allPutaway
+            ? Inbound::STATUS_COMPLETED
+            : ($anyPutaway ? Inbound::STATUS_PUTAWAY_IN_PROGRESS : Inbound::STATUS_RECEIVED);
+
+        if ($inbound->status !== $newStatus) {
+            $this->inboundRepository->updateStatus($inbound, $newStatus);
+        }
+    }
+
     public function cancel(string $inboundId): Inbound
     {
         return DB::transaction(function () use ($inboundId) {
