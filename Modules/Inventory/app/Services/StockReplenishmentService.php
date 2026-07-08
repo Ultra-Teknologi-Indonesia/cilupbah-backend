@@ -128,6 +128,85 @@ class StockReplenishmentService
         return $request->fresh();
     }
 
+    /**
+     * Tambah satu SKU ke permintaan yang masih PENDING.
+     */
+    public function addItem(string $id, array $payload): StockReplenishmentRequestItem
+    {
+        return DB::transaction(function () use ($id, $payload) {
+            $request = $this->lockPendingRequest($id);
+
+            $variant = \Modules\Product\Models\ProductVariant::find($payload['item_id']);
+            $sku = $payload['sku'] ?? $variant?->sku;
+
+            if (! $sku) {
+                throw new \RuntimeException('SKU tidak ditemukan untuk item ini.');
+            }
+
+            $existing = $request->items()->where('item_id', $payload['item_id'])->first();
+
+            if ($existing) {
+                $existing->update([
+                    'qty'    => $existing->qty + (int) $payload['qty'],
+                    'reason' => $payload['reason'] ?? $existing->reason,
+                ]);
+
+                return $existing->fresh(['variant.product']);
+            }
+
+            $item = $request->items()->create([
+                'item_id' => $payload['item_id'],
+                'sku'     => $sku,
+                'qty'     => (int) $payload['qty'],
+                'reason'  => $payload['reason'] ?? null,
+            ]);
+
+            return $item->fresh(['variant.product']);
+        });
+    }
+
+    /**
+     * Ubah jumlah / alasan satu item pada permintaan yang masih PENDING.
+     */
+    public function updateItem(string $id, string $itemId, array $payload): StockReplenishmentRequestItem
+    {
+        return DB::transaction(function () use ($id, $itemId, $payload) {
+            $request = $this->lockPendingRequest($id);
+
+            $item = $request->items()->where('id', $itemId)->firstOrFail();
+
+            $item->update([
+                'qty'    => (int) ($payload['qty'] ?? $item->qty),
+                'reason' => array_key_exists('reason', $payload) ? $payload['reason'] : $item->reason,
+            ]);
+
+            return $item->fresh(['variant.product']);
+        });
+    }
+
+    /**
+     * Hapus satu item dari permintaan yang masih PENDING.
+     */
+    public function removeItem(string $id, string $itemId): void
+    {
+        DB::transaction(function () use ($id, $itemId) {
+            $request = $this->lockPendingRequest($id);
+
+            $request->items()->where('id', $itemId)->firstOrFail()->delete();
+        });
+    }
+
+    private function lockPendingRequest(string $id): StockReplenishmentRequest
+    {
+        $request = StockReplenishmentRequest::lockForUpdate()->findOrFail($id);
+
+        if ($request->status !== StockReplenishmentRequest::STATUS_PENDING) {
+            throw new \RuntimeException('Item hanya dapat diubah selagi permintaan masih menunggu persetujuan.');
+        }
+
+        return $request;
+    }
+
     public function markDone(string $id): StockReplenishmentRequest
     {
         $request = StockReplenishmentRequest::findOrFail($id);

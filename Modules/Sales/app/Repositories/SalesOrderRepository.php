@@ -193,16 +193,7 @@ class SalesOrderRepository
                 )),
             'in-transit'       => $query->where('status', 'shipped')->whereNull('received_date'),
             'completed'        => $query->where('status', 'shipped')->whereNotNull('received_date'),
-            'empty-stock'      => $query->where('status', 'reserved')
-                ->whereNull('pick_failed_at')
-                ->whereHas('items', fn ($q) => $q->whereRaw(
-                    "sales_order_items.qty_in_base > COALESCE((
-                        SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
-                        FROM inventories
-                        WHERE inventories.item_id = sales_order_items.item_id
-                          AND inventories.location_id = sales_orders.location_id
-                    ), 0)"
-                )),
+            'empty-stock'      => $this->applyEmptyStockSubScope($query, $sub),
             'failed-pick'      => $query->where('status', 'reserved')
                 ->whereNotNull('pick_failed_at'),
             'cancellation'     => $this->applyCancellationSubScope($query, $sub),
@@ -219,6 +210,26 @@ class SalesOrderRepository
                 ))
             ),
             default            => $query,
+        };
+    }
+
+    protected function applyEmptyStockSubScope($query, ?string $sub)
+    {
+        $baseQuery = $query->where('status', 'reserved')
+            ->whereNull('pick_failed_at')
+            ->whereHas('items', fn ($q) => $q->whereRaw(
+                "sales_order_items.qty_in_base > COALESCE((
+                    SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
+                    FROM inventories
+                    WHERE inventories.item_id = sales_order_items.item_id
+                      AND inventories.location_id = sales_orders.location_id
+                ), 0)"
+            ));
+
+        return match ($sub) {
+            'waiting'   => $baseQuery->whereNull('contacted_at'),
+            'confirmed' => $baseQuery->whereNotNull('contacted_at'),
+            default     => $baseQuery,
         };
     }
 

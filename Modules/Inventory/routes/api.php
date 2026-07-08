@@ -216,5 +216,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('/{id}', [StockReplenishmentController::class, 'show'])->name('inventory.stockReplenishment.show');
         Route::post('/{id}/accept', [StockReplenishmentController::class, 'accept'])->name('inventory.stockReplenishment.accept');
         Route::post('/{id}/reject', [StockReplenishmentController::class, 'reject'])->name('inventory.stockReplenishment.reject');
+        Route::post('/{id}/items', [StockReplenishmentController::class, 'addItem'])->name('inventory.stockReplenishment.items.add');
+        Route::patch('/{id}/items/{itemId}', [StockReplenishmentController::class, 'updateItem'])->name('inventory.stockReplenishment.items.update');
+        Route::delete('/{id}/items/{itemId}', [StockReplenishmentController::class, 'removeItem'])->name('inventory.stockReplenishment.items.remove');
     });
 });

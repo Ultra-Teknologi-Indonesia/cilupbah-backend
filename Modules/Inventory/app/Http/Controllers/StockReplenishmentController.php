@@ -26,7 +26,7 @@ class StockReplenishmentController extends Controller
         $perPage = min(100, max(1, (int) $request->query('per_page', 20)));
 
         $query = StockReplenishmentRequest::query()
-            ->with(['items', 'fromLocation', 'toLocation', 'assignee', 'requester', 'transferOut'])
+            ->with(['items.variant.product', 'fromLocation', 'toLocation', 'assignee', 'requester', 'transferOut'])
             ->orderByDesc('requested_at');
 
         if ($status) {
@@ -56,7 +56,7 @@ class StockReplenishmentController extends Controller
     public function show(string $id): JsonResponse
     {
         $req = StockReplenishmentRequest::with([
-            'items',
+            'items.variant.product',
             'fromLocation',
             'toLocation',
             'assignee',
@@ -118,6 +118,75 @@ class StockReplenishmentController extends Controller
         return $this->successResponse(
             new StockReplenishmentResource($req->load(['items'])),
             'Permintaan ditolak',
+        );
+    }
+
+    public function addItem(string $id, Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'item_id' => ['required', 'uuid'],
+            'sku'     => ['nullable', 'string', 'max:64'],
+            'qty'     => ['required', 'integer', 'min:1'],
+            'reason'  => ['nullable', 'string', 'max:500'],
+        ]);
+
+        try {
+            $this->service->addItem($id, $validated);
+        } catch (\RuntimeException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
+        return $this->successResponse(
+            $this->reloadDetail($id),
+            'Item ditambahkan',
+            201,
+        );
+    }
+
+    public function updateItem(string $id, string $itemId, Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'qty'    => ['sometimes', 'integer', 'min:1'],
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        try {
+            $this->service->updateItem($id, $itemId, $validated);
+        } catch (\RuntimeException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
+        return $this->successResponse(
+            $this->reloadDetail($id),
+            'Item diperbarui',
+        );
+    }
+
+    public function removeItem(string $id, string $itemId): JsonResponse
+    {
+        try {
+            $this->service->removeItem($id, $itemId);
+        } catch (\RuntimeException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
+        return $this->successResponse(
+            $this->reloadDetail($id),
+            'Item dihapus',
+        );
+    }
+
+    private function reloadDetail(string $id): StockReplenishmentResource
+    {
+        return new StockReplenishmentResource(
+            StockReplenishmentRequest::with([
+                'items.variant.product',
+                'fromLocation',
+                'toLocation',
+                'assignee',
+                'requester',
+                'transferOut',
+            ])->findOrFail($id),
         );
     }
 }
