@@ -20,8 +20,10 @@ class InventoryRepository
 
     public function getByItem(string $itemId): Collection
     {
+        // Tab "Persediaan di Rak" hanya menampilkan stok yang sudah ditempatkan di
+        // rak final (bukan Bin Inbound / bin_id NULL yang masih "menunggu penempatan").
         return Inventory::where('item_id', $itemId)
-            ->whereNotNull('bin_id')
+            ->placed()
             ->where('on_hand', '>', 0)
             ->with([
                 'location:id,location_name',
@@ -89,17 +91,22 @@ class InventoryRepository
 
     public function getTotalAvailableByItem(string $itemId): int
     {
+        // on_hand hanya dihitung dari stok yang sudah ditempatkan; reserved lintas
+        // semua baris (agregat reserved ada di baris bin_id NULL).
+        $placedOnHand = (int) Inventory::where('item_id', $itemId)
+            ->placed()
+            ->sum('on_hand');
+        $reserved = (int) Inventory::where('item_id', $itemId)->sum('reserved');
 
-        $row = Inventory::where('item_id', $itemId)
-            ->selectRaw('COALESCE(SUM(on_hand),0) AS oh, COALESCE(SUM(reserved),0) AS r')
-            ->first();
-        return max(0, (int) $row->oh - (int) $row->r);
+        return max(0, $placedOnHand - $reserved);
     }
 
     public function sumOnHandAtLocation(string $itemId, string $locationId): int
     {
+        // Hanya stok yang sudah ditempatkan (rak final) yang terhitung sebagai on_hand.
         return (int) Inventory::where('item_id', $itemId)
             ->where('location_id', $locationId)
+            ->placed()
             ->sum('on_hand');
     }
 
@@ -181,6 +188,7 @@ class InventoryRepository
     public function getBatchNumbers(string $itemId)
     {
         return Inventory::where('item_id', $itemId)
+            ->placed()
             ->where(function ($q) {
                 $q->where('batch_no', '!=', '')->orWhere('serial_no', '!=', '');
             })
@@ -213,6 +221,7 @@ class InventoryRepository
                     ? $q->where('location_id', $locationFilter)
                     : $q,
                 'inventories.location:id,location_name',
+                'inventories.bin:id,is_inbound',
             ])
             ->allowedFilters(
                 AllowedFilter::exact('product_id', 'product_variants.product_id'),

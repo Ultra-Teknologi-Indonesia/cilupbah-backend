@@ -57,8 +57,15 @@ class StockSourceAllocationTest extends TestCase
 
     private function stockAt(ProductVariant $variant, string $locationId, int $onHand, int $reserved = 0): void
     {
+        // Stok hanya sellable/pickable bila SUDAH DITEMPATKAN di bin rak final
+        // (is_inbound=false). Tempatkan di rak agar mencerminkan model saat ini.
+        $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
+            ['location_id' => $locationId, 'bin_final_code' => 'RACK-A1'],
+            ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false, 'max_qty' => 0]
+        );
+
         Inventory::create([
-            'item_id' => $variant->id, 'location_id' => $locationId, 'bin_id' => null,
+            'item_id' => $variant->id, 'location_id' => $locationId, 'bin_id' => $bin->id,
             'on_hand' => $onHand, 'on_order' => 0, 'reserved' => $reserved, 'available' => $onHand - $reserved,
         ]);
     }

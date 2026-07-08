@@ -67,8 +67,12 @@ class ChannelStockTest extends TestCase
             'created_at' => now(), 'updated_at' => now(),
         ]);
         $this->shop->update(['stock_source_mode' => 'location', 'stock_source_location_id' => $location->id]);
+        $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
+            ['location_id' => $location->id, 'bin_final_code' => 'RACK-A1'],
+            ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false, 'max_qty' => 0]
+        );
         Inventory::create([
-            'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => null,
+            'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $bin->id,
             'on_hand' => $available + 2, 'on_order' => 0, 'reserved' => 2, 'available' => $available,
         ]);
 
@@ -130,8 +134,12 @@ class ChannelStockTest extends TestCase
             $compVariant = ProductVariant::create([
                 'product_id' => $compProduct->id, 'sku' => "{$bundleSku}-C{$i}", 'sell_price' => 1000, 'is_active' => true,
             ]);
+            $compBin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
+                ['location_id' => $location->id, 'bin_final_code' => 'RACK-A1'],
+                ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false, 'max_qty' => 0]
+            );
             Inventory::create([
-                'item_id' => $compVariant->id, 'location_id' => $location->id, 'bin_id' => null,
+                'item_id' => $compVariant->id, 'location_id' => $location->id, 'bin_id' => $compBin->id,
                 'on_hand' => $spec['available'] + 2, 'on_order' => 0, 'reserved' => 2, 'available' => $spec['available'],
             ]);
             $bundleProduct->bundleItems()->create([

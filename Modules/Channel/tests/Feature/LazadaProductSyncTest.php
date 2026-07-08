@@ -149,8 +149,12 @@ class LazadaProductSyncTest extends TestCase
             ['location_code' => \Modules\Warehouse\Models\Location::SYSTEM_KECIL_CODE],
             \Modules\Warehouse\Models\Location::factory()->make()->toArray()
         );
+        $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
+            ['location_id' => $location->id, 'bin_final_code' => 'RACK-A1'],
+            ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false, 'max_qty' => 0]
+        );
         Inventory::create([
-            'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => null,
+            'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $bin->id,
             'on_hand' => 9, 'on_order' => 0, 'reserved' => 2, 'available' => 7,
         ]);
 

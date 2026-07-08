@@ -43,8 +43,9 @@ class ProductRepository
     {
         return Product::with([
             'variants.inventories',
-
+            'variants.inventories.bin:id,is_inbound',
             'bundleItems.component.inventories',
+            'bundleItems.component.inventories.bin:id,is_inbound',
         ])->whereIn('id', $ids)->get();
     }
 

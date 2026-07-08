@@ -18,13 +18,15 @@ class ProductStockResource extends JsonResource
         }
 
         $inventories = $this->variants->flatMap->inventories;
+        $summary = \Modules\Inventory\Support\StockSummary::partitionLoaded($inventories);
 
         return [
             'item_id' => $this->id,
             'sku' => $this->sku,
-            'on_hand' => (int) $inventories->sum('on_hand'),
-            'reserved' => (int) $inventories->sum('reserved'),
-            'on_order' => (int) $inventories->sum('on_order'),
+            'on_hand' => $summary['on_hand'],
+            'pending_placement' => $summary['pending_placement'],
+            'reserved' => $summary['reserved'],
+            'on_order' => $summary['on_order'],
             'available' => (int) $inventories->sum('available'),
         ];
     }
