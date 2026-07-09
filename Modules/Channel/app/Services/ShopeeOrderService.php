@@ -215,6 +215,217 @@ class ShopeeOrderService
         }
     }
 
+    /**
+     * Ambil detail lengkap retur dari Shopee Returns API: keputusan (status), alasan,
+     * nominal refund, dan selisih ongkir — dipakai SalesReturnDetailSyncService untuk
+     * mengisi marketplace_decision/refund_amount/shipping_fee_* di SalesReturn.
+     *
+     * @return array{
+     *     channel_status: ?string, reason_code: ?string, reason_text: ?string,
+     *     refund_amount: ?float, refund_currency: ?string,
+     *     shipping_fee_original: ?float, shipping_fee_return: ?float,
+     *     tracking_number: ?string, carrier: ?string, shipped_at: ?string, raw: array,
+     * }
+     *
+     * TODO(verify): konfirmasi nama field ke dokumentasi Shopee Returns (get_return_detail).
+     */
+    public function fetchReturnDetail(string $shopId, ?string $returnSn, ?string $orderSn = null): array
+    {
+        $empty = [
+            'channel_status' => null,
+            'reason_code' => null,
+            'reason_text' => null,
+            'refund_amount' => null,
+            'refund_currency' => null,
+            'shipping_fee_original' => null,
+            'shipping_fee_return' => null,
+            'tracking_number' => null,
+            'carrier' => null,
+            'shipped_at' => null,
+            'raw' => [],
+        ];
+
+        try {
+            $shop = $this->requireShop($shopId);
+
+            if (! $returnSn && $orderSn) {
+                $returnSn = $this->resolveReturnSnByOrder($shop, $orderSn);
+            }
+
+            if (! $returnSn) {
+                return $empty;
+            }
+
+            $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+                'GET',
+                '/api/v2/returns/get_return_detail',
+                ['return_sn' => $returnSn],
+                $token,
+                $shop->shop_id,
+            ));
+
+            $detail = $res['response'] ?? [];
+            $logistics = $detail['logistics'] ?? [];
+            $refund = $detail['refund'] ?? [];
+
+            $tracking = $detail['tracking_number'] ?? $logistics['tracking_number'] ?? null;
+            $carrier = $detail['shipping_carrier']
+                ?? $logistics['shipping_carrier']
+                ?? $logistics['logistics_name']
+                ?? null;
+            $shippedAt = isset($detail['create_time']) && $detail['create_time']
+                ? now()->setTimestamp((int) $detail['create_time'])->toIso8601String()
+                : null;
+
+            return [
+                'channel_status' => isset($detail['status']) ? (string) $detail['status'] : null,
+                'reason_code' => isset($detail['reason']) ? (string) $detail['reason'] : null,
+                'reason_text' => $detail['text_reason'] ?? null,
+                'refund_amount' => isset($refund['amount'])
+                    ? (float) $refund['amount']
+                    : (isset($detail['amount']) ? (float) $detail['amount'] : null),
+                'refund_currency' => $detail['currency'] ?? null,
+                'shipping_fee_original' => null,
+                'shipping_fee_return' => isset($logistics['shipping_fee']) ? (float) $logistics['shipping_fee'] : null,
+                'tracking_number' => $tracking ? (string) $tracking : null,
+                'carrier' => $carrier ? (string) $carrier : null,
+                'shipped_at' => $shippedAt,
+                'raw' => $detail,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning("Shopee: gagal ambil detail retur (return_sn={$returnSn}): " . $e->getMessage());
+
+            return $empty;
+        }
+    }
+
+    /**
+     * Ambil riwayat banding/negosiasi retur dari Shopee (blok `negotiation` pada
+     * get_return_detail). Shopee tidak punya endpoint riwayat terpisah seperti
+     * TikTok/Lazada — histori diturunkan dari counter_offer di detail retur.
+     *
+     * @return array{records: array<int, array{type: string, operator: string, description: ?string, timestamp: ?string}>}
+     */
+    public function fetchReturnHistory(string $shopId, string $returnSn): array
+    {
+        try {
+            $shop = $this->requireShop($shopId);
+
+            $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+                'GET',
+                '/api/v2/returns/get_return_detail',
+                ['return_sn' => $returnSn],
+                $token,
+                $shop->shop_id,
+            ));
+
+            $detail = $res['response'] ?? [];
+            $negotiation = $detail['negotiation'] ?? [];
+            $offers = $negotiation['counter_offer'] ?? [];
+
+            $records = [];
+            foreach ($offers as $offer) {
+                $records[] = [
+                    'type' => 'SELLER_DISPUTE',
+                    'operator' => 'SELLER',
+                    'description' => $offer['reason'] ?? null,
+                    'timestamp' => isset($offer['create_time']) && $offer['create_time']
+                        ? now()->setTimestamp((int) $offer['create_time'])->toIso8601String()
+                        : null,
+                ];
+            }
+
+            return ['records' => $records];
+        } catch (\Throwable $e) {
+            Log::warning("Shopee: gagal ambil riwayat banding retur (return_sn={$returnSn}): " . $e->getMessage());
+
+            return ['records' => []];
+        }
+    }
+
+    /**
+     * Setujui retur di Shopee (seller menerima permintaan retur buyer tanpa banding).
+     *
+     * TODO(verify): konfirmasi nama field ke dokumentasi Shopee Returns (confirm).
+     */
+    public function confirmReturn(string $shopId, string $returnSn): bool
+    {
+        try {
+            $shop = $this->requireShop($shopId);
+
+            $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+                'POST',
+                '/api/v2/returns/confirm',
+                ['return_sn' => $returnSn],
+                $token,
+                $shop->shop_id,
+            ));
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning("Shopee: gagal setujui retur (return_sn={$returnSn}): " . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
+     * Tolak retur di Shopee via mekanisme dispute (seller mengajukan banding dengan
+     * alasan spesifik, mis. barang dianggap tidak rusak/tidak sesuai klaim buyer).
+     *
+     * @param  array<int,string>  $images  URL bukti foto (opsional, sesuai dokumentasi returns.dispute).
+     *
+     * TODO(verify): konfirmasi nama field ke dokumentasi Shopee Returns (dispute).
+     */
+    public function disputeReturn(string $shopId, string $returnSn, string $disputeReason, ?string $disputeText = null, array $images = []): bool
+    {
+        try {
+            $shop = $this->requireShop($shopId);
+
+            $params = [
+                'return_sn' => $returnSn,
+                'dispute_reason' => $disputeReason,
+            ];
+            if ($disputeText) {
+                $params['dispute_text_reason'] = $disputeText;
+            }
+            if (! empty($images)) {
+                $params['images'] = $images;
+            }
+
+            $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+                'POST',
+                '/api/v2/returns/dispute',
+                $params,
+                $token,
+                $shop->shop_id,
+            ));
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning("Shopee: gagal tolak/dispute retur (return_sn={$returnSn}): " . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
+     * Shopee tidak menyediakan endpoint daftar alasan tolak terpisah — dispute_reason
+     * adalah enum tetap di sisi Shopee. Daftar berikut mengikuti pola getCancelReasons()
+     * yang sudah ada di kelas ini.
+     *
+     * TODO(verify): konfirmasi daftar kode dispute_reason resmi ke dokumentasi Shopee.
+     */
+    public function getDisputeReasons(): array
+    {
+        return [
+            ['id' => 'DAMAGED_UPON_ARRIVAL', 'text' => 'Barang rusak bukan karena pengiriman'],
+            ['id' => 'NOT_AS_DESCRIBED', 'text' => 'Klaim tidak sesuai deskripsi tidak valid'],
+            ['id' => 'WRONG_ITEM', 'text' => 'Klaim barang salah tidak valid'],
+            ['id' => 'OTHER', 'text' => 'Alasan lain'],
+        ];
+    }
+
     protected function resolveReturnSnByOrder(object $shop, string $orderSn): ?string
     {
         $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(

@@ -88,6 +88,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('shipments/{id}/cancel', [ShipmentController::class, 'cancel'])->name('outbound.shipments.cancel');
     Route::delete('shipments/{id}', [ShipmentController::class, 'destroy'])->name('outbound.shipments.destroy');
 
+    Route::get('pre-manifest/cancelled', [PreManifestCancelController::class, 'index'])->name('outbound.pre-manifest.cancelled.index');
     Route::get('pre-manifest/cancelled/count', [PreManifestCancelController::class, 'count'])->name('outbound.pre-manifest.cancelled.count');
     Route::get('pre-manifest/cancelled/export', [PreManifestCancelController::class, 'export'])->name('outbound.pre-manifest.cancelled.export');
     Route::patch('pre-manifest/cancelled/{orderId}/dismiss', [PreManifestCancelController::class, 'dismiss'])->name('outbound.pre-manifest.cancelled.dismiss');

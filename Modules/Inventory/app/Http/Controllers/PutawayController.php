@@ -615,21 +615,15 @@ class PutawayController extends Controller
             $putawayNo = $putaway->putaway_no ?? 'PUT';
             $filename = "PUTAWAY-{$putawayNo}.pdf";
 
-            $putaway->load(['inbound', 'sources:id,reference_number,transaction_number']);
-
-            $this->attachRecommendedBins($putaway);
-
-            $sourceLabel = $this->resolveSourceLabel($putaway);
-
-            $qrDataUri = $this->generateQrDataUri((string) $putawayNo);
+            $prepared = $this->preparePutawayForPdf($putaway);
 
             $printedBy = $request->user()->name ?? $request->user()->email ?? '-';
 
             $pdf = Pdf::loadView('inventory::pdf.putaway', [
-                'putaway' => $putaway,
-                'qrDataUri' => $qrDataUri,
+                'putaway' => $prepared['putaway'],
+                'qrDataUri' => $prepared['qrDataUri'],
                 'printedBy' => $printedBy,
-                'sourceLabel' => $sourceLabel,
+                'sourceLabel' => $prepared['sourceLabel'],
             ])->setPaper('a4', 'portrait');
 
             return $pdf->stream($filename);
@@ -637,6 +631,138 @@ class PutawayController extends Controller
             report($e);
             return $this->errorResponse('Gagal membuat PDF putaway: ' . $e->getMessage(), 500);
         }
+    }
+
+    #[OA\Post(
+        path: '/api/v1/putaway/bulk/pdf',
+        summary: 'Cetak banyak dokumen Putaway (semua status) menjadi satu file PDF',
+        security: [['bearerAuth' => []]],
+        tags: ['Putaway'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['ids'],
+            properties: [
+                new OA\Property(property: 'ids', type: 'array', items: new OA\Items(type: 'string')),
+            ]
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'PDF stream', content: new OA\MediaType(mediaType: 'application/pdf')),
+            new OA\Response(response: 404, description: 'Sebagian putaway tidak ditemukan'),
+        ]
+    )]
+    public function bulkPdf(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1|max:50',
+            'ids.*' => 'required|string',
+        ]);
+
+        try {
+            $ids = array_values(array_unique($validated['ids']));
+
+            $putaways = $this->putawayService->getManyForPdf($ids);
+
+            if ($putaways->count() !== count($ids)) {
+                $missing = array_values(array_diff($ids, $putaways->pluck('id')->all()));
+                return $this->errorResponse('Sebagian penempatan tidak ditemukan: ' . implode(', ', $missing), 404);
+            }
+
+            $docs = $putaways->map(fn ($p) => $this->preparePutawayForPdf($p))->all();
+
+            $printedBy = $request->user()->name ?? $request->user()->email ?? '-';
+            $filename = 'Putaway-Bulk-' . now()->format('Ymd-His') . '.pdf';
+
+            $pdf = Pdf::loadView('inventory::pdf.putaway-bulk', [
+                'docs' => $docs,
+                'printedBy' => $printedBy,
+            ])->setPaper('a4', 'portrait');
+
+            return $pdf->stream($filename);
+        } catch (Throwable $e) {
+            report($e);
+            return $this->errorResponse('Gagal membuat PDF putaway bulk: ' . $e->getMessage(), 500);
+        }
+    }
+
+    #[OA\Delete(
+        path: '/api/v1/putaway/{id}',
+        summary: 'Hapus dokumen putaway (revert bertingkat sesuai status)',
+        security: [['bearerAuth' => []]],
+        tags: ['Putaway'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Penempatan berhasil diproses.'),
+            new OA\Response(response: 422, description: 'Status tidak valid / gagal.'),
+        ]
+    )]
+    public function destroy(Request $request, string $id): JsonResponse
+    {
+        try {
+            $userId = (string) ($request->user()->id ?? 'system');
+            $result = $this->putawayService->deletePutaway($id, $userId);
+
+            $message = match ($result['action']) {
+                'unassigned' => 'Penempatan dihapus, penerimaan dikembalikan.',
+                'reset_not_started' => 'Penempatan direset ke Belum Mulai.',
+                'reset_in_progress' => 'Penempatan dikembalikan ke Sedang Diproses.',
+                default => 'Penempatan diperbarui.',
+            };
+
+            return $this->successResponse($result, $message);
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    #[OA\Delete(
+        path: '/api/v1/putaway/bulk',
+        summary: 'Hapus banyak dokumen putaway sekaligus (per-baris sesuai statusnya, atomik)',
+        security: [['bearerAuth' => []]],
+        tags: ['Putaway'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['ids'],
+            properties: [
+                new OA\Property(property: 'ids', type: 'array', items: new OA\Items(type: 'string')),
+            ]
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'Penempatan terpilih berhasil diproses.'),
+            new OA\Response(response: 422, description: 'Validation Error / gagal.'),
+        ]
+    )]
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1|max:100',
+            'ids.*' => 'required|string|distinct|exists:putaways,id',
+        ]);
+
+        try {
+            $userId = (string) ($request->user()->id ?? 'system');
+            $results = $this->putawayService->bulkDeletePutaway($validated['ids'], $userId);
+
+            return $this->successResponse($results, 'Penempatan terpilih berhasil diproses.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+    }
+
+    /**
+     * Siapkan satu putaway untuk render PDF: muat relasi sumber, lampirkan rekomendasi rak,
+     * hasilkan QR + label sumber. Dipakai cetak tunggal maupun bulk.
+     */
+    protected function preparePutawayForPdf($putaway): array
+    {
+        $putaway->load(['inbound', 'sources:id,reference_number,transaction_number']);
+
+        $this->attachRecommendedBins($putaway);
+
+        return [
+            'putaway' => $putaway,
+            'qrDataUri' => $this->generateQrDataUri((string) ($putaway->putaway_no ?? 'PUT')),
+            'sourceLabel' => $this->resolveSourceLabel($putaway),
+        ];
     }
 
     protected function attachRecommendedBins($putaway): void

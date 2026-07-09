@@ -43,6 +43,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('sales/returns/{id}/reject', [SalesReturnController::class, 'reject'])->whereUuid('id')->name('sales.returns.reject');
     Route::post('sales/returns/{id}/complete', [SalesReturnController::class, 'complete'])->whereUuid('id')->name('sales.returns.complete');
     Route::post('sales/returns/{id}/sync-tracking', [SalesReturnController::class, 'syncTracking'])->whereUuid('id')->name('sales.returns.sync-tracking');
+    Route::post('sales/returns/{id}/sync-detail', [SalesReturnController::class, 'syncDetail'])->whereUuid('id')->name('sales.returns.sync-detail');
+    Route::get('sales/returns/{id}/appeals', [SalesReturnController::class, 'appeals'])->whereUuid('id')->name('sales.returns.appeals');
+    Route::post('sales/returns/{id}/channel-accept', [SalesReturnController::class, 'channelAccept'])->whereUuid('id')->name('sales.returns.channel-accept');
+    Route::post('sales/returns/{id}/channel-reject', [SalesReturnController::class, 'channelReject'])->whereUuid('id')->name('sales.returns.channel-reject');
+    Route::get('sales/returns/{id}/channel-reject-reasons', [SalesReturnController::class, 'channelRejectReasons'])->whereUuid('id')->name('sales.returns.channel-reject-reasons');
 
     Route::get('sales/invoices/unpaid', [SalesInvoiceController::class, 'unpaid'])->name('sales.invoices.unpaid');
     Route::get('sales/invoices/overdue', [SalesInvoiceController::class, 'overdue'])->name('sales.invoices.overdue');

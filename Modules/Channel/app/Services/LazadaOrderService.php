@@ -367,6 +367,216 @@ class LazadaOrderService
         }
     }
 
+    /**
+     * Ambil detail lengkap retur dari Lazada Reverse Order API: status keputusan,
+     * alasan, nominal refund, dan selisih ongkir (`logistics_cost`/`return_shipping_fee`)
+     * — dipakai SalesReturnDetailSyncService untuk mengisi marketplace_decision/
+     * refund_amount/shipping_fee_* di SalesReturn.
+     *
+     * @return array{
+     *     channel_status: ?string, reason_code: ?string, reason_text: ?string,
+     *     refund_amount: ?float, refund_currency: ?string,
+     *     shipping_fee_original: ?float, shipping_fee_return: ?float,
+     *     tracking_number: ?string, carrier: ?string, shipped_at: ?string, raw: array,
+     * }
+     *
+     * TODO(verify): konfirmasi endpoint & nama field ke dokumentasi Lazada Reverse/RMA.
+     */
+    public function fetchReturnDetail(string $shopId, ?string $reverseOrderId): array
+    {
+        $empty = [
+            'channel_status' => null,
+            'reason_code' => null,
+            'reason_text' => null,
+            'refund_amount' => null,
+            'refund_currency' => null,
+            'shipping_fee_original' => null,
+            'shipping_fee_return' => null,
+            'tracking_number' => null,
+            'carrier' => null,
+            'shipped_at' => null,
+            'raw' => [],
+        ];
+
+        if (! $reverseOrderId) {
+            return $empty;
+        }
+
+        try {
+            $shop = $this->requireShop($shopId);
+
+            $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+                'GET',
+                '/order/reverse/return/detail/list',
+                ['reverse_order_id' => $reverseOrderId],
+                $token,
+            ));
+
+            $detail = $res['data'] ?? $res['result'] ?? $res;
+            $logistics = $detail['reverse_logistics'] ?? $detail['logistics'] ?? [];
+
+            $tracking = $detail['tracking_number']
+                ?? $detail['return_tracking_number']
+                ?? $logistics['tracking_number']
+                ?? null;
+            $carrier = $detail['shipping_provider']
+                ?? $logistics['shipping_provider']
+                ?? $logistics['logistics_provider']
+                ?? null;
+            $shippedAt = $detail['ship_time'] ?? $detail['return_ship_time'] ?? null;
+
+            return [
+                'channel_status' => isset($detail['reverse_status']) ? (string) $detail['reverse_status'] : null,
+                'reason_code' => $detail['reason'] ?? null,
+                'reason_text' => $detail['reason_text'] ?? null,
+                'refund_amount' => isset($detail['refund_amount']) ? (float) $detail['refund_amount'] : null,
+                'refund_currency' => $detail['currency'] ?? null,
+                'shipping_fee_original' => isset($detail['origin_shipping_fee']) ? (float) $detail['origin_shipping_fee'] : null,
+                'shipping_fee_return' => isset($detail['logistics_cost'])
+                    ? (float) $detail['logistics_cost']
+                    : (isset($detail['return_shipping_fee']) ? (float) $detail['return_shipping_fee'] : null),
+                'tracking_number' => $tracking ? (string) $tracking : null,
+                'carrier' => $carrier ? (string) $carrier : null,
+                'shipped_at' => $shippedAt ? (string) $shippedAt : null,
+                'raw' => $detail,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning("Lazada: gagal ambil detail retur (reverse_order_id={$reverseOrderId}): " . $e->getMessage());
+
+            return $empty;
+        }
+    }
+
+    /**
+     * Ambil riwayat proses/banding retur dari Lazada Reverse Order API
+     * (`/order/reverse/return/history/list`), dipakai untuk mengisi timeline
+     * banding di UI detail retur.
+     *
+     * @return array{records: array<int, array{type: string, operator: string, description: ?string, timestamp: ?string}>}
+     *
+     * TODO(verify): konfirmasi endpoint & nama field ke dokumentasi Lazada Reverse/RMA.
+     */
+    public function fetchReturnHistory(string $shopId, string $reverseOrderId): array
+    {
+        try {
+            $shop = $this->requireShop($shopId);
+
+            $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+                'GET',
+                '/order/reverse/return/history/list',
+                ['reverse_order_id' => $reverseOrderId],
+                $token,
+            ));
+
+            $entries = $res['data']['history'] ?? $res['result']['history'] ?? [];
+
+            $records = [];
+            foreach ($entries as $entry) {
+                $records[] = [
+                    'type' => $entry['status'] ?? 'UNKNOWN',
+                    'operator' => $entry['operator'] ?? 'PLATFORM',
+                    'description' => $entry['comment'] ?? null,
+                    'timestamp' => $entry['create_time'] ?? null,
+                ];
+            }
+
+            return ['records' => $records];
+        } catch (\Throwable $e) {
+            Log::warning("Lazada: gagal ambil riwayat banding retur (reverse_order_id={$reverseOrderId}): " . $e->getMessage());
+
+            return ['records' => []];
+        }
+    }
+
+    /**
+     * Setujui retur di Lazada Reverse Order API (seller menerima permintaan retur buyer).
+     *
+     * TODO(verify): konfirmasi endpoint & nama field ke dokumentasi Lazada Reverse/RMA (return/approve).
+     */
+    public function approveReturn(string $shopId, string $reverseOrderId): bool
+    {
+        try {
+            $shop = $this->requireShop($shopId);
+
+            $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+                'POST',
+                '/order/reverse/return/approve',
+                ['reverse_order_id' => $reverseOrderId],
+                $token,
+            ));
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning("Lazada: gagal setujui retur (reverse_order_id={$reverseOrderId}): " . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
+     * Tolak retur di Lazada Reverse Order API dengan reason_id dari getRejectReasons().
+     *
+     * TODO(verify): konfirmasi endpoint & nama field ke dokumentasi Lazada Reverse/RMA (return/reject).
+     */
+    public function rejectReturn(string $shopId, string $reverseOrderId, string $reasonId, ?string $remark = null): bool
+    {
+        try {
+            $shop = $this->requireShop($shopId);
+
+            $params = ['reverse_order_id' => $reverseOrderId, 'reason_id' => $reasonId];
+            if ($remark) {
+                $params['remark'] = $remark;
+            }
+
+            $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+                'POST',
+                '/order/reverse/return/reject',
+                $params,
+                $token,
+            ));
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning("Lazada: gagal tolak retur (reverse_order_id={$reverseOrderId}): " . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
+     * Ambil daftar alasan tolak yang valid untuk suatu retur dari
+     * `/order/reverse/reason/list`, dipakai FE untuk menampilkan pilihan alasan
+     * sebelum memanggil rejectReturn().
+     *
+     * @return array<int, array{id: string, text: string}>
+     *
+     * TODO(verify): konfirmasi endpoint & nama field ke dokumentasi Lazada Reverse/RMA (reason/list).
+     */
+    public function getRejectReasons(string $shopId, string $reverseOrderId): array
+    {
+        try {
+            $shop = $this->requireShop($shopId);
+
+            $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+                'GET',
+                '/order/reverse/reason/list',
+                ['reverse_order_id' => $reverseOrderId],
+                $token,
+            ));
+
+            $reasons = $res['data']['reasons'] ?? $res['result']['reasons'] ?? [];
+
+            return array_map(fn ($r) => [
+                'id' => (string) ($r['reason_id'] ?? $r['id'] ?? ''),
+                'text' => (string) ($r['reason_text'] ?? $r['text'] ?? ''),
+            ], $reasons);
+        } catch (\Throwable $e) {
+            Log::warning("Lazada: gagal ambil alasan tolak retur (reverse_order_id={$reverseOrderId}): " . $e->getMessage());
+
+            return [];
+        }
+    }
+
     protected function callWithRefresh(object $shop, callable $fn): array
     {
         try {

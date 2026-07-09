@@ -5,12 +5,15 @@ namespace Modules\Sales\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Inventory\Models\ImpexActivity;
 use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Sales\Exports\SalesReturnReportExport;
 use Modules\Sales\Http\Requests\StoreSalesReturnRequest;
 use Modules\Sales\Http\Resources\SalesReturnReportResource;
+use Modules\Sales\Models\SalesReturn;
+use Modules\Sales\Services\SalesReturnChannelActionService;
 use Modules\Sales\Services\SalesReturnService;
 use OpenApi\Attributes as OA;
 
@@ -20,6 +23,7 @@ class SalesReturnController extends Controller
     public function __construct(
         protected SalesReturnService $returnService,
         protected ImpexActivityService $activityService,
+        protected SalesReturnChannelActionService $channelActionService,
     ) {}
 
     #[OA\Get(
@@ -238,6 +242,161 @@ class SalesReturnController extends Controller
         return $this->successResponse($this->returnService->getById($id), 'Sinkronisasi resi retur selesai');
     }
 
+    #[OA\Post(
+        path: '/api/v1/sales/returns/{id}/sync-detail',
+        summary: 'Tarik keputusan marketplace, alasan, refund, selisih ongkir, dan riwayat banding dari channel',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Returns'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Successful operation'),
+            new OA\Response(response: 404, description: 'Return tidak ditemukan'),
+        ]
+    )]
+    public function syncDetail(string $id): JsonResponse
+    {
+        $return = $this->returnService->getById($id);
+
+        if (! $return) {
+            return $this->errorResponse('Sales return tidak ditemukan', 404);
+        }
+
+        app(\Modules\Sales\Services\SalesReturnDetailSyncService::class)->syncOne($return);
+
+        return $this->successResponse($this->returnService->getById($id), 'Sinkronisasi detail retur selesai');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/sales/returns/{id}/appeals',
+        summary: 'Riwayat proses/banding retur dari marketplace',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Returns'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Successful operation'),
+            new OA\Response(response: 404, description: 'Return tidak ditemukan'),
+        ]
+    )]
+    public function appeals(string $id): JsonResponse
+    {
+        $return = $this->returnService->getById($id);
+
+        if (! $return) {
+            return $this->errorResponse('Sales return tidak ditemukan', 404);
+        }
+
+        return $this->successResponse($return->appeals()->get(), 'Riwayat banding retur berhasil diambil');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/sales/returns/{id}/channel-accept',
+        summary: 'Setujui retur di marketplace (channel online)',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Returns'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Successful operation'),
+            new OA\Response(response: 404, description: 'Return tidak ditemukan'),
+            new OA\Response(response: 422, description: 'Retur bukan dari marketplace atau gagal diteruskan ke channel'),
+        ]
+    )]
+    public function channelAccept(string $id): JsonResponse
+    {
+        $return = $this->returnService->getById($id);
+
+        if (! $return) {
+            return $this->errorResponse('Sales return tidak ditemukan', 404);
+        }
+
+        if ($return->source !== SalesReturn::SOURCE_MARKETPLACE) {
+            return $this->errorResponse('Retur ini bukan dari marketplace.', 422);
+        }
+
+        if (! $this->channelActionService->accept($return)) {
+            return $this->errorResponse('Gagal meneruskan persetujuan ke marketplace.', 422);
+        }
+
+        return $this->successResponse($this->returnService->getById($id), 'Retur berhasil disetujui di marketplace');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/sales/returns/{id}/channel-reject',
+        summary: 'Tolak/dispute retur di marketplace (channel online)',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Returns'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['reason_id'],
+            properties: [
+                new OA\Property(property: 'reason_id', type: 'string', example: 'NOT_AS_DESCRIBED'),
+                new OA\Property(property: 'note', type: 'string', nullable: true),
+            ]
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'Successful operation'),
+            new OA\Response(response: 404, description: 'Return tidak ditemukan'),
+            new OA\Response(response: 422, description: 'Retur bukan dari marketplace atau gagal diteruskan ke channel'),
+        ]
+    )]
+    public function channelReject(string $id, Request $request): JsonResponse
+    {
+        $return = $this->returnService->getById($id);
+
+        if (! $return) {
+            return $this->errorResponse('Sales return tidak ditemukan', 404);
+        }
+
+        if ($return->source !== SalesReturn::SOURCE_MARKETPLACE) {
+            return $this->errorResponse('Retur ini bukan dari marketplace.', 422);
+        }
+
+        $validated = $request->validate([
+            'reason_id' => 'required|string',
+            'note' => 'nullable|string',
+        ]);
+
+        if (! $this->channelActionService->reject($return, $validated['reason_id'], $validated['note'] ?? null)) {
+            return $this->errorResponse('Gagal meneruskan penolakan ke marketplace.', 422);
+        }
+
+        return $this->successResponse($this->returnService->getById($id), 'Retur berhasil ditolak di marketplace');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/sales/returns/{id}/channel-reject-reasons',
+        summary: 'Daftar alasan tolak yang valid dari marketplace untuk retur ini',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Returns'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Successful operation'),
+            new OA\Response(response: 404, description: 'Return tidak ditemukan'),
+        ]
+    )]
+    public function channelRejectReasons(string $id): JsonResponse
+    {
+        $return = $this->returnService->getById($id);
+
+        if (! $return) {
+            return $this->errorResponse('Sales return tidak ditemukan', 404);
+        }
+
+        return $this->successResponse(
+            $this->channelActionService->getRejectReasons($return),
+            'Daftar alasan tolak berhasil diambil'
+        );
+    }
+
     #[OA\Get(
         path: '/api/v1/sales/sales-returns/unpaid',
         summary: 'Get outstanding (unpaid) returns',
@@ -323,6 +482,8 @@ class SalesReturnController extends Controller
             new OA\Parameter(name: 'channel_shop_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'status', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'source', in: 'query', required: false, schema: new OA\Schema(type: 'string', enum: ['manual', 'marketplace'])),
+            new OA\Parameter(name: 'reason_category', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'marketplace_decision', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
         ],
         responses: [new OA\Response(response: 200, description: 'Successful operation')]
@@ -330,13 +491,15 @@ class SalesReturnController extends Controller
     public function report(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'date_from'       => 'nullable|date',
-            'date_to'         => 'nullable|date|after_or_equal:date_from',
-            'location_id'     => 'nullable|string',
-            'channel_shop_id' => 'nullable|string',
-            'status'          => 'nullable|string|max:20',
-            'source'          => 'nullable|in:manual,marketplace',
-            'limit'           => 'nullable|integer|min:1|max:200',
+            'date_from'             => 'nullable|date',
+            'date_to'               => 'nullable|date|after_or_equal:date_from',
+            'location_id'           => 'nullable|string',
+            'channel_shop_id'       => 'nullable|string',
+            'status'                => 'nullable|string|max:20',
+            'source'                => 'nullable|in:manual,marketplace',
+            'reason_category'       => ['nullable', 'string', Rule::in(SalesReturn::REASON_CATEGORIES)],
+            'marketplace_decision'  => ['nullable', 'string', Rule::in(SalesReturn::MP_DECISIONS)],
+            'limit'                 => 'nullable|integer|min:1|max:200',
         ]);
 
         $limit = (int) ($validated['limit'] ?? 20);
@@ -360,18 +523,22 @@ class SalesReturnController extends Controller
             new OA\Parameter(name: 'channel_shop_id', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'status', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'source', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'reason_category', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'marketplace_decision', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
         ],
         responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
     )]
     public function reportExport(Request $request)
     {
         $validated = $request->validate([
-            'date_from'       => 'nullable|date',
-            'date_to'         => 'nullable|date|after_or_equal:date_from',
-            'location_id'     => 'nullable|string',
-            'channel_shop_id' => 'nullable|string',
-            'status'          => 'nullable|string|max:20',
-            'source'          => 'nullable|in:manual,marketplace',
+            'date_from'            => 'nullable|date',
+            'date_to'              => 'nullable|date|after_or_equal:date_from',
+            'location_id'          => 'nullable|string',
+            'channel_shop_id'      => 'nullable|string',
+            'status'               => 'nullable|string|max:20',
+            'source'               => 'nullable|in:manual,marketplace',
+            'reason_category'      => ['nullable', 'string', Rule::in(SalesReturn::REASON_CATEGORIES)],
+            'marketplace_decision' => ['nullable', 'string', Rule::in(SalesReturn::MP_DECISIONS)],
         ]);
 
         $today = now()->toDateString();
@@ -379,12 +546,14 @@ class SalesReturnController extends Controller
         $dateTo   = $validated['date_to']   ?? null;
 
         $export = new SalesReturnReportExport(
-            dateFrom:      $dateFrom,
-            dateTo:        $dateTo,
-            locationId:    $validated['location_id']     ?? null,
-            channelShopId: $validated['channel_shop_id'] ?? null,
-            status:        $validated['status']          ?? null,
-            source:        $validated['source']          ?? null,
+            dateFrom:            $dateFrom,
+            dateTo:              $dateTo,
+            locationId:          $validated['location_id']          ?? null,
+            channelShopId:       $validated['channel_shop_id']      ?? null,
+            status:              $validated['status']               ?? null,
+            source:              $validated['source']                ?? null,
+            reasonCategory:      $validated['reason_category']      ?? null,
+            marketplaceDecision: $validated['marketplace_decision'] ?? null,
         );
 
         $filename = sprintf(

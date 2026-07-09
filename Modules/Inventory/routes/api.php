@@ -206,6 +206,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('/completed', [PutawayController::class, 'completed'])->name('putaway.completed');
         Route::get('/bins', [PutawayController::class, 'listBins'])->name('putaway.listBins');
         Route::get('/bins/lookup', [PutawayController::class, 'lookupBin'])->name('putaway.lookupBin');
+        Route::post('/bulk/pdf', [PutawayController::class, 'bulkPdf'])->name('putaway.bulkPdf');
+        Route::delete('/bulk', [PutawayController::class, 'bulkDestroy'])->name('putaway.bulkDestroy');
         Route::get('/{id}/pdf', [PutawayController::class, 'pdf'])->name('putaway.pdf');
         Route::get('/{id}', [PutawayController::class, 'show'])->name('putaway.show');
         Route::get('/{id}/items', [PutawayController::class, 'items'])->name('putaway.items');
@@ -215,6 +217,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::delete('/{id}/placements', [PutawayController::class, 'deletePlacements'])->name('putaway.deletePlacements');
         Route::delete('/{id}/items/{itemId}/placements/{placementId}', [PutawayController::class, 'deletePlacement'])->name('putaway.deletePlacement');
         Route::post('/{id}/complete', [PutawayController::class, 'complete'])->name('putaway.complete');
+        Route::delete('/{id}', [PutawayController::class, 'destroy'])->name('putaway.destroy');
     });
 
     Route::prefix('inventory/stock-replenishment')->group(function () {

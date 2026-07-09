@@ -111,7 +111,7 @@ class InventoryService
                 'location_id' => $data['location_id'],
                 'bin_id' => $data['bin_id'] ?? null,
                 'transaction_number' => $data['transaction_number'] ?? 'ADJ-' . Str::upper(Str::random(8)),
-                'source' => 'ADJUSTMENT',
+                'source' => $data['source'] ?? 'ADJUSTMENT',
                 'qty' => $data['qty'],
                 'balance' => $inventory->on_hand,
                 'transaction_date' => now(),

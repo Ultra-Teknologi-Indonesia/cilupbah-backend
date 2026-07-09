@@ -21,6 +21,44 @@ class PreManifestCancelController extends Controller
     ) {}
 
     #[OA\Get(
+        path: '/api/v1/outbound/pre-manifest/cancelled',
+        summary: 'Daftar order cancel pasca-packing yang menunggu dipisahkan (paginated)',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Pre-Manifest Cancel'],
+        parameters: [
+            new OA\Parameter(name: 'filter[q]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[source]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
+            new OA\Parameter(name: 'page', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [new OA\Response(response: 200, description: 'Paginated list')]
+    )]
+    public function index(Request $request): JsonResponse
+    {
+        $filters = [
+            'q'           => $request->input('filter.q'),
+            'source'      => $request->input('filter.source'),
+            'location_id' => $request->input('filter.location_id'),
+        ];
+
+        $perPage = (int) $request->input('limit', 20);
+
+        $paginator = $this->service->list($filters, $perPage);
+
+        return response()->json([
+            'success' => true,
+            'data'    => $paginator->items(),
+            'meta'    => [
+                'current_page' => $paginator->currentPage(),
+                'last_page'    => $paginator->lastPage(),
+                'per_page'     => $paginator->perPage(),
+                'total'        => $paginator->total(),
+            ],
+        ]);
+    }
+
+    #[OA\Get(
         path: '/api/v1/outbound/pre-manifest/cancelled/count',
         summary: 'Jumlah order cancel pasca-packing yang menunggu dipisahkan',
         security: [['bearerAuth' => []]],

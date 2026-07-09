@@ -53,6 +53,12 @@ class SalesReturnService
         if (! empty($filters['source'])) {
             $q->where('source', $filters['source']);
         }
+        if (! empty($filters['reason_category'])) {
+            $q->where('reason_category', $filters['reason_category']);
+        }
+        if (! empty($filters['marketplace_decision'])) {
+            $q->where('marketplace_decision', $filters['marketplace_decision']);
+        }
 
         return $q->orderByDesc('created_at')
             ->paginate($limit)
@@ -95,6 +101,7 @@ class SalesReturnService
             $data['return_number'] = $data['return_number'] ?? 'RET-' . now()->format('Ymd') . '-' . Str::upper(Str::random(4));
             $data['status'] = SalesReturn::STATUS_PENDING;
             $data['source'] = $data['source'] ?? SalesReturn::SOURCE_MANUAL;
+            $data['reason_category'] = $data['reason_category'] ?? SalesReturn::REASON_CATEGORY_OTHER;
 
             $return = $this->returnRepository->create($data);
 
@@ -155,13 +162,14 @@ class SalesReturnService
         }
 
         return $this->create([
-            'order_id'      => $order->id,
-            'location_id'   => $locationId,
-            'source'        => SalesReturn::SOURCE_MANUAL,
-            'customer_name' => $order->customer_name ?? null,
-            'reason'        => $reason ?: 'Cancel diterima setelah paket dikirim',
-            'created_by'    => $createdBy,
-            'items'         => $items,
+            'order_id'        => $order->id,
+            'location_id'     => $locationId,
+            'source'          => SalesReturn::SOURCE_MANUAL,
+            'customer_name'   => $order->customer_name ?? null,
+            'reason'          => $reason ?: 'Cancel diterima setelah paket dikirim',
+            'reason_category' => SalesReturn::REASON_CATEGORY_CANCEL_SHIPPED,
+            'created_by'      => $createdBy,
+            'items'           => $items,
         ]);
     }
 
@@ -235,6 +243,9 @@ class SalesReturnService
             'channel_shop_id'   => $payload['channel_shop_id'] ?? null,
             'customer_name'     => $order->customer_name ?? null,
             'reason'            => $payload['reason'] ?? 'Retur dari marketplace',
+            // Default retur marketplace = komplain pembeli (buyer-initiated); Fase 2
+            // (sync detail channel) menimpa ini dengan kategori lebih akurat bila tersedia.
+            'reason_category'   => SalesReturn::REASON_CATEGORY_COMPLAINT,
             'created_by'        => $payload['created_by'] ?? 'system:' . $source . '-webhook',
             'items'             => $items,
         ]);

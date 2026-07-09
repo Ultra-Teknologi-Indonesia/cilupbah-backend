@@ -41,6 +41,15 @@ class InboundService
         return $this->inboundRepository->findById($id);
     }
 
+    /**
+     * Source movement stok untuk penerimaan/koreksi Inbound ini, agar kronologi stok
+     * membedakan retur penjualan ("Retur Penjualan") dari penerimaan biasa ("Penyesuaian").
+     */
+    private function movementSourceFor(Inbound $inbound): string
+    {
+        return $inbound->type === Inbound::TYPE_SALES_RETURN ? 'SALES_RETURN' : 'ADJUSTMENT';
+    }
+
     public function createDraft(array $data): Inbound
     {
         return DB::transaction(function () use ($data) {
@@ -216,6 +225,7 @@ class InboundService
                         'serial_no'          => $receiptData['serial_no'] ?? '',
                         'qty'                => $receiptData['qty'],
                         'transaction_number' => $inbound->transaction_number,
+                        'source'             => $this->movementSourceFor($inbound),
                         'created_by'         => $data['received_by'],
                     ]);
                 }
@@ -641,6 +651,7 @@ class InboundService
                     'bin_id'             => $defaultBin->id,
                     'qty'                => -$qtyRev,
                     'transaction_number' => $inbound->transaction_number . '-KOREKSI',
+                    'source'             => $this->movementSourceFor($inbound),
                     'created_by'         => "user:{$userId}",
                 ]);
 
@@ -703,6 +714,7 @@ class InboundService
                 'bin_id'             => $defaultBin->id,
                 'qty'                => $delta,
                 'transaction_number' => $inbound->transaction_number . '-EDIT-QTY',
+                'source'             => $this->movementSourceFor($inbound),
                 'created_by'         => "user:{$userId}",
             ]);
 
@@ -806,6 +818,7 @@ class InboundService
                     'bin_id'             => $defaultBin->id,
                     'qty'                => -$reverseQty,
                     'transaction_number' => $inbound->transaction_number . '-CANCEL',
+                    'source'             => $this->movementSourceFor($inbound),
                     'created_by'         => $createdBy,
                 ]);
             }

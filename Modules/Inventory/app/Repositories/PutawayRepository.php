@@ -39,9 +39,12 @@ class PutawayRepository
             ->paginate($limit);
     }
 
-    public function findById(string $id): ?Putaway
+    /**
+     * Relasi lengkap dokumen putaway (detail + cetak PDF).
+     */
+    private function detailRelations(): array
     {
-        return Putaway::with([
+        return [
             'items.product:id,sku,product_id',
             'items.product.product:id,name',
             'items.product.options:id,variant_id,value',
@@ -55,7 +58,23 @@ class PutawayRepository
             'creator:id,name',
             'inbound:id,reference_number,transaction_number',
             'sources:id,reference_number,transaction_number',
-        ])->find($id);
+        ];
+    }
+
+    public function findById(string $id): ?Putaway
+    {
+        return Putaway::with($this->detailRelations())->find($id);
+    }
+
+    /**
+     * Muat banyak putaway lengkap sekaligus (untuk cetak bulk), urut No. Putaway.
+     */
+    public function getManyWithDetails(array $ids)
+    {
+        return Putaway::with($this->detailRelations())
+            ->whereIn('id', $ids)
+            ->orderBy('putaway_no')
+            ->get();
     }
 
     public function findByIdForUpdate(string $id): ?Putaway

@@ -37,6 +37,7 @@ class SalesReturnRepository
                 AllowedFilter::exact('status', 'sales_returns.status'),
                 AllowedFilter::exact('source', 'sales_returns.source'),
                 AllowedFilter::exact('order_id', 'sales_returns.order_id'),
+                AllowedFilter::exact('reason_category', 'sales_returns.reason_category'),
             )
             ->allowedSearch(...self::SEARCH_COLUMNS)
             ->allowedSorts(
@@ -55,6 +56,7 @@ class SalesReturnRepository
             ->with(['order:id,salesorder_no', 'location:id,location_name', 'items.product:id,sku,product_id', 'items.product.product:id,name'])
             ->allowedFilters(
                 AllowedFilter::exact('location_id', 'sales_returns.location_id'),
+                AllowedFilter::exact('reason_category', 'sales_returns.reason_category'),
             )
             ->allowedSearch(...self::SEARCH_COLUMNS)
             ->allowedSorts(

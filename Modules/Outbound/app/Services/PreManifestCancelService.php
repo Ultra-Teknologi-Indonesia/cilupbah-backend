@@ -22,6 +22,30 @@ class PreManifestCancelService
             ->whereDoesntHave('shipmentOrders');
     }
 
+    public function list(array $filters = [], int $perPage = 20)
+    {
+        $query = $this->baseQuery()
+            ->with(['location:id,location_name,location_code'])
+            ->latest('cancel_accepted_at');
+
+        if (! empty($filters['source'])) {
+            $query->where('source', $filters['source']);
+        }
+        if (! empty($filters['location_id'])) {
+            $query->where('location_id', $filters['location_id']);
+        }
+        if (! empty($filters['q'])) {
+            $query->where(function ($q) use ($filters) {
+                $q->where('salesorder_no', 'ilike', "%{$filters['q']}%")
+                  ->orWhere('channel_order_no', 'ilike', "%{$filters['q']}%")
+                  ->orWhere('customer_name', 'ilike', "%{$filters['q']}%")
+                  ->orWhere('tracking_number', 'ilike', "%{$filters['q']}%");
+            });
+        }
+
+        return $query->paginate($perPage);
+    }
+
     public function count(): int
     {
         return $this->baseQuery()->count();

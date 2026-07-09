@@ -6,6 +6,8 @@ use Modules\Sales\Console\Commands\PrepareShopeeLabelsBackfill;
 use Modules\Sales\Console\Commands\RelocateOrdersToKecil;
 use Modules\Sales\Console\Commands\RestoreTrackingNumbers;
 use Modules\Sales\Console\Commands\SyncOrderFinance;
+use Modules\Sales\Console\Commands\SyncReturnDetail;
+use Modules\Sales\Console\Commands\SyncReturnTracking;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class SalesServiceProvider extends ModuleServiceProvider
@@ -24,5 +26,7 @@ class SalesServiceProvider extends ModuleServiceProvider
         PrepareShopeeLabelsBackfill::class,
         RestoreTrackingNumbers::class,
         RelocateOrdersToKecil::class,
+        SyncReturnTracking::class,
+        SyncReturnDetail::class,
     ];
 }

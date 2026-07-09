@@ -6,6 +6,7 @@ use Modules\Inventory\Repositories\PutawayRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Models\Putaway;
+use Modules\Inventory\Models\PutawayItem;
 use Modules\Inventory\Models\PutawayPlacement;
 use Modules\Inventory\Models\PutawaySource;
 use Modules\Inventory\Models\PutawayItemSource;
@@ -166,7 +167,13 @@ class PutawayService
             throw new \Exception('Putaway tidak ditemukan.');
         }
 
-        if ($putaway->status !== Putaway::STATUS_IN_PROGRESS) {
+        // Tombol "Mulai" tidak lagi memulai. Putaway baru "berjalan" saat placement
+        // pertama (web memilih barang / dari mobile): NOT_STARTED auto-start di sini.
+        if ($putaway->status === Putaway::STATUS_NOT_STARTED) {
+            $this->putawayRepository->updateStatus($putawayId, Putaway::STATUS_IN_PROGRESS, [
+                'started_at' => now(),
+            ]);
+        } elseif ($putaway->status !== Putaway::STATUS_IN_PROGRESS) {
             throw new \Exception("Putaway harus IN_PROGRESS untuk memproses item (status saat ini: {$putaway->status}).");
         }
 
@@ -259,6 +266,145 @@ class PutawayService
 
             return $this->putawayRepository->findById($putawayId);
         });
+    }
+
+    /**
+     * Hapus dokumen putaway dengan perilaku revert bertingkat sesuai status:
+     * - NOT_STARTED → hapus dokumen (assignment hilang), penerimaan kembali dapat di-assign;
+     *   data QC/received_qty tidak disentuh.
+     * - IN_PROGRESS → reverse SEMUA penempatan (stok kembali ke rak asal), status → NOT_STARTED.
+     * - COMPLETED  → reverse SEMUA penempatan, status → IN_PROGRESS (reset penuh, completed_at null).
+     * Mengembalikan ['id' => ..., 'action' => ...].
+     */
+    public function deletePutaway(string $id, string $userId): array
+    {
+        return DB::transaction(function () use ($id, $userId) {
+            $putaway = $this->putawayRepository->findByIdForUpdate($id);
+
+            if (! $putaway) {
+                throw new \Exception('Putaway tidak ditemukan.');
+            }
+
+            $status = $putaway->status;
+
+            $hasPlacements = PutawayPlacement::whereIn(
+                'putaway_item_id',
+                PutawayItem::where('putaway_id', $id)->pluck('id')
+            )->exists();
+
+            if ($status === Putaway::STATUS_CANCELLED) {
+                throw new \Exception('Putaway yang sudah dibatalkan tidak bisa dihapus.');
+            }
+
+            // NOT_STARTED → kembali ke Penerimaan (hard-delete). Defensif: bila ternyata
+            // sempat ada penempatan, kembalikan stok dulu agar tidak menggantung di rak.
+            if ($status === Putaway::STATUS_NOT_STARTED) {
+                if ($hasPlacements) {
+                    $this->resetAllPlacements($putaway, $userId);
+                }
+
+                // Ambil penerimaan sumber SEBELUM hard-delete (pivot ikut terhapus).
+                $inbounds = $putaway->source_type === 'INBOUND'
+                    ? $this->sourceInbounds($putaway)
+                    : collect();
+
+                $this->hardDeletePutaway($putaway);
+
+                foreach ($inbounds as $inbound) {
+                    $this->recomputeInboundStatus($inbound);
+                }
+
+                return ['id' => $id, 'action' => 'unassigned'];
+            }
+
+            // IN_PROGRESS / COMPLETED → reverse semua penempatan, lalu turunkan status.
+            $this->resetAllPlacements($putaway, $userId);
+
+            $target = $status === Putaway::STATUS_COMPLETED
+                ? Putaway::STATUS_IN_PROGRESS
+                : Putaway::STATUS_NOT_STARTED;
+
+            $extra = $status === Putaway::STATUS_COMPLETED
+                ? ['completed_at' => null]
+                : ['started_at' => null, 'completed_at' => null];
+
+            $this->putawayRepository->updateStatus($id, $target, $extra);
+
+            if ($putaway->source_type === 'INBOUND') {
+                foreach ($this->sourceInbounds($putaway) as $inbound) {
+                    $this->recomputeInboundStatus($inbound);
+                }
+            }
+
+            return [
+                'id' => $id,
+                'action' => $status === Putaway::STATUS_COMPLETED ? 'reset_in_progress' : 'reset_not_started',
+            ];
+        });
+    }
+
+    /**
+     * Hapus banyak dokumen putaway sekaligus (atomik). Tiap id diproses sesuai
+     * statusnya sendiri (status campur diperbolehkan). Bila salah satu gagal,
+     * seluruh transaksi di-rollback.
+     */
+    public function bulkDeletePutaway(array $ids, string $userId): array
+    {
+        $ids = array_values(array_unique($ids));
+
+        if (empty($ids)) {
+            throw new \Exception('Tidak ada penempatan yang dipilih untuk dihapus.');
+        }
+
+        return DB::transaction(function () use ($ids, $userId) {
+            $results = [];
+            foreach ($ids as $id) {
+                $results[] = $this->deletePutaway($id, $userId);
+            }
+            return $results;
+        });
+    }
+
+    /**
+     * Reverse SEMUA penempatan pada tiap item dokumen (kembalikan stok dari rak
+     * tujuan ke rak asal), memakai primitive reverseOnePlacement yang sama dengan koreksi.
+     */
+    private function resetAllPlacements(Putaway $putaway, string $userId): void
+    {
+        $putaway->load(['items.placements']);
+
+        foreach ($putaway->items as $item) {
+            foreach ($item->placements as $placement) {
+                $this->reverseOnePlacement($putaway, [
+                    'item_id'      => $item->id,
+                    'placement_id' => $placement->id,
+                    'qty'          => null,
+                ], $userId);
+            }
+        }
+    }
+
+    /**
+     * Hard-delete dokumen putaway beserta turunannya (item, sumber rincian, placement, pivot penerimaan).
+     */
+    private function hardDeletePutaway(Putaway $putaway): void
+    {
+        $itemIds = PutawayItem::where('putaway_id', $putaway->id)->pluck('id');
+
+        PutawayItemSource::whereIn('putaway_item_id', $itemIds)->delete();
+        PutawayPlacement::whereIn('putaway_item_id', $itemIds)->delete();
+        PutawayItem::where('putaway_id', $putaway->id)->delete();
+        PutawaySource::where('putaway_id', $putaway->id)->delete();
+
+        $putaway->delete();
+    }
+
+    /**
+     * Muat banyak putaway lengkap untuk cetak bulk (relasi sama dgn detail).
+     */
+    public function getManyForPdf(array $ids)
+    {
+        return $this->putawayRepository->getManyWithDetails($ids);
     }
 
     private function reverseOnePlacement(Putaway $putaway, array $entry, string $userId): void

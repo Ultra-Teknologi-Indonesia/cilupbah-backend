@@ -79,6 +79,7 @@ class ProcessLazadaWebhook implements ShouldQueue
 
                     if ($salesReturn) {
                         \Modules\Sales\Jobs\SyncReturnTrackingJob::dispatch((string) $salesReturn->id);
+                        \Modules\Sales\Jobs\SyncReturnDetailJob::dispatch((string) $salesReturn->id);
                     }
                 } catch (\Throwable $e) {
                     Log::warning('Lazada auto SalesReturn gagal: ' . $e->getMessage(), ['channel_order_id' => $channelOrderId]);

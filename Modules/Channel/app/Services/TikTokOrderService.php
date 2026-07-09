@@ -456,6 +456,242 @@ class TikTokOrderService
         }
     }
 
+    /**
+     * Ambil detail lengkap retur dari TikTok Shop Return & Refund API (v202309): status
+     * keputusan, alasan, nominal refund, dan selisih ongkir — dipakai
+     * SalesReturnDetailSyncService untuk mengisi marketplace_decision/refund_amount/
+     * shipping_fee_* di SalesReturn.
+     *
+     * @return array{
+     *     channel_status: ?string, reason_code: ?string, reason_text: ?string,
+     *     refund_amount: ?float, refund_currency: ?string,
+     *     shipping_fee_original: ?float, shipping_fee_return: ?float,
+     *     tracking_number: ?string, carrier: ?string, shipped_at: ?string, raw: array,
+     * }
+     *
+     * TODO(verify): konfirmasi nama field ke dokumentasi TikTok return_refund 202309.
+     */
+    public function fetchReturnDetail(string $shopId, ?string $returnId, ?string $orderId = null): array
+    {
+        $empty = [
+            'channel_status' => null,
+            'reason_code' => null,
+            'reason_text' => null,
+            'refund_amount' => null,
+            'refund_currency' => null,
+            'shipping_fee_original' => null,
+            'shipping_fee_return' => null,
+            'tracking_number' => null,
+            'carrier' => null,
+            'shipped_at' => null,
+            'raw' => [],
+        ];
+
+        try {
+            $shop = $this->shopRepository->findByShopId($shopId);
+            if (! $shop || ! $shop->access_token) {
+                return $empty;
+            }
+
+            $queries = ['shop_cipher' => $shop->shop_cipher ?? '', 'page_size' => 20];
+            $body = [];
+            if ($returnId) {
+                $body['return_ids'] = [$returnId];
+            } elseif ($orderId) {
+                $body['order_ids'] = [$orderId];
+            } else {
+                return $empty;
+            }
+
+            $res = $this->client->request(
+                'POST',
+                '/return_refund/202309/returns/search',
+                $queries,
+                $body,
+                $shop->access_token,
+            );
+
+            $returns = $res['data']['return_orders'] ?? $res['data']['returns'] ?? [];
+            $ret = $returns[0] ?? [];
+            $shipment = $ret['return_shipment_document'] ?? $ret['shipment'] ?? [];
+
+            $tracking = $ret['return_tracking_number'] ?? $shipment['tracking_number'] ?? null;
+            $carrier = $ret['return_provider_name']
+                ?? $ret['shipping_provider_name']
+                ?? $shipment['shipping_provider_name']
+                ?? null;
+            $shippedAt = isset($ret['update_time']) && $ret['update_time']
+                ? now()->setTimestamp((int) $ret['update_time'])->toIso8601String()
+                : null;
+
+            return [
+                'channel_status' => isset($ret['return_status']) ? (string) $ret['return_status'] : null,
+                'reason_code' => $ret['return_reason_key'] ?? null,
+                'reason_text' => $ret['return_reason'] ?? null,
+                'refund_amount' => isset($ret['refund_amount']) ? (float) $ret['refund_amount'] : null,
+                'refund_currency' => $ret['currency'] ?? null,
+                'shipping_fee_original' => null,
+                'shipping_fee_return' => isset($ret['shipping_fee_amount']) ? (float) $ret['shipping_fee_amount'] : null,
+                'tracking_number' => $tracking ? (string) $tracking : null,
+                'carrier' => $carrier ? (string) $carrier : null,
+                'shipped_at' => $shippedAt,
+                'raw' => $ret,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning("TikTok: gagal ambil detail retur (return_id={$returnId}): " . $e->getMessage());
+
+            return $empty;
+        }
+    }
+
+    /**
+     * Ambil riwayat proses/banding retur dari TikTok Shop (endpoint returns/records),
+     * dipakai untuk mengisi timeline banding di UI detail retur.
+     *
+     * @return array{records: array<int, array{type: string, operator: string, description: ?string, timestamp: ?string}>}
+     *
+     * TODO(verify): konfirmasi nama field ke dokumentasi TikTok returns/records 202309.
+     */
+    public function fetchReturnHistory(string $shopId, string $returnId): array
+    {
+        try {
+            $shop = $this->shopRepository->findByShopId($shopId);
+            if (! $shop || ! $shop->access_token) {
+                return ['records' => []];
+            }
+
+            $queries = ['shop_cipher' => $shop->shop_cipher ?? '', 'return_id' => $returnId];
+
+            $res = $this->client->request(
+                'GET',
+                '/return_refund/202309/returns/records',
+                $queries,
+                [],
+                $shop->access_token,
+            );
+
+            $entries = $res['data']['records'] ?? [];
+
+            $records = [];
+            foreach ($entries as $entry) {
+                $records[] = [
+                    'type' => $entry['record_type'] ?? 'UNKNOWN',
+                    'operator' => $entry['operator'] ?? 'PLATFORM',
+                    'description' => $entry['description'] ?? null,
+                    'timestamp' => isset($entry['create_time']) && $entry['create_time']
+                        ? now()->setTimestamp((int) $entry['create_time'])->toIso8601String()
+                        : null,
+                ];
+            }
+
+            return ['records' => $records];
+        } catch (\Throwable $e) {
+            Log::warning("TikTok: gagal ambil riwayat banding retur (return_id={$returnId}): " . $e->getMessage());
+
+            return ['records' => []];
+        }
+    }
+
+    /**
+     * Setujui retur di TikTok Shop (seller menerima permintaan retur/refund buyer).
+     *
+     * TODO(verify): konfirmasi endpoint & nama field ke dokumentasi TikTok returns/approve 202309.
+     */
+    public function approveReturn(string $shopId, string $returnId): bool
+    {
+        try {
+            $shop = $this->shopRepository->findByShopId($shopId);
+            if (! $shop || ! $shop->access_token) {
+                return false;
+            }
+
+            $this->client->request(
+                'POST',
+                '/return_refund/202309/returns/approve',
+                ['shop_cipher' => $shop->shop_cipher ?? ''],
+                ['return_id' => $returnId],
+                $shop->access_token,
+            );
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning("TikTok: gagal setujui retur (return_id={$returnId}): " . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
+     * Tolak retur di TikTok Shop dengan kode alasan dari getRejectReasons().
+     *
+     * TODO(verify): konfirmasi endpoint & nama field ke dokumentasi TikTok returns/reject 202309.
+     */
+    public function rejectReturn(string $shopId, string $returnId, string $rejectReasonKey, ?string $comments = null): bool
+    {
+        try {
+            $shop = $this->shopRepository->findByShopId($shopId);
+            if (! $shop || ! $shop->access_token) {
+                return false;
+            }
+
+            $body = ['return_id' => $returnId, 'reject_reason_key' => $rejectReasonKey];
+            if ($comments) {
+                $body['comments'] = $comments;
+            }
+
+            $this->client->request(
+                'POST',
+                '/return_refund/202309/returns/reject',
+                ['shop_cipher' => $shop->shop_cipher ?? ''],
+                $body,
+                $shop->access_token,
+            );
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning("TikTok: gagal tolak retur (return_id={$returnId}): " . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
+     * Ambil daftar alasan tolak yang valid untuk suatu retur, dipakai FE untuk
+     * menampilkan pilihan alasan sebelum memanggil rejectReturn().
+     *
+     * @return array<int, array{id: string, text: string}>
+     *
+     * TODO(verify): konfirmasi endpoint & nama field ke dokumentasi TikTok reject_reasons 202309.
+     */
+    public function getRejectReasons(string $shopId, string $returnId): array
+    {
+        try {
+            $shop = $this->shopRepository->findByShopId($shopId);
+            if (! $shop || ! $shop->access_token) {
+                return [];
+            }
+
+            $res = $this->client->request(
+                'GET',
+                '/return_refund/202309/reject_reasons',
+                ['shop_cipher' => $shop->shop_cipher ?? '', 'return_id' => $returnId],
+                [],
+                $shop->access_token,
+            );
+
+            $reasons = $res['data']['reject_reasons'] ?? [];
+
+            return array_map(fn ($r) => [
+                'id' => (string) ($r['reject_reason_key'] ?? $r['id'] ?? ''),
+                'text' => (string) ($r['reject_reason_text'] ?? $r['text'] ?? ''),
+            ], $reasons);
+        } catch (\Throwable $e) {
+            Log::warning("TikTok: gagal ambil alasan tolak retur (return_id={$returnId}): " . $e->getMessage());
+
+            return [];
+        }
+    }
+
     public function rejectBuyerCancellation(string $shopId, string $orderId): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);

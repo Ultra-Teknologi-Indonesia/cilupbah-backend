@@ -20,6 +20,8 @@ class SalesReturnReportExport implements FromCollection, WithHeadings, WithMappi
         private readonly ?string $channelShopId,
         private readonly ?string $status,
         private readonly ?string $source,
+        private readonly ?string $reasonCategory = null,
+        private readonly ?string $marketplaceDecision = null,
     ) {}
 
     public function collection(): Collection
@@ -49,6 +51,12 @@ class SalesReturnReportExport implements FromCollection, WithHeadings, WithMappi
         if ($this->source) {
             $q->where('source', $this->source);
         }
+        if ($this->reasonCategory) {
+            $q->where('reason_category', $this->reasonCategory);
+        }
+        if ($this->marketplaceDecision) {
+            $q->where('marketplace_decision', $this->marketplaceDecision);
+        }
 
         return $q->orderByDesc('created_at')->get();
     }
@@ -63,6 +71,9 @@ class SalesReturnReportExport implements FromCollection, WithHeadings, WithMappi
             'Sumber',
             'Status',
             'Alasan',
+            'Kategori Alasan',
+            'Keputusan Marketplace',
+            'Alasan Channel',
             'Lokasi',
             'Diproses Oleh',
             'Diproses Pada',
@@ -74,6 +85,13 @@ class SalesReturnReportExport implements FromCollection, WithHeadings, WithMappi
             'Jumlah Refund',
             'Metode Refund',
             'Tanggal Refund Terakhir',
+            'Nominal Refund (Channel)',
+            'Ongkir Asli',
+            'Ongkir Retur',
+            'Selisih Ongkir',
+            'Resi Retur',
+            'Kurir Retur',
+            'Tgl Kirim Retur',
             'Catatan',
         ];
     }
@@ -91,6 +109,9 @@ class SalesReturnReportExport implements FromCollection, WithHeadings, WithMappi
             $return->source,
             $return->status,
             $return->reason,
+            SalesReturn::REASON_CATEGORY_LABELS[$return->reason_category] ?? $return->reason_category,
+            SalesReturn::MP_DECISION_LABELS[$return->marketplace_decision] ?? $return->marketplace_decision,
+            $return->channel_reason_text ?? $return->channel_reason_code,
             $return->location?->location_name,
             $return->processed_by,
             optional($return->processed_at)?->format('Y-m-d H:i:s'),
@@ -102,6 +123,15 @@ class SalesReturnReportExport implements FromCollection, WithHeadings, WithMappi
             $refunds->count(),
             $refunds->pluck('refund_method')->unique()->implode(', '),
             optional($refunds->max('refund_date'))?->format('Y-m-d'),
+            $return->refund_amount !== null ? (float) $return->refund_amount : null,
+            $return->shipping_fee_original !== null ? (float) $return->shipping_fee_original : null,
+            $return->shipping_fee_return !== null ? (float) $return->shipping_fee_return : null,
+            ($return->shipping_fee_original !== null && $return->shipping_fee_return !== null)
+                ? (float) $return->shipping_fee_return - (float) $return->shipping_fee_original
+                : null,
+            $return->return_tracking_number,
+            $return->return_carrier,
+            optional($return->return_shipped_at)?->format('Y-m-d H:i:s'),
             $return->notes,
         ];
     }

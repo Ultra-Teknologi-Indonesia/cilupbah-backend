@@ -146,6 +146,70 @@ class InventoryTest extends TestCase
             ->assertJsonStructure(['data', 'meta']);
     }
 
+    public function test_stock_items_excludes_transit_location(): void
+    {
+        // Stok yang sudah ditempatkan di rak final (is_inbound=false) di gudang nyata.
+        Inventory::create([
+            'item_id'     => $this->variant->id,
+            'location_id' => $this->location->id,
+            'bin_id'      => $this->binStorage->id,
+            'batch_no'    => '',
+            'serial_no'   => '',
+            'on_hand'     => 40,
+            'on_order'    => 0,
+            'reserved'    => 5,
+            'available'   => 35,
+        ]);
+
+        // Lokasi Transit + stok in-transit yang TIDAK boleh muncul di Posisi Stok
+        // maupun ikut terhitung di total_stocks (on_hand/on_order/reserved).
+        $transit = Location::create([
+            'location_code' => Location::SYSTEM_TRANSIT_CODE,
+            'location_name' => 'Transit',
+            'location_type' => 'Lokasi (Non Gudang)',
+            'is_warehouse'  => false,
+            'is_active'     => true,
+        ]);
+        $transitBin = LocationBin::create([
+            'location_id'    => $transit->id,
+            'bin_code'       => 'TRANSIT-DEFAULT',
+            'bin_final_code' => 'DEFAULT',
+            'is_inbound'     => true,
+        ]);
+        Inventory::create([
+            'item_id'     => $this->variant->id,
+            'location_id' => $transit->id,
+            'bin_id'      => $transitBin->id,
+            'batch_no'    => '',
+            'serial_no'   => '',
+            'on_hand'     => 7,
+            'on_order'    => 3,
+            'reserved'    => 2,
+            'available'   => 5,
+        ]);
+
+        $response = $this->getJson('/api/v1/inventory?filter[product_id]=' . $this->product->id);
+        $response->assertOk();
+
+        $item = collect($response->json('data'))->firstWhere('item_id', $this->variant->id);
+        $this->assertNotNull($item, 'Varian tidak ditemukan di payload.');
+
+        // location_stocks tidak boleh memuat lokasi Transit.
+        $locationIds = collect($item['location_stocks'])->pluck('location_id')->all();
+        $this->assertContains($this->location->id, $locationIds);
+        $this->assertNotContains($transit->id, $locationIds);
+
+        // total_stocks harus mengecualikan angka Transit sepenuhnya.
+        $this->assertEquals(40, $item['total_stocks']['on_hand']);
+        $this->assertEquals(0, $item['total_stocks']['on_order']);
+        $this->assertEquals(5, $item['total_stocks']['reserved']);
+        $this->assertEquals(35, $item['total_stocks']['available']);
+
+        // meta.locations (daftar untuk kolom) juga bebas Transit.
+        $metaLocationIds = collect($response->json('meta.locations'))->pluck('location_id')->all();
+        $this->assertNotContains($transit->id, $metaLocationIds);
+    }
+
     public function test_stock_products_groups_by_item(): void
     {
         $response = $this->getJson('/api/v1/inventory/stock-products');

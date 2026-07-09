@@ -206,6 +206,12 @@ class InventoryRepository
         // StockItemResource) mencerminkan gudang terpilih — bukan total lintas gudang.
         $locationFilter = request('filter.location_id');
 
+        // Stok lokasi Transit (in-transit, un-placed) tidak ditampilkan di Posisi Stok
+        // dan tidak boleh ikut terhitung di location_stocks maupun total_stocks.
+        $transitLocationId = \Modules\Warehouse\Models\Location::query()
+            ->where('location_code', \Modules\Warehouse\Models\Location::SYSTEM_TRANSIT_CODE)
+            ->value('id');
+
         return QueryBuilder::for(
             ProductVariant::query()
                 ->join('products', 'products.id', '=', 'product_variants.product_id')
@@ -217,9 +223,14 @@ class InventoryRepository
                 'product.media' => fn ($q) => $q->whereNull('variant_id')->orderBy('sort_order'),
                 'media' => fn ($q) => $q->orderBy('sort_order'),
                 'options.attribute:id,name',
-                'inventories' => fn ($q) => $locationFilter
-                    ? $q->where('location_id', $locationFilter)
-                    : $q,
+                'inventories' => function ($q) use ($locationFilter, $transitLocationId) {
+                    if ($transitLocationId) {
+                        $q->where('location_id', '!=', $transitLocationId);
+                    }
+                    if ($locationFilter) {
+                        $q->where('location_id', $locationFilter);
+                    }
+                },
                 'inventories.location:id,location_name',
                 'inventories.bin:id,is_inbound',
             ])
