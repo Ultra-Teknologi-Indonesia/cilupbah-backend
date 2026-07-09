@@ -6,6 +6,7 @@ use Modules\Sales\Http\Controllers\InternalStoreController;
 use Modules\Sales\Http\Controllers\SalesOrderManualController;
 use Modules\Sales\Http\Controllers\SalesReturnController;
 use Modules\Sales\Http\Controllers\SalesOrderController;
+use Modules\Sales\Http\Controllers\SalesOrderImportController;
 use Modules\Sales\Http\Controllers\SalesInvoiceController;
 use Modules\Sales\Http\Controllers\SalesPaymentController;
 use Modules\Sales\Http\Controllers\SalesSettlementController;
@@ -93,6 +94,15 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('sales/shipments/orders', fn (Request $request) => app(ShipmentController::class)->addOrders($request->input('shipment_id'), $request))->name('sales.shipments.orders');
     Route::post('sales/shipments', fn (Request $request) => app(ShipmentController::class)->handOver($request->input('shipment_id')))->name('sales.shipments.handover');
     Route::get('sales/shipments/{shipment_header_id}', fn (Request $request, string $shipment_header_id) => app(ShipmentController::class)->show($shipment_header_id))->whereUuid('shipment_header_id')->name('sales.shipments.show');
+
+    Route::get('sales/orders/export', [SalesOrderController::class, 'export'])->name('sales.orders.export');
+
+    Route::get('sales/orders/import/template', [SalesOrderImportController::class, 'downloadTemplate'])->name('sales.orders.import.template');
+    Route::post('sales/orders/import', [SalesOrderImportController::class, 'import'])->name('sales.orders.import');
+    Route::get('sales/orders/import/batches', [SalesOrderImportController::class, 'batches'])->name('sales.orders.import.batches');
+    Route::get('sales/orders/import/batches/{batch}', [SalesOrderImportController::class, 'show'])->whereUuid('batch')->name('sales.orders.import.batches.show');
+    Route::get('sales/orders/import/batches/{batch}/errors', [SalesOrderImportController::class, 'errors'])->whereUuid('batch')->name('sales.orders.import.batches.errors');
+    Route::get('sales/orders/import/batches/{batch}/errors/download', [SalesOrderImportController::class, 'downloadErrors'])->whereUuid('batch')->name('sales.orders.import.batches.errors.download');
 
     Route::get('sales/orders/cancel', [SalesOrderController::class, 'cancelled'])->name('sales.orders.cancelled');
     Route::get('sales/orders/cancelled/export', [SalesOrderController::class, 'exportCancelled'])->name('sales.orders.cancelled.export');

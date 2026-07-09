@@ -11,6 +11,7 @@ use Maatwebsite\Excel\Facades\Excel;
 use Modules\Inventory\Models\ImpexActivity;
 use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Sales\Exports\CancelledOrdersExport;
+use Modules\Sales\Exports\SalesOrdersExport;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
 use Modules\Sales\Http\Requests\SaveCourierPickupRequest;
@@ -332,6 +333,43 @@ class SalesOrderController extends Controller
             new OA\Response(response: 200, description: 'XLSX file stream', content: new OA\MediaType(mediaType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')),
         ]
     )]
+    public function export(Request $request)
+    {
+        $validated = $request->validate([
+            'tab'         => 'nullable|string|max:30',
+            'date_from'   => 'nullable|date',
+            'date_to'     => 'nullable|date|after_or_equal:date_from',
+            'source'      => 'nullable|string|max:50',
+            'search'      => 'nullable|string|max:200',
+            'store_id'    => 'nullable|uuid',
+            'location_id' => 'nullable|uuid',
+        ]);
+
+        $export = new SalesOrdersExport(
+            tab:        $validated['tab'] ?? null,
+            dateFrom:   $validated['date_from'] ?? null,
+            dateTo:     $validated['date_to'] ?? null,
+            source:     $validated['source'] ?? null,
+            search:     $validated['search'] ?? null,
+            storeId:    $validated['store_id'] ?? null,
+            locationId: $validated['location_id'] ?? null,
+        );
+
+        $filename = sprintf(
+            'pesanan-%s-%s.xlsx',
+            $validated['tab'] ?? 'semua',
+            now()->format('Ymd-His'),
+        );
+
+        $this->activityService->recordCompleted(
+            ImpexActivity::DIRECTION_EXPORT,
+            'Export Pesanan',
+            $request->user()?->id,
+        );
+
+        return Excel::download($export, $filename);
+    }
+
     public function exportCancelled(Request $request)
     {
         $validated = $request->validate([
