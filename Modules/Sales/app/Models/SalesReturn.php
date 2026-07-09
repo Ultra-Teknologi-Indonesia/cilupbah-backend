@@ -221,4 +221,10 @@ class SalesReturn extends Model
     {
         return $this->hasMany(SalesReturnAppeal::class, 'sales_return_id')->orderBy('recorded_at');
     }
+
+    public function inbounds(): HasMany
+    {
+        return $this->hasMany(\Modules\Inbound\Models\Inbound::class, 'source_id')
+            ->where('source_type', 'SALES_RETURN');
+    }
 }

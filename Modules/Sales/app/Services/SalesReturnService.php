@@ -319,6 +319,65 @@ class SalesReturnService
         });
     }
 
+    public function buildChannelOnlinePutawayReport(?string $dateFrom, ?string $dateTo, ?string $locationId): array
+    {
+        $dateFrom = $dateFrom ?: now()->toDateString();
+        $dateTo = $dateTo ?: $dateFrom;
+
+        $returns = SalesReturn::query()
+            ->whereIn('status', [SalesReturn::STATUS_ACCEPTED, SalesReturn::STATUS_COMPLETED])
+            ->whereDate('processed_at', '>=', $dateFrom)
+            ->whereDate('processed_at', '<=', $dateTo)
+            ->when($locationId, fn ($q) => $q->where('location_id', $locationId))
+            ->with([
+                'items.product:id,product_id,sku',
+                'items.product.product:id,product_name',
+                'order:id,salesorder_no,channel_order_no',
+                'location:id,location_name',
+                'inbounds.putaways',
+            ])
+            ->orderByDesc('processed_at')
+            ->get();
+
+        $placed = collect();
+        $unplaced = collect();
+
+        foreach ($returns as $return) {
+            $putawayDate = $return->inbounds
+                ->flatMap(fn ($inbound) => $inbound->putaways)
+                ->where('status', 'COMPLETED')
+                ->max('completed_at');
+
+            $isPlaced = $putawayDate
+                && $return->processed_at
+                && \Carbon\Carbon::parse($putawayDate)->toDateString() === $return->processed_at->toDateString();
+
+            foreach ($return->items as $item) {
+                $row = [
+                    $return->location?->location_name,
+                    $return->return_tracking_number,
+                    $return->order?->salesorder_no,
+                    $return->order?->channel_order_no,
+                    $return->processed_at?->format('d/m/Y H:i'),
+                    $item->product?->sku,
+                    $item->product?->product?->product_name,
+                    $item->qty,
+                    str_replace('RET-', 'SR-', $return->return_number),
+                    $return->created_by,
+                    $return->processed_by,
+                ];
+
+                if ($isPlaced) {
+                    $placed->push($row);
+                } else {
+                    $unplaced->push($row);
+                }
+            }
+        }
+
+        return compact('placed', 'unplaced');
+    }
+
     public function complete(string $id, array $data): SalesReturn
     {
         return DB::transaction(function () use ($id, $data) {

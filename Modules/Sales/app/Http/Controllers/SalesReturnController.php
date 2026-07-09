@@ -9,6 +9,7 @@ use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Inventory\Models\ImpexActivity;
 use Modules\Inventory\Services\ImpexActivityService;
+use Modules\Sales\Exports\ReturnChannelOnlineExport;
 use Modules\Sales\Exports\SalesReturnReportExport;
 use Modules\Sales\Http\Requests\StoreSalesReturnRequest;
 use Modules\Sales\Http\Resources\SalesReturnReportResource;
@@ -565,6 +566,34 @@ class SalesReturnController extends Controller
         $this->activityService->recordCompleted(
             ImpexActivity::DIRECTION_EXPORT,
             'Export Laporan Retur',
+            $request->user()?->id,
+        );
+
+        return Excel::download($export, $filename);
+    }
+
+    public function exportChannelOnline(Request $request)
+    {
+        $validated = $request->validate([
+            'date_from'   => 'nullable|date',
+            'date_to'     => 'nullable|date|after_or_equal:date_from',
+            'location_id' => 'nullable|string',
+        ]);
+
+        $dateFrom = $validated['date_from'] ?? now()->toDateString();
+        $dateTo   = $validated['date_to']   ?? $dateFrom;
+
+        $export = new ReturnChannelOnlineExport(
+            dateFrom:   $dateFrom,
+            dateTo:     $dateTo,
+            locationId: $validated['location_id'] ?? null,
+        );
+
+        $filename = sprintf('retur-channel-online-%s-%s.xlsx', $dateFrom, $dateTo);
+
+        $this->activityService->recordCompleted(
+            ImpexActivity::DIRECTION_EXPORT,
+            'Export Retur Channel Online',
             $request->user()?->id,
         );
 
