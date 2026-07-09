@@ -789,6 +789,37 @@ class InventoryController extends Controller
         ], 'Produk ditemukan.');
     }
 
+    public function byBinCode(string $binCode): JsonResponse
+    {
+        $bin = \Modules\Location\Models\Bin::where('bin_final_code', $binCode)->first();
+
+        if (! $bin) {
+            return $this->errorResponse('Rak tidak ditemukan.', 404);
+        }
+
+        $stocks = Inventory::where('bin_id', $bin->id)
+            ->where('on_hand', '>', 0)
+            ->with([
+                'product:id,sku,product_id',
+                'product.product:id,name',
+                'bin:id,bin_final_code',
+                'location:id,location_name',
+            ])
+            ->get();
+
+        $items = $stocks->map(fn ($inv) => [
+            'item_id' => $inv->item_id,
+            'sku' => $inv->product?->sku,
+            'product_name' => $inv->product?->product?->name,
+            'bin_code' => $inv->bin?->bin_final_code ?? $binCode,
+            'on_hand' => (int) $inv->on_hand,
+            'reserved' => (int) $inv->reserved,
+            'available' => (int) $inv->available,
+        ]);
+
+        return $this->successResponse($items, 'Stok rak ditemukan.');
+    }
+
     #[OA\Delete(
         path: '/api/v1/inventory/items/item-variant',
         summary: 'Delete item variant',

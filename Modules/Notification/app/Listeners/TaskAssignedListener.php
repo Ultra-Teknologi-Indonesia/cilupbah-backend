@@ -45,6 +45,7 @@ class TaskAssignedListener
                 'type' => 'task_assigned',
                 'task_type' => $event->taskType,
                 'notification_id' => $notification->id,
+                ...$event->extra,
             ],
         );
     }

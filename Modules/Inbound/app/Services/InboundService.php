@@ -467,7 +467,7 @@ class InboundService
             'inbound',
             $inbound->transaction_number,
             $assignedBy,
-            ['inbound_id' => $inboundId],
+            ['inbound_id' => $inboundId, 'assignment_id' => $assignment->id],
         );
 
         return $assignment;
@@ -503,9 +503,16 @@ class InboundService
         return $assignment->fresh()->load('inbound.items', 'worker:id,name');
     }
 
-    public function lookupByQr(string $uuid): InboundItem
+    public function lookupByQr(string $code): InboundItem
     {
-        $item = $this->inboundRepository->findItemByUuid($uuid);
+        $item = $this->inboundRepository->findItemByUuid($code);
+
+        if (! $item) {
+            $item = InboundItem::whereHas('variant', fn ($q) => $q->where('sku', $code)->orWhere('barcode', $code))
+                ->whereHas('inbound', fn ($q) => $q->whereIn('status', ['DRAFT', 'CONFIRMED', 'RECEIVING', 'IN_PROGRESS']))
+                ->latest()
+                ->first();
+        }
 
         if (! $item) {
             throw new \Exception("QR Code tidak ditemukan.");

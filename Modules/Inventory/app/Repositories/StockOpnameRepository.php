@@ -29,6 +29,9 @@ class StockOpnameRepository
     {
         return StockOpname::with([
             'items.product:id,sku,product_id',
+            'items.product.product:id,name',
+            'items.product.media',
+            'items.product.product.media',
             'items.bin:id,bin_final_code,floor_code,row_code,column_code',
             'location:id,location_name,location_code',
             'zone:id,zone_code,zone_name',
@@ -87,7 +90,13 @@ class StockOpnameRepository
     {
         return QueryBuilder::for(StockOpnameItem::class)
             ->where('stock_opname_id', $opnameId)
-            ->with(['product:id,sku,product_id', 'bin:id,bin_final_code,floor_code,row_code,column_code'])
+            ->with([
+                'product:id,sku,product_id',
+                'product.product:id,name',
+                'product.media',
+                'product.product.media',
+                'bin:id,bin_final_code,floor_code,row_code,column_code',
+            ])
             ->allowedFilters(
                 AllowedFilter::exact('bin_id'),
                 AllowedFilter::exact('item_id'),
@@ -113,7 +122,13 @@ class StockOpnameRepository
     {
         $query = QueryBuilder::for(StockOpnameItem::class)
             ->where('stock_opname_id', $opnameId)
-            ->with(['product:id,sku,product_id', 'bin:id,bin_final_code,floor_code,row_code,column_code'])
+            ->with([
+                'product:id,sku,product_id',
+                'product.product:id,name',
+                'product.media',
+                'product.product.media',
+                'bin:id,bin_final_code,floor_code,row_code,column_code',
+            ])
             ->join('location_bins', 'stock_opname_items.bin_id', '=', 'location_bins.id');
 
         if (!empty($rackFilters['floor_code'])) {

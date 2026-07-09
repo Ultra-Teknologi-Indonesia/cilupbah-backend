@@ -139,6 +139,24 @@ class AuthController extends Controller
         return $this->successResponse(new ProfileResource($user), 'Avatar berhasil diperbarui.');
     }
 
+    public function changePassword(Request $request): JsonResponse
+    {
+        $request->validate([
+            'current_password' => 'required|string',
+            'new_password'     => 'required|string|min:8|confirmed',
+        ]);
+
+        $user = $request->user();
+
+        if (! \Hash::check($request->current_password, $user->password)) {
+            return $this->errorResponse('Password lama tidak sesuai.', 422);
+        }
+
+        $user->update(['password' => \Hash::make($request->new_password)]);
+
+        return $this->successResponse(null, 'Password berhasil diubah.');
+    }
+
     #[OA\Post(
         path: '/api/v1/auth/logout',
         summary: 'Logout user and revoke access token',

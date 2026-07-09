@@ -35,7 +35,14 @@ class InboundRepository
 
     public function findById(string $id): ?Inbound
     {
-        return Inbound::with(['location', 'items.receipts.bin', 'items.variant:id,sku,product_id'])->find($id);
+        return Inbound::with([
+            'location',
+            'items.receipts.bin',
+            'items.variant:id,sku,product_id',
+            'items.variant.product:id,name',
+            'items.variant.media',
+            'items.variant.product.media',
+        ])->find($id);
     }
 
     public function findByIdForUpdate(string $id): ?Inbound

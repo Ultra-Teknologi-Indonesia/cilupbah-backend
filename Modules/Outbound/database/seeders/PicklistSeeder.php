@@ -184,7 +184,7 @@ class PicklistSeeder extends Seeder
                 'assigned_by' => 'Owner Cilupbah',
                 'status' => $status,
                 'notes' => $note,
-                'created_by' => 'seeder',
+                'created_by' => $staff->id,
                 'created_at' => $createdAt,
                 'updated_at' => $createdAt,
             ];

@@ -134,7 +134,7 @@ class StockOpnameSeeder extends Seeder
                 'location_id' => $warehouse->id,
                 'status' => $status,
                 'notes' => $note,
-                'created_by' => 'seeder',
+                'created_by' => $staff->id,
                 'created_at' => $createdAt,
                 'updated_at' => $createdAt,
             ];

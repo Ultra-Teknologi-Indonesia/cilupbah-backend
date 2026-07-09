@@ -13,11 +13,13 @@ use Modules\Purchase\Models\PurchaseOrder;
 use Modules\Purchase\Models\PurchaseOrderItem;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundItem;
+use App\Models\User;
 
 class InboundDatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        $systemUser = User::first();
 
         $warehouse = Location::firstOrCreate(
             ['location_code' => 'WH-MAIN'],
@@ -191,7 +193,7 @@ class InboundDatabaseSeeder extends Seeder
             'total_amount'  => 75000000 + 25980000,
             'payment_term'  => 'NET30',
             'notes'         => 'PO seed untuk testing inbound',
-            'created_by'    => 'seeder',
+            'created_by'    => $systemUser?->id ?? 'system',
         ]);
 
         PurchaseOrderItem::firstOrCreate(
@@ -211,7 +213,7 @@ class InboundDatabaseSeeder extends Seeder
             'source_type'      => 'consignment',
             'status'           => Inbound::STATUS_DRAFT,
             'expected_date'    => now()->addDays(2),
-            'created_by'       => 'seeder',
+            'created_by'       => $systemUser?->id ?? 'system',
         ]);
 
         InboundItem::firstOrCreate(
