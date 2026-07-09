@@ -148,7 +148,7 @@ class StockOpnameController extends Controller
     {
         try {
             $data = $request->validated();
-            $data['created_by'] = $request->user()->name ?? $request->user()->email;
+            $data['created_by'] = $request->user()->id;
 
             $opname = $this->opnameService->create($data);
 

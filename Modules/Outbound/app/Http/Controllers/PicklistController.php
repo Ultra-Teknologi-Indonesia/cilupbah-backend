@@ -96,7 +96,7 @@ class PicklistController extends Controller
     public function store(CreatePicklistRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $data['created_by'] = auth()->user()->email;
+        $data['created_by'] = auth()->id();
 
         $picklist = $this->picklistService->create($data);
 
