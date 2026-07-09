@@ -233,6 +233,7 @@ class LocationBinService
             'is_stock_acknowledged' => array_key_exists('is_stock_acknowledged', $values) ? (bool) $values['is_stock_acknowledged'] : null,
             'is_large_bin' => array_key_exists('is_large_bin', $values) ? (bool) $values['is_large_bin'] : null,
             'category' => array_key_exists('category', $values) ? $values['category'] : null,
+            'zone_id' => array_key_exists('zone_id', $values) ? $values['zone_id'] : null,
         ], fn($v) => $v !== null);
 
         if (empty($updateData)) {

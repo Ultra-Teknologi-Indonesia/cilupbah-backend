@@ -22,6 +22,7 @@ class UniformApplyLocationBinRequest extends FormRequest
             'values.is_stock_acknowledged' => 'nullable|boolean',
             'values.is_large_bin' => 'nullable|boolean',
             'values.category' => 'nullable|string|max:255',
+            'values.zone_id' => 'nullable|bail|uuid|exists:location_zones,id',
         ];
     }
 }

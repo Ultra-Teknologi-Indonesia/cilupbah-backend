@@ -3,6 +3,7 @@
 namespace Modules\Supplier\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreContactRequest extends FormRequest
 {
@@ -46,7 +47,12 @@ class StoreContactRequest extends FormRequest
             'birth_date'              => 'nullable|date',
             'is_dropshipper'          => 'nullable|boolean',
             'is_reseller'             => 'nullable|boolean',
-            'tax_type'                => 'required|string|in:NON_PKP,PKP',
+            'tax_type'                => [
+                'nullable',
+                'string',
+                'in:NON_PKP,PKP',
+                Rule::requiredIf(fn () => $this->input('type') !== 'SUPPLIER'),
+            ],
             'nik_photo_path'          => 'nullable|string|max:500',
             'npwp_photo_path'         => 'nullable|string|max:500',
             'npwp_use_different'      => 'nullable|boolean',
