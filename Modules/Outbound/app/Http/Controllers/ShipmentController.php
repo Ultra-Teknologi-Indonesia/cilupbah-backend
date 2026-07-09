@@ -644,6 +644,139 @@ class ShipmentController extends Controller
         }
     }
 
+    #[OA\Post(
+        path: '/api/v1/outbound/shipments/{id}/driver-call',
+        summary: 'Record manual driver call for Grab/GoSend instant shipment',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Shipment'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\MediaType(
+                mediaType: 'multipart/form-data',
+                schema: new OA\Schema(
+                    properties: [
+                        new OA\Property(property: 'driver_name', type: 'string', nullable: true),
+                        new OA\Property(property: 'driver_phone', type: 'string', nullable: true),
+                        new OA\Property(property: 'driver_vehicle_plate', type: 'string', nullable: true),
+                        new OA\Property(property: 'driver_booking_code', type: 'string', nullable: true),
+                        new OA\Property(property: 'driver_id_card', type: 'string', format: 'binary', nullable: true),
+                    ]
+                )
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+            new OA\Response(response: 422, description: 'Not eligible'),
+        ]
+    )]
+    public function driverCall(string $id, Request $request): JsonResponse
+    {
+        $request->validate([
+            'driver_name'          => 'nullable|string|max:100',
+            'driver_phone'         => 'nullable|string|max:30',
+            'driver_vehicle_plate' => 'nullable|string|max:20',
+            'driver_booking_code'  => 'nullable|string|max:100',
+            'driver_id_card'       => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
+        ]);
+
+        try {
+            $shipment = $this->shipmentService->recordDriverCall(
+                $id,
+                $request->only(['driver_name', 'driver_phone', 'driver_vehicle_plate', 'driver_booking_code']),
+                $request->file('driver_id_card'),
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
+        return $this->successResponse($shipment, 'Panggilan driver berhasil dicatat.');
+    }
+
+    #[OA\Patch(
+        path: '/api/v1/outbound/shipments/{id}/driver-call',
+        summary: 'Update driver call data/status',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Shipment'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+        ]
+    )]
+    public function updateDriverCall(string $id, Request $request): JsonResponse
+    {
+        $request->validate([
+            'driver_name'          => 'nullable|string|max:100',
+            'driver_phone'         => 'nullable|string|max:30',
+            'driver_vehicle_plate' => 'nullable|string|max:20',
+            'driver_booking_code'  => 'nullable|string|max:100',
+            'driver_call_status'   => 'nullable|string|in:CALLED,PICKED_UP,FAILED',
+            'driver_id_card'       => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
+        ]);
+
+        try {
+            $shipment = $this->shipmentService->updateDriverCall(
+                $id,
+                $request->only(['driver_name', 'driver_phone', 'driver_vehicle_plate', 'driver_booking_code', 'driver_call_status']),
+                $request->file('driver_id_card'),
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
+        return $this->successResponse($shipment, 'Data driver berhasil diperbarui.');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/outbound/shipments/{id}/mark-delivered',
+        summary: 'Manually mark shipment as delivered',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Shipment'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+        ]
+    )]
+    public function markDelivered(string $id): JsonResponse
+    {
+        try {
+            $shipment = $this->shipmentService->markDelivered($id);
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
+        return $this->successResponse($shipment, 'Shipment berhasil ditandai DELIVERED.');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/outbound/shipments/{id}/reconcile',
+        summary: 'Reconcile shipment: sync channel order statuses and return summary',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Shipment'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Summary of reconciliation'),
+        ]
+    )]
+    public function reconcile(string $id): JsonResponse
+    {
+        try {
+            $summary = $this->shipmentService->reconcile($id);
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
+        return $this->successResponse($summary, 'Reconcile selesai.');
+    }
+
     #[OA\Delete(
         path: '/api/v1/outbound/shipments/{id}',
         summary: 'Delete scheduled shipment',

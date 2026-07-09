@@ -215,6 +215,86 @@ class PutawayService
     }
 
     /**
+     * Selesaikan putaway meski ada selisih fisik (qty diterima < qty tercatat).
+     * Sisa qty yang tidak punya fisik "ditempatkan" ke rak default (inbound) lokasi
+     * tersebut — tidak ada perpindahan stok nyata, hanya mengakui sisa sudah
+     * ditempatkan agar dokumen bisa ditutup. Stok fiktif ini selanjutnya wajib
+     * di-adjust minus lewat Penyesuaian Stok (lihat discrepancy_items pada return).
+     */
+    public function completeWithDiscrepancy(string $id, string $userId): array
+    {
+        return DB::transaction(function () use ($id, $userId) {
+            $putaway = $this->putawayRepository->findByIdForUpdate($id);
+
+            if (!$putaway) {
+                throw new \Exception('Putaway tidak ditemukan.');
+            }
+
+            if ($putaway->status !== Putaway::STATUS_IN_PROGRESS) {
+                throw new \Exception("Hanya putaway IN_PROGRESS yang bisa diselesaikan dengan selisih (status saat ini: {$putaway->status}).");
+            }
+
+            $putaway->load('items');
+            $incomplete = $putaway->items->filter(fn ($item) => $item->putaway_qty < $item->qty);
+
+            if ($incomplete->isEmpty()) {
+                throw new \Exception('Tidak ada selisih pada dokumen ini. Gunakan aksi Selesaikan biasa.');
+            }
+
+            $defaultBin = app(\Modules\Warehouse\Services\LocationBinService::class)->getDefaultBin($putaway->location_id);
+
+            if (!$defaultBin) {
+                throw new \Exception('Rak default (inbound) untuk lokasi ini tidak ditemukan.');
+            }
+
+            $discrepancyItems = [];
+
+            foreach ($incomplete as $item) {
+                $remaining = (int) $item->qty - (int) $item->putaway_qty;
+                if ($remaining <= 0) {
+                    continue;
+                }
+
+                $this->processItem($id, $item->id, [
+                    'destination_bin_id' => $defaultBin->id,
+                    'qty' => $remaining,
+                ]);
+
+                $discrepancyItems[] = [
+                    'putaway_item_id' => $item->id,
+                    'item_id' => $item->item_id,
+                    'qty' => $remaining,
+                    'bin_id' => $defaultBin->id,
+                    'batch_no' => $item->batch_no,
+                    'serial_no' => $item->serial_no,
+                ];
+            }
+
+            $putaway = $this->putawayRepository->findById($id);
+
+            // Jaga-jaga: job pemroses sudah auto-complete saat semua item tuntas,
+            // tapi pastikan status & status penerimaan turunan tetap sinkron.
+            if ($putaway->status !== Putaway::STATUS_COMPLETED) {
+                $this->putawayRepository->updateStatus($id, Putaway::STATUS_COMPLETED, [
+                    'completed_at' => now(),
+                ]);
+                $putaway = $this->putawayRepository->findById($id);
+            }
+
+            if ($putaway->source_type === 'INBOUND') {
+                foreach ($this->sourceInbounds($putaway) as $inbound) {
+                    $this->recomputeInboundStatus($inbound);
+                }
+            }
+
+            return [
+                'putaway' => $putaway,
+                'discrepancy_items' => $discrepancyItems,
+            ];
+        });
+    }
+
+    /**
      * Koreksi salah scan penempatan: hapus 1 baris placement (atau sebagian qty-nya)
      * dan kembalikan stok dari rak tujuan ke rak asal.
      */

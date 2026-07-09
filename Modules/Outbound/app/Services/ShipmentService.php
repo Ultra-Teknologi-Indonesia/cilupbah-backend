@@ -9,8 +9,10 @@ use Modules\Outbound\Jobs\ProcessShipmentPickupJob;
 use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\ShipmentOrder;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Outbound\Support\InstantOrderClassifier;
 
 class ShipmentService
 {
@@ -390,5 +392,159 @@ class ShipmentService
         ]);
 
         return $shipment;
+    }
+
+    // --- Driver call manual (Grab/Gojek) ---
+
+    private const MANUAL_DRIVER_COURIER_REGEX = '/grab|gojek|gosend|gokilat|lalamove/i';
+    private const BLOCKED_CHANNEL_SOURCES = ['shopee', 'tiktok'];
+
+    public function recordDriverCall(string $id, array $data, ?UploadedFile $idCardPhoto = null): Shipment
+    {
+        $shipment = $this->findOrFail($id);
+        $this->guardDriverCallEligible($shipment);
+
+        $shipment->update([
+            'driver_name'          => $data['driver_name'] ?? null,
+            'driver_phone'         => $data['driver_phone'] ?? null,
+            'driver_vehicle_plate' => $data['driver_vehicle_plate'] ?? null,
+            'driver_booking_code'  => $data['driver_booking_code'] ?? null,
+            'driver_call_method'   => Shipment::DRIVER_CALL_METHOD_MANUAL,
+            'driver_call_status'   => Shipment::DRIVER_STATUS_CALLED,
+            'driver_called_at'     => now(),
+            'driver_called_by'     => $data['driver_called_by'] ?? auth()->user()?->email,
+        ]);
+
+        if ($idCardPhoto) {
+            $shipment->clearMediaCollection('driver_id_card');
+            $shipment->addMedia($idCardPhoto)->toMediaCollection('driver_id_card');
+        }
+
+        return $this->shipmentRepository->findById($id);
+    }
+
+    public function updateDriverCall(string $id, array $data, ?UploadedFile $idCardPhoto = null): Shipment
+    {
+        $shipment = $this->findOrFail($id);
+
+        if ($shipment->driver_call_status === Shipment::DRIVER_STATUS_NONE) {
+            throw new \Exception('Belum ada panggilan driver yang tercatat untuk shipment ini.');
+        }
+
+        $updates = array_filter([
+            'driver_name'          => $data['driver_name'] ?? null,
+            'driver_phone'         => $data['driver_phone'] ?? null,
+            'driver_vehicle_plate' => $data['driver_vehicle_plate'] ?? null,
+            'driver_booking_code'  => $data['driver_booking_code'] ?? null,
+            'driver_call_status'   => $data['driver_call_status'] ?? null,
+        ], fn ($v) => $v !== null);
+
+        if (!empty($updates)) {
+            $shipment->update($updates);
+        }
+
+        if ($idCardPhoto) {
+            $shipment->clearMediaCollection('driver_id_card');
+            $shipment->addMedia($idCardPhoto)->toMediaCollection('driver_id_card');
+        }
+
+        return $this->shipmentRepository->findById($id);
+    }
+
+    public function markDelivered(string $id): Shipment
+    {
+        $shipment = $this->findOrFail($id);
+
+        if (!in_array($shipment->status, [Shipment::STATUS_HANDED_OVER, Shipment::STATUS_IN_TRANSIT])) {
+            throw new \Exception("Hanya shipment HANDED_OVER atau IN_TRANSIT yang bisa ditandai DELIVERED (saat ini: {$shipment->status}).");
+        }
+
+        $this->shipmentRepository->update($id, [
+            'status' => Shipment::STATUS_DELIVERED,
+        ]);
+
+        return $this->shipmentRepository->findById($id);
+    }
+
+    public function reconcile(string $id): array
+    {
+        $shipment = $this->findOrFail($id);
+
+        if (!in_array($shipment->status, [Shipment::STATUS_HANDED_OVER, Shipment::STATUS_IN_TRANSIT, Shipment::STATUS_DELIVERED])) {
+            throw new \Exception('Reconcile hanya untuk shipment yang sudah di-handover.');
+        }
+
+        $shipment->load('orders.order');
+        $summary = ['total' => 0, 'delivered' => 0, 'in_transit' => 0, 'anomaly' => 0, 'details' => []];
+
+        foreach ($shipment->orders as $so) {
+            $order = $so->order;
+            if (!$order) continue;
+
+            $summary['total']++;
+            $status = $order->channel_status ?? $order->status;
+
+            if (in_array($status, ['DELIVERED', 'COMPLETED', 'TO_CONFIRM_RECEIVE', 'done'])) {
+                $summary['delivered']++;
+                $category = 'delivered';
+            } elseif (in_array($status, ['SHIPPED', 'IN_TRANSIT', 'PROCESSED', 'shipped'])) {
+                $summary['in_transit']++;
+                $category = 'in_transit';
+            } else {
+                $summary['anomaly']++;
+                $category = 'anomaly';
+            }
+
+            $summary['details'][] = [
+                'order_id'       => $order->id,
+                'salesorder_no'  => $order->salesorder_no,
+                'status'         => $order->status,
+                'channel_status' => $order->channel_status,
+                'category'       => $category,
+            ];
+        }
+
+        if ($summary['total'] > 0 && $summary['delivered'] === $summary['total']
+            && $shipment->status !== Shipment::STATUS_DELIVERED) {
+            $this->shipmentRepository->update($id, [
+                'status' => Shipment::STATUS_DELIVERED,
+            ]);
+            $summary['auto_marked_delivered'] = true;
+        }
+
+        return $summary;
+    }
+
+    private function findOrFail(string $id): Shipment
+    {
+        $shipment = $this->shipmentRepository->findById($id);
+
+        if (!$shipment) {
+            throw new \Exception('Shipment tidak ditemukan.');
+        }
+
+        return $shipment;
+    }
+
+    private function guardDriverCallEligible(Shipment $shipment): void
+    {
+        if (!in_array($shipment->shipment_type, ['INSTANT', 'SAME_DAY'])) {
+            throw new \Exception('Panggilan driver manual hanya untuk shipment tipe INSTANT atau SAME_DAY.');
+        }
+
+        $courierKey = $shipment->courier_name ?? $shipment->courier_code ?? '';
+        if (!preg_match(self::MANUAL_DRIVER_COURIER_REGEX, $courierKey)) {
+            throw new \Exception('Panggilan driver manual hanya untuk kurir Grab/GoSend/Lalamove. Shopee menggunakan auto-call.');
+        }
+
+        $shipment->loadMissing('orders.order');
+        foreach ($shipment->orders as $so) {
+            $source = strtolower($so->order->source ?? '');
+            if (in_array($source, self::BLOCKED_CHANNEL_SOURCES)) {
+                throw new \Exception(
+                    "Pesanan {$so->order->salesorder_no} berasal dari {$source} — gunakan auto-call channel, bukan input manual."
+                );
+            }
+        }
     }
 }

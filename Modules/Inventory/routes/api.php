@@ -217,6 +217,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::delete('/{id}/placements', [PutawayController::class, 'deletePlacements'])->name('putaway.deletePlacements');
         Route::delete('/{id}/items/{itemId}/placements/{placementId}', [PutawayController::class, 'deletePlacement'])->name('putaway.deletePlacement');
         Route::post('/{id}/complete', [PutawayController::class, 'complete'])->name('putaway.complete');
+        Route::post('/{id}/complete-discrepancy', [PutawayController::class, 'completeDiscrepancy'])->name('putaway.completeDiscrepancy');
         Route::delete('/{id}', [PutawayController::class, 'destroy'])->name('putaway.destroy');
     });
 

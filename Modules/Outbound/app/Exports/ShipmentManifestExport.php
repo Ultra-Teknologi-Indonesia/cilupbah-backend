@@ -86,6 +86,14 @@ class ShipmentManifestExport implements FromArray, WithColumnWidths, WithEvents,
             ['Kurir', $courierName],
             ['Tanggal Pengiriman', $shipmentDate],
         ];
+
+        $hasDriver = $this->shipment->driver_call_status && $this->shipment->driver_call_status !== 'NONE';
+        if ($hasDriver) {
+            $meta[] = ['Nama Driver', $this->shipment->driver_name ?? '—'];
+            $meta[] = ['No. HP Driver', $this->shipment->driver_phone ?? '—'];
+            $meta[] = ['Plat Kendaraan', $this->shipment->driver_vehicle_plate ?? '—'];
+            $meta[] = ['Kode Booking', $this->shipment->driver_booking_code ?? '—'];
+        }
         foreach ($meta as [$label, $value]) {
             $rows[] = [$label, '', $value, '', '', '', ''];
         }

@@ -74,6 +74,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('shipments/instant', [ShipmentController::class, 'storeInstant'])->name('outbound.shipments.instant.store');
     Route::get('shipments/completed/{type}/{courierIds}', [ShipmentController::class, 'completed'])->name('outbound.shipments.completed');
     Route::get('shipments/by-courier/{courierCode}', [ShipmentController::class, 'byCourier'])->name('outbound.shipments.by-courier');
+    Route::post('shipments/{id}/driver-call', [ShipmentController::class, 'driverCall'])->name('outbound.shipments.driver-call');
+    Route::patch('shipments/{id}/driver-call', [ShipmentController::class, 'updateDriverCall'])->name('outbound.shipments.update-driver-call');
+    Route::post('shipments/{id}/mark-delivered', [ShipmentController::class, 'markDelivered'])->name('outbound.shipments.mark-delivered');
+    Route::post('shipments/{id}/reconcile', [ShipmentController::class, 'reconcile'])->name('outbound.shipments.reconcile');
     Route::get('shipments/{id}', [ShipmentController::class, 'show'])->name('outbound.shipments.show');
     Route::get('shipments/{id}/orders', [ShipmentController::class, 'orders'])->name('outbound.shipments.orders');
     Route::post('shipments/{id}/scan-order', [ShipmentController::class, 'scanOrder'])->name('outbound.shipments.scan-order');

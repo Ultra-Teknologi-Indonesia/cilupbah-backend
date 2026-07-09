@@ -12,6 +12,7 @@
         : '—';
     $totalWeightGram = $orders->sum(fn ($so) => (int) (optional($so->order)->order_weight_gram ?? 0));
     $totalWeightKg = number_format($totalWeightGram / 1000, 2, ',', '.');
+    $hasDriver = $shipment->driver_call_status && $shipment->driver_call_status !== 'NONE';
 @endphp
 <div class="title">Laporan Bukti Pengiriman</div>
 
@@ -56,6 +57,37 @@
         </td>
     </tr>
 </table>
+
+@if($hasDriver)
+<table class="header-table" style="margin-top: 6px;">
+    <tr>
+        <td class="header-left">
+            <div class="info-row">
+                <span class="info-label">Nama Driver</span>
+                <span class="info-sep">:</span>
+                <span>{{ $shipment->driver_name ?? '—' }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">No. HP Driver</span>
+                <span class="info-sep">:</span>
+                <span>{{ $shipment->driver_phone ?? '—' }}</span>
+            </div>
+        </td>
+        <td class="header-right">
+            <div class="info-row">
+                <span class="info-label">Plat Kendaraan</span>
+                <span class="info-sep">:</span>
+                <span>{{ $shipment->driver_vehicle_plate ?? '—' }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Kode Booking</span>
+                <span class="info-sep">:</span>
+                <span>{{ $shipment->driver_booking_code ?? '—' }}</span>
+            </div>
+        </td>
+    </tr>
+</table>
+@endif
 
 <table class="items">
     <thead>
