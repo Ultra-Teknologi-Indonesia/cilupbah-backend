@@ -72,8 +72,8 @@ class PicklistRepository
         return Picklist::with([
             'items.product:id,sku,product_id',
             'items.product.product:id,name',
-            'items.product.media:id,variant_id,product_id,url,is_primary,sort_order',
-            'items.product.product.media:id,product_id,variant_id,url,is_primary,sort_order',
+            'items.product.media:id,variant_id,product_id,url,is_primary,sort_order,media_type',
+            'items.product.product.media:id,product_id,variant_id,url,is_primary,sort_order,media_type',
             'items.bin:id,bin_final_code',
             'items.order:id,salesorder_no,customer_name',
             'location:id,location_name,location_code',
