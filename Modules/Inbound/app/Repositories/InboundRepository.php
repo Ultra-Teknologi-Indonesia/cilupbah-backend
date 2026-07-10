@@ -26,7 +26,7 @@ class InboundRepository
             )
             ->allowedSearch('transaction_number', 'reference_number')
             ->allowedSorts('expected_date', 'created_at')
-            ->defaultSort('-created_at')
+            ->defaultSort('-expected_date')
             ->paginate($limit)
             ->appends(request()->query());
     }
