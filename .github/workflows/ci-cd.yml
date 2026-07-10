@@ -80,6 +80,10 @@ jobs:
             # ── Detect what changed ───────────────────────────────────────────
             CHANGED_FILES=$(git diff --name-only "$PREVIOUS_COMMIT" "$CURRENT_COMMIT")
             HAS_COMPOSER_CHANGE=$(echo "$CHANGED_FILES" | grep -c 'composer.lock' || true)
+            # A new/removed module changes Modules/*/composer.json (merged into the
+            # root autoloader by composer-merge-plugin) WITHOUT touching composer.lock,
+            # so the PSR-4 map must be regenerated or its classes won't be found.
+            HAS_MODULE_CHANGE=$(echo "$CHANGED_FILES" | grep -cE 'Modules/[^/]+/composer\.json' || true)
             HAS_NPM_CHANGE=$(echo "$CHANGED_FILES" | grep -c 'package-lock.json' || true)
             HAS_DOCKER_CHANGE=$(echo "$CHANGED_FILES" | grep -cE 'Dockerfile|docker-compose|start\.(staging\.)?sh' || true)
             HAS_MIGRATION_CHANGE=$(echo "$CHANGED_FILES" | grep -c '/migrations/' || true)
@@ -110,6 +114,11 @@ jobs:
             if [ "$HAS_COMPOSER_CHANGE" -gt 0 ]; then
               echo "composer.lock changed — installing PHP dependencies..."
               docker exec cilupbah-staging composer install --no-dev --optimize-autoloader --no-interaction
+            elif [ "$HAS_MODULE_CHANGE" -gt 0 ]; then
+              # No dependency change, but a module was added/removed — regenerate the
+              # merged PSR-4 autoloader (offline, fast) so new module classes resolve.
+              echo "Module composer.json changed — regenerating autoloader..."
+              docker exec cilupbah-staging composer dump-autoload --optimize --no-interaction
             fi
 
             if [ "$HAS_NPM_CHANGE" -gt 0 ]; then
