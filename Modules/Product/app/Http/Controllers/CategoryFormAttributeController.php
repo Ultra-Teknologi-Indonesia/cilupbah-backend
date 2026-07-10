@@ -6,16 +6,18 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Modules\Product\Models\Attribute;
-use Modules\Product\Models\CategoryAttribute;
+use Modules\Product\Http\Resources\AttributeResource;
 use Modules\Product\Repositories\CategoryAttributeRepository;
+use Modules\Product\Services\CategoryFormAttributeService;
 
 class CategoryFormAttributeController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private CategoryAttributeRepository $repository) {}
+    public function __construct(
+        private CategoryAttributeRepository $repository,
+        private CategoryFormAttributeService $service,
+    ) {}
 
     public function show($categoryId)
     {
@@ -46,22 +48,9 @@ class CategoryFormAttributeController extends Controller
             'type' => 'required|in:sales,spec',
         ]);
 
-        $result = DB::transaction(function () use ($validated, $categoryId) {
-            $attribute = Attribute::create([
-                'name' => $validated['name'],
-                'type' => $validated['type'],
-            ]);
+        $attribute = $this->service->createAttribute($categoryId, $validated);
 
-            CategoryAttribute::create([
-                'category_id' => $categoryId,
-                'attribute_id' => $attribute->id,
-                'is_required' => true,
-            ]);
-
-            return $attribute;
-        });
-
-        return $this->successResponse($result, 'Atribut berhasil ditambahkan ke kategori', 201);
+        return $this->successResponse(new AttributeResource($attribute), 'Atribut berhasil ditambahkan ke kategori', 201);
     }
 
     public function destroy(int $categoryId, int $attributeId): JsonResponse
@@ -70,22 +59,9 @@ class CategoryFormAttributeController extends Controller
             return $this->errorResponse('Kategori tidak ditemukan', 404);
         }
 
-        $link = CategoryAttribute::where('category_id', $categoryId)
-            ->where('attribute_id', $attributeId)
-            ->first();
-
-        if (! $link) {
+        if (! $this->service->deleteAttribute($categoryId, $attributeId)) {
             return $this->errorResponse('Atribut tidak ditemukan di kategori ini', 404);
         }
-
-        DB::transaction(function () use ($link, $attributeId) {
-            $link->delete();
-
-            $stillUsed = CategoryAttribute::where('attribute_id', $attributeId)->exists();
-            if (! $stillUsed) {
-                Attribute::where('id', $attributeId)->delete();
-            }
-        });
 
         return $this->successResponse(null, 'Atribut berhasil dihapus dari kategori');
     }

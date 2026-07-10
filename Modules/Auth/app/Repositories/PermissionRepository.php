@@ -3,17 +3,20 @@
 namespace Modules\Auth\Repositories;
 
 use App\Models\Permission;
-use Spatie\QueryBuilder\QueryBuilder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Collection as SupportCollection;
 
 class PermissionRepository
 {
     public function getAllPermissions(): Collection
     {
-        return QueryBuilder::for(Permission::class)
-            ->select('id', 'name')
-            ->allowedSorts('name')
-            ->defaultSort('name')
+        return Permission::select('id', 'name')
+            ->orderBy('name')
             ->get();
+    }
+
+    public function allNames(): SupportCollection
+    {
+        return Permission::pluck('name');
     }
 }

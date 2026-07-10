@@ -119,7 +119,7 @@ class SalesOrderService
         return $this->orderRepository->bulkDeleteCancelled($ids);
     }
 
-    public function moveToReadyToProcess(array $orderIds): array
+    public function moveToReadyToProcess(array $orderIds, $actor = null): array
     {
 
         $skippedIds = SalesOrder::whereIn('id', $orderIds)
@@ -139,7 +139,7 @@ class SalesOrderService
             return ['moved' => 0, 'skipped' => $skipped];
         }
 
-        [$count, $awbOrderIds, $shopeeLabelOrderIds] = DB::transaction(function () use ($eligibleIds) {
+        [$count, $awbOrderIds, $shopeeLabelOrderIds] = DB::transaction(function () use ($eligibleIds, $actor) {
             $orders = SalesOrder::whereIn('id', $eligibleIds)
                 ->where('status', 'reserved')
                 ->get();
@@ -162,6 +162,13 @@ class SalesOrderService
                     'pick_failed_by'         => null,
                     'pick_fail_reason'       => null,
                 ]);
+
+                if (! $order->statusHistory()->where('action', 'PROCESS')->exists()) {
+                    $this->logStatusHistory($order, 'PROCESS', [
+                        'from' => 'reserved',
+                        'to'   => 'reserved',
+                    ], $actor);
+                }
 
                 $source = strtolower((string) $order->source);
                 if (
@@ -702,6 +709,14 @@ class SalesOrderService
             $id    = $authUser?->id;
         }
 
+        if ($email && (! $name || ! $id)) {
+            $resolved = \App\Models\User::where('email', $email)->first();
+            if ($resolved) {
+                $name = $name ?: $resolved->name;
+                $id   = $id ?: $resolved->id;
+            }
+        }
+
         SalesOrderStatusHistory::create([
             'salesorder_id' => $order->id,
             'action_id'     => self::STATUS_HISTORY_ACTION_IDS[$action] ?? '000',
@@ -773,6 +788,12 @@ class SalesOrderService
         }
 
         return $order->fresh('items');
+    }
+
+    public function deleteOrderById(string $id): void
+    {
+        $order = $this->orderRepository->findWithItemsOrFail($id);
+        $this->deleteOrder($order);
     }
 
     public function deleteOrder(SalesOrder $order): void
@@ -1017,6 +1038,14 @@ class SalesOrderService
                 if ($order->status !== 'pending') {
                     $order->update(['status' => 'pending']);
                 }
+            }
+
+            if ($existing === null) {
+                $this->logStatusHistory($order, 'CREATED', [
+                    'to'             => $order->status,
+                    'source'         => $order->source,
+                    'channel_status' => $channelStatus,
+                ]);
             }
 
             $stockMutated = $this->reconcileStockTransition($order, $previousStatus, $finalStatus);

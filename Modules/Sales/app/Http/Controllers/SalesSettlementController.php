@@ -21,7 +21,7 @@ class SalesSettlementController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Settlements'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
             new OA\Parameter(name: 'filter[status]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[channel]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
         ],
@@ -31,7 +31,7 @@ class SalesSettlementController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $settlements = $this->settlementService->getAllPaginated($limit);
 
         return $this->successPaginatedResponse($settlements, 'Daftar settlement berhasil diambil');

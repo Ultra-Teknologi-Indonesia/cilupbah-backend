@@ -11,25 +11,27 @@ class InventoryTransferRepository
 {
     public function getTransfersPaginated(array $filters = [], int $limit = 10)
     {
-        $query = QueryBuilder::for(InventoryTransfer::class)
+        $baseQuery = InventoryTransfer::query();
+
+        if (trim((string) request('search', '')) !== '') {
+            $baseQuery->leftJoin('locations as src_loc', 'src_loc.id', '=', 'inventory_transfers.source_location_id')
+                ->leftJoin('locations as dst_loc', 'dst_loc.id', '=', 'inventory_transfers.destination_location_id')
+                ->select('inventory_transfers.*');
+        }
+
+        $query = QueryBuilder::for($baseQuery)
             ->with([
                 'sourceLocation:id,location_name',
                 'destinationLocation:id,location_name',
                 'items.product:id,sku,product_id',
             ])
+            ->allowedSearch('inventory_transfers.transfer_number', 'src_loc.location_name', 'dst_loc.location_name')
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('source_location_id'),
                 AllowedFilter::exact('destination_location_id'),
                 AllowedFilter::callback('date_from', fn($query, $value) => $query->where('created_at', '>=', $value)),
                 AllowedFilter::callback('date_to', fn($query, $value) => $query->where('created_at', '<=', $value)),
-                AllowedFilter::callback('search', function ($query, $value) {
-                    $query->where(function ($q) use ($value) {
-                        $q->where('transfer_number', 'ILIKE', "%{$value}%")
-                          ->orWhereHas('sourceLocation', fn($loc) => $loc->where('location_name', 'ILIKE', "%{$value}%"))
-                          ->orWhereHas('destinationLocation', fn($loc) => $loc->where('location_name', 'ILIKE', "%{$value}%"));
-                    });
-                })
             )
             ->allowedSorts('transfer_number', 'created_at', 'shipped_at')
             ->defaultSort('-created_at');

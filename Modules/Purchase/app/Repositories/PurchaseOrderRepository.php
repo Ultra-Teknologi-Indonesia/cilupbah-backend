@@ -9,7 +9,6 @@ use Modules\Inbound\Models\InboundItem;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\AllowedSort;
-use App\Filters\FuzzyFilter;
 
 class PurchaseOrderRepository
 {
@@ -21,13 +20,14 @@ class PurchaseOrderRepository
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('contact_id'),
                 AllowedFilter::exact('location_id'),
-                AllowedFilter::custom('search', new FuzzyFilter('po_number')),
                 AllowedFilter::scope('date_from', 'whereDateFrom'),
                 AllowedFilter::scope('date_to', 'whereDateTo'),
             )
+            ->allowedSearch('po_number')
             ->allowedSorts('po_number', 'order_date', 'total_amount', 'created_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function getReceivable(int $limit = 10)
@@ -39,13 +39,14 @@ class PurchaseOrderRepository
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('contact_id'),
                 AllowedFilter::exact('location_id'),
-                AllowedFilter::custom('search', new FuzzyFilter('po_number')),
                 AllowedFilter::scope('date_from', 'whereDateFrom'),
                 AllowedFilter::scope('date_to', 'whereDateTo'),
             )
+            ->allowedSearch('po_number')
             ->allowedSorts('po_number', 'order_date', 'created_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?PurchaseOrder

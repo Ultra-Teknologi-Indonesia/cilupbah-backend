@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Providers;
 
+use Modules\Sales\Console\Commands\BackfillStatusHistory;
 use Modules\Sales\Console\Commands\PrepareShopeeLabelsBackfill;
 use Modules\Sales\Console\Commands\RelocateOrdersToKecil;
 use Modules\Sales\Console\Commands\RestoreTrackingNumbers;
@@ -23,6 +24,7 @@ class SalesServiceProvider extends ModuleServiceProvider
 
     protected array $commands = [
         SyncOrderFinance::class,
+        BackfillStatusHistory::class,
         PrepareShopeeLabelsBackfill::class,
         RestoreTrackingNumbers::class,
         RelocateOrdersToKecil::class,

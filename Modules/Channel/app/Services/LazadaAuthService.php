@@ -3,8 +3,8 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
-use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Repositories\ChannelRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
 
 class LazadaAuthService
@@ -12,6 +12,7 @@ class LazadaAuthService
     public function __construct(
         protected LazadaClient $client,
         protected ChannelShopRepository $shopRepository,
+        protected ChannelRepository $channelRepository,
     ) {}
 
     public function handleCallback(string $code): array
@@ -25,7 +26,7 @@ class LazadaAuthService
             throw new \Exception('Gagal mengambil access token Lazada: ' . $message);
         }
 
-        $channelId = Channel::where('code', 'lazada')->value('id');
+        $channelId = $this->channelRepository->getIdByCode('lazada');
         $refreshToken = $token['refresh_token'] ?? null;
         $account = $token['account'] ?? null;
 
@@ -81,6 +82,11 @@ class LazadaAuthService
                 'connected_at' => $shop->created_at,
                 'updated_at' => $shop->updated_at,
             ])->toArray();
+    }
+
+    public function getStoreModel(string $id): ChannelShop
+    {
+        return $this->requireLazadaShop($id);
     }
 
     public function getStoreDetail(string $id): array
@@ -179,7 +185,7 @@ class LazadaAuthService
     {
         $shop = $this->shopRepository->findByUuid($id);
 
-        $lazadaChannelId = Channel::where('code', 'lazada')->value('id');
+        $lazadaChannelId = $this->channelRepository->getIdByCode('lazada');
         if (! $shop || $shop->channel_id !== $lazadaChannelId) {
             throw new \Exception('Toko tidak ditemukan');
         }

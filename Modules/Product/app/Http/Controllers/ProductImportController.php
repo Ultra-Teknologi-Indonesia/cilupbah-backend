@@ -11,8 +11,11 @@ use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Product\Exports\BundleTemplateExport;
 use Modules\Product\Exports\ImportErrorReportExport;
 use Modules\Product\Exports\ProductTemplateExport;
+use Modules\Product\Http\Resources\ProductImportBatchResource;
+use Modules\Product\Http\Resources\ProductImportErrorResource;
 use Modules\Product\Jobs\ProcessProductImportJob;
 use Modules\Product\Models\ProductImportBatch;
+use Modules\Product\Repositories\ProductImportBatchRepository;
 use Modules\Product\Services\ImportBatchService;
 
 class ProductImportController extends Controller
@@ -22,6 +25,7 @@ class ProductImportController extends Controller
     public function __construct(
         private ImportBatchService $batchService,
         private ImpexActivityService $activityService,
+        private ProductImportBatchRepository $batchRepository,
     ) {}
 
     public function importSingle(Request $request)
@@ -66,71 +70,44 @@ class ProductImportController extends Controller
 
     public function batches(Request $request)
     {
-        $query = ProductImportBatch::query()->latest();
+        $paginator = $this->batchRepository->paginateBatches();
 
-        if ($type = $request->query('type')) {
-            $query->where('type', $type);
-        }
-        if ($state = $request->query('state')) {
-            $query->where('state', $state);
-        }
-
-        $paginator = $query->paginate((int) $request->query('per_page', 25))->appends($request->query());
-
-        return $this->successResponse(
-            collect($paginator->items())->map(fn ($b) => $this->batchPayload($b))->all(),
-            'Daftar batch import',
-            200,
-            [
-                'current_page' => $paginator->currentPage(),
-                'last_page' => $paginator->lastPage(),
-                'per_page' => $paginator->perPage(),
-                'total' => $paginator->total(),
-            ]
+        $paginator->setCollection(
+            $paginator->getCollection()->map(fn (ProductImportBatch $batch) => new ProductImportBatchResource($batch))
         );
+
+        return $this->successPaginatedResponse($paginator, 'Daftar batch import');
     }
 
     public function show(string $batch)
     {
-        $model = ProductImportBatch::find($batch);
+        $model = $this->batchRepository->find($batch);
         if (! $model) {
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
 
-        return $this->successResponse($this->batchPayload($model), 'Detail batch import');
+        return $this->successResponse(new ProductImportBatchResource($model), 'Detail batch import');
     }
 
     public function errors(Request $request, string $batch)
     {
-        $model = ProductImportBatch::find($batch);
+        $model = $this->batchRepository->find($batch);
         if (! $model) {
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
 
-        $paginator = $model->errors()->orderBy('row_number')
-            ->paginate((int) $request->query('per_page', 50))->appends($request->query());
+        $paginator = $this->batchRepository->paginateErrors($model);
 
-        return $this->successResponse(
-            collect($paginator->items())->map(fn ($e) => [
-                'row_number' => $e->row_number,
-                'attribute' => $e->attribute,
-                'message' => $e->message,
-                'row_snapshot' => $e->row_snapshot,
-            ])->all(),
-            'Daftar error batch import',
-            200,
-            [
-                'current_page' => $paginator->currentPage(),
-                'last_page' => $paginator->lastPage(),
-                'per_page' => $paginator->perPage(),
-                'total' => $paginator->total(),
-            ]
+        $paginator->setCollection(
+            $paginator->getCollection()->map(fn ($error) => new ProductImportErrorResource($error))
         );
+
+        return $this->successPaginatedResponse($paginator, 'Daftar error batch import');
     }
 
     public function downloadErrors(string $batch)
     {
-        $model = ProductImportBatch::find($batch);
+        $model = $this->batchRepository->find($batch);
         if (! $model) {
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }

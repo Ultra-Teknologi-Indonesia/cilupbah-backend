@@ -3,6 +3,8 @@
 namespace Modules\Sales\Services;
 
 use Illuminate\Support\Facades\DB;
+use Modules\Inventory\Repositories\InventoryRepository;
+use Modules\Product\Models\ProductVariant;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderItem;
 use Modules\Sales\Services\StockService;
@@ -13,7 +15,36 @@ class SalesOrderManualService
     public function __construct(
         private SalesOrderNumberGenerator $numberGenerator,
         private StockService $stockService,
+        private InventoryRepository $inventory,
     ) {}
+
+    public function lookupSku(string $sku, string $locationId): ?array
+    {
+        $variant = ProductVariant::with('product:id,name')
+            ->where('sku', $sku)
+            ->where('is_active', true)
+            ->first();
+
+        if (! $variant) {
+            return null;
+        }
+
+        $onHand   = $this->inventory->sumOnHandAtLocation($variant->id, $locationId);
+        $reserved = $this->inventory->sumReservedAtLocation($variant->id, $locationId);
+        $available = max(0, ((int) $onHand) - ((int) $reserved));
+
+        return [
+            'item_id'     => $variant->id,
+            'sku'         => $variant->sku,
+            'barcode'     => $variant->barcode,
+            'name'        => $variant->product?->name,
+            'sell_price'  => (float) $variant->sell_price,
+            'weight_gram' => (int) round(((float) $variant->weight) * 1000),
+            'on_hand'     => (int) $onHand,
+            'reserved'    => (int) $reserved,
+            'available'   => $available,
+        ];
+    }
 
     public function create(array $payload): SalesOrder
     {

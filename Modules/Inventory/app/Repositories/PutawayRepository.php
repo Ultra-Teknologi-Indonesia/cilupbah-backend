@@ -4,11 +4,54 @@ namespace Modules\Inventory\Repositories;
 
 use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Models\PutawayItem;
+use Modules\Inventory\Models\Inventory;
+use Modules\Warehouse\Models\LocationBin;
+use Illuminate\Support\Collection;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 
 class PutawayRepository
 {
+    public function getPutawayBins(string $locationId, ?string $search = null): Collection
+    {
+        $query = LocationBin::where('location_id', $locationId)
+            ->where('is_inbound', false)
+            ->orderBy('bin_final_code');
+
+        if ($search) {
+            $query->where('bin_final_code', 'like', "%{$search}%");
+        }
+
+        return $query->get(['id', 'bin_final_code']);
+    }
+
+    public function currentQtyByBin(string $locationId, array $binIds): Collection
+    {
+        return Inventory::where('location_id', $locationId)
+            ->where('on_hand', '>', 0)
+            ->whereNotNull('bin_id')
+            ->whereIn('bin_id', $binIds)
+            ->groupBy('bin_id')
+            ->selectRaw('bin_id, SUM(on_hand) as total')
+            ->pluck('total', 'bin_id')
+            ->map(fn ($v) => (int) $v);
+    }
+
+    public function lookupPutawayBin(string $locationId, string $code): ?LocationBin
+    {
+        return LocationBin::where('location_id', $locationId)
+            ->where('is_inbound', false)
+            ->where('bin_final_code', $code)
+            ->first();
+    }
+
+    public function sumOnHandForBin(string $binId, string $locationId): int
+    {
+        return (int) Inventory::where('bin_id', $binId)
+            ->where('location_id', $locationId)
+            ->sum('on_hand');
+    }
+
     public function getAllPaginated(int $limit = 10)
     {
         return QueryBuilder::for(Putaway::class)
@@ -18,11 +61,12 @@ class PutawayRepository
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('assigned_to'),
                 AllowedFilter::exact('source_type'),
-                AllowedFilter::partial('q', 'putaway_no'),
             )
+            ->allowedSearch('putaway_no')
             ->allowedSorts('created_at', 'started_at', 'completed_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate(request('per_page', $limit))
+            ->appends(request()->query());
     }
 
     public function getByStatus(string $status, int $limit = 10)
@@ -32,11 +76,12 @@ class PutawayRepository
             ->allowedFilters(
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('assigned_to'),
-                AllowedFilter::partial('q', 'putaway_no'),
             )
+            ->allowedSearch('putaway_no')
             ->allowedSorts('created_at', 'started_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate(request('per_page', $limit))
+            ->appends(request()->query());
     }
 
     private function detailRelations(): array
@@ -106,7 +151,8 @@ class PutawayRepository
             ])
             ->allowedSorts('created_at')
             ->defaultSort('created_at')
-            ->paginate($limit);
+            ->paginate(request('per_page', $limit))
+            ->appends(request()->query());
     }
 
     public function findItemForUpdate(string $putawayId, string $itemId): ?PutawayItem
@@ -123,7 +169,8 @@ class PutawayRepository
             ->whereIn('status', [Putaway::STATUS_NOT_STARTED, Putaway::STATUS_IN_PROGRESS])
             ->with(['location:id,location_name'])
             ->orderByDesc('created_at')
-            ->paginate($limit);
+            ->paginate(request('per_page', $limit))
+            ->appends(request()->query());
     }
 
     public function generatePutawayNo(): string

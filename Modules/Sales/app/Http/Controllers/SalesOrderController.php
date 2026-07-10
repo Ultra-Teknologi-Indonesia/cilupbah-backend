@@ -14,11 +14,10 @@ use Modules\Sales\Exports\CancelledOrdersExport;
 use Modules\Sales\Exports\SalesOrdersExport;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
+use Modules\Sales\Services\SalesOrderDriverCallService;
 use Modules\Sales\Http\Requests\SaveCourierPickupRequest;
 use Modules\Sales\Http\Resources\SalesOrderResource;
-use Modules\Sales\Jobs\CallShopeeDriverJob;
 use Modules\Sales\Support\ShopeeInstantEligibility;
-use Modules\Channel\Services\ShopeeOrderService;
 
 #[OA\Tag(name: 'Sales Orders', description: 'API Endpoints for Sales Orders')]
 #[OA\Schema(
@@ -106,25 +105,17 @@ class SalesOrderController extends Controller
     )]
     public function index(Request $request)
     {
-        if ($request->wantsJson() || $request->is('api/*')) {
-            $orders = $this->orderService->getPaginatedOrders();
-            $orders->getCollection()->transform(function ($order) {
-                return new SalesOrderResource($order);
-            });
-            return $this->successPaginatedResponse($orders);
-        }
+        $orders = $this->orderService->getPaginatedOrders();
+        $orders->getCollection()->transform(function ($order) {
+            return new SalesOrderResource($order);
+        });
 
-        return view('sales::index');
+        return $this->successPaginatedResponse($orders);
     }
 
     public function counts()
     {
         return $this->successResponse($this->orderService->getTabCounts());
-    }
-
-    public function create()
-    {
-        return view('sales::create');
     }
 
     #[OA\Post(
@@ -217,20 +208,12 @@ class SalesOrderController extends Controller
     )]
     public function show(Request $request, $id)
     {
-        if ($request->wantsJson() || $request->is('api/*')) {
-            $order = $this->orderService->getOrderById($id);
-            if (!$order) {
-                return $this->errorResponse('Data tidak ditemukan', 404);
-            }
-            return $this->successResponse(new SalesOrderResource($order));
+        $order = $this->orderService->getOrderById($id);
+        if (!$order) {
+            return $this->errorResponse('Data tidak ditemukan', 404);
         }
 
-        return view('sales::show');
-    }
-
-    public function edit($id)
-    {
-        return view('sales::edit');
+        return $this->successResponse(new SalesOrderResource($order));
     }
 
     #[OA\Put(
@@ -293,9 +276,7 @@ class SalesOrderController extends Controller
     )]
     public function destroy($id)
     {
-        $order = SalesOrder::with('items')->findOrFail($id);
-
-        $this->orderService->deleteOrder($order);
+        $this->orderService->deleteOrderById($id);
 
         return $this->successResponse(null, 'Sales order deleted');
     }
@@ -306,13 +287,13 @@ class SalesOrderController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Orders'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
         ],
         responses: [new OA\Response(response: 200, description: 'Successful operation')]
     )]
     public function cancelled(Request $request)
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $orders = $this->orderService->getCancelledOrders($limit);
 
         return $this->successPaginatedResponse($orders, 'Daftar order cancelled');
@@ -407,13 +388,13 @@ class SalesOrderController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Orders'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
         ],
         responses: [new OA\Response(response: 200, description: 'Successful operation')]
     )]
     public function completed(Request $request)
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $orders = $this->orderService->getCompletedOrders($limit);
 
         return $this->successPaginatedResponse($orders, 'Daftar order completed');
@@ -425,13 +406,13 @@ class SalesOrderController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Orders'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
         ],
         responses: [new OA\Response(response: 200, description: 'Successful operation')]
     )]
     public function failed(Request $request)
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $orders = $this->orderService->getFailedOrders($limit);
 
         return $this->successPaginatedResponse($orders, 'Daftar order failed');
@@ -443,13 +424,13 @@ class SalesOrderController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Orders'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
         ],
         responses: [new OA\Response(response: 200, description: 'Successful operation')]
     )]
     public function returnedList(Request $request)
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $orders = $this->orderService->getReturnedOrders($limit);
 
         return $this->successPaginatedResponse($orders, 'Daftar order yang di-return');
@@ -500,7 +481,7 @@ class SalesOrderController extends Controller
             'order_ids.*' => 'required|bail|uuid|exists:sales_orders,id',
         ]);
 
-        $result = $this->orderService->moveToReadyToProcess($validated['order_ids']);
+        $result = $this->orderService->moveToReadyToProcess($validated['order_ids'], $request->user());
         $moved = $result['moved'];
         $skipped = $result['skipped'];
 
@@ -730,13 +711,13 @@ class SalesOrderController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Orders'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
         ],
         responses: [new OA\Response(response: 200, description: 'Successful operation')]
     )]
     public function unfulfilled(Request $request)
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $orders = $this->orderService->getUnfulfilledOrders($limit);
 
         return $this->successPaginatedResponse($orders, 'Daftar order belum fulfill');
@@ -905,9 +886,9 @@ class SalesOrderController extends Controller
         }
     }
 
-    public function printWithDriverCall(string $id, Request $request, ShopeeOrderService $shopee)
+    public function printWithDriverCall(string $id, Request $request, SalesOrderDriverCallService $driverCall)
     {
-        $order = SalesOrder::findOrFail($id);
+        $order = $driverCall->findOrder($id);
 
         if ($order->isManual()) {
             return $this->errorResponse(
@@ -931,49 +912,7 @@ class SalesOrderController extends Controller
 
         $forceLabel = (bool) $request->query('force_label', false);
 
-        $order->update([
-            'driver_call_status'       => 'pending',
-            'driver_call_attempted_at' => now(),
-        ]);
-
-        $driverCallSuccess = false;
-        $driverCallMessage = null;
-
-        try {
-            if ($order->channel_status === 'RETRY_SHIP') {
-                $result = $shopee->retryPickup($shopId, $orderSn);
-                $shipped = (bool) ($result['updated'] ?? false);
-            } else {
-                $result = $shopee->shipOrder($shopId, $orderSn);
-                $shipped = (bool) ($result['shipped'] ?? false);
-            }
-            $error = (string) ($result['error'] ?? '');
-            $alreadyShipped = $error !== '' && preg_match('/already|duplicate|shipped/i', $error);
-
-            if ($shipped || $alreadyShipped) {
-                $driverCallSuccess = true;
-                $order->update([
-                    'driver_call_status'   => 'success',
-                    'driver_call_message'  => null,
-                    'driver_call_response' => $result,
-                ]);
-            } else {
-                $driverCallMessage = $error !== '' ? $error : 'ship_order gagal tanpa pesan';
-                $order->update([
-                    'driver_call_status'   => 'failed',
-                    'driver_call_message'  => mb_substr($driverCallMessage, 0, 500),
-                    'driver_call_response' => $result,
-                ]);
-            }
-        } catch (\Throwable $e) {
-            $driverCallMessage = $e->getMessage();
-            $order->update([
-                'driver_call_status'  => 'failed',
-                'driver_call_message' => mb_substr($driverCallMessage, 0, 500),
-            ]);
-        }
-
-        $order->refresh();
+        $driverCallSuccess = $driverCall->callDriver($order);
 
         if (! $driverCallSuccess && ! $forceLabel) {
             return $this->errorResponse('Panggilan driver Shopee gagal. Tambahkan ?force_label=1 untuk tetap mencetak label.', 422, [
@@ -1021,20 +960,15 @@ class SalesOrderController extends Controller
             : 'Label siap; panggilan driver gagal — silakan retry.');
     }
 
-    public function retryDriverCall(string $id)
+    public function retryDriverCall(string $id, SalesOrderDriverCallService $driverCall)
     {
-        $order = SalesOrder::findOrFail($id);
+        $order = $driverCall->findOrder($id);
 
         if (! ShopeeInstantEligibility::isEligible($order)) {
             return $this->errorResponse('Endpoint ini hanya untuk pesanan Shopee Instant atau Same Day.', 422);
         }
 
-        $order->update([
-            'driver_call_status'  => 'pending',
-            'driver_call_message' => null,
-        ]);
-
-        CallShopeeDriverJob::dispatch($order->id);
+        $driverCall->retryDriverCall($order);
 
         return $this->successResponse([
             'driver_call_status' => 'pending',

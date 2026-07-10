@@ -22,7 +22,7 @@ class SalesPaymentController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Payments'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
             new OA\Parameter(name: 'filter[sales_invoice_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[payment_method]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
         ],
@@ -32,7 +32,7 @@ class SalesPaymentController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $payments = $this->paymentService->getAllPaginated($limit);
 
         return $this->successPaginatedResponse($payments, 'Daftar payment berhasil diambil');

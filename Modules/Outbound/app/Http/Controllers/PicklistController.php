@@ -7,8 +7,8 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Modules\Inventory\Models\Inventory;
-use Modules\Outbound\Models\Picklist;
+use Modules\Outbound\Http\Resources\PicklistResource;
+use Modules\Outbound\Repositories\PicklistRepository;
 use Modules\Outbound\Services\PicklistService;
 use Modules\Outbound\Http\Requests\CreatePicklistRequest;
 use Modules\Outbound\Http\Requests\PickItemRequest;
@@ -44,6 +44,7 @@ class PicklistController extends Controller
     public function __construct(
         protected PicklistService $picklistService,
         protected ReportService $reportService,
+        protected PicklistRepository $picklistRepository,
     ) {}
 
     #[OA\Get(
@@ -65,10 +66,10 @@ class PicklistController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->picklistService->getAllPaginated($limit);
 
-        return $this->successPaginatedResponse($data);
+        return $this->successPaginatedResponse(PicklistResource::collection($data));
     }
 
     #[OA\Post(
@@ -124,7 +125,7 @@ class PicklistController extends Controller
             return $this->errorResponse('Picklist tidak ditemukan.', 404);
         }
 
-        return $this->successResponse($picklist);
+        return $this->successResponse(new PicklistResource($picklist));
     }
 
     #[OA\Get(
@@ -142,7 +143,7 @@ class PicklistController extends Controller
     )]
     public function items(string $id, Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->picklistService->getItems($id, $limit);
 
         return $this->successPaginatedResponse($data);
@@ -227,21 +228,7 @@ class PicklistController extends Controller
         try {
             $orderIds = $validated['order_ids'];
 
-            $picklists = Picklist::with([
-                    'items.product:id,product_id,sku',
-                    'items.product.product:id,name',
-                    'items.product.options:id,variant_id,attribute_id,value',
-                    'items.product.media:id,product_id,variant_id,url,is_primary,sort_order',
-                    'items.product.product.media:id,product_id,variant_id,url,is_primary,sort_order',
-                    'items.orderItem:id,order_id,description',
-                    'items.order:id,salesorder_no,customer_name',
-                    'items.bin:id,bin_final_code',
-                    'location:id,location_name,location_code',
-                    'picker:id,name,email',
-                ])
-                ->whereHas('items', fn ($q) => $q->whereIn('order_id', $orderIds))
-                ->orderBy('created_at')
-                ->get();
+            $picklists = $this->picklistRepository->getForBulkPdf($orderIds);
 
             if ($picklists->isEmpty()) {
                 return $this->errorResponse('Tidak ada picklist ditemukan untuk pesanan yang dipilih.', 404);
@@ -700,14 +687,7 @@ class PicklistController extends Controller
         $locationId = $picklist->location_id;
         $itemIds = $items->pluck('item_id')->filter()->unique()->values()->all();
 
-        $stocks = Inventory::query()
-            ->whereIn('item_id', $itemIds)
-            ->where('location_id', $locationId)
-            ->where('on_hand', '>', 0)
-            ->whereNotNull('bin_id')
-            ->with('bin:id,bin_final_code')
-            ->orderByDesc('on_hand')
-            ->get(['id', 'item_id', 'bin_id', 'on_hand']);
+        $stocks = $this->picklistRepository->recommendedBinStocks($itemIds, $locationId);
 
         $byItem = $stocks->groupBy('item_id');
 

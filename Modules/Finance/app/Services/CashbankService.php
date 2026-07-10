@@ -3,6 +3,8 @@
 namespace Modules\Finance\Services;
 
 use Illuminate\Database\Eloquent\Model;
+use Modules\Finance\Http\Resources\CashbankDetailResource;
+use Modules\Finance\Http\Resources\CashbankResource;
 use Modules\Finance\Repositories\CashbankRepository;
 use Modules\Purchase\Models\PurchasePayment;
 use Modules\Sales\Models\SalesPayment;
@@ -52,17 +54,12 @@ class CashbankService
         $account = $this->resolveAccount($payment->payment_method);
         [$contactId, $contactName] = $this->resolveContact($payment);
 
-        return [
-            'account_id' => $account['id'],
-            'account_name' => $account['name'],
-            'amount' => (string) $payment->amount,
+        return (new CashbankResource($payment, [
+            'account' => $account,
             'contact_id' => $contactId,
             'contact_name' => $contactName,
             'doc_type' => $this->docType($payment),
-            'payment_id' => $payment->id,
-            'payment_no' => $payment->payment_number,
-            'transaction_date' => $payment->payment_date?->toIso8601String(),
-        ];
+        ]))->toArray(request());
     }
 
     public function mapDetail(Model $payment): array
@@ -70,20 +67,13 @@ class CashbankService
         $account = $this->resolveAccount($payment->payment_method);
         [$contactId, $contactName] = $this->resolveContact($payment);
 
-        return [
-            'payment_id' => $payment->id,
-            'payment_no' => $payment->payment_number,
-            'payment_type' => $this->docType($payment),
-            'amount' => (string) $payment->amount,
-            'cashbank_account_id' => $account['id'],
-            'cashbank_account_name' => $account['name'],
+        return (new CashbankDetailResource($payment, [
+            'account' => $account,
             'contact_id' => $contactId,
             'contact_name' => $contactName,
-            'note' => $payment->notes ?? '',
-            'reference_no' => $payment->reference_no,
-            'transaction_date' => $payment->payment_date?->toIso8601String(),
-            'accounts' => $this->journalLinesFor($payment, $account),
-        ];
+            'doc_type' => $this->docType($payment),
+            'lines' => $this->journalLinesFor($payment, $account),
+        ]))->toArray(request());
     }
 
     protected function journalLinesFor(Model $payment, array $cashAccount): array

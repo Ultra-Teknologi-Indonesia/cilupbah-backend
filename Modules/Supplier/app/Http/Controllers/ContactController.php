@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Supplier\Services\ContactService;
 use Modules\Supplier\Http\Requests\StoreContactRequest;
+use Modules\Supplier\Http\Resources\ContactResource;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Contacts', description: 'API Endpoints for unified Contacts (customers + suppliers)')]
@@ -31,7 +32,7 @@ class ContactController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         return $this->successPaginatedResponse($this->contactService->getAllPaginated($limit), 'Daftar kontak berhasil diambil');
     }
 
@@ -67,7 +68,7 @@ class ContactController extends Controller
     {
         try {
             $contact = $this->contactService->create($request->validated());
-            return $this->successResponse($contact, 'Contact berhasil dibuat', 201);
+            return $this->successResponse(new ContactResource($contact), 'Contact berhasil dibuat', 201);
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 500);
         }
@@ -88,7 +89,7 @@ class ContactController extends Controller
     {
         try {
             $contact = $this->contactService->update($id, $request->validated());
-            return $this->successResponse($contact, 'Contact berhasil diperbarui');
+            return $this->successResponse(new ContactResource($contact), 'Contact berhasil diperbarui');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 500);
         }
@@ -100,7 +101,7 @@ class ContactController extends Controller
         if (! $contact) {
             return $this->errorResponse('Contact tidak ditemukan', 404);
         }
-        return $this->successResponse($contact, 'Detail contact berhasil diambil');
+        return $this->successResponse(new ContactResource($contact), 'Detail contact berhasil diambil');
     }
 
     #[OA\Delete(
@@ -140,7 +141,7 @@ class ContactController extends Controller
     )]
     public function customers(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         return $this->successPaginatedResponse($this->contactService->getCustomers($limit), 'Daftar customer berhasil diambil');
     }
 
@@ -157,7 +158,7 @@ class ContactController extends Controller
     )]
     public function suppliers(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         return $this->successPaginatedResponse($this->contactService->getSuppliers($limit), 'Daftar supplier berhasil diambil');
     }
 
@@ -174,7 +175,7 @@ class ContactController extends Controller
     )]
     public function customersSuppliers(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         return $this->successPaginatedResponse($this->contactService->getCustomersAndSuppliers($limit), 'Daftar customer-supplier berhasil diambil');
     }
 
@@ -191,7 +192,7 @@ class ContactController extends Controller
     public function categories(): JsonResponse
     {
         $categories = $this->contactService->getCategories();
-        return $this->successResponse($categories, 'Daftar kategori kontak berhasil diambil');
+        return $this->successResponse(ContactResource::collection($categories), 'Daftar kategori kontak berhasil diambil');
     }
 
     public function storeCategory(Request $request): JsonResponse
@@ -204,7 +205,7 @@ class ContactController extends Controller
                 'type' => 'nullable|string|in:CUSTOMER,SUPPLIER,BOTH',
             ]);
             $category = $this->contactService->createCategory($request->all());
-            return $this->successResponse($category, 'Kategori berhasil ditambahkan');
+            return $this->successResponse(new ContactResource($category), 'Kategori berhasil ditambahkan');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -220,7 +221,7 @@ class ContactController extends Controller
                 'type' => 'nullable|string|in:CUSTOMER,SUPPLIER,BOTH',
             ]);
             $category = $this->contactService->updateCategory($id, $request->all());
-            return $this->successResponse($category, 'Kategori berhasil diperbarui');
+            return $this->successResponse(new ContactResource($category), 'Kategori berhasil diperbarui');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -247,6 +248,6 @@ class ContactController extends Controller
     public function accountPayableOptions(): JsonResponse
     {
         $options = $this->contactService->getAccountPayableOptions();
-        return $this->successResponse($options, 'Daftar akun hutang berhasil diambil');
+        return $this->successResponse(ContactResource::collection($options), 'Daftar akun hutang berhasil diambil');
     }
 }

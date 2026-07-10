@@ -2,10 +2,11 @@
 
 namespace Modules\Auth\Repositories;
 
+use App\Models\LoginHistory;
 use App\Models\UserHistory;
-use Spatie\QueryBuilder\QueryBuilder;
-use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class UserHistoryRepository
 {
@@ -16,6 +17,14 @@ class UserHistoryRepository
             ->where('target_user_id', $userId)
             ->allowedSorts('created_at', 'action')
             ->defaultSort('-created_at')
+            ->paginate(request('per_page', 20))
+            ->appends(request()->query());
+    }
+
+    public function getLoginHistoriesByUserId(string $userId): LengthAwarePaginator
+    {
+        return LoginHistory::where('user_id', $userId)
+            ->orderByDesc('created_at')
             ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }

@@ -11,19 +11,16 @@ use Modules\Channel\Http\Resources\ChannelResource;
 use Modules\Channel\Http\Resources\ChannelShopResource;
 use Modules\Channel\Http\Resources\StockAllocationResource;
 use Modules\Channel\Services\ChannelService;
-use Modules\Channel\Services\TikTokAuthService;
 
 class ChannelController extends Controller
 {
     use ApiResponse;
 
     protected ChannelService $channelService;
-    protected TikTokAuthService $authService;
 
-    public function __construct(ChannelService $channelService, TikTokAuthService $authService)
+    public function __construct(ChannelService $channelService)
     {
         $this->channelService = $channelService;
-        $this->authService = $authService;
     }
 
     public function stores(): JsonResponse
@@ -52,66 +49,31 @@ class ChannelController extends Controller
         );
     }
 
-    public function index(Request $request)
+    public function index(Request $request): JsonResponse
     {
         try {
             $channels = $this->channelService->getPaginatedChannels();
 
-            if ($request->is('api/*') || $request->wantsJson()) {
-                return $this->successPaginatedResponse(
-                    ChannelResource::collection($channels),
-                    'Daftar channel berhasil diambil.'
-                );
-            }
-
-            return view('channel::index', compact('channels'));
+            return $this->successPaginatedResponse(
+                ChannelResource::collection($channels),
+                'Daftar channel berhasil diambil.'
+            );
         } catch (\Exception $e) {
-            if ($request->is('api/*') || $request->wantsJson()) {
-                return $this->errorResponse($e->getMessage(), 500);
-            }
-            return back()->with('error', $e->getMessage());
+            return $this->errorResponse($e->getMessage(), 500);
         }
     }
 
-    public function disconnectShop(Request $request, string $id)
+    public function disconnectShop(Request $request, string $id): JsonResponse
     {
-        $isApi = $request->is('api/*') || $request->wantsJson();
-
         try {
             $this->channelService->disconnectStore($id);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            if ($isApi) {
-                throw $e; 
-            }
-            return back()->with('error', 'Toko tidak ditemukan.');
+            throw $e;
         } catch (\Throwable $e) {
-            if ($isApi) {
-                return $this->errorResponse('Gagal memutuskan toko: ' . $e->getMessage(), 422);
-            }
-            return back()->with('error', 'Gagal memutuskan toko: ' . $e->getMessage());
+            return $this->errorResponse('Gagal memutuskan toko: ' . $e->getMessage(), 422);
         }
 
-        if ($isApi) {
-            return $this->successResponse(null, 'Toko berhasil diputuskan dari channel.');
-        }
-
-        return back()->with('success', 'Toko berhasil diputuskan dari channel.');
-    }
-
-    public function refreshShopToken(Request $request, string $id)
-    {
-        try {
-            $result = $this->authService->refreshStoreToken($id);
-            if ($request->is('api/*') || $request->wantsJson()) {
-                return $this->successResponse($result, "Token toko berhasil diperbarui.");
-            }
-            return back()->with('success', 'Token toko berhasil diperbarui.');
-        } catch (\Exception $e) {
-            if ($request->is('api/*') || $request->wantsJson()) {
-                return $this->errorResponse('Gagal memperbarui token: ' . $e->getMessage(), 500);
-            }
-            return back()->with('error', 'Gagal memperbarui token: ' . $e->getMessage());
-        }
+        return $this->successResponse(null, 'Toko berhasil diputuskan dari channel.');
     }
 
     public function printLabelCapabilities(Request $request): JsonResponse

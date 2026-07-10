@@ -2,22 +2,24 @@
 
 namespace Modules\Channel\Services;
 
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Repositories\ChannelRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Repositories\ChannelWarehouseRepository;
 
 class TikTokAuthService
 {
     protected TikTokClient $client;
     protected ChannelShopRepository $shopRepository;
     protected ChannelRepository $channelRepository;
+    protected ChannelWarehouseRepository $warehouseRepository;
 
-    public function __construct(TikTokClient $client, ChannelShopRepository $shopRepository, ChannelRepository $channelRepository)
+    public function __construct(TikTokClient $client, ChannelShopRepository $shopRepository, ChannelRepository $channelRepository, ChannelWarehouseRepository $warehouseRepository)
     {
         $this->client = $client;
         $this->shopRepository = $shopRepository;
         $this->channelRepository = $channelRepository;
+        $this->warehouseRepository = $warehouseRepository;
     }
 
     public function handleCallback(string $code, string $redirectUri): array
@@ -209,53 +211,13 @@ class TikTokAuthService
                 return;
             }
 
-            $this->saveWarehouseMapping($shopId, $channelId, $warehouseId, $warehouseType);
+            $this->warehouseRepository->saveWarehouseMapping($shopId, $channelId, $warehouseId, $warehouseType);
         } catch (\Throwable $e) {
             Log::warning('Failed to fetch TikTok warehouse at connect', [
                 'shop_id' => $shopId,
                 'error' => $e->getMessage(),
             ]);
         }
-    }
-
-    private function saveWarehouseMapping(string $storeId, string $channelId, string $channelLocationId, ?string $channelLocationType): void
-    {
-        $exists = DB::table('channel_warehouses')->where('store_id', $storeId)->exists();
-
-        if ($exists) {
-            DB::table('channel_warehouses')
-                ->where('store_id', $storeId)
-                ->update([
-                    'channel_location_id' => $channelLocationId,
-                    'channel_location_type' => $channelLocationType,
-                    'updated_at' => now(),
-                ]);
-            return;
-        }
-
-        $defaultLocation = DB::table('locations')
-            ->where('is_warehouse', true)
-            ->where('is_active', true)
-            ->where(function ($q) {
-                $q->whereNull('location_type')
-                    ->orWhere('location_type', '!=', 'TRANSIT');
-            })
-            ->orderBy('created_at')
-            ->first();
-
-        if (! $defaultLocation) {
-            return;
-        }
-
-        DB::table('channel_warehouses')->insert([
-            'location_id' => $defaultLocation->id,
-            'channel_id' => $channelId,
-            'store_id' => $storeId,
-            'channel_location_id' => $channelLocationId,
-            'channel_location_type' => $channelLocationType,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
     }
 
     protected function getTokenStatus($shop): string

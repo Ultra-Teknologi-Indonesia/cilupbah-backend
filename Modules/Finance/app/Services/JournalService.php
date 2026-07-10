@@ -4,8 +4,9 @@ namespace Modules\Finance\Services;
 
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use Modules\Finance\Http\Resources\JournalDetailResource;
+use Modules\Finance\Http\Resources\JournalResource;
 use Modules\Finance\Models\Journal;
-use Modules\Finance\Models\JournalDetail;
 use Modules\Finance\Repositories\JournalRepository;
 
 class JournalService
@@ -90,7 +91,7 @@ class JournalService
         }
 
         return DB::transaction(function () use ($journalId, $header, $lines) {
-            $journal = Journal::lockForUpdate()->find($journalId);
+            $journal = $this->repository->findForUpdate($journalId);
 
             if (! $journal) {
                 return null;
@@ -115,29 +116,15 @@ class JournalService
 
     public function mapItem(Journal $journal): array
     {
-        return [
-            'journal_id' => $journal->id,
-            'journal_no' => $journal->journal_no,
-            'journal_type' => $journal->journal_type,
-            'transaction_date' => $journal->transaction_date?->toIso8601String(),
-            'source_doc_no' => $journal->source_doc_no,
-            'notes' => $journal->notes ?? '',
-            'debit' => (string) $journal->total_debit,
-            'credit' => (string) $journal->total_credit,
-        ];
+        return (new JournalResource($journal))->toArray(request());
     }
 
     public function mapDetail(Journal $journal): array
     {
         return $this->mapItem($journal) + [
-            'accounts' => $journal->details->map(fn (JournalDetail $d) => [
-                'journal_detail_id' => $d->id,
-                'account_id' => $d->account_id,
-                'account_name' => $d->account?->display_name,
-                'debit' => (string) $d->debit,
-                'credit' => (string) $d->credit,
-                'description' => $d->description,
-            ])->all(),
+            'accounts' => $journal->details
+                ->map(fn ($d) => (new JournalDetailResource($d))->toArray(request()))
+                ->all(),
         ];
     }
 

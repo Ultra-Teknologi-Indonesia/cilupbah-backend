@@ -14,15 +14,16 @@ class ReservedStockRepository
     {
         return QueryBuilder::for(ReservedStock::class)
             ->with(['location:id,location_name', 'items'])
+            ->allowedSearch('reserved_stock_no')
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('location_id'),
-                AllowedFilter::partial('q', 'reserved_stock_no'),
                 AllowedFilter::exact('is_active'),
             )
             ->allowedSorts('start_date', 'end_date', 'created_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate(request('per_page', $limit))
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?ReservedStock

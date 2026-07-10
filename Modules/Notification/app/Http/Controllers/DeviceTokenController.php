@@ -4,8 +4,9 @@ namespace Modules\Notification\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
-use Modules\Notification\Models\DeviceToken;
 use Modules\Notification\Http\Requests\StoreDeviceTokenRequest;
+use Modules\Notification\Http\Resources\DeviceTokenResource;
+use Modules\Notification\Repositories\NotificationRepository;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use OpenApi\Attributes as OA;
@@ -14,6 +15,10 @@ use OpenApi\Attributes as OA;
 class DeviceTokenController extends Controller
 {
     use ApiResponse;
+
+    public function __construct(
+        protected NotificationRepository $notifications
+    ) {}
     #[OA\Post(
         path: '/api/v1/device-tokens',
         summary: 'Register FCM device token',
@@ -37,18 +42,14 @@ class DeviceTokenController extends Controller
     )]
     public function store(StoreDeviceTokenRequest $request): JsonResponse
     {
-        $token = DeviceToken::updateOrCreate(
-            [
-                'user_id' => $request->user()->id,
-                'fcm_token' => $request->fcm_token,
-            ],
-            [
-                'device_id' => $request->device_id,
-                'platform' => $request->platform ?? 'android',
-            ],
+        $token = $this->notifications->updateOrCreateToken(
+            $request->user()->id,
+            $request->fcm_token,
+            $request->device_id,
+            $request->platform,
         );
 
-        return $this->successResponse($token);
+        return $this->successResponse(new DeviceTokenResource($token));
     }
 
     #[OA\Delete(
@@ -72,9 +73,7 @@ class DeviceTokenController extends Controller
     )]
     public function destroy(Request $request): JsonResponse
     {
-        DeviceToken::where('user_id', $request->user()->id)
-            ->where('fcm_token', $request->fcm_token)
-            ->delete();
+        $this->notifications->deleteTokenForUser($request->user()->id, $request->fcm_token);
 
         return $this->successResponse(null, 'Token removed');
     }

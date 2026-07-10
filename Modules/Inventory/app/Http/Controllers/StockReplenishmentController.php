@@ -9,7 +9,6 @@ use Illuminate\Http\Request;
 use Modules\Inventory\Http\Requests\AcceptStockReplenishmentRequest;
 use Modules\Inventory\Http\Requests\StoreStockReplenishmentRequest;
 use Modules\Inventory\Http\Resources\StockReplenishmentResource;
-use Modules\Inventory\Models\StockReplenishmentRequest;
 use Modules\Inventory\Services\StockReplenishmentService;
 
 class StockReplenishmentController extends Controller
@@ -25,15 +24,7 @@ class StockReplenishmentController extends Controller
         $status  = $request->query('status');
         $perPage = min(100, max(1, (int) $request->query('per_page', 20)));
 
-        $query = StockReplenishmentRequest::query()
-            ->with(['items.variant.media', 'items.variant.product.media', 'fromLocation', 'toLocation', 'assignee', 'requester', 'transferOut'])
-            ->orderByDesc('requested_at');
-
-        if ($status) {
-            $query->where('status', $status);
-        }
-
-        $paginator = $query->paginate($perPage);
+        $paginator = $this->service->list($status, $perPage);
 
         return $this->successResponse([
             'items' => StockReplenishmentResource::collection($paginator->items()),
@@ -48,22 +39,14 @@ class StockReplenishmentController extends Controller
 
     public function pendingCount(): JsonResponse
     {
-        $count = StockReplenishmentRequest::where('status', StockReplenishmentRequest::STATUS_PENDING)->count();
+        $count = $this->service->pendingCount();
 
         return $this->successResponse(['count' => $count], 'Jumlah permintaan pending');
     }
 
     public function show(string $id): JsonResponse
     {
-        $req = StockReplenishmentRequest::with([
-            'items.variant.media',
-            'items.variant.product.media',
-            'fromLocation',
-            'toLocation',
-            'assignee',
-            'requester',
-            'transferOut',
-        ])->find($id);
+        $req = $this->service->findDetail($id);
 
         if (! $req) {
             return $this->errorResponse('Permintaan tidak ditemukan', 404);
@@ -179,16 +162,6 @@ class StockReplenishmentController extends Controller
 
     private function reloadDetail(string $id): StockReplenishmentResource
     {
-        return new StockReplenishmentResource(
-            StockReplenishmentRequest::with([
-                'items.variant.media',
-                'items.variant.product.media',
-                'fromLocation',
-                'toLocation',
-                'assignee',
-                'requester',
-                'transferOut',
-            ])->findOrFail($id),
-        );
+        return new StockReplenishmentResource($this->service->findDetailOrFail($id));
     }
 }

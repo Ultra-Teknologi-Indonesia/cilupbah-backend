@@ -73,7 +73,7 @@ class AuthController extends Controller
         $responseData = [
             'access_token' => $data['access_token'],
             'token_type'   => $data['token_type'],
-            'user'         => new ProfileResource($data['user']),
+            'user'         => new ProfileResource($this->userService->attachProfileContext($data['user'])),
         ];
 
         return $this->successResponse($responseData, 'Berhasil masuk. Selamat datang kembali!');
@@ -107,7 +107,9 @@ class AuthController extends Controller
     )]
     public function profile(Request $request): JsonResponse
     {
-        $profile = $this->authService->getProfile($request->user());
+        $profile = $this->userService->attachProfileContext(
+            $this->authService->getProfile($request->user())
+        );
 
         return $this->successResponse(new ProfileResource($profile), 'Profil berhasil dimuat.');
     }
@@ -136,7 +138,10 @@ class AuthController extends Controller
     {
         $user = $this->userService->setAvatar($request->user(), $request->input('media_uuid'));
 
-        return $this->successResponse(new ProfileResource($user), 'Avatar berhasil diperbarui.');
+        return $this->successResponse(
+            new ProfileResource($this->userService->attachProfileContext($user)),
+            'Avatar berhasil diperbarui.'
+        );
     }
 
     public function changePassword(Request $request): JsonResponse
@@ -146,13 +151,15 @@ class AuthController extends Controller
             'new_password'     => 'required|string|min:8|confirmed',
         ]);
 
-        $user = $request->user();
+        $changed = $this->authService->changePassword(
+            $request->user(),
+            $request->current_password,
+            $request->new_password
+        );
 
-        if (! \Hash::check($request->current_password, $user->password)) {
+        if (! $changed) {
             return $this->errorResponse('Password lama tidak sesuai.', 422);
         }
-
-        $user->update(['password' => \Hash::make($request->new_password)]);
 
         return $this->successResponse(null, 'Password berhasil diubah.');
     }

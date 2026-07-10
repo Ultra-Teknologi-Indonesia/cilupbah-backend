@@ -2,11 +2,11 @@
 
 namespace Modules\Channel\Services;
 
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Repositories\ChannelRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Repositories\ChannelWarehouseRepository;
 
 class ShopeeAuthService
 {
@@ -16,6 +16,8 @@ class ShopeeAuthService
     public function __construct(
         protected ShopeeClient $client,
         protected ChannelShopRepository $shopRepository,
+        protected ChannelRepository $channelRepository,
+        protected ChannelWarehouseRepository $warehouseRepository,
     ) {}
 
     public function handleCallback(string $code, string $shopId): array
@@ -29,7 +31,7 @@ class ShopeeAuthService
             throw new \Exception('Gagal mengambil access token Shopee: ' . $message);
         }
 
-        $channelId = Channel::where('code', 'shopee')->value('id');
+        $channelId = $this->channelRepository->getIdByCode('shopee');
 
         $expireIn = (int) ($token['expire_in'] ?? $token['expires_in'] ?? 0);
         $tokenExpiresAt = $expireIn > 0 ? now()->addSeconds($expireIn) : null;
@@ -64,6 +66,11 @@ class ShopeeAuthService
                 'connected_at' => $shop->created_at,
                 'updated_at' => $shop->updated_at,
             ])->toArray();
+    }
+
+    public function getStoreModel(string $id): ChannelShop
+    {
+        return $this->requireShopeeShop($id);
     }
 
     public function getStoreDetail(string $id): array
@@ -181,7 +188,7 @@ class ShopeeAuthService
                 return;
             }
 
-            $this->saveWarehouseMapping($shopId, $channelId, (string) $locationId, 'DEFAULT');
+            $this->warehouseRepository->saveWarehouseMapping($shopId, $channelId, (string) $locationId, 'DEFAULT');
         } catch (\Throwable $e) {
             Log::warning('Failed to fetch Shopee warehouse at connect', [
                 'shop_id' => $shopId,
@@ -190,51 +197,11 @@ class ShopeeAuthService
         }
     }
 
-    private function saveWarehouseMapping(string $storeId, string $channelId, string $channelLocationId, ?string $channelLocationType): void
-    {
-        $exists = DB::table('channel_warehouses')->where('store_id', $storeId)->exists();
-
-        if ($exists) {
-            DB::table('channel_warehouses')
-                ->where('store_id', $storeId)
-                ->update([
-                    'channel_location_id' => $channelLocationId,
-                    'channel_location_type' => $channelLocationType,
-                    'updated_at' => now(),
-                ]);
-            return;
-        }
-
-        $defaultLocation = DB::table('locations')
-            ->where('is_warehouse', true)
-            ->where('is_active', true)
-            ->where(function ($q) {
-                $q->whereNull('location_type')
-                    ->orWhere('location_type', '!=', 'TRANSIT');
-            })
-            ->orderBy('created_at')
-            ->first();
-
-        if (! $defaultLocation) {
-            return;
-        }
-
-        DB::table('channel_warehouses')->insert([
-            'location_id' => $defaultLocation->id,
-            'channel_id' => $channelId,
-            'store_id' => $storeId,
-            'channel_location_id' => $channelLocationId,
-            'channel_location_type' => $channelLocationType,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-    }
-
     protected function requireShopeeShop(string $id): ChannelShop
     {
         $shop = $this->shopRepository->findByUuid($id);
 
-        $shopeeChannelId = Channel::where('code', 'shopee')->value('id');
+        $shopeeChannelId = $this->channelRepository->getIdByCode('shopee');
         if (! $shop || $shop->channel_id !== $shopeeChannelId) {
             throw new \Exception('Toko tidak ditemukan');
         }

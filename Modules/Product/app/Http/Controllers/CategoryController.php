@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Modules\Product\Http\Resources\CategoryResource;
 use Modules\Product\Services\CategoryService;
 
@@ -179,12 +178,9 @@ class CategoryController extends Controller
         ]);
 
         try {
-            DB::table('attribute_channel_mappings')->updateOrInsert(
-                [
-                    'attribute_id' => $validated['attribute_id'],
-                    'channel_attribute_id' => $validated['channel_attribute_id'],
-                ],
-                ['updated_at' => now(), 'created_at' => now()]
+            $this->categoryService->mapAttributeToChannel(
+                $validated['attribute_id'],
+                $validated['channel_attribute_id']
             );
             return $this->successResponse(null, 'Berhasil memetakan atribut ke channel');
         } catch (\Exception $e) {
@@ -200,10 +196,10 @@ class CategoryController extends Controller
         ]);
 
         try {
-            DB::table('attribute_channel_mappings')
-                ->where('attribute_id', $validated['attribute_id'])
-                ->where('channel_attribute_id', $validated['channel_attribute_id'])
-                ->delete();
+            $this->categoryService->removeAttributeChannelMapping(
+                $validated['attribute_id'],
+                $validated['channel_attribute_id']
+            );
             return $this->successResponse(null, 'Berhasil menghapus mapping atribut');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 500);

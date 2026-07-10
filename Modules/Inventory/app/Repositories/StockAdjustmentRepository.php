@@ -13,16 +13,17 @@ class StockAdjustmentRepository
     {
         return QueryBuilder::for(StockAdjustment::class)
             ->with(['location:id,location_name', 'items'])
+            ->allowedSearch('adjustment_no')
             ->allowedFilters(
                 AllowedFilter::exact('location_id'),
-                AllowedFilter::partial('q', 'adjustment_no'),
                 AllowedFilter::exact('is_beginning_balance'),
                 AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('transaction_date', '>=', $value)),
                 AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('transaction_date', '<=', $value)),
             )
             ->allowedSorts('transaction_date', 'created_at', 'adjustment_no')
             ->defaultSort('-transaction_date')
-            ->paginate($limit);
+            ->paginate(request('per_page', $limit))
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?StockAdjustment
@@ -65,8 +66,30 @@ class StockAdjustmentRepository
             ->allowedSearch('notes')
             ->allowedSorts('created_at')
             ->defaultSort('-created_at')
-            ->paginate($limit)
+            ->paginate(request('per_page', $limit))
             ->appends(request()->query());
+    }
+
+    public function findForPdf(string $id): ?StockAdjustment
+    {
+        return StockAdjustment::with([
+            'items.product.product',
+            'items.bin',
+            'location',
+        ])->find($id);
+    }
+
+    public function getManyForPdf(array $ids)
+    {
+        return StockAdjustment::with([
+            'items.product.product',
+            'items.bin',
+            'location',
+        ])
+            ->whereIn('id', $ids)
+            ->orderBy('transaction_date')
+            ->orderBy('adjustment_no')
+            ->get();
     }
 
     public function generateAdjustmentNo(): string

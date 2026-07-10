@@ -8,21 +8,17 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class InternalStoreRepository
 {
-    public function getAllPaginated(int $perPage = 20)
+    public function getAllPaginated(int $perPage = 10)
     {
         return QueryBuilder::for(InternalStore::class)
             ->allowedFilters(
                 AllowedFilter::exact('is_active'),
-                AllowedFilter::callback('search', function ($query, $value) {
-                    $query->where(function ($q) use ($value) {
-                        $q->where('name', 'like', "%{$value}%")
-                            ->orWhere('code', 'like', "%{$value}%");
-                    });
-                }),
             )
+            ->allowedSearch('name', 'code')
             ->allowedSorts('name', 'code', 'created_at')
             ->defaultSort('-created_at')
-            ->paginate($perPage);
+            ->paginate($perPage)
+            ->appends(request()->query());
     }
 
     public function getAllActive()

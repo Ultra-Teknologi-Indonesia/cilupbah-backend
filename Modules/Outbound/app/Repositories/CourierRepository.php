@@ -13,11 +13,12 @@ class CourierRepository
         return QueryBuilder::for(Courier::class)
             ->allowedFilters(
                 AllowedFilter::exact('is_active'),
-                AllowedFilter::partial('q', 'name'),
             )
+            ->allowedSearch('name')
             ->allowedSorts('name', 'code', 'created_at')
             ->defaultSort('name')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function getByTenant(string $tenantId, int $limit = 10)
@@ -27,11 +28,12 @@ class CourierRepository
         )
             ->allowedFilters(
                 AllowedFilter::exact('is_active'),
-                AllowedFilter::partial('q', 'name'),
             )
+            ->allowedSearch('name')
             ->allowedSorts('name', 'code', 'created_at')
             ->defaultSort('name')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function getAll()

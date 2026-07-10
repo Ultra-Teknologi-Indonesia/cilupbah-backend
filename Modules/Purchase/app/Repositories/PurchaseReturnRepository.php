@@ -6,7 +6,6 @@ use Modules\Purchase\Models\PurchaseReturn;
 use Modules\Purchase\Models\PurchaseReturnItem;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
-use App\Filters\FuzzyFilter;
 use Illuminate\Support\Str;
 
 class PurchaseReturnRepository
@@ -21,11 +20,12 @@ class PurchaseReturnRepository
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::callback('date_from', fn($query, $value) => $query->where('return_date', '>=', $value)),
                 AllowedFilter::callback('date_to', fn($query, $value) => $query->where('return_date', '<=', $value)),
-                AllowedFilter::custom('search', new FuzzyFilter('return_number'))
             )
+            ->allowedSearch('return_number')
             ->allowedSorts('return_number', 'return_date', 'total_amount', 'created_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?PurchaseReturn
@@ -59,7 +59,8 @@ class PurchaseReturnRepository
             ->with(['supplier:id,name,code', 'location:id,location_name'])
             ->allowedSorts('return_date', 'total_amount', 'created_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function generateReturnNo(): string

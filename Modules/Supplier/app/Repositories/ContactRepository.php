@@ -6,7 +6,6 @@ use Modules\Supplier\Models\Contact;
 use Modules\Supplier\Models\ContactCategory;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
-use App\Filters\FuzzyFilter;
 
 class ContactRepository
 {
@@ -28,11 +27,12 @@ class ContactRepository
                 }),
                 AllowedFilter::exact('category_id'),
                 AllowedFilter::exact('is_system'),
-                AllowedFilter::custom('search', new FuzzyFilter('name,company_name,code,email'))
             )
+            ->allowedSearch('name', 'company_name', 'code', 'email')
             ->allowedSorts('name', 'code', 'type', 'created_at')
             ->defaultSort('name')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?Contact
@@ -64,11 +64,12 @@ class ContactRepository
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('category_id'),
-                AllowedFilter::custom('search', new FuzzyFilter('name,company_name,code,email'))
             )
+            ->allowedSearch('name', 'company_name', 'code', 'email')
             ->allowedSorts('name', 'code', 'created_at')
             ->defaultSort('name')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function getSuppliers(int $limit = 10)
@@ -78,11 +79,12 @@ class ContactRepository
             ->with('category:id,name')
             ->allowedFilters(
                 AllowedFilter::exact('status'),
-                AllowedFilter::custom('search', new FuzzyFilter('name,company_name,code,email'))
             )
+            ->allowedSearch('name', 'company_name', 'code', 'email')
             ->allowedSorts('name', 'code', 'created_at')
             ->defaultSort('name')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function getCustomersAndSuppliers(int $limit = 10)
@@ -92,19 +94,18 @@ class ContactRepository
             ->with('category:id,name')
             ->allowedFilters(
                 AllowedFilter::exact('status'),
-                AllowedFilter::custom('search', new FuzzyFilter('name,company_name,code,email'))
             )
+            ->allowedSearch('name', 'company_name', 'code', 'email')
             ->allowedSorts('name', 'code', 'created_at')
             ->defaultSort('name')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function getAllCategories()
     {
         return QueryBuilder::for(ContactCategory::class)
-            ->allowedFilters(
-                AllowedFilter::custom('search', new FuzzyFilter('code,name'))
-            )
+            ->allowedSearch('code', 'name')
             ->allowedSorts('name', 'code', 'created_at')
             ->defaultSort('name')
             ->get();

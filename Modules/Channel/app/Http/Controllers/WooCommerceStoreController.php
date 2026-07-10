@@ -4,6 +4,8 @@ namespace Modules\Channel\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
+use Modules\Channel\Http\Resources\ChannelShopResource;
+use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\WooCommerceAuthService;
 use OpenApi\Attributes as OA;
 
@@ -14,6 +16,7 @@ class WooCommerceStoreController extends Controller
 
     public function __construct(
         protected WooCommerceAuthService $authService,
+        protected ChannelShopRepository $shopRepository,
     ) {}
 
     #[OA\Get(
@@ -25,7 +28,14 @@ class WooCommerceStoreController extends Controller
     )]
     public function index()
     {
-        return $this->successResponse($this->authService->getStores(), 'Daftar toko WooCommerce berhasil diambil');
+        try {
+            return $this->successPaginatedResponse(
+                ChannelShopResource::collection($this->shopRepository->getPaginatedShops()),
+                'Daftar toko WooCommerce berhasil diambil'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 500);
+        }
     }
 
     #[OA\Get(
@@ -42,7 +52,10 @@ class WooCommerceStoreController extends Controller
     public function show(string $id)
     {
         try {
-            return $this->successResponse($this->authService->getStoreDetail($id), 'Detail toko berhasil diambil');
+            return $this->successResponse(
+                new ChannelShopResource($this->authService->getStoreModel($id)),
+                'Detail toko berhasil diambil'
+            );
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 404);
         }

@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Modules\Finance\Models\Account;
+use Modules\Finance\Http\Resources\AccountLookupResource;
 use Modules\Finance\Repositories\AccountRepository;
 use OpenApi\Attributes as OA;
 
@@ -30,12 +30,7 @@ class AccountLookupController extends Controller
 
         $type = $request->query('type');
 
-        $data = $accounts->getActiveLookup($type)->map(fn (Account $a) => [
-            'account_id' => $a->id,
-            'account_code' => $a->account_code,
-            'account_name' => $a->display_name,
-            'account_type' => $a->account_type,
-        ]);
+        $data = AccountLookupResource::collection($accounts->getActiveLookup($type));
 
         return $this->successResponse($data, 'Daftar akun berhasil diambil.');
     }

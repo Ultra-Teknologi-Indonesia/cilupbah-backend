@@ -5,27 +5,22 @@ namespace Modules\Inventory\Services;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Modules\Inventory\Models\ImpexActivity;
+use Modules\Inventory\Repositories\ImpexActivityRepository;
 
 class ImpexActivityService
 {
+    public function __construct(private ImpexActivityRepository $repository)
+    {
+    }
+
     public function list(array $filters, int $perPage = 25): LengthAwarePaginator
     {
-        $query = ImpexActivity::query()->with('user')->where('direction', $filters['direction']);
-
-        if (! empty($filters['status'])) {
-            $query->where('status', $filters['status']);
-        }
-
-        if (! empty($filters['my_only']) && ! empty($filters['user_id'])) {
-            $query->where('user_id', $filters['user_id']);
-        }
-
-        return $query->orderByDesc('created_at')->paginate($perPage);
+        return $this->repository->paginate($filters, $perPage);
     }
 
     public function details(string $activityId): \Illuminate\Database\Eloquent\Collection
     {
-        return ImpexActivity::findOrFail($activityId)->details()->orderBy('created_at')->get();
+        return $this->repository->detailsFor($activityId);
     }
 
     public function record(

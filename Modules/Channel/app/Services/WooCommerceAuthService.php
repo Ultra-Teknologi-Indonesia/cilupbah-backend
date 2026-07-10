@@ -5,8 +5,8 @@ namespace Modules\Channel\Services;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Repositories\ChannelRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Support\OAuthFlow;
 
@@ -19,6 +19,7 @@ class WooCommerceAuthService
     public function __construct(
         protected WooCommerceClient $client,
         protected ChannelShopRepository $shopRepository,
+        protected ChannelRepository $channelRepository,
     ) {}
 
     public function buildAuthorizeUrl(string $storeUrl): string
@@ -74,7 +75,7 @@ class WooCommerceAuthService
 
     protected function persistShop(string $storeUrl, string $consumerKey, string $consumerSecret, ?string $shopName = null): array
     {
-        $channelId = Channel::where('code', self::CHANNEL)->value('id');
+        $channelId = $this->channelRepository->getIdByCode(self::CHANNEL);
         $shopId = $this->deriveShopId($storeUrl);
         $shopName = $shopName ?: ('WooCommerce ' . parse_url($storeUrl, PHP_URL_HOST));
         $webhookSecret = Str::random(40);
@@ -109,6 +110,11 @@ class WooCommerceAuthService
                 'connected_at' => $shop->created_at,
                 'updated_at' => $shop->updated_at,
             ])->toArray();
+    }
+
+    public function getStoreModel(string $id): ChannelShop
+    {
+        return $this->requireShop($id);
     }
 
     public function getStoreDetail(string $id): array
@@ -236,7 +242,7 @@ class WooCommerceAuthService
     protected function requireShop(string $id): ChannelShop
     {
         $shop = $this->shopRepository->findByUuid($id);
-        $channelId = Channel::where('code', self::CHANNEL)->value('id');
+        $channelId = $this->channelRepository->getIdByCode(self::CHANNEL);
 
         if (! $shop || $shop->channel_id !== $channelId) {
             throw new \RuntimeException('Toko tidak ditemukan', 404);

@@ -5,15 +5,10 @@ namespace Modules\Channel\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
-use Modules\Channel\Adapters\LazadaAdapter;
 use Modules\Channel\Jobs\ProcessLazadaFulfillmentJob;
-use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelShopRepository;
-use Modules\Channel\Services\ChannelListingValidator;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\LazadaProductService;
-use Modules\Product\Models\Product;
-use Modules\Product\Models\ProductChannelMapping;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Lazada', description: 'Integrasi OAuth Lazada')]
@@ -26,49 +21,21 @@ class LazadaSyncApiController extends Controller
         protected ChannelShopRepository $shopRepository,
     ) {}
 
-    public function pushProduct(Request $request)
+    public function pushProduct(Request $request, LazadaProductService $productService)
     {
         $validated = $request->validate([
             'shop_id' => 'required|string',
             'product_id' => 'required|uuid',
         ]);
 
-        $shop = ChannelShop::where('shop_id', $validated['shop_id'])
-            ->whereNull('disconnected_at')
-            ->first();
-        if (! $shop) {
-            return $this->errorResponse('Toko Lazada tidak ditemukan / terputus', 404);
+        $result = $productService->pushProductListing($validated['shop_id'], $validated['product_id']);
+
+        if (! ($result['ok'] ?? false)) {
+            return $this->errorResponse($result['message'], $result['code'], $result['errors'] ?? null);
         }
-
-        $product = Product::with(['variants', 'media'])->find($validated['product_id']);
-        if (! $product) {
-            return $this->errorResponse('Produk tidak ditemukan', 404);
-        }
-
-        $issues = app(ChannelListingValidator::class)->validate($product, 'lazada');
-        if (! empty($issues)) {
-            return $this->errorResponse('Produk belum siap di-listing ke Lazada', 422, ['issues' => $issues]);
-        }
-
-        $result = app(LazadaAdapter::class)->pushProduct($product, $shop);
-
-        if (! ($result['success'] ?? false)) {
-
-            return $this->errorResponse($result['message'] ?? 'Gagal push ke Lazada', 422, $result);
-        }
-
-        $externalId = $result['external_product_id'] ?? null;
-
-        $mapping = ProductChannelMapping::firstOrNew([
-            'product_id' => $product->id,
-            'channel_shop_id' => $shop->id,
-        ]);
-        $mapping->external_product_id = $externalId;
-        $mapping->save();
-        $mapping->markInReview($externalId);
 
         return $this->successResponse(
-            ['external_product_id' => $externalId],
+            ['external_product_id' => $result['external_product_id']],
             'Produk berhasil didorong ke Lazada (menunggu review).'
         );
     }
@@ -86,20 +53,19 @@ class LazadaSyncApiController extends Controller
         return $this->successResponse(['synced' => $count], "{$count} kategori Lazada disinkronkan.");
     }
 
-    public function validateListing(Request $request, ChannelListingValidator $validator)
+    public function validateListing(Request $request, LazadaProductService $productService)
     {
         $validated = $request->validate(['product_id' => 'required|uuid']);
 
-        $product = Product::find($validated['product_id']);
-        if (! $product) {
-            return $this->errorResponse('Produk tidak ditemukan', 404);
+        $result = $productService->validateListing($validated['product_id']);
+
+        if (! ($result['ok'] ?? false)) {
+            return $this->errorResponse($result['message'], $result['code']);
         }
 
-        $issues = $validator->validate($product, 'lazada');
-
         return $this->successResponse(
-            ['ready' => empty($issues), 'issues' => $issues],
-            empty($issues) ? 'Produk siap di-listing ke Lazada.' : 'Produk belum siap di-listing.'
+            ['ready' => $result['ready'], 'issues' => $result['issues']],
+            $result['ready'] ? 'Produk siap di-listing ke Lazada.' : 'Produk belum siap di-listing.'
         );
     }
 

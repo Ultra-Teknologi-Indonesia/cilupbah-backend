@@ -4,7 +4,7 @@ namespace Modules\Supplier\Services;
 
 use Illuminate\Http\UploadedFile;
 use Modules\Supplier\Models\Contact;
-use Modules\Supplier\Models\ContactCategory;
+use Modules\Supplier\Repositories\ContactImportRepository;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
@@ -46,8 +46,12 @@ class ContactImportService
         'non pkp' => 'NON_PKP',
     ];
 
-    private const COLOR_REQUIRED = 'F4B183'; 
-    private const COLOR_OPTIONAL = 'FFE699'; 
+    private const COLOR_REQUIRED = 'F4B183';
+    private const COLOR_OPTIONAL = 'FFE699';
+
+    public function __construct(
+        protected ContactImportRepository $importRepository
+    ) {}
 
     public function generateTemplate(): string
     {
@@ -93,8 +97,8 @@ class ContactImportService
         }
         $sheet = $sheet ?? $spreadsheet->getSheet($spreadsheet->getSheetCount() - 1);
 
-        $categories = ContactCategory::all()->keyBy(fn ($c) => strtolower(trim($c->name)));
-        $existingNames = Contact::pluck('name')->map(fn ($n) => strtolower(trim($n)))->toArray();
+        $categories = $this->importRepository->allCategories()->keyBy(fn ($c) => strtolower(trim($c->name)));
+        $existingNames = $this->importRepository->existingContactNames()->map(fn ($n) => strtolower(trim($n)))->toArray();
 
         $valid = [];
         $invalid = [];
@@ -289,7 +293,7 @@ class ContactImportService
             $data['code'] = $prefix . '-' . Str::upper(Str::random(6));
             $data['status'] = Contact::STATUS_ACTIVE;
 
-            Contact::create($data);
+            $this->importRepository->createContact($data);
             $created++;
         }
 
@@ -374,7 +378,7 @@ class ContactImportService
             $sheet->getStyle($col . '3')->getFont()->getColor()->setRGB('FFFFFF');
         }
 
-        $categoryNames = ContactCategory::orderBy('name')->pluck('name')->all();
+        $categoryNames = $this->importRepository->categoryNamesOrdered();
         $categoryAccepted = empty($categoryNames)
             ? 'Harus terdaftar di sistem'
             : implode(' / ', $categoryNames);
@@ -440,7 +444,7 @@ class ContactImportService
                 ->setFormatCode(NumberFormat::FORMAT_TEXT);
         }
 
-        $categoryExample = ContactCategory::orderBy('name')->value('name') ?? 'PLG-Umum';
+        $categoryExample = $this->importRepository->firstCategoryName() ?? 'PLG-Umum';
         $example = [
             'PT. Contoh Sejahtera', 'Pemasok', 'Non PKP', '', '',
             $categoryExample, '30', '+628123456789', 'contoh@email.com',

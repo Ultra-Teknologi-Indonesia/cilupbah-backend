@@ -6,28 +6,50 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Inventory\Models\StockReplenishmentRequest;
-use Modules\Inventory\Models\StockReplenishmentRequestItem;
+use Modules\Inventory\Repositories\StockReplenishmentRepository;
 use Modules\Warehouse\Models\Location;
 
 class StockReplenishmentService
 {
-    public function __construct(private InventoryService $inventoryService)
+    public function __construct(
+        private InventoryService $inventoryService,
+        private StockReplenishmentRepository $repository,
+    ) {
+    }
+
+    public function list(?string $status, int $perPage = 10): \Illuminate\Pagination\LengthAwarePaginator
     {
+        return $this->repository->paginate($status, $perPage);
+    }
+
+    public function pendingCount(): int
+    {
+        return $this->repository->pendingCount();
+    }
+
+    public function findDetail(string $id): ?StockReplenishmentRequest
+    {
+        return $this->repository->findDetail($id);
+    }
+
+    public function findDetailOrFail(string $id): StockReplenishmentRequest
+    {
+        return $this->repository->findDetailOrFail($id);
     }
 
     public function create(array $payload): StockReplenishmentRequest
     {
         return DB::transaction(function () use ($payload) {
             $fromId = $payload['from_location_id']
-                ?? Location::where('location_code', Location::SYSTEM_PUSAT_CODE)->value('id');
+                ?? $this->repository->resolveLocationId(Location::SYSTEM_PUSAT_CODE);
             $toId = $payload['to_location_id']
-                ?? Location::where('location_code', Location::SYSTEM_KECIL_CODE)->value('id');
+                ?? $this->repository->resolveLocationId(Location::SYSTEM_KECIL_CODE);
 
             if (! $fromId || ! $toId) {
                 throw new \RuntimeException('Gudang Pusat / Gudang Kecil belum di-seed.');
             }
 
-            $request = StockReplenishmentRequest::create([
+            $request = $this->repository->create([
                 'requested_by_user_id' => $payload['requested_by_user_id'] ?? (Auth::id() ?: null),
                 'from_location_id'     => $fromId,
                 'to_location_id'       => $toId,
@@ -37,7 +59,7 @@ class StockReplenishmentService
             ]);
 
             foreach (($payload['items'] ?? []) as $item) {
-                StockReplenishmentRequestItem::create([
+                $this->repository->createItem([
                     'request_id' => $request->id,
                     'item_id'    => $item['item_id'],
                     'sku'        => $item['sku'],
@@ -53,7 +75,7 @@ class StockReplenishmentService
     public function accept(string $id, ?string $assigneeUserId = null, ?string $note = null): StockReplenishmentRequest
     {
         return DB::transaction(function () use ($id, $assigneeUserId, $note) {
-            $request = StockReplenishmentRequest::with('items')->findOrFail($id);
+            $request = $this->repository->findWithItems($id);
 
             if ($request->status !== StockReplenishmentRequest::STATUS_PENDING) {
                 throw new \RuntimeException('Permintaan sudah tidak dalam status pending.');
@@ -109,7 +131,7 @@ class StockReplenishmentService
 
     public function reject(string $id, ?string $reason = null): StockReplenishmentRequest
     {
-        $request = StockReplenishmentRequest::findOrFail($id);
+        $request = $this->repository->findOrFail($id);
 
         if ($request->status !== StockReplenishmentRequest::STATUS_PENDING) {
             throw new \RuntimeException('Permintaan sudah tidak dalam status pending.');
@@ -186,7 +208,7 @@ class StockReplenishmentService
 
     private function lockPendingRequest(string $id): StockReplenishmentRequest
     {
-        $request = StockReplenishmentRequest::lockForUpdate()->findOrFail($id);
+        $request = $this->repository->lockForUpdate($id);
 
         if ($request->status !== StockReplenishmentRequest::STATUS_PENDING) {
             throw new \RuntimeException('Item hanya dapat diubah selagi permintaan masih menunggu persetujuan.');
@@ -197,7 +219,7 @@ class StockReplenishmentService
 
     public function markDone(string $id): StockReplenishmentRequest
     {
-        $request = StockReplenishmentRequest::findOrFail($id);
+        $request = $this->repository->findOrFail($id);
 
         $request->update([
             'status'  => StockReplenishmentRequest::STATUS_DONE,
@@ -209,26 +231,14 @@ class StockReplenishmentService
 
     public function autoDetect(bool $dryRun = false): array
     {
-        $kecilId = DB::table('locations')
-            ->where('location_code', Location::SYSTEM_KECIL_CODE)
-            ->value('id');
-        $pusatId = DB::table('locations')
-            ->where('location_code', Location::SYSTEM_PUSAT_CODE)
-            ->value('id');
+        $kecilId = $this->repository->resolveLocationId(Location::SYSTEM_KECIL_CODE);
+        $pusatId = $this->repository->resolveLocationId(Location::SYSTEM_PUSAT_CODE);
 
         if (! $kecilId || ! $pusatId) {
             return ['shortages' => [], 'request' => null, 'skipped' => true, 'reason' => 'Gudang Kecil / Gudang Pusat belum di-seed'];
         }
 
-        $demand = DB::table('sales_order_items as i')
-            ->join('sales_orders as o', 'o.id', '=', 'i.order_id')
-            ->where('o.status', 'reserved')
-            ->where('o.location_id', $kecilId)
-            ->whereNotNull('i.item_id')
-            ->groupBy('i.item_id', 'i.sku')
-            ->select('i.item_id', 'i.sku', DB::raw('SUM(i.qty_in_base) as needed'))
-            ->get()
-            ->keyBy('item_id');
+        $demand = $this->repository->demandForLocation($kecilId);
 
         if ($demand->isEmpty()) {
             return ['shortages' => [], 'request' => null, 'skipped' => false];
@@ -236,26 +246,9 @@ class StockReplenishmentService
 
         $itemIds = $demand->keys()->all();
 
-        $availability = DB::table('inventories')
-            ->whereIn('item_id', $itemIds)
-            ->where('location_id', $kecilId)
-            ->groupBy('item_id')
-            ->select('item_id', DB::raw('COALESCE(SUM(on_hand),0) as oh'), DB::raw('COALESCE(SUM(reserved),0) as rv'))
-            ->get()
-            ->keyBy('item_id');
+        $availability = $this->repository->availabilityForItems($itemIds, $kecilId);
 
-        $inFlight = DB::table('stock_replenishment_request_items as ri')
-            ->join('stock_replenishment_requests as r', 'r.id', '=', 'ri.request_id')
-            ->whereIn('r.status', [
-                StockReplenishmentRequest::STATUS_PENDING,
-                StockReplenishmentRequest::STATUS_ACCEPTED,
-            ])
-            ->where('r.to_location_id', $kecilId)
-            ->whereIn('ri.item_id', $itemIds)
-            ->groupBy('ri.item_id')
-            ->select('ri.item_id', DB::raw('SUM(ri.qty) as inflight'))
-            ->get()
-            ->keyBy('item_id');
+        $inFlight = $this->repository->inFlightForItems($itemIds, $kecilId);
 
         $shortages = [];
         foreach ($demand as $itemId => $row) {
@@ -288,7 +281,7 @@ class StockReplenishmentService
         }
 
         $request = DB::transaction(function () use ($pusatId, $kecilId, $shortages) {
-            $req = StockReplenishmentRequest::create([
+            $req = $this->repository->create([
                 'requested_by_user_id' => null,
                 'from_location_id'     => $pusatId,
                 'to_location_id'       => $kecilId,
@@ -298,7 +291,7 @@ class StockReplenishmentService
             ]);
 
             foreach ($shortages as $s) {
-                StockReplenishmentRequestItem::create([
+                $this->repository->createItem([
                     'request_id' => $req->id,
                     'item_id'    => $s['item_id'],
                     'sku'        => $s['sku'],

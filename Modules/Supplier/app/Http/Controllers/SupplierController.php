@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Modules\Supplier\Services\SupplierService;
 use Modules\Supplier\Http\Requests\StoreSupplierRequest;
 use Modules\Supplier\Http\Requests\UpdateSupplierRequest;
+use Modules\Supplier\Http\Resources\SupplierResource;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Suppliers', description: 'API Endpoints for Suppliers')]
@@ -33,7 +34,7 @@ class SupplierController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $suppliers = $this->supplierService->getAllPaginated($limit);
 
         return $this->successPaginatedResponse($suppliers, 'Daftar supplier berhasil diambil');
@@ -69,7 +70,7 @@ class SupplierController extends Controller
     {
         try {
             $supplier = $this->supplierService->create($request->validated());
-            return $this->successResponse($supplier, 'Supplier berhasil dibuat', 201);
+            return $this->successResponse(new SupplierResource($supplier), 'Supplier berhasil dibuat', 201);
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 500);
         }
@@ -96,7 +97,7 @@ class SupplierController extends Controller
             return $this->errorResponse('Supplier tidak ditemukan', 404);
         }
 
-        return $this->successResponse($supplier, 'Detail supplier berhasil diambil');
+        return $this->successResponse(new SupplierResource($supplier), 'Detail supplier berhasil diambil');
     }
 
     #[OA\Put(
@@ -124,7 +125,7 @@ class SupplierController extends Controller
     {
         try {
             $supplier = $this->supplierService->update($id, $request->validated());
-            return $this->successResponse($supplier, 'Supplier berhasil diupdate');
+            return $this->successResponse(new SupplierResource($supplier), 'Supplier berhasil diupdate');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 404);
         }

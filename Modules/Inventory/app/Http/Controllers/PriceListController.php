@@ -6,23 +6,27 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Modules\Product\Models\ProductVariant;
-use Modules\Product\Models\ProductWholesalePrice;
+use Modules\Inventory\Http\Resources\PriceListResource;
+use Modules\Inventory\Services\PriceListService;
 
 class PriceListController extends Controller
 {
     use ApiResponse;
 
+    public function __construct(private PriceListService $service)
+    {
+    }
+
     public function index(Request $request): JsonResponse
     {
-        $query = ProductVariant::select(['id', 'product_id', 'sku', 'buy_price', 'sell_price'])
-            ->with(['product:id,name', 'wholesalePrices'])
-            ->when($request->search, fn ($q, $v) => $q->where('sku', 'ilike', "%{$v}%"))
-            ->when($request->product_id, fn ($q, $v) => $q->where('product_id', $v))
-            ->whereHas('product', fn ($q) => $q->whereNull('deleted_at'))
-            ->orderBy('sku');
+        $perPage = (int) $request->input('per_page', 20);
+        $paginator = $this->service->list($request->query('product_id'), $perPage);
 
-        return $this->successPaginatedResponse($query->paginate($request->input('limit', 20)));
+        $paginator->getCollection()->transform(
+            fn ($variant) => (new PriceListResource($variant))->resolve($request),
+        );
+
+        return $this->successPaginatedResponse($paginator);
     }
 
     public function update(Request $request): JsonResponse
@@ -39,31 +43,7 @@ class PriceListController extends Controller
             'items.*.wholesale_prices.*.price' => 'required_with:items.*.wholesale_prices|numeric|min:0',
         ]);
 
-        $updated = 0;
-
-        foreach ($request->input('items') as $item) {
-            $variant = ProductVariant::find($item['variant_id']);
-            if (! $variant) {
-                continue;
-            }
-
-            if (isset($item['sell_price'])) {
-                $variant->sell_price = $item['sell_price'];
-            }
-            if (isset($item['buy_price'])) {
-                $variant->buy_price = $item['buy_price'];
-            }
-            $variant->save();
-
-            if (isset($item['wholesale_prices'])) {
-                ProductWholesalePrice::where('variant_id', $variant->id)->delete();
-                foreach ($item['wholesale_prices'] as $wp) {
-                    ProductWholesalePrice::create(array_merge($wp, ['variant_id' => $variant->id]));
-                }
-            }
-
-            $updated++;
-        }
+        $updated = $this->service->updatePrices($request->input('items'));
 
         return $this->successResponse(['updated' => $updated], 'Price list updated.');
     }
@@ -75,11 +55,8 @@ class PriceListController extends Controller
             'ids.*' => 'string',
         ]);
 
-        $variants = ProductVariant::select(['id', 'product_id', 'sku', 'buy_price', 'sell_price'])
-            ->with(['product:id,name', 'wholesalePrices'])
-            ->whereIn('id', $request->input('ids'))
-            ->get();
+        $variants = $this->service->pricesByIds($request->input('ids'));
 
-        return $this->successResponse($variants);
+        return $this->successResponse(PriceListResource::collection($variants));
     }
 }

@@ -21,7 +21,7 @@ class ProductVariantRepository
             )
             ->allowedSorts('sku', 'sell_price', 'created_at')
             ->defaultSort('sku')
-            ->paginate(request('per_page', 12))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 

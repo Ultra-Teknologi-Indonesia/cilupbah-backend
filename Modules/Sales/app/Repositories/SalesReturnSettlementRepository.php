@@ -20,7 +20,8 @@ class SalesReturnSettlementRepository
             )
             ->allowedSorts('settlement_number', 'total_amount', 'created_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?SalesReturnSettlement
@@ -46,7 +47,8 @@ class SalesReturnSettlementRepository
                 AllowedFilter::exact('settlement_id'),
             )
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function findInvoiceById(string $id): ?SalesReturnSettlementInvoice
@@ -67,7 +69,8 @@ class SalesReturnSettlementRepository
                 AllowedFilter::exact('settlement_id'),
             )
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function findRefundById(string $id): ?SalesReturnSettlementRefund

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Supplier\Services\SalesmanService;
+use Modules\Supplier\Http\Resources\SalesmanResource;
 
 class SalesmanController extends Controller
 {
@@ -15,7 +16,7 @@ class SalesmanController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->input('limit', 15);
+        $limit = $request->input('per_page', 20);
         $data = $this->salesmanService->getAllPaginated($limit);
         return $this->successPaginatedResponse($data, 'success');
     }
@@ -34,7 +35,7 @@ class SalesmanController extends Controller
                 'phone.regex' => 'Format Telepon tidak valid. Gunakan format internasional, contoh: +628123456789.',
             ]);
             $salesman = $this->salesmanService->create($request->all());
-            return $this->successResponse($salesman, 'Salesman berhasil ditambahkan');
+            return $this->successResponse(new SalesmanResource($salesman), 'Salesman berhasil ditambahkan');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -46,7 +47,7 @@ class SalesmanController extends Controller
         if (! $salesman) {
             return $this->errorResponse('Salesman tidak ditemukan.', 404);
         }
-        return $this->successResponse($salesman, 'success');
+        return $this->successResponse(new SalesmanResource($salesman), 'success');
     }
 
     public function update(string $id, Request $request): JsonResponse
@@ -63,7 +64,7 @@ class SalesmanController extends Controller
                 'phone.regex' => 'Format Telepon tidak valid. Gunakan format internasional, contoh: +628123456789.',
             ]);
             $salesman = $this->salesmanService->update($id, $request->all());
-            return $this->successResponse($salesman, 'Salesman berhasil diperbarui');
+            return $this->successResponse(new SalesmanResource($salesman), 'Salesman berhasil diperbarui');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -83,6 +84,6 @@ class SalesmanController extends Controller
     public function all(): JsonResponse
     {
         $data = $this->salesmanService->getAll();
-        return $this->successResponse($data, 'success');
+        return $this->successResponse(SalesmanResource::collection($data), 'success');
     }
 }

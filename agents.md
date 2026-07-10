@@ -61,18 +61,18 @@ Dokumen ini adalah panduan standar penulisan kode untuk proyek Laravel (`cilupba
                 'status'
             )
             ->allowedSorts('created_at', 'name')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
     ```
 
-## 6. Pagination Standar (10 Per Page)
+## 6. Pagination Standar (20 Per Page)
 
-- Semua daftar yang menggunakan _pagination_ **WAJIB** memiliki standar _default_ **10 item per halaman** (bukan bawaan 15).
+- Semua daftar yang menggunakan _pagination_ **WAJIB** memiliki standar _default_ **20 item per halaman** (bukan bawaan 15).
 - Parameter ini harus mengambil input dinamis dari URL `per_page` jika diberikan oleh frontend.
 - **Implementasi yang diwajibkan:**
     ```php
-    ->paginate(request('per_page', 10))
+    ->paginate(request('per_page', 20))
     ->appends(request()->query());
     ```
     Pemanggilan `appends(request()->query())` sangat penting agar parameter Spatie dan `?search=` tidak hilang saat berpindah halaman _pagination_.

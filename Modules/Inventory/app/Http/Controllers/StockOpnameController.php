@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Modules\Inventory\Services\StockOpnameService;
 use Modules\Inventory\Http\Requests\StoreStockOpnameRequest;
 use Modules\Inventory\Http\Requests\CountStockOpnameItemRequest;
+use Modules\Inventory\Http\Resources\StockOpnameResource;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Stock Opname', description: 'API Endpoints for Stock Opname (Physical Inventory Count)')]
@@ -118,7 +119,7 @@ class StockOpnameController extends Controller
             return $this->errorResponse('Dokumen stock opname tidak ditemukan.', 404);
         }
 
-        return $this->successResponse($opname, 'Detail stock opname berhasil diambil.');
+        return $this->successResponse(new StockOpnameResource($opname), 'Detail stock opname berhasil diambil.');
     }
 
     #[OA\Post(
@@ -152,7 +153,7 @@ class StockOpnameController extends Controller
 
             $opname = $this->opnameService->create($data);
 
-            return $this->successResponse($opname, 'Stock opname berhasil dibuat.', 201);
+            return $this->successResponse(new StockOpnameResource($opname), 'Stock opname berhasil dibuat.', 201);
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -178,7 +179,7 @@ class StockOpnameController extends Controller
             $processBy = $request->user()->name ?? $request->user()->email;
             $opname = $this->opnameService->startProcess($id, $processBy);
 
-            return $this->successResponse($opname, 'Stock opname mulai diproses.');
+            return $this->successResponse(new StockOpnameResource($opname), 'Stock opname mulai diproses.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -247,7 +248,7 @@ class StockOpnameController extends Controller
 
             $opname = $this->opnameService->countItem($id, $itemId, $data);
 
-            return $this->successResponse($opname, 'Item berhasil dihitung.');
+            return $this->successResponse(new StockOpnameResource($opname), 'Item berhasil dihitung.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -273,7 +274,7 @@ class StockOpnameController extends Controller
             $finalizedBy = $request->user()->name ?? $request->user()->email;
             $opname = $this->opnameService->finalize($id, $finalizedBy);
 
-            return $this->successResponse($opname, 'Stock opname di-finalize, penyesuaian stok sedang diproses.', 202);
+            return $this->successResponse(new StockOpnameResource($opname), 'Stock opname di-finalize, penyesuaian stok sedang diproses.', 202);
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -298,7 +299,7 @@ class StockOpnameController extends Controller
         try {
             $opname = $this->opnameService->cancel($id);
 
-            return $this->successResponse($opname, 'Stock opname berhasil di-cancel.');
+            return $this->successResponse(new StockOpnameResource($opname), 'Stock opname berhasil di-cancel.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -349,7 +350,7 @@ class StockOpnameController extends Controller
             $printedBy = $request->user()->name ?? $request->user()->email;
             $opname = $this->opnameService->markPrinted($id, $printedBy);
 
-            return $this->successResponse($opname, 'Stock opname ditandai sudah dicetak.');
+            return $this->successResponse(new StockOpnameResource($opname), 'Stock opname ditandai sudah dicetak.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }

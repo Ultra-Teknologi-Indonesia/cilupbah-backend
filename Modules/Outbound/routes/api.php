@@ -14,17 +14,17 @@ use Modules\Outbound\Http\Controllers\WmsController;
 Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
 
     Route::post('orders/get-by-no', [OutboundFulfillmentController::class, 'getOrderByNo'])->name('outbound.orders.get-by-no');
-    Route::post('orders/move-to-ready-to-pick', [OutboundFulfillmentController::class, 'moveToReadyToPick'])->name('outbound.orders.move-to-ready-to-pick');
-    Route::post('orders/move-to-ready-to-process', [OutboundFulfillmentController::class, 'moveToReadyToProcess'])->name('outbound.orders.move-to-ready-to-process');
-    Route::post('orders/change-location', [OutboundFulfillmentController::class, 'changeLocation'])->name('outbound.orders.change-location');
-    Route::post('orders/request-cancel', [OutboundFulfillmentController::class, 'requestCancelOrder'])->name('outbound.orders.request-cancel');
-    Route::post('orders/ready-to-ship', [OutboundFulfillmentController::class, 'readyToShip'])->name('outbound.orders.ready-to-ship');
-    Route::post('orders/retry-pickup', [OutboundFulfillmentController::class, 'retryPickup'])->name('outbound.orders.retry-pickup');
-    Route::post('orders/ad-hoc-pick', [AdHocPickController::class, 'complete'])->name('outbound.orders.ad-hoc-pick');
-    Route::post('orders/ad-hoc-pick/scan', [AdHocPickController::class, 'scan'])->name('outbound.orders.ad-hoc-pick.scan');
+    Route::post('orders/move-to-ready-to-pick', [OutboundFulfillmentController::class, 'moveToReadyToPick'])->name('outbound.orders.move-to-ready-to-pick')->middleware('role_or_permission:owner|edit-pesanan');
+    Route::post('orders/move-to-ready-to-process', [OutboundFulfillmentController::class, 'moveToReadyToProcess'])->name('outbound.orders.move-to-ready-to-process')->middleware('role_or_permission:owner|edit-pesanan');
+    Route::post('orders/change-location', [OutboundFulfillmentController::class, 'changeLocation'])->name('outbound.orders.change-location')->middleware('role_or_permission:owner|edit-pesanan');
+    Route::post('orders/request-cancel', [OutboundFulfillmentController::class, 'requestCancelOrder'])->name('outbound.orders.request-cancel')->middleware('role_or_permission:owner|edit-pesanan');
+    Route::post('orders/ready-to-ship', [OutboundFulfillmentController::class, 'readyToShip'])->name('outbound.orders.ready-to-ship')->middleware('role_or_permission:owner|edit-pesanan');
+    Route::post('orders/retry-pickup', [OutboundFulfillmentController::class, 'retryPickup'])->name('outbound.orders.retry-pickup')->middleware('role_or_permission:owner|edit-pesanan');
+    Route::post('orders/ad-hoc-pick', [AdHocPickController::class, 'complete'])->name('outbound.orders.ad-hoc-pick')->middleware('role_or_permission:owner|edit-picking');
+    Route::post('orders/ad-hoc-pick/scan', [AdHocPickController::class, 'scan'])->name('outbound.orders.ad-hoc-pick.scan')->middleware('role_or_permission:owner|edit-picking');
     Route::get('pickers', [OutboundFulfillmentController::class, 'pickers'])->name('outbound.pickers.index');
     Route::get('orders/{stage}', [OutboundFulfillmentController::class, 'ordersByStage'])->name('outbound.orders.stage');
-    Route::delete('orders/{orderId}', [OutboundFulfillmentController::class, 'destroyOrder'])->name('outbound.orders.destroy');
+    Route::delete('orders/{orderId}', [OutboundFulfillmentController::class, 'destroyOrder'])->name('outbound.orders.destroy')->middleware('role_or_permission:owner|delete-pesanan');
 
     Route::get('picklists/on-picking', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('on-picking', $request))->name('outbound.picklists.on-picking');
     Route::get('packlists/on-packing', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('on-packing', $request))->name('outbound.packlists.on-packing');
@@ -108,5 +108,5 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
 
     Route::get('wms/employee/{identifier}', [WmsController::class, 'employee'])->name('outbound.wms.employee');
     Route::get('wms/default-bin/{locationId}', [WmsController::class, 'defaultBin'])->name('outbound.wms.default-bin');
-    Route::put('wms/default-bin/{locationId}', [WmsController::class, 'setDefaultBin'])->name('outbound.wms.set-default-bin');
+    Route::put('wms/default-bin/{locationId}', [WmsController::class, 'setDefaultBin'])->name('outbound.wms.set-default-bin')->middleware('role_or_permission:owner|edit-manajemen-rak');
 });

@@ -6,9 +6,9 @@ use App\Http\Controllers\Controller;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Services\StockAdjustmentService;
 use Modules\Inventory\Http\Requests\StoreStockAdjustmentRequest;
+use Modules\Inventory\Http\Resources\StockAdjustmentResource;
 use OpenApi\Attributes as OA;
 use Throwable;
 
@@ -67,7 +67,7 @@ class StockAdjustmentController extends Controller
             return $this->errorResponse('Dokumen adjustment tidak ditemukan.', 404);
         }
 
-        return $this->successResponse($adjustment, 'Detail adjustment berhasil diambil.');
+        return $this->successResponse(new StockAdjustmentResource($adjustment), 'Detail adjustment berhasil diambil.');
     }
 
     #[OA\Get(
@@ -129,7 +129,7 @@ class StockAdjustmentController extends Controller
 
             $adjustment = $this->adjustmentService->create($data);
 
-            return $this->successResponse($adjustment, 'Dokumen adjustment berhasil dibuat.', 201);
+            return $this->successResponse(new StockAdjustmentResource($adjustment), 'Dokumen adjustment berhasil dibuat.', 201);
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -175,11 +175,7 @@ class StockAdjustmentController extends Controller
     public function pdf(string $id)
     {
         try {
-            $adjustment = StockAdjustment::with([
-                'items.product.product',
-                'items.bin',
-                'location',
-            ])->find($id);
+            $adjustment = $this->adjustmentService->getForPdf($id);
 
             if (!$adjustment) {
                 return $this->errorResponse('Dokumen adjustment tidak ditemukan.', 404);
@@ -225,15 +221,7 @@ class StockAdjustmentController extends Controller
         try {
             $ids = $validated['ids'];
 
-            $adjustments = StockAdjustment::with([
-                'items.product.product',
-                'items.bin',
-                'location',
-            ])
-                ->whereIn('id', $ids)
-                ->orderBy('transaction_date')
-                ->orderBy('adjustment_no')
-                ->get();
+            $adjustments = $this->adjustmentService->getManyForPdf($ids);
 
             if ($adjustments->count() !== count($ids)) {
                 $foundIds = $adjustments->pluck('id')->all();

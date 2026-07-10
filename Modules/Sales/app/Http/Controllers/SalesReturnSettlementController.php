@@ -21,7 +21,7 @@ class SalesReturnSettlementController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Return Settlements'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
             new OA\Parameter(name: 'filter[status]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
@@ -30,7 +30,7 @@ class SalesReturnSettlementController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $settlements = $this->service->getAllPaginated($limit);
 
         return $this->successPaginatedResponse($settlements, 'Daftar return settlement berhasil diambil');
@@ -153,7 +153,7 @@ class SalesReturnSettlementController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Return Settlements'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
             new OA\Parameter(name: 'filter[settlement_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
@@ -162,7 +162,7 @@ class SalesReturnSettlementController extends Controller
     )]
     public function invoiceIndex(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $invoices = $this->service->getInvoices($limit);
 
         return $this->successPaginatedResponse($invoices, 'Daftar settlement invoice berhasil diambil');
@@ -228,7 +228,7 @@ class SalesReturnSettlementController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Return Settlements'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
             new OA\Parameter(name: 'filter[settlement_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
@@ -237,7 +237,7 @@ class SalesReturnSettlementController extends Controller
     )]
     public function refundIndex(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $refunds = $this->service->getRefunds($limit);
 
         return $this->successPaginatedResponse($refunds, 'Daftar refund berhasil diambil');

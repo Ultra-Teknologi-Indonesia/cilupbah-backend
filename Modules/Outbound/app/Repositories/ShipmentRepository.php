@@ -38,7 +38,6 @@ class ShipmentRepository
                 AllowedFilter::exact('courier_code'),
                 AllowedFilter::exact('courier_name'),
                 AllowedFilter::exact('shipment_type'),
-                AllowedFilter::partial('q', 'shipment_no'),
                 AllowedFilter::callback('date_from', function ($query, $value) {
                     if ($value) $query->whereDate('shipment_date', '>=', $value);
                 }),
@@ -46,9 +45,11 @@ class ShipmentRepository
                     if ($value) $query->whereDate('shipment_date', '<=', $value);
                 }),
             )
+            ->allowedSearch('shipment_no')
             ->allowedSorts('created_at', 'shipment_no', 'shipment_date')
             ->defaultSort('-shipment_date')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function getByCourier(string $courierCode, int $limit = 10)
@@ -61,11 +62,12 @@ class ShipmentRepository
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('shipment_type'),
-                AllowedFilter::partial('q', 'shipment_no'),
             )
+            ->allowedSearch('shipment_no')
             ->allowedSorts('created_at', 'shipment_no', 'shipment_date')
             ->defaultSort('-shipment_date')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function getCompleted(string $type, array $courierCodes = [], int $limit = 10)
@@ -86,11 +88,12 @@ class ShipmentRepository
             ->withCount('orders')
             ->allowedFilters(
                 AllowedFilter::exact('status'),
-                AllowedFilter::partial('q', 'shipment_no'),
             )
+            ->allowedSearch('shipment_no')
             ->allowedSorts('created_at', 'shipment_date', 'handed_over_at')
             ->defaultSort('-handed_over_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function getByType(string $type, int $limit = 10)
@@ -103,11 +106,12 @@ class ShipmentRepository
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('courier_code'),
-                AllowedFilter::partial('q', 'shipment_no'),
             )
+            ->allowedSearch('shipment_no')
             ->allowedSorts('created_at', 'shipment_no', 'shipment_date')
             ->defaultSort('-shipment_date')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function getOrdersPaginated(string $shipmentId, int $limit = 20)
@@ -120,13 +124,22 @@ class ShipmentRepository
                 'packlist:id,packlist_no',
             ]);
 
-        if ($q = request('filter.q') ?? request('q')) {
-            request()->query->set('search', $q);
-            $query->allowedSearch('sales_orders.salesorder_no', 'sales_orders.channel_order_no', 'sales_orders.tracking_number');
-        }
-
         return QueryBuilder::for($query)
-            ->paginate($limit);
+            ->allowedSearch('sales_orders.salesorder_no', 'sales_orders.channel_order_no', 'sales_orders.tracking_number')
+            ->paginate($limit)
+            ->appends(request()->query());
+    }
+
+    public function getForBulkManifestPdf(array $orderIds): \Illuminate\Support\Collection
+    {
+        return Shipment::with([
+                'orders.order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,shipping_type,tracking_number,source,channel_order_no,order_weight_gram',
+                'orders.packlist:id,packlist_no',
+                'location:id,location_name,location_code',
+            ])
+            ->whereHas('orders', fn ($q) => $q->whereIn('order_id', $orderIds))
+            ->orderBy('shipment_date')
+            ->get();
     }
 
     public function findById(string $id): ?Shipment

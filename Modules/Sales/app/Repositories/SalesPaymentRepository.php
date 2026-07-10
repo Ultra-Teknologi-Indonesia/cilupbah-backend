@@ -5,7 +5,6 @@ namespace Modules\Sales\Repositories;
 use Modules\Sales\Models\SalesPayment;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
-use App\Filters\FuzzyFilter;
 
 class SalesPaymentRepository
 {
@@ -15,12 +14,13 @@ class SalesPaymentRepository
             ->with(['invoice:id,invoice_number,order_id,total_amount,paid_amount,status'])
             ->allowedFilters(
                 AllowedFilter::exact('sales_invoice_id'),
-                AllowedFilter::exact('payment_method'),
-                AllowedFilter::custom('search', new FuzzyFilter('payment_number,reference_no'))
+                AllowedFilter::exact('payment_method')
             )
+            ->allowedSearch('payment_number', 'reference_no')
             ->allowedSorts('payment_number', 'payment_date', 'amount', 'created_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?SalesPayment

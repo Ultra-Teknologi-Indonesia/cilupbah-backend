@@ -13,14 +13,15 @@ class StockRevaluationRepository
     {
         return QueryBuilder::for(StockRevaluation::class)
             ->with(['location:id,location_name,location_code'])
+            ->allowedSearch('revaluation_no')
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('location_id'),
-                AllowedFilter::partial('q', 'revaluation_no'),
             )
             ->allowedSorts('created_at', 'revaluation_no', 'approved_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate(request('per_page', $limit))
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?StockRevaluation

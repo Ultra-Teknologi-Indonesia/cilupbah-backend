@@ -8,15 +8,12 @@ use Modules\Outbound\Models\PicklistItem;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Outbound\Models\FulfillmentRemoval;
-use Modules\Inventory\Models\Inventory;
-use Spatie\QueryBuilder\QueryBuilder;
-use Spatie\QueryBuilder\AllowedFilter;
+use Modules\Outbound\Repositories\OutboundFulfillmentRepository;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Services\LazadaOrderService;
-use Modules\Outbound\Support\InstantOrderClassifier;
 
 class OutboundFulfillmentService
 {
@@ -25,6 +22,7 @@ class OutboundFulfillmentService
         protected ShopeeOrderService $shopeeOrderService,
         protected TikTokOrderService $tiktokOrderService,
         protected LazadaOrderService $lazadaOrderService,
+        protected OutboundFulfillmentRepository $fulfillmentRepository,
     ) {}
 
     public function readyToShip(array $orderIds): array
@@ -198,75 +196,12 @@ class OutboundFulfillmentService
             default => throw new \Exception("Stage '{$stage}' tidak dikenal."),
         };
 
-        return QueryBuilder::for($query->with(['items', 'items.product.media', 'items.product.product.media', 'location:id,location_name,location_code']))
-            ->allowedFilters(
-                AllowedFilter::callback('q', function ($query, $value) {
-                    $query->where(function ($q) use ($value) {
-                        $q->where('salesorder_no', 'like', "%{$value}%")
-                            ->orWhere('channel_order_no', 'like', "%{$value}%")
-                            ->orWhere('tracking_number', 'like', "%{$value}%");
-                    });
-                }),
-                AllowedFilter::exact('source'),
-                AllowedFilter::exact('location_id'),
-                AllowedFilter::exact('shipping_provider'),
-                AllowedFilter::exact('channel_shop_id'),
+        return $this->fulfillmentRepository->paginateStage($query, $limit);
+    }
 
-                AllowedFilter::callback('channel_status', function ($query, $value) {
-                    $values = is_array($value) ? $value : explode(',', (string) $value);
-                    $values = array_filter(array_map('trim', $values));
-                    if (! empty($values)) $query->whereIn('channel_status', $values);
-                }),
-
-                AllowedFilter::callback('payment', function ($query, $value) {
-                    $v = strtolower((string) $value);
-                    if ($v === 'cod') $query->where('is_cod', true);
-                    elseif ($v === 'noncod') $query->where(function ($q) { $q->where('is_cod', false)->orWhereNull('is_cod'); });
-                }),
-
-                AllowedFilter::callback('courier_type', function ($query, $value) {
-                    $v = strtolower((string) $value);
-                    $rx = InstantOrderClassifier::REGEX;
-                    if ($v === 'instant') {
-                        $query->where(function ($q) use ($rx) {
-                            $q->whereRaw('shipping_provider ~* ?', [$rx])
-                              ->orWhereRaw('shipping_type ~* ?', [$rx]);
-                        });
-                    } elseif ($v === 'regular') {
-                        $query->where(function ($q) use ($rx) {
-                            $q->where(function ($qq) use ($rx) {
-                                $qq->whereNull('shipping_provider')
-                                   ->orWhereRaw('shipping_provider !~* ?', [$rx]);
-                            })->where(function ($qq) use ($rx) {
-                                $qq->whereNull('shipping_type')
-                                   ->orWhereRaw('shipping_type !~* ?', [$rx]);
-                            });
-                        });
-                    }
-                }),
-
-                AllowedFilter::callback('label_printed', function ($query, $value) {
-                    $v = strtolower((string) $value);
-                    if ($v === 'yes') $query->whereNotNull('shipping_label_prepared_at');
-                    elseif ($v === 'no') $query->whereNull('shipping_label_prepared_at');
-                }),
-
-                AllowedFilter::callback('date_from', function ($query, $value) {
-                    if ($value) $query->whereDate('transaction_date', '>=', $value);
-                }),
-                AllowedFilter::callback('date_to', function ($query, $value) {
-                    if ($value) $query->whereDate('transaction_date', '<=', $value);
-                }),
-
-                AllowedFilter::callback('exclude_transit', function ($query, $value) {
-                    if (in_array(strtolower((string) $value), ['1', 'true', 'yes'], true)) {
-                        $query->whereHas('location', function ($q) { $q->where('is_warehouse', true); });
-                    }
-                }),
-            )
-            ->allowedSorts('transaction_date', 'created_at', 'grand_total')
-            ->defaultSort('-created_at')
-            ->paginate($limit);
+    public function getPickers(?string $locationId, string $role): \Illuminate\Support\Collection
+    {
+        return $this->fulfillmentRepository->getPickers($locationId, $role);
     }
 
     public function changeLocation(string $orderId, string $locationId, string $changedBy): Order

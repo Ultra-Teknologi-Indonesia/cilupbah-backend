@@ -3,12 +3,9 @@
 namespace Modules\Dashboard\Services;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use Illuminate\Support\Facades\DB;
-use Modules\Inventory\Models\Inventory;
+use Modules\Dashboard\Repositories\DashboardRepository;
 use Modules\Inventory\Repositories\MonitorStockRepository;
 use Modules\Outbound\Services\OutboundFulfillmentService;
-use Modules\Sales\Models\SalesOrder;
-use Modules\Sales\Models\SalesReturn;
 use Modules\Sales\Repositories\SalesOrderRepository;
 
 class DashboardService
@@ -25,6 +22,7 @@ class DashboardService
         protected SalesOrderRepository $salesOrderRepository,
         protected MonitorStockRepository $monitorStockRepository,
         protected OutboundFulfillmentService $fulfillmentService,
+        protected DashboardRepository $dashboardRepository,
     ) {}
 
     public function summary(array $filters): array
@@ -33,22 +31,7 @@ class DashboardService
         $dateTo     = $filters['date_to'] ?? null;
         $locationId = $filters['location_id'] ?? null;
 
-        $ordersQuery = SalesOrder::query()
-            ->when($dateFrom, fn ($q) => $q->whereDateFrom($dateFrom))
-            ->when($dateTo, fn ($q) => $q->whereDateTo($dateTo));
-
-        $revenue     = (float) (clone $ordersQuery)->where('is_canceled', false)->sum('grand_total');
-        $ordersTotal = (int) (clone $ordersQuery)->count();
-
-        $ordersByStatus = (clone $ordersQuery)
-            ->select('status', DB::raw('COUNT(*) as total'))
-            ->groupBy('status')
-            ->pluck('total', 'status');
-
-        $ordersByChannel = (clone $ordersQuery)
-            ->select('source', DB::raw('COUNT(*) as total'))
-            ->groupBy('source')
-            ->pluck('total', 'source');
+        $orderAggregates = $this->dashboardRepository->orderAggregates($dateFrom, $dateTo);
 
         $tabCounts = $this->salesOrderRepository->getTabCounts();
 
@@ -56,19 +39,16 @@ class DashboardService
             array_filter(['location_id' => $locationId])
         );
 
-        $stockValue = (float) Inventory::query()
-            ->placed()
-            ->when($locationId, fn ($q) => $q->where('location_id', $locationId))
-            ->sum(DB::raw('on_hand * avg_cost'));
+        $stockValue = $this->dashboardRepository->stockValue($locationId);
 
-        $returnsPending = (int) SalesReturn::query()->unprocessed()->count();
-        $returnsRefund  = (float) SalesReturn::query()->unprocessed()->sum('refund_amount');
+        $returnsPending = $this->dashboardRepository->unprocessedReturnsCount();
+        $returnsRefund  = $this->dashboardRepository->unprocessedReturnsRefund();
 
         return [
-            'revenue'          => $revenue,
-            'orders_total'     => $ordersTotal,
-            'orders_by_status' => $ordersByStatus,
-            'orders_by_channel' => $ordersByChannel,
+            'revenue'          => $orderAggregates['revenue'],
+            'orders_total'     => $orderAggregates['orders_total'],
+            'orders_by_status' => $orderAggregates['orders_by_status'],
+            'orders_by_channel' => $orderAggregates['orders_by_channel'],
             'ready_to_process' => (int) ($tabCounts['ready-to-process'] ?? 0),
             'empty_stock'      => (int) ($tabCounts['empty-stock'] ?? 0),
             'failed_pick'      => (int) ($tabCounts['failed-pick'] ?? 0),

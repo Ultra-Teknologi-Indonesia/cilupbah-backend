@@ -5,7 +5,6 @@ namespace Modules\Supplier\Repositories;
 use Modules\Supplier\Models\Salesman;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
-use App\Filters\FuzzyFilter;
 
 class SalesmanRepository
 {
@@ -14,11 +13,12 @@ class SalesmanRepository
         return QueryBuilder::for(Salesman::class)
             ->allowedFilters(
                 AllowedFilter::exact('status'),
-                AllowedFilter::custom('search', new FuzzyFilter('name,code,email,phone'))
             )
+            ->allowedSearch('name', 'code', 'email', 'phone')
             ->allowedSorts('name', 'code', 'created_at')
             ->defaultSort('name')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?Salesman

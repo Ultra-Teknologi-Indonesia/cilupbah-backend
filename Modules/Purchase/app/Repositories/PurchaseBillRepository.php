@@ -6,7 +6,6 @@ use Modules\Purchase\Models\PurchaseBill;
 use Modules\Purchase\Models\PurchaseBillItem;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
-use App\Filters\FuzzyFilter;
 use Illuminate\Support\Str;
 
 class PurchaseBillRepository
@@ -19,13 +18,14 @@ class PurchaseBillRepository
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('contact_id'),
                 AllowedFilter::exact('location_id'),
-                AllowedFilter::custom('search', new FuzzyFilter('bill_number')),
                 AllowedFilter::scope('date_from', 'whereDateFrom'),
                 AllowedFilter::scope('date_to', 'whereDateTo'),
             )
+            ->allowedSearch('bill_number')
             ->allowedSorts('bill_number', 'bill_date', 'due_date', 'total_amount', 'created_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?PurchaseBill
@@ -68,11 +68,12 @@ class PurchaseBillRepository
             ->with(['contact:id,name,code', 'location:id,location_name'])
             ->allowedFilters(
                 AllowedFilter::exact('contact_id'),
-                AllowedFilter::custom('search', new FuzzyFilter('bill_number'))
             )
+            ->allowedSearch('bill_number')
             ->allowedSorts('bill_date', 'due_date', 'total_amount', 'created_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function getOverdue(int $limit = 10)
@@ -84,7 +85,8 @@ class PurchaseBillRepository
             ->with(['contact:id,name,code', 'location:id,location_name'])
             ->allowedSorts('due_date', 'total_amount', 'created_at')
             ->defaultSort('due_date')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function getForReturn(int $limit = 10)
@@ -95,10 +97,11 @@ class PurchaseBillRepository
             ->select('id', 'bill_number', 'contact_id', 'total_amount', 'bill_date')
             ->allowedFilters(
                 AllowedFilter::exact('contact_id'),
-                AllowedFilter::custom('search', new FuzzyFilter('bill_number'))
             )
+            ->allowedSearch('bill_number')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function generateBillNo(): string

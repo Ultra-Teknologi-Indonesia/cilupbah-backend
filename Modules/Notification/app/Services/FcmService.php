@@ -2,7 +2,7 @@
 
 namespace Modules\Notification\Services;
 
-use Modules\Notification\Models\DeviceToken;
+use Modules\Notification\Repositories\NotificationRepository;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -12,15 +12,16 @@ class FcmService
     private string $projectId;
     private string $credentialsPath;
 
-    public function __construct()
-    {
+    public function __construct(
+        private NotificationRepository $repository
+    ) {
         $this->projectId = config('services.fcm.project_id') ?? '';
         $this->credentialsPath = config('services.fcm.credentials') ?? '';
     }
 
     public function sendToUser(string $userId, string $title, string $body, array $data = []): int
     {
-        $tokens = DeviceToken::where('user_id', $userId)->pluck('fcm_token');
+        $tokens = $this->repository->tokensForUser($userId);
         $sent = 0;
 
         foreach ($tokens as $token) {
@@ -62,7 +63,7 @@ class FcmService
         }
 
         if ($response->status() === 404 || $response->status() === 410) {
-            DeviceToken::where('fcm_token', $fcmToken)->delete();
+            $this->repository->deleteToken($fcmToken);
             Log::info('FCM: Removed stale token', ['token' => substr($fcmToken, 0, 20) . '...']);
         } else {
             Log::warning('FCM: Send failed', [

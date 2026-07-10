@@ -11,6 +11,7 @@ class WarrantyRepository
     public function getPaginated(int $limit = 10): LengthAwarePaginator
     {
         return QueryBuilder::for(Warranty::class)
+            ->allowedSearch('serial_no')
             ->allowedFilters(['status', 'product_variant_id', 'order_id', 'serial_no'])
             ->allowedSorts(['created_at', 'start_date', 'end_date'])
             ->paginate($limit)

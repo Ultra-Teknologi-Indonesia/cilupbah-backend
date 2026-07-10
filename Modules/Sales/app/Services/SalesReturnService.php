@@ -26,43 +26,14 @@ class SalesReturnService
         return $this->returnRepository->getAllPaginated($limit);
     }
 
-    public function getReportPaginated(array $filters, int $limit = 20)
+    public function getReportPaginated(array $filters, int $limit = 10)
     {
-        $q = SalesReturn::query()
-            ->with([
-                'order:id,salesorder_no,channel_order_no,customer_name',
-                'location:id,location_name',
-                'settlement.refunds',
-            ]);
+        return $this->returnRepository->getReportPaginated($filters, $limit);
+    }
 
-        if (! empty($filters['date_from'])) {
-            $q->whereDate('created_at', '>=', $filters['date_from']);
-        }
-        if (! empty($filters['date_to'])) {
-            $q->whereDate('created_at', '<=', $filters['date_to']);
-        }
-        if (! empty($filters['location_id'])) {
-            $q->where('location_id', $filters['location_id']);
-        }
-        if (! empty($filters['channel_shop_id'])) {
-            $q->where('channel_shop_id', $filters['channel_shop_id']);
-        }
-        if (! empty($filters['status'])) {
-            $q->where('status', $filters['status']);
-        }
-        if (! empty($filters['source'])) {
-            $q->where('source', $filters['source']);
-        }
-        if (! empty($filters['reason_category'])) {
-            $q->where('reason_category', $filters['reason_category']);
-        }
-        if (! empty($filters['marketplace_decision'])) {
-            $q->where('marketplace_decision', $filters['marketplace_decision']);
-        }
-
-        return $q->orderByDesc('created_at')
-            ->paginate($limit)
-            ->appends(request()->query());
+    public function getAppeals(SalesReturn $return)
+    {
+        return $this->returnRepository->getAppeals($return);
     }
 
     public function getUnprocessedMarketplace(int $limit = 10)

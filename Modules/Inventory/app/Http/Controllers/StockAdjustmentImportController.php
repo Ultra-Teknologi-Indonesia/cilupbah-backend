@@ -9,6 +9,7 @@ use Modules\Inventory\Models\ImpexActivity;
 use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Inventory\Services\StockAdjustmentImportService;
 use Modules\Inventory\Services\StockAdjustmentService;
+use Modules\Inventory\Http\Resources\StockAdjustmentResource;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -98,7 +99,7 @@ class StockAdjustmentImportController extends Controller
             $this->importService->forgetPreview($request->input('preview_token'));
             $this->activityService->markSuccess($activity);
 
-            return $this->successResponse($adjustment, 'Import penyesuaian stok berhasil diterapkan.');
+            return $this->successResponse(new StockAdjustmentResource($adjustment), 'Import penyesuaian stok berhasil diterapkan.');
         } catch (\Exception $e) {
             $this->activityService->markFailed($activity, $e->getMessage());
 

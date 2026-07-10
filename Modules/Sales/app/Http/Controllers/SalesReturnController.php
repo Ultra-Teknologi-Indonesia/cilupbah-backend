@@ -12,6 +12,7 @@ use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Sales\Exports\ReturnChannelOnlineExport;
 use Modules\Sales\Exports\SalesReturnReportExport;
 use Modules\Sales\Http\Requests\StoreSalesReturnRequest;
+use Modules\Sales\Http\Resources\SalesReturnAppealResource;
 use Modules\Sales\Http\Resources\SalesReturnReportResource;
 use Modules\Sales\Models\SalesReturn;
 use Modules\Sales\Services\SalesReturnChannelActionService;
@@ -33,7 +34,7 @@ class SalesReturnController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Returns'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
             new OA\Parameter(name: 'filter[status]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[source]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
         ],
@@ -43,7 +44,7 @@ class SalesReturnController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $returns = $this->returnService->getAllPaginated($limit);
 
         return $this->successPaginatedResponse($returns, 'Daftar sales return berhasil diambil');
@@ -55,7 +56,7 @@ class SalesReturnController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Returns'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),
@@ -63,7 +64,7 @@ class SalesReturnController extends Controller
     )]
     public function unprocessed(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $returns = $this->returnService->getUnprocessedMarketplace($limit);
 
         return $this->successPaginatedResponse($returns, 'Daftar marketplace return yang belum diproses');
@@ -290,7 +291,10 @@ class SalesReturnController extends Controller
             return $this->errorResponse('Sales return tidak ditemukan', 404);
         }
 
-        return $this->successResponse($return->appeals()->get(), 'Riwayat banding retur berhasil diambil');
+        return $this->successResponse(
+            SalesReturnAppealResource::collection($this->returnService->getAppeals($return)),
+            'Riwayat banding retur berhasil diambil'
+        );
     }
 
     #[OA\Post(
@@ -404,13 +408,13 @@ class SalesReturnController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Returns'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
         ],
         responses: [new OA\Response(response: 200, description: 'Successful operation')]
     )]
     public function unpaid(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $returns = $this->returnService->getUnpaidReturns($limit);
 
         return $this->successPaginatedResponse($returns, 'Daftar return belum dibayar');
@@ -422,14 +426,14 @@ class SalesReturnController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Returns'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
             new OA\Parameter(name: 'filter[condition]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
         ],
         responses: [new OA\Response(response: 200, description: 'Successful operation')]
     )]
     public function allItems(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $items = $this->returnService->getAllReturnItems($limit);
 
         return $this->successPaginatedResponse($items, 'Daftar item return');
@@ -441,13 +445,13 @@ class SalesReturnController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Returns'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
         ],
         responses: [new OA\Response(response: 200, description: 'Successful operation')]
     )]
     public function rejectedItems(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $items = $this->returnService->getRejectedReturnItems($limit);
 
         return $this->successPaginatedResponse($items, 'Daftar item return yang ditolak');
@@ -459,13 +463,13 @@ class SalesReturnController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Returns'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
         ],
         responses: [new OA\Response(response: 200, description: 'Successful operation')]
     )]
     public function resolvedItems(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $items = $this->returnService->getResolvedReturnItems($limit);
 
         return $this->successPaginatedResponse($items, 'Daftar item return yang resolved');
@@ -485,7 +489,7 @@ class SalesReturnController extends Controller
             new OA\Parameter(name: 'source', in: 'query', required: false, schema: new OA\Schema(type: 'string', enum: ['manual', 'marketplace'])),
             new OA\Parameter(name: 'reason_category', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'marketplace_decision', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
         ],
         responses: [new OA\Response(response: 200, description: 'Successful operation')]
     )]
@@ -500,10 +504,10 @@ class SalesReturnController extends Controller
             'source'                => 'nullable|in:manual,marketplace',
             'reason_category'       => ['nullable', 'string', Rule::in(SalesReturn::REASON_CATEGORIES)],
             'marketplace_decision'  => ['nullable', 'string', Rule::in(SalesReturn::MP_DECISIONS)],
-            'limit'                 => 'nullable|integer|min:1|max:200',
+            'per_page'              => 'nullable|integer|min:1|max:200',
         ]);
 
-        $limit = (int) ($validated['limit'] ?? 20);
+        $limit = (int) ($validated['per_page'] ?? 10);
         $rows = $this->returnService->getReportPaginated($validated, $limit);
 
         return $this->successPaginatedResponse(

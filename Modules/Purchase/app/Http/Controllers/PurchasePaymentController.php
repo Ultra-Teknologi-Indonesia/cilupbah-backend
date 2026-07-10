@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Purchase\Services\PurchasePaymentService;
 use Modules\Purchase\Http\Requests\StorePurchasePaymentRequest;
+use Modules\Purchase\Http\Resources\PurchasePaymentResource;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Purchase Payments', description: 'API Endpoints for Purchase Bill Payments')]
@@ -30,7 +31,7 @@ class PurchasePaymentController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         return $this->successPaginatedResponse($this->paymentService->getAllPaginated($limit), 'Daftar payment berhasil diambil');
     }
 
@@ -83,7 +84,7 @@ class PurchasePaymentController extends Controller
         if (! $payment) {
             return $this->errorResponse('Payment tidak ditemukan', 404);
         }
-        return $this->successResponse($payment, 'Detail payment berhasil diambil');
+        return $this->successResponse(new PurchasePaymentResource($payment), 'Detail payment berhasil diambil');
     }
 
     #[OA\Delete(

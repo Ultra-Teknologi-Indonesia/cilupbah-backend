@@ -7,7 +7,6 @@ use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesInvoiceItem;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
-use App\Filters\FuzzyFilter;
 
 class SalesInvoiceRepository
 {
@@ -18,12 +17,13 @@ class SalesInvoiceRepository
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('location_id'),
-                AllowedFilter::exact('order_id'),
-                AllowedFilter::custom('search', new FuzzyFilter('invoice_number,customer_name'))
+                AllowedFilter::exact('order_id')
             )
+            ->allowedSearch('invoice_number', 'customer_name')
             ->allowedSorts('invoice_number', 'invoice_date', 'due_date', 'total_amount', 'created_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?SalesInvoice
@@ -49,12 +49,13 @@ class SalesInvoiceRepository
             ->whereColumn('paid_amount', '<', 'total_amount')
             ->with(['order:id,salesorder_no', 'location:id,location_name'])
             ->allowedFilters(
-                AllowedFilter::exact('location_id'),
-                AllowedFilter::custom('search', new FuzzyFilter('invoice_number,customer_name'))
+                AllowedFilter::exact('location_id')
             )
+            ->allowedSearch('invoice_number', 'customer_name')
             ->allowedSorts('due_date', 'total_amount', 'created_at')
             ->defaultSort('due_date')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function getOverdue(int $limit = 10)
@@ -64,12 +65,13 @@ class SalesInvoiceRepository
             ->whereIn('status', [SalesInvoice::STATUS_DRAFT, SalesInvoice::STATUS_OPEN])
             ->with(['order:id,salesorder_no', 'location:id,location_name'])
             ->allowedFilters(
-                AllowedFilter::exact('location_id'),
-                AllowedFilter::custom('search', new FuzzyFilter('invoice_number,customer_name'))
+                AllowedFilter::exact('location_id')
             )
+            ->allowedSearch('invoice_number', 'customer_name')
             ->allowedSorts('due_date', 'total_amount')
             ->defaultSort('due_date')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function getSummary()
@@ -96,7 +98,8 @@ class SalesInvoiceRepository
             ->whereNot('status', SalesInvoice::STATUS_CANCELLED)
             ->select('id', 'invoice_number', 'order_id', 'customer_name', 'total_amount', 'paid_amount', 'status')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function generateInvoiceNo(): string

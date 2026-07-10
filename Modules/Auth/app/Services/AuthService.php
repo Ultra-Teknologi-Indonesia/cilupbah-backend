@@ -22,7 +22,7 @@ class AuthService
             return null;
         }
 
-        $user->update(['last_login_at' => now()]);
+        $this->userRepository->update($user, ['last_login_at' => now()]);
 
         if ($request) {
             $clientIp = $request->header('X-Client-IP')
@@ -53,11 +53,22 @@ class AuthService
 
     public function logout(User $user): void
     {
-        $user->currentAccessToken()->delete();
+        $this->userRepository->deleteCurrentToken($user);
     }
 
     public function getProfile(User $user): User
     {
         return $user->load('roles', 'permissions');
+    }
+
+    public function changePassword(User $user, string $currentPassword, string $newPassword): bool
+    {
+        if (! Hash::check($currentPassword, $user->password)) {
+            return false;
+        }
+
+        $this->userRepository->update($user, ['password' => Hash::make($newPassword)]);
+
+        return true;
     }
 }

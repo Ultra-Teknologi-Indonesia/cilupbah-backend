@@ -17,7 +17,8 @@ class SalesSettlementRepository
             )
             ->allowedSorts('settlement_number', 'period_start', 'period_end', 'total_settlement', 'created_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?SalesSettlement

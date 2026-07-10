@@ -19,6 +19,52 @@ class LazadaProductService
         protected LazadaAuthService $authService,
     ) {}
 
+    public function pushProductListing(string $shopId, string $productId): array
+    {
+        $shop = $this->shopRepository->findConnectedByShopId($shopId);
+        if (! $shop) {
+            return ['ok' => false, 'code' => 404, 'message' => 'Toko Lazada tidak ditemukan / terputus'];
+        }
+
+        $product = $this->productRepository->findProductModelWithVariantsAndMedia($productId);
+        if (! $product) {
+            return ['ok' => false, 'code' => 404, 'message' => 'Produk tidak ditemukan'];
+        }
+
+        $issues = app(\Modules\Channel\Services\ChannelListingValidator::class)->validate($product, 'lazada');
+        if (! empty($issues)) {
+            return ['ok' => false, 'code' => 422, 'message' => 'Produk belum siap di-listing ke Lazada', 'errors' => ['issues' => $issues]];
+        }
+
+        $result = app(\Modules\Channel\Adapters\LazadaAdapter::class)->pushProduct($product, $shop);
+
+        if (! ($result['success'] ?? false)) {
+            return ['ok' => false, 'code' => 422, 'message' => $result['message'] ?? 'Gagal push ke Lazada', 'errors' => $result];
+        }
+
+        $externalId = $result['external_product_id'] ?? null;
+
+        $this->productRepository->markProductInReview($product, $shop->id, $externalId);
+
+        return ['ok' => true, 'external_product_id' => $externalId];
+    }
+
+    public function validateListing(string $productId): array
+    {
+        $product = $this->productRepository->findProductModel($productId);
+        if (! $product) {
+            return ['ok' => false, 'code' => 404, 'message' => 'Produk tidak ditemukan'];
+        }
+
+        $issues = app(\Modules\Channel\Services\ChannelListingValidator::class)->validate($product, 'lazada');
+
+        return [
+            'ok' => true,
+            'ready' => empty($issues),
+            'issues' => $issues,
+        ];
+    }
+
     public function fetchProductStatuses(string $shopId): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);

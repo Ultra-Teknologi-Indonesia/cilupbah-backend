@@ -5,6 +5,7 @@ namespace Modules\Outbound\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Outbound\Http\Resources\PacklistResource;
 use Modules\Outbound\Services\PacklistService;
 use Modules\Outbound\Http\Requests\CreatePacklistRequest;
 use Modules\Outbound\Http\Requests\PackItemRequest;
@@ -91,8 +92,10 @@ class PacklistController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->packlistService->getAllPaginated($limit);
+
+        $data->through(fn ($packlist) => new PacklistResource($packlist));
 
         return $this->successResponse($data);
     }
@@ -151,7 +154,7 @@ class PacklistController extends Controller
             return $this->errorResponse('Packlist tidak ditemukan.', 404);
         }
 
-        return $this->successResponse($packlist);
+        return $this->successResponse(new PacklistResource($packlist));
     }
 
     #[OA\Get(
@@ -169,7 +172,7 @@ class PacklistController extends Controller
     )]
     public function items(string $id, Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->packlistService->getItems($id, $limit);
 
         return $this->successResponse($data);

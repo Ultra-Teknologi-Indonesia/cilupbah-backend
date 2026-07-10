@@ -22,7 +22,7 @@ class SalesInvoiceController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Invoices'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
             new OA\Parameter(name: 'filter[status]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[search]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
@@ -33,7 +33,7 @@ class SalesInvoiceController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $invoices = $this->invoiceService->getAllPaginated($limit);
 
         return $this->successPaginatedResponse($invoices, 'Daftar invoice berhasil diambil');
@@ -107,7 +107,7 @@ class SalesInvoiceController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Invoices'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),
@@ -115,7 +115,7 @@ class SalesInvoiceController extends Controller
     )]
     public function unpaid(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $invoices = $this->invoiceService->getUnpaid($limit);
 
         return $this->successPaginatedResponse($invoices, 'Daftar invoice belum lunas');
@@ -127,7 +127,7 @@ class SalesInvoiceController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Invoices'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),
@@ -135,7 +135,7 @@ class SalesInvoiceController extends Controller
     )]
     public function overdue(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $invoices = $this->invoiceService->getOverdue($limit);
 
         return $this->successPaginatedResponse($invoices, 'Daftar invoice jatuh tempo');

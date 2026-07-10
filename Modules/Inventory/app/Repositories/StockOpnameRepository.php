@@ -15,14 +15,15 @@ class StockOpnameRepository
     {
         return QueryBuilder::for(StockOpname::class)
             ->with(['location:id,location_name,location_code', 'zone:id,zone_code,zone_name'])
+            ->allowedSearch('opname_no')
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('location_id'),
-                AllowedFilter::partial('q', 'opname_no'),
             )
             ->allowedSorts('created_at', 'opname_no', 'finalized_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate(request('per_page', $limit))
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?StockOpname
@@ -115,7 +116,8 @@ class StockOpnameRepository
             )
             ->allowedSorts('created_at', 'qty_difference')
             ->defaultSort('created_at')
-            ->paginate($limit);
+            ->paginate(request('per_page', $limit))
+            ->appends(request()->query());
     }
 
     public function getItemsFilteredByRack(string $opnameId, array $rackFilters, int $limit = 10)
@@ -150,7 +152,8 @@ class StockOpnameRepository
         return $query->select('stock_opname_items.*')
             ->allowedSorts('created_at', 'qty_difference')
             ->defaultSort('created_at')
-            ->paginate($limit);
+            ->paginate(request('per_page', $limit))
+            ->appends(request()->query());
     }
 
     public function getBinsByLocation(string $locationId, ?string $zoneId = null): Collection

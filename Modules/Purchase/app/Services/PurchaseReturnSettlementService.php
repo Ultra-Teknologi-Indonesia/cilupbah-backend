@@ -76,7 +76,7 @@ class PurchaseReturnSettlementService
 
     private function recalcSettlementTotal(string $settlementId): void
     {
-        $settlement = PurchaseReturnSettlement::find($settlementId);
+        $settlement = $this->settlementRepository->find($settlementId);
         if (! $settlement) return;
 
         $billTotal = $settlement->bills()->sum('amount');

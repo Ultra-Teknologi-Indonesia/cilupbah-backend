@@ -2,15 +2,35 @@
 
 namespace Modules\IssueTracker\Services;
 
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\IssueTracker\Models\Issue;
 use Modules\IssueTracker\Models\IssueActivity;
 use Modules\IssueTracker\Models\IssueComment;
+use Modules\IssueTracker\Repositories\IssueRepository;
 
 class IssueService
 {
+    public function __construct(protected IssueRepository $repository) {}
+
+    public function getStatusCounts(): array
+    {
+        return $this->repository->getStatusCounts();
+    }
+
+    public function getPaginatedIssues(array $filters): LengthAwarePaginator
+    {
+        return $this->repository->getPaginated($filters);
+    }
+
+    public function getIssuesForExport(?string $status): Collection
+    {
+        return $this->repository->getForExport($status);
+    }
+
     public function createIssue(array $data, array $files = []): Issue
     {
         $issue = Issue::create([

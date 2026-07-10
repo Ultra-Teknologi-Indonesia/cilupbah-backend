@@ -2,6 +2,7 @@
 
 namespace Modules\Product\Repositories;
 
+use Modules\Product\Models\Attribute;
 use Modules\Product\Models\AttributeChannelMapping;
 use Modules\Product\Models\AttributeOption;
 use Modules\Product\Models\Category;
@@ -66,5 +67,44 @@ class CategoryAttributeRepository
             'specifications' => $catAttrs->where('type', 'spec')->map($build)->values(),
             'variant_types' => $catAttrs->where('type', 'sales')->map($build)->values(),
         ];
+    }
+
+    public function createAttribute(string $name, string $type): Attribute
+    {
+        return Attribute::create([
+            'name' => $name,
+            'type' => $type,
+        ]);
+    }
+
+    public function linkAttribute(int $categoryId, int $attributeId): void
+    {
+        CategoryAttribute::create([
+            'category_id' => $categoryId,
+            'attribute_id' => $attributeId,
+            'is_required' => true,
+        ]);
+    }
+
+    public function findLink(int $categoryId, int $attributeId): ?CategoryAttribute
+    {
+        return CategoryAttribute::where('category_id', $categoryId)
+            ->where('attribute_id', $attributeId)
+            ->first();
+    }
+
+    public function deleteLink(CategoryAttribute $link): void
+    {
+        $link->delete();
+    }
+
+    public function attributeStillLinked(int $attributeId): bool
+    {
+        return CategoryAttribute::where('attribute_id', $attributeId)->exists();
+    }
+
+    public function deleteAttribute(int $attributeId): void
+    {
+        Attribute::where('id', $attributeId)->delete();
     }
 }

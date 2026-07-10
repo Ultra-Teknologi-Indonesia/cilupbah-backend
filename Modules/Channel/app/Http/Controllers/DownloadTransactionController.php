@@ -71,14 +71,7 @@ class DownloadTransactionController extends Controller
         })->values()->all();
 
         return $this->successResponse([
-            'transaction' => [
-                'trx_no' => $transaction->trx_no,
-                'progress_percent' => $transaction->progress_percent,
-                'created_date' => $transaction->created_at,
-                'executed_by' => $transaction->executor->email ?? 'system',
-                'state' => $transaction->state,
-                'store_name' => $transaction->channelShop->shop_name ?? null,
-            ],
+            'transaction' => (new DownloadTransactionResource($transaction))->resolve($request),
             'products' => $items,
             'count' => $products->total(),
             'percent' => $transaction->progress_percent,

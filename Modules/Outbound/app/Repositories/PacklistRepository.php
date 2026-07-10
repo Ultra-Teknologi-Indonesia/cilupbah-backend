@@ -21,7 +21,6 @@ class PacklistRepository
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('packer_id'),
                 AllowedFilter::exact('order_id'),
-                AllowedFilter::partial('q', 'packlist_no'),
 
                 AllowedFilter::callback('shipping_provider', function ($query, $value) {
                     $query->whereHas('order', fn ($q) => $q->where('shipping_provider', $value));
@@ -38,9 +37,11 @@ class PacklistRepository
                     elseif ($v === 'no') $query->whereHas('order', fn ($q) => $q->whereNull('shipping_label_prepared_at'));
                 }),
             )
+            ->allowedSearch('packlist_no')
             ->allowedSorts('created_at', 'packlist_no', 'started_at', 'completed_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?Packlist
@@ -100,7 +101,8 @@ class PacklistRepository
             ->with(['product:id,sku,product_id', 'orderItem:id,sku,description'])
             ->allowedSorts('created_at', 'sku')
             ->defaultSort('created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function generatePacklistNo(): string

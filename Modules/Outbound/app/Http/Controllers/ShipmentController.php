@@ -9,7 +9,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Outbound\Exports\ShipmentManifestExport;
-use Modules\Outbound\Models\Shipment;
+use Modules\Outbound\Http\Resources\ShipmentResource;
+use Modules\Outbound\Repositories\ShipmentRepository;
 use Modules\Outbound\Services\ShipmentService;
 use Modules\Outbound\Http\Requests\CreateShipmentRequest;
 use Modules\Outbound\Http\Requests\AddShipmentOrdersRequest;
@@ -44,6 +45,7 @@ class ShipmentController extends Controller
 
     public function __construct(
         protected ShipmentService $shipmentService,
+        protected ShipmentRepository $shipmentRepository,
     ) {}
 
     #[OA\Get(
@@ -66,8 +68,10 @@ class ShipmentController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->shipmentService->getAllPaginated($limit);
+
+        $data->through(fn ($shipment) => new ShipmentResource($shipment));
 
         return $this->successResponse($data);
     }
@@ -134,8 +138,10 @@ class ShipmentController extends Controller
     )]
     public function byCourier(string $courierCode, Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->shipmentService->getByCourier($courierCode, $limit);
+
+        $data->through(fn ($shipment) => new ShipmentResource($shipment));
 
         return $this->successResponse($data);
     }
@@ -156,8 +162,10 @@ class ShipmentController extends Controller
     )]
     public function completed(string $type, string $courierIds, Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->shipmentService->getCompleted($type, $courierIds, $limit);
+
+        $data->through(fn ($shipment) => new ShipmentResource($shipment));
 
         return $this->successResponse($data);
     }
@@ -176,8 +184,10 @@ class ShipmentController extends Controller
     )]
     public function instantAll(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->shipmentService->getInstantAll($limit);
+
+        $data->through(fn ($shipment) => new ShipmentResource($shipment));
 
         return $this->successResponse($data);
     }
@@ -269,7 +279,7 @@ class ShipmentController extends Controller
             return $this->errorResponse('Shipment tidak ditemukan.', 404);
         }
 
-        return $this->successResponse($shipment);
+        return $this->successResponse(new ShipmentResource($shipment));
     }
 
     #[OA\Get(
@@ -288,7 +298,8 @@ class ShipmentController extends Controller
     )]
     public function orders(string $id, Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 20);
+
+        $limit = (int) $request->query('per_page', $request->query('limit', 20));
         $data = $this->shipmentService->getOrdersPaginated($id, $limit);
 
         return $this->successResponse($data);
@@ -597,14 +608,7 @@ class ShipmentController extends Controller
         try {
             $orderIds = $validated['order_ids'];
 
-            $shipments = Shipment::with([
-                    'orders.order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,shipping_type,tracking_number,source,channel_order_no,order_weight_gram',
-                    'orders.packlist:id,packlist_no',
-                    'location:id,location_name,location_code',
-                ])
-                ->whereHas('orders', fn ($q) => $q->whereIn('order_id', $orderIds))
-                ->orderBy('shipment_date')
-                ->get();
+            $shipments = $this->shipmentRepository->getForBulkManifestPdf($orderIds);
 
             if ($shipments->isEmpty()) {
                 return $this->errorResponse('Tidak ada shipment ditemukan untuk pesanan yang dipilih.', 404);

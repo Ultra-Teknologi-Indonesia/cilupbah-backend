@@ -18,36 +18,11 @@ class IssueController extends Controller
 
     public function index(Request $request)
     {
-        $stats = [
-            'total' => Issue::count(),
-            'open' => Issue::where('status', 'open')->count(),
-            'in_review' => Issue::where('status', 'in_review')->count(),
-            'in_progress' => Issue::where('status', 'in_progress')->count(),
-            'resolved' => Issue::where('status', 'resolved')->count(),
-            'closed' => Issue::where('status', 'closed')->count(),
-        ];
+        $stats = $this->service->getStatusCounts();
 
-        $query = Issue::with('category')->orderByDesc('created_at');
-
-        if ($request->filled('status')) {
-            $query->where('status', $request->input('status'));
-        }
-        if ($request->filled('platform')) {
-            $query->where('platform', $request->input('platform'));
-        }
-        if ($request->filled('priority')) {
-            $query->where('priority', $request->input('priority'));
-        }
-        if ($request->filled('search')) {
-            $search = $request->input('search');
-            $query->where(function ($q) use ($search) {
-                $q->where('title', 'like', "%{$search}%")
-                  ->orWhere('reporter_name', 'like', "%{$search}%")
-                  ->orWhere('tracking_token', $search);
-            });
-        }
-
-        $issues = $query->paginate(20)->withQueryString();
+        $issues = $this->service->getPaginatedIssues(
+            $request->only(['status', 'platform', 'priority', 'search'])
+        );
 
         return view('issue-tracker::index', compact('stats', 'issues'));
     }
@@ -163,13 +138,7 @@ class IssueController extends Controller
 
     public function export(Request $request)
     {
-        $query = Issue::with('category')->orderByDesc('created_at');
-
-        if ($request->filled('status')) {
-            $query->where('status', $request->input('status'));
-        }
-
-        $issues = $query->get();
+        $issues = $this->service->getIssuesForExport($request->input('status'));
 
         $csv = "ID,Token,Judul,Platform,Kategori,Prioritas,Status,Pelapor,Kontak,Assigned,Dibuat\n";
         foreach ($issues as $issue) {

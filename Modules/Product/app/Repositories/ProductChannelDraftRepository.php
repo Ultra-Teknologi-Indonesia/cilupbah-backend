@@ -4,6 +4,8 @@ namespace Modules\Product\Repositories;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
+use Modules\Channel\Models\ChannelShop;
+use Modules\Product\Models\ChannelAttribute;
 use Modules\Product\Models\ProductChannelDraft;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\AllowedSort;
@@ -67,5 +69,27 @@ class ProductChannelDraftRepository
             ->where('id', $draftId)
             ->where('product_id', $productId)
             ->first();
+    }
+
+    public function findShopByShopId(string $shopId): ?ChannelShop
+    {
+        return ChannelShop::with('channel')->where('shop_id', $shopId)->first();
+    }
+
+    public function latestDraftForProductShop(string $productId, string $channelShopId): ?ProductChannelDraft
+    {
+        return ProductChannelDraft::where('product_id', $productId)
+            ->where('channel_shop_id', $channelShopId)
+            ->latest('updated_at')
+            ->first();
+    }
+
+    public function requiredChannelAttributes(string $channelCategoryId): Collection
+    {
+        return ChannelAttribute::where('channel_category_id', $channelCategoryId)
+            ->where('is_required', true)
+            ->where('is_sale_prop', false)
+            ->with('options')
+            ->get();
     }
 }

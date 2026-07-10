@@ -7,7 +7,6 @@ use Modules\Purchase\Models\PurchaseReturnSettlementBill;
 use Modules\Purchase\Models\PurchaseReturnSettlementRefund;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
-use App\Filters\FuzzyFilter;
 use Illuminate\Support\Str;
 
 class PurchaseReturnSettlementRepository
@@ -19,17 +18,23 @@ class PurchaseReturnSettlementRepository
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('return_id'),
-                AllowedFilter::custom('search', new FuzzyFilter('settlement_number'))
             )
+            ->allowedSearch('settlement_number')
             ->allowedSorts('settlement_number', 'total_amount', 'created_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?PurchaseReturnSettlement
     {
         return PurchaseReturnSettlement::with(['purchaseReturn.supplier', 'bills.bill', 'refunds'])
             ->find($id);
+    }
+
+    public function find(string $id): ?PurchaseReturnSettlement
+    {
+        return PurchaseReturnSettlement::find($id);
     }
 
     public function create(array $data): PurchaseReturnSettlement
@@ -48,7 +53,8 @@ class PurchaseReturnSettlementRepository
             ->with(['settlement:id,settlement_number,return_id', 'bill:id,bill_number'])
             ->allowedFilters(AllowedFilter::exact('settlement_id'))
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function findBillById(string $id): ?PurchaseReturnSettlementBill
@@ -67,7 +73,8 @@ class PurchaseReturnSettlementRepository
             ->with(['settlement:id,settlement_number,return_id'])
             ->allowedFilters(AllowedFilter::exact('settlement_id'))
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function findRefundById(string $id): ?PurchaseReturnSettlementRefund

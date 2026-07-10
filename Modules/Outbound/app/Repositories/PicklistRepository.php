@@ -2,15 +2,49 @@
 
 namespace Modules\Outbound\Repositories;
 
+use Modules\Inventory\Models\Inventory;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
 use Modules\Outbound\Support\InstantOrderClassifier;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 
 class PicklistRepository
 {
+
+    public function getForBulkPdf(array $orderIds): Collection
+    {
+        return Picklist::with([
+                'items.product:id,product_id,sku',
+                'items.product.product:id,name',
+                'items.product.options:id,variant_id,attribute_id,value',
+                'items.product.media:id,product_id,variant_id,url,is_primary,sort_order',
+                'items.product.product.media:id,product_id,variant_id,url,is_primary,sort_order',
+                'items.orderItem:id,order_id,description',
+                'items.order:id,salesorder_no,customer_name',
+                'items.bin:id,bin_final_code',
+                'location:id,location_name,location_code',
+                'picker:id,name,email',
+            ])
+            ->whereHas('items', fn ($q) => $q->whereIn('order_id', $orderIds))
+            ->orderBy('created_at')
+            ->get();
+    }
+
+    public function recommendedBinStocks(array $itemIds, string $locationId): Collection
+    {
+        return Inventory::query()
+            ->whereIn('item_id', $itemIds)
+            ->where('location_id', $locationId)
+            ->where('on_hand', '>', 0)
+            ->whereNotNull('bin_id')
+            ->with('bin:id,bin_final_code')
+            ->orderByDesc('on_hand')
+            ->get(['id', 'item_id', 'bin_id', 'on_hand']);
+    }
+
     public function getAllPaginated(int $limit = 10)
     {
         $query = QueryBuilder::for(Picklist::class);
@@ -35,7 +69,6 @@ class PicklistRepository
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('picker_id'),
-                AllowedFilter::partial('q', 'picklist_no'),
 
                 AllowedFilter::callback('shipping_provider', function ($query, $value) {
                     $query->whereHas('items.order', fn ($q) => $q->where('shipping_provider', $value));
@@ -62,9 +95,11 @@ class PicklistRepository
                     $query->whereHas('items.bin', fn ($q) => $q->where('zone_id', $value));
                 }),
             )
+            ->allowedSearch('picklist_no')
             ->allowedSorts('created_at', 'picklist_no', 'started_at', 'completed_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?Picklist
@@ -118,7 +153,8 @@ class PicklistRepository
             )
             ->allowedSorts('created_at', 'sku')
             ->defaultSort('created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function generatePicklistNo(): string

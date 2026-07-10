@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Repositories;
 
+use Illuminate\Support\Collection;
 use Modules\Sales\Models\SalesReturn;
 use Modules\Sales\Models\SalesReturnItem;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -42,7 +43,34 @@ class SalesReturnRepository
                 AllowedSort::field('created_at', 'sales_returns.created_at'),
             )
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
+    }
+
+    public function getReportPaginated(array $filters, int $limit = 10)
+    {
+        return QueryBuilder::for(SalesReturn::class)
+            ->with([
+                'order:id,salesorder_no,channel_order_no,customer_name',
+                'location:id,location_name',
+                'settlement.refunds',
+            ])
+            ->when(! empty($filters['date_from']), fn ($q) => $q->whereDate('created_at', '>=', $filters['date_from']))
+            ->when(! empty($filters['date_to']), fn ($q) => $q->whereDate('created_at', '<=', $filters['date_to']))
+            ->when(! empty($filters['location_id']), fn ($q) => $q->where('location_id', $filters['location_id']))
+            ->when(! empty($filters['channel_shop_id']), fn ($q) => $q->where('channel_shop_id', $filters['channel_shop_id']))
+            ->when(! empty($filters['status']), fn ($q) => $q->where('status', $filters['status']))
+            ->when(! empty($filters['source']), fn ($q) => $q->where('source', $filters['source']))
+            ->when(! empty($filters['reason_category']), fn ($q) => $q->where('reason_category', $filters['reason_category']))
+            ->when(! empty($filters['marketplace_decision']), fn ($q) => $q->where('marketplace_decision', $filters['marketplace_decision']))
+            ->orderByDesc('created_at')
+            ->paginate($limit)
+            ->appends(request()->query());
+    }
+
+    public function getAppeals(SalesReturn $return): Collection
+    {
+        return $return->appeals()->get();
     }
 
     public function getUnprocessedMarketplace(int $limit = 10)
@@ -60,7 +88,8 @@ class SalesReturnRepository
                 AllowedSort::field('created_at', 'sales_returns.created_at'),
             )
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?SalesReturn
@@ -123,7 +152,8 @@ class SalesReturnRepository
             )
             ->allowedSearch('return_number', 'customer_name', 'return_tracking_number')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function getAllReturnItems(int $limit = 10)
@@ -136,7 +166,8 @@ class SalesReturnRepository
             )
             ->allowedSorts('created_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function getRejectedReturnItems(int $limit = 10)
@@ -145,7 +176,8 @@ class SalesReturnRepository
             ->whereHas('salesReturn', fn ($q) => $q->where('status', SalesReturn::STATUS_REJECTED))
             ->with(['salesReturn:id,return_number,status', 'product:id,sku,product_id'])
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function getResolvedReturnItems(int $limit = 10)
@@ -154,6 +186,7 @@ class SalesReturnRepository
             ->whereHas('salesReturn', fn ($q) => $q->where('status', SalesReturn::STATUS_COMPLETED))
             ->with(['salesReturn:id,return_number,status', 'product:id,sku,product_id'])
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 }

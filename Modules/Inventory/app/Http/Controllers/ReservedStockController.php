@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Inventory\Services\ReservedStockService;
 use Modules\Inventory\Http\Requests\StoreReservedStockRequest;
+use Modules\Inventory\Http\Resources\ReservedStockResource;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Reserved Stock', description: 'API Endpoints for Document-based Reserved Stock')]
@@ -37,6 +38,10 @@ class ReservedStockController extends Controller
         $limit = $request->query('limit', 10);
         $reservedStocks = $this->reservedStockService->getAllPaginated($limit);
 
+        $reservedStocks->getCollection()->transform(
+            fn ($m) => (new ReservedStockResource($m))->resolve($request),
+        );
+
         return $this->successPaginatedResponse($reservedStocks, 'Daftar dokumen reserved stock berhasil diambil.');
     }
 
@@ -65,7 +70,7 @@ class ReservedStockController extends Controller
             return $this->errorResponse('Dokumen reserved stock tidak ditemukan.', 404);
         }
 
-        return $this->successResponse($reservedStock, 'Detail reserved stock berhasil diambil.');
+        return $this->successResponse(new ReservedStockResource($reservedStock), 'Detail reserved stock berhasil diambil.');
     }
 
     #[OA\Post(
@@ -103,7 +108,7 @@ class ReservedStockController extends Controller
 
             $reservedStock = $this->reservedStockService->create($data);
 
-            return $this->successResponse($reservedStock, 'Dokumen reserved stock berhasil dibuat, reservasi sedang diproses.', 202);
+            return $this->successResponse(new ReservedStockResource($reservedStock), 'Dokumen reserved stock berhasil dibuat, reservasi sedang diproses.', 202);
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -127,7 +132,7 @@ class ReservedStockController extends Controller
         try {
             $reservedStock = $this->reservedStockService->cancel($id);
 
-            return $this->successResponse($reservedStock, 'Dokumen reserved stock berhasil di-cancel, reservasi di-rollback.');
+            return $this->successResponse(new ReservedStockResource($reservedStock), 'Dokumen reserved stock berhasil di-cancel, reservasi di-rollback.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }

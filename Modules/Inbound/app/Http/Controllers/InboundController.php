@@ -203,7 +203,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
             new OA\Parameter(name: 'filter[status]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[type]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
@@ -215,7 +215,7 @@ class InboundController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $inbounds = $this->inboundService->getAllPaginated($limit);
 
         return $this->successPaginatedResponse($inbounds, 'Daftar inbound berhasil diambil');
@@ -302,7 +302,7 @@ class InboundController extends Controller
     )]
     public function items(string $id, Request $request): JsonResponse
     {
-        $perPage = (int) $request->query('per_page', 10);
+        $perPage = (int) $request->query('per_page', 20);
         $items = $this->inboundService->getPaginatedItems($id, $perPage);
         return $this->successPaginatedResponse($items, 'Daftar item Inbound berhasil diambil');
     }
@@ -551,7 +551,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10))
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10))
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),
@@ -559,7 +559,7 @@ class InboundController extends Controller
     )]
     public function receivedItems(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         $items = $this->inboundService->getReceivedItemsPaginated($limit);
 
         return $this->successPaginatedResponse($items, 'Daftar barang diterima berhasil diambil');
@@ -679,7 +679,7 @@ class InboundController extends Controller
         $assignments = $this->inboundService->getMyAssignments(
             $request->user()->id,
             $request->query('status'),
-            (int) $request->query('per_page', 10),
+            (int) $request->query('per_page', 20),
             $request->query('search'),
             $request->query('sort', '-created_at'),
         );

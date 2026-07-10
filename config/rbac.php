@@ -36,6 +36,7 @@ return [
                 ['key' => 'impex', 'label' => 'Aktivitas Import/Export', 'actions' => ['view']],
                 ['key' => 'webhook', 'label' => 'Webhook', 'actions' => ['view', 'edit']],
                 ['key' => 'pengaturan-sistem', 'label' => 'Pengaturan Sistem', 'actions' => ['view', 'edit']],
+                ['key' => 'pajak', 'label' => 'Pajak', 'actions' => ['view', 'edit']],
             ],
         ],
 
@@ -86,6 +87,7 @@ return [
             'resources' => [
                 ['key' => 'pesanan', 'label' => 'Pesanan', 'actions' => ['view', 'create', 'edit', 'delete', 'export', 'import']],
                 ['key' => 'retur-penjualan', 'label' => 'Retur Penjualan', 'actions' => ['view', 'create', 'edit', 'delete', 'export']],
+                ['key' => 'garansi', 'label' => 'Garansi', 'actions' => ['view', 'edit']],
                 ['key' => 'faktur-penjualan', 'label' => 'Faktur Penjualan', 'actions' => ['view', 'create', 'export']],
                 ['key' => 'pembayaran-penjualan', 'label' => 'Pembayaran & Settlement Penjualan', 'actions' => ['view', 'create', 'delete']],
                 ['key' => 'toko-internal', 'label' => 'Toko Internal', 'actions' => ['view', 'create', 'edit', 'delete']],

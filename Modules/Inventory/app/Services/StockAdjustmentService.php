@@ -32,6 +32,16 @@ class StockAdjustmentService
         return $this->adjustmentRepository->getItemsPaginated($id, $limit);
     }
 
+    public function getForPdf(string $id): ?StockAdjustment
+    {
+        return $this->adjustmentRepository->findForPdf($id);
+    }
+
+    public function getManyForPdf(array $ids)
+    {
+        return $this->adjustmentRepository->getManyForPdf($ids);
+    }
+
     public function create(array $data): StockAdjustment
     {
         $adjustment = DB::transaction(function () use ($data) {

@@ -4,7 +4,8 @@ namespace Modules\Notification\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
-use Modules\Notification\Models\Notification;
+use Modules\Notification\Http\Resources\NotificationResource;
+use Modules\Notification\Repositories\NotificationRepository;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use OpenApi\Attributes as OA;
@@ -30,6 +31,11 @@ use OpenApi\Attributes as OA;
 class NotificationController extends Controller
 {
     use ApiResponse;
+
+    public function __construct(
+        protected NotificationRepository $notifications
+    ) {}
+
     #[OA\Get(
         path: '/api/v1/notifications',
         summary: 'Get list of notifications for current user',
@@ -54,16 +60,9 @@ class NotificationController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $query = Notification::where('user_id', $request->user()->id)
-            ->orderByDesc('created_at');
+        $paginator = $this->notifications->paginatedForUser($request->user()->id, $request);
 
-        if ($request->has('is_read')) {
-            $query->where('is_read', filter_var($request->is_read, FILTER_VALIDATE_BOOLEAN));
-        }
-
-        $perPage = min((int) $request->get('per_page', 20), 100);
-
-        return $this->successPaginatedResponse($query->paginate($perPage));
+        return $this->successPaginatedResponse($paginator);
     }
 
     #[OA\Get(
@@ -85,9 +84,7 @@ class NotificationController extends Controller
     )]
     public function unreadCount(Request $request): JsonResponse
     {
-        $count = Notification::where('user_id', $request->user()->id)
-            ->where('is_read', false)
-            ->count();
+        $count = $this->notifications->countUnreadForUser($request->user()->id);
 
         return $this->successResponse(['count' => $count]);
     }
@@ -111,10 +108,9 @@ class NotificationController extends Controller
     )]
     public function show(Request $request, string $id): JsonResponse
     {
-        $notification = Notification::where('user_id', $request->user()->id)
-            ->findOrFail($id);
+        $notification = $this->notifications->findForUser($request->user()->id, $id);
 
-        return $this->successResponse($notification);
+        return $this->successResponse(new NotificationResource($notification));
     }
 
     #[OA\Patch(
@@ -132,12 +128,11 @@ class NotificationController extends Controller
     )]
     public function markAsRead(Request $request, string $id): JsonResponse
     {
-        $notification = Notification::where('user_id', $request->user()->id)
-            ->findOrFail($id);
+        $notification = $this->notifications->findForUser($request->user()->id, $id);
 
         $notification->markAsRead();
 
-        return $this->successResponse($notification);
+        return $this->successResponse(new NotificationResource($notification));
     }
 
     #[OA\Post(
@@ -151,12 +146,7 @@ class NotificationController extends Controller
     )]
     public function markAllAsRead(Request $request): JsonResponse
     {
-        Notification::where('user_id', $request->user()->id)
-            ->where('is_read', false)
-            ->update([
-                'is_read' => true,
-                'read_at' => now(),
-            ]);
+        $this->notifications->markAllReadForUser($request->user()->id);
 
         return $this->successResponse(null, 'All notifications marked as read');
     }
@@ -176,8 +166,7 @@ class NotificationController extends Controller
     )]
     public function destroy(Request $request, string $id): JsonResponse
     {
-        $notification = Notification::where('user_id', $request->user()->id)
-            ->findOrFail($id);
+        $notification = $this->notifications->findForUser($request->user()->id, $id);
 
         $notification->delete();
 

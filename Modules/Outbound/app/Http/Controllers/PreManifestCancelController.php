@@ -42,20 +42,11 @@ class PreManifestCancelController extends Controller
             'location_id' => $request->input('filter.location_id'),
         ];
 
-        $perPage = (int) $request->input('limit', 20);
+        $perPage = (int) $request->input('per_page', $request->input('limit', 10));
 
         $paginator = $this->service->list($filters, $perPage);
 
-        return response()->json([
-            'success' => true,
-            'data'    => $paginator->items(),
-            'meta'    => [
-                'current_page' => $paginator->currentPage(),
-                'last_page'    => $paginator->lastPage(),
-                'per_page'     => $paginator->perPage(),
-                'total'        => $paginator->total(),
-            ],
-        ]);
+        return $this->successPaginatedResponse($paginator);
     }
 
     #[OA\Get(

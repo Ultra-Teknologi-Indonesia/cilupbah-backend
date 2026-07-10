@@ -7,27 +7,25 @@ use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
-use Modules\Product\Models\Product;
-use Modules\Product\Models\ProductVariant;
-use Modules\Product\Repositories\ProductRepository;
+use Modules\Inventory\Http\Resources\BundleResource;
+use Modules\Inventory\Services\BundleService;
 
 class BundleController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private ProductRepository $productRepository) {}
+    public function __construct(private BundleService $bundleService) {}
 
     public function index(Request $request): JsonResponse
     {
-        $query = Product::where('is_bundle', true)
-            ->with([
-                'variants' => fn ($q) => $q->select('id', 'product_id', 'sku', 'sell_price'),
-                'bundleItems.component:id,product_id,sku,sell_price',
-            ])
-            ->when($request->search, fn ($q, $v) => $q->where('name', 'ilike', "%{$v}%"))
-            ->orderByDesc('created_at');
+        $perPage = (int) $request->input('per_page', 20);
+        $paginator = $this->bundleService->list($perPage);
 
-        return $this->successPaginatedResponse($query->paginate($request->input('limit', 20)));
+        $paginator->getCollection()->transform(
+            fn ($product) => (new BundleResource($product))->resolve($request),
+        );
+
+        return $this->successPaginatedResponse($paginator);
     }
 
     public function store(Request $request): JsonResponse
@@ -47,52 +45,16 @@ class BundleController extends Controller
             'components.*.variant_id.exists' => 'Varian komponen tidak ditemukan atau tidak aktif.',
         ]);
 
-        $componentVariantIds = array_values(array_filter(array_column($request->input('components'), 'variant_id')));
-        if ($this->productRepository->variantIdsFromBundleProducts($componentVariantIds) !== []) {
-            return $this->errorResponse(
-                'Komponen bundle tidak boleh berisi produk bundle (bundle-in-bundle tidak diizinkan).',
-                422,
-            );
+        try {
+            [$product, $isUpdate] = $this->bundleService->save($request->all());
+        } catch (\RuntimeException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
         }
 
-        $id = $request->input('id');
-
-        if ($id) {
-            $product = Product::where('is_bundle', true)->findOrFail($id);
-            $product->update($request->only(['name', 'sku']));
-            $variant = $product->variants()->first();
-            if ($variant && $request->has('sell_price')) {
-                $variant->update(['sell_price' => $request->sell_price]);
-            }
-        } else {
-            $categoryId = $request->input('category_id')
-                ?? \Modules\Product\Models\Category::value('id');
-
-            $product = Product::create([
-                'name' => $request->name,
-                'sku' => $request->sku,
-                'category_id' => $categoryId,
-                'is_bundle' => true,
-                'status' => Product::STATUS_MASTER,
-                'is_active' => true,
-            ]);
-            $variant = $product->variants()->create([
-                'sku' => $request->sku,
-                'sell_price' => $request->input('sell_price', 0),
-                'is_active' => true,
-            ]);
-        }
-
-        $product->bundleItems()->delete();
-        foreach ($request->input('components') as $comp) {
-            $product->bundleItems()->create([
-                'component_variant_id' => $comp['variant_id'],
-                'qty' => $comp['qty'],
-            ]);
-        }
-
-        $product->load('variants:id,product_id,sku,sell_price', 'bundleItems.component:id,product_id,sku,sell_price');
-
-        return $this->successResponse($product, $id ? 'Bundle updated.' : 'Bundle created.', $id ? 200 : 201);
+        return $this->successResponse(
+            new BundleResource($product),
+            $isUpdate ? 'Bundle updated.' : 'Bundle created.',
+            $isUpdate ? 200 : 201,
+        );
     }
 }

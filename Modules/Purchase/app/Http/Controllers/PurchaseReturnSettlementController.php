@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Purchase\Services\PurchaseReturnSettlementService;
+use Modules\Purchase\Http\Resources\PurchaseReturnSettlementResource;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Purchase Return Settlements', description: 'API Endpoints for Purchase Return Settlements')]
@@ -28,7 +29,7 @@ class PurchaseReturnSettlementController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         return $this->successPaginatedResponse($this->settlementService->getAllPaginated($limit), 'Daftar settlement berhasil diambil');
     }
 
@@ -69,7 +70,7 @@ class PurchaseReturnSettlementController extends Controller
     )]
     public function billIndex(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         return $this->successPaginatedResponse($this->settlementService->getBills($limit), 'Daftar settlement bills');
     }
 
@@ -118,7 +119,7 @@ class PurchaseReturnSettlementController extends Controller
         if (! $bill) {
             return $this->errorResponse('Settlement bill tidak ditemukan', 404);
         }
-        return $this->successResponse($bill, 'Detail settlement bill');
+        return $this->successResponse(new PurchaseReturnSettlementResource($bill), 'Detail settlement bill');
     }
 
     #[OA\Get(
@@ -134,7 +135,7 @@ class PurchaseReturnSettlementController extends Controller
     )]
     public function refundIndex(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         return $this->successPaginatedResponse($this->settlementService->getRefunds($limit), 'Daftar settlement refunds');
     }
 
@@ -188,6 +189,6 @@ class PurchaseReturnSettlementController extends Controller
         if (! $refund) {
             return $this->errorResponse('Settlement refund tidak ditemukan', 404);
         }
-        return $this->successResponse($refund, 'Detail settlement refund');
+        return $this->successResponse(new PurchaseReturnSettlementResource($refund), 'Detail settlement refund');
     }
 }

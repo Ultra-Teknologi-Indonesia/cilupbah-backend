@@ -23,14 +23,12 @@ class InboundRepository
                 AllowedFilter::exact('source_type'),
                 AllowedFilter::callback('date_from', fn ($query, $value) => $query->where('created_at', '>=', $value)),
                 AllowedFilter::callback('date_to', fn ($query, $value) => $query->where('created_at', '<=', $value . ' 23:59:59')),
-                AllowedFilter::callback('search', fn ($query, $value) => $query->where(function ($q) use ($value) {
-                    $q->where('transaction_number', 'like', "%{$value}%")
-                      ->orWhere('reference_number', 'like', "%{$value}%");
-                })),
             )
+            ->allowedSearch('transaction_number', 'reference_number')
             ->allowedSorts('expected_date', 'created_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?Inbound
@@ -50,7 +48,7 @@ class InboundRepository
         return Inbound::where('id', $id)->lockForUpdate()->with('items')->first();
     }
 
-    public function findBySource(string $sourceType, int $sourceId): ?Inbound
+    public function findBySource(string $sourceType, string $sourceId): ?Inbound
     {
         return Inbound::where('source_type', $sourceType)
             ->where('source_id', $sourceId)
@@ -157,7 +155,8 @@ class InboundRepository
             )
             ->allowedSorts('received_date', 'created_at')
             ->defaultSort('-received_date')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function getItemsPendingPutaway(string $inboundId)
@@ -219,6 +218,6 @@ class InboundRepository
             $direction = 'desc';
         }
 
-        return $query->orderBy($column, $direction)->paginate($perPage);
+        return $query->orderBy($column, $direction)->paginate($perPage)->appends(request()->query());
     }
 }

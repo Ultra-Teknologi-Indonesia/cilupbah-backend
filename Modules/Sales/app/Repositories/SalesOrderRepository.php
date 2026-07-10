@@ -7,7 +7,6 @@ use Illuminate\Support\Facades\Log;
 use Modules\Sales\Models\SalesOrder;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
-use App\Filters\FuzzyFilter;
 
 class SalesOrderRepository
 {
@@ -48,6 +47,10 @@ class SalesOrderRepository
                 $query = $this->scopeExcludeFailedDownload($query);
             }
         } else {
+
+            if (! filled(request()->input('filter.status'))) {
+                $query = $this->applyTabScope($query, 'all');
+            }
 
             $query = $this->scopeExcludeFailedDownload($query);
         }
@@ -347,9 +350,9 @@ class SalesOrderRepository
         return QueryBuilder::for(SalesOrder::class)
             ->where('is_canceled', true)
             ->allowedFilters(
-                AllowedFilter::exact('source'),
-                AllowedFilter::custom('search', new FuzzyFilter('customer_name,salesorder_no'))
+                AllowedFilter::exact('source')
             )
+            ->allowedSearch('customer_name', 'salesorder_no')
             ->allowedSorts('created_at', 'transaction_date', 'grand_total')
             ->defaultSort('-created_at')
             ->paginate($limit);
@@ -360,9 +363,9 @@ class SalesOrderRepository
         return QueryBuilder::for(SalesOrder::class)
             ->where('status', 'shipped')
             ->allowedFilters(
-                AllowedFilter::exact('source'),
-                AllowedFilter::custom('search', new FuzzyFilter('customer_name,salesorder_no'))
+                AllowedFilter::exact('source')
             )
+            ->allowedSearch('customer_name', 'salesorder_no')
             ->allowedSorts('created_at', 'transaction_date', 'grand_total')
             ->defaultSort('-created_at')
             ->paginate($limit);
@@ -374,9 +377,9 @@ class SalesOrderRepository
             ->where('is_canceled', true)
             ->whereNotNull('cancel_request_reason')
             ->allowedFilters(
-                AllowedFilter::exact('source'),
-                AllowedFilter::custom('search', new FuzzyFilter('customer_name,salesorder_no'))
+                AllowedFilter::exact('source')
             )
+            ->allowedSearch('customer_name', 'salesorder_no')
             ->allowedSorts('created_at', 'transaction_date')
             ->defaultSort('-created_at')
             ->paginate($limit);
@@ -389,9 +392,9 @@ class SalesOrderRepository
             ->with('items')
             ->allowedFilters(
                 AllowedFilter::exact('status'),
-                AllowedFilter::exact('source'),
-                AllowedFilter::custom('search', new FuzzyFilter('customer_name,salesorder_no'))
+                AllowedFilter::exact('source')
             )
+            ->allowedSearch('customer_name', 'salesorder_no')
             ->allowedSorts('created_at', 'transaction_date')
             ->defaultSort('-created_at')
             ->paginate($limit);
@@ -406,9 +409,9 @@ class SalesOrderRepository
             ->with('items')
             ->allowedFilters(
                 AllowedFilter::exact('status'),
-                AllowedFilter::exact('source'),
-                AllowedFilter::custom('search', new FuzzyFilter('customer_name,salesorder_no'))
+                AllowedFilter::exact('source')
             )
+            ->allowedSearch('customer_name', 'salesorder_no')
             ->allowedSorts('created_at', 'transaction_date')
             ->defaultSort('-created_at')
             ->paginate($limit);
@@ -431,6 +434,16 @@ class SalesOrderRepository
             ->allowedIncludes('items')
             ->with(['statusHistory', 'returns.settlement'])
             ->find($id);
+    }
+
+    public function findOrFail(string $id): SalesOrder
+    {
+        return SalesOrder::findOrFail($id);
+    }
+
+    public function findWithItemsOrFail(string $id): SalesOrder
+    {
+        return SalesOrder::with('items')->findOrFail($id);
     }
 
     public function upsertOrderBySalesOrderNo(string $salesOrderNo, array $orderData): ?SalesOrder

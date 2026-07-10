@@ -8,6 +8,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Inventory\Models\InventoryTransfer;
 use Modules\Inventory\Services\InventoryService;
+use Modules\Inventory\Http\Resources\InventoryTransferResource;
+use Modules\Inventory\Http\Resources\BinTransferResource;
+use Modules\Inventory\Http\Resources\BinTransferReceiptResource;
 use Modules\Inventory\Http\Requests\AdjustStockRequest;
 use Modules\Inventory\Http\Requests\TransferStockRequest;
 use Modules\Inventory\Http\Requests\PutawayStockRequest;
@@ -132,7 +135,7 @@ class InventoryTransactionController extends Controller
     {
         try {
             $result = $this->inventoryService->transferOut($request->validated());
-            return $this->successResponse($result, 'Transfer Out berhasil dibuat sebagai draft.');
+            return $this->successResponse(new InventoryTransferResource($result), 'Transfer Out berhasil dibuat sebagai draft.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -147,7 +150,7 @@ class InventoryTransactionController extends Controller
             ]);
 
             $result = $this->inventoryService->approveTransfer($id, $validated);
-            return $this->successResponse($result, 'Transfer berhasil di-approve.');
+            return $this->successResponse(new InventoryTransferResource($result), 'Transfer berhasil di-approve.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -162,7 +165,7 @@ class InventoryTransactionController extends Controller
             ]);
 
             $result = $this->inventoryService->cancelTransfer($id, $validated);
-            return $this->successResponse($result, 'Transfer berhasil dibatalkan.');
+            return $this->successResponse(new InventoryTransferResource($result), 'Transfer berhasil dibatalkan.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -176,7 +179,7 @@ class InventoryTransactionController extends Controller
             ]);
 
             $result = $this->inventoryService->shipTransfer($id, $validated);
-            return $this->successResponse($result, 'Transfer berhasil dikirim, barang dalam perjalanan.');
+            return $this->successResponse(new InventoryTransferResource($result), 'Transfer berhasil dikirim, barang dalam perjalanan.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -218,7 +221,7 @@ class InventoryTransactionController extends Controller
     {
         try {
             $result = $this->inventoryService->transferIn($id, $request->validated());
-            return $this->successResponse($result, 'Transfer In berhasil, stok telah masuk ke gudang tujuan.');
+            return $this->successResponse(new InventoryTransferResource($result), 'Transfer In berhasil, stok telah masuk ke gudang tujuan.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -270,7 +273,7 @@ class InventoryTransactionController extends Controller
             return $this->errorResponse('Transfer tidak ditemukan', 404);
         }
 
-        return $this->successResponse($transfer, 'Detail transfer berhasil diambil');
+        return $this->successResponse(new InventoryTransferResource($transfer), 'Detail transfer berhasil diambil');
     }
 
     #[OA\Get(
@@ -563,7 +566,7 @@ class InventoryTransactionController extends Controller
             ]);
 
             $result = $this->inventoryService->createDraft($validated);
-            return $this->successResponse($result, 'Draft transfer berhasil dibuat.', 201);
+            return $this->successResponse(new InventoryTransferResource($result), 'Draft transfer berhasil dibuat.', 201);
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -573,7 +576,7 @@ class InventoryTransactionController extends Controller
     {
         try {
             $result = $this->inventoryService->submitDraft($id);
-            return $this->successResponse($result, 'Transfer berhasil diajukan untuk approval.');
+            return $this->successResponse(new InventoryTransferResource($result), 'Transfer berhasil diajukan untuk approval.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -589,7 +592,7 @@ class InventoryTransactionController extends Controller
             ]);
 
             $result = $this->inventoryService->updateDraft($id, $validated);
-            return $this->successResponse($result, 'Draft transfer berhasil diperbarui.');
+            return $this->successResponse(new InventoryTransferResource($result), 'Draft transfer berhasil diperbarui.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -608,7 +611,7 @@ class InventoryTransactionController extends Controller
             ]);
 
             $result = $this->inventoryService->addDraftItem($id, $validated);
-            return $this->successResponse($result, 'Item berhasil ditambahkan ke draft.', 201);
+            return $this->successResponse(new InventoryTransferResource($result), 'Item berhasil ditambahkan ke draft.', 201);
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -629,7 +632,7 @@ class InventoryTransactionController extends Controller
                 array_key_exists('source_bin_id', $validated) ? $validated['source_bin_id'] : null,
                 $request->has('source_bin_id'),
             );
-            return $this->successResponse($result, 'Item berhasil diperbarui.');
+            return $this->successResponse(new InventoryTransferResource($result), 'Item berhasil diperbarui.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -650,7 +653,7 @@ class InventoryTransactionController extends Controller
         try {
             $actor = $request->user()?->name ?? $request->user()?->email ?? 'system';
             $result = $this->inventoryService->revertToDraft($id, ['actor' => $actor]);
-            return $this->successResponse($result, 'Transfer dikembalikan ke Baru Dibuat.');
+            return $this->successResponse(new InventoryTransferResource($result), 'Transfer dikembalikan ke Baru Dibuat.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -701,7 +704,7 @@ class InventoryTransactionController extends Controller
 
             $transfer = $this->inventoryService->createBinTransferDraft($data);
 
-            return $this->successResponse($transfer, 'Transfer internal berhasil dibuat.', 201);
+            return $this->successResponse(new BinTransferResource($transfer), 'Transfer internal berhasil dibuat.', 201);
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -713,7 +716,7 @@ class InventoryTransactionController extends Controller
             $printedBy = $request->user()->name ?? $request->user()->email ?? 'system';
             $transfer = $this->inventoryService->printBinTransfer($id, $printedBy);
 
-            return $this->successResponse($transfer, 'Surat jalan dicetak, transfer sedang dijalan.');
+            return $this->successResponse(new BinTransferResource($transfer), 'Surat jalan dicetak, transfer sedang dijalan.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -745,7 +748,7 @@ class InventoryTransactionController extends Controller
             $actor = $request->user()->name ?? $request->user()->email ?? 'system';
             $transfer = $this->inventoryService->revertBinTransferPrint($id, $actor);
 
-            return $this->successResponse($transfer, 'Transfer dikembalikan ke Baru Dibuat.');
+            return $this->successResponse(new BinTransferResource($transfer), 'Transfer dikembalikan ke Baru Dibuat.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -769,7 +772,7 @@ class InventoryTransactionController extends Controller
 
             $receipt = $this->inventoryService->receiveBinTransfer($id, $validated);
 
-            return $this->successResponse($receipt, 'Penerimaan transfer internal berhasil.', 201);
+            return $this->successResponse(new BinTransferReceiptResource($receipt), 'Penerimaan transfer internal berhasil.', 201);
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -787,9 +790,8 @@ class InventoryTransactionController extends Controller
 
     public function binTransferReceiptsIndex(\Illuminate\Http\Request $request): JsonResponse
     {
-        $perPage = (int) $request->query('per_page', 10);
+        $perPage = (int) $request->query('per_page', 20);
         $filters = array_filter([
-            'q' => $request->query('filter.q') ?? $request->query('q'),
             'location_id' => $request->query('filter.location_id') ?? $request->query('location_id'),
             'date_from' => $request->query('filter.date_from') ?? $request->query('date_from'),
             'date_to' => $request->query('filter.date_to') ?? $request->query('date_to'),
@@ -807,7 +809,7 @@ class InventoryTransactionController extends Controller
             return $this->errorResponse('Penerimaan transfer internal tidak ditemukan.', 404);
         }
 
-        return $this->successResponse($receipt, 'Detail penerimaan transfer internal berhasil diambil.');
+        return $this->successResponse(new BinTransferReceiptResource($receipt), 'Detail penerimaan transfer internal berhasil diambil.');
     }
 
     public function binTransferItemDestroy(\Illuminate\Http\Request $request, string $id, string $itemId): JsonResponse
@@ -825,7 +827,7 @@ class InventoryTransactionController extends Controller
                 $userId,
             );
 
-            return $this->successResponse($transfer, 'Baris pindah bin berhasil dikoreksi.');
+            return $this->successResponse(new BinTransferResource($transfer), 'Baris pindah bin berhasil dikoreksi.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -843,7 +845,7 @@ class InventoryTransactionController extends Controller
             $userId = (string) ($request->user()->id ?? 'system');
             $transfer = $this->inventoryService->reverseBinTransferItems($id, $validated['items'], $userId);
 
-            return $this->successResponse($transfer, 'Baris pindah bin berhasil dikoreksi.');
+            return $this->successResponse(new BinTransferResource($transfer), 'Baris pindah bin berhasil dikoreksi.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -851,9 +853,8 @@ class InventoryTransactionController extends Controller
 
     public function binTransferIndex(\Illuminate\Http\Request $request): JsonResponse
     {
-        $perPage = (int) $request->query('per_page', 10);
+        $perPage = (int) $request->query('per_page', 20);
         $filters = [
-            'q' => $request->query('filter.q') ?? $request->query('q'),
             'location_id' => $request->query('filter.location_id') ?? $request->query('location_id'),
             'status' => $request->query('filter.status') ?? $request->query('status'),
             'date_from' => $request->query('filter.date_from') ?? $request->query('date_from'),
@@ -872,7 +873,7 @@ class InventoryTransactionController extends Controller
             return $this->errorResponse('Pindah bin tidak ditemukan.', 404);
         }
 
-        return $this->successResponse($transfer, 'Detail pindah bin berhasil diambil.');
+        return $this->successResponse(new BinTransferResource($transfer), 'Detail pindah bin berhasil diambil.');
     }
 
     public function binTransferUpdate(\Illuminate\Http\Request $request, string $id): JsonResponse
@@ -886,7 +887,7 @@ class InventoryTransactionController extends Controller
         try {
             $transfer = $this->inventoryService->updateBinTransferMetadata($id, $data);
 
-            return $this->successResponse($transfer, 'Pindah bin berhasil diperbarui.');
+            return $this->successResponse(new BinTransferResource($transfer), 'Pindah bin berhasil diperbarui.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -915,7 +916,7 @@ class InventoryTransactionController extends Controller
             $printedBy = $request->user()->name ?? $request->user()->email;
             $transfer = $this->inventoryService->markTransferPrinted($request->input('transfer_id'), $printedBy);
 
-            return $this->successResponse($transfer, 'Transfer ditandai sudah dicetak.');
+            return $this->successResponse(new BinTransferResource($transfer), 'Transfer ditandai sudah dicetak.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -952,6 +953,6 @@ class InventoryTransactionController extends Controller
             return $this->errorResponse('Transfer tidak ditemukan.', 404);
         }
 
-        return $this->successResponse($transfer, 'Data surat jalan transfer berhasil diambil.');
+        return $this->successResponse(new InventoryTransferResource($transfer), 'Data surat jalan transfer berhasil diambil.');
     }
 }

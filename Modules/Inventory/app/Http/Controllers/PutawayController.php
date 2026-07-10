@@ -539,33 +539,7 @@ class PutawayController extends Controller
         $locationId = $request->query('location_id');
         $search = $request->query('search', '');
 
-        $query = LocationBin::where('location_id', $locationId)
-            ->where('is_inbound', false)
-            ->orderBy('bin_final_code');
-
-        if ($search) {
-            $query->where('bin_final_code', 'like', "%{$search}%");
-        }
-
-        $bins = $query->get(['id', 'bin_final_code']);
-
-        $binCurrentQty = Inventory::where('location_id', $locationId)
-            ->where('on_hand', '>', 0)
-            ->whereNotNull('bin_id')
-            ->whereIn('bin_id', $bins->pluck('id'))
-            ->groupBy('bin_id')
-            ->selectRaw('bin_id, SUM(on_hand) as total')
-            ->pluck('total', 'bin_id')
-            ->map(fn ($v) => (int) $v);
-
-        $result = $bins->map(function ($bin) use ($binCurrentQty) {
-            $currentQty = $binCurrentQty[$bin->id] ?? 0;
-            return [
-                'id' => $bin->id,
-                'bin_final_code' => $bin->bin_final_code,
-                'current_qty' => $currentQty,
-            ];
-        });
+        $result = $this->putawayService->listBins($locationId, $search ?: null);
 
         return $this->successResponse($result, 'Daftar rak berhasil diambil.');
     }
@@ -594,20 +568,11 @@ class PutawayController extends Controller
         $code = $request->query('code');
         $locationId = $request->query('location_id');
 
-        $bin = LocationBin::where('location_id', $locationId)
-            ->where('is_inbound', false)
-            ->where('bin_final_code', $code)
-            ->first();
+        $bin = $this->putawayService->lookupBin($code, $locationId);
 
         if (!$bin) {
             return $this->errorResponse('Rak tidak ditemukan.', 404);
         }
-
-        $currentQty = Inventory::where('bin_id', $bin->id)
-            ->where('location_id', $locationId)
-            ->sum('on_hand');
-
-        $bin->current_qty = (int) $currentQty;
 
         return $this->successResponse($bin, 'Bin ditemukan.');
     }

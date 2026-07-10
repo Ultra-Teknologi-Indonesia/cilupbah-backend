@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Modules\Warranty\Services\WarrantyService;
 use Modules\Warranty\Http\Requests\StoreWarrantyRequest;
 use Modules\Warranty\Http\Requests\UpdateWarrantyRequest;
+use Modules\Warranty\Http\Resources\WarrantyResource;
 use App\Traits\ApiResponse;
 use OpenApi\Attributes as OA;
 
@@ -40,7 +41,7 @@ class WarrantyController extends Controller
         $limit = request('per_page', 20);
         $warranties = $this->service->getAllPaginated($limit);
 
-        return $this->successPaginatedResponse($warranties);
+        return $this->successPaginatedResponse(WarrantyResource::collection($warranties));
     }
 
     #[OA\Post(
@@ -71,7 +72,7 @@ class WarrantyController extends Controller
     {
         $warranty = $this->service->create($request->validated());
 
-        return $this->successResponse($warranty, 'Warranty created successfully', 201);
+        return $this->successResponse(new WarrantyResource($warranty), 'Warranty created successfully', 201);
     }
 
     #[OA\Get(
@@ -95,7 +96,7 @@ class WarrantyController extends Controller
             return $this->errorResponse('Warranty not found', 404);
         }
 
-        return $this->successResponse($warranty);
+        return $this->successResponse(new WarrantyResource($warranty));
     }
 
     #[OA\Put(
@@ -130,7 +131,7 @@ class WarrantyController extends Controller
 
         $warranty = $this->service->update($id, $request->validated());
 
-        return $this->successResponse($warranty, 'Warranty updated successfully');
+        return $this->successResponse(new WarrantyResource($warranty), 'Warranty updated successfully');
     }
 
     #[OA\Delete(

@@ -2,27 +2,48 @@
 
 namespace Modules\Auth\Services;
 
-use App\Models\LoginHistory;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Auth\Exports\UsersExport;
+use Modules\Auth\Http\Resources\UserLookupResource;
+use Modules\Auth\Repositories\PermissionRepository;
 use Modules\Auth\Repositories\UserHistoryRepository;
+use Modules\Auth\Repositories\UserLocationRepository;
 use Modules\Auth\Repositories\UserRepository;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class UserService
 {
+    protected ?SupportCollection $allPermissionNames = null;
+
     public function __construct(
         protected UserRepository $userRepository,
-        protected UserHistoryRepository $historyRepository
+        protected UserHistoryRepository $historyRepository,
+        protected UserLocationRepository $userLocationRepository,
+        protected PermissionRepository $permissionRepository
     ) {}
+
+    public function attachProfileContext(User $user): User
+    {
+        $user->setAttribute('location_tree', $this->userLocationRepository->getLocationTree($user->id));
+
+        if ($user->hasRole('owner')) {
+            $user->setAttribute(
+                'all_permission_names',
+                $this->allPermissionNames ??= $this->permissionRepository->allNames()
+            );
+        }
+
+        return $user;
+    }
 
     public function getPaginatedUsers(): LengthAwarePaginator
     {
@@ -34,31 +55,14 @@ class UserService
         return $this->userRepository->findByIdWithRelations($id);
     }
 
-    public function getUserLookup(?string $q, int $page, int $pageSize): array
+    public function getUserLookup(?string $q, int $page, int $perPage): array
     {
-        $query = User::query()->with('roles');
+        [$users, $total] = $this->userRepository->lookup($q, $page, $perPage);
 
-        if (! empty($q)) {
-            $query->where(function ($w) use ($q) {
-                $w->where('email', 'ilike', "%{$q}%")
-                    ->orWhere('name', 'ilike', "%{$q}%");
-            });
-        }
-
-        $total = (clone $query)->count();
-
-        $users = $query->orderBy('email')
-            ->forPage($page, $pageSize)
-            ->get();
-
-        $data = $users->map(fn (User $u) => [
-            'user_id' => $u->id,
-            'email' => $u->email,
-            'last_login' => optional($u->last_login_at)->toIso8601String(),
-            'is_owner' => $u->hasRole('owner'),
-        ])->all();
-
-        return ['data' => $data, 'totalCount' => $total];
+        return [
+            'data' => UserLookupResource::collection($users),
+            'totalCount' => $total,
+        ];
     }
 
     public function downloadUsersExport(): BinaryFileResponse
@@ -220,9 +224,7 @@ class UserService
     {
         $user = $this->userRepository->findById($userId);
 
-        return LoginHistory::where('user_id', $user->id)
-            ->orderByDesc('created_at')
-            ->paginate((int) request()->query('page_size', 25));
+        return $this->historyRepository->getLoginHistoriesByUserId($user->id);
     }
 
     public function getUserHistories(string $userId): LengthAwarePaginator|Collection

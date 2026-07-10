@@ -19,6 +19,36 @@ class ShopeeProductService
         protected ChannelProductRepository $productRepository,
     ) {}
 
+    public function pushProductListing(string $shopId, string $productId): array
+    {
+        $shop = $this->shopRepository->findConnectedByShopId($shopId);
+        if (! $shop) {
+            return ['ok' => false, 'code' => 404, 'message' => 'Toko Shopee tidak ditemukan / terputus'];
+        }
+
+        $product = $this->productRepository->findProductModelWithVariantsAndMedia($productId);
+        if (! $product) {
+            return ['ok' => false, 'code' => 404, 'message' => 'Produk tidak ditemukan'];
+        }
+
+        $issues = app(\Modules\Channel\Services\ChannelListingValidator::class)->validate($product, 'shopee');
+        if (! empty($issues)) {
+            return ['ok' => false, 'code' => 422, 'message' => 'Produk belum siap di-listing ke Shopee', 'errors' => ['issues' => $issues]];
+        }
+
+        $result = app(\Modules\Channel\Adapters\ShopeeAdapter::class)->pushProduct($product, $shop);
+
+        if (! ($result['success'] ?? false)) {
+            return ['ok' => false, 'code' => 422, 'message' => $result['message'] ?? 'Gagal push ke Shopee', 'errors' => $result];
+        }
+
+        $externalId = $result['external_product_id'] ?? null;
+
+        $this->productRepository->markProductInReview($product, $shop->id, $externalId);
+
+        return ['ok' => true, 'external_product_id' => $externalId];
+    }
+
     public function syncCategoryTree(string $shopId): int
     {
         $shop = $this->requireShop($shopId);

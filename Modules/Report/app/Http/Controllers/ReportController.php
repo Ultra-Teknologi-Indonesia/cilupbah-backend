@@ -9,6 +9,7 @@ use Illuminate\Http\Response;
 use Modules\Report\Http\Requests\BarcodeReportRequest;
 use Modules\Report\Http\Requests\HppReportRequest;
 use Modules\Report\Http\Requests\PenyesuaianStokPdfRequest;
+use Modules\Report\Http\Resources\LazadaDocumentResource;
 use Modules\Report\Services\ReportService;
 use OpenApi\Attributes as OA;
 
@@ -364,17 +365,12 @@ class ReportController extends Controller
         }
 
         if ($orderId) {
-            $order = \Modules\Sales\Models\SalesOrder::select([
-                'id', 'salesorder_no', 'customer_name', 'source',
-                'shipping_full_name', 'shipping_address', 'shipping_city',
-                'tracking_number', 'shipping_provider',
-            ])->with('items:id,order_id,sku,description,qty_in_base,price,amount')
-              ->findOrFail($orderId);
+            $order = $this->reportService->lazadaOrder((string) $orderId);
 
             return $this->successResponse([
                 'report_type' => 'lazada_document',
                 'generated_at' => now()->toIso8601String(),
-                'data' => $order,
+                'data' => new LazadaDocumentResource($order),
             ], 'Lazada document berhasil diambil.');
         }
 

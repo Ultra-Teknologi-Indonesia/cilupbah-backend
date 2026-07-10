@@ -5,7 +5,6 @@ namespace Modules\Purchase\Repositories;
 use Modules\Purchase\Models\PurchasePayment;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
-use App\Filters\FuzzyFilter;
 use Illuminate\Support\Str;
 
 class PurchasePaymentRepository
@@ -16,11 +15,12 @@ class PurchasePaymentRepository
             ->with(['bill:id,bill_number,supplier_id,total_amount,paid_amount', 'bill.supplier:id,name,code'])
             ->allowedFilters(
                 AllowedFilter::exact('purchase_bill_id'),
-                AllowedFilter::custom('search', new FuzzyFilter('payment_number'))
             )
+            ->allowedSearch('payment_number')
             ->allowedSorts('payment_number', 'payment_date', 'amount', 'created_at')
             ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->paginate($limit)
+            ->appends(request()->query());
     }
 
     public function findById(string $id): ?PurchasePayment

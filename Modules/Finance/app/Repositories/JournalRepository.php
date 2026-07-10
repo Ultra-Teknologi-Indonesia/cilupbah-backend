@@ -11,20 +11,24 @@ class JournalRepository
 
     public function paginate(bool $manualOnly = false, ?string $q = null, ?string $createdSince = null)
     {
+
+        if (! empty($q)) {
+            request()->merge(['search' => $q]);
+        }
+
         return QueryBuilder::for(Journal::class)
             ->when($manualOnly, fn ($query) => $query->where('journal_type', Journal::TYPE_MANUAL))
-            ->when($q, function ($query) use ($q) {
-                $query->where(function ($w) use ($q) {
-                    $w->where('journal_no', 'ilike', "%{$q}%")
-                        ->orWhere('source_doc_no', 'ilike', "%{$q}%")
-                        ->orWhere('notes', 'ilike', "%{$q}%");
-                });
-            })
+            ->allowedSearch('journal_no', 'source_doc_no', 'notes')
             ->when($createdSince, fn ($query) => $query->where('transaction_date', '>=', $createdSince))
             ->allowedSorts('transaction_date', 'journal_no', 'created_at')
             ->defaultSort('-transaction_date')
             ->paginate(request('per_page', 20))
             ->appends(request()->query());
+    }
+
+    public function findForUpdate(string $id): ?Journal
+    {
+        return Journal::lockForUpdate()->find($id);
     }
 
     public function findWithDetails(string $id): ?Journal

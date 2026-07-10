@@ -42,7 +42,8 @@ class UserController extends Controller
     )]
     public function index(): JsonResponse
     {
-        $users = $this->userService->getPaginatedUsers();
+        $users = $this->userService->getPaginatedUsers()
+            ->through(fn ($user) => $this->userService->attachProfileContext($user));
 
         return $this->successPaginatedResponse(
             ProfileResource::collection($users)
@@ -54,7 +55,7 @@ class UserController extends Controller
         $result = $this->userService->getUserLookup(
             $request->query('q'),
             max(1, (int) $request->query('page', 1)),
-            max(1, (int) $request->query('pageSize', 50)),
+            max(1, (int) $request->query('per_page', 50)),
         );
 
         return $this->successResponse($result);
@@ -104,7 +105,10 @@ class UserController extends Controller
     {
         $user = $this->userService->getUserDetail($id);
 
-        return $this->successResponse(new ProfileResource($user), 'Detail pengguna berhasil dimuat.');
+        return $this->successResponse(
+            new ProfileResource($this->userService->attachProfileContext($user)),
+            'Detail pengguna berhasil dimuat.'
+        );
     }
 
     #[OA\Post(
@@ -153,7 +157,11 @@ class UserController extends Controller
     {
         $user = $this->userService->createUser($request->validated());
 
-        return $this->successResponse(new ProfileResource($user), 'Pengguna berhasil dibuat.', 201);
+        return $this->successResponse(
+            new ProfileResource($this->userService->attachProfileContext($user)),
+            'Pengguna berhasil dibuat.',
+            201
+        );
     }
 
     #[OA\Put(
@@ -212,7 +220,10 @@ class UserController extends Controller
     {
         $user = $this->userService->updateUser($id, $request->validated());
 
-        return $this->successResponse(new ProfileResource($user), 'Pengguna berhasil diperbarui.');
+        return $this->successResponse(
+            new ProfileResource($this->userService->attachProfileContext($user)),
+            'Pengguna berhasil diperbarui.'
+        );
     }
 
     #[OA\Put(
@@ -233,7 +244,10 @@ class UserController extends Controller
     {
         $user = $this->userService->syncPermissions($id, $request->validated()['permissions'] ?? []);
 
-        return $this->successResponse(new ProfileResource($user), 'Hak akses pengguna berhasil diperbarui.');
+        return $this->successResponse(
+            new ProfileResource($this->userService->attachProfileContext($user)),
+            'Hak akses pengguna berhasil diperbarui.'
+        );
     }
 
     #[OA\Delete(

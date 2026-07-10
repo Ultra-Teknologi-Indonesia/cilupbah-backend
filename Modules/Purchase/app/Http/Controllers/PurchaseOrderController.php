@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Modules\Purchase\Services\PurchaseOrderService;
 use Modules\Purchase\Http\Requests\StorePurchaseOrderRequest;
 use Modules\Purchase\Http\Requests\ReceivePurchaseOrderRequest;
+use Modules\Purchase\Http\Resources\PurchaseOrderResource;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Purchase Orders', description: 'API Endpoints for Purchase Orders')]
@@ -19,14 +20,14 @@ class PurchaseOrderController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 15);
+        $limit = $request->query('per_page', 20);
         $pos = $this->poService->getAllPaginated($limit);
         return $this->successPaginatedResponse($pos, 'Daftar PO berhasil diambil');
     }
 
     public function receivable(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 15);
+        $limit = $request->query('per_page', 20);
         $pos = $this->poService->getReceivable($limit);
         return $this->successPaginatedResponse($pos, 'Daftar PO yang bisa di-receive');
     }
@@ -37,12 +38,12 @@ class PurchaseOrderController extends Controller
         if (!$po) {
             return $this->errorResponse('PO tidak ditemukan', 404);
         }
-        return $this->successResponse($po, 'Detail PO berhasil diambil');
+        return $this->successResponse(new PurchaseOrderResource($po), 'Detail PO berhasil diambil');
     }
 
     public function items(string $id, Request $request): JsonResponse
     {
-        $perPage = (int) $request->query('per_page', 10);
+        $perPage = (int) $request->query('per_page', 20);
         $items = $this->poService->getPaginatedItems($id, $perPage);
         return $this->successPaginatedResponse($items, 'Daftar produk PO berhasil diambil');
     }

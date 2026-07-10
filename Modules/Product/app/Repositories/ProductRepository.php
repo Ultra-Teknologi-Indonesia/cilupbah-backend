@@ -35,7 +35,7 @@ class ProductRepository
             ->allowedSearch('name')
             ->allowedFilters(AllowedFilter::exact('is_active'))
             ->allowedSorts('name', 'created_at')
-            ->paginate(request('per_page', 12))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 
@@ -162,7 +162,7 @@ class ProductRepository
             )
             ->allowedSorts('name', 'created_at')
             ->when($status !== null, fn ($query) => $query->where('status', $status))
-            ->paginate(request('per_page', 12))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 
@@ -174,7 +174,7 @@ class ProductRepository
             ->whereDoesntHave('channelMappings', fn ($query) => $query->where('channel_shop_id', $channelShopId))
             ->allowedSearch('name')
             ->allowedSorts('name', 'created_at')
-            ->paginate(request('per_page', 12))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 
@@ -195,7 +195,7 @@ class ProductRepository
                 AllowedSort::callback('stock', fn ($q, bool $desc) => $q->orderByRaw('inventories_sum_available ' . ($desc ? 'desc' : 'asc') . ' nulls last'))
             )
             ->defaultSort('sku')
-            ->paginate(request('per_page', 12))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 
@@ -216,7 +216,7 @@ class ProductRepository
             ->when(! $includeUnlisted && ! $channel, fn ($q) => $q->whereHas('channelMappings.channelMapping'))
             ->allowedSorts('sku', 'sell_price')
             ->defaultSort('sku')
-            ->paginate(request('per_page', 12))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 
@@ -227,7 +227,7 @@ class ProductRepository
             ->with('variant:id,sku')
             ->allowedSorts('min_qty', 'customer_type', 'price')
             ->defaultSort('variant_id', 'min_qty')
-            ->paginate(request('per_page', 12))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 

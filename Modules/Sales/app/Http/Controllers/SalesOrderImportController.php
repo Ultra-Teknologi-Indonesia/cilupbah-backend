@@ -10,8 +10,10 @@ use Modules\Inventory\Models\ImpexActivity;
 use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Sales\Exports\SalesOrderImportErrorReportExport;
 use Modules\Sales\Exports\SalesOrderImportTemplateExport;
+use Modules\Sales\Http\Resources\SalesOrderImportBatchResource;
+use Modules\Sales\Http\Resources\SalesOrderImportErrorResource;
 use Modules\Sales\Jobs\ProcessSalesOrderImportJob;
-use Modules\Sales\Models\SalesOrderImportBatch;
+use Modules\Sales\Repositories\SalesOrderImportBatchRepository;
 use Modules\Sales\Services\SalesOrderImportBatchService;
 
 class SalesOrderImportController extends Controller
@@ -20,6 +22,7 @@ class SalesOrderImportController extends Controller
 
     public function __construct(
         private SalesOrderImportBatchService $batchService,
+        private SalesOrderImportBatchRepository $batchRepository,
         private ImpexActivityService $activityService,
     ) {}
 
@@ -46,7 +49,7 @@ class SalesOrderImportController extends Controller
         ProcessSalesOrderImportJob::dispatch($batch->id);
 
         return $this->successResponse(
-            $this->batchPayload($batch),
+            new SalesOrderImportBatchResource($batch),
             'File diterima. Import sedang diproses di latar belakang.',
             202
         );
@@ -54,16 +57,13 @@ class SalesOrderImportController extends Controller
 
     public function batches(Request $request)
     {
-        $query = SalesOrderImportBatch::query()->latest();
-
-        if ($state = $request->query('state')) {
-            $query->where('state', $state);
-        }
-
-        $paginator = $query->paginate((int) $request->query('per_page', 25))->appends($request->query());
+        $paginator = $this->batchRepository->paginate(
+            $request->query('state'),
+            (int) $request->query('per_page', 25),
+        );
 
         return $this->successResponse(
-            collect($paginator->items())->map(fn ($b) => $this->batchPayload($b))->all(),
+            SalesOrderImportBatchResource::collection($paginator->items()),
             'Daftar batch import pesanan',
             200,
             [
@@ -77,31 +77,31 @@ class SalesOrderImportController extends Controller
 
     public function show(string $batch)
     {
-        $model = SalesOrderImportBatch::find($batch);
+        $model = $this->batchRepository->find($batch);
         if (! $model) {
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
 
-        return $this->successResponse($this->batchPayload($model), 'Detail batch import pesanan');
+        return $this->successResponse(
+            new SalesOrderImportBatchResource($model),
+            'Detail batch import pesanan'
+        );
     }
 
     public function errors(Request $request, string $batch)
     {
-        $model = SalesOrderImportBatch::find($batch);
+        $model = $this->batchRepository->find($batch);
         if (! $model) {
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
 
-        $paginator = $model->errors()->orderBy('row_number')
-            ->paginate((int) $request->query('per_page', 50))->appends($request->query());
+        $paginator = $this->batchRepository->paginateErrors(
+            $model,
+            (int) $request->query('per_page', 50),
+        );
 
         return $this->successResponse(
-            collect($paginator->items())->map(fn ($e) => [
-                'row_number' => $e->row_number,
-                'attribute' => $e->attribute,
-                'message' => $e->message,
-                'row_snapshot' => $e->row_snapshot,
-            ])->all(),
+            SalesOrderImportErrorResource::collection($paginator->items()),
             'Daftar error batch import pesanan',
             200,
             [
@@ -115,7 +115,7 @@ class SalesOrderImportController extends Controller
 
     public function downloadErrors(string $batch)
     {
-        $model = SalesOrderImportBatch::find($batch);
+        $model = $this->batchRepository->find($batch);
         if (! $model) {
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
@@ -129,22 +129,5 @@ class SalesOrderImportController extends Controller
     public function downloadTemplate()
     {
         return Excel::download(new SalesOrderImportTemplateExport(), 'Template_Import_Pesanan.xlsx');
-    }
-
-    private function batchPayload(SalesOrderImportBatch $batch): array
-    {
-        return [
-            'id' => $batch->id,
-            'batch_no' => $batch->batch_no,
-            'state' => $batch->state,
-            'original_filename' => $batch->original_filename,
-            'total_rows' => $batch->total_rows,
-            'processed_rows' => $batch->processed_rows,
-            'success_rows' => $batch->success_rows,
-            'failed_rows' => $batch->failed_rows,
-            'progress_percent' => $batch->progress_percent,
-            'error_message' => $batch->error_message,
-            'created_at' => $batch->created_at,
-        ];
     }
 }

@@ -36,6 +36,34 @@ class PutawayService
         return $this->putawayRepository->getByStatus($status, $limit);
     }
 
+    public function listBins(string $locationId, ?string $search = null): array
+    {
+        $bins = $this->putawayRepository->getPutawayBins($locationId, $search);
+
+        $binCurrentQty = $this->putawayRepository->currentQtyByBin($locationId, $bins->pluck('id')->all());
+
+        return $bins->map(function ($bin) use ($binCurrentQty) {
+            return [
+                'id' => $bin->id,
+                'bin_final_code' => $bin->bin_final_code,
+                'current_qty' => $binCurrentQty[$bin->id] ?? 0,
+            ];
+        })->all();
+    }
+
+    public function lookupBin(string $code, string $locationId): ?\Modules\Warehouse\Models\LocationBin
+    {
+        $bin = $this->putawayRepository->lookupPutawayBin($locationId, $code);
+
+        if (! $bin) {
+            return null;
+        }
+
+        $bin->current_qty = $this->putawayRepository->sumOnHandForBin($bin->id, $locationId);
+
+        return $bin;
+    }
+
     public function getById(string $id): ?Putaway
     {
         return $this->putawayRepository->findById($id);

@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Purchase\Services\PurchaseReturnService;
 use Modules\Purchase\Http\Requests\StorePurchaseReturnRequest;
+use Modules\Purchase\Http\Resources\PurchaseReturnResource;
 use OpenApi\Attributes as OA;
 use Throwable;
 
@@ -33,7 +34,7 @@ class PurchaseReturnController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         return $this->successPaginatedResponse($this->returnService->getAllPaginated($limit), 'Daftar purchase return berhasil diambil');
     }
 
@@ -93,7 +94,7 @@ class PurchaseReturnController extends Controller
         if (! $return) {
             return $this->errorResponse('Purchase return tidak ditemukan', 404);
         }
-        return $this->successResponse($return, 'Detail purchase return berhasil diambil');
+        return $this->successResponse(new PurchaseReturnResource($return), 'Detail purchase return berhasil diambil');
     }
 
     #[OA\Get(
@@ -153,7 +154,7 @@ class PurchaseReturnController extends Controller
     )]
     public function unpaid(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = $request->query('per_page', 20);
         return $this->successPaginatedResponse($this->returnService->getUnpaid($limit), 'Daftar purchase return belum lunas');
     }
 

@@ -5,6 +5,7 @@ namespace Modules\Outbound\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Outbound\Http\Resources\CourierResource;
 use Modules\Outbound\Services\CourierService;
 use Modules\Outbound\Http\Requests\CreateCourierRequest;
 use Modules\Outbound\Http\Requests\UpdateCourierRequest;
@@ -64,16 +65,20 @@ class CourierController extends Controller
     )]
     public function byTenant(string $tenantId, Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->courierService->getByTenant($tenantId, $limit);
+
+        $data->through(fn ($courier) => new CourierResource($courier));
 
         return $this->successResponse($data);
     }
 
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->courierService->getAllPaginated($limit);
+
+        $data->through(fn ($courier) => new CourierResource($courier));
 
         return $this->successResponse($data);
     }
@@ -91,7 +96,7 @@ class CourierController extends Controller
     {
         $data = $this->courierService->getAll();
 
-        return $this->successResponse($data);
+        return $this->successResponse(CourierResource::collection($data));
     }
 
     #[OA\Post(
@@ -122,7 +127,7 @@ class CourierController extends Controller
     {
         $courier = $this->courierService->create($request->validated());
 
-        return $this->successResponse($courier, null, 201);
+        return $this->successResponse(new CourierResource($courier), null, 201);
     }
 
     #[OA\Get(
@@ -146,7 +151,7 @@ class CourierController extends Controller
             return $this->errorResponse('Courier tidak ditemukan.', 404);
         }
 
-        return $this->successResponse($courier);
+        return $this->successResponse(new CourierResource($courier));
     }
 
     #[OA\Put(
@@ -179,7 +184,7 @@ class CourierController extends Controller
     {
         $courier = $this->courierService->update($id, $request->validated());
 
-        return $this->successResponse($courier);
+        return $this->successResponse(new CourierResource($courier));
     }
 
     #[OA\Delete(

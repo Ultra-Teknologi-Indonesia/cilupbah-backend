@@ -5,6 +5,7 @@ namespace Modules\Inventory\Services;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Repositories\InventoryTransferRepository;
+use Modules\Inventory\Repositories\BinTransferRepository;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryTransfer;
 use Modules\Inventory\Models\BinTransfer;
@@ -28,6 +29,7 @@ class InventoryService
         protected InventoryRepository $inventoryRepository,
         protected InventoryMovementRepository $movementRepository,
         protected InventoryTransferRepository $transferRepository,
+        protected BinTransferRepository $binTransferRepository,
     ) {}
 
     private function notifyChannelStock(array $variantIds): void
@@ -45,6 +47,156 @@ class InventoryService
     public function getStockByLocation(string $locationId): Collection
     {
         return $this->inventoryRepository->getByLocation($locationId);
+    }
+
+    public function getStockItemDetail(string $itemId): \Modules\Product\Models\ProductVariant
+    {
+        return $this->inventoryRepository->findVariantWithStockDetail($itemId);
+    }
+
+    public function getMovementFilterOptions(): array
+    {
+        $base = \Modules\Inventory\Support\InventoryMovementSourceMap::filterOptions();
+
+        $locations = $this->inventoryRepository->activeLocationsForFilters()
+            ->map(fn ($l) => ['value' => (string) $l->id, 'label' => $l->location_name])
+            ->values()
+            ->toArray();
+
+        $stores = $this->inventoryRepository->channelShopsForFilters()
+            ->map(function ($s) {
+                $channelName = $s->channel?->name ?? '—';
+                return [
+                    'value' => (string) $s->shop_id,
+                    'label' => "{$channelName} - {$s->shop_name}",
+                ];
+            })
+            ->values()
+            ->toArray();
+
+        return array_merge($base, ['locations' => $locations, 'stores' => $stores]);
+    }
+
+    public function deleteVariants(array $ids): int
+    {
+        if ($this->inventoryRepository->variantsHaveStock($ids)) {
+            throw new \RuntimeException('Tidak bisa menghapus varian yang masih punya stok.');
+        }
+
+        return $this->inventoryRepository->deleteVariants($ids);
+    }
+
+    public function findVariantForSku(string $sku): ?\Modules\Product\Models\ProductVariant
+    {
+        return $this->inventoryRepository->findVariantBySkuOrBarcode(trim($sku));
+    }
+
+    public function buildSkuStockSummary(\Modules\Product\Models\ProductVariant $variant, ?string $locationId): array
+    {
+        $primary = $this->inventoryRepository->findPrimaryBinStock($variant->id, $locationId);
+        $onHand = $this->inventoryRepository->sumOnHandForSku($variant->id, $locationId);
+
+        $availableBins = $this->inventoryRepository->availableBinStocks($variant->id, $locationId)
+            ->map(fn ($inv) => [
+                'id'       => $inv->bin_id,
+                'code'     => $inv->bin?->bin_final_code,
+                'on_hand'  => (int) $inv->on_hand,
+                'avg_cost' => (float) $inv->avg_cost,
+            ])
+            ->filter(fn ($b) => $b['code'] !== null)
+            ->values()
+            ->toArray();
+
+        $variantLabel = $variant->options
+            ->map(fn ($o) => $o->value)
+            ->filter()
+            ->implode(', ');
+
+        return [
+            'id'             => $variant->id,
+            'sku'            => $variant->sku,
+            'product_id'     => $variant->product_id,
+            'product_name'   => $variant->product?->name,
+            'variant_label'  => $variantLabel,
+            'thumbnail_url'  => $this->resolveVariantThumbnail($variant),
+            'on_hand'        => (int) $onHand,
+            'avg_cost'       => $primary ? (float) $primary->avg_cost : 0,
+            'primary_bin'    => $primary && $primary->bin ? [
+                'id'       => $primary->bin_id,
+                'code'     => $primary->bin->bin_final_code,
+                'on_hand'  => (int) $primary->on_hand,
+                'avg_cost' => (float) $primary->avg_cost,
+            ] : null,
+            'available_bins' => $availableBins,
+        ];
+    }
+
+    public function getBinStockItems(string $binCode): ?array
+    {
+        $bin = $this->inventoryRepository->findBinByFinalCode($binCode);
+
+        if (! $bin) {
+            return null;
+        }
+
+        return $this->inventoryRepository->getStockByBin($bin->id)
+            ->map(fn ($inv) => [
+                'item_id' => $inv->item_id,
+                'sku' => $inv->product?->sku,
+                'product_name' => $inv->product?->product?->name,
+                'bin_code' => $inv->bin?->bin_final_code ?? $binCode,
+                'on_hand' => (int) $inv->on_hand,
+                'reserved' => (int) $inv->reserved,
+                'available' => (int) $inv->available,
+            ])
+            ->toArray();
+    }
+
+    public function getStockedItems(string $locationId, string $search, int $perPage)
+    {
+        $paginated = $this->inventoryRepository->getStockedItems($locationId, $search, $perPage);
+
+        $paginated->getCollection()->transform(function ($variant) {
+            $variationValues = ($variant->options ?? collect())
+                ->map(fn ($o) => [
+                    'label' => $o->attribute?->name ?? '',
+                    'value' => $o->value ?? '',
+                ])
+                ->filter(fn ($v) => $v['value'] !== '')
+                ->values()
+                ->all();
+
+            $variantLabel = collect($variationValues)
+                ->map(fn ($v) => $v['value'])
+                ->implode(', ');
+
+            return [
+                'item_id'          => $variant->id,
+                'sku'              => $variant->sku,
+                'product_id'       => $variant->product_id,
+                'product_name'     => $variant->product?->name,
+                'variant_label'    => $variantLabel,
+                'variation_values' => $variationValues,
+                'thumbnail_url'    => $this->resolveVariantThumbnail($variant),
+                'total_on_hand'    => (int) ($variant->total_on_hand ?? 0),
+            ];
+        });
+
+        return $paginated;
+    }
+
+    private function resolveVariantThumbnail($variant): ?string
+    {
+        $variantMedia = $variant->media?->firstWhere('media_type', 'image')
+            ?? $variant->media?->first();
+        if ($variantMedia?->url) {
+            return $variantMedia->url;
+        }
+
+        $productMedia = $variant->product?->media?->firstWhere('media_type', 'image')
+            ?? $variant->product?->media?->first();
+
+        return $productMedia?->url;
     }
 
     public function recalculateAverageCost(
@@ -853,89 +1005,22 @@ class InventoryService
 
     public function getBinTransfers(array $filters = [], int $perPage = 10)
     {
-        $query = BinTransfer::query()
-            ->with(['location:id,location_name'])
-            ->withCount('items');
-
-        if (! empty($filters['q'])) {
-            $query->where('transfer_number', 'like', '%' . $filters['q'] . '%');
-        }
-
-        if (! empty($filters['location_id'])) {
-            $query->where('location_id', $filters['location_id']);
-        }
-
-        if (! empty($filters['status'])) {
-            $statuses = is_array($filters['status']) ? $filters['status'] : [$filters['status']];
-            $query->whereIn('status', $statuses);
-        }
-
-        if (! empty($filters['date_from'])) {
-            $query->whereDate('transfer_date', '>=', $filters['date_from']);
-        }
-        if (! empty($filters['date_to'])) {
-            $query->whereDate('transfer_date', '<=', $filters['date_to']);
-        }
-
-        return $query->orderByDesc('transfer_date')
-            ->orderByDesc('created_at')
-            ->paginate($perPage);
+        return $this->binTransferRepository->paginateTransfers($filters, $perPage);
     }
 
     public function getBinTransfer(string $id): ?BinTransfer
     {
-        return BinTransfer::with([
-            'location:id,location_name,location_code',
-            'items.product',
-            'items.product.product:id,name',
-            'items.product.media' => fn ($q) => $q->orderByDesc('is_primary')->orderBy('sort_order'),
-            'items.product.product.media' => fn ($q) => $q->orderByDesc('is_primary')->orderBy('sort_order'),
-            'items.sourceBin:id,bin_final_code,location_id',
-            'items.destinationBin:id,bin_final_code,location_id',
-            'receipts' => fn ($q) => $q->orderByDesc('received_at'),
-            'receipts.items.destinationBin:id,bin_final_code,location_id',
-        ])->find($id);
+        return $this->binTransferRepository->findTransfer($id);
     }
 
     public function getBinTransferReceipts(array $filters = [], int $perPage = 10)
     {
-        $query = BinTransferReceipt::query()
-            ->with([
-                'binTransfer:id,transfer_number,transfer_date',
-                'location:id,location_name',
-            ])
-            ->withCount('items');
-
-        if (! empty($filters['q'])) {
-            $query->where(function ($q) use ($filters) {
-                $q->where('receipt_number', 'like', '%' . $filters['q'] . '%')
-                    ->orWhereHas('binTransfer', fn ($sub) => $sub->where('transfer_number', 'like', '%' . $filters['q'] . '%'));
-            });
-        }
-
-        if (! empty($filters['location_id'])) {
-            $query->where('location_id', $filters['location_id']);
-        }
-
-        if (! empty($filters['date_from'])) {
-            $query->whereDate('received_at', '>=', $filters['date_from']);
-        }
-        if (! empty($filters['date_to'])) {
-            $query->whereDate('received_at', '<=', $filters['date_to']);
-        }
-
-        return $query->orderByDesc('received_at')->paginate($perPage);
+        return $this->binTransferRepository->paginateReceipts($filters, $perPage);
     }
 
     public function getBinTransferReceipt(string $id): ?BinTransferReceipt
     {
-        return BinTransferReceipt::with([
-            'location:id,location_name,location_code',
-            'binTransfer:id,transfer_number,transfer_date,location_id',
-            'items.destinationBin:id,bin_final_code,location_id',
-            'items.transferItem.product',
-            'items.transferItem.product.product:id,name',
-        ])->find($id);
+        return $this->binTransferRepository->findReceipt($id);
     }
 
     public function deleteBinTransferDraft(string $id): void
@@ -1096,6 +1181,8 @@ class InventoryService
 
             return $this->transferRepository->findById($transfer->id);
         });
+
+        $this->createTransitInbound($transfer);
 
         $this->notifyChannelStock(array_column($data['items'], 'item_id'));
 
@@ -1456,6 +1543,8 @@ class InventoryService
             return $this->transferRepository->findById($transferId);
         });
 
+        $this->createTransitInbound($transfer);
+
         $this->notifyChannelStock($transfer->items->pluck('item_id')->all());
 
         return $transfer;
@@ -1566,10 +1655,11 @@ class InventoryService
                 ->map(fn ($item) => [
                     'item_id'      => $item->item_id,
                     'expected_qty' => $item->received_qty,
+                    'received_qty' => $item->received_qty,
                 ])->values()->toArray();
 
             if (! empty($inboundItems)) {
-                $inboundService->receiveFromTransfer([
+                $inboundService->syncTransitReceived($transfer->id, [
                     'location_id'      => $transfer->destination_location_id,
                     'reference_number' => $receiveNumber,
                     'source_id'        => $transfer->id,
@@ -1847,9 +1937,33 @@ class InventoryService
         return $this->transferRepository->findById($transfer->id);
     }
 
+    private function createTransitInbound(InventoryTransfer $transfer): void
+    {
+        $transfer->loadMissing('items');
+
+        $items = $transfer->items
+            ->map(fn ($item) => [
+                'item_id'      => $item->item_id,
+                'expected_qty' => $item->qty,
+            ])->values()->toArray();
+
+        if (empty($items)) {
+            return;
+        }
+
+        app(InboundService::class)->createPendingTransit([
+            'location_id'      => $transfer->destination_location_id,
+            'reference_number' => $transfer->transfer_number,
+            'source_id'        => $transfer->id,
+            'expected_date'    => now()->toDateString(),
+            'created_by'       => $transfer->created_by,
+            'items'            => $items,
+        ]);
+    }
+
     public function submitDraft(string $transferId): InventoryTransfer
     {
-        return DB::transaction(function () use ($transferId) {
+        $transfer = DB::transaction(function () use ($transferId) {
             $transfer = $this->transferRepository->findByIdForUpdate($transferId);
 
             if (! $transfer) {
@@ -1920,6 +2034,10 @@ class InventoryService
 
             return $this->transferRepository->findById($transferId);
         });
+
+        $this->createTransitInbound($transfer);
+
+        return $transfer;
     }
 
     public function updateDraft(string $transferId, array $data): InventoryTransfer

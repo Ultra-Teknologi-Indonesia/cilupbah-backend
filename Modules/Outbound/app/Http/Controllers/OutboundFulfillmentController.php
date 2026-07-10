@@ -3,7 +3,6 @@
 namespace Modules\Outbound\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,7 +38,7 @@ class OutboundFulfillmentController extends Controller
     )]
     public function ordersByStage(string $stage, Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) $request->query('per_page', $request->query('limit', 10));
 
         try {
             $data = $this->fulfillmentService->getOrdersByStage($stage, $limit);
@@ -370,23 +369,11 @@ class OutboundFulfillmentController extends Controller
             'role' => 'nullable|string',
         ]);
 
-        $query = User::query();
-
-        if ($request->filled('location_id')) {
-            $locationId = $request->query('location_id');
-            $query->where(function ($q) use ($locationId) {
-                $q->where('warehouse_id', $locationId)
-                  ->orWhereNull('warehouse_id');
-            });
-        }
-
+        $locationId = $request->filled('location_id') ? $request->query('location_id') : null;
         $roleFilter = $request->filled('role') ? $request->query('role') : 'picker';
-        $query->role($roleFilter);
 
-        $pickers = $query
-            ->orderBy('name')
-            ->get(['id', 'name', 'email'])
-            ->map(fn (User $u) => [
+        $pickers = $this->fulfillmentService->getPickers($locationId, $roleFilter)
+            ->map(fn ($u) => [
                 'id'    => $u->id,
                 'name'  => $u->name,
                 'email' => $u->email,

@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Purchase\Services\PurchaseBillService;
 use Modules\Purchase\Http\Requests\StorePurchaseBillRequest;
+use Modules\Purchase\Http\Resources\PurchaseBillResource;
 
 class PurchaseBillController extends Controller
 {
@@ -16,7 +17,7 @@ class PurchaseBillController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 15);
+        $limit = $request->query('per_page', 20);
         return $this->successPaginatedResponse($this->billService->getAllPaginated($limit), 'Daftar tagihan berhasil diambil');
     }
 
@@ -36,7 +37,7 @@ class PurchaseBillController extends Controller
         if (!$bill) {
             return $this->errorResponse('Tagihan tidak ditemukan', 404);
         }
-        return $this->successResponse($bill, 'Detail tagihan berhasil diambil');
+        return $this->successResponse(new PurchaseBillResource($bill), 'Detail tagihan berhasil diambil');
     }
 
     public function update(string $id, StorePurchaseBillRequest $request): JsonResponse
@@ -61,19 +62,19 @@ class PurchaseBillController extends Controller
 
     public function unpaid(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 15);
+        $limit = $request->query('per_page', 20);
         return $this->successPaginatedResponse($this->billService->getUnpaid($limit), 'Daftar tagihan belum lunas');
     }
 
     public function overdue(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 15);
+        $limit = $request->query('per_page', 20);
         return $this->successPaginatedResponse($this->billService->getOverdue($limit), 'Daftar tagihan jatuh tempo');
     }
 
     public function forReturn(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 15);
+        $limit = $request->query('per_page', 20);
         return $this->successPaginatedResponse($this->billService->getForReturn($limit), 'Daftar tagihan untuk return');
     }
 }

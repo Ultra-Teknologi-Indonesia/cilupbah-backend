@@ -9,13 +9,17 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Helpers\WooCommerceSignature;
 use Modules\Channel\Jobs\ProcessWooCommerceWebhook;
-use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Repositories\ChannelShopRepository;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'WooCommerce', description: 'Integrasi WooCommerce')]
 class WooCommerceWebhookController extends Controller
 {
     use ApiResponse;
+
+    public function __construct(
+        protected ChannelShopRepository $shopRepository,
+    ) {}
 
     public function verify()
     {
@@ -37,7 +41,7 @@ class WooCommerceWebhookController extends Controller
         $topic = (string) $request->header('x-wc-webhook-topic', '');
         $source = (string) $request->header('x-wc-webhook-source', '');
 
-        $shop = $this->resolveShop($source);
+        $shop = $this->shopRepository->findConnectedByStoreUrl($source);
 
         if (! $shop) {
             Log::warning('WooCommerce webhook: toko tidak ditemukan.', ['source' => $source]);
@@ -71,22 +75,6 @@ class WooCommerceWebhookController extends Controller
         ProcessWooCommerceWebhook::dispatch($shop->shop_id, $topic, (string) $payload['id']);
 
         return response('', 200);
-    }
-
-    protected function resolveShop(string $source): ?ChannelShop
-    {
-        if ($source === '') {
-            return null;
-        }
-
-        $normalized = rtrim($source, '/');
-
-        return ChannelShop::whereNull('disconnected_at')
-            ->where(function ($q) use ($normalized) {
-                $q->where('store_url', $normalized)
-                    ->orWhere('store_url', $normalized . '/');
-            })
-            ->first();
     }
 
     protected function isFirstDelivery(Request $request, array $payload): bool

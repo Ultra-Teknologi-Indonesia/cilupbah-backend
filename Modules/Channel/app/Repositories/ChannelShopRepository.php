@@ -35,13 +35,36 @@ class ChannelShopRepository
             ->allowedFilters('channel_id')
             ->allowedSorts('shop_name', 'created_at')
             ->defaultSort('channel_id', 'shop_name')
-            ->paginate(request('per_page', 50))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 
     public function findByShopId(string $shopId)
     {
         return DB::table('channel_shops')->where('shop_id', $shopId)->first();
+    }
+
+    public function findConnectedByShopId(string $shopId): ?ChannelShop
+    {
+        return ChannelShop::where('shop_id', $shopId)
+            ->whereNull('disconnected_at')
+            ->first();
+    }
+
+    public function findConnectedByStoreUrl(string $source): ?ChannelShop
+    {
+        if ($source === '') {
+            return null;
+        }
+
+        $normalized = rtrim($source, '/');
+
+        return ChannelShop::whereNull('disconnected_at')
+            ->where(function ($q) use ($normalized) {
+                $q->where('store_url', $normalized)
+                    ->orWhere('store_url', $normalized . '/');
+            })
+            ->first();
     }
 
     public function getIdByShopId(string $shopId): ?string

@@ -33,7 +33,7 @@ class ArchiveFeedRepository
             )
             ->allowedSorts('name', 'created_at', 'archived_at')
             ->defaultSort('-archived_at')
-            ->paginate(request('per_page', 12))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 

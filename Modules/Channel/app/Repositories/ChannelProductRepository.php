@@ -4,6 +4,8 @@ namespace Modules\Channel\Repositories;
 
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
+use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductChannelMapping;
 use Ramsey\Uuid\Uuid;
 
 class ChannelProductRepository
@@ -11,6 +13,27 @@ class ChannelProductRepository
     public function getActiveProducts()
     {
         return DB::table('products')->where('is_active', true)->get();
+    }
+
+    public function findProductModel(string $id): ?Product
+    {
+        return Product::find($id);
+    }
+
+    public function findProductModelWithVariantsAndMedia(string $id): ?Product
+    {
+        return Product::with(['variants', 'media'])->find($id);
+    }
+
+    public function markProductInReview(Product $product, string $channelShopId, ?string $externalProductId): void
+    {
+        $mapping = ProductChannelMapping::firstOrNew([
+            'product_id' => $product->id,
+            'channel_shop_id' => $channelShopId,
+        ]);
+        $mapping->external_product_id = $externalProductId;
+        $mapping->save();
+        $mapping->markInReview($externalProductId);
     }
 
     public function getUnsyncedProducts(string $shopId)

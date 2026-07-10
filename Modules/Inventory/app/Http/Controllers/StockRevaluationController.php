@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Inventory\Services\StockRevaluationService;
 use Modules\Inventory\Http\Requests\StoreStockRevaluationRequest;
+use Modules\Inventory\Http\Resources\StockRevaluationResource;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Amount Adjustment', description: 'API Endpoints for Penyesuaian Nilai (Amount Adjustment)')]
@@ -34,6 +35,10 @@ class StockRevaluationController extends Controller
     {
         $limit = $request->query('limit', 10);
         $revaluations = $this->revaluationService->getAllPaginated($limit);
+
+        $revaluations->getCollection()->transform(
+            fn ($m) => (new StockRevaluationResource($m))->resolve($request),
+        );
 
         return $this->successPaginatedResponse($revaluations, 'Daftar penyesuaian nilai berhasil diambil.');
     }
@@ -70,7 +75,7 @@ class StockRevaluationController extends Controller
 
             $revaluation = $this->revaluationService->create($data);
 
-            return $this->successResponse($revaluation, 'Penyesuaian nilai berhasil, harga pokok diperbarui.', 201);
+            return $this->successResponse(new StockRevaluationResource($revaluation), 'Penyesuaian nilai berhasil, harga pokok diperbarui.', 201);
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -101,7 +106,7 @@ class StockRevaluationController extends Controller
             return $this->errorResponse('Dokumen penyesuaian nilai tidak ditemukan.', 404);
         }
 
-        return $this->successResponse($revaluation, 'Detail penyesuaian nilai berhasil diambil.');
+        return $this->successResponse(new StockRevaluationResource($revaluation), 'Detail penyesuaian nilai berhasil diambil.');
     }
 
     #[OA\Post(
@@ -123,7 +128,7 @@ class StockRevaluationController extends Controller
             $data = ['approved_by' => $request->user()?->name ?? $request->user()?->email];
             $revaluation = $this->revaluationService->approve($id, $data);
 
-            return $this->successResponse($revaluation, 'Penyesuaian nilai berhasil diapprove, harga pokok diperbarui.');
+            return $this->successResponse(new StockRevaluationResource($revaluation), 'Penyesuaian nilai berhasil diapprove, harga pokok diperbarui.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
@@ -134,7 +139,7 @@ class StockRevaluationController extends Controller
         try {
             $revaluation = $this->revaluationService->cancel($id);
 
-            return $this->successResponse($revaluation, 'Penyesuaian nilai berhasil dibatalkan.');
+            return $this->successResponse(new StockRevaluationResource($revaluation), 'Penyesuaian nilai berhasil dibatalkan.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }

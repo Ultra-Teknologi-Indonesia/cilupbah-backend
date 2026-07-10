@@ -18,6 +18,26 @@ class UserRepository
             ->appends(request()->query());
     }
 
+    public function lookup(?string $q, int $page, int $perPage): array
+    {
+        $query = User::query()->with('roles');
+
+        if (! empty($q)) {
+            $query->where(function (Builder $w) use ($q) {
+                $w->where('email', 'ilike', "%{$q}%")
+                    ->orWhere('name', 'ilike', "%{$q}%");
+            });
+        }
+
+        $total = (clone $query)->count();
+
+        $users = $query->orderBy('email')
+            ->forPage($page, $perPage)
+            ->get();
+
+        return [$users, $total];
+    }
+
     public function getExportUsersQuery(): Builder
     {
         return $this->baseQuery()->getEloquentBuilder();
@@ -76,5 +96,10 @@ class UserRepository
     public function deleteTokens(User $user): void
     {
         $user->tokens()->delete();
+    }
+
+    public function deleteCurrentToken(User $user): void
+    {
+        $user->currentAccessToken()->delete();
     }
 }

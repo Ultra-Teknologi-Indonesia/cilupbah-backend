@@ -268,6 +268,32 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
         $this->assertEqualsCanonicalizing(['SO-MENUNGGU-KIRIM'], array_column($resMenungguKirim->json('data'), 'salesorder_no'));
     }
 
+    public function test_empty_stock_order_is_hidden_from_all_tab_but_visible_in_empty_stock_tab(): void
+    {
+        $user = User::factory()->create();
+
+        $emptyStock = $this->seedOrder('SO-STOK-KOSONG', ['status' => 'reserved']);
+
+        DB::table('inventories')->where('item_id', $this->variantId)
+            ->update(['on_hand' => 0, 'available' => 0]);
+
+        $this->assertSame(0, $this->repository->getTabCounts()['all']);
+
+        $resAll = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales');
+        $resAll->assertStatus(200);
+        $this->assertNotContains(
+            'SO-STOK-KOSONG',
+            array_column($resAll->json('data'), 'salesorder_no'),
+            'pesanan stok kosong tidak boleh muncul di daftar Semua',
+        );
+
+        $resTab = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?tab=empty-stock');
+        $this->assertContains('SO-STOK-KOSONG', array_column($resTab->json('data'), 'salesorder_no'));
+
+        $resFilter = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?filter[status][]=empty-stock');
+        $this->assertContains('SO-STOK-KOSONG', array_column($resFilter->json('data'), 'salesorder_no'));
+    }
+
     public function test_status_filter_multi_select_is_or_between_buckets(): void
     {
         $user = User::factory()->create();

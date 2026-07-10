@@ -41,7 +41,7 @@ class ChannelProductListingRepository
                 AllowedSort::field('last_synced_at', 'product_channel_mappings.last_synced_at'),
             )
             ->defaultSort('-product_channel_mappings.created_at')
-            ->paginate(request('per_page', 10))
+            ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
 

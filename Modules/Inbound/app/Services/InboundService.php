@@ -142,6 +142,69 @@ class InboundService
         });
     }
 
+    public function createPendingTransit(array $data): Inbound
+    {
+        $existing = $this->inboundRepository->findBySource('transfer', $data['source_id']);
+        if ($existing) {
+            return $existing;
+        }
+
+        return DB::transaction(function () use ($data) {
+            $inbound = $this->inboundRepository->create([
+                'location_id'        => $data['location_id'],
+                'transaction_number' => $data['reference_number'] ?? ('INB-' . Str::upper(Str::random(8))),
+                'reference_number'   => $data['reference_number'] ?? null,
+                'type'               => Inbound::TYPE_TRANSIT_IN,
+                'source_type'        => 'transfer',
+                'source_id'          => $data['source_id'],
+                'status'             => Inbound::STATUS_DRAFT,
+                'expected_date'      => $data['expected_date'] ?? now(),
+                'created_by'         => $data['created_by'],
+            ]);
+
+            foreach ($data['items'] as $itemData) {
+                $this->inboundRepository->createItem([
+                    'inbound_id'   => $inbound->id,
+                    'item_id'      => $itemData['item_id'],
+                    'expected_qty' => $itemData['expected_qty'],
+                    'received_qty' => 0,
+                ]);
+            }
+
+            return $inbound->load('items');
+        });
+    }
+
+    public function syncTransitReceived(string $transferId, array $data): Inbound
+    {
+        $inbound = $this->inboundRepository->findBySource('transfer', $transferId);
+
+        if (! $inbound) {
+            return $this->receiveFromTransfer($data);
+        }
+
+        return DB::transaction(function () use ($inbound, $data) {
+            $receivedByItem = collect($data['items'] ?? [])->keyBy('item_id');
+            $anyShortfall = false;
+
+            foreach ($inbound->items as $item) {
+                $receivedQty = (int) ($receivedByItem[$item->item_id]['received_qty'] ?? $item->expected_qty);
+                $item->update(['received_qty' => $receivedQty]);
+                if ($receivedQty < $item->expected_qty) {
+                    $anyShortfall = true;
+                }
+            }
+
+            $inbound->update([
+                'status'             => $anyShortfall ? Inbound::STATUS_PARTIAL : Inbound::STATUS_RECEIVED,
+                'reference_number'   => $data['reference_number'] ?? $inbound->reference_number,
+                'transaction_number' => $data['reference_number'] ?? $inbound->transaction_number,
+            ]);
+
+            return $inbound->load('items');
+        });
+    }
+
     public function receiveFromSalesReturn(array $data): Inbound
     {
         $data['type'] = Inbound::TYPE_SALES_RETURN;
