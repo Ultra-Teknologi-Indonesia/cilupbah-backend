@@ -52,12 +52,30 @@ class InventoryTransferRepository
             $query->where('destination_location_id', $filters['destination_location_id']);
         }
 
-        return $query->paginate(request('per_page', $limit))->appends(request()->query());
+        $paginator = $query->paginate(request('per_page', $limit))->appends(request()->query());
+
+        $userIds = [];
+        foreach ($paginator->items() as $item) {
+            if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $item->created_by)) {
+                $userIds[] = $item->created_by;
+            }
+        }
+        
+        if (!empty($userIds)) {
+            $users = \App\Models\User::whereIn('id', array_unique($userIds))->pluck('name', 'id');
+            foreach ($paginator->items() as $item) {
+                if (isset($users[$item->created_by])) {
+                    $item->created_by = $users[$item->created_by];
+                }
+            }
+        }
+
+        return $paginator;
     }
 
     public function findById(string $id): ?InventoryTransfer
     {
-        return InventoryTransfer::with([
+        $transfer = InventoryTransfer::with([
             'sourceLocation',
             'destinationLocation',
             'items.product:id,sku,product_id',
@@ -68,6 +86,15 @@ class InventoryTransferRepository
             'items.sourceBin:id,bin_final_code',
             'items.destinationBin:id,bin_final_code',
         ])->find($id);
+
+        if ($transfer && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $transfer->created_by)) {
+            $user = \App\Models\User::find($transfer->created_by);
+            if ($user) {
+                $transfer->created_by = $user->name;
+            }
+        }
+
+        return $transfer;
     }
 
     public function findByIdForUpdate(string $id): ?InventoryTransfer

@@ -81,7 +81,12 @@ class StockReplenishmentService
                 throw new \RuntimeException('Permintaan sudah tidak dalam status pending.');
             }
 
-            $actorId = Auth::id() ?: $request->requested_by_user_id;
+            $actorName = Auth::user()?->name;
+            if (!$actorName && $request->requested_by_user_id) {
+                $user = \App\Models\User::find($request->requested_by_user_id);
+                $actorName = $user?->name;
+            }
+            $actorName = $actorName ?? 'System';
 
             $transfer = $this->inventoryService->createDraft([
                 'source_location_id'      => $request->from_location_id,
@@ -91,7 +96,7 @@ class StockReplenishmentService
                     substr($request->id, 0, 8),
                     $note ? " — {$note}" : '',
                 ),
-                'created_by'              => $actorId,
+                'created_by'              => $actorName,
             ]);
 
             foreach ($request->items as $item) {

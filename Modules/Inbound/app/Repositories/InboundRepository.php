@@ -14,7 +14,7 @@ class InboundRepository
 {
     public function getAllPaginated(int $limit = 10)
     {
-        return QueryBuilder::for(Inbound::class)
+        $paginator = QueryBuilder::for(Inbound::class)
             ->with(['location:id,location_name', 'items.variant:id,sku,product_id', 'assignments.worker:id,name', 'putaways:id,source_id,status,assigned_to', 'putaways.assignee:id,name'])
             ->allowedFilters(
                 AllowedFilter::exact('location_id'),
@@ -29,11 +29,29 @@ class InboundRepository
             ->defaultSort('-expected_date')
             ->paginate($limit)
             ->appends(request()->query());
+
+        $userIds = [];
+        foreach ($paginator->items() as $item) {
+            if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $item->created_by)) {
+                $userIds[] = $item->created_by;
+            }
+        }
+        
+        if (!empty($userIds)) {
+            $users = \App\Models\User::whereIn('id', array_unique($userIds))->pluck('name', 'id');
+            foreach ($paginator->items() as $item) {
+                if (isset($users[$item->created_by])) {
+                    $item->created_by = $users[$item->created_by];
+                }
+            }
+        }
+
+        return $paginator;
     }
 
     public function findById(string $id): ?Inbound
     {
-        return Inbound::with([
+        $inbound = Inbound::with([
             'location',
             'items.receipts.bin',
             'items.variant:id,sku,product_id',
@@ -41,6 +59,15 @@ class InboundRepository
             'items.variant.media',
             'items.variant.product.media',
         ])->find($id);
+
+        if ($inbound && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $inbound->created_by)) {
+            $user = \App\Models\User::find($inbound->created_by);
+            if ($user) {
+                $inbound->created_by = $user->name;
+            }
+        }
+
+        return $inbound;
     }
 
     public function findByIdForUpdate(string $id): ?Inbound
