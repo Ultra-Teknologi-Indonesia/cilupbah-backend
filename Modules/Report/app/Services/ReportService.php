@@ -343,17 +343,9 @@ class ReportService
         ];
     }
 
-    /**
-     * Bangun PDF label QR barang.
-     *
-     * Mode harga:
-     *  - tanpa_harga : 1 label per SKU (nama + QR + SKU)
-     *  - default     : 1 label per SKU (+ harga jual default)
-     *  - online      : 1 label per (SKU × toko yang listing-nya sudah SYNCED), tampil nama toko + harga channel
-     */
     public function barcodePdf(array $data)
     {
-        // Label bisa ratusan (SKU induk × banyak varian × toko) — DomPDF butuh headroom.
+
         ini_set('memory_limit', '1024M');
         set_time_limit(120);
 
@@ -374,7 +366,6 @@ class ReportService
                 ->groupBy('variant_id');
         }
 
-        // Satu "cell" = satu label yang dicetak di grid PDF.
         $cells = [];
         $qrCache = [];
 
@@ -447,7 +438,7 @@ class ReportService
 
     public function penyesuaianStokBuild(array $data)
     {
-        // Tabel rowspan bisa besar untuk rentang lebar — DomPDF butuh headroom.
+
         ini_set('memory_limit', '1024M');
         set_time_limit(120);
 

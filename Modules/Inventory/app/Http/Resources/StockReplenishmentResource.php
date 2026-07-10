@@ -42,9 +42,6 @@ class StockReplenishmentResource extends JsonResource
         ];
     }
 
-    /**
-     * Ambil URL thumbnail: media varian (gambar) lebih dulu, fallback ke media produk.
-     */
     private static function resolveThumbnail($variant): ?string
     {
         if (! $variant) {

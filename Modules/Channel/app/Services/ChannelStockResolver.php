@@ -23,10 +23,6 @@ class ChannelStockResolver
             return $result;
         }
 
-        // Variant mana yang merupakan variant produk bundle. Bundle tidak punya baris
-        // inventory sendiri; stok available-nya diturunkan dari komponen dengan formula
-        // min(floor(komponen_available / qty)) — lihat Modules\Product\Support\BundleStock,
-        // tapi di sini di-scope ke lokasi sumber toko agar konsisten dengan variant biasa.
         $bundleProductIdByVariant = DB::table('product_variants')
             ->join('products', 'products.id', '=', 'product_variants.product_id')
             ->whereIn('product_variants.id', $variantIds)
@@ -51,13 +47,8 @@ class ChannelStockResolver
             }
         }
 
-        // Satu query stok untuk variant non-bundle + seluruh komponen bundle sekaligus.
         $lookupIds = array_values(array_unique(array_merge($variantIds, $componentVariantIds)));
 
-        // Stok yang di-broadcast ke marketplace hanya yang SUDAH DITEMPATKAN di rak final
-        // (bin is_inbound=false). Stok yang baru diterima tapi belum ditempatkan (Bin Inbound
-        // atau bin_id NULL) tidak sellable → mencegah oversell. reserved dijumlahkan lintas
-        // semua baris (agregat reserved di baris bin_id NULL).
         $availByItem = [];
         $stocks = DB::table('inventories as i')
             ->leftJoin('location_bins as b', 'b.id', '=', 'i.bin_id')
@@ -98,12 +89,6 @@ class ChannelStockResolver
         return $result;
     }
 
-    /**
-     * Sumber stok available yang di-broadcast ke marketplace, per toko:
-     * - mode 'total'    → semua gudang aktif (kecuali lokasi sistem transit)
-     * - mode 'location' → satu gudang pilihan admin, fallback ke Gudang Kecil
-     *   kalau belum diset / gudangnya sudah terhapus.
-     */
     public function sourceLocationIds(ChannelShop $shop): array
     {
         if ($shop->stock_source_mode === 'total') {

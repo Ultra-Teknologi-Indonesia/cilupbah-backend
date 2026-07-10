@@ -122,17 +122,14 @@ class ProductVariantEditExpansionTest extends TestCase
 
     public function test_saved_option_value_with_legacy_trailing_space_is_not_rejected(): void
     {
-        // Data lama (mis. hasil import) menyimpan opsi dengan spasi ekor "Blue ".
-        // Payload dari FE sudah dipangkas middleware TrimStrings jadi "Blue".
-        // Perbandingan yang normalisasi whitespace harus menganggapnya sama,
-        // bukan menolak dengan "Opsi varian '...' tidak boleh dihapus."
+
         $id = $this->createIp17();
 
         $blue = DB::table('product_variants')->where('product_id', $id)->where('sku', 'IP17-BLUE')->first();
         DB::table('variant_options')
             ->where('variant_id', $blue->id)
             ->where('attribute_id', $this->warna->id)
-            ->update(['value' => 'Blue ']); // spasi ekor disengaja
+            ->update(['value' => 'Blue ']); 
 
         $this->putJson("/api/v1/products/{$id}", [
             'variation_types' => [['attribute_id' => $this->warna->id, 'sort_order' => 0]],
@@ -144,7 +141,6 @@ class ProductVariantEditExpansionTest extends TestCase
             ],
         ])->assertOk();
 
-        // Varian Blue harus dicocokkan ke baris yang sama (bukan supersede + insert ulang).
         $this->assertDatabaseHas('product_variants', ['id' => $blue->id, 'is_active' => true]);
         $this->assertNull(DB::table('product_variants')->where('id', $blue->id)->value('superseded_at'));
         $this->assertEquals(2, DB::table('product_variants')->where('product_id', $id)->where('is_active', true)->count());

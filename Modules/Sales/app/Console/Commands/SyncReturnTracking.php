@@ -28,7 +28,7 @@ class SyncReturnTracking extends Command
             ->where('created_at', '>=', now()->subDays($days));
 
         if (! $force) {
-            // Retur yang resinya belum ada dan belum pernah / sudah lama disinkronkan.
+
             $query->whereNull('return_tracking_number')
                 ->where(function ($q) use ($staleMinutes) {
                     $q->whereNull('tracking_synced_at')

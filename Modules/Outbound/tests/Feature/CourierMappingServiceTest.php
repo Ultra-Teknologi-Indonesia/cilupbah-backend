@@ -63,8 +63,6 @@ class CourierMappingServiceTest extends TestCase
         $this->assertSame($standard->courier_id, $sameday->courier_id);
         $this->assertSame(1, Courier::where('code', 'spx')->count());
 
-        // Kecepatan pengiriman tetap terekam lewat shipment_type, bukan lewat
-        // identitas kurir yang terpisah.
         $this->assertSame('REGULAR', $standard->shipment_type);
         $this->assertSame('INSTANT', $instant->shipment_type);
         $this->assertSame('INSTANT', $sameday->shipment_type);

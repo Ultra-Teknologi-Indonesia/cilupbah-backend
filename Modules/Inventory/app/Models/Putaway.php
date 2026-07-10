@@ -56,17 +56,11 @@ class Putaway extends Model
         return $this->belongsTo(\Modules\Inbound\Models\Inbound::class, 'source_id');
     }
 
-    /**
-     * Baris pivot penerimaan sumber (mendukung 1 putaway dari banyak penerimaan).
-     */
     public function sourceRows(): HasMany
     {
         return $this->hasMany(PutawaySource::class);
     }
 
-    /**
-     * Daftar penerimaan (inbound) yang digabung ke dalam putaway ini.
-     */
     public function sources(): BelongsToMany
     {
         return $this->belongsToMany(

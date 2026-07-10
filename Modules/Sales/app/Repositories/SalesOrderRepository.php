@@ -53,8 +53,7 @@ class SalesOrderRepository
         }
 
         if ($tab && $tab !== 'all') {
-            // Tab "Semua" tetap menampilkan order yang sudah diserahkan ke gudang
-            // (untuk histori/audit) — action-nya disembunyikan di FE, bukan di-exclude di sini.
+
             $query = $this->scopeExcludeHandedToWarehouse($query);
         }
 
@@ -91,8 +90,7 @@ class SalesOrderRepository
         $emptyStockItemConstraint = fn ($q) => $q->whereRaw(SalesOrder::shortfallItemWhereRaw());
 
         return [
-            // Selaras dengan getPaginatedOrders(): tab "Semua" tidak exclude order yang
-            // sudah diserahkan ke gudang, jadi badge count di sini juga tidak boleh exclude.
+
             'all'              => $this->scopeExcludeFailedDownload(SalesOrder::query())
                 ->whereNull('pick_failed_at')
                 ->where(fn ($q) => $q
@@ -232,12 +230,6 @@ class SalesOrderRepository
         };
     }
 
-    /**
-     * Bucket status granular untuk filter multi-select "Semua" (mirip "Cari status" Jubelio).
-     * Checkbox = OR antar bucket yang dipilih. Beda dari applyTabScope(): dipanggil TANPA
-     * exclude handed-to-warehouse (tab "Semua" tetap menampilkan order yang sudah di gudang),
-     * jadi tiap bucket post-handover menyatakan sendiri kondisinya secara eksplisit.
-     */
     private const STATUS_FILTER_KEYS = [
         'cancelled', 'unpaid', 'cancel-requested', 'completed', 'in-transit',
         'ready-to-process', 'empty-stock', 'failed-pick',
@@ -271,7 +263,6 @@ class SalesOrderRepository
             'completed'        => $query->where('status', 'shipped')->whereNotNull('received_date'),
             'in-transit'       => $query->where('status', 'shipped')->whereNull('received_date'),
 
-            // Siap Proses: order lunas/masuk sistem, admin sales BELUM tekan "Proses" (belum di-handover).
             'ready-to-process' => $query->where('status', 'reserved')
                 ->whereNull('pick_failed_at')
                 ->whereNull('handed_to_warehouse_at')
@@ -284,7 +275,6 @@ class SalesOrderRepository
                 ->whereHas('items', $emptyStockConstraint),
             'failed-pick'      => $query->where('status', 'reserved')->whereNotNull('pick_failed_at'),
 
-            // Pengambilan Belum: sudah di-handover ke gudang, tapi picklist belum dibuat/belum dimulai.
             'picking-belum'    => $query->where('status', 'reserved')
                 ->whereNotNull('handed_to_warehouse_at')
                 ->whereNull('pick_failed_at')
@@ -292,21 +282,20 @@ class SalesOrderRepository
                     ->whereDoesntHave('picklistItems')
                     ->orWhereHas('picklistItems.picklist', fn ($qq) => $qq->where('status', 'DRAFT'))
                 ),
-            // Pengambilan Diproses: picklist terkait sedang berjalan.
+
             'picking-diproses' => $query->where('status', 'reserved')
                 ->whereNull('pick_failed_at')
                 ->whereHas('picklistItems.picklist', fn ($q) => $q->where('status', 'IN_PROGRESS')),
-            // Pengambilan Selesai: picking selesai, belum ada packing aktif.
+
             'picking-selesai'  => $query->where('status', 'picked')
                 ->whereDoesntHave('packlist', fn ($q) => $q->where('status', 'IN_PROGRESS')),
 
             'packing-diproses' => $query->where('status', 'picked')
                 ->whereHas('packlist', fn ($q) => $q->where('status', 'IN_PROGRESS')),
 
-            // Siap Kirim: packing selesai, belum dibuatkan Shipment sama sekali.
             'ready-to-ship'    => $query->where('status', 'packed')
                 ->whereDoesntHave('shipmentOrders'),
-            // Menunggu Kirim: Shipment sudah dibuat (resi keluar), belum diserahkan ke kurir.
+
             'waiting-shipment' => $query->where('status', 'packed')
                 ->whereHas('shipmentOrders.shipment', fn ($q) => $q->where('status', 'SCHEDULED')),
 
@@ -517,9 +506,7 @@ class SalesOrderRepository
             'paid_time'           => $orderData['paid_time'] ?? null,
             'ship_by_date'        => $orderData['ship_by_date'] ?? null,
             'pickup_done_time'    => $orderData['pickup_done_time'] ?? null,
-            // pickup_code = existing-wins: JANGAN timpa kode/PIN pengambilan yang
-            // sudah diisi manual (Fase 1) saat re-sync. Channel hanya mengisi kalau
-            // kolom masih kosong. Kebalikan dari tracking_number (channel-wins).
+
             'pickup_code'         => ($existing->pickup_code ?? null) ?: ($orderData['pickup_code'] ?? null),
             'channel_updated_at'  => $orderData['channel_updated_at'] ?? null,
             'return_due_date'     => $orderData['return_due_date'] ?? null,

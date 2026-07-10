@@ -152,8 +152,7 @@ class ProcessPutawayItemJob implements ShouldQueue
                 }
 
                 if ($putaway->source_type === 'INBOUND') {
-                    // Distribusi qty ke rincian sumber (FIFO: penerimaan terlama dulu),
-                    // lalu sinkron putaway_qty ke tiap inbound_item terkait.
+
                     $sources = PutawayItemSource::query()
                         ->where('putaway_item_sources.putaway_item_id', $putawayItem->id)
                         ->join('inbound_items', 'inbound_items.id', '=', 'putaway_item_sources.inbound_item_id')
@@ -182,15 +181,13 @@ class ProcessPutawayItemJob implements ShouldQueue
                             $remaining -= $take;
                         }
                     } elseif ($putaway->source_id) {
-                        // Fallback dokumen lama tanpa rincian sumber.
+
                         InboundItem::where('inbound_id', $putaway->source_id)
                             ->where('item_id', $putawayItem->item_id)
                             ->increment('putaway_qty', $qty);
                         $affectedInboundIds[$putaway->source_id] = true;
                     }
 
-                    // Sinkron status tiap penerimaan yang terpengaruh (auto-complete di sini,
-                    // bukan lewat PutawayService::complete()).
                     foreach (array_keys($affectedInboundIds) as $inboundId) {
                         $this->recomputeInboundStatus($inboundId);
                     }
@@ -212,11 +209,6 @@ class ProcessPutawayItemJob implements ShouldQueue
         });
     }
 
-    /**
-     * Hitung ulang status penerimaan dari progres putaway itemnya.
-     * Semua item tuntas → COMPLETED; sebagian → PUTAWAY_IN_PROGRESS; nol → RECEIVED.
-     * Status DRAFT/CANCELLED tidak disentuh.
-     */
     private function recomputeInboundStatus(string $inboundId): void
     {
         $inbound = Inbound::with('items')->find($inboundId);

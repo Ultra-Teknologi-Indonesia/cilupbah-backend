@@ -16,11 +16,6 @@ use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderItem;
 use Tests\TestCase;
 
-/**
- * Bundle tidak punya wujud fisik: picker & packer memegang komponen. Test ini mengunci
- * bahwa PicklistService DAN PacklistService sama-sama meledakkan order item bundle menjadi
- * baris-baris komponen (× qty), dan tidak pernah membuat baris untuk variant bundle itu sendiri.
- */
 class BundleOutboundExplosionTest extends TestCase
 {
     use RefreshDatabase;
@@ -67,9 +62,6 @@ class BundleOutboundExplosionTest extends TestCase
         ]);
     }
 
-    /**
-     * @return array{0: ProductVariant, 1: ProductVariant, 2: ProductVariant}
-     */
     private function makeBundle(): array
     {
         $a = $this->variant('COMP-A');
@@ -115,8 +107,8 @@ class BundleOutboundExplosionTest extends TestCase
         $items = PicklistItem::where('picklist_id', $picklist->id)->get();
 
         $this->assertCount(2, $items);
-        $this->assertSame(4, (int) $items->firstWhere('item_id', $a->id)->qty_ordered); // 2 × 2
-        $this->assertSame(6, (int) $items->firstWhere('item_id', $b->id)->qty_ordered); // 2 × 3
+        $this->assertSame(4, (int) $items->firstWhere('item_id', $a->id)->qty_ordered); 
+        $this->assertSame(6, (int) $items->firstWhere('item_id', $b->id)->qty_ordered); 
         $this->assertNull($items->firstWhere('item_id', $bundleVar->id));
     }
 

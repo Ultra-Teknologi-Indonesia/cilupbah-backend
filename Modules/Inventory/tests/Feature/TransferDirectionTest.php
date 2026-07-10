@@ -88,8 +88,6 @@ class TransferDirectionTest extends TestCase
         $this->makeTransfer($this->b->id, $this->a->id, 'IN_TRANSIT');
         $this->makeTransfer($this->a->id, $this->b->id, 'RECEIVED');
 
-        // Transfer yang sudah diterima harus tetap tampil (badge "Diterima"),
-        // bukan hilang dari daftar begitu status berubah jadi RECEIVED.
         $this->actingAs($this->user, 'sanctum')
             ->getJson('/api/v1/inventory/transfers/in')
             ->assertStatus(200)

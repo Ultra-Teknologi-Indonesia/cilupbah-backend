@@ -5,10 +5,6 @@ namespace Modules\Sales\Database\Seeders;
 use Illuminate\Database\Seeder;
 use Modules\Sales\Models\InternalStore;
 
-/**
- * Production-safe seeder untuk master data Toko Internal.
- * Idempotent: match by name; skip kalau sudah ada.
- */
 class InternalStoreSeeder extends Seeder
 {
     public function run(): void

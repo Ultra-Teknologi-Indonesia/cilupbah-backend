@@ -65,8 +65,7 @@ class BundleStockCascadeTest extends TestCase
 
     private function setInventory(string $variantId, int $onHand): void
     {
-        // Stok ditempatkan di rak final (is_inbound=false) agar dihitung sebagai
-        // on_hand/available pada model stok terbaru.
+
         $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
             ['location_id' => $this->locationId, 'bin_final_code' => 'RACK-A1'],
             ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false]
@@ -131,8 +130,6 @@ class BundleStockCascadeTest extends TestCase
         $this->stock()->reserve('BUNDLE-1', $bundleVar->id, $this->locationId, 4, 'SO-1');
         $this->stock()->pick('BUNDLE-1', $bundleVar->id, $this->locationId, 4, 'SO-1');
 
-        // StockService::pickSingle() sengaja hanya drain reserved di row aggregate; pemotongan
-        // on_hand fisik terjadi di PicklistService::pickItem() per-scan, bukan di sini.
         $this->assertDatabaseHas('inventories', ['item_id' => $a->id, 'on_hand' => 100, 'reserved' => 0]);
         $this->assertDatabaseHas('inventories', ['item_id' => $b->id, 'on_hand' => 100, 'reserved' => 0]);
     }

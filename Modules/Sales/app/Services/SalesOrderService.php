@@ -40,7 +40,6 @@ class SalesOrderService
         'cancelled' => [],
     ];
 
-    // Alur pengerjaan: aksi yang dicatat lewat updateOrder() per status tujuan.
     private const STATUS_HISTORY_ACTIONS = [
         'reserved'  => 'PROCESS',
         'picked'    => 'FINISH_PICK',
@@ -120,13 +119,9 @@ class SalesOrderService
         return $this->orderRepository->bulkDeleteCancelled($ids);
     }
 
-    /**
-     * @return array{moved:int, skipped:array<int, array{id:string, salesorder_no:?string}>}
-     */
     public function moveToReadyToProcess(array $orderIds): array
     {
-        // Guard stok kosong: order yang masih punya item shortfall di Gudang Kecil
-        // TIDAK boleh masuk Proses Pesanan — biarkan parkir di tab Stok Kosong.
+
         $skippedIds = SalesOrder::whereIn('id', $orderIds)
             ->where('status', 'reserved')
             ->hasStockShortfall()
@@ -161,8 +156,6 @@ class SalesOrderService
                     ]))
                     ->delete();
 
-                // Clear flag Gagal Picking (kalau order datang dari sana) sekaligus
-                // serahkan ke gudang.
                 $order->update([
                     'handed_to_warehouse_at' => now(),
                     'pick_failed_at'         => null,
@@ -366,10 +359,6 @@ class SalesOrderService
         return $order->fresh();
     }
 
-    /**
-     * Simpan/ubah identitas kurir + kode pengambilan (bukti pickup kurir).
-     * Hanya field teks; foto identitas ditangani terpisah via media.
-     */
     public function saveCourierPickup(string $id, array $data): SalesOrder
     {
         $order = SalesOrder::findOrFail($id);
@@ -696,10 +685,6 @@ class SalesOrderService
         return $order->fresh('items');
     }
 
-    /**
-     * Catat satu baris riwayat status ("alur pengerjaan") untuk order.
-     * $actor: instance \App\Models\User, array ['email'=>?,'name'=>?,'id'=>?], atau null (fallback ke auth()->user()).
-     */
     public function logStatusHistory(SalesOrder $order, string $action, ?array $metadata = null, $actor = null): void
     {
         if ($actor instanceof \App\Models\User) {
@@ -1421,10 +1406,7 @@ class SalesOrderService
 
     private function resolveLocationId(SalesOrder $order): string
     {
-        // Semua pesanan dari channel (Shopee/TikTok/Lazada/dst) selalu
-        // di-assign ke Gudang Kecil, terlepas dari mapping historis di
-        // channel_warehouses. Hanya pesanan manual yang boleh menghormati
-        // location_id yang sudah di-set user.
+
         $isManual = $this->isManualSource($order->source);
 
         if ($isManual && $order->location_id) {
@@ -1439,8 +1421,6 @@ class SalesOrderService
             return $kecilId;
         }
 
-        // Fallback aman: kalau Gudang Kecil belum di-seed di environment ini,
-        // pertahankan perilaku lama supaya order tidak gagal disimpan.
         if (! $isManual && $order->channel_shop_id) {
             $mapping = DB::table('channel_warehouses')
                 ->where('store_id', $order->channel_shop_id)
@@ -1548,7 +1528,6 @@ class SalesOrderService
                 throw new \InvalidArgumentException('Item pesanan tidak ditemukan.');
             }
 
-            // Snapshot reservasi lama sebelum item diubah (untuk sinkronisasi stok).
             $reservesStock = $order->status === 'reserved' && $item->item_id;
             $oldItemId = $item->item_id;
             $oldSku    = $item->sku ?? "item:{$item->item_id}";
@@ -1556,8 +1535,6 @@ class SalesOrderService
 
             $updates = array_intersect_key($data, array_flip(['sku', 'description', 'qty_in_base', 'price', 'disc', 'disc_amount', 'tax_amount']));
 
-            // Ganti SKU → resolve item_id baru dari master produk agar reservasi &
-            // picking memakai variant yang benar (bukan cuma ganti teks SKU).
             if (array_key_exists('sku', $updates) && $updates['sku'] !== null && $updates['sku'] !== $item->sku) {
                 $newItemId = DB::table('product_variants')->where('sku', $updates['sku'])->value('id');
                 if (! $newItemId) {
@@ -1575,9 +1552,6 @@ class SalesOrderService
                 $item->update($updates);
             }
 
-            // Sinkronkan reservasi: lepas yang lama, pasang yang baru (enforce=false
-            // supaya kompensasi tetap boleh walau stok baru masih kurang — order
-            // akan tetap di tab Stok Kosong bila memang belum cukup).
             if ($reservesStock) {
                 $item->refresh();
                 $newItemId = $item->item_id;
@@ -1615,7 +1589,6 @@ class SalesOrderService
                 throw new \InvalidArgumentException('Pesanan harus memiliki minimal satu item. Batalkan pesanan bila ingin menghapus item terakhir.');
             }
 
-            // Lepas reservasi item yang dihapus supaya stok reserved tidak nyangkut.
             if ($order->status === 'reserved' && $item->item_id) {
                 $this->stockService->cancel(
                     $item->sku ?? "item:{$item->item_id}",
@@ -1633,10 +1606,6 @@ class SalesOrderService
         });
     }
 
-    /**
-     * Apakah order sedang dalam kondisi "stok kosong" (punya item shortfall di
-     * gudangnya). Konsisten dengan tab empty-stock & guard proses.
-     */
     public function isEmptyStock(SalesOrder $order): bool
     {
         return SalesOrder::whereKey($order->getKey())->hasStockShortfall()->exists();
@@ -1644,14 +1613,11 @@ class SalesOrderService
 
     private function assertEditableInternally(SalesOrder $order): void
     {
-        // Status Menunggu: selalu boleh (belum ada reservasi/pick).
+
         if ($order->status === 'pending') {
             return;
         }
 
-        // Kompensasi stok kosong: order reserved yang masih di tab Stok Kosong,
-        // belum diserahkan ke gudang & belum punya picklist, boleh diedit/hapus
-        // (hapus item kosong / ganti SKU / ganti qty) — internal, tanpa sync channel.
         $editableEmptyStock = $order->status === 'reserved'
             && is_null($order->handed_to_warehouse_at)
             && is_null($order->pick_failed_at)

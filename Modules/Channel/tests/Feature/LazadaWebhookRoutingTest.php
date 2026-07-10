@@ -87,9 +87,7 @@ class LazadaWebhookRoutingTest extends TestCase
 
     public function test_product_qc_only_still_repulls(): void
     {
-        // Perubahan konten (nama/gambar/video) sering datang bareng event QC saja,
-        // jadi setiap event produk selalu memicu pull ulang penuh — tidak lagi
-        // digating oleh keberadaan field price/stock/sku.
+
         $download = Mockery::mock(ChannelDownloadService::class);
         $download->shouldReceive('downloadProductDebounced')->once()->with('lazada', 'LZ1', 'IT-1');
 

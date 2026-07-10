@@ -9,7 +9,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('inbounds/my-assignments', [InboundController::class, 'myAssignments'])->name('inbounds.myAssignments');
     });
 
-    // Mobile scan micro-actions: leave auth-only (must not break mobile flow).
     Route::get('inbounds/scan/{qrCode}', [InboundController::class, 'scanQr'])->name('inbounds.scanQr');
     Route::post('inbounds/scan-putaway', [InboundController::class, 'scanPutaway'])->name('inbounds.scanPutaway');
 
@@ -38,7 +37,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::middleware('role_or_permission:owner|view-barang-masuk')->group(function () {
         Route::get('inbounds/{id}/assignments', [InboundController::class, 'assignments'])->name('inbounds.assignments');
     });
-    // Mobile assignment-start micro-action: leave auth-only (must not break mobile flow).
+
     Route::post('inbounds/assignments/{assignmentId}/start', [InboundController::class, 'startAssignment'])->name('inbounds.startAssignment');
 
     Route::middleware('role_or_permission:owner|edit-barang-masuk')->group(function () {

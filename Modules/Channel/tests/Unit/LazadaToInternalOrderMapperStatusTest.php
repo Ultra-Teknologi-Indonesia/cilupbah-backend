@@ -19,9 +19,6 @@ class LazadaToInternalOrderMapperStatusTest extends TestCase
         ], [], 'LZ-100');
     }
 
-    /**
-     * @return array<string, array{0: string, 1: string}>
-     */
     public static function statusProvider(): array
     {
         return [
@@ -36,9 +33,6 @@ class LazadaToInternalOrderMapperStatusTest extends TestCase
         ];
     }
 
-    /**
-     * @dataProvider statusProvider
-     */
     public function test_new_statuses_no_longer_fall_back_to_unpaid(string $lazadaStatus, string $expectedChannelStatus): void
     {
         $internal = $this->mapWithStatus($lazadaStatus);

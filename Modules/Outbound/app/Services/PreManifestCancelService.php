@@ -7,12 +7,7 @@ use Modules\Sales\Models\SalesOrder as Order;
 
 class PreManifestCancelService
 {
-    /**
-     * Base query: order dibatalkan pasca-packing yang belum di-dismiss
-     * dan belum masuk shipment. Ini adalah row yang wajib terlihat
-     * di layar Shipping/Pre-Manifest agar tim outbound bisa memisahkan
-     * paket fisik sebelum diserahkan ke kurir.
-     */
+
     public function baseQuery(): Builder
     {
         return Order::query()

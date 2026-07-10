@@ -8,15 +8,6 @@ use Illuminate\Database\Seeder;
 use Modules\Auth\Support\PermissionCatalog;
 use Spatie\Permission\PermissionRegistrar;
 
-/**
- * Membuat seluruh permission dari katalog RBAC (config/rbac.php) dan memberi
- * grant default per role. Bersifat additif & idempotent:
- *  - permission dibuat dengan firstOrCreate
- *  - grant default via givePermissionTo (tidak menghapus grant manual dari UI)
- *
- * Jalankan sesudah RoleSeeder (butuh role sudah ada). owner tidak diberi grant
- * karena bypass total lewat Gate::before.
- */
 class RbacPermissionSeeder extends Seeder
 {
     public function run(): void

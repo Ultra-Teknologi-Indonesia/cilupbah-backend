@@ -100,13 +100,6 @@ class ChannelStockTest extends TestCase
         $this->assertSame(0, $stocks[$variant->id]);
     }
 
-    /**
-     * Buat bundle: satu produk bundle (punya variant sendiri, tanpa inventory) yang
-     * tersusun dari beberapa komponen ber-stok di satu lokasi sumber toko.
-     *
-     * @param  array<int, array{available:int, qty:int}>  $components
-     * @return ProductVariant  variant milik produk bundle
-     */
     private function makeBundleWithComponents(string $bundleSku, array $components): ProductVariant
     {
         $category = Category::create(['name' => 'C' . uniqid(), 'is_active' => true]);
@@ -152,8 +145,7 @@ class ChannelStockTest extends TestCase
 
     public function test_stock_resolver_derives_bundle_stock_as_min_floor(): void
     {
-        // Komponen A: 10 available, qty 2 -> 5 bundle. Komponen B: 8 available, qty 1 -> 8 bundle.
-        // Bundle available = min(5, 8) = 5.
+
         $bundleVariant = $this->makeBundleWithComponents('BND-A', [
             ['available' => 10, 'qty' => 2],
             ['available' => 8, 'qty' => 1],

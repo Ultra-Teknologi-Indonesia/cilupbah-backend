@@ -220,8 +220,6 @@ class RevertStageTest extends TestCase
         return $id;
     }
 
-    // --- PicklistService::failPickOrder (single order → Gagal Picking) ---
-
     public function test_fail_pick_order_reverses_stock_and_flags_gagal_picking(): void
     {
         $userId = $this->seedUser();
@@ -280,8 +278,6 @@ class RevertStageTest extends TestCase
         $this->assertSame(24, (int) Inventory::where('bin_id', $binId)->value('on_hand'), 'Hanya stok order A (4 unit) yang dikembalikan: 20 + 4 = 24.');
     }
 
-    // --- PicklistService::revert (whole picklist / "pecah" batch) ---
-
     public function test_revert_whole_picklist_reverts_all_member_orders(): void
     {
         $userId = $this->seedUser();
@@ -332,15 +328,13 @@ class RevertStageTest extends TestCase
             app(PicklistService::class)->revert($picklistId, $userId);
             $this->fail('Expected OutboundValidationException');
         } catch (OutboundValidationException $e) {
-            // expected
+
         }
 
         $this->assertSame(3, (int) Inventory::where('bin_id', $binId)->value('on_hand'), 'Tidak ada stok yang boleh berubah (all-or-nothing).');
         $this->assertSame(2, PicklistItem::where('picklist_id', $picklistId)->count(), 'Tidak ada item yang boleh terhapus.');
         $this->assertSame('picked', SalesOrder::find($orderA)->status, 'Order A tidak boleh ikut ter-revert walau sendirinya valid.');
     }
-
-    // --- PacklistService::revert ---
 
     public function test_revert_packlist_returns_order_to_picked(): void
     {
@@ -379,8 +373,6 @@ class RevertStageTest extends TestCase
         $this->assertNotNull(DB::table('packlists')->where('id', $packlistId)->first());
     }
 
-    // --- Shipment: order stays 'packed' when removed from a SCHEDULED shipment (existing removeOrders) ---
-
     public function test_shipment_remove_orders_keeps_order_packed_and_detaches_junction(): void
     {
         $locationId = $this->seedLocation();
@@ -404,8 +396,6 @@ class RevertStageTest extends TestCase
         $this->expectException(\Exception::class);
         app(\Modules\Outbound\Services\ShipmentService::class)->removeOrders($shipmentId, [$orderId]);
     }
-
-    // --- OutboundFulfillmentService dispatcher: DELETE /outbound/orders/{orderId} ---
 
     public function test_dispatcher_rejects_shipped_order(): void
     {

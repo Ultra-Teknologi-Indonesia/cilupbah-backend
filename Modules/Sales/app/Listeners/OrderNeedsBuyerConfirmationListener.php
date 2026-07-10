@@ -15,7 +15,5 @@ class OrderNeedsBuyerConfirmationListener
             'short_items' => count($event->shortItems),
         ]);
 
-        // TODO: dispatch TaskAssigned to CS role once role mapping is defined
-        // (mirror \Modules\Notification\Events\TaskAssigned pattern).
     }
 }

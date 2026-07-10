@@ -63,10 +63,6 @@ class Inbound extends Model
         return $this->hasMany(InboundAssignment::class);
     }
 
-    /**
-     * Putaway yang bersumber dari penerimaan ini. Kini lewat pivot putaway_sources
-     * agar 1 putaway bisa berasal dari banyak penerimaan (data lama di-backfill).
-     */
     public function putaways(): BelongsToMany
     {
         return $this->belongsToMany(

@@ -121,7 +121,6 @@ class ShopeeReconcileTest extends TestCase
         $this->assertSame('failed', $this->mapping->sync_status);
         $this->assertStringContainsString('dihapus di Shopee', (string) $this->mapping->error_message);
 
-        // Produk internal tidak boleh ikut terhapus/nonaktif akibat reconcile channel.
         $this->product->refresh();
         $this->assertTrue((bool) $this->product->is_active);
         $this->assertDatabaseHas('products', ['id' => $this->product->id]);

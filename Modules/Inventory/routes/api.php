@@ -103,7 +103,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     });
     Route::middleware('role_or_permission:owner|view-pindah-bin')->group(function () {
         Route::get('inventory/bin-transfers', [InventoryTransactionController::class, 'binTransferIndex'])->name('inventory.binTransfers.index');
-        // Penerimaan transfer internal (dokumen TRFI) — tab Selesai. Daftar sebelum route {id}.
+
         Route::get('inventory/bin-transfer-receipts', [InventoryTransactionController::class, 'binTransferReceiptsIndex'])->name('inventory.binTransferReceipts.index');
         Route::get('inventory/bin-transfer-receipts/{id}', [InventoryTransactionController::class, 'binTransferReceiptShow'])->name('inventory.binTransferReceipts.show');
         Route::get('inventory/bin-transfers/{id}', [InventoryTransactionController::class, 'binTransferShow'])->name('inventory.binTransfers.show');
@@ -268,8 +268,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         });
     });
 
-    // Penempatan (Putaway). Lookup bin & aksi scan mobile (start/process) sengaja auth-only
-    // agar alur mobile tidak terkunci; dokumen-level & koreksi digate per aksi.
     Route::prefix('putaway')->group(function () {
         Route::get('/', [PutawayController::class, 'index'])->middleware('role_or_permission:owner|view-penempatan')->name('putaway.index');
         Route::post('/', [PutawayController::class, 'store'])->middleware('role_or_permission:owner|create-penempatan')->name('putaway.store');
@@ -293,7 +291,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::delete('/{id}', [PutawayController::class, 'destroy'])->middleware('role_or_permission:owner|delete-penempatan')->name('putaway.destroy');
     });
 
-    // Permintaan Pengisian Stok (Restock). pending-count = badge, dibiarkan auth-only.
     Route::prefix('inventory/stock-replenishment')->group(function () {
         Route::get('/', [StockReplenishmentController::class, 'index'])->middleware('role_or_permission:owner|view-permintaan-restock')->name('inventory.stockReplenishment.index');
         Route::get('/pending-count', [StockReplenishmentController::class, 'pendingCount'])->name('inventory.stockReplenishment.pendingCount');

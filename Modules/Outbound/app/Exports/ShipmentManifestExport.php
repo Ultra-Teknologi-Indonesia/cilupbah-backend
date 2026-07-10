@@ -13,13 +13,6 @@ use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 
-/**
- * Export "Laporan Bukti Pengiriman" (manifest pengiriman) ke Excel .xlsx.
- *
- * Meniru layout PDF manifest (Modules/Outbound/resources/views/pdf/manifest-body.blade.php):
- * judul, blok metadata (No Pengiriman, Kurir, dsb), tabel per-pesanan,
- * Total Berat, dan area tanda tangan.
- */
 class ShipmentManifestExport implements FromArray, WithColumnWidths, WithEvents, WithTitle
 {
     private const LAST_COL = 'G';
@@ -34,7 +27,6 @@ class ShipmentManifestExport implements FromArray, WithColumnWidths, WithEvents,
         'Status Channel',
     ];
 
-    // Nomor baris (1-indexed) yang dihitung saat array() dibangun, dipakai di registerEvents().
     private int $metaFirstRow = 0;
     private int $metaLastRow = 0;
     private int $tableHeaderRow = 0;
@@ -72,11 +64,9 @@ class ShipmentManifestExport implements FromArray, WithColumnWidths, WithEvents,
         $rows = [];
         $blank = ['', '', '', '', '', '', ''];
 
-        // Judul
         $rows[] = ['Laporan Bukti Pengiriman', '', '', '', '', '', ''];
         $rows[] = $blank;
 
-        // Blok metadata (label di kolom A, nilai di kolom C — di-merge saat styling)
         $this->metaFirstRow = count($rows) + 1;
         $meta = [
             ['No Pengiriman', $shipmentNo],
@@ -100,11 +90,9 @@ class ShipmentManifestExport implements FromArray, WithColumnWidths, WithEvents,
         $this->metaLastRow = count($rows);
         $rows[] = $blank;
 
-        // Header tabel
         $this->tableHeaderRow = count($rows) + 1;
         $rows[] = self::TABLE_HEADERS;
 
-        // Baris data
         $this->tableFirstDataRow = count($rows) + 1;
         if ($orders->isEmpty()) {
             $rows[] = ['', 'Tidak ada pesanan.', '', '', '', '', ''];
@@ -129,11 +117,9 @@ class ShipmentManifestExport implements FromArray, WithColumnWidths, WithEvents,
         }
         $this->tableLastDataRow = count($rows);
 
-        // Total berat
         $rows[] = ['', '', '', '', 'Total Berat', $totalWeightKg . ' kg', ''];
         $this->totalRow = count($rows);
 
-        // Tanda tangan
         $rows[] = $blank;
         $rows[] = ['Tanda Tangan Penanggung Jawab', '', '', '', 'Tanda Tangan Pengirim', '', ''];
         $this->signatureLabelRow = count($rows);
@@ -141,7 +127,6 @@ class ShipmentManifestExport implements FromArray, WithColumnWidths, WithEvents,
         $rows[] = [$createdBy, '', '', '', $courierName, '', ''];
         $this->signatureNameRow = count($rows);
 
-        // Footer tanggal cetak
         $rows[] = $blank;
         $rows[] = ['Tgl. Cetak: ' . now()->format('d M Y H:i'), '', '', '', '', '', ''];
 
@@ -168,20 +153,17 @@ class ShipmentManifestExport implements FromArray, WithColumnWidths, WithEvents,
                 $sheet = $event->sheet->getDelegate();
                 $last = self::LAST_COL;
 
-                // Judul: merge & bold besar, rata tengah
                 $sheet->mergeCells("A1:{$last}1");
                 $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(16);
                 $sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $sheet->getRowDimension(1)->setRowHeight(24);
 
-                // Blok metadata: label bold (A:B) + nilai (C:G)
                 for ($r = $this->metaFirstRow; $r <= $this->metaLastRow; $r++) {
                     $sheet->mergeCells("A{$r}:B{$r}");
                     $sheet->mergeCells("C{$r}:{$last}{$r}");
                     $sheet->getStyle("A{$r}")->getFont()->setBold(true);
                 }
 
-                // Header tabel: bold, latar abu, rata tengah
                 $hr = $this->tableHeaderRow;
                 $headerRange = "A{$hr}:{$last}{$hr}";
                 $sheet->getStyle($headerRange)->getFont()->setBold(true);
@@ -190,12 +172,10 @@ class ShipmentManifestExport implements FromArray, WithColumnWidths, WithEvents,
                     ->getStartColor()->setRGB('F1F5F9');
                 $sheet->getStyle($headerRange)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                // Border seluruh tabel (header + data)
                 $tableRange = "A{$hr}:{$last}{$this->tableLastDataRow}";
                 $sheet->getStyle($tableRange)->getBorders()->getAllBorders()
                     ->setBorderStyle(Border::BORDER_THIN);
 
-                // Rata tengah kolom numerik pada baris data
                 if ($this->tableLastDataRow >= $this->tableFirstDataRow) {
                     $sheet->getStyle("A{$this->tableFirstDataRow}:A{$this->tableLastDataRow}")
                         ->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
@@ -203,10 +183,8 @@ class ShipmentManifestExport implements FromArray, WithColumnWidths, WithEvents,
                         ->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 }
 
-                // Baris Total Berat: bold
                 $sheet->getStyle("E{$this->totalRow}:F{$this->totalRow}")->getFont()->setBold(true);
 
-                // Tanda tangan: label bold + merge kolom
                 $slr = $this->signatureLabelRow;
                 $sheet->mergeCells("A{$slr}:C{$slr}");
                 $sheet->mergeCells("E{$slr}:{$last}{$slr}");

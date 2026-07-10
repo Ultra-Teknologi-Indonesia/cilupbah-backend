@@ -26,8 +26,6 @@ class BundleStock
             $variant = $item->relationLoaded('component') ? $item->component : null;
             $inventories = ($variant && $variant->relationLoaded('inventories')) ? $variant->inventories : null;
 
-            // Hanya stok komponen yang sudah ditempatkan yang dihitung (placed-only);
-            // `available` sudah placed-only via kolom, `on_hand` dipartisi di sini.
             $summary = $inventories
                 ? \Modules\Inventory\Support\StockSummary::partitionLoaded($inventories)
                 : ['on_hand' => 0];

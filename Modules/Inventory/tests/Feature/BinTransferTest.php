@@ -50,7 +50,6 @@ class BinTransferTest extends TestCase
 
         $svc = app(InventoryService::class);
 
-        // --- Langkah 1: buat draft (rak tujuan belum ditentukan, stok TIDAK bergerak) ---
         $transfer = $svc->createBinTransferDraft([
             'location_id' => $location->id,
             'created_by' => 'tester',
@@ -67,7 +66,6 @@ class BinTransferTest extends TestCase
         $this->assertSame(10, (int) Inventory::where('bin_id', $binA->id)->where('item_id', $variant1->id)->first()->on_hand);
         $this->assertSame(3, (int) Inventory::where('bin_id', $binC->id)->where('item_id', $variant2->id)->first()->on_hand);
 
-        // --- Langkah 2: cetak surat jalan -> Sedang Dijalan (stok rak asal -> transit) ---
         $transfer = $svc->printBinTransfer($transfer->id, 'tester');
         $this->assertSame(BinTransfer::STATUS_SEDANG_DIJALAN, $transfer->status);
         $this->assertNotNull($transfer->printed_at);
@@ -77,10 +75,9 @@ class BinTransferTest extends TestCase
             'bin_id' => $binA->id, 'source' => 'BIN_TRANSFER_OUT', 'qty' => -4,
             'transaction_number' => $transfer->transfer_number,
         ]);
-        // Rak tujuan belum ada isinya sebelum diterima.
+
         $this->assertNull(Inventory::where('bin_id', $binB->id)->where('item_id', $variant1->id)->first());
 
-        // --- Langkah 3: penerimaan -> tempatkan ke rak tujuan yang benar ---
         $item1 = $transfer->items->firstWhere('item_id', $variant1->id);
         $item2 = $transfer->items->firstWhere('item_id', $variant2->id);
 
@@ -129,7 +126,6 @@ class BinTransferTest extends TestCase
         $transfer = $svc->printBinTransfer($transfer->id, 'tester');
         $item = $transfer->items->first();
 
-        // Terima sebagian (4 dari 7) -> transfer tetap Sedang Dijalan, sisa 3 di transit.
         $svc->receiveBinTransfer($transfer->id, [
             'received_by' => 'tester',
             'items' => [['bin_transfer_item_id' => $item->id, 'destination_bin_id' => $dst->id, 'qty' => 4]],
@@ -138,7 +134,6 @@ class BinTransferTest extends TestCase
         $this->assertSame(4, (int) $item->fresh()->placed_qty);
         $this->assertSame(4, (int) Inventory::where('bin_id', $dst->id)->where('item_id', $variant->id)->first()->on_hand);
 
-        // Terima melebihi sisa (3) -> ditolak.
         try {
             $svc->receiveBinTransfer($transfer->id, [
                 'received_by' => 'tester',
@@ -149,7 +144,6 @@ class BinTransferTest extends TestCase
             $this->assertStringContainsString('melebihi jumlah yang tersedia', $e->getMessage());
         }
 
-        // Terima sisa (3) -> Selesai.
         $svc->receiveBinTransfer($transfer->id, [
             'received_by' => 'tester',
             'items' => [['bin_transfer_item_id' => $item->id, 'destination_bin_id' => $dst->id, 'qty' => 3]],

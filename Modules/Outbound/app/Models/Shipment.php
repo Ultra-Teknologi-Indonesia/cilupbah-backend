@@ -10,9 +10,6 @@ use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
-/**
- * @property \Illuminate\Database\Eloquent\Collection $orders
- */
 class Shipment extends Model implements HasMedia
 {
     use HasUuid7, InteractsWithMedia;

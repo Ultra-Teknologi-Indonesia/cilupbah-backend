@@ -43,8 +43,7 @@ class ProfileResource extends JsonResource
             'email' => $this->email,
             'roles' => $this->roles->pluck('name'),
             'permissions' => $permissions,
-            // Hak akses langsung (override per-user) di luar bawaan role.
-            // Owner tak pakai override → selalu kosong.
+
             'direct_permissions' => $this->hasRole('owner')
                 ? []
                 : $this->getDirectPermissions()->pluck('name'),

@@ -16,10 +16,8 @@ return new class extends Migration
                 ->references('id')->on('sales_orders')
                 ->cascadeOnDelete();
 
-            // Tahap saat pesanan dikeluarkan: picking (→ Gagal Picking) / packing / shipping.
             $table->enum('stage', ['picking', 'packing', 'shipping']);
 
-            // Siapa yang menghapus (aktor login, ikut konvensi created_by = email).
             $table->string('removed_by')->nullable();
             $table->text('reason')->nullable();
             $table->boolean('reversed_stock')->default(false);

@@ -7,12 +7,6 @@ use Modules\Outbound\Database\Seeders\CourierSeeder;
 use Modules\Outbound\Models\Courier;
 use Tests\TestCase;
 
-/**
- * CourierSeeder harus menghasilkan PERSIS daftar kurir kanonik yang diminta
- * (bentuk Jubelio, lihat PLANNING-KONSOLIDASI-KURIR.md). Daftar kanonik adalah
- * satu sumber kebenaran (`CourierSeeder::canonicalNames()`) yang juga dipakai
- * command `couriers:sync-master`.
- */
 class CourierSeederTest extends TestCase
 {
     use RefreshDatabase;

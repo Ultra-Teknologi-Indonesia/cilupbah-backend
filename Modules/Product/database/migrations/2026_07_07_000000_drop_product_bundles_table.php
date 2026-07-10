@@ -4,13 +4,6 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-/**
- * Tabel legacy `product_bundles` (variant→variant) sudah dimigrasikan ke
- * `product_bundle_items` (product→variant) oleh migrasi 2026_06_16_120000.
- * Model ProductBundle & relasi ProductVariant::bundleComponents() sudah dihapus,
- * jadi tabel ini benar-benar tidak terpakai lagi. `down()` merekonstruksi struktur
- * asli agar migrasi tetap reversibel.
- */
 return new class extends Migration
 {
     public function up(): void

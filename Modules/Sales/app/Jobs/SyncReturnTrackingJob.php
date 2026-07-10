@@ -11,10 +11,6 @@ use Illuminate\Support\Facades\Log;
 use Modules\Sales\Models\SalesReturn;
 use Modules\Sales\Services\SalesReturnTrackingSyncService;
 
-/**
- * Menarik nomor resi ekspedisi retur dari marketplace untuk satu SalesReturn.
- * Dipakai baik oleh trigger webhook maupun scheduled sync.
- */
 class SyncReturnTrackingJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;

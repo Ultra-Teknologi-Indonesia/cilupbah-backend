@@ -128,9 +128,6 @@ class InboundDatabaseSeeder extends Seeder
             'is_active'   => true,
         ]);
 
-        // Stok seed harus DITEMPATKAN di bin rak final (is_inbound=false) supaya dihitung
-        // sebagai on_hand/available (sellable & pickable). Stok di bin_id NULL/Bin Inbound
-        // berstatus "menunggu penempatan" dan tidak akan bisa dijual/dipick.
         $rackBin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
             [
                 'location_id'    => $warehouse2->id,

@@ -38,17 +38,6 @@ class MultiRackPicklistSeeder extends Seeder
             return;
         }
 
-        // ─── Layout gudang: 2 lantai, 5 rak, 12 bin ───
-        //
-        // Lantai 1:
-        //   R1 = Rak aksesoris kecil (mouse, keyboard)
-        //   R2 = Rak elektronik campuran
-        //   R3 = Rak laptop & barang besar
-        //
-        // Lantai 2:
-        //   R1 = Rak overflow / stok cadangan
-        //   R2 = Rak barang fast-moving
-        //
         $binCodes = [
             'F1-R1-C1-B1', 'F1-R1-C2-B1', 'F1-R1-C3-B1',
             'F1-R2-C1-B1', 'F1-R2-C2-B1',
@@ -65,41 +54,18 @@ class MultiRackPicklistSeeder extends Seeder
             );
         }
 
-        // ─── Persebaran stok ───
-        //
-        // Keyboard (KBD-001-RED) — total tersedia: 84
-        //   F1-R1-C1-B1: 20   (rak aksesoris utama)
-        //   F1-R1-C2-B1: 15
-        //   F1-R2-C1-B1: 12   (rak campuran)
-        //   F2-R1-C1-B1: 25   (cadangan lantai 2)
-        //   F2-R2-C1-B1: 12   (fast-moving lantai 2)
-        //
         $this->setInventory($keyboard->id, $warehouse->id, $bins['F1-R1-C1-B1']->id, 20);
         $this->setInventory($keyboard->id, $warehouse->id, $bins['F1-R1-C2-B1']->id, 15);
         $this->setInventory($keyboard->id, $warehouse->id, $bins['F1-R2-C1-B1']->id, 12);
         $this->setInventory($keyboard->id, $warehouse->id, $bins['F2-R1-C1-B1']->id, 25);
         $this->setInventory($keyboard->id, $warehouse->id, $bins['F2-R2-C1-B1']->id, 12);
 
-        // Mouse (MOUSE-001-BLK) — total tersedia: 96
-        //   F1-R1-C1-B1: 30   (rak aksesoris utama, beda shelf)
-        //   F1-R1-C3-B1: 18
-        //   F1-R2-C2-B1: 10   (rak campuran)
-        //   F2-R1-C2-B1: 20   (cadangan lantai 2)
-        //   F2-R2-C2-B1: 18   (fast-moving lantai 2)
-        //
         $this->setInventory($mouse->id, $warehouse->id, $bins['F1-R1-C1-B1']->id, 30);
         $this->setInventory($mouse->id, $warehouse->id, $bins['F1-R1-C3-B1']->id, 18);
         $this->setInventory($mouse->id, $warehouse->id, $bins['F1-R2-C2-B1']->id, 10);
         $this->setInventory($mouse->id, $warehouse->id, $bins['F2-R1-C2-B1']->id, 20);
         $this->setInventory($mouse->id, $warehouse->id, $bins['F2-R2-C2-B1']->id, 18);
 
-        // Laptop (LAPTOP-001-8GB) — total tersedia: 38
-        //   F1-R2-C1-B1:  5   (rak campuran, barang besar)
-        //   F1-R3-C1-B1:  8   (rak laptop utama)
-        //   F1-R3-C2-B1:  6
-        //   F2-R1-C1-B1:  7   (cadangan lantai 2)
-        //   F2-R2-C3-B1: 12   (fast-moving lantai 2)
-        //
         $this->setInventory($laptop->id, $warehouse->id, $bins['F1-R2-C1-B1']->id, 5);
         $this->setInventory($laptop->id, $warehouse->id, $bins['F1-R3-C1-B1']->id, 8);
         $this->setInventory($laptop->id, $warehouse->id, $bins['F1-R3-C2-B1']->id, 6);
@@ -108,7 +74,6 @@ class MultiRackPicklistSeeder extends Seeder
 
         $this->command->info('Inventory seeded: 12 bin, 5 rak, 2 lantai');
 
-        // ─── Sales Order: pesanan besar dari distributor ───
         $order = SalesOrder::firstOrCreate(
             ['salesorder_no' => 'SO-MULTIRACK-001'],
             [
@@ -163,7 +128,6 @@ class MultiRackPicklistSeeder extends Seeder
             ]
         );
 
-        // ─── Picklist ───
         $picklist = Picklist::firstOrCreate(
             ['picklist_no' => 'PK-MULTIRACK-001'],
             [

@@ -142,8 +142,7 @@ class LazadaOrderPullTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        // Stok ditempatkan di rak final (is_inbound=false); reservasi masuk ke baris
-        // agregat bin_id NULL (lihat StockService::reserveSingle).
+
         $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
             ['location_id' => $location->id, 'bin_final_code' => 'RACK-A1'],
             ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false]
@@ -163,8 +162,6 @@ class LazadaOrderPullTest extends TestCase
         $order = SalesOrder::where('salesorder_no', 'LZ-900123')->first();
         $this->assertEquals('reserved', $order->status);
 
-        // reserved dijumlahkan lintas baris (agregat di bin_id NULL); available =
-        // stok ditempatkan (10) - reserved (2) = 8.
         $reserved = (int) Inventory::where('item_id', $variant->id)
             ->where('location_id', $location->id)->sum('reserved');
         $summary = \Modules\Inventory\Support\StockSummary::forItem($variant->id, $location->id);

@@ -11,15 +11,14 @@ class SyncMasterCouriersCommandTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** Data mirip staging: campuran kurir kanonik + long-tail yang harus dipangkas. */
     private function seedMessyMaster(): void
     {
-        // Beberapa kurir kanonik (dengan casing berbeda / nonaktif) + duplikat.
-        Courier::create(['name' => 'jne', 'code' => 'JNE_OLD', 'is_active' => true]);       // casing salah
-        Courier::create(['name' => 'SPX', 'code' => 'SPX', 'is_active' => false]);          // ada tapi nonaktif
+
+        Courier::create(['name' => 'jne', 'code' => 'JNE_OLD', 'is_active' => true]);       
+        Courier::create(['name' => 'SPX', 'code' => 'SPX', 'is_active' => false]);          
         Courier::create(['name' => 'J&T', 'code' => 'JNT', 'is_active' => true]);
         Courier::create(['name' => 'J&T Cargo', 'code' => 'JNT_CARGO', 'is_active' => true]);
-        // Long-tail yang tidak ada di daftar kanonik → harus dinonaktifkan.
+
         Courier::create(['name' => 'ABC TRANSPORT', 'code' => 'ABC_TRANSPORT', 'is_active' => true]);
         Courier::create(['name' => 'kurir 4848', 'code' => 'KURIR_4848', 'is_active' => true]);
     }
@@ -45,15 +44,12 @@ class SyncMasterCouriersCommandTest extends TestCase
         $expected = collect(CourierSeeder::canonicalNames())->sort()->values()->all();
         $this->assertSame($expected, $active);
 
-        // Casing diperbaiki & baris nonaktif direaktivasi.
         $this->assertSame(1, Courier::where('name', 'JNE')->where('is_active', true)->count());
         $this->assertSame(1, Courier::where('name', 'SPX')->where('is_active', true)->count());
 
-        // Pasangan yang sengaja dipisah tetap ada dua-duanya.
         $this->assertSame(1, Courier::where('name', 'J&T')->where('is_active', true)->count());
         $this->assertSame(1, Courier::where('name', 'J&T Cargo')->where('is_active', true)->count());
 
-        // Long-tail dinonaktifkan (bukan dihapus).
         $this->assertSame(1, Courier::where('name', 'ABC TRANSPORT')->where('is_active', false)->count());
         $this->assertSame(1, Courier::where('name', 'kurir 4848')->where('is_active', false)->count());
     }

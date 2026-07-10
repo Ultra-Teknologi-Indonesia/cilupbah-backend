@@ -9,28 +9,12 @@ use Modules\Outbound\Models\Courier;
 use Modules\Outbound\Models\CourierChannelMapping;
 use Modules\Outbound\Services\CourierMappingService;
 
-/**
- * Konsolidasi baris `couriers` mentah (hasil seed dari nama kurir per-varian
- * layanan channel, mis. "JNE REG"/"JNE YES"/"JNE OKE") menjadi satu baris
- * kanonik per kurir riil (mis. "JNE") — sesuai bentuk master kurir Jubelio.
- *
- * Aman dijalankan berkali-kali:
- * - Baris lama TIDAK dihapus, hanya di-nonaktifkan (`is_active = false`).
- * - Jejak nama mentah dipindahkan ke `courier_channel_mappings` supaya order
- *   masuk berikutnya dengan nama yang sama tetap ter-mapping ke kurir kanonik.
- * - Default jalan sebagai dry-run (laporan saja). Pakai --apply untuk eksekusi.
- */
 class ConsolidateCouriersCommand extends Command
 {
     protected $signature = 'couriers:consolidate {--apply : Terapkan perubahan (default: dry-run, hanya laporan)}';
 
     protected $description = 'Gabungkan baris Courier mentah per-varian-layanan menjadi satu baris kanonik per kurir';
 
-    /**
-     * Nama tampilan kanonik untuk kode kurir yang sudah dikenal
-     * CourierMappingService::$codeAliases. Kalau kode tidak ada di sini,
-     * dipakai nama existing terpendek dalam grup sebagai kanonik.
-     */
     private array $canonicalNames = [
         'jne' => 'JNE',
         'jnt' => 'J&T',
@@ -66,18 +50,12 @@ class ConsolidateCouriersCommand extends Command
             ->orderBy('name')
             ->get();
 
-        // Nama yang ada di daftar kanonik (CourierSeeder) = kurir sah yang SENGAJA
-        // dipertahankan terpisah, walau resolveCode() kebetulan menyamakan kodenya
-        // (mis. "J&T" vs "J&T Cargo" → 'jnt', "REX" vs "alfatrex" → 'rex' karena
-        // substring). Baris ini tidak boleh digabung/dinonaktifkan.
         $canonicalKeys = collect(CourierSeeder::canonicalNames())
             ->mapWithKeys(fn (string $n) => [mb_strtolower(trim($n)) => true]);
         $isCanonical = fn (Courier $c) => $canonicalKeys->has(mb_strtolower(trim($c->name)));
 
         $groups = $couriers->groupBy(fn (Courier $c) => $this->mapper->resolveCode($c->name));
-        // Hanya konsolidasi grup yang punya ≥1 baris MENTAH (non-kanonik) untuk
-        // digabung. Grup yang seluruhnya baris kanonik (mis. [J&T, J&T Cargo])
-        // dilewati — mereka memang dua kurir berbeda.
+
         $toConsolidate = $groups->filter(
             fn ($rows) => $rows->count() > 1 && $rows->reject($isCanonical)->isNotEmpty()
         );
@@ -96,7 +74,7 @@ class ConsolidateCouriersCommand extends Command
 
         $run = function () use ($toConsolidate, $apply, $isCanonical) {
             foreach ($toConsolidate as $code => $rows) {
-                // Baris mentah yang akan dilebur; baris kanonik dibiarkan apa adanya.
+
                 $rawRows = $rows->reject($isCanonical)->values();
                 $canonicalName = $this->canonicalNames[$code]
                     ?? $rows->sortBy(fn (Courier $c) => strlen($c->name))->first()->name;
@@ -111,9 +89,6 @@ class ConsolidateCouriersCommand extends Command
                     continue;
                 }
 
-                // Target lebur: utamakan baris kanonik yang SUDAH ada dalam grup
-                // (mis. "Spx" → dijadikan "SPX") supaya tidak membuat baris ganda;
-                // kalau tidak ada, baru firstOrCreate by code.
                 $canonical = $rows->first(
                     fn (Courier $c) => mb_strtolower(trim($c->name)) === mb_strtolower($canonicalName)
                 );

@@ -409,7 +409,6 @@ class StockIntegrationTest extends TestCase
         ]);
         $receiveResponse->assertOk();
 
-        // Hanya qty lolos QC (15) yang masuk stok bin inbound
         $binInventory = Inventory::where('item_id', $this->variant->id)
             ->where('location_id', $this->location->id)
             ->where('bin_id', $this->binInbound->id)
@@ -417,7 +416,6 @@ class StockIntegrationTest extends TestCase
         $this->assertNotNull($binInventory);
         $this->assertEquals(15, $binInventory->on_hand);
 
-        // Inbound item mencatat pemisahan diterima vs ditolak
         $this->assertDatabaseHas('inbound_items', [
             'item_id'        => $this->variant->id,
             'expected_qty'   => 20,
@@ -426,7 +424,6 @@ class StockIntegrationTest extends TestCase
             'rejection_note' => 'Kemasan rusak',
         ]);
 
-        // PO tertutup penuh (tanpa retur): 15 + 5 = 20
         $po->refresh();
         $this->assertEquals('FULLY_RECEIVED', $po->status);
     }

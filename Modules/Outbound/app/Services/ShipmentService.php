@@ -394,8 +394,6 @@ class ShipmentService
         return $shipment;
     }
 
-    // --- Driver call manual (Grab/Gojek) ---
-
     private const MANUAL_DRIVER_COURIER_REGEX = '/grab|gojek|gosend|gokilat|lalamove/i';
     private const BLOCKED_CHANNEL_SOURCES = ['shopee', 'tiktok'];
 

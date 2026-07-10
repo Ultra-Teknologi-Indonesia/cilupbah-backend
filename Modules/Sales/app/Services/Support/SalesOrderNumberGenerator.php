@@ -6,12 +6,7 @@ use Illuminate\Support\Facades\DB;
 
 class SalesOrderNumberGenerator
 {
-    /**
-     * Generate the next manual sales order number.
-     *
-     * Format: SO-INT-YYMM-NNNNN (reset per bulan).
-     * Row-lock counter untuk aman terhadap concurrency.
-     */
+
     public function nextManualSalesOrderNo(): string
     {
         return $this->next('SO-INT');

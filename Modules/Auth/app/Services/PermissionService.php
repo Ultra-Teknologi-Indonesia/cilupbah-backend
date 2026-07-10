@@ -17,11 +17,6 @@ class PermissionService
         return $this->permissionRepository->getAllPermissions();
     }
 
-    /**
-     * Struktur matriks Hak Akses bergrup untuk render FE.
-     *
-     * @return list<array<string,mixed>>
-     */
     public function getCatalog(): array
     {
         return PermissionCatalog::matrix();

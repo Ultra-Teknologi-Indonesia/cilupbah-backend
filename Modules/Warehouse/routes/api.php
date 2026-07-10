@@ -16,7 +16,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('systemsetting/warehouse-layout', [WarehouseSettingController::class, 'store'])->name('warehouse.setting.store');
     });
 
-    // Auth-only lookups (form pickers) — static paths must precede locations/{location}.
     Route::get('locations/store', [ChannelWarehouseController::class, 'index'])->name('warehouse.location.store-mapping');
 
     Route::get('locations/pos', [LocationController::class, 'pos'])->name('warehouse.location.pos');
@@ -67,7 +66,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('locations/{locationId}/bins/uniform-apply', [LocationBinController::class, 'uniformApply'])->whereUuid('locationId')->name('warehouse.bins.uniform-apply');
     });
 
-    // Auth-only lookup (default bin picker).
     Route::get('locations/{locationId}/default-bin', [LocationBinController::class, 'defaultBin'])->whereUuid('locationId')->name('warehouse.bins.default');
 
     Route::middleware('role_or_permission:owner|create-manajemen-rak')->group(function () {

@@ -253,10 +253,6 @@ class ContactImportService
         ];
     }
 
-    /**
-     * Normalisasi nomor telepon ke E.164: 08xx → +628xx, 62xx → +62xx,
-     * 00xx → +xx. Mengembalikan null jika hasilnya bukan nomor valid.
-     */
     private function normalizePhone(string $value): ?string
     {
         $digits = preg_replace('/[\s().\-]/', '', trim($value));

@@ -30,8 +30,7 @@ class CourierMappingService
         'spx' => 'spx',
         'spx express' => 'spx',
         'spx standard' => 'spx',
-        // SPX Instant/Same Day tetap 1 kurir kanonik "spx" — kecepatan
-        // pengiriman direkam lewat shipment_type, bukan identitas kurir.
+
         'spx instant' => 'spx',
         'shopee xpress' => 'spx',
         'id express' => 'idexpress',

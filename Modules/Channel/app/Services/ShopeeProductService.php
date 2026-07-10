@@ -532,12 +532,6 @@ class ShopeeProductService
         return $results;
     }
 
-    /**
-     * Sinkronkan mapping lokal dengan status & harga terbaru di Shopee: deteksi listing
-     * yang sudah dihapus (arsipkan mapping lokal, produk internal tidak ikut terhapus)
-     * dan refresh synced_price per varian. Mirror pola reconcileChannelData() milik
-     * Lazada/TikTok supaya ChannelReconcileService tidak lagi men-skip Shopee.
-     */
     public function reconcileChannelData(string $shopId): int
     {
         $shop = $this->requireShop($shopId);
@@ -557,8 +551,7 @@ class ShopeeProductService
             $remoteStatus = $statuses[$extId]['status'] ?? null;
 
             if ($remoteStatus === 'deleted') {
-                // Arsipkan mapping lokal — produk internal TIDAK ikut dihapus/dinonaktifkan
-                // (aturan: hapus/arsip channel tidak boleh cascade balik ke produk internal).
+
                 $mapping->markAsFailed('Produk sudah dihapus di Shopee (terdeteksi reconcile).');
                 $updated++;
                 continue;

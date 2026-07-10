@@ -25,7 +25,7 @@ class BinTransferRequest extends FormRequest
             'items' => 'required|array|min:1',
             'items.*.item_id' => 'required|uuid|exists:product_variants,id',
             'items.*.source_bin_id' => 'required|uuid|exists:location_bins,id',
-            // Rak tujuan ditentukan saat penerimaan (langkah Selesai), tak wajib saat buat draft.
+
             'items.*.destination_bin_id' => 'nullable|uuid|different:items.*.source_bin_id|exists:location_bins,id',
             'items.*.qty' => 'required|integer|min:1',
             'items.*.batch_no' => 'nullable|string|max:100',

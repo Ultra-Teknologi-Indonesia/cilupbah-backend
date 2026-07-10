@@ -87,8 +87,6 @@ class LazadaPushProductTest extends TestCase
             'sync_status' => 'in_review',
         ]);
 
-        // Gambar eksternal wajib dimigrasikan dulu — payload create tidak boleh
-        // memakai URL asli produk.
         Http::assertSent(fn ($r) => str_contains($r->url(), '/image/migrate') && ($r['image_url'] ?? null) === 'https://x/img.jpg');
         Http::assertSent(function ($r) {
             if (! str_contains($r->url(), '/product/create')) {

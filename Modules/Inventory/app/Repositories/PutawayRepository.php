@@ -39,9 +39,6 @@ class PutawayRepository
             ->paginate($limit);
     }
 
-    /**
-     * Relasi lengkap dokumen putaway (detail + cetak PDF).
-     */
     private function detailRelations(): array
     {
         return [
@@ -66,9 +63,6 @@ class PutawayRepository
         return Putaway::with($this->detailRelations())->find($id);
     }
 
-    /**
-     * Muat banyak putaway lengkap sekaligus (untuk cetak bulk), urut No. Putaway.
-     */
     public function getManyWithDetails(array $ids)
     {
         return Putaway::with($this->detailRelations())

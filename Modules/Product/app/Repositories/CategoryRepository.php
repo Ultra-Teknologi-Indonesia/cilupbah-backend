@@ -45,9 +45,6 @@ class CategoryRepository
             $query->where('is_enabled', true);
         }
 
-        // Search typeahead: substring match di semua level (bukan hanya root),
-        // konsisten dengan getMappingList. Tanpa search, default ke root saja
-        // agar response tree (include children) tidak duplikat.
         if ($search = request('search')) {
             $query->where('name', 'ilike', "%{$search}%");
         } elseif (! request()->has('filter.parent_id')) {

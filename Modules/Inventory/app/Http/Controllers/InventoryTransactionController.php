@@ -495,8 +495,7 @@ class InventoryTransactionController extends Controller
     public function draftList(\Illuminate\Http\Request $request): JsonResponse
     {
         $limit = $request->query('limit', 10);
-        // "Baru Dibuat" = dokumen yang belum dikirim: DRAFT (transfer manual) +
-        // APPROVED (mis. hasil Permintaan Restock yang sudah di-approve & di-assign rak).
+
         $transfers = $this->inventoryService->getTransfersPaginated(['statuses' => ['DRAFT', 'APPROVED']], $limit);
 
         return $this->successPaginatedResponse($transfers, 'Daftar transfer baru dibuat (belum dikirim).');
@@ -519,10 +518,6 @@ class InventoryTransactionController extends Controller
             'page' => 'nullable|integer|min:1',
         ]);
 
-        // Tab "Transfer Masuk" menampilkan transfer yang sedang dalam perjalanan
-        // maupun yang sudah diterima (badge status "Diterima"), bukan cuma yang
-        // masih menunggu. Hormati filter status eksplisit dari FE bila dikirim,
-        // supaya transfer yang baru selesai diterima tidak hilang dari daftar.
         $statusFilter = $request->input('filter.status');
         $filters = $statusFilter
             ? ['status' => $statusFilter]
@@ -712,9 +707,6 @@ class InventoryTransactionController extends Controller
         }
     }
 
-    /**
-     * Cetak surat jalan transfer internal: Baru Dibuat -> Sedang Dijalan (stok pindah ke transit).
-     */
     public function binTransferPrint(\Illuminate\Http\Request $request, string $id): JsonResponse
     {
         try {
@@ -759,9 +751,6 @@ class InventoryTransactionController extends Controller
         }
     }
 
-    /**
-     * Penerimaan transfer internal (langkah Selesai): tempatkan stok transit ke rak tujuan.
-     */
     public function binTransferReceive(\Illuminate\Http\Request $request, string $id): JsonResponse
     {
         $validated = $request->validate([

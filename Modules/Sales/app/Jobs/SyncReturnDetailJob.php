@@ -11,11 +11,6 @@ use Illuminate\Support\Facades\Log;
 use Modules\Sales\Models\SalesReturn;
 use Modules\Sales\Services\SalesReturnDetailSyncService;
 
-/**
- * Menarik keputusan marketplace, alasan, refund, selisih ongkir, dan riwayat
- * banding untuk satu SalesReturn. Dipakai baik oleh trigger webhook maupun
- * scheduled sync (SyncReturnDetailCommand).
- */
 class SyncReturnDetailJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;

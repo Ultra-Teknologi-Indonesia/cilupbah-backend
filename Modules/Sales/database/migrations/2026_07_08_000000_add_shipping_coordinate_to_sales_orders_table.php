@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('sales_orders', function (Blueprint $table) {
-            // Pin lokasi penerima (format "(lat,lng)") — samakan dengan Manajemen Gudang.
+
             $table->string('shipping_coordinate', 64)->nullable()->after('shipping_country');
         });
     }

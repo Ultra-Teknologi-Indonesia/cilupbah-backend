@@ -77,10 +77,6 @@ class PicklistItem extends Model
         return $this->hasMany(PicklistItemAllocation::class, 'picklist_item_id');
     }
 
-    /**
-     * Return item_status if set (SHORT/REJECTED/COMPLETED/PARTIAL/PENDING),
-     * otherwise derive from qty_picked vs qty_ordered.
-     */
     public function getEffectiveItemStatusAttribute(): string
     {
         if (!empty($this->attributes['item_status'])) {

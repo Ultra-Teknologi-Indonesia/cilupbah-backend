@@ -47,7 +47,6 @@ class BundleController extends Controller
             'components.*.variant_id.exists' => 'Varian komponen tidak ditemukan atau tidak aktif.',
         ]);
 
-        // Guard bundle-in-bundle: komponen tidak boleh berupa varian dari produk bundle.
         $componentVariantIds = array_values(array_filter(array_column($request->input('components'), 'variant_id')));
         if ($this->productRepository->variantIdsFromBundleProducts($componentVariantIds) !== []) {
             return $this->errorResponse(

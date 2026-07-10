@@ -20,7 +20,7 @@ class ReceivePurchaseOrderRequest extends FormRequest
             'notes'                             => ['nullable', 'string'],
             'items'                             => ['required', 'array', 'min:1'],
             'items.*.purchase_order_item_id'    => ['required', 'string', 'exists:purchase_order_items,id'],
-            // qty = jumlah diterima (lolos QC). Boleh 0 bila item seluruhnya ditolak QC.
+
             'items.*.qty'                       => ['required', 'integer', 'min:0'],
             'items.*.rejected_qty'              => ['nullable', 'integer', 'min:0'],
             'items.*.rejection_note'            => ['nullable', 'string'],

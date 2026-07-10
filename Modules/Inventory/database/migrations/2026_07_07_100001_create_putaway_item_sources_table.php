@@ -14,9 +14,9 @@ return new class extends Migration
             $table->foreign('putaway_item_id')->references('id')->on('putaway_items')->cascadeOnDelete();
             $table->uuid('inbound_item_id');
             $table->foreign('inbound_item_id')->references('id')->on('inbound_items')->restrictOnDelete();
-            // Porsi qty dari inbound_item ini yang masuk ke putaway_item induk.
+
             $table->integer('qty');
-            // Porsi yang sudah ditempatkan (untuk distribusi sinkron balik ke inbound_item).
+
             $table->integer('putaway_qty')->default(0);
             $table->timestamps();
 

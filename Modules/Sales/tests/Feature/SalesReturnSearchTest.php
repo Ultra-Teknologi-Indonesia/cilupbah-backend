@@ -21,9 +21,6 @@ class SalesReturnSearchTest extends TestCase
         $this->user = User::factory()->create();
     }
 
-    /**
-     * Seed satu retur marketplace lengkap dengan order & resi, kembalikan id retur.
-     */
     private function seedReturn(string $channelOrderNo, string $trackingNumber): string
     {
         $locationId = Str::uuid()->toString();

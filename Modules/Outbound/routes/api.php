@@ -13,7 +13,6 @@ use Modules\Outbound\Http\Controllers\WmsController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
 
-    // Order-processing actions used by mobile + web — left auth-only to avoid breaking mobile.
     Route::post('orders/get-by-no', [OutboundFulfillmentController::class, 'getOrderByNo'])->name('outbound.orders.get-by-no');
     Route::post('orders/move-to-ready-to-pick', [OutboundFulfillmentController::class, 'moveToReadyToPick'])->name('outbound.orders.move-to-ready-to-pick');
     Route::post('orders/move-to-ready-to-process', [OutboundFulfillmentController::class, 'moveToReadyToProcess'])->name('outbound.orders.move-to-ready-to-process');

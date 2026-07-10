@@ -243,8 +243,7 @@ class SalesReturnService
             'channel_shop_id'   => $payload['channel_shop_id'] ?? null,
             'customer_name'     => $order->customer_name ?? null,
             'reason'            => $payload['reason'] ?? 'Retur dari marketplace',
-            // Default retur marketplace = komplain pembeli (buyer-initiated); Fase 2
-            // (sync detail channel) menimpa ini dengan kategori lebih akurat bila tersedia.
+
             'reason_category'   => SalesReturn::REASON_CATEGORY_COMPLAINT,
             'created_by'        => $payload['created_by'] ?? 'system:' . $source . '-webhook',
             'items'             => $items,

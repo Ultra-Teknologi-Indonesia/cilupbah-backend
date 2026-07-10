@@ -69,17 +69,14 @@ class ScanCorrectionTest extends TestCase
             'qty' => 5,
         ]);
 
-        // After putaway: source 5, dest 5, status COMPLETED.
         $this->assertSame(5, (int) Inventory::where('bin_id', $sourceBin->id)->where('item_id', $variant->id)->value('on_hand'));
         $this->assertSame(5, (int) Inventory::where('bin_id', $destBin->id)->where('item_id', $variant->id)->value('on_hand'));
         $this->assertSame(Putaway::STATUS_COMPLETED, Putaway::find($putaway->id)->status);
 
         $placement = PutawayPlacement::where('putaway_item_id', $item->id)->firstOrFail();
 
-        // Koreksi: hapus penempatan.
         $putawaySvc->deletePlacement($putaway->id, $item->id, $placement->id, null, '99');
 
-        // Stok kembali ke rak asal, placement terhapus, putaway_qty 0, status IN_PROGRESS.
         $this->assertSame(10, (int) Inventory::where('bin_id', $sourceBin->id)->where('item_id', $variant->id)->value('on_hand'));
         $this->assertSame(0, (int) Inventory::where('bin_id', $destBin->id)->where('item_id', $variant->id)->value('on_hand'));
         $this->assertDatabaseMissing('putaway_placements', ['id' => $placement->id]);
@@ -120,7 +117,6 @@ class ScanCorrectionTest extends TestCase
 
         $placement = PutawayPlacement::where('putaway_item_id', $item->id)->firstOrFail();
 
-        // Koreksi sebagian: 2 dari 6.
         $putawaySvc->deletePlacement($putaway->id, $item->id, $placement->id, 2, '99');
 
         $this->assertSame(4, (int) Inventory::where('bin_id', $sourceBin->id)->where('item_id', $variant->id)->value('on_hand'));
@@ -148,7 +144,7 @@ class ScanCorrectionTest extends TestCase
         ]);
 
         $svc = app(InventoryService::class);
-        // Bangun transfer lewat alur 2-langkah lalu selesaikan supaya stok ada di rak tujuan.
+
         $transfer = $svc->createBinTransferDraft([
             'location_id' => $location->id, 'created_by' => 'tester',
             'items' => [['item_id' => $variant->id, 'source_bin_id' => $binA->id, 'qty' => 4]],
@@ -160,7 +156,6 @@ class ScanCorrectionTest extends TestCase
             'items' => [['bin_transfer_item_id' => $row->id, 'destination_bin_id' => $binB->id, 'qty' => 4]],
         ]);
 
-        // Koreksi: kembalikan stok dari rak tujuan ke rak asal.
         $svc->reverseBinTransferItem($transfer->id, $row->id, null, '99');
 
         $this->assertSame(10, (int) Inventory::where('bin_id', $binA->id)->where('item_id', $variant->id)->value('on_hand'));
@@ -183,7 +178,6 @@ class ScanCorrectionTest extends TestCase
 
         $variant = $this->makeProduct('V-RP');
 
-        // Simulasi kondisi setelah pick: on_hand & reserved sudah terpotong.
         Inventory::create([
             'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $bin->id,
             'on_hand' => 3, 'reserved' => 0, 'available' => 3, 'avg_cost' => 1000,
@@ -245,7 +239,6 @@ class ScanCorrectionTest extends TestCase
             return ['item_id' => $it->id, 'placement_id' => $placement->id, 'qty' => null];
         })->all();
 
-        // Satu panggilan mengoreksi 2 item sekaligus.
         $putawaySvc->deletePlacements($putaway->id, $bulk, (string) $user->id);
 
         $this->assertSame(10, (int) Inventory::where('bin_id', $sourceBin->id)->where('item_id', $v1->id)->value('on_hand'));

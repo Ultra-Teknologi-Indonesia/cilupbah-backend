@@ -7,14 +7,6 @@ use Modules\Channel\Services\ShopeeToInternalOrderMapper;
 use Modules\Channel\Services\TikTokToInternalOrderMapper;
 use Tests\TestCase;
 
-/**
- * Fase 2 (Bukti Pickup Kurir) — memastikan emit-point `pickup_code` di tiap
- * mapper channel bekerja: null bila field tidak ada (kondisi nyata sekarang,
- * karena tidak ada field kode pengambilan yang terkonfirmasi di API), dan
- * terisi begitu field yang plausible muncul di payload. Ini membuktikan pipeline
- * end-to-end siap: begitu field asli dikonfirmasi, cukup sesuaikan helper mapper.
- * Lihat PLANNING-BUKTI-PICKUP-KURIR.md §7.
- */
 class CourierPickupCodeMappingTest extends TestCase
 {
     public function test_shopee_pickup_code_null_when_absent(): void
@@ -78,8 +70,7 @@ class CourierPickupCodeMappingTest extends TestCase
 
     public function test_lazada_pickup_code_always_null(): void
     {
-        // Terkonfirmasi: Lazada B2C tidak punya kode pengambilan kurir (pickup_order_no
-        // yang ada = JIT, bukan ini). Sengaja selalu null meski ada key nyasar.
+
         $result = (new LazadaToInternalOrderMapper())->map(
             ['order_id' => 900123, 'statuses' => ['pending'], 'price' => '100000.00'],
             [['pickup_code' => 'LZ-PIN-77']],

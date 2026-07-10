@@ -148,7 +148,7 @@ class InventoryTest extends TestCase
 
     public function test_stock_items_excludes_transit_location(): void
     {
-        // Stok yang sudah ditempatkan di rak final (is_inbound=false) di gudang nyata.
+
         Inventory::create([
             'item_id'     => $this->variant->id,
             'location_id' => $this->location->id,
@@ -161,8 +161,6 @@ class InventoryTest extends TestCase
             'available'   => 35,
         ]);
 
-        // Lokasi Transit + stok in-transit yang TIDAK boleh muncul di Posisi Stok
-        // maupun ikut terhitung di total_stocks (on_hand/on_order/reserved).
         $transit = Location::create([
             'location_code' => Location::SYSTEM_TRANSIT_CODE,
             'location_name' => 'Transit',
@@ -194,18 +192,15 @@ class InventoryTest extends TestCase
         $item = collect($response->json('data'))->firstWhere('item_id', $this->variant->id);
         $this->assertNotNull($item, 'Varian tidak ditemukan di payload.');
 
-        // location_stocks tidak boleh memuat lokasi Transit.
         $locationIds = collect($item['location_stocks'])->pluck('location_id')->all();
         $this->assertContains($this->location->id, $locationIds);
         $this->assertNotContains($transit->id, $locationIds);
 
-        // total_stocks harus mengecualikan angka Transit sepenuhnya.
         $this->assertEquals(40, $item['total_stocks']['on_hand']);
         $this->assertEquals(0, $item['total_stocks']['on_order']);
         $this->assertEquals(5, $item['total_stocks']['reserved']);
         $this->assertEquals(35, $item['total_stocks']['available']);
 
-        // meta.locations (daftar untuk kolom) juga bebas Transit.
         $metaLocationIds = collect($response->json('meta.locations'))->pluck('location_id')->all();
         $this->assertNotContains($transit->id, $metaLocationIds);
     }

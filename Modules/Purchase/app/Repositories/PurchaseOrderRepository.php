@@ -86,10 +86,6 @@ class PurchaseOrderRepository
         return $result;
     }
 
-    /**
-     * Ringkasan QC seluruh PO: total qty lolos vs tidak lolos dari semua
-     * inbound (penerimaan) yang bersumber dari PO ini.
-     */
     private function attachQcSummary(PurchaseOrder $po): void
     {
         $row = InboundItem::query()
@@ -105,11 +101,6 @@ class PurchaseOrderRepository
         ]);
     }
 
-    /**
-     * Rejected qty & alasan per PO item, diagregasi dari inbound_items
-     * lintas semua penerimaan (inbound) PO ini. accepted_qty diturunkan
-     * dari received_qty (kumulatif diterima+ditolak) dikurangi rejected_qty.
-     */
     private function attachQcPerItem($items, string $poId): void
     {
         $itemIds = $items->pluck('item_id')->filter()->unique()->values();

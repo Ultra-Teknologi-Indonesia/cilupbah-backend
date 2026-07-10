@@ -11,11 +11,6 @@ use Modules\Inbound\Models\Inbound;
 use App\Models\User;
 use Tests\TestCase;
 
-/**
- * Perilaku baru penempatan (putaway):
- * - "Mulai" tidak lagi memulai: penempatan pertama yang auto-start (NOT_STARTED → IN_PROGRESS).
- * - Hapus dokumen dengan revert bertingkat sesuai status (single + bulk).
- */
 class PutawayDeleteResetTest extends TestCase
 {
     use RefreshDatabase;
@@ -58,7 +53,6 @@ class PutawayDeleteResetTest extends TestCase
         $this->vA = ProductVariant::create(['product_id' => $p->id, 'sku' => 'ONLY-A-V1', 'sell_price' => 1000, 'is_active' => true]);
     }
 
-    /** Buat inbound draft lalu terima penuh → stok masuk ke inbound bin, status RECEIVED. */
     private function createReceivedInbound(array $items): Inbound
     {
         $resp = $this->postJson('/api/v1/inbounds', [
@@ -103,7 +97,6 @@ class PutawayDeleteResetTest extends TestCase
 
         $this->assertEquals('NOT_STARTED', \DB::table('putaways')->where('id', $putawayId)->value('status'));
 
-        // Langsung proses tanpa memanggil /start → auto-start.
         $this->postJson("/api/v1/putaway/{$putawayId}/items/{$this->firstItemId($putawayId)}/process", [
             'destination_bin_id' => $this->storageBin->id,
             'qty' => 2,
@@ -123,18 +116,15 @@ class PutawayDeleteResetTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.action', 'unassigned');
 
-        // Dokumen + turunannya hilang.
         $this->assertEquals(0, \DB::table('putaways')->where('id', $putawayId)->count());
         $this->assertEquals(0, \DB::table('putaway_items')->where('putaway_id', $putawayId)->count());
         $this->assertEquals(0, \DB::table('putaway_sources')->where('putaway_id', $putawayId)->count());
 
-        // QC/received tetap, putaway_qty 0, penerimaan kembali RECEIVED & dapat di-assign ulang.
         $inboundItem = \DB::table('inbound_items')->where('inbound_id', $a->id)->first();
         $this->assertEquals(4, $inboundItem->received_qty);
         $this->assertEquals(0, $inboundItem->putaway_qty);
         $this->assertEquals(Inbound::STATUS_RECEIVED, $a->fresh()->status);
 
-        // Bisa dibuat penempatan lagi (tidak ada penempatan aktif yang menghalangi).
         $this->postJson('/api/v1/putaway', ['inbound_ids' => [$a->id]])->assertStatus(201);
     }
 
@@ -157,7 +147,6 @@ class PutawayDeleteResetTest extends TestCase
         $this->assertEquals('NOT_STARTED', $row->status);
         $this->assertNull($row->started_at);
 
-        // Semua penempatan direverse: putaway_qty 0, tidak ada placement, stok kembali dari rak.
         $this->assertEquals(0, \DB::table('putaway_items')->where('id', $itemId)->value('putaway_qty'));
         $this->assertEquals(0, \DB::table('putaway_placements')->where('putaway_item_id', $itemId)->count());
         $this->assertEquals(0, \DB::table('inbound_items')->where('inbound_id', $a->id)->value('putaway_qty'));
@@ -198,12 +187,10 @@ class PutawayDeleteResetTest extends TestCase
         $b = $this->createReceivedInbound([[$this->vA, 2]]);
         $p2 = $this->createPutaway($b);
 
-        // Cetak tunggal (blade putaway → partial _putaway-body/_putaway-styles).
         $single = $this->get("/api/v1/putaway/{$p1}/pdf");
         $single->assertOk();
         $this->assertStringContainsString('application/pdf', $single->headers->get('content-type'));
 
-        // Cetak bulk (semua status) → 1 PDF (blade putaway-bulk).
         $bulk = $this->postJson('/api/v1/putaway/bulk/pdf', ['ids' => [$p1, $p2]]);
         $bulk->assertOk();
         $this->assertStringContainsString('application/pdf', $bulk->headers->get('content-type'));
@@ -211,11 +198,10 @@ class PutawayDeleteResetTest extends TestCase
 
     public function test_bulk_delete_mixed_status_applies_per_row(): void
     {
-        // #1 NOT_STARTED
+
         $a = $this->createReceivedInbound([[$this->vA, 4]]);
         $p1 = $this->createPutaway($a);
 
-        // #2 IN_PROGRESS (sebagian)
         $b = $this->createReceivedInbound([[$this->vA, 4]]);
         $p2 = $this->createPutaway($b);
         $this->postJson("/api/v1/putaway/{$p2}/items/{$this->firstItemId($p2)}/process", [
@@ -225,7 +211,6 @@ class PutawayDeleteResetTest extends TestCase
 
         $this->deleteJson('/api/v1/putaway/bulk', ['ids' => [$p1, $p2]])->assertOk();
 
-        // #1 terhapus total; #2 direset ke NOT_STARTED.
         $this->assertEquals(0, \DB::table('putaways')->where('id', $p1)->count());
         $this->assertEquals('NOT_STARTED', \DB::table('putaways')->where('id', $p2)->value('status'));
         $this->assertEquals(0, \DB::table('inbound_items')->where('inbound_id', $b->id)->value('putaway_qty'));

@@ -30,7 +30,6 @@ return new class extends Migration
                 ->references('id')->on('users')
                 ->nullOnDelete();
 
-            // Loose link to inventory_movements.id (no FK to keep flexibility)
             $table->uuid('movement_id')->nullable();
 
             $table->timestamps();

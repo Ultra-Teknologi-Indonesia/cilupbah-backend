@@ -23,8 +23,6 @@ class MonitorStockRepository
     {
         $locationId = $filters['location_id'] ?? null;
 
-        // on_hand hanya dari stok yang sudah ditempatkan (bin rak final, is_inbound=false);
-        // `available` sudah placed-only (di-maintain di Inventory::recalculateAvailable()).
         $inv = DB::table('inventories')
             ->leftJoin('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
             ->select('inventories.item_id as item_id')

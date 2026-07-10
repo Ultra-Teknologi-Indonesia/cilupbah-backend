@@ -55,21 +55,18 @@ class InboundReceivingTestSeeder extends Seeder
         $variants = [$laptop, $mouse, $keyboard];
         $count    = 0;
 
-        // --- 1) DRAFT inbounds with PENDING assignments (belum mulai) ---
         for ($i = 1; $i <= 5; $i++) {
             $inbound = $this->createInbound($warehouse, $i, Inbound::STATUS_DRAFT, $variants);
             $this->createAssignment($inbound, $staff, $admin, InboundAssignment::STATUS_PENDING);
             $count++;
         }
 
-        // --- 2) PARTIAL inbounds with IN_PROGRESS assignments (sedang proses) ---
         for ($i = 6; $i <= 10; $i++) {
             $inbound = $this->createInbound($warehouse, $i, Inbound::STATUS_PARTIAL, $variants, partialReceive: true);
             $this->createAssignment($inbound, $staff, $admin, InboundAssignment::STATUS_IN_PROGRESS);
             $count++;
         }
 
-        // --- 3) RECEIVED inbounds with COMPLETED assignments (selesai) ---
         for ($i = 11; $i <= 15; $i++) {
             $inbound = $this->createInbound($warehouse, $i, Inbound::STATUS_RECEIVED, $variants, fullyReceived: true);
             $this->createAssignment($inbound, $staff, $admin, InboundAssignment::STATUS_COMPLETED);

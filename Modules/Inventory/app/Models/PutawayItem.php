@@ -47,9 +47,6 @@ class PutawayItem extends Model
         return $this->hasMany(PutawayPlacement::class);
     }
 
-    /**
-     * Rincian asal qty per inbound_item (untuk sinkron balik putaway_qty ke penerimaan).
-     */
     public function sources(): HasMany
     {
         return $this->hasMany(PutawayItemSource::class);

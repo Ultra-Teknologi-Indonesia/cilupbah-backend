@@ -272,8 +272,6 @@ class InventoryController extends Controller
     {
         $limit = $request->query('limit', 10);
 
-        // on_hand hanya menghitung stok yang sudah ditempatkan (rak final, is_inbound=false);
-        // `available` sudah placed-only (di-maintain di Inventory::recalculateAvailable()).
         $stocks = QueryBuilder::for(Inventory::class)
             ->leftJoin('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
             ->select('inventories.item_id')

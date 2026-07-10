@@ -25,7 +25,6 @@ use Modules\Product\Http\Controllers\ProductMasterDataController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
-    // Lookups (auth-only): master-data dropdown sources.
     Route::get('products/master-data/sales-taxes', [ProductMasterDataController::class, 'salesTaxes']);
     Route::get('products/master-data/purchase-taxes', [ProductMasterDataController::class, 'purchaseTaxes']);
     Route::get('products/master-data/sales-accounts', [ProductMasterDataController::class, 'salesAccounts']);
@@ -119,7 +118,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('products/bulk-delete', [ProductController::class, 'bulkDelete']);
     });
 
-    // products apiResource expanded per-action (names('product') + uuid where preserved).
     Route::middleware('role_or_permission:owner|view-produk')->group(function () {
         Route::get('products', [ProductController::class, 'index'])->name('product.index');
         Route::get('products/{product}', [ProductController::class, 'show'])->name('product.show')
@@ -228,7 +226,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('categories/mapping', [CategoryController::class, 'mappingList']);
     });
 
-    // categories apiResource expanded per-action (names('category') + numeric where preserved).
     Route::middleware('role_or_permission:owner|view-kategori')->group(function () {
         Route::get('categories', [CategoryController::class, 'index'])->name('category.index');
         Route::get('categories/{category}', [CategoryController::class, 'show'])->name('category.show')->where('category', '[0-9]+');
@@ -288,7 +285,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::delete('categories/{category}/attributes/{attribute}', [\Modules\Product\Http\Controllers\CategoryFormAttributeController::class, 'destroy'])->whereNumber('category')->whereNumber('attribute');
     });
 
-    // attributes apiResource expanded per-action (names('attribute') + numeric where preserved).
     Route::middleware('role_or_permission:owner|view-kategori')->group(function () {
         Route::get('attributes', [AttributeController::class, 'index'])->name('attribute.index');
         Route::get('attributes/{attribute}', [AttributeController::class, 'show'])->name('attribute.show')->where('attribute', '[0-9]+');
@@ -311,7 +307,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('attributes/options/{option}/map-channel', [AttributeController::class, 'mapOptionChannel'])->whereNumber('option');
     });
 
-    // Shared media upload (auth-only).
     Route::post('media/upload', [MediaController::class, 'upload'])->name('media.upload');
     Route::get('media/upload/{uuid}', [MediaController::class, 'show'])->whereUuid('uuid')->name('media.show');
     Route::put('media/upload/{uuid}', [MediaController::class, 'replace'])->whereUuid('uuid')->name('media.replace');
@@ -328,7 +323,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('products/import/batches/{batch}/errors/download', [\Modules\Product\Http\Controllers\ProductImportController::class, 'downloadErrors'])->whereUuid('batch');
     });
 
-    // Lookups (auth-only): SKU/stock/price/attribute reference reads.
     Route::get('inventory/items/by-sku/{sku}', [ProductController::class, 'showBySku']);
     Route::get('inventory/item-bundles', [ProductController::class, 'bundles']);
     Route::post('inventory/items/all-stocks', [ProductController::class, 'allStocks']);
@@ -347,7 +341,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::delete('inventory/items/item-variant', [VariantController::class, 'destroy']);
     });
 
-    // Inventory-module price list (auth-only here to avoid double-gating).
     Route::get('inventory/internal-price-list', [PriceListController::class, 'index']);
     Route::post('inventory/price-list', [PriceListController::class, 'update']);
 
@@ -365,13 +358,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('inventory/catalog/upload', [ProductChannelDraftController::class, 'bulkUpload']);
     });
 
-    // Lookup (auth-only): sync error list.
     Route::get('inventory/items/errors', [ProductSyncLogController::class, 'errors']);
 });
 
 Route::middleware(['auth:sanctum'])->prefix('v1/{channel}')->group(function () {
 
-    // Channel category/attribute lookups (auth-only).
     Route::get('categories', [ChannelCategoryController::class, 'index']);
     Route::get('categories/{categoryId}/attributes', [\Modules\Product\Http\Controllers\ChannelAttributeController::class, 'index']);
 
@@ -390,6 +381,5 @@ Route::middleware(['auth:sanctum'])->prefix('v1/{channel}')->group(function () {
         Route::delete('products/{id}/link', [ChannelProductController::class, 'unlink']);
     });
 
-    // Marketplace listing sync apiResource (auth-only).
     Route::apiResource('products', ChannelProductController::class)->names('channel.product');
 });

@@ -1,27 +1,7 @@
 <?php
 
-/*
-|--------------------------------------------------------------------------
-| RBAC Catalog — Single Source of Truth
-|--------------------------------------------------------------------------
-|
-| Katalog izin lintas-modul bergaya Jubelio (versi disederhanakan untuk
-| Cilupbah). Dipakai oleh:
-|   - RbacPermissionSeeder  → membuat semua permission + grant default per role
-|   - PermissionCatalog      → ekspansi ke daftar nama & struktur matriks FE
-|   - Endpoint GET /permissions/catalog → render matriks Hak Akses
-|
-| Konvensi nama permission: "{action}-{resource}" (mis. view-produk).
-| "extras" = permission non-CRUD (aksi khusus) yang tampil di grup "Lanjutan"
-| pada resource terkait. Nama extras ditulis eksplisit (apa adanya).
-|
-| owner = bypass total lewat Gate::before (AppServiceProvider), tidak perlu grant.
-|
-*/
-
 return [
 
-    // Kolom aksi matriks (urutan menentukan urutan kolom di FE).
     'actions' => [
         'view' => 'Lihat',
         'create' => 'Tambah',
@@ -170,16 +150,6 @@ return [
         ],
     ],
 
-    /*
-    | Grant default per role saat seeding. Bisa diubah kapan saja lewat UI.
-    | Grammar token:
-    |   '*'                     → semua permission
-    |   'group:{groupKey}:*'    → semua permission dalam grup
-    |   '{resourceKey}:*'       → semua aksi + extras resource
-    |   '{resourceKey}:{action}'→ satu permission
-    |   '{permission-name}'     → nama permission apa adanya (mis. extras)
-    | owner sengaja tidak didaftarkan (bypass via Gate::before).
-    */
     'defaults' => [
         'admin' => ['*'],
 

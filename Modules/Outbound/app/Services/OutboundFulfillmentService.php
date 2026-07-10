@@ -58,7 +58,7 @@ class OutboundFulfillmentService
                 switch ($source) {
                     case 'shopee':
                         $this->assertChannelRefs($source, $shopId, $channelOrderNo);
-                        
+
                         if ($order->channel_status === 'RETRY_SHIP') {
                             $ship = $this->shopeeOrderService->retryPickup($shopId, $channelOrderNo);
                             if (!empty($ship['updated'])) {
@@ -482,17 +482,6 @@ class OutboundFulfillmentService
             ->whereNotIn('status', ['cancelled']);
     }
 
-    /**
-     * Hapus pesanan dari proses fulfillment (manual, WAJIB alasan). Order TIDAK
-     * dihapus dari sistem. Perilaku tergantung tahap terjauh yang sudah dicapai:
-     *   - Picking (punya item picklist)  -> reverse stok ter-pick, lepas item,
-     *       order MASUK "Gagal Picking" (pick_failed_*), TIDAK langsung Siap Proses.
-     *       Admin lalu "Pindahkan ke Siap Proses".
-     *   - Packing (punya packlist aktif) -> revert packlist, order -> 'picked'.
-     *   - Shipping (di shipment SCHEDULED) -> lepas dari shipment, order tetap 'packed'.
-     * Semua tahap menulis jejak ke `fulfillment_removals` (siapa + alasan).
-     * Order berstatus 'shipped' (sudah dikirim fisik) ditolak.
-     */
     public function deleteOrderFromFulfillment(string $orderId, ?string $reason, ?string $removedBy): void
     {
         $order = Order::findOrFail($orderId);

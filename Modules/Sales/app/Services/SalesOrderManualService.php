@@ -8,13 +8,6 @@ use Modules\Sales\Models\SalesOrderItem;
 use Modules\Sales\Services\StockService;
 use Modules\Sales\Services\Support\SalesOrderNumberGenerator;
 
-/**
- * Layanan pembuatan Sales Order MANUAL (Toko Grosir/Reseller Internal).
- *
- * Tidak menyentuh alur webhook/marketplace. Semua job/observer marketplace
- * di titik lain harus di-gate dengan SalesOrder::isManual() atau
- * $order->is_manual === true supaya bypass untuk order manual.
- */
 class SalesOrderManualService
 {
     public function __construct(
@@ -22,9 +15,6 @@ class SalesOrderManualService
         private StockService $stockService,
     ) {}
 
-    /**
-     * @param array $payload Sudah divalidasi via StoreSalesOrderManualRequest
-     */
     public function create(array $payload): SalesOrder
     {
         return DB::transaction(function () use ($payload) {
@@ -108,8 +98,6 @@ class SalesOrderManualService
                     'amount'       => $amount,
                 ]);
 
-                // Reserve stok + validasi available. Throws InsufficientStockException
-                // kalau tidak cukup → transaksi rollback → order tidak dibuat.
                 $this->stockService->reserve(
                     sku: (string) $item['sku'],
                     itemId: (string) $item['item_id'],
@@ -124,9 +112,6 @@ class SalesOrderManualService
         });
     }
 
-    /**
-     * Hitung ulang totals server-side (source of truth).
-     */
     private function computeTotals(array $items, array $payload): array
     {
         $subTotal   = 0.0;

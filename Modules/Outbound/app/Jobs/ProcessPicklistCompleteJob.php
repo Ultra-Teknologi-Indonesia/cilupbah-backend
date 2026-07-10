@@ -49,8 +49,6 @@ class ProcessPicklistCompleteJob implements ShouldQueue
                     true,
                 ));
 
-                // Update sales_order_items.fulfillment_status per order_item
-                // (bundle items expand to multiple picklist rows for the same order_item_id).
                 $itemsByOrderItem = $items->groupBy('order_item_id');
                 foreach ($itemsByOrderItem as $orderItemId => $parts) {
                     $anyShort = $parts->contains(fn ($it) => in_array(
@@ -83,7 +81,7 @@ class ProcessPicklistCompleteJob implements ShouldQueue
                 }
 
                 if ($shortItems->isNotEmpty()) {
-                    // Gate order: needs buyer confirmation before shipping.
+
                     DB::table('sales_orders')
                         ->where('id', $order->id)
                         ->update([
@@ -105,7 +103,6 @@ class ProcessPicklistCompleteJob implements ShouldQueue
                     continue;
                 }
 
-                // No shortages — proceed as before.
                 if ($order->status === 'reserved') {
                     $orderService->updateOrder($order, ['status' => 'picked'], $picklist->picker);
                 }

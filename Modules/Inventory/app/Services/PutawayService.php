@@ -79,7 +79,6 @@ class PutawayService
                     'serial_no' => $itemData['serial_no'] ?? null,
                 ]);
 
-                // Rincian asal qty per inbound_item (untuk sinkron balik ke penerimaan).
                 foreach ($itemData['sources'] ?? [] as $src) {
                     PutawayItemSource::create([
                         'putaway_item_id' => $putawayItem->id,
@@ -90,7 +89,6 @@ class PutawayService
                 }
             }
 
-            // Header pivot: daftar penerimaan sumber (mendukung gabungan banyak penerimaan).
             foreach (array_unique($data['sources'] ?? []) as $inboundId) {
                 PutawaySource::create([
                     'putaway_id' => $putaway->id,
@@ -167,8 +165,6 @@ class PutawayService
             throw new \Exception('Putaway tidak ditemukan.');
         }
 
-        // Tombol "Mulai" tidak lagi memulai. Putaway baru "berjalan" saat placement
-        // pertama (web memilih barang / dari mobile): NOT_STARTED auto-start di sini.
         if ($putaway->status === Putaway::STATUS_NOT_STARTED) {
             $this->putawayRepository->updateStatus($putawayId, Putaway::STATUS_IN_PROGRESS, [
                 'started_at' => now(),
@@ -214,13 +210,6 @@ class PutawayService
         });
     }
 
-    /**
-     * Selesaikan putaway meski ada selisih fisik (qty diterima < qty tercatat).
-     * Sisa qty yang tidak punya fisik "ditempatkan" ke rak default (inbound) lokasi
-     * tersebut — tidak ada perpindahan stok nyata, hanya mengakui sisa sudah
-     * ditempatkan agar dokumen bisa ditutup. Stok fiktif ini selanjutnya wajib
-     * di-adjust minus lewat Penyesuaian Stok (lihat discrepancy_items pada return).
-     */
     public function completeWithDiscrepancy(string $id, string $userId): array
     {
         return DB::transaction(function () use ($id, $userId) {
@@ -272,8 +261,6 @@ class PutawayService
 
             $putaway = $this->putawayRepository->findById($id);
 
-            // Jaga-jaga: job pemroses sudah auto-complete saat semua item tuntas,
-            // tapi pastikan status & status penerimaan turunan tetap sinkron.
             if ($putaway->status !== Putaway::STATUS_COMPLETED) {
                 $this->putawayRepository->updateStatus($id, Putaway::STATUS_COMPLETED, [
                     'completed_at' => now(),
@@ -294,10 +281,6 @@ class PutawayService
         });
     }
 
-    /**
-     * Koreksi salah scan penempatan: hapus 1 baris placement (atau sebagian qty-nya)
-     * dan kembalikan stok dari rak tujuan ke rak asal.
-     */
     public function deletePlacement(string $putawayId, string $itemId, string $placementId, ?int $qty, string $userId): Putaway
     {
         return $this->deletePlacements($putawayId, [
@@ -305,10 +288,6 @@ class PutawayService
         ], $userId);
     }
 
-    /**
-     * Koreksi massal: hapus beberapa placement sekaligus dalam 1 transaksi (1 hit API).
-     * $items = [['item_id' => ..., 'placement_id' => ..., 'qty' => ?int], ...]
-     */
     public function deletePlacements(string $putawayId, array $items, string $userId): Putaway
     {
         if (empty($items)) {
@@ -330,14 +309,12 @@ class PutawayService
                 $this->reverseOnePlacement($putaway, $entry, $userId);
             }
 
-            // Revert status putaway bila sebelumnya COMPLETED (kini ada item yang belum penuh).
             if ($putaway->status === Putaway::STATUS_COMPLETED) {
                 $this->putawayRepository->updateStatus($putawayId, Putaway::STATUS_IN_PROGRESS, [
                     'completed_at' => null,
                 ]);
             }
 
-            // Revert status inbound turunan (hitung sekali setelah semua item diproses).
             if ($putaway->source_type === 'INBOUND') {
                 foreach ($this->sourceInbounds($putaway) as $inbound) {
                     $this->recomputeInboundStatus($inbound);
@@ -348,14 +325,6 @@ class PutawayService
         });
     }
 
-    /**
-     * Hapus dokumen putaway dengan perilaku revert bertingkat sesuai status:
-     * - NOT_STARTED → hapus dokumen (assignment hilang), penerimaan kembali dapat di-assign;
-     *   data QC/received_qty tidak disentuh.
-     * - IN_PROGRESS → reverse SEMUA penempatan (stok kembali ke rak asal), status → NOT_STARTED.
-     * - COMPLETED  → reverse SEMUA penempatan, status → IN_PROGRESS (reset penuh, completed_at null).
-     * Mengembalikan ['id' => ..., 'action' => ...].
-     */
     public function deletePutaway(string $id, string $userId): array
     {
         return DB::transaction(function () use ($id, $userId) {
@@ -376,14 +345,11 @@ class PutawayService
                 throw new \Exception('Putaway yang sudah dibatalkan tidak bisa dihapus.');
             }
 
-            // NOT_STARTED → kembali ke Penerimaan (hard-delete). Defensif: bila ternyata
-            // sempat ada penempatan, kembalikan stok dulu agar tidak menggantung di rak.
             if ($status === Putaway::STATUS_NOT_STARTED) {
                 if ($hasPlacements) {
                     $this->resetAllPlacements($putaway, $userId);
                 }
 
-                // Ambil penerimaan sumber SEBELUM hard-delete (pivot ikut terhapus).
                 $inbounds = $putaway->source_type === 'INBOUND'
                     ? $this->sourceInbounds($putaway)
                     : collect();
@@ -397,7 +363,6 @@ class PutawayService
                 return ['id' => $id, 'action' => 'unassigned'];
             }
 
-            // IN_PROGRESS / COMPLETED → reverse semua penempatan, lalu turunkan status.
             $this->resetAllPlacements($putaway, $userId);
 
             $target = $status === Putaway::STATUS_COMPLETED
@@ -423,11 +388,6 @@ class PutawayService
         });
     }
 
-    /**
-     * Hapus banyak dokumen putaway sekaligus (atomik). Tiap id diproses sesuai
-     * statusnya sendiri (status campur diperbolehkan). Bila salah satu gagal,
-     * seluruh transaksi di-rollback.
-     */
     public function bulkDeletePutaway(array $ids, string $userId): array
     {
         $ids = array_values(array_unique($ids));
@@ -445,10 +405,6 @@ class PutawayService
         });
     }
 
-    /**
-     * Reverse SEMUA penempatan pada tiap item dokumen (kembalikan stok dari rak
-     * tujuan ke rak asal), memakai primitive reverseOnePlacement yang sama dengan koreksi.
-     */
     private function resetAllPlacements(Putaway $putaway, string $userId): void
     {
         $putaway->load(['items.placements']);
@@ -464,9 +420,6 @@ class PutawayService
         }
     }
 
-    /**
-     * Hard-delete dokumen putaway beserta turunannya (item, sumber rincian, placement, pivot penerimaan).
-     */
     private function hardDeletePutaway(Putaway $putaway): void
     {
         $itemIds = PutawayItem::where('putaway_id', $putaway->id)->pluck('id');
@@ -479,9 +432,6 @@ class PutawayService
         $putaway->delete();
     }
 
-    /**
-     * Muat banyak putaway lengkap untuk cetak bulk (relasi sama dgn detail).
-     */
     public function getManyForPdf(array $ids)
     {
         return $this->putawayRepository->getManyWithDetails($ids);
@@ -522,7 +472,6 @@ class PutawayService
             throw new \Exception("Qty koreksi tidak valid (maksimal {$placement->qty}).");
         }
 
-        // Balik stok: dari rak tujuan (placement->bin_id) kembali ke rak asal (item->source_bin_id).
         $this->inventoryService->reverseBinMove([
             'item_id'            => $item->item_id,
             'location_id'        => $putaway->location_id,
@@ -536,14 +485,12 @@ class PutawayService
             'created_by'         => "user:{$userId}",
         ]);
 
-        // Kurangi qty placement / hapus baris bila habis.
         if ($qtyRev >= (int) $placement->qty) {
             $placement->delete();
         } else {
             $placement->decrement('qty', $qtyRev);
         }
 
-        // Kurangi putaway_qty item.
         $newPutawayQty = max(0, (int) $item->putaway_qty - $qtyRev);
         $item->putaway_qty = $newPutawayQty;
         if ($newPutawayQty === 0) {
@@ -551,13 +498,12 @@ class PutawayService
         }
         $item->save();
 
-        // Sinkron balik ke penerimaan bila sumbernya INBOUND.
         if ($putaway->source_type === 'INBOUND') {
             $sources = PutawayItemSource::query()
                 ->where('putaway_item_sources.putaway_item_id', $item->id)
                 ->join('inbound_items', 'inbound_items.id', '=', 'putaway_item_sources.inbound_item_id')
                 ->join('inbounds', 'inbounds.id', '=', 'inbound_items.inbound_id')
-                ->orderByDesc('inbounds.created_at') // LIFO: kembalikan dari penerimaan terbaru dulu
+                ->orderByDesc('inbounds.created_at') 
                 ->lockForUpdate()
                 ->select('putaway_item_sources.*')
                 ->get();
@@ -577,7 +523,7 @@ class PutawayService
                     $remaining -= $take;
                 }
             } elseif ($putaway->source_id) {
-                // Fallback dokumen lama tanpa rincian sumber.
+
                 $inboundItem = InboundItem::where('inbound_id', $putaway->source_id)
                     ->where('item_id', $item->item_id)
                     ->first();
@@ -589,9 +535,6 @@ class PutawayService
         }
     }
 
-    /**
-     * Daftar penerimaan sumber putaway: dari pivot putaway_sources, fallback ke source_id lama.
-     */
     private function sourceInbounds(Putaway $putaway)
     {
         $ids = $putaway->sourceRows()->pluck('inbound_id');
@@ -607,11 +550,6 @@ class PutawayService
         return Inbound::with('items')->whereIn('id', $ids->all())->get();
     }
 
-    /**
-     * Hitung ulang status penerimaan dari progres putaway itemnya.
-     * Semua item tuntas → COMPLETED; ada sebagian → PUTAWAY_IN_PROGRESS; nol → RECEIVED.
-     * Status DRAFT/CANCELLED tidak disentuh.
-     */
     private function recomputeInboundStatus(Inbound $inbound): void
     {
         $inbound->loadMissing('items');
@@ -633,13 +571,6 @@ class PutawayService
         }
     }
 
-    /**
-     * Susutkan target penempatan yang BELUM ditempatkan pada dokumen putaway
-     * yang masih terbuka, saat jumlah diterima diturunkan. Hanya porsi yang
-     * belum tertempat yang disusutkan (stok yang sudah di rak tidak disentuh).
-     * Dokumen yang jadi tuntas otomatis di-COMPLETED agar tidak menggantung.
-     * Mengembalikan jumlah yang benar-benar disusutkan.
-     */
     public function reduceOpenTargetForInboundItem(string $inboundItemId, int $amount): int
     {
         if ($amount <= 0) {
@@ -676,7 +607,6 @@ class PutawayService
                 $item->qty = max((int) $item->putaway_qty, (int) $item->qty - $take);
                 $item->save();
 
-                // Dokumen tuntas tertempat → tutup otomatis supaya tidak menggantung.
                 $putaway = $item->putaway;
                 if ($putaway
                     && $putaway->status === Putaway::STATUS_IN_PROGRESS

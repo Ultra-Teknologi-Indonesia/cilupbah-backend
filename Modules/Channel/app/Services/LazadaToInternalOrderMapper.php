@@ -20,17 +20,8 @@ class LazadaToInternalOrderMapper
         'cancelled' => 'CANCELLED',
         'failed' => 'CANCELLED',
 
-        // Jalur reverse-logistics: 'returned' terjadi SETELAH delivered, jadi order tetap
-        // DELIVERED — detail retur dilacak terpisah lewat SalesReturn (dari webhook/API
-        // reverse order), bukan lewat channel_status. Jangan invent enum baru di sini;
-        // channel_status cuma punya vocabulary UNPAID/AWAITING_*/IN_TRANSIT/DELIVERED/CANCELLED
-        // yang dipakai bersama Shopee & TikTok.
         'returned' => 'DELIVERED',
 
-        // failed_delivery/shipped_back*/lost_by_3pl/damaged_by_3pl bercabang dari 'shipped'
-        // sebelum delivered — paket masih "bergerak" di jalur logistik/retur sampai resolusi
-        // final (Package Scrapped). IN_TRANSIT paling dekat maknanya & aman (bukan CANCELLED,
-        // bukan default UNPAID yang salah total untuk order yang sudah pernah dikirim).
         'failed_delivery' => 'IN_TRANSIT',
         'shipped_back' => 'IN_TRANSIT',
         'shipped_back_success' => 'IN_TRANSIT',
@@ -109,17 +100,6 @@ class LazadaToInternalOrderMapper
         ];
     }
 
-    /**
-     * Kode pengambilan (pickup code) untuk pesanan instant/sameday.
-     *
-     * TERKONFIRMASI TIDAK ADA (docs Lazada Open API): untuk order B2C standar,
-     * Lazada tidak mengekspos field kode pengambilan terpisah — hanya mengandalkan
-     * `tracking_number`. Field `pickup_order_no` yang ada di API spesifik untuk model
-     * Just-In-Time (JIT) ke gudang transit, BUKAN kode kurir instant/sameday, jadi
-     * sengaja tidak dipetakan ke sini. Akibatnya `pickup_code` di Lazada selalu
-     * mengikuti input manual (existing-wins di upsert).
-     * Lihat PLANNING-BUKTI-PICKUP-KURIR.md §7.
-     */
     protected function extractPickupCode(array $lazadaOrder, array $orderItems): ?string
     {
         return null;

@@ -11,19 +11,6 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\LazadaOrderService;
 
-/**
- * Jalankan fulfillPack -> printAwb -> readyToShip sebagai satu alur idempoten.
- *
- * Setiap langkah memutuskan sendiri apakah masih perlu dijalankan berdasarkan status
- * item TERBARU (GetOrderItems dipanggil ulang tiap kali) — jadi retry aman: item yang
- * sudah RTS otomatis dilewati, partial-success otomatis dilanjutkan, tidak ada double-ship.
- *
- * Error transient (timeout/5xx/429/token expired) ditangani oleh retry bawaan queue
- * ($tries + $backoff). Error bisnis (item bukan status yang diharapkan, dsb.) membuat
- * step terkait dilewati, bukan di-retry. Setelah $tries habis, job masuk failed_jobs
- * (mekanisme retry manual bawaan Laravel) — dicatat jelas di failed() agar operator tahu
- * order mana yang butuh tindak lanjut RTS manual.
- */
 class ProcessLazadaFulfillmentJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;

@@ -10,12 +10,6 @@ use Modules\Inbound\Services\InboundService;
 use Modules\Sales\Services\SalesReturnService;
 use Tests\TestCase;
 
-/**
- * Regresi untuk fix: retur penjualan yang di-accept harus muncul di kronologi
- * stok dengan source SALES_RETURN, bukan ADJUSTMENT (lihat InboundService::
- * movementSourceFor()). Menjalankan alur accept() -> Inbound -> receive() secara
- * nyata (tanpa mock InboundService), sehingga InventoryMovement benar-benar tertulis.
- */
 class SalesReturnKronologiStokTest extends TestCase
 {
     use RefreshDatabase;

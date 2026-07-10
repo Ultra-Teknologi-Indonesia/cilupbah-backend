@@ -66,7 +66,7 @@ class PutawayController extends Controller
     )]
     public function store(Request $request): JsonResponse
     {
-        // Backward-compat: terima inbound_id tunggal sebagai inbound_ids berisi 1 elemen.
+
         if ($request->filled('inbound_id') && ! $request->filled('inbound_ids')) {
             $request->merge(['inbound_ids' => [$request->input('inbound_id')]]);
         }
@@ -82,12 +82,10 @@ class PutawayController extends Controller
                 ->whereIn('id', $request->inbound_ids)
                 ->get();
 
-            // Semua penerimaan wajib satu lokasi (putaways.location_id tunggal).
             if ($inbounds->pluck('location_id')->unique()->count() > 1) {
                 return $this->errorResponse('Penerimaan harus dari lokasi/gudang yang sama untuk digabung.', 422);
             }
 
-            // Tolak penerimaan yang sudah tuntas/batal atau sedang punya penempatan aktif.
             foreach ($inbounds as $inbound) {
                 if (in_array($inbound->status, [\Modules\Inbound\Models\Inbound::STATUS_COMPLETED, \Modules\Inbound\Models\Inbound::STATUS_CANCELLED], true)) {
                     return $this->errorResponse("Penerimaan {$inbound->transaction_number} sudah {$inbound->status}, tidak bisa dibuat penempatan.", 422);
@@ -105,7 +103,6 @@ class PutawayController extends Controller
             $defaultBin = app(\Modules\Warehouse\Services\LocationBinService::class)->getDefaultBin($locationId);
             $userId = $request->user()->id ?? 'system';
 
-            // Gabung per-SKU lintas penerimaan; simpan rincian asal (inbound_item_id, qty) tiap item.
             $merged = [];
             foreach ($inbounds as $inbound) {
                 foreach ($inbound->items as $item) {
@@ -147,7 +144,7 @@ class PutawayController extends Controller
             $putaway = $this->putawayService->create([
                 'location_id' => $locationId,
                 'source_type' => 'INBOUND',
-                // source_id tetap diisi untuk penerimaan tunggal (kompat tampilan lama); null bila gabungan.
+
                 'source_id'   => $inbounds->count() === 1 ? $inbounds->first()->id : null,
                 'sources'     => $inbounds->pluck('id')->all(),
                 'notes'       => $notes,
@@ -773,10 +770,6 @@ class PutawayController extends Controller
         }
     }
 
-    /**
-     * Siapkan satu putaway untuk render PDF: muat relasi sumber, lampirkan rekomendasi rak,
-     * hasilkan QR + label sumber. Dipakai cetak tunggal maupun bulk.
-     */
     protected function preparePutawayForPdf($putaway): array
     {
         $putaway->load(['inbound', 'sources:id,reference_number,transaction_number']);
@@ -879,14 +872,13 @@ class PutawayController extends Controller
     protected function resolveSourceLabel($putaway): string
     {
         if ($putaway->source_type === 'INBOUND') {
-            // Penerimaan tunggal (jalur lama): pakai relasi inbound via source_id.
+
             if ($putaway->inbound) {
                 return $putaway->inbound->reference_number
                     ?? $putaway->inbound->transaction_number
                     ?? '-';
             }
 
-            // Penerimaan gabungan: rangkai dari pivot sources.
             $sources = $putaway->relationLoaded('sources') ? $putaway->sources : collect();
             if ($sources->isNotEmpty()) {
                 return $sources

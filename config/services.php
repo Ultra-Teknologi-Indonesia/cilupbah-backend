@@ -36,9 +36,6 @@ return [
 
         'finance_statement_path' => env('TIKTOK_FINANCE_STATEMENT_PATH', '/finance/202309/orders/{order_id}/statement_transactions'),
 
-        // DEBUG-only: log struktur payload order instant/sameday untuk riset field
-        // kode pengambilan (Fase 2 Bukti Pickup Kurir). Default OFF; aktifkan sementara
-        // via TIKTOK_DUMP_INSTANT_PAYLOAD=true saat memvalidasi, lalu matikan lagi.
         'dump_instant_payload' => env('TIKTOK_DUMP_INSTANT_PAYLOAD', false),
     ],
 

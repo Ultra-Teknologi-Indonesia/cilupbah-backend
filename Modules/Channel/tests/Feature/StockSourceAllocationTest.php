@@ -57,8 +57,7 @@ class StockSourceAllocationTest extends TestCase
 
     private function stockAt(ProductVariant $variant, string $locationId, int $onHand, int $reserved = 0): void
     {
-        // Stok hanya sellable/pickable bila SUDAH DITEMPATKAN di bin rak final
-        // (is_inbound=false). Tempatkan di rak agar mencerminkan model saat ini.
+
         $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
             ['location_id' => $locationId, 'bin_final_code' => 'RACK-A1'],
             ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false]
@@ -74,8 +73,6 @@ class StockSourceAllocationTest extends TestCase
     {
         return $this->actingAs(\App\Models\User::factory()->create(), 'sanctum');
     }
-
-    // --- Resolver ---------------------------------------------------------
 
     public function test_resolver_total_mode_sums_all_active_warehouses_excluding_transit(): void
     {
@@ -137,8 +134,6 @@ class StockSourceAllocationTest extends TestCase
 
         $this->assertSame(0, $stocks[$variant->id]);
     }
-
-    // --- Update store: persist + resync ------------------------------------
 
     public function test_update_store_persists_stock_source_mode_total(): void
     {
@@ -244,9 +239,7 @@ class StockSourceAllocationTest extends TestCase
         ]);
 
         Queue::fake();
-        // handle() dipanggil langsung (bukan dispatchSync) supaya Queue::fake()
-        // menangkap SyncProductToChannelJob yang di-dispatch di dalamnya, bukan
-        // ResyncShopStockJob itu sendiri (yang juga ShouldQueue).
+
         (new ResyncShopStockJob($shop->id))->handle();
 
         Queue::assertPushed(\Modules\Channel\Jobs\SyncProductToChannelJob::class, function ($job) use ($productA) {
@@ -256,8 +249,6 @@ class StockSourceAllocationTest extends TestCase
             return $job->productId === $productB->id;
         });
     }
-
-    // --- Stock allocation list endpoint -------------------------------------
 
     public function test_stock_allocation_list_returns_jubelio_shaped_fields(): void
     {
@@ -295,14 +286,9 @@ class StockSourceAllocationTest extends TestCase
         $this->assertNull($row['location_code']);
     }
 
-    // --- Backfill ------------------------------------------------------------
-
     public function test_backfill_migration_defaults_existing_shops_to_location_kecil(): void
     {
-        // Toko yang dibuat tanpa mengisi stock_source_mode/location_id secara
-        // eksplisit harus jatuh ke default kolom migrasi ('location') dan
-        // fallback resolver ke WH-KECIL — merefleksikan hasil backfill untuk
-        // toko lama sebelum fitur ini ada.
+
         $shop = $this->shop()->fresh();
 
         $this->assertSame('location', $shop->stock_source_mode);

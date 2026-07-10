@@ -139,16 +139,6 @@ class TikTokToInternalOrderMapper
         ];
     }
 
-    /**
-     * Kode pengambilan (pickup code / collection code) untuk pesanan instant/sameday.
-     *
-     * CATATAN (Fase 2 — lihat PLANNING-BUKTI-PICKUP-KURIR.md §7):
-     * Field kode pengambilan TikTok belum terkonfirmasi dari dokumentasi API
-     * (v202309). Helper best-effort: memindai root order dan tiap `packages[]`;
-     * kalau tidak ada, null → `pickup_code` mengikuti input manual (existing-wins).
-     * Untuk auto-fill penuh: konfirmasi nama field (mis. di `packages[]`) via docs
-     * Bytedance lalu sesuaikan daftar key di bawah.
-     */
     protected function extractPickupCode(array $tiktokOrder): ?string
     {
         $keys = ['pickup_code', 'collection_code', 'pickup_pin', 'otp'];

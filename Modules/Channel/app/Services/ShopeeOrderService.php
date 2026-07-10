@@ -125,15 +125,6 @@ class ShopeeOrderService
         return $this->resolveLogistics($shop, $orderSn, $status)['tracking_number'];
     }
 
-    /**
-     * Ambil tracking_number + pickup_code dari satu panggilan get_tracking_number.
-     *
-     * `pickup_code` (kode pengambilan kurir) hanya dikembalikan Shopee untuk order
-     * ID lokal yang memakai pengiriman instant/sameday — untuk order lain field ini
-     * absen dan bernilai null. Digabung ke satu call agar tidak menambah request.
-     *
-     * @return array{tracking_number: ?string, pickup_code: ?string}
-     */
     public function resolveLogistics(object $shop, string $orderSn, string $status): array
     {
         $empty = ['tracking_number' => null, 'pickup_code' => null];
@@ -156,15 +147,6 @@ class ShopeeOrderService
         }
     }
 
-    /**
-     * Ambil nomor resi ekspedisi retur (paket yang dikirim balik buyer) dari Shopee Returns API.
-     *
-     * @param  string  $returnSn  Return SN mentah (tanpa prefix "shopee:").
-     * @param  string  $orderSn   Fallback: cari retur berdasarkan order bila return_sn kosong.
-     * @return array{tracking_number: ?string, carrier: ?string, shipped_at: ?string}
-     *
-     * TODO(verify): konfirmasi nama field ke dokumentasi Shopee Returns (get_return_detail).
-     */
     public function fetchReturnTracking(string $shopId, ?string $returnSn, ?string $orderSn = null): array
     {
         $empty = ['tracking_number' => null, 'carrier' => null, 'shipped_at' => null];
@@ -172,7 +154,6 @@ class ShopeeOrderService
         try {
             $shop = $this->requireShop($shopId);
 
-            // Resolve return_sn dari order bila belum diketahui.
             if (! $returnSn && $orderSn) {
                 $returnSn = $this->resolveReturnSnByOrder($shop, $orderSn);
             }
@@ -215,20 +196,6 @@ class ShopeeOrderService
         }
     }
 
-    /**
-     * Ambil detail lengkap retur dari Shopee Returns API: keputusan (status), alasan,
-     * nominal refund, dan selisih ongkir — dipakai SalesReturnDetailSyncService untuk
-     * mengisi marketplace_decision/refund_amount/shipping_fee_* di SalesReturn.
-     *
-     * @return array{
-     *     channel_status: ?string, reason_code: ?string, reason_text: ?string,
-     *     refund_amount: ?float, refund_currency: ?string,
-     *     shipping_fee_original: ?float, shipping_fee_return: ?float,
-     *     tracking_number: ?string, carrier: ?string, shipped_at: ?string, raw: array,
-     * }
-     *
-     * TODO(verify): konfirmasi nama field ke dokumentasi Shopee Returns (get_return_detail).
-     */
     public function fetchReturnDetail(string $shopId, ?string $returnSn, ?string $orderSn = null): array
     {
         $empty = [
@@ -299,13 +266,6 @@ class ShopeeOrderService
         }
     }
 
-    /**
-     * Ambil riwayat banding/negosiasi retur dari Shopee (blok `negotiation` pada
-     * get_return_detail). Shopee tidak punya endpoint riwayat terpisah seperti
-     * TikTok/Lazada — histori diturunkan dari counter_offer di detail retur.
-     *
-     * @return array{records: array<int, array{type: string, operator: string, description: ?string, timestamp: ?string}>}
-     */
     public function fetchReturnHistory(string $shopId, string $returnSn): array
     {
         try {
@@ -343,11 +303,6 @@ class ShopeeOrderService
         }
     }
 
-    /**
-     * Setujui retur di Shopee (seller menerima permintaan retur buyer tanpa banding).
-     *
-     * TODO(verify): konfirmasi nama field ke dokumentasi Shopee Returns (confirm).
-     */
     public function confirmReturn(string $shopId, string $returnSn): bool
     {
         try {
@@ -369,14 +324,6 @@ class ShopeeOrderService
         }
     }
 
-    /**
-     * Tolak retur di Shopee via mekanisme dispute (seller mengajukan banding dengan
-     * alasan spesifik, mis. barang dianggap tidak rusak/tidak sesuai klaim buyer).
-     *
-     * @param  array<int,string>  $images  URL bukti foto (opsional, sesuai dokumentasi returns.dispute).
-     *
-     * TODO(verify): konfirmasi nama field ke dokumentasi Shopee Returns (dispute).
-     */
     public function disputeReturn(string $shopId, string $returnSn, string $disputeReason, ?string $disputeText = null, array $images = []): bool
     {
         try {
@@ -409,13 +356,6 @@ class ShopeeOrderService
         }
     }
 
-    /**
-     * Shopee tidak menyediakan endpoint daftar alasan tolak terpisah — dispute_reason
-     * adalah enum tetap di sisi Shopee. Daftar berikut mengikuti pola getCancelReasons()
-     * yang sudah ada di kelas ini.
-     *
-     * TODO(verify): konfirmasi daftar kode dispute_reason resmi ke dokumentasi Shopee.
-     */
     public function getDisputeReasons(): array
     {
         return [

@@ -73,11 +73,6 @@ class LazadaOrderService
         return 1;
     }
 
-    /**
-     * Pack pesanan via endpoint package-based Lazada.
-     * Hanya item berstatus "pending"/"repacked" yang boleh diproses — wajib panggil
-     * GetOrderItems terlebih dahulu untuk memfilter (aturan Lazada, bukan pilihan kita).
-     */
     public function fulfillPack(string $shopId, string $orderId, string $shippingProviderId, string $deliveryType = 'dropship'): array
     {
         $shop = $this->requireShop($shopId);
@@ -106,12 +101,6 @@ class LazadaOrderService
         ];
     }
 
-    /**
-     * Ready-to-ship via endpoint package-based Lazada.
-     * Hanya item berstatus "packed" yang boleh diproses — panggil GetOrderItems dulu.
-     * Sebaiknya cetak AWB (printAwb()) di antara fulfillPack() dan readyToShip() —
-     * sebagian penyedia logistik menolak RTS bila AWB belum digenerate.
-     */
     public function readyToShip(string $shopId, string $orderId, ?string $trackingNumber = null, ?string $packageId = null, string $deliveryType = 'dropship'): array
     {
         $shop = $this->requireShop($shopId);
@@ -141,10 +130,6 @@ class LazadaOrderService
         ];
     }
 
-    /**
-     * Cetak AWB dengan polling — beberapa penyedia logistik butuh waktu untuk
-     * menyiapkan dokumen setelah fulfillPack(), sebelum bisa diambil.
-     */
     public function printAwb(string $shopId, string $orderId, int $maxAttempts = 5, int $delayMicroseconds = 1_000_000): array
     {
         $attempt = 0;
@@ -224,10 +209,6 @@ class LazadaOrderService
         return $res['data']['shipment_providers'] ?? ($res['data'] ?? []);
     }
 
-    /**
-     * Status item saat ini (lowercase) — dipakai job retry/fallback untuk memutuskan
-     * apakah fulfillPack()/readyToShip() masih perlu dipanggil (idempotensi).
-     */
     public function itemStatuses(string $shopId, string $orderId): array
     {
         $shop = $this->requireShop($shopId);
@@ -266,10 +247,6 @@ class LazadaOrderService
         )));
     }
 
-    /**
-     * Selalu tarik ulang (bukan cache) — GetOrderItems wajib dipanggil segar sebelum
-     * fulfillPack/readyToShip agar status-gating akurat & retry idempoten.
-     */
     protected function fetchOrderItemsWithStatus(object $shop, string $orderId): array
     {
         return $this->fetchItemsForOrders($shop, [$orderId])[$orderId] ?? [];
@@ -316,14 +293,6 @@ class LazadaOrderService
         return $itemsByOrder;
     }
 
-    /**
-     * Ambil nomor resi ekspedisi retur (reverse order) dari Lazada Reverse API.
-     *
-     * @param  string  $reverseOrderId  Reverse order id mentah (tanpa prefix "lazada:").
-     * @return array{tracking_number: ?string, carrier: ?string, shipped_at: ?string}
-     *
-     * TODO(verify): konfirmasi endpoint & nama field ke dokumentasi Lazada Reverse/RMA.
-     */
     public function fetchReturnTracking(string $shopId, ?string $reverseOrderId): array
     {
         $empty = ['tracking_number' => null, 'carrier' => null, 'shipped_at' => null];
@@ -367,21 +336,6 @@ class LazadaOrderService
         }
     }
 
-    /**
-     * Ambil detail lengkap retur dari Lazada Reverse Order API: status keputusan,
-     * alasan, nominal refund, dan selisih ongkir (`logistics_cost`/`return_shipping_fee`)
-     * — dipakai SalesReturnDetailSyncService untuk mengisi marketplace_decision/
-     * refund_amount/shipping_fee_* di SalesReturn.
-     *
-     * @return array{
-     *     channel_status: ?string, reason_code: ?string, reason_text: ?string,
-     *     refund_amount: ?float, refund_currency: ?string,
-     *     shipping_fee_original: ?float, shipping_fee_return: ?float,
-     *     tracking_number: ?string, carrier: ?string, shipped_at: ?string, raw: array,
-     * }
-     *
-     * TODO(verify): konfirmasi endpoint & nama field ke dokumentasi Lazada Reverse/RMA.
-     */
     public function fetchReturnDetail(string $shopId, ?string $reverseOrderId): array
     {
         $empty = [
@@ -447,15 +401,6 @@ class LazadaOrderService
         }
     }
 
-    /**
-     * Ambil riwayat proses/banding retur dari Lazada Reverse Order API
-     * (`/order/reverse/return/history/list`), dipakai untuk mengisi timeline
-     * banding di UI detail retur.
-     *
-     * @return array{records: array<int, array{type: string, operator: string, description: ?string, timestamp: ?string}>}
-     *
-     * TODO(verify): konfirmasi endpoint & nama field ke dokumentasi Lazada Reverse/RMA.
-     */
     public function fetchReturnHistory(string $shopId, string $reverseOrderId): array
     {
         try {
@@ -488,11 +433,6 @@ class LazadaOrderService
         }
     }
 
-    /**
-     * Setujui retur di Lazada Reverse Order API (seller menerima permintaan retur buyer).
-     *
-     * TODO(verify): konfirmasi endpoint & nama field ke dokumentasi Lazada Reverse/RMA (return/approve).
-     */
     public function approveReturn(string $shopId, string $reverseOrderId): bool
     {
         try {
@@ -513,11 +453,6 @@ class LazadaOrderService
         }
     }
 
-    /**
-     * Tolak retur di Lazada Reverse Order API dengan reason_id dari getRejectReasons().
-     *
-     * TODO(verify): konfirmasi endpoint & nama field ke dokumentasi Lazada Reverse/RMA (return/reject).
-     */
     public function rejectReturn(string $shopId, string $reverseOrderId, string $reasonId, ?string $remark = null): bool
     {
         try {
@@ -543,15 +478,6 @@ class LazadaOrderService
         }
     }
 
-    /**
-     * Ambil daftar alasan tolak yang valid untuk suatu retur dari
-     * `/order/reverse/reason/list`, dipakai FE untuk menampilkan pilihan alasan
-     * sebelum memanggil rejectReturn().
-     *
-     * @return array<int, array{id: string, text: string}>
-     *
-     * TODO(verify): konfirmasi endpoint & nama field ke dokumentasi Lazada Reverse/RMA (reason/list).
-     */
     public function getRejectReasons(string $shopId, string $reverseOrderId): array
     {
         try {

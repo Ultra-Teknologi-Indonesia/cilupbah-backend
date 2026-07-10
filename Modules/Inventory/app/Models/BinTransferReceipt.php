@@ -8,10 +8,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Traits\HasUuid7;
 
-/**
- * Dokumen penerimaan transfer internal (TRFI). Merefer ke satu bin_transfer (No. Transfer Asal / TRFO).
- * Satu transfer bisa punya banyak penerimaan bila diselesaikan sebagian (partial).
- */
 class BinTransferReceipt extends Model
 {
     use HasUuid7, SoftDeletes;

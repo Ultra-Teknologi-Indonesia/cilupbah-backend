@@ -135,11 +135,6 @@ class UserService
         });
     }
 
-    /**
-     * Sinkronkan hak akses langsung (override per-user) di luar izin dari role.
-     *
-     * @param  list<string>  $permissionNames
-     */
     public function syncPermissions(string $id, array $permissionNames): User
     {
         return DB::transaction(function () use ($id, $permissionNames) {

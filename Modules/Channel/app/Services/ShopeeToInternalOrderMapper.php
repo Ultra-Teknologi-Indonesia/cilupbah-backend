@@ -110,17 +110,6 @@ class ShopeeToInternalOrderMapper
         ];
     }
 
-    /**
-     * Kode pengambilan (pickup code / PIN kurir) untuk pesanan instant/sameday.
-     *
-     * Sumber terkonfirmasi (docs Shopee): field `pickup_code` di response
-     * `v2.logistics.get_tracking_number` — "Only returned for ID local orders who
-     * using instant+sameday for delivery". `ShopeeOrderService::resolveLogistics()`
-     * sudah menyuntikkan nilainya ke `$shopeeOrder['pickup_code']` sebelum mapping,
-     * jadi di sini tinggal dibaca. Untuk order non-instant field ini absen → null,
-     * dan `pickup_code` mengikuti input manual (existing-wins di upsert).
-     * Lihat PLANNING-BUKTI-PICKUP-KURIR.md §7.
-     */
     protected function extractPickupCode(array $shopeeOrder): ?string
     {
         $val = $shopeeOrder['pickup_code'] ?? null;

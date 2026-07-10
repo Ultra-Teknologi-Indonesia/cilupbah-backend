@@ -213,11 +213,7 @@ class ProductService
 
         if ($productId) {
             $matchedExisting = true;
-            // Master produk sudah ada (mis. hasil download channel lain atau input manual).
-            // Prinsip: download channel TIDAK menimpa data/atribut/struktur varian lokal.
-            // Cukup kembalikan id-nya; pemetaan channel (product & variant channel mapping)
-            // dibuat oleh pemanggil (mis. ShopeeProductService::persistItem), sehingga satu
-            // master bisa dipetakan ke banyak channel/toko tanpa mengubah varian yang tersimpan.
+
             return $productId;
         }
 
@@ -344,9 +340,6 @@ class ProductService
             $this->propagateVariantChangeToChannels($productId);
         }
 
-        // Harga/stok varian selalu di-push ke channel (mis. ubah sell_price di
-        // internal langsung ter-update ke marketplace), tidak menunggu mutasi stok
-        // dan tidak bergantung flag push konten.
         if (! empty($data['variants'])) {
             $this->propagatePriceStockToChannels($productId);
         }
@@ -354,12 +347,6 @@ class ProductService
         return $result;
     }
 
-    /**
-     * Kunci normalisasi untuk membandingkan nilai opsi varian.
-     * Case-insensitive + trim whitespace, agar nilai lama seperti "15 "
-     * (dengan spasi ekor, mis. dari import) tetap cocok dengan payload "15"
-     * yang sudah dipangkas middleware TrimStrings.
-     */
     private function normalizeOptionValue(string $value): string
     {
         return mb_strtolower(trim($value));
@@ -606,13 +593,6 @@ class ProductService
         }
     }
 
-    /**
-     * Push harga (sell_price) + stok varian ke semua channel yang ter-link setiap
-     * kali data varian diperbarui dari internal. Sengaja TIDAK bergantung pada
-     * flag auto_push_product_content: harga/stok adalah source-of-truth internal
-     * yang selalu disinkronkan (via action sync_price_stock → /update_price),
-     * terpisah dari push konten (judul/deskripsi/gambar) yang tetap opsional.
-     */
     private function propagatePriceStockToChannels(string $productId): void
     {
         foreach ($this->writeRepository->channelShopIdsForStockPriceSync($productId) as $channelShopId) {

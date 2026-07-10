@@ -10,10 +10,7 @@ use Spatie\QueryBuilder\AllowedSort;
 
 class SalesReturnRepository
 {
-    /**
-     * Kolom yang dicari via macro allowedSearch (?search=), mencakup no. retur,
-     * pelanggan, no. resi ekspedisi retur, dan no. pesanan (join ke sales_orders).
-     */
+
     private const SEARCH_COLUMNS = [
         'sales_returns.return_number',
         'sales_returns.customer_name',

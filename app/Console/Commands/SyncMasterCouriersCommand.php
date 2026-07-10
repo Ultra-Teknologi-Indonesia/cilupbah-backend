@@ -7,22 +7,6 @@ use Illuminate\Support\Facades\DB;
 use Modules\Outbound\Database\Seeders\CourierSeeder;
 use Modules\Outbound\Models\Courier;
 
-/**
- * Sinkronkan master kurir global (`couriers` dengan `tenant_id = null`) agar
- * PERSIS sama dengan daftar kanonik di `CourierSeeder::canonicalNames()`
- * (bentuk Jubelio yang diminta user).
- *
- * Beda dengan `couriers:consolidate` (yang cuma menggabung varian per-brand):
- * command ini MEMANGKAS long-tail — setiap kurir aktif yang TIDAK ada di daftar
- * kanonik akan dinonaktifkan, dan setiap nama di daftar yang belum ada dibuat.
- *
- * Aman & reversible:
- * - Baris di luar daftar TIDAK dihapus, hanya `is_active = false`. Riwayat
- *   pengiriman aman karena `Shipment` menyimpan `courier_name` sebagai teks,
- *   bukan FK ke `couriers.id`.
- * - Idempotent: jalan kedua kali = "sudah sinkron", tidak ada perubahan.
- * - Default dry-run (laporan saja). Pakai `--apply` untuk eksekusi.
- */
 class SyncMasterCouriersCommand extends Command
 {
     protected $signature = 'couriers:sync-master {--apply : Terapkan perubahan (default: dry-run, hanya laporan)}';
@@ -33,8 +17,6 @@ class SyncMasterCouriersCommand extends Command
     {
         $apply = (bool) $this->option('apply');
 
-        // key ternormalisasi (lowercase + trim, TANPA hapus spasi supaya
-        // "Indo Paket" != "Indopaket") => nama kanonik dengan casing final.
         $targets = [];
         foreach (CourierSeeder::canonicalNames() as $name) {
             $normalized = trim($name);
@@ -47,11 +29,10 @@ class SyncMasterCouriersCommand extends Command
         $existing = Courier::whereNull('tenant_id')->orderBy('name')->get();
         $existingByKey = $existing->groupBy(fn (Courier $c) => $this->key($c->name));
 
-        $toCreate = [];      // nama kanonik yang belum ada
-        $toUpdate = [];      // [row, namaBaru] — perbaiki casing / reaktivasi
-        $toDeactivate = [];  // baris aktif di luar daftar (termasuk duplikat)
+        $toCreate = [];      
+        $toUpdate = [];      
+        $toDeactivate = [];  
 
-        // 1. Pastikan setiap target ada, aktif, dan casing-nya benar.
         foreach ($targets as $key => $canonicalName) {
             $group = $existingByKey->get($key);
             if ($group === null || $group->isEmpty()) {
@@ -59,12 +40,11 @@ class SyncMasterCouriersCommand extends Command
                 continue;
             }
 
-            // Prioritas: baris yang sudah aktif, kalau tidak ada ambil pertama.
             $keep = $group->firstWhere('is_active', true) ?? $group->first();
             if ($keep->name !== $canonicalName || ! $keep->is_active) {
                 $toUpdate[] = [$keep, $canonicalName];
             }
-            // Duplikat lain dalam grup yang sama → nonaktifkan.
+
             foreach ($group as $row) {
                 if ($row->id !== $keep->id && $row->is_active) {
                     $toDeactivate[] = $row;
@@ -72,7 +52,6 @@ class SyncMasterCouriersCommand extends Command
             }
         }
 
-        // 2. Nonaktifkan semua baris aktif yang key-nya tidak ada di target.
         foreach ($existing as $row) {
             if (! array_key_exists($this->key($row->name), $targets) && $row->is_active) {
                 $toDeactivate[] = $row;

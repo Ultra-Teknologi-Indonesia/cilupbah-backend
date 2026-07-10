@@ -156,8 +156,7 @@ class ChannelProductRepository
 
     public function getAvailableQty(string $variantId, $locationId): int
     {
-        // Sellable = stok yang sudah ditempatkan (rak final) dikurangi reserved.
-        // Stok di Bin Inbound / bin_id NULL tidak dihitung (mencegah oversell).
+
         $row = DB::table('inventories as i')
             ->leftJoin('location_bins as b', 'b.id', '=', 'i.bin_id')
             ->where('i.item_id', $variantId)
@@ -244,12 +243,6 @@ class ChannelProductRepository
             'updated_at'          => $now,
         ]);
 
-        // Mapping BARU (toko ini pertama kali di-link ke produk ini). Kalau produk
-        // sudah ada di internal ($pushInitialStock === true), dorong stok available
-        // internal ke channel supaya listing langsung mengikuti available internal
-        // tanpa menunggu mutasi stok berikutnya. Delay singkat memberi jeda agar
-        // pemetaan varian (product_variant_channel_mappings) selesai dibuat oleh
-        // pemanggil sebelum job push berjalan.
         if ($pushInitialStock) {
             SyncProductToChannelJob::dispatch($productId, $channelShop->id, 'sync_price_stock')
                 ->delay(now()->addSeconds(15));

@@ -20,8 +20,7 @@ class InventoryRepository
 
     public function getByItem(string $itemId): Collection
     {
-        // Tab "Persediaan di Rak" hanya menampilkan stok yang sudah ditempatkan di
-        // rak final (bukan Bin Inbound / bin_id NULL yang masih "menunggu penempatan").
+
         return Inventory::where('item_id', $itemId)
             ->placed()
             ->where('on_hand', '>', 0)
@@ -92,8 +91,7 @@ class InventoryRepository
 
     public function getTotalAvailableByItem(string $itemId): int
     {
-        // on_hand hanya dihitung dari stok yang sudah ditempatkan; reserved lintas
-        // semua baris (agregat reserved ada di baris bin_id NULL).
+
         $placedOnHand = (int) Inventory::where('item_id', $itemId)
             ->placed()
             ->sum('on_hand');
@@ -104,7 +102,7 @@ class InventoryRepository
 
     public function sumOnHandAtLocation(string $itemId, string $locationId): int
     {
-        // Hanya stok yang sudah ditempatkan (rak final) yang terhitung sebagai on_hand.
+
         return (int) Inventory::where('item_id', $itemId)
             ->where('location_id', $locationId)
             ->placed()
@@ -202,13 +200,9 @@ class InventoryRepository
 
     public function getStockItems(int $limit = 10)
     {
-        // Saat difilter per lokasi, batasi juga inventory yang dimuat ke lokasi itu
-        // supaya angka On Hand/Reserved/Available (totalStocks & locationStocks di
-        // StockItemResource) mencerminkan gudang terpilih — bukan total lintas gudang.
+
         $locationFilter = request('filter.location_id');
 
-        // Stok lokasi Transit (in-transit, un-placed) tidak ditampilkan di Posisi Stok
-        // dan tidak boleh ikut terhitung di location_stocks maupun total_stocks.
         $transitLocationId = \Modules\Warehouse\Models\Location::query()
             ->where('location_code', \Modules\Warehouse\Models\Location::SYSTEM_TRANSIT_CODE)
             ->value('id');

@@ -120,10 +120,7 @@ class PacklistService
             ]);
 
             foreach ($order->items as $orderItem) {
-                // Bundle tidak punya wujud fisik: packer memegang komponen yang sama dengan
-                // yang dipick. Ledakkan bundle → baris komponen agar scan barcode & verifikasi
-                // konsisten dengan picklist. Packing tidak menyentuh stok (stok dipotong saat
-                // ship, digerakkan dari order item + cascadeBundle), jadi aman.
+
                 $components = $this->productRepository->bundleComponentsForVariant($orderItem->item_id);
 
                 if ($components !== null) {
@@ -246,10 +243,6 @@ class PacklistService
         ]);
     }
 
-    /**
-     * Koreksi salah scan pack: kurangi qty_packed pada satu baris.
-     * Packing tidak mengubah stok, jadi cukup menurunkan qty_packed (+ reset verifikasi barcode).
-     */
     public function unpackItem(string $packlistId, string $itemId, ?int $qty): void
     {
         $this->unpackItems($packlistId, [
@@ -257,10 +250,6 @@ class PacklistService
         ]);
     }
 
-    /**
-     * Koreksi massal: kurangi qty_packed beberapa baris sekaligus dalam 1 transaksi.
-     * $items = [['item_id' => ..., 'qty' => ?int], ...]
-     */
     public function unpackItems(string $packlistId, array $items): void
     {
         if (empty($items)) {
@@ -385,11 +374,6 @@ class PacklistService
         return $this->packlistRepository->delete($id);
     }
 
-    /**
-     * Hapus packlist (packlist = 1 order): order kembali ke status 'picked'
-     * (belum dipack). Packing tidak menyentuh stok, jadi tidak ada reversal.
-     * Ditolak bila order sudah masuk shipment atau sudah shipped.
-     */
     public function revert(string $id): void
     {
         DB::transaction(function () use ($id) {

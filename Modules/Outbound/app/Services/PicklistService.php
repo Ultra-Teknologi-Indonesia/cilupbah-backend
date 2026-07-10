@@ -203,8 +203,7 @@ class PicklistService
                 ]);
             });
         } elseif ($delta < 0) {
-            // Koreksi turun: kembalikan stok yang sudah di-pick ke rak asalnya.
-            // Rak asal = bin tempat item terakhir di-pick (item->bin_id), fallback ke bin yang di-scan.
+
             $returnQty = -$delta;
             $returnBinId = $item->bin_id ?? $bin->id;
 
@@ -223,17 +222,13 @@ class PicklistService
 
             $this->revertPicklistCompletion($picklistId);
         } else {
-            // delta == 0: hanya perbarui rak.
+
             $this->picklistRepository->updateItem($itemId, [
                 'bin_id' => $bin->id,
             ]);
         }
     }
 
-    /**
-     * Koreksi salah scan pick: batalkan (sebagian/seluruh) qty yang sudah di-pick pada satu baris,
-     * kembalikan stok ke rak asalnya.
-     */
     public function unpickItem(string $picklistId, string $itemId, ?int $qty, string $userId): Picklist
     {
         return $this->unpickItems($picklistId, [
@@ -241,10 +236,6 @@ class PicklistService
         ], $userId);
     }
 
-    /**
-     * Koreksi massal: batalkan pick beberapa baris sekaligus dalam 1 transaksi.
-     * $items = [['item_id' => ..., 'qty' => ?int], ...]
-     */
     public function unpickItems(string $picklistId, array $items, string $userId): Picklist
     {
         if (empty($items)) {
@@ -362,9 +353,6 @@ class PicklistService
         if ($candidates->isEmpty()) {
             $isBundle = $this->productRepository->bundleComponentsForVariant($item->item_id) !== null;
 
-            // Bedakan "belum ditempatkan" vs benar-benar kosong: kalau masih ada stok fisik
-            // yang menunggu penempatan (Bin Inbound / bin_id NULL), arahkan ke Penempatan,
-            // bukan replenishment.
             $pending = (int) Inventory::where('item_id', $item->item_id)
                 ->where('location_id', $picklist->location_id)
                 ->pendingPlacement()
@@ -399,13 +387,9 @@ class PicklistService
         ];
     }
 
-    /**
-     * Validasi (item, location, bin, on_hand > 0) tanpa mutasi. Sumber kebenaran tunggal
-     * untuk jalur scan manual & suggest. Race-safety commit tetap di pickItem() lockForUpdate.
-     */
     private function assertInventoryForPick(PicklistItem $item, string $locationId, LocationBin $bin): int
     {
-        // Bin Inbound menampung stok yang belum ditempatkan → tidak bisa dipick langsung.
+
         if ($bin->is_inbound) {
             throw new OutboundValidationException(
                 "Rak {$bin->bin_final_code} adalah Bin Inbound (stok belum ditempatkan). Lakukan Penempatan dulu, lalu pick dari rak final."
@@ -430,10 +414,6 @@ class PicklistService
         return $available;
     }
 
-    /**
-     * Cari semua bin (di lokasi picklist) yang menyimpan item ini dengan on_hand > 0.
-     * Urutan FIFO by inventory.created_at. Koleksi kosong kalau tidak ada stok di bin.
-     */
     private function suggestBinsForItem(Picklist $picklist, PicklistItem $item): \Illuminate\Support\Collection
     {
         $rows = Inventory::where('item_id', $item->item_id)
@@ -453,12 +433,6 @@ class PicklistService
             ]);
     }
 
-    /**
-     * Prioritas default candidate: (1) hint bin yang qty-nya cukup, (2) hint bin apapun,
-     * (3) kandidat pertama yang on_hand >= remaining, (4) kandidat pertama FIFO.
-     * @param \Illuminate\Support\Collection<int, array{bin_id:string,bin_code:string,on_hand:int}> $candidates
-     * @return array{bin_id:string,bin_code:string,on_hand:int}
-     */
     private function pickDefaultCandidate(\Illuminate\Support\Collection $candidates, int $remaining, ?string $hintActiveBinCode): array
     {
         if ($hintActiveBinCode !== null && $hintActiveBinCode !== '') {
@@ -548,9 +522,6 @@ class PicklistService
         return $this->picklistRepository->findById($id);
     }
 
-    /**
-     * Mark a single picklist item as failed (SHORT/REJECTED). No inventory mutation.
-     */
     public function failPickItem(string $picklistId, string $itemId, string $reasonCode, ?string $reasonNote, string $userId): Picklist
     {
         $reasonCode = strtoupper($reasonCode);
@@ -589,7 +560,6 @@ class PicklistService
                 throw new OutboundValidationException('Item sudah selesai di-pick. Batalkan pick dulu (unpick) sebelum tandai gagal.');
             }
 
-            // Reject → REJECTED; Damaged → REJECTED; else (STOCK_EMPTY, MISSING, OTHER) → SHORT.
             $itemStatus = in_array($reasonCode, [PicklistItem::REASON_DAMAGED, PicklistItem::REASON_REJECTED], true)
                 ? PicklistItem::STATUS_REJECTED
                 : PicklistItem::STATUS_SHORT;
@@ -611,9 +581,6 @@ class PicklistService
         });
     }
 
-    /**
-     * Undo a fail flag on a single picklist item. Restores item_status to null (derive).
-     */
     public function unfailPickItem(string $picklistId, string $itemId, string $userId): Picklist
     {
         return DB::transaction(function () use ($picklistId, $itemId) {
@@ -649,10 +616,6 @@ class PicklistService
         });
     }
 
-    /**
-     * Pick a single item across multiple bins in one atomic call.
-     * $allocations = [['bin_code' => 'LX-BX-KX-RX6', 'qty' => 5], ...]
-     */
     public function splitPickItem(string $picklistId, string $itemId, array $allocations, string $userId): Picklist
     {
         if (count($allocations) < 2) {
@@ -717,13 +680,6 @@ class PicklistService
         });
     }
 
-    /**
-     * Shared low-level allocation commit: lock inventory row, assert stock, decrement,
-     * write movement, and record picklist_item_allocations row.
-     *
-     * Caller is responsible for wrapping in DB::transaction and updating
-     * picklist_items.qty_picked / bin_id.
-     */
     private function commitPickAllocation(Picklist $picklist, PicklistItem $item, LocationBin $bin, int $qty, string $userId): void
     {
         if ($qty <= 0) {
@@ -825,14 +781,6 @@ class PicklistService
         return $this->picklistRepository->delete($id);
     }
 
-    /**
-     * Keluarkan satu order dari picking karena barang minus / tidak ada di lokasi
-     * (picklist bisa berisi banyak order/batch): reverse stok yang sudah di-pick,
-     * lepas item order ini, lalu tandai order MASUK "Gagal Picking"
-     * (`pick_failed_*`), TIDAK langsung ke Siap Proses. Admin nanti "Pindahkan ke
-     * Siap Proses". Bila picklist jadi kosong, dokumen ikut dihapus.
-     * Return: apakah ada stok yang di-reverse (untuk jejak).
-     */
     public function failPickOrder(string $picklistId, string $orderId, string $userId, string $reason): bool
     {
         return DB::transaction(function () use ($picklistId, $orderId, $userId, $reason) {
@@ -847,8 +795,7 @@ class PicklistService
 
             $order = Order::find($orderId);
             if ($order) {
-                // Kembalikan order ke daftar Pesanan admin (Gagal Picking): clear
-                // handed_to_warehouse_at supaya lolos scopeExcludeHandedToWarehouse.
+
                 $order->update([
                     'pick_failed_at'         => now(),
                     'pick_failed_by'         => $userId,
@@ -865,12 +812,6 @@ class PicklistService
         });
     }
 
-    /**
-     * Hapus seluruh picklist (batch): semua order anggotanya kembali ke 'reserved'
-     * (belum dipick), stok yang sudah ter-pick direversal ke rak asal.
-     * Ditolak seluruhnya (all-or-nothing) bila ada order yang sudah lanjut ke
-     * packing/pengiriman — order tsb harus dikembalikan dari tahap itu dulu.
-     */
     public function revert(string $picklistId, string $userId): void
     {
         DB::transaction(function () use ($picklistId, $userId) {

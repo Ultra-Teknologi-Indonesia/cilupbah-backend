@@ -2,27 +2,14 @@
 
 namespace Modules\Auth\Support;
 
-/**
- * Membaca config/rbac.php dan mengekspansinya menjadi:
- *  - daftar semua nama permission (untuk seeder & validasi)
- *  - struktur matriks bergrup (untuk endpoint /permissions/catalog & FE)
- *  - resolusi token grant default per role
- *
- * Konvensi nama permission: "{action}-{resource}". "extras" ditulis eksplisit.
- */
 class PermissionCatalog
 {
-    /** @return array<string,mixed> */
+
     public static function config(): array
     {
         return config('rbac', ['actions' => [], 'groups' => [], 'defaults' => []]);
     }
 
-    /**
-     * Nama permission untuk satu resource (aksi + extras).
-     *
-     * @return list<string>
-     */
     public static function resourcePermissionNames(array $resource): array
     {
         $names = [];
@@ -36,11 +23,6 @@ class PermissionCatalog
         return $names;
     }
 
-    /**
-     * Semua nama permission di seluruh katalog (unik, terurut).
-     *
-     * @return list<string>
-     */
     public static function allPermissionNames(): array
     {
         $names = [];
@@ -58,12 +40,6 @@ class PermissionCatalog
         return $names;
     }
 
-    /**
-     * Struktur matriks siap-render untuk FE. Setiap resource memuat peta
-     * aksi => nama permission, plus daftar extras.
-     *
-     * @return list<array<string,mixed>>
-     */
     public static function matrix(): array
     {
         $actionLabels = self::config()['actions'] ?? [];
@@ -95,12 +71,6 @@ class PermissionCatalog
         }, self::config()['groups'] ?? []);
     }
 
-    /**
-     * Resolusi token grant default (lihat grammar di config/rbac.php).
-     *
-     * @param  list<string>  $tokens
-     * @return list<string>
-     */
     public static function resolveGrants(array $tokens): array
     {
         $resolved = [];
@@ -114,7 +84,7 @@ class PermissionCatalog
             }
 
             if (str_starts_with($token, 'group:')) {
-                // group:{key}:*
+
                 $groupKey = explode(':', $token)[1] ?? null;
                 foreach (self::config()['groups'] ?? [] as $group) {
                     if ($group['key'] !== $groupKey) {
@@ -145,14 +115,12 @@ class PermissionCatalog
                 continue;
             }
 
-            // Nama permission apa adanya.
             $resolved[$token] = true;
         }
 
         return array_keys($resolved);
     }
 
-    /** @return array<string,mixed>|null */
     public static function findResource(string $resourceKey): ?array
     {
         foreach (self::config()['groups'] ?? [] as $group) {

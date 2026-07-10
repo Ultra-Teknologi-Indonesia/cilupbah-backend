@@ -33,9 +33,6 @@ class BinTransferItem extends Model
 
     protected $appends = ['remaining_qty'];
 
-    /**
-     * Sisa qty yang masih menggantung di transit (belum ditempatkan ke rak tujuan).
-     */
     protected function remainingQty(): Attribute
     {
         return Attribute::get(fn () => max(0, (int) $this->qty - (int) $this->placed_qty));

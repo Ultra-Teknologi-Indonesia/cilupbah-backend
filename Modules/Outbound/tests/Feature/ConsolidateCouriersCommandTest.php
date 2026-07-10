@@ -19,7 +19,7 @@ class ConsolidateCouriersCommandTest extends TestCase
         foreach (['Spx', 'SPX Standard', 'SPX Instant', 'SPX Hemat'] as $name) {
             Courier::create(['name' => $name, 'code' => strtoupper(str_replace(' ', '_', $name)), 'is_active' => true]);
         }
-        // Kurir lokal yang sah, tidak boleh ikut tergabung.
+
         Courier::create(['name' => 'Ambil Sendiri', 'code' => 'AMBIL_SENDIRI', 'is_active' => true]);
     }
 
@@ -44,18 +44,13 @@ class ConsolidateCouriersCommandTest extends TestCase
 
         $this->assertSame(1, Courier::where('name', 'SPX')->where('is_active', true)->count());
 
-        // "Spx" adalah kurir kanonik (SPX) — dipertahankan & diperbaiki casing-nya,
-        // BUKAN dilebur ke baris baru. Jadi hanya 3 varian SPX mentah + 4 varian
-        // JNE mentah = 7 baris dinonaktifkan.
         $this->assertSame(7, Courier::where('is_active', false)->count());
         $this->assertSame(0, Courier::where('name', 'Spx')->count());
 
-        // Kurir lokal yang memang cuma 1 baris tidak disentuh.
         $ambilSendiri = Courier::where('name', 'Ambil Sendiri')->first();
         $this->assertNotNull($ambilSendiri);
         $this->assertTrue((bool) $ambilSendiri->is_active);
 
-        // Jejak nama mentah tetap ada untuk auto-mapping order berikutnya.
         $this->assertSame(7, CourierChannelMapping::where('channel_code', 'legacy')->count());
         $spxInstantMapping = CourierChannelMapping::where('external_name', 'SPX Instant')->first();
         $this->assertNotNull($spxInstantMapping);

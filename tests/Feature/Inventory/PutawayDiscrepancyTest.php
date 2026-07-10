@@ -11,11 +11,6 @@ use Modules\Inbound\Models\Inbound;
 use App\Models\User;
 use Tests\TestCase;
 
-/**
- * "Selesaikan Selisih": tutup putaway meski fisik kurang dari data (miscount
- * saat inbound). Sisa qty ditempatkan ke rak default (inbound bin) lokasi
- * tersebut lewat POST /api/v1/putaway/{id}/complete-discrepancy.
- */
 class PutawayDiscrepancyTest extends TestCase
 {
     use RefreshDatabase;
@@ -58,7 +53,6 @@ class PutawayDiscrepancyTest extends TestCase
         $this->variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'ITEM-V1', 'sell_price' => 1000, 'is_active' => true]);
     }
 
-    /** Buat inbound draft lalu terima penuh → stok masuk ke inbound bin, status RECEIVED. */
     private function createReceivedInbound(int $qty): Inbound
     {
         $resp = $this->postJson('/api/v1/inbounds', [
@@ -89,13 +83,11 @@ class PutawayDiscrepancyTest extends TestCase
 
         $item = \DB::table('putaway_items')->where('putaway_id', $putawayId)->first();
 
-        // Fisik cuma ada 40 dari 50 yang tercatat.
         $this->postJson("/api/v1/putaway/{$putawayId}/items/{$item->id}/process", [
             'destination_bin_id' => $this->storageBin->id,
             'qty' => 40,
         ])->assertStatus(202);
 
-        // Complete biasa harus ditolak karena masih ada selisih.
         $this->postJson("/api/v1/putaway/{$putawayId}/complete")->assertStatus(422);
 
         $resp = $this->postJson("/api/v1/putaway/{$putawayId}/complete-discrepancy")->assertOk();
@@ -109,12 +101,10 @@ class PutawayDiscrepancyTest extends TestCase
         $item = $item->id ? \DB::table('putaway_items')->where('id', $item->id)->first() : null;
         $this->assertEquals(50, $item->putaway_qty);
 
-        // Dua penempatan: 40 di rak storage (fisik), 10 di rak inbound (selisih).
         $placements = \DB::table('putaway_placements')->where('putaway_item_id', $item->id)->get();
         $this->assertCount(2, $placements);
         $this->assertEqualsCanonicalizing([40, 10], $placements->pluck('qty')->all());
 
-        // Tidak ada perpindahan stok nyata di inbound bin: 50 diterima - 40 dipindah = 10 tetap di sana.
         $inboundStock = \DB::table('inventories')
             ->where('item_id', $this->variant->id)
             ->where('bin_id', $this->inboundBin->id)
@@ -127,7 +117,6 @@ class PutawayDiscrepancyTest extends TestCase
             ->first();
         $this->assertEquals(40, $storageStock->on_hand);
 
-        // Penerimaan turunan tuntas juga.
         $this->assertEquals(Inbound::STATUS_COMPLETED, $inbound->fresh()->status);
     }
 
@@ -145,7 +134,6 @@ class PutawayDiscrepancyTest extends TestCase
             'qty' => 20,
         ])->assertStatus(202);
 
-        // Sudah tuntas otomatis COMPLETED, tidak ada selisih untuk diselesaikan.
         $this->postJson("/api/v1/putaway/{$putawayId}/complete-discrepancy")->assertStatus(422);
     }
 
@@ -156,7 +144,6 @@ class PutawayDiscrepancyTest extends TestCase
         $putawayId = $this->postJson('/api/v1/putaway', ['inbound_ids' => [$inbound->id]])
             ->assertStatus(201)->json('data.id');
 
-        // Belum ada penempatan sama sekali → status masih NOT_STARTED.
         $this->postJson("/api/v1/putaway/{$putawayId}/complete-discrepancy")->assertStatus(422);
     }
 }

@@ -8,12 +8,6 @@ use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Sales\Models\SalesReturn;
 
-/**
- * Meneruskan aksi terima/tolak retur channel online (yang diinput admin gudang di
- * FE) ke marketplace terkait, lalu menyinkronkan keputusan terbaru ke SalesReturn.
- * Dispatcher tipis di atas method per-channel di Modules\Channel — mirror pola
- * SalesReturnTrackingSyncService/SalesReturnDetailSyncService.
- */
 class SalesReturnChannelActionService
 {
     public function accept(SalesReturn $return): bool
@@ -72,9 +66,6 @@ class SalesReturnChannelActionService
         return $result;
     }
 
-    /**
-     * @return array<int, array{id: string, text: string}>
-     */
     public function getRejectReasons(SalesReturn $return): array
     {
         [$channel, $shopId, $rawReturnId] = $this->resolve($return);
@@ -97,9 +88,6 @@ class SalesReturnChannelActionService
         }
     }
 
-    /**
-     * @return array{0: ?string, 1: ?string, 2: ?string} [channel, shopId, rawReturnId]
-     */
     protected function resolve(SalesReturn $return): array
     {
         if ($return->source !== SalesReturn::SOURCE_MARKETPLACE) {
@@ -113,11 +101,6 @@ class SalesReturnChannelActionService
         return [$channel ?: null, $shopId ?: null, $rawReturnId];
     }
 
-    /**
-     * channel_return_id disimpan sebagai "source:rawId" (lihat SalesReturnService::createFromChannel).
-     *
-     * @return array{0: ?string, 1: ?string}
-     */
     protected function splitChannelReturnId(?string $channelReturnId): array
     {
         if (! $channelReturnId) {

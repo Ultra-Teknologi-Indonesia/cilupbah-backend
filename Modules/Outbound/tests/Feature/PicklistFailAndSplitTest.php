@@ -260,7 +260,7 @@ class PicklistFailAndSplitTest extends TestCase
             ], $userId);
             $this->fail('Expected OutboundValidationException');
         } catch (\Modules\Outbound\Exceptions\OutboundValidationException $e) {
-            // expected
+
         }
 
         $this->assertSame(0, PicklistItemAllocation::where('picklist_item_id', $ids['item_id'])->count());
@@ -277,7 +277,6 @@ class PicklistFailAndSplitTest extends TestCase
         $this->seedInventory($variantId, $locationId, $binId, 10);
         $ids = $this->seedPicklistWithItem($locationId, $variantId, 'SKU-G', 5);
 
-        // Hit HTTP layer to exercise FormRequest validation.
         $this->actingAs(\App\Models\User::find($userId), 'sanctum');
         $response = $this->postJson(
             "/api/v1/outbound/picklists/{$ids['picklist_id']}/items/{$ids['item_id']}/fail",

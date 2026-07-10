@@ -4,26 +4,9 @@ namespace Modules\Inventory\Support;
 
 use Illuminate\Support\Facades\DB;
 
-/**
- * Sumber kebenaran tunggal untuk angka stok yang dilaporkan/dijual/dipick.
- *
- * Aturan: stok baru dihitung sebagai on_hand/available (sellable & pickable)
- * hanya bila SUDAH DITEMPATKAN di bin rak final (bin_id NOT NULL dan
- * location_bins.is_inbound = false). Stok yang baru diterima tapi masih di
- * Bin Inbound, atau baris agregat bin_id NULL, berstatus "menunggu penempatan"
- * dan tidak masuk on_hand/available.
- *
- * Catatan model: `reserved` disimpan di baris agregat bin_id NULL
- * (lihat StockService::reserveSingle), jadi reserved dijumlahkan lintas semua
- * baris, sedangkan on_hand yang dihitung hanya dari baris yang ditempatkan.
- */
 class StockSummary
 {
-    /**
-     * @param  array<int,string>  $itemIds
-     * @param  array<int,string>|null  $locationIds  batasi ke gudang tertentu bila diisi
-     * @return array<string, array{on_hand:int,pending_placement:int,reserved:int,on_order:int,available:int}>
-     */
+
     public static function forItems(array $itemIds, ?array $locationIds = null): array
     {
         $itemIds = array_values(array_filter(array_unique($itemIds)));
@@ -62,14 +45,6 @@ class StockSummary
         return $result;
     }
 
-    /**
-     * Ringkas koleksi inventory yang SUDAH di-eager-load menjadi angka placed-only.
-     * on_hand hanya dari baris yang ditempatkan (bin rak final). Agar aman: bila relasi
-     * `bin` belum di-load pada suatu baris (dan bin_id-nya terisi), baris dianggap
-     * "ditempatkan" supaya tidak salah menampilkan 0 — samakan dengan perilaku lama.
-     *
-     * @return array{on_hand:int,pending_placement:int,reserved:int,on_order:int,available:int}
-     */
     public static function partitionLoaded($inventories): array
     {
         $rows = collect($inventories);
@@ -79,7 +54,7 @@ class StockSummary
                 return false;
             }
             if (! $inv->relationLoaded('bin')) {
-                return true; // fallback aman: hindari 0 palsu saat bin tak di-load
+                return true; 
             }
 
             return $inv->bin !== null && ! (bool) $inv->bin->is_inbound;
@@ -98,11 +73,6 @@ class StockSummary
         ];
     }
 
-    /**
-     * Ringkasan satu item (opsional per lokasi). Selalu mengembalikan semua kunci.
-     *
-     * @return array{on_hand:int,pending_placement:int,reserved:int,on_order:int,available:int}
-     */
     public static function forItem(string $itemId, ?string $locationId = null): array
     {
         $rows = self::forItems([$itemId], $locationId ? [$locationId] : null);

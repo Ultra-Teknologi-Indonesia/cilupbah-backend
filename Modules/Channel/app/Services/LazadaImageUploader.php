@@ -10,9 +10,6 @@ class LazadaImageUploader
         protected LazadaClient $client,
     ) {}
 
-    /**
-     * @return array<int, string> URL CDN Lazada hasil migrasi, urutan mengikuti $urls (gambar gagal dilewati)
-     */
     public function uploadFromUrls(array $urls, string $accessToken): array
     {
         return $this->upload($urls, $accessToken)['urls'];
@@ -31,8 +28,7 @@ class LazadaImageUploader
             }
 
             try {
-                // Lazada mewajibkan gambar bersumber dari luar Lazada dimigrasikan dulu ke
-                // CDN Lazada; URL eksternal tidak bisa langsung dipakai di payload produk.
+
                 $res = $this->client->request('POST', '/image/migrate', [
                     'image_url' => $url,
                 ], $accessToken);

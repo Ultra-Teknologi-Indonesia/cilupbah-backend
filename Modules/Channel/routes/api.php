@@ -5,13 +5,11 @@ use Modules\Channel\Http\Controllers\ChannelController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
-    // Lookup endpoints — leave auth-only (form dropdowns / allocation lookup)
     Route::get('marketplace/cancel-reasons', [\Modules\Channel\Http\Controllers\MarketplaceCancelReasonController::class, 'index'])->name('marketplace.cancel-reasons.index');
     Route::get('marketplace/cancel-reasons/{marketplace}', [\Modules\Channel\Http\Controllers\MarketplaceCancelReasonController::class, 'show'])->name('marketplace.cancel-reasons.show');
 
     Route::get('marketplace/stock-allocation', [ChannelController::class, 'stockAllocation']);
 
-    // view-integrasi-channel
     Route::middleware('role_or_permission:owner|view-integrasi-channel')->group(function () {
         Route::get('marketplace/store', [ChannelController::class, 'stores']);
 
@@ -24,18 +22,15 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('download-transactions/{id}', [\Modules\Channel\Http\Controllers\DownloadTransactionController::class, 'show']);
     });
 
-    // create-integrasi-channel
     Route::middleware('role_or_permission:owner|create-integrasi-channel')->group(function () {
         Route::post('channels', [ChannelController::class, 'store'])->name('channel.store');
     });
 
-    // edit-integrasi-channel
     Route::middleware('role_or_permission:owner|edit-integrasi-channel')->group(function () {
         Route::match(['put', 'patch'], 'channels/{channel}', [ChannelController::class, 'update'])->name('channel.update');
         Route::patch('marketplace/store/{id}', [ChannelController::class, 'updateStore'])->whereUuid('id');
     });
 
-    // delete-integrasi-channel
     Route::middleware('role_or_permission:owner|delete-integrasi-channel')->group(function () {
         Route::delete('channels/{channel}', [ChannelController::class, 'destroy'])->name('channel.destroy');
         Route::delete('marketplace/store/{id}', [ChannelController::class, 'disconnectShop'])->whereUuid('id');

@@ -141,10 +141,6 @@ class LazadaProductSyncTest extends TestCase
         ]);
         $pcm->variantMappings()->create(['variant_id' => $variant->id, 'external_sku_id' => '777001']);
 
-        // Stok channel SELALU dari Gudang Kecil (ChannelStockResolver), bukan lagi dari
-        // mapping channel_warehouses manual — lihat LazadaAdapter::syncPriceAndStock().
-        // Gudang Kecil sudah ter-seed via migrasi, jadi pakai firstOrCreate agar tidak
-        // bentrok dengan unique constraint location_code.
         $location = \Modules\Warehouse\Models\Location::firstOrCreate(
             ['location_code' => \Modules\Warehouse\Models\Location::SYSTEM_KECIL_CODE],
             \Modules\Warehouse\Models\Location::factory()->make()->toArray()

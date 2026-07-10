@@ -127,11 +127,6 @@ class SalesReturn extends Model
         self::MP_DECISION_NOT_RETURN,
     ];
 
-    /**
-     * Peta status mentah per channel -> keputusan marketplace ternormalisasi. Dipakai
-     * SalesReturnDetailSyncService setiap kali fetchReturnDetail() menarik status baru.
-     * Key dicocokkan case-insensitive terhadap raw status dari API channel.
-     */
     const MP_DECISION_MAP = [
         'shopee' => [
             'REQUESTED'       => self::MP_DECISION_PENDING,
@@ -165,11 +160,6 @@ class SalesReturn extends Model
         ],
     ];
 
-    /**
-     * Normalisasi raw status API channel ke keputusan marketplace internal.
-     * Status yang tidak dikenal (belum di-mapping / channel API berubah) jatuh ke
-     * MP_PENDING agar tidak salah tampil sebagai "selesai" di UI/laporan.
-     */
     public static function normalizeMarketplaceDecision(string $channel, string $rawStatus): string
     {
         $map = self::MP_DECISION_MAP[$channel] ?? [];

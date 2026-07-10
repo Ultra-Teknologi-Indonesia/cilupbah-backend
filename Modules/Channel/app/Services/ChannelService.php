@@ -59,11 +59,6 @@ class ChannelService
         return $shop->fresh('channel');
     }
 
-    /**
-     * Field publik `location_id` (kontrak API, konsisten dgn response list)
-     * dipetakan ke kolom `stock_source_location_id`. Mode 'total' selalu
-     * mengosongkan gudang pilihan.
-     */
     private function mapStockSourceFields(array $data): array
     {
         if (array_key_exists('location_id', $data)) {

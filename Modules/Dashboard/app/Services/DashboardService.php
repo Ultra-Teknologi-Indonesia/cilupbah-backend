@@ -13,10 +13,7 @@ use Modules\Sales\Repositories\SalesOrderRepository;
 
 class DashboardService
 {
-    /**
-     * Map dari nama queue publik (dipakai FE) ke stage internal
-     * OutboundFulfillmentService::getOrdersByStage().
-     */
+
     private const QUEUE_STAGE_MAP = [
         'ready-to-process' => 'ready-to-process',
         'empty-stock'      => 'empty-stock',
@@ -30,12 +27,6 @@ class DashboardService
         protected OutboundFulfillmentService $fulfillmentService,
     ) {}
 
-    /**
-     * Angka KPI untuk kartu metrik dashboard. Metrik omzet/pesanan menghormati
-     * rentang tanggal (transaction_date); metrik antrian aksi & stok adalah
-     * "keadaan sekarang" sehingga sengaja tidak difilter tanggal — angkanya
-     * di-reuse dari query yang sama dengan halaman Pesanan & Monitor Stok.
-     */
     public function summary(array $filters): array
     {
         $dateFrom   = $filters['date_from'] ?? null;
@@ -59,10 +50,8 @@ class DashboardService
             ->groupBy('source')
             ->pluck('total', 'source');
 
-        // Reuse: sumber tunggal count antrian (identik dengan badge tab Pesanan).
         $tabCounts = $this->salesOrderRepository->getTabCounts();
 
-        // Reuse: count stok habis/menipis (identik dengan Monitor Stok).
         $stockSummary = $this->monitorStockRepository->summary(
             array_filter(['location_id' => $locationId])
         );
@@ -98,16 +87,11 @@ class DashboardService
         return array_key_exists($queue, self::QUEUE_STAGE_MAP);
     }
 
-    /**
-     * Isi tabel aksi. Reuse scope antrian yang sama dengan halaman Pesanan
-     * lewat OutboundFulfillmentService, lalu dipaginate ringkas untuk dashboard.
-     */
     public function queue(string $queue, int $perPage = 5): LengthAwarePaginator
     {
         $stage = self::QUEUE_STAGE_MAP[$queue]
             ?? throw new \InvalidArgumentException("Queue '{$queue}' tidak dikenal.");
 
-        // getOrdersByStage() sudah mengembalikan LengthAwarePaginator (paginate internal).
         $paginator = $this->fulfillmentService->getOrdersByStage($stage, $perPage);
 
         $paginator->getCollection()->transform(fn ($order) => [

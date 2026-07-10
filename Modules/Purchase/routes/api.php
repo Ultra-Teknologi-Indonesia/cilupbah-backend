@@ -10,11 +10,9 @@ use Modules\Purchase\Http\Controllers\PurchaseSerialNumberController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
-    // Auth-only: WMS serial-number lookup + print (mobile-driven, not gated)
     Route::get('purchase/serial-number/wms/{bill_detail_id}', [PurchaseSerialNumberController::class, 'wmsByBillDetail'])->name('purchase.serial-number.wms');
     Route::post('purchase/serial-number/mark-printed', [PurchaseSerialNumberController::class, 'markPrinted'])->name('purchase.serial-number.mark-printed');
 
-    // ---- pembayaran-pembelian: return-settlements ----
     Route::middleware('role_or_permission:owner|view-pembayaran-pembelian')->group(function () {
         Route::get('purchase/return-settlements/bills', [PurchaseReturnSettlementController::class, 'billIndex'])->name('purchase.return-settlements.bills.index');
         Route::get('purchase/return-settlements/bills/{id}', [PurchaseReturnSettlementController::class, 'billShow'])->name('purchase.return-settlements.bills.show');
@@ -30,7 +28,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::delete('purchase/return-settlements', [PurchaseReturnSettlementController::class, 'destroy'])->name('purchase.return-settlements.destroy');
     });
 
-    // ---- retur-pembelian: purchase-returns ----
     Route::middleware('role_or_permission:owner|view-retur-pembelian')->group(function () {
         Route::get('purchase/purchase-returns/unpaid', [PurchaseReturnController::class, 'unpaid'])->name('purchase.returns.unpaid');
         Route::get('purchase/purchase-returns', [PurchaseReturnController::class, 'index'])->name('purchase.returns.index');
@@ -47,7 +44,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::delete('purchase', [PurchaseReturnController::class, 'destroy'])->name('purchase.returns.destroy');
     });
 
-    // ---- pembayaran-pembelian: payments ----
     Route::middleware('role_or_permission:owner|view-pembayaran-pembelian')->group(function () {
         Route::get('purchase/payments', [PurchasePaymentController::class, 'index'])->name('purchase.payments.index');
         Route::get('purchase/payments/{id}', [PurchasePaymentController::class, 'show'])->name('purchase.payments.show');
@@ -59,14 +55,12 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::delete('purchase/payments', [PurchasePaymentController::class, 'destroy'])->name('purchase.payments.destroy');
     });
 
-    // ---- pembayaran-pembelian: bills (read-only views) ----
     Route::middleware('role_or_permission:owner|view-pembayaran-pembelian')->group(function () {
         Route::get('purchase/bills/unpaid', [PurchaseBillController::class, 'unpaid'])->name('purchase.bills.unpaid');
         Route::get('purchase/bills/overdue', [PurchaseBillController::class, 'overdue'])->name('purchase.bills.overdue');
         Route::get('purchase/bills/for-return', [PurchaseBillController::class, 'forReturn'])->name('purchase.bills.for-return');
     });
 
-    // ---- transaksi-pembelian: orders ----
     Route::middleware('role_or_permission:owner|view-transaksi-pembelian')->group(function () {
         Route::get('purchase/orders/receivable', [PurchaseOrderController::class, 'receivable'])->name('purchase.orders.receivable');
         Route::get('purchase/orders/progress', [PurchaseOrderController::class, 'receivable'])->name('purchase.orders.progress');

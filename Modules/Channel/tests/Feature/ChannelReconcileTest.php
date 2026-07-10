@@ -125,8 +125,7 @@ class ChannelReconcileTest extends TestCase
         $response = $this->postJson('/api/v1/channel-monitor/refresh');
 
         $response->assertStatus(202);
-        // Shopee sekarang punya reconcileChannelData() sendiri (lihat ShopeeReconcileTest),
-        // jadi tidak lagi masuk skipped_channels — semua 3 toko (tiktok+lazada+shopee) diqueue.
+
         $response->assertJsonPath('data.queued', 3);
         $this->assertEmpty($response->json('data.skipped_channels'));
         Queue::assertPushed(ReconcileChannelDataJob::class, 3);

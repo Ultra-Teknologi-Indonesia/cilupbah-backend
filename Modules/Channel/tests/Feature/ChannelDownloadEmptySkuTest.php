@@ -57,8 +57,6 @@ class ChannelDownloadEmptySkuTest extends TestCase
         ]);
     }
 
-    // ---- 1-3: Mapper-level — sku kosong harus jadi null, bukan sintetis ----
-
     public function test_lazada_mapper_returns_null_sku_when_seller_sku_empty(): void
     {
         $internal = app(LazadaToInternalProductMapper::class)->map([
@@ -135,8 +133,6 @@ class ChannelDownloadEmptySkuTest extends TestCase
         $this->assertNull($internal['variants'][0]['sku']);
         $this->assertNull($internal['sku']);
     }
-
-    // ---- 4: full download → variant tersimpan null, channel mapping tetap terbentuk ----
 
     public function test_lazada_download_creates_variant_with_null_sku_and_channel_mapping(): void
     {
@@ -287,8 +283,6 @@ class ChannelDownloadEmptySkuTest extends TestCase
         $this->assertEquals('SKU-EXT-1', $pvcm->external_sku_id);
     }
 
-    // ---- 5: campuran — sebagian variant ada SKU, sebagian kosong ----
-
     public function test_download_preserves_real_sku_when_mixed_with_empty(): void
     {
         $this->makeShop('lazada', 'LZ-MIXED');
@@ -335,8 +329,6 @@ class ChannelDownloadEmptySkuTest extends TestCase
             ->first();
         $this->assertNotNull($withoutSku, 'Variant tanpa SKU harus disimpan sebagai null, bukan sintetis');
     }
-
-    // ---- 6: banyak variant null SKU sekaligus — partial unique index harus izinkan ----
 
     public function test_multiple_null_sku_variants_allowed(): void
     {

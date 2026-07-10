@@ -8,23 +8,15 @@ use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Sales\Models\SalesReturn;
 
-/**
- * Menarik nomor resi ekspedisi retur (paket yang dikirim balik buyer) dari marketplace
- * dan menyimpannya ke record SalesReturn. Idempoten & fail-soft.
- */
 class SalesReturnTrackingSyncService
 {
-    /**
-     * Sinkronkan resi untuk satu retur. Return true bila resi berhasil terisi/diperbarui.
-     */
+
     public function syncOne(SalesReturn $return): bool
     {
         if ($return->source !== SalesReturn::SOURCE_MARKETPLACE) {
             return false;
         }
 
-        // Channel sebenarnya (shopee/tiktok/lazada) ada di order->source & prefix channel_return_id,
-        // BUKAN di kolom source retur (yang selalu "marketplace").
         [$prefixChannel, $rawReturnId] = $this->splitChannelReturnId($return->channel_return_id);
         $channel = (string) ($return->order->source ?? $prefixChannel ?? '');
         $shopId = (string) ($return->channel_shop_id ?? '');
@@ -36,7 +28,6 @@ class SalesReturnTrackingSyncService
 
         $result = $this->fetch($channel, $shopId, $rawReturnId, $channelOrderNo);
 
-        // Selalu tandai kapan terakhir dicoba agar penjadwalan tidak mengulang terus-menerus.
         $update = ['tracking_synced_at' => now()];
 
         $tracking = $result['tracking_number'] ?? null;
@@ -51,9 +42,6 @@ class SalesReturnTrackingSyncService
         return isset($update['return_tracking_number']);
     }
 
-    /**
-     * @return array{tracking_number: ?string, carrier: ?string, shipped_at: ?string}
-     */
     protected function fetch(string $source, string $shopId, ?string $rawReturnId, string $channelOrderNo): array
     {
         $empty = ['tracking_number' => null, 'carrier' => null, 'shipped_at' => null];
@@ -75,12 +63,6 @@ class SalesReturnTrackingSyncService
         }
     }
 
-    /**
-     * channel_return_id disimpan sebagai "source:rawId" (lihat SalesReturnService::createFromChannel).
-     * Kembalikan [prefixChannel|null, rawId|null].
-     *
-     * @return array{0: ?string, 1: ?string}
-     */
     protected function splitChannelReturnId(?string $channelReturnId): array
     {
         if (! $channelReturnId) {

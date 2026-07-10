@@ -16,9 +16,6 @@ class SalesOrderImportService
         private SalesOrderManualService $manualService,
     ) {}
 
-    /**
-     * @return array{total: int, success: int, failed: int, errors: array}
-     */
     public function processSheet(Collection $rows): array
     {
         $groups = $this->groupRows($rows);
@@ -54,12 +51,6 @@ class SalesOrderImportService
         return compact('total', 'success', 'failed', 'errors');
     }
 
-    /**
-     * Group rows by "No. Pesanan" key.
-     * A row with a filled key starts a new group.
-     * A row with an empty key continues the previous group.
-     * Rows with the same key are merged into one group.
-     */
     private function groupRows(Collection $rows): array
     {
         $groups = [];
@@ -68,7 +59,7 @@ class SalesOrderImportService
 
         foreach ($rows as $index => $row) {
             $data = $row instanceof Collection ? $row->toArray() : (array) $row;
-            $rowNumber = $index + 2; // heading = row 1
+            $rowNumber = $index + 2; 
 
             if ($this->isEmptyRow($data)) {
                 continue;
@@ -112,9 +103,6 @@ class SalesOrderImportService
         return collect($check)->filter(fn ($v) => $v !== null && trim((string) $v) !== '')->isEmpty();
     }
 
-    /**
-     * @throws \RuntimeException
-     */
     private function buildPayload(array $header, array $itemRows): array
     {
         $store = $this->resolveStore(trim((string) ($header['toko'] ?? '')));
@@ -270,22 +258,18 @@ class SalesOrderImportService
 
         $v = trim((string) $value);
 
-        // Excel serial number
         if (is_numeric($v) && (int) $v > 30000) {
             return Carbon::createFromFormat('Y-m-d', '1899-12-30')->addDays((int) $v)->format('Y-m-d');
         }
 
-        // DD-MM-YYYY
         if (preg_match('/^\d{2}-\d{2}-\d{4}$/', $v)) {
             return Carbon::createFromFormat('d-m-Y', $v)->format('Y-m-d');
         }
 
-        // DD/MM/YYYY
         if (preg_match('#^\d{2}/\d{2}/\d{4}$#', $v)) {
             return Carbon::createFromFormat('d/m/Y', $v)->format('Y-m-d');
         }
 
-        // YYYY-MM-DD (already correct)
         return $v;
     }
 

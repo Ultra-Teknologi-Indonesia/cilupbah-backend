@@ -136,8 +136,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
 
     public function syncPriceAndStock(Product $product, ChannelShop $shop, string $externalProductId): array
     {
-        // Sama seperti buildProductPayload(): stok channel selalu dari Gudang Kecil via
-        // resolver, bukan query manual ke channel_warehouses (dulu tidak konsisten).
+
         $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
 
         $skuPayloads = [];
@@ -206,8 +205,6 @@ class LazadaAdapter implements MarketplaceAdapterInterface
             }
         }
 
-        // Lazada menolak URL gambar eksternal di payload produk — semua URL (produk +
-        // varian) wajib dimigrasikan dulu ke CDN Lazada sebelum dipakai di payload.
         $urlsToMigrate = array_values(array_unique(array_merge($imageUrls, array_values($variantImageById))));
         $migratedMap = $this->imageUploader->upload($urlsToMigrate, $shop->access_token)['map'];
 

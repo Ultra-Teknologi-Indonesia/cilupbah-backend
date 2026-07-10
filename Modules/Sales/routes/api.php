@@ -18,7 +18,6 @@ use Modules\Outbound\Http\Controllers\OutboundFulfillmentController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
-    // Toko Internal (internal-stores) — apiResource expanded to gate per action
     Route::middleware('role_or_permission:owner|view-toko-internal')->group(function () {
         Route::get('sales/internal-stores/all', [InternalStoreController::class, 'all'])->name('sales.internal-stores.all');
     });
@@ -44,13 +43,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::delete('sales/internal-stores/{internal_store}', [InternalStoreController::class, 'destroy'])->whereUuid('internal_store')->name('sales.internal-stores.destroy');
     });
 
-    // Manual order creation → create-pesanan; lookup-sku left auth-only (form lookup)
     Route::middleware('role_or_permission:owner|create-pesanan')->group(function () {
         Route::post('sales/manual', [SalesOrderManualController::class, 'store'])->name('sales.manual.store');
     });
     Route::get('sales/manual/lookup-sku', [SalesOrderManualController::class, 'lookupSku'])->name('sales.manual.lookup-sku');
 
-    // Pengaturan Sistem — sales return setting
     Route::middleware('role_or_permission:owner|view-pengaturan-sistem')->group(function () {
         Route::get('systemsetting/sales-return-setting', [\Modules\Sales\Http\Controllers\SalesReturnSettingController::class, 'index'])->name('sales.returnSetting.index');
     });
@@ -58,7 +55,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('systemsetting/sales-return-setting', [\Modules\Sales\Http\Controllers\SalesReturnSettingController::class, 'store'])->name('sales.returnSetting.store');
     });
 
-    // Retur Penjualan
     Route::middleware('role_or_permission:owner|view-retur-penjualan')->group(function () {
         Route::get('sales/returns/items/rejected', [SalesReturnController::class, 'rejectedItems'])->name('sales.returns.items.rejected');
         Route::get('sales/returns/items/resolved', [SalesReturnController::class, 'resolvedItems'])->name('sales.returns.items.resolved');
@@ -99,7 +95,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('sales/returns/{id}/channel-reject-reasons', [SalesReturnController::class, 'channelRejectReasons'])->whereUuid('id')->name('sales.returns.channel-reject-reasons');
     });
 
-    // Faktur Penjualan
     Route::middleware('role_or_permission:owner|view-faktur-penjualan')->group(function () {
         Route::get('sales/invoices/unpaid', [SalesInvoiceController::class, 'unpaid'])->name('sales.invoices.unpaid');
         Route::get('sales/invoices/overdue', [SalesInvoiceController::class, 'overdue'])->name('sales.invoices.overdue');
@@ -114,7 +109,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('sales/invoices/{id}', [SalesInvoiceController::class, 'show'])->whereUuid('id')->name('sales.invoices.show');
     });
 
-    // Pembayaran Penjualan — payments
     Route::middleware('role_or_permission:owner|view-pembayaran-penjualan')->group(function () {
         Route::get('sales/payments', [SalesPaymentController::class, 'index'])->name('sales.payments.index');
     });
@@ -128,13 +122,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::delete('sales/payments', [SalesPaymentController::class, 'destroy'])->name('sales.payments.destroy');
     });
 
-    // Pembayaran Penjualan — settlements (reads)
     Route::middleware('role_or_permission:owner|view-pembayaran-penjualan')->group(function () {
         Route::get('sales/settlements', [SalesSettlementController::class, 'index'])->name('sales.settlements.index');
         Route::get('sales/settlements/{id}', [SalesSettlementController::class, 'show'])->whereUuid('id')->name('sales.settlements.show');
     });
 
-    // Pembayaran Penjualan — return-settlements
     Route::middleware('role_or_permission:owner|view-pembayaran-penjualan')->group(function () {
         Route::get('sales/return-settlements/invoices', [SalesReturnSettlementController::class, 'invoiceIndex'])->name('sales.return-settlements.invoices.index');
     });
@@ -176,8 +168,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::delete('sales/return-settlements/{id}', [SalesReturnSettlementController::class, 'destroy'])->whereUuid('id')->name('sales.return-settlements.destroy');
     });
 
-    // Outbound fulfillment lists left auth-only (mobile/outbound driven);
-    // create-invoice from order gated as faktur-penjualan.
     Route::get('sales/packlists/shipped', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('shipped', $request))->name('sales.packlists.shipped');
     Route::middleware('role_or_permission:owner|create-faktur-penjualan')->group(function () {
         Route::post('sales/packlists/create-invoice', [SalesInvoiceController::class, 'createFromOrder'])->name('sales.packlists.create-invoice');
@@ -194,12 +184,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('sales/shipments', fn (Request $request) => app(ShipmentController::class)->handOver($request->input('shipment_id')))->name('sales.shipments.handover');
     Route::get('sales/shipments/{shipment_header_id}', fn (Request $request, string $shipment_header_id) => app(ShipmentController::class)->show($shipment_header_id))->whereUuid('shipment_header_id')->name('sales.shipments.show');
 
-    // Pesanan — export
     Route::middleware('role_or_permission:owner|export-pesanan')->group(function () {
         Route::get('sales/orders/export', [SalesOrderController::class, 'export'])->name('sales.orders.export');
     });
 
-    // Pesanan — import
     Route::middleware('role_or_permission:owner|import-pesanan')->group(function () {
         Route::get('sales/orders/import/template', [SalesOrderImportController::class, 'downloadTemplate'])->name('sales.orders.import.template');
         Route::post('sales/orders/import', [SalesOrderImportController::class, 'import'])->name('sales.orders.import');
@@ -209,7 +197,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('sales/orders/import/batches/{batch}/errors/download', [SalesOrderImportController::class, 'downloadErrors'])->whereUuid('batch')->name('sales.orders.import.batches.errors.download');
     });
 
-    // Pesanan — order lists / mutations
     Route::middleware('role_or_permission:owner|view-pesanan')->group(function () {
         Route::get('sales/orders/cancel', [SalesOrderController::class, 'cancelled'])->name('sales.orders.cancelled');
     });
@@ -244,7 +231,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('sales/counts', [SalesOrderController::class, 'counts'])->name('sales.counts');
     });
 
-    // Pesanan — single order sub-resources
     Route::middleware('role_or_permission:owner|view-pesanan')->group(function () {
         Route::get('sales/{id}/invoice', [SalesOrderController::class, 'invoice'])->whereUuid('id')->name('sales.orders.invoice');
         Route::get('sales/{id}/breakdown', [SalesOrderController::class, 'breakdown'])->whereUuid('id')->name('sales.orders.breakdown');
@@ -264,7 +250,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
             ->whereUuid('id')->whereUuid('itemId')->name('sales.orders.items.download');
     });
 
-    // Pesanan — base resource
     Route::middleware('role_or_permission:owner|view-pesanan')->group(function () {
         Route::get('sales', [SalesOrderController::class, 'index'])->name('sales.index');
     });

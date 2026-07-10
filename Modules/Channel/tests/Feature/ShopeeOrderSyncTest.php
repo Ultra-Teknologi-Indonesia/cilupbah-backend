@@ -102,8 +102,7 @@ class ShopeeOrderSyncTest extends TestCase
 
     public function test_pull_orders_captures_pickup_code_from_tracking_number_response(): void
     {
-        // Shopee mengembalikan pickup_code di get_tracking_number khusus order
-        // ID lokal instant/sameday. Pastikan ter-thread sampai ke sales_orders.
+
         Http::fake([
             'partner.shopeemobile.com/api/v2/order/get_order_list*' => Http::response([
                 'response' => [

@@ -55,7 +55,6 @@ class RbacCatalogTest extends TestCase
         $groups = $response->json('data');
         $this->assertCount(count(config('rbac.groups')), $groups);
 
-        // Pastikan salah satu permission bernama benar mengikuti konvensi {action}-{resource}.
         $found = collect($groups)
             ->flatMap(fn ($g) => $g['resources'])
             ->flatMap(fn ($r) => array_column($r['actions'], 'permission'))
@@ -75,7 +74,7 @@ class RbacCatalogTest extends TestCase
 
     public function test_owner_bypasses_gated_route_without_explicit_permission(): void
     {
-        // owner tidak diberi grant eksplisit, tapi bypass via Gate::before.
+
         $this->actingAs($this->owner, 'sanctum')
             ->getJson('/api/v1/users')
             ->assertStatus(200);
@@ -84,7 +83,7 @@ class RbacCatalogTest extends TestCase
     public function test_non_owner_without_permission_is_forbidden_then_allowed(): void
     {
         $user = User::factory()->create();
-        $user->assignRole('picker'); // picker tidak punya view-user
+        $user->assignRole('picker'); 
 
         $this->actingAs($user, 'sanctum')
             ->getJson('/api/v1/users')
@@ -112,7 +111,6 @@ class RbacCatalogTest extends TestCase
         $this->assertTrue($target->hasDirectPermission('view-user'));
         $this->assertTrue($target->hasDirectPermission('export-user'));
 
-        // Profil pengguna memantulkan gabungan izin role + langsung.
         $this->actingAs($target, 'sanctum')
             ->getJson('/api/v1/profile')
             ->assertStatus(200)

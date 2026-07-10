@@ -187,18 +187,6 @@ class InventoryService
         });
     }
 
-    /**
-     * Reverse a two-bin stock move (koreksi salah scan).
-     *
-     * Memindahkan `qty` kembali dari `from_bin_id` (rak yang saat ini menampung stok,
-     * biasanya bin tujuan scan) ke `to_bin_id` (rak asal scan). Mencatat 2 movement
-     * dengan `source` reversal sebagai jejak audit; movement forward TIDAK dihapus.
-     *
-     * Dipakai bersama oleh koreksi Putaway (#1) dan Pindah Bin (#6).
-     *
-     * required: item_id, location_id, from_bin_id, to_bin_id, qty, source, transaction_number, created_by
-     * optional: batch_no, serial_no
-     */
     public function reverseBinMove(array $data): void
     {
         DB::transaction(function () use ($data) {
@@ -283,12 +271,6 @@ class InventoryService
         $this->notifyChannelStock([$data['item_id']]);
     }
 
-    /**
-     * Kembalikan stok hasil pick yang salah scan ke rak asalnya (koreksi Picking #4).
-     * Menaikkan on_hand + reserved di bin, mencatat movement PICKING_REVERSAL.
-     *
-     * required: item_id, location_id, bin_id, qty, transaction_number, created_by
-     */
     public function reversePick(array $data): void
     {
         DB::transaction(function () use ($data) {
@@ -326,11 +308,6 @@ class InventoryService
         $this->notifyChannelStock([$data['item_id']]);
     }
 
-    /**
-     * Langkah 1 (Baru Dibuat): buat dokumen transfer internal TANPA menggerakkan stok.
-     * Rak tujuan belum ditentukan (diisi saat penerimaan). Stok baru pindah ke Transit
-     * saat surat jalan dicetak (printBinTransfer).
-     */
     public function createBinTransferDraft(array $data): BinTransfer
     {
         $items = $this->normalizeBinTransferItems($data);
@@ -364,7 +341,6 @@ class InventoryService
                 $qty = (int) $itemData['qty'];
                 $sourceBinId = $itemData['source_bin_id'];
 
-                // Validasi awal (tidak memotong stok) supaya draft yang jelas salah ketahuan dini.
                 $source = $this->inventoryRepository->findExactForUpdate(
                     $itemData['item_id'],
                     $data['location_id'],
@@ -396,10 +372,6 @@ class InventoryService
         });
     }
 
-    /**
-     * Langkah 2 (cetak surat jalan): Baru Dibuat -> Sedang Dijalan.
-     * Stok rak asal dipotong dan dipindahkan ke lokasi Transit (menggantung) sampai diterima.
-     */
     public function printBinTransfer(string $id, string $printedBy): BinTransfer
     {
         $variantIds = [];
@@ -505,10 +477,6 @@ class InventoryService
         return $result;
     }
 
-    /**
-     * Kembalikan Sedang Dijalan -> Baru Dibuat (batal cetak). Stok transit dikembalikan ke rak asal.
-     * Hanya boleh bila belum ada penerimaan sama sekali (semua placed_qty = 0).
-     */
     public function revertBinTransferPrint(string $id, string $actor): BinTransfer
     {
         $variantIds = [];
@@ -535,7 +503,6 @@ class InventoryService
             foreach ($items as $item) {
                 $qty = (int) $item->qty;
 
-                // Transit -> kembali ke rak asal (lintas lokasi: Transit -> gudang).
                 $transit = $this->inventoryRepository->findExactForUpdate(
                     $item->item_id,
                     $transitLocationId,
@@ -621,11 +588,6 @@ class InventoryService
         return $result;
     }
 
-    /**
-     * Langkah 3 (penerimaan): tempatkan stok dari Transit ke rak tujuan yang benar.
-     * Terbit dokumen TRFI. Qty terima > sisa ditolak; qty terima < sisa membuat sisanya tetap
-     * menggantung di transit (transfer tetap Sedang Dijalan). Bila semua item habis -> Selesai.
-     */
     public function receiveBinTransfer(string $id, array $data): BinTransferReceipt
     {
         $variantIds = [];
@@ -686,7 +648,6 @@ class InventoryService
                     throw new \Exception("Jumlah transfer untuk {$name} melebihi jumlah yang tersedia.");
                 }
 
-                // Transit -> rak tujuan.
                 $transit = $this->inventoryRepository->findExactForUpdate(
                     $item->item_id,
                     $transitLocationId,
@@ -763,13 +724,12 @@ class InventoryService
                 ]);
 
                 $item->placed_qty = (int) $item->placed_qty + $qtyTerima;
-                $item->destination_bin_id = $destBinId; // simpan rak tujuan terakhir untuk tampilan detail
+                $item->destination_bin_id = $destBinId; 
                 $item->save();
 
                 $variantIds[] = $item->item_id;
             }
 
-            // Bila semua item sudah ditempatkan penuh, transfer selesai.
             $allPlaced = $header->items()->get()
                 ->every(fn ($it) => (int) $it->placed_qty >= (int) $it->qty);
 
@@ -785,10 +745,6 @@ class InventoryService
         return $result;
     }
 
-    /**
-     * Koreksi salah scan Pindah Bin: kembalikan (sebagian/seluruh) stok satu baris bin transfer
-     * dari rak tujuan kembali ke rak asal, lalu kurangi/hapus baris tersebut.
-     */
     public function reverseBinTransferItem(string $binTransferId, string $itemRowId, ?int $qty, string $userId): BinTransfer
     {
         return $this->reverseBinTransferItems($binTransferId, [
@@ -796,10 +752,6 @@ class InventoryService
         ], $userId);
     }
 
-    /**
-     * Koreksi massal: kembalikan beberapa baris bin transfer sekaligus dalam 1 transaksi.
-     * $items = [['item_id' => <bin_transfer_item_id>, 'qty' => ?int], ...]
-     */
     public function reverseBinTransferItems(string $binTransferId, array $items, string $userId): BinTransfer
     {
         if (empty($items)) {
@@ -836,7 +788,6 @@ class InventoryService
                     throw new \Exception("Qty koreksi tidak valid (maksimal {$row->qty}).");
                 }
 
-                // Balik stok: dari rak tujuan kembali ke rak asal.
                 $this->reverseBinMove([
                     'item_id'            => $row->item_id,
                     'location_id'        => $header->location_id,
@@ -883,10 +834,6 @@ class InventoryService
         return [];
     }
 
-    /**
-     * Nomor dokumen transfer internal (TRFO, dokumen keluar/asal) & penerimaan (TRFI, dokumen masuk).
-     * Keduanya berbagi satu sequence supaya nomornya berurutan (mis. TRFO-000108690 lalu TRFI-000108691).
-     */
     protected function nextBinTransferSeq(): int
     {
         return DB::table('bin_transfer_sequences')->insertGetId([
@@ -950,9 +897,6 @@ class InventoryService
         ])->find($id);
     }
 
-    /**
-     * Daftar dokumen penerimaan transfer internal (tab Selesai). Tiap baris = satu TRFI.
-     */
     public function getBinTransferReceipts(array $filters = [], int $perPage = 10)
     {
         $query = BinTransferReceipt::query()
@@ -994,9 +938,6 @@ class InventoryService
         ])->find($id);
     }
 
-    /**
-     * Hapus dokumen transfer internal. Hanya boleh saat masih Baru Dibuat (belum ada stok bergerak).
-     */
     public function deleteBinTransferDraft(string $id): void
     {
         DB::transaction(function () use ($id) {
@@ -1178,10 +1119,6 @@ class InventoryService
                 throw new \Exception('Gudang asal belum diatur, tidak bisa di-approve.');
             }
 
-            // Untuk item yang belum punya rak asal (mis. hasil Permintaan Restock),
-            // tetapkan rak otomatis dengan logika LIFO (stok masuk terakhir diambil dulu)
-            // lalu reserve stoknya dari rak tersebut. Item yang sudah punya rak
-            // (mis. dari transfer manual) dianggap sudah ter-reserve dan dilewati.
             foreach ($transfer->items()->get() as $item) {
                 if (! empty($item->source_bin_id)) {
                     continue;
@@ -1205,12 +1142,6 @@ class InventoryService
         return $transfer;
     }
 
-    /**
-     * Alokasikan rak asal untuk satu item transfer memakai LIFO
-     * (baris inventory terbaru diambil lebih dulu), pecah item menjadi
-     * beberapa baris bila stok tersebar di banyak rak, lalu reserve stok
-     * dari tiap rak dan siapkan stok transit.
-     */
     protected function assignAndReserveItemLifo(InventoryTransfer $transfer, InventoryTransferItem $item, string $actor): void
     {
         $needed = (int) $item->qty;
@@ -1218,7 +1149,6 @@ class InventoryService
             return;
         }
 
-        // LIFO: baris inventory terbaru (created_at DESC) yang masih punya available.
         $rows = Inventory::where('item_id', $item->item_id)
             ->where('location_id', $transfer->source_location_id)
             ->whereNotNull('bin_id')
@@ -1249,7 +1179,6 @@ class InventoryService
             }
             $remaining -= $take;
 
-            // Baris pertama memakai item yang sudah ada; sisa alokasi jadi baris baru.
             if ($first) {
                 $item->update([
                     'source_bin_id' => $row->bin_id,
@@ -1272,7 +1201,6 @@ class InventoryService
                 ]);
             }
 
-            // Reserve di rak asal: available turun; on_hand tetap sampai barang dikirim.
             $row->reserved += $take;
             $this->inventoryRepository->updateStock($row);
 
@@ -1288,7 +1216,6 @@ class InventoryService
                 'created_by'         => $actor,
             ]);
 
-            // Siapkan stok transit.
             $transitInventory = $this->inventoryRepository->findOrCreateForUpdate(
                 $item->item_id,
                 $transitLocationId,
@@ -1329,14 +1256,11 @@ class InventoryService
             [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
 
             foreach ($transfer->items as $item) {
-                // Hanya item yang sudah ter-reserve (SYNCED) yang perlu dilepas
-                // stoknya. Item yang belum ter-reserve (mis. draft yang reserve-nya
-                // gagal / belum jalan) tidak menyentuh stok, jadi dilewati.
+
                 if ($item->sync_status !== InventoryTransferItem::SYNC_SYNCED) {
                     continue;
                 }
 
-                // Lepas reserve di rak asal.
                 $sourceInventory = $this->inventoryRepository->findExactForUpdate(
                     $item->item_id,
                     $transfer->source_location_id,
@@ -1363,7 +1287,6 @@ class InventoryService
                     ]);
                 }
 
-                // Tarik kembali stok yang sudah disiapkan di transit.
                 $transitInventory = $this->inventoryRepository->findExactForUpdate(
                     $item->item_id,
                     $transitLocationId,
@@ -1406,16 +1329,6 @@ class InventoryService
         return $transfer;
     }
 
-    /**
-     * Kembalikan transfer ke status DRAFT ("Baru Dibuat") agar bisa diedit/dibatalkan
-     * pengirimannya. Dipakai oleh alur edit (edit transfer yang sudah APPROVED/IN_TRANSIT)
-     * dan "Hapus" pada transfer Sedang Dijalan (revert satu langkah, bukan hard-delete).
-     *
-     * Model stok: DRAFT & APPROVED sama-sama memegang reserve di rak asal + stok transit
-     * (item SYNCED). Jadi APPROVED→DRAFT hanya ganti status. IN_TRANSIT→DRAFT membatalkan
-     * deduksi pengiriman (kembalikan on_hand & reserved di rak asal); transit dibiarkan
-     * (belum dikonsumsi) & item tetap SYNCED sehingga siap dikirim ulang tanpa re-reserve.
-     */
     public function revertToDraft(string $transferId, array $data = []): InventoryTransfer
     {
         $transfer = DB::transaction(function () use ($transferId, $data) {
@@ -1450,7 +1363,7 @@ class InventoryService
                     );
 
                     if ($sourceInventory) {
-                        // Batalkan deduksi shipTransfer/submitDraft: on_hand & reserved naik lagi.
+
                         $sourceInventory->on_hand += (int) $item->qty;
                         $sourceInventory->reserved += (int) $item->qty;
                         $this->inventoryRepository->updateStock($sourceInventory);
@@ -1759,9 +1672,6 @@ class InventoryService
 
             [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
 
-            // Lepas reserve + tarik balik transit untuk item yang sudah ter-reserve
-            // (mis. transfer manual DRAFT atau APPROVED hasil restock), agar stok
-            // tidak nyangkut setelah dokumen dihapus.
             foreach ($transfer->items as $item) {
                 if ($item->sync_status !== InventoryTransferItem::SYNC_SYNCED) {
                     continue;
@@ -1906,9 +1816,6 @@ class InventoryService
         return $result;
     }
 
-    /**
-     * Nomor transfer keluar: format TRFO-XXXXXXXXX (tanpa tanggal), dijamin unik.
-     */
     public function generateTransferNumber(): string
     {
         do {
@@ -1966,8 +1873,6 @@ class InventoryService
                 throw new \Exception("Pilih rak asal untuk semua item sebelum transfer bisa dikirim.");
             }
 
-            // Pastikan semua item sudah ter-reserve (SYNCED) sebelum finalisasi
-            // agar stok tidak dobel/negatif.
             $notReady = $transfer->items->first(
                 fn ($it) => $it->sync_status !== InventoryTransferItem::SYNC_SYNCED
             );
@@ -2070,14 +1975,10 @@ class InventoryService
             'sync_status' => InventoryTransferItem::SYNC_PENDING,
         ]);
 
-        // Untuk item hasil Permintaan Restock, rak asal belum dipilih dan akan
-        // ditetapkan otomatis (LIFO) saat approveTransfer. Lewati reservasi
-        // sinkron agar tidak dobel-reserve / balapan dengan assignAndReserveItemLifo.
         $deferReserve = ($data['defer_reserve'] ?? false) || empty($data['source_bin_id']);
 
         if (! $deferReserve) {
-            // Dijalankan sinkron (bukan queue) agar stok langsung terpotong
-            // saat item disimpan, tanpa bergantung pada worker queue berjalan.
+
             SyncTransferDraftItemJob::dispatchSync(
                 $item->id,
                 SyncTransferDraftItemJob::ACTION_RESERVE,
@@ -2118,9 +2019,6 @@ class InventoryService
             ->where('inventory_transfer_id', $transferId)
             ->firstOrFail();
 
-        // Ganti rak asal: lepas reservasi rak lama lalu buat baris baru di rak baru,
-        // memakai primitive teruji (RELEASE + addDraftItem/RESERVE) agar kolom available
-        // & stok transit tetap konsisten. Baris lama dihapus, kembalikan baris baru.
         if ($binProvided && $newBinId !== $item->source_bin_id) {
             $this->removeDraftItem($transferId, $itemId);
 
@@ -2143,8 +2041,7 @@ class InventoryService
         ]);
 
         if ($delta !== 0) {
-            // Dijalankan sinkron agar penyesuaian stok langsung terlihat, tanpa
-            // bergantung pada worker queue berjalan.
+
             SyncTransferDraftItemJob::dispatchSync(
                 $item->id,
                 SyncTransferDraftItemJob::ACTION_ADJUST,
@@ -2186,8 +2083,6 @@ class InventoryService
 
         $qty = $item->qty;
 
-        // Dijalankan sinkron agar stok yang sudah direservasi langsung
-        // dilepas dan baris item langsung terhapus saat disimpan.
         SyncTransferDraftItemJob::dispatchSync(
             $item->id,
             SyncTransferDraftItemJob::ACTION_RELEASE,

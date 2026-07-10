@@ -8,7 +8,6 @@ use Modules\Supplier\Http\Controllers\SalesmanController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
-    // Lookup (auth-only): salesmen dropdown source
     Route::get('salesmen/all', [SalesmanController::class, 'all'])->name('salesmen.all');
 
     Route::middleware('role_or_permission:owner|view-salesman')->group(function () {
@@ -33,7 +32,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('contacts/import/save', [ContactImportController::class, 'save'])->name('contacts.import.save');
     });
 
-    // Lookups (auth-only): form-population dropdowns
     Route::get('contacts/customers', [ContactController::class, 'customers'])->name('contacts.customers');
     Route::get('contacts/suppliers', [ContactController::class, 'suppliers'])->name('contacts.suppliers');
     Route::get('contacts/customers-suppliers', [ContactController::class, 'customersSuppliers'])->name('contacts.customers-suppliers');
@@ -65,7 +63,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('contact/category', [ContactController::class, 'categories'])->name('contact.category');
     });
 
-    // Lookup (auth-only): account-payable options for forms
     Route::get('contact/account-payable', [ContactController::class, 'accountPayableOptions'])->name('contact.account-payable');
 
     Route::middleware('role_or_permission:owner|view-kontak-pemasok')->group(function () {

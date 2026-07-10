@@ -89,9 +89,6 @@ class StockReplenishmentService
                 }
             }
 
-            // Menerima permintaan = menyetujui transfer keluar: tetapkan rak asal
-            // otomatis (LIFO) & reserve stok, sehingga transfer langsung berstatus
-            // APPROVED dan siap dicetak/dikirim (tanpa langkah approve manual).
             $this->inventoryService->approveTransfer($transfer->id, [
                 'approved_by' => $actorId ?? 'system',
                 'assigned_to' => $assigneeUserId,
@@ -128,9 +125,6 @@ class StockReplenishmentService
         return $request->fresh();
     }
 
-    /**
-     * Tambah satu SKU ke permintaan yang masih PENDING.
-     */
     public function addItem(string $id, array $payload): StockReplenishmentRequestItem
     {
         return DB::transaction(function () use ($id, $payload) {
@@ -165,9 +159,6 @@ class StockReplenishmentService
         });
     }
 
-    /**
-     * Ubah jumlah / alasan satu item pada permintaan yang masih PENDING.
-     */
     public function updateItem(string $id, string $itemId, array $payload): StockReplenishmentRequestItem
     {
         return DB::transaction(function () use ($id, $itemId, $payload) {
@@ -184,9 +175,6 @@ class StockReplenishmentService
         });
     }
 
-    /**
-     * Hapus satu item dari permintaan yang masih PENDING.
-     */
     public function removeItem(string $id, string $itemId): void
     {
         DB::transaction(function () use ($id, $itemId) {
@@ -219,16 +207,6 @@ class StockReplenishmentService
         return $request->fresh();
     }
 
-    /**
-     * Deteksi otomatis kekurangan stok di Gudang Kecil untuk seluruh order
-     * yang berstatus reserved. Jika ada SKU yang kekurangannya belum ter-cover
-     * oleh request PENDING/ACCEPTED sebelumnya, buat satu request PENDING baru
-     * yang mengelompokkan semua SKU kurang tersebut.
-     *
-     * @param  bool  $dryRun  jika true, tidak menulis apapun, hanya kembalikan
-     *                       daftar shortage yang akan dibuat.
-     * @return array  { shortages: [...], request?: StockReplenishmentRequest|null, skipped: bool }
-     */
     public function autoDetect(bool $dryRun = false): array
     {
         $kecilId = DB::table('locations')
@@ -242,7 +220,6 @@ class StockReplenishmentService
             return ['shortages' => [], 'request' => null, 'skipped' => true, 'reason' => 'Gudang Kecil / Gudang Pusat belum di-seed'];
         }
 
-        // 1. Agregasi kebutuhan pesanan reserved di Gudang Kecil per item_id
         $demand = DB::table('sales_order_items as i')
             ->join('sales_orders as o', 'o.id', '=', 'i.order_id')
             ->where('o.status', 'reserved')
@@ -259,7 +236,6 @@ class StockReplenishmentService
 
         $itemIds = $demand->keys()->all();
 
-        // 2. Availability di Gudang Kecil per item_id
         $availability = DB::table('inventories')
             ->whereIn('item_id', $itemIds)
             ->where('location_id', $kecilId)
@@ -268,7 +244,6 @@ class StockReplenishmentService
             ->get()
             ->keyBy('item_id');
 
-        // 3. In-flight replenishment quantities (PENDING atau ACCEPTED) per item_id
         $inFlight = DB::table('stock_replenishment_request_items as ri')
             ->join('stock_replenishment_requests as r', 'r.id', '=', 'ri.request_id')
             ->whereIn('r.status', [
@@ -282,7 +257,6 @@ class StockReplenishmentService
             ->get()
             ->keyBy('item_id');
 
-        // 4. Hitung shortage bersih
         $shortages = [];
         foreach ($demand as $itemId => $row) {
             $needed   = (int) $row->needed;
@@ -313,7 +287,6 @@ class StockReplenishmentService
             return ['shortages' => $shortages, 'request' => null, 'skipped' => false];
         }
 
-        // 5. Buat satu request PENDING agregasi
         $request = DB::transaction(function () use ($pusatId, $kecilId, $shortages) {
             $req = StockReplenishmentRequest::create([
                 'requested_by_user_id' => null,

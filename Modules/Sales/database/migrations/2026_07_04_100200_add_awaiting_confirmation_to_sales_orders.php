@@ -4,13 +4,6 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-/**
- * Additive-only migration for the "Awaiting Buyer Confirmation" gate on SalesOrder.
- *
- * NOTE: The existing sales_orders.status column is left untouched. If it is a strict enum
- * in production it will need to be widened separately; BE code uses the string value
- * 'AWAITING_BUYER_CONFIRMATION' which fits into a regular varchar without a schema change.
- */
 return new class extends Migration
 {
     public function up(): void
@@ -29,7 +22,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        // NOTE: sales_orders.status column is untouched in up(); no reversal needed here.
+
         Schema::table('sales_orders', function (Blueprint $table) {
             $table->dropForeign(['buyer_decided_by']);
             $table->dropColumn([

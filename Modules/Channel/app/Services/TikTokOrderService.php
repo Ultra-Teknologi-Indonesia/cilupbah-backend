@@ -119,14 +119,6 @@ class TikTokOrderService
         return $count;
     }
 
-    /**
-     * DEBUG-only (Fase 2 — riset kode pengambilan TikTok): kalau
-     * `services.tiktok.dump_instant_payload` (env TIKTOK_DUMP_INSTANT_PAYLOAD) aktif,
-     * log STRUKTUR order instant/sameday — daftar key top-level + array `packages`
-     * (lokasi paling mungkin field pickup code) + field shipping — TANPA PII pembeli
-     * dan HANYA untuk order instant, jadi tidak membanjiri log. Matikan lagi setelah
-     * nama field dikonfirmasi. Lihat PLANNING-BUKTI-PICKUP-KURIR.md §7.
-     */
     protected function dumpInstantPayloadForResearch(array $item, string $shopId): void
     {
         if (! config('services.tiktok.dump_instant_payload')) {
@@ -390,15 +382,6 @@ class TikTokOrderService
         return $res;
     }
 
-    /**
-     * Ambil nomor resi ekspedisi retur (paket dikirim balik buyer) dari TikTok Return & Refund API.
-     *
-     * @param  string  $returnId  Return ID mentah (tanpa prefix "tiktok:").
-     * @param  string  $orderId   Fallback: cari retur berdasarkan order bila return_id kosong.
-     * @return array{tracking_number: ?string, carrier: ?string, shipped_at: ?string}
-     *
-     * TODO(verify): konfirmasi nama field ke dokumentasi TikTok return_refund 202309.
-     */
     public function fetchReturnTracking(string $shopId, ?string $returnId, ?string $orderId = null): array
     {
         $empty = ['tracking_number' => null, 'carrier' => null, 'shipped_at' => null];
@@ -456,21 +439,6 @@ class TikTokOrderService
         }
     }
 
-    /**
-     * Ambil detail lengkap retur dari TikTok Shop Return & Refund API (v202309): status
-     * keputusan, alasan, nominal refund, dan selisih ongkir — dipakai
-     * SalesReturnDetailSyncService untuk mengisi marketplace_decision/refund_amount/
-     * shipping_fee_* di SalesReturn.
-     *
-     * @return array{
-     *     channel_status: ?string, reason_code: ?string, reason_text: ?string,
-     *     refund_amount: ?float, refund_currency: ?string,
-     *     shipping_fee_original: ?float, shipping_fee_return: ?float,
-     *     tracking_number: ?string, carrier: ?string, shipped_at: ?string, raw: array,
-     * }
-     *
-     * TODO(verify): konfirmasi nama field ke dokumentasi TikTok return_refund 202309.
-     */
     public function fetchReturnDetail(string $shopId, ?string $returnId, ?string $orderId = null): array
     {
         $empty = [
@@ -544,14 +512,6 @@ class TikTokOrderService
         }
     }
 
-    /**
-     * Ambil riwayat proses/banding retur dari TikTok Shop (endpoint returns/records),
-     * dipakai untuk mengisi timeline banding di UI detail retur.
-     *
-     * @return array{records: array<int, array{type: string, operator: string, description: ?string, timestamp: ?string}>}
-     *
-     * TODO(verify): konfirmasi nama field ke dokumentasi TikTok returns/records 202309.
-     */
     public function fetchReturnHistory(string $shopId, string $returnId): array
     {
         try {
@@ -592,11 +552,6 @@ class TikTokOrderService
         }
     }
 
-    /**
-     * Setujui retur di TikTok Shop (seller menerima permintaan retur/refund buyer).
-     *
-     * TODO(verify): konfirmasi endpoint & nama field ke dokumentasi TikTok returns/approve 202309.
-     */
     public function approveReturn(string $shopId, string $returnId): bool
     {
         try {
@@ -621,11 +576,6 @@ class TikTokOrderService
         }
     }
 
-    /**
-     * Tolak retur di TikTok Shop dengan kode alasan dari getRejectReasons().
-     *
-     * TODO(verify): konfirmasi endpoint & nama field ke dokumentasi TikTok returns/reject 202309.
-     */
     public function rejectReturn(string $shopId, string $returnId, string $rejectReasonKey, ?string $comments = null): bool
     {
         try {
@@ -655,14 +605,6 @@ class TikTokOrderService
         }
     }
 
-    /**
-     * Ambil daftar alasan tolak yang valid untuk suatu retur, dipakai FE untuk
-     * menampilkan pilihan alasan sebelum memanggil rejectReturn().
-     *
-     * @return array<int, array{id: string, text: string}>
-     *
-     * TODO(verify): konfirmasi endpoint & nama field ke dokumentasi TikTok reject_reasons 202309.
-     */
     public function getRejectReasons(string $shopId, string $returnId): array
     {
         try {

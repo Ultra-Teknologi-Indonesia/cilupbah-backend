@@ -6,10 +6,7 @@ use Illuminate\Support\Str;
 
 return new class extends Migration
 {
-    /**
-     * Backfill 1 baris putaway_sources untuk tiap putaway lama (source_type=INBOUND, source_id terisi)
-     * agar relasi Inbound::putaways() yang kini lewat pivot tetap menemukan dokumen lama.
-     */
+
     public function up(): void
     {
         $rows = DB::table('putaways as p')
@@ -38,6 +35,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        // Non-reversible backfill; tabel di-drop oleh migrasi create-nya.
+
     }
 };

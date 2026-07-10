@@ -537,9 +537,6 @@ class TikTokProductService
         return true;
     }
 
-    /**
-     * @param array $variantIds Urutan variant id hasil createProduct, selaras dengan urutan $skus (produk baru saja).
-     */
     protected function mapSkusToVariants(string $pcmId, string $insertedId, array $skus, bool $matchedExisting, array $variantIds): void
     {
         foreach ($skus as $idx => $skuData) {

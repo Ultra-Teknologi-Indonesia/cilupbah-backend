@@ -14,11 +14,6 @@ use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Tests\TestCase;
 
-/**
- * Guard "stok kosong": pesanan yang masih punya item shortfall di gudangnya
- * tidak boleh masuk Proses Pesanan; harus diselesaikan dulu lewat kompensasi
- * (hapus item / ganti SKU) atau restock. Menutup celah di PLANNING-STOK-KOSONG-GUARD-PROSES.
- */
 class EmptyStockGuardTest extends TestCase
 {
     use RefreshDatabase;
@@ -36,8 +31,6 @@ class EmptyStockGuardTest extends TestCase
         Queue::fake();
         $this->actingAs(User::factory()->create(), 'sanctum');
 
-        // Semua pesanan dialokasikan ke Gudang Kecil (resolveLocationId), jadi
-        // seed inventory & order di lokasi ini. WH-KECIL bisa sudah di-seed migrasi.
         $this->location = Location::firstOrCreate(
             ['location_code' => Location::SYSTEM_KECIL_CODE],
             [
@@ -48,8 +41,6 @@ class EmptyStockGuardTest extends TestCase
             ],
         );
 
-        // Bin rak final (bukan inbound) — hanya stok di sini yang dihitung
-        // sebagai on_hand/available (placed) untuk reservasi & picking.
         $this->bin = LocationBin::create([
             'location_id'    => $this->location->id,
             'floor_code'     => 'F1',
@@ -121,9 +112,6 @@ class EmptyStockGuardTest extends TestCase
             ->update(['on_hand' => 0, 'available' => 0]);
     }
 
-    /**
-     * @param  array<int, array<string, mixed>>  $items
-     */
     private function createOrder(array $items): string
     {
         $subTotal = collect($items)->sum('amount');
@@ -173,7 +161,6 @@ class EmptyStockGuardTest extends TestCase
     {
         $orderId = $this->createOrder([$this->item($this->variant->id, 5)]);
 
-        // Stok Gudang Kecil habis setelah reservasi → jadi shortfall.
         $this->drainOnHand($this->variant->id);
 
         $response = $this->postJson('/api/v1/sales/orders/move-to-ready', [
@@ -185,7 +172,6 @@ class EmptyStockGuardTest extends TestCase
         $this->assertCount(1, $response->json('data.skipped'));
         $this->assertSame($orderId, $response->json('data.skipped.0.id'));
 
-        // Tetap parkir di Penjualan/Pesanan (belum diserahkan ke gudang).
         $this->assertNull(SalesOrder::find($orderId)->handed_to_warehouse_at);
     }
 
@@ -210,7 +196,6 @@ class EmptyStockGuardTest extends TestCase
             $this->item($this->variant2->id, 5),
         ]);
 
-        // variant jadi shortfall → order masuk kondisi stok kosong.
         $this->drainOnHand($this->variant->id);
         $this->assertSame(5, $this->reservedFor($this->variant->id));
 
@@ -220,10 +205,8 @@ class EmptyStockGuardTest extends TestCase
         $this->deleteJson("/api/v1/sales/orders/{$orderId}/items/{$shortItem->id}")
             ->assertOk();
 
-        // Reservasi item yang dihapus dilepas → tidak nyangkut.
         $this->assertSame(0, $this->reservedFor($this->variant->id));
 
-        // Order tak lagi shortfall → sekarang boleh diproses.
         $response = $this->postJson('/api/v1/sales/orders/move-to-ready', [
             'order_ids' => [$orderId],
         ]);
@@ -241,7 +224,6 @@ class EmptyStockGuardTest extends TestCase
             'sku' => $this->variant2->sku,
         ])->assertOk();
 
-        // Reservasi lama dilepas, reservasi SKU baru dipasang.
         $this->assertSame(0, $this->reservedFor($this->variant->id));
         $this->assertSame(5, $this->reservedFor($this->variant2->id));
 
@@ -249,7 +231,6 @@ class EmptyStockGuardTest extends TestCase
         $this->assertSame($this->variant2->id, $orderItem->item_id);
         $this->assertSame($this->variant2->sku, $orderItem->sku);
 
-        // Kompensasi selesai → order bisa diproses.
         $response = $this->postJson('/api/v1/sales/orders/move-to-ready', [
             'order_ids' => [$orderId],
         ]);
@@ -261,7 +242,6 @@ class EmptyStockGuardTest extends TestCase
         $orderId = $this->createOrder([$this->item($this->variant->id, 5)]);
         $orderItem = SalesOrder::with('items')->find($orderId)->items->first();
 
-        // Order reserved yang stoknya cukup (bukan stok kosong) tidak boleh diedit.
         $this->patchJson("/api/v1/sales/orders/{$orderId}/items/{$orderItem->id}", [
             'qty_in_base' => 3,
         ])->assertStatus(422);
@@ -269,8 +249,7 @@ class EmptyStockGuardTest extends TestCase
 
     public function test_bundle_order_is_not_flagged_empty_stock_and_can_process(): void
     {
-        // Variant bundle tidak punya inventory sendiri (stok di komponen). Order
-        // bundle tidak boleh salah terdeteksi stok kosong → tetap bisa diproses.
+
         $bundleProduct = Product::create([
             'category_id' => $this->product->category_id,
             'name'        => 'Bundle Denim',
@@ -291,7 +270,6 @@ class EmptyStockGuardTest extends TestCase
 
         $orderId = $this->createOrder([$this->item($bundleVariant->id, 2)]);
 
-        // Bundle variant tanpa inventory tidak boleh bikin order masuk empty-stock.
         $this->assertFalse(
             SalesOrder::whereKey($orderId)->hasStockShortfall()->exists(),
             'Order bundle tidak boleh terdeteksi stok kosong.',

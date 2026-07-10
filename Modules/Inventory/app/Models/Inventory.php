@@ -51,12 +51,6 @@ class Inventory extends Model
             ->where('location_id', $this->location_id);
     }
 
-    /**
-     * "Ditempatkan" = stok fisik yang berada di bin rak final (bukan Bin Inbound,
-     * dan bukan baris agregat bin_id NULL). Hanya stok ditempatkan yang dihitung
-     * sebagai on_hand/available/sellable/pickable. Stok di Bin Inbound atau bin_id
-     * NULL berstatus "menunggu penempatan" dan TIDAK dihitung.
-     */
     public function scopePlaced($query)
     {
         return $query->whereExists(function ($q) {
@@ -67,7 +61,6 @@ class Inventory extends Model
         });
     }
 
-    /** Kebalikan scopePlaced: bin_id NULL atau berada di Bin Inbound. */
     public function scopePendingPlacement($query)
     {
         return $query->where(function ($w) {
@@ -81,7 +74,6 @@ class Inventory extends Model
         });
     }
 
-    /** Apakah baris ini stok yang sudah ditempatkan di rak final. */
     public function isPlaced(): bool
     {
         if ($this->bin_id === null) {
@@ -92,13 +84,12 @@ class Inventory extends Model
             ? $this->bin?->is_inbound
             : \Modules\Warehouse\Models\LocationBin::whereKey($this->bin_id)->value('is_inbound');
 
-        // Hanya "ditempatkan" bila bin ada DAN bukan bin inbound.
         return $isInbound !== null && ! (bool) $isInbound;
     }
 
     public function recalculateAvailable(): void
     {
-        // Stok yang belum ditempatkan (Bin Inbound / bin_id NULL) tidak pernah available.
+
         $this->available = $this->isPlaced()
             ? max(0, (int) $this->on_hand - (int) $this->reserved)
             : 0;

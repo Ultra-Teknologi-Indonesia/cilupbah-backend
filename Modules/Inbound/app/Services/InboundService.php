@@ -41,10 +41,6 @@ class InboundService
         return $this->inboundRepository->findById($id);
     }
 
-    /**
-     * Source movement stok untuk penerimaan/koreksi Inbound ini, agar kronologi stok
-     * membedakan retur penjualan ("Retur Penjualan") dari penerimaan biasa ("Penyesuaian").
-     */
     private function movementSourceFor(Inbound $inbound): string
     {
         return $inbound->type === Inbound::TYPE_SALES_RETURN ? 'SALES_RETURN' : 'ADJUSTMENT';
@@ -589,11 +585,6 @@ class InboundService
             ]);
     }
 
-    /**
-     * Koreksi salah terima (received_qty berlebih) pada satu baris inbound.
-     * Mengurangi received_qty dan mengembalikan stok di bin inbound. Hanya stok yang
-     * belum di-putaway yang bisa dikoreksi.
-     */
     public function correctReceivedLine(string $inboundId, string $inboundItemId, ?int $qty, string $userId): Inbound
     {
         return $this->correctReceivedLines($inboundId, [
@@ -601,10 +592,6 @@ class InboundService
         ], $userId);
     }
 
-    /**
-     * Koreksi massal salah terima: kurangi received_qty beberapa baris sekaligus dalam 1 transaksi.
-     * $items = [['item_id' => <inbound_item_uuid>, 'qty' => ?int], ...]
-     */
     public function correctReceivedLines(string $inboundId, array $items, string $userId): Inbound
     {
         if (empty($items)) {
@@ -669,14 +656,6 @@ class InboundService
         });
     }
 
-    /**
-     * Set jumlah diterima aktual pada satu baris penerimaan (boleh naik/turun).
-     * - Menyesuaikan stok di Bin Inbound lewat movement (naik = tambah, turun = kurang),
-     *   sehingga perubahan TERCATAT sebagai riwayat dengan created_by = pelaku.
-     * - Bila turun, target penempatan yang belum ditempatkan ikut disusutkan.
-     * - Status penerimaan dihitung ulang.
-     * Tidak ada konsep "selisih": angka tinggal diedit, sistem merapikan sisanya.
-     */
     public function setReceivedQty(string $inboundId, string $inboundItemId, int $targetQty, string $userId): Inbound
     {
         if ($targetQty < 0) {
@@ -703,8 +682,6 @@ class InboundService
                 return $this->getById($inboundId);
             }
 
-            // Menurunkan di bawah yang sudah ditempatkan ke rak tidak mungkin tanpa
-            // menarik stok keluar dari rak — arahkan user membatalkan penempatan dulu.
             if ($targetQty < (int) $item->putaway_qty) {
                 throw new \Exception("Jumlah diterima tidak bisa di bawah yang sudah ditempatkan ke rak ({$item->putaway_qty}). Batalkan/kurangi penempatan dulu.");
             }
@@ -714,7 +691,6 @@ class InboundService
                 throw new \Exception('Gudang ini belum memiliki Bin Inbound default.');
             }
 
-            // Sesuaikan stok Bin Inbound (+ naik / − turun). Movement mencatat pelaku.
             $this->inventoryService->adjust([
                 'item_id'            => $item->item_id,
                 'location_id'        => $inbound->location_id,
@@ -727,7 +703,6 @@ class InboundService
 
             $this->inboundRepository->updateItemReceivedQty($item->id, $delta);
 
-            // Turun → susutkan target penempatan yang belum ditempatkan.
             if ($delta < 0) {
                 $this->putawayService->reduceOpenTargetForInboundItem($item->id, -$delta);
             }
@@ -738,11 +713,6 @@ class InboundService
         });
     }
 
-    /**
-     * Hitung ulang status penerimaan dari progres putaway itemnya.
-     * Semua tuntas → COMPLETED; ada sebagian → PUTAWAY_IN_PROGRESS; nol → RECEIVED.
-     * DRAFT/CANCELLED tidak disentuh.
-     */
     private function recomputeStatus(Inbound $inbound): void
     {
         if ($inbound->items->isEmpty()
@@ -787,10 +757,6 @@ class InboundService
         });
     }
 
-    /**
-     * Batalkan (hapus) beberapa penerimaan sekaligus. Tiap dokumen dibatalkan di
-     * transaksinya sendiri; yang gagal dikumpulkan tanpa menggagalkan yang lain.
-     */
     public function cancelMany(array $ids, ?string $userId = null): array
     {
         $result = ['cancelled' => [], 'failed' => []];
@@ -835,11 +801,11 @@ class InboundService
     public function downloadBarcodes(string $id)
     {
         $inbound = Inbound::with(['items.variant'])->findOrFail($id);
-        
+
         $pages = [];
         foreach ($inbound->items as $item) {
             $qty = $item->expected_qty > 0 ? $item->expected_qty : ($item->received_qty > 0 ? $item->received_qty : 1);
-            
+
             for ($i = 0; $i < $qty; $i++) {
                 $pages[] = [
                     'sku' => $item->variant->sku ?? 'UNKNOWN',
@@ -850,7 +816,7 @@ class InboundService
 
         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('inbound::pdf.barcodes', compact('pages'))
             ->setPaper([0, 0, 141.73, 85.04], 'landscape');
-            
+
         return $pdf->stream("barcodes-inbound-{$inbound->transaction_number}.pdf");
     }
 

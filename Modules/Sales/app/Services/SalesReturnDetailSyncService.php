@@ -9,24 +9,15 @@ use Modules\Channel\Services\TikTokOrderService;
 use Modules\Sales\Models\SalesReturn;
 use Modules\Sales\Models\SalesReturnAppeal;
 
-/**
- * Menarik detail keputusan marketplace (status, alasan, nominal refund, selisih
- * ongkir) dan riwayat banding untuk retur channel online, lalu menyimpannya ke
- * SalesReturn + sales_return_appeals. Superset dari SalesReturnTrackingSyncService
- * (ikut memperbarui resi bila berubah) — idempoten & fail-soft.
- */
 class SalesReturnDetailSyncService
 {
-    /** Retur dengan keputusan MP di kategori ini dianggap sudah final, tidak perlu di-poll ulang. */
+
     public const FINAL_DECISIONS = [
         SalesReturn::MP_DECISION_REFUNDED,
         SalesReturn::MP_DECISION_CLOSED,
         SalesReturn::MP_DECISION_NOT_RETURN,
     ];
 
-    /**
-     * Sinkronkan detail untuk satu retur. Return true bila ada perubahan data.
-     */
     public function syncOne(SalesReturn $return): bool
     {
         if ($return->source !== SalesReturn::SOURCE_MARKETPLACE) {
@@ -78,7 +69,6 @@ class SalesReturnDetailSyncService
             $update['shipping_fee_return'] = $detail['shipping_fee_return'];
         }
 
-        // Superset dari SyncReturnTrackingJob: ikut perbarui resi bila belum tersinkron.
         if ($detail['tracking_number'] !== null && $detail['tracking_number'] !== $return->return_tracking_number) {
             $update['return_tracking_number'] = $detail['tracking_number'];
             $update['return_carrier'] = $detail['carrier'] ?? $return->return_carrier;
@@ -94,14 +84,6 @@ class SalesReturnDetailSyncService
         return count($update) > 1;
     }
 
-    /**
-     * @return array{
-     *     channel_status: ?string, reason_code: ?string, reason_text: ?string,
-     *     refund_amount: ?float, refund_currency: ?string,
-     *     shipping_fee_original: ?float, shipping_fee_return: ?float,
-     *     tracking_number: ?string, carrier: ?string, shipped_at: ?string,
-     * }
-     */
     protected function fetchDetail(string $channel, string $shopId, ?string $rawReturnId, string $channelOrderNo): array
     {
         $empty = [
@@ -163,11 +145,6 @@ class SalesReturnDetailSyncService
         }
     }
 
-    /**
-     * channel_return_id disimpan sebagai "source:rawId" (lihat SalesReturnService::createFromChannel).
-     *
-     * @return array{0: ?string, 1: ?string}
-     */
     protected function splitChannelReturnId(?string $channelReturnId): array
     {
         if (! $channelReturnId) {

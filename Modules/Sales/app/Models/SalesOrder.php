@@ -213,17 +213,6 @@ class SalesOrder extends Model implements HasMedia
         return $this->hasMany(SalesOrderItem::class, 'order_id');
     }
 
-    /**
-     * Sumber tunggal kondisi item "stok kosong" (SQL, level sales_order_items):
-     * qty item melebihi stok tersedia (on_hand - reserved) di gudang order.
-     *
-     * Item bundle DIKECUALIKAN: variant bundle tidak punya inventory sendiri
-     * (stok ada di komponen, dicek saat picking via cascadeBundle), jadi kalau
-     * tidak dikecualikan setiap order bundle akan salah terdeteksi stok kosong.
-     *
-     * Dipakai bersama oleh scopeHasStockShortfall (guard proses) & tab
-     * empty-stock/ready-to-process di SalesOrderRepository supaya konsisten.
-     */
     public static function shortfallItemWhereRaw(): string
     {
         return "sales_order_items.qty_in_base > COALESCE((
@@ -240,10 +229,6 @@ class SalesOrder extends Model implements HasMedia
                 )";
     }
 
-    /**
-     * Order punya minimal satu item stok kosong (bukan bundle). Dipakai oleh
-     * guard proses (Sales + Outbound) agar konsisten dengan tab empty-stock.
-     */
     public function scopeHasStockShortfall($query)
     {
         return $query->whereHas('items', fn ($q) => $q->whereRaw(static::shortfallItemWhereRaw()));
@@ -294,7 +279,7 @@ class SalesOrder extends Model implements HasMedia
 
     public function registerMediaCollections(): void
     {
-        // Foto identitas kurir (bukti pickup). 1 foto per pesanan (Fase 1).
+
         $this->addMediaCollection('courier_id')
             ->singleFile()
             ->acceptsMimeTypes(['image/png', 'image/jpeg', 'image/webp']);

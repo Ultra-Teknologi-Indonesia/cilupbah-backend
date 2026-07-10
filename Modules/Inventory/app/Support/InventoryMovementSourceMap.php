@@ -40,12 +40,8 @@ class InventoryMovementSourceMap
         'REVALUATION',
     ];
 
-    // Sumber yang berperan sebagai variance / stok nyangkut. ORDER_PICK ada di sini demi legacy —
-    // stop ditulis setelah StockService.pickSingle dinetralkan, tapi row historis tetap terlihat di
-    // tab Perlu Perhatian supaya admin bisa telusur stok nyangkut peninggalan.
     public const INVOICE_SOURCES = ['INVOICE', 'ORDER_PICK'];
 
-    // Sumber yang disembunyikan dari tab Kronologi Bersih (default view untuk staf lapangan).
     public const CLEAN_HIDDEN_SOURCES = ['INVOICE', 'ORDER_PICK'];
 
     public static function meta(string $source): array

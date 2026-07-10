@@ -54,18 +54,12 @@ class StockItemResource extends JsonResource
         return number_format($weightedSum / $totalQty, 4, '.', '');
     }
 
-    /**
-     * Baris inventory "sudah ditempatkan" = punya bin rak final (is_inbound=false).
-     * Hanya baris ini yang dihitung sebagai on_hand. bin_id NULL / Bin Inbound =
-     * "menunggu penempatan".
-     */
     protected function isPlaced($inv): bool
     {
         if ($inv->bin_id === null) {
             return false;
         }
 
-        // bin relation di-eager-load dengan is_inbound; kalau null anggap belum ditempatkan.
         return $inv->relationLoaded('bin') && $inv->bin !== null && ! (bool) $inv->bin->is_inbound;
     }
 
