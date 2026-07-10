@@ -123,7 +123,7 @@ class InboundService
             $items = $data['items'] ?? [];
             unset($data['items']);
 
-            $data['transaction_number'] = $data['reference_number'] ?? ('INB-' . Str::upper(Str::random(8)));
+            $data['transaction_number'] = $data['transaction_number'] ?? app(InventoryService::class)->generateTrfiNumber();
 
             $data['status'] = Inbound::STATUS_RECEIVED;
 
@@ -152,7 +152,7 @@ class InboundService
         return DB::transaction(function () use ($data) {
             $inbound = $this->inboundRepository->create([
                 'location_id'        => $data['location_id'],
-                'transaction_number' => $data['reference_number'] ?? ('INB-' . Str::upper(Str::random(8))),
+                'transaction_number' => $data['transaction_number'] ?? app(InventoryService::class)->generateTrfiNumber(),
                 'reference_number'   => $data['reference_number'] ?? null,
                 'type'               => Inbound::TYPE_TRANSIT_IN,
                 'source_type'        => 'transfer',
@@ -197,8 +197,7 @@ class InboundService
 
             $inbound->update([
                 'status'             => $anyShortfall ? Inbound::STATUS_PARTIAL : Inbound::STATUS_RECEIVED,
-                'reference_number'   => $data['reference_number'] ?? $inbound->reference_number,
-                'transaction_number' => $data['reference_number'] ?? $inbound->transaction_number,
+                'transaction_number' => $data['transaction_number'] ?? $data['reference_number'] ?? $inbound->transaction_number,
             ]);
 
             return $inbound->load('items');

@@ -998,7 +998,7 @@ class InventoryService
         return 'TRFO-' . str_pad((string) $this->nextBinTransferSeq(), 9, '0', STR_PAD_LEFT);
     }
 
-    protected function generateTrfiNumber(): string
+    public function generateTrfiNumber(): string
     {
         return 'TRFI-' . str_pad((string) $this->nextBinTransferSeq(), 9, '0', STR_PAD_LEFT);
     }
@@ -1636,7 +1636,7 @@ class InventoryService
                 }
             }
 
-            $receiveNumber = 'TRFI-' . now()->format('Ymd') . '-' . Str::upper(Str::random(4));
+            $receiveNumber = $this->generateTrfiNumber();
 
             $updateData = [
                 'status'         => InventoryTransfer::STATUS_RECEIVED,
@@ -1660,8 +1660,9 @@ class InventoryService
 
             if (! empty($inboundItems)) {
                 $inboundService->syncTransitReceived($transfer->id, [
-                    'location_id'      => $transfer->destination_location_id,
-                    'reference_number' => $receiveNumber,
+                    'location_id'        => $transfer->destination_location_id,
+                    'transaction_number' => $receiveNumber,
+                    'reference_number'   => $transfer->transfer_number,
                     'source_id'        => $transfer->id,
                     'expected_date'    => now()->toDateString(),
                     'created_by'       => $data['received_by'],
