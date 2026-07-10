@@ -83,6 +83,7 @@ class ChannelDownloadService
             'tiktok' => app(TikTokProductService::class)->searchProducts($shopId, $query),
             'lazada' => app(LazadaProductService::class)->searchProducts($shopId, $query),
             'shopee' => app(ShopeeProductService::class)->searchProducts($shopId, $query),
+            'woocommerce' => app(WooCommerceProductService::class)->searchProducts($shopId, $query),
             default => [],
         };
 
@@ -131,6 +132,7 @@ class ChannelDownloadService
             'tiktok' => app(TikTokProductService::class)->pullProductById($shopId, $externalProductId),
             'lazada' => app(LazadaProductService::class)->pullProductById($shopId, $externalProductId),
             'shopee' => app(ShopeeProductService::class)->pullProductById($shopId, $externalProductId),
+            'woocommerce' => app(WooCommerceProductService::class)->pullProductById($shopId, $externalProductId),
             default => false,
         };
 
@@ -161,7 +163,7 @@ class ChannelDownloadService
 
     protected function assertSupported(string $channel): void
     {
-        if (! in_array(strtolower($channel), ['tiktok', 'lazada', 'shopee'], true)) {
+        if (! in_array(strtolower($channel), ['tiktok', 'lazada', 'shopee', 'woocommerce'], true)) {
             throw new \RuntimeException("Channel '{$channel}' belum didukung untuk download", 422);
         }
     }
@@ -183,6 +185,7 @@ class ChannelDownloadService
             'tiktok' => fn (string $shopId) => app(TikTokProductService::class)->pullProducts($shopId, $onProgress),
             'lazada' => fn (string $shopId) => app(LazadaProductService::class)->pullProducts($shopId, $onProgress),
             'shopee' => fn (string $shopId) => app(ShopeeProductService::class)->pullProducts($shopId, $onProgress),
+            'woocommerce' => fn (string $shopId) => app(WooCommerceProductService::class)->pullProducts($shopId, $onProgress),
             default => throw new \RuntimeException("Channel '{$channel}' belum didukung untuk download", 422),
         };
     }

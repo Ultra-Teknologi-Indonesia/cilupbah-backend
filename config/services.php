@@ -49,6 +49,13 @@ return [
         'base_url' => env('LAZADA_BASE_URL', 'https://api.lazada.co.id/rest'),
     ],
 
+    'woocommerce' => [
+        'app_name' => env('WOOCOMMERCE_APP_NAME', 'Cilupbah'),
+        'api_version' => env('WOOCOMMERCE_API_VERSION', 'wc/v3'),
+        'callback_url' => env('WOOCOMMERCE_CALLBACK_URL'),
+        'verify_webhook_signature' => env('WOOCOMMERCE_VERIFY_WEBHOOK_SIGNATURE', true),
+    ],
+
     'shopee' => [
         'partner_id' => env('SHOPEE_PARTNER_ID'),
         'partner_key' => env('SHOPEE_PARTNER_KEY'),

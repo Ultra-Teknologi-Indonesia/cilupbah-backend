@@ -15,6 +15,7 @@ class ChannelDatabaseSeeder extends Seeder
             ['code' => 'shopee', 'name' => 'Shopee'],
             ['code' => 'tiktok', 'name' => 'TikTok Shop'],
             ['code' => 'lazada', 'name' => 'Lazada'],
+            ['code' => 'woocommerce', 'name' => 'WooCommerce'],
             ['code' => 'blibli', 'name' => 'Blibli'],
         ];
 

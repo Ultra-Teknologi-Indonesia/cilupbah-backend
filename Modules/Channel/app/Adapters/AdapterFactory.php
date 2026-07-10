@@ -12,6 +12,7 @@ class AdapterFactory
             'tiktok' => app(TikTokAdapter::class),
             'lazada' => app(LazadaAdapter::class),
             'shopee' => app(ShopeeAdapter::class),
+            'woocommerce' => app(WooCommerceAdapter::class),
 
             default => throw new \InvalidArgumentException("Unsupported channel: {$channelCode}"),
         };

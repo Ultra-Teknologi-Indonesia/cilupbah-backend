@@ -14,6 +14,7 @@ class ChannelReconcileService
             'tiktok' => fn (string $shopId) => app(TikTokProductService::class)->reconcileChannelData($shopId),
             'lazada' => fn (string $shopId) => app(LazadaProductService::class)->reconcileChannelData($shopId),
             'shopee' => fn (string $shopId) => app(ShopeeProductService::class)->reconcileChannelData($shopId),
+            'woocommerce' => fn (string $shopId) => app(WooCommerceProductService::class)->reconcileChannelData($shopId),
             default => null,
         };
     }

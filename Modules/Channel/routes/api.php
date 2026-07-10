@@ -140,6 +140,28 @@ Route::prefix('v1/shopee')->group(function () {
     });
 });
 
+Route::prefix('v1/woocommerce')->group(function () {
+
+    Route::post('callback', [\Modules\Channel\Http\Controllers\WooCommerceAuthController::class, 'callback'])->name('woocommerce.callback');
+    Route::get('webhook', [\Modules\Channel\Http\Controllers\WooCommerceWebhookController::class, 'verify'])->name('woocommerce.webhook.verify');
+    Route::post('webhook', [\Modules\Channel\Http\Controllers\WooCommerceWebhookController::class, 'handle'])->name('woocommerce.webhook');
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('auth', [\Modules\Channel\Http\Controllers\WooCommerceAuthController::class, 'redirect'])->name('woocommerce.auth');
+        Route::post('connect', [\Modules\Channel\Http\Controllers\WooCommerceAuthController::class, 'connect'])->name('woocommerce.connect');
+
+        Route::get('stores', [\Modules\Channel\Http\Controllers\WooCommerceStoreController::class, 'index'])->name('woocommerce.stores.index');
+        Route::get('stores/{id}', [\Modules\Channel\Http\Controllers\WooCommerceStoreController::class, 'show'])->whereUuid('id')->name('woocommerce.stores.show');
+        Route::delete('stores/{id}', [\Modules\Channel\Http\Controllers\WooCommerceStoreController::class, 'destroy'])->whereUuid('id')->name('woocommerce.stores.destroy');
+
+        Route::post('sync/pull', [\Modules\Channel\Http\Controllers\WooCommerceSyncApiController::class, 'pullOrders'])->name('woocommerce.sync.pull');
+        Route::post('auto-sync/pull-orders', [\Modules\Channel\Http\Controllers\WooCommerceSyncApiController::class, 'pullOrdersAll'])->name('woocommerce.sync.pull-all');
+        Route::post('sync/ship', [\Modules\Channel\Http\Controllers\WooCommerceSyncApiController::class, 'shipOrder'])->name('woocommerce.sync.ship');
+        Route::post('sync/cancel', [\Modules\Channel\Http\Controllers\WooCommerceSyncApiController::class, 'cancelOrder'])->name('woocommerce.sync.cancel');
+        Route::post('sync/products/push', [\Modules\Channel\Http\Controllers\WooCommerceSyncApiController::class, 'pushProduct'])->name('woocommerce.sync.products.push');
+    });
+});
+
 Route::middleware(['auth:sanctum'])->prefix('v1/{channel}')->group(function () {
     Route::post('download', [\Modules\Channel\Http\Controllers\ChannelDownloadController::class, 'download']);
     Route::post('download/bulk', [\Modules\Channel\Http\Controllers\ChannelDownloadController::class, 'downloadBulk']);

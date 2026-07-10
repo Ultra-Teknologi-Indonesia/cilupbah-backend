@@ -17,6 +17,11 @@ class ChannelShop extends Model
         'channel_id',
         'shop_id',
         'shop_name',
+        'store_url',
+        'consumer_key',
+        'consumer_secret',
+        'webhook_secret',
+        'external_webhook_ids',
         'shop_cipher',
         'access_token',
         'refresh_token',
@@ -39,12 +44,19 @@ class ChannelShop extends Model
         'order_sync_enabled' => 'boolean',
         'disconnected_at' => 'datetime',
         'last_synced_at' => 'datetime',
+        'consumer_key' => 'encrypted',
+        'consumer_secret' => 'encrypted',
+        'webhook_secret' => 'encrypted',
+        'external_webhook_ids' => 'array',
     ];
 
     protected $hidden = [
         'access_token',
         'refresh_token',
         'shop_cipher',
+        'consumer_key',
+        'consumer_secret',
+        'webhook_secret',
     ];
 
     public function channel(): BelongsTo
