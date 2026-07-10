@@ -29,6 +29,8 @@ class StoreUserRequest extends FormRequest
             ],
             'roles' => ['required', 'array', 'min:1'],
             'roles.*' => ['required', 'string', 'exists:roles,name', 'not_in:owner'],
+            'permissions' => ['sometimes', 'array'],
+            'permissions.*' => ['string', 'distinct', 'exists:permissions,name'],
             'nik' => ['nullable', 'string', 'max:255'],
             'warehouse_id' => ['nullable', 'bail', 'uuid', 'exists:locations,id'],
             'avatar_media_id' => ['nullable', 'bail', 'uuid', 'exists:media,uuid'],

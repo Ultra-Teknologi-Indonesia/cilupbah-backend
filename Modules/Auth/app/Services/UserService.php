@@ -83,6 +83,10 @@ class UserService
 
             $user->assignRole($data['roles']);
 
+            if (array_key_exists('permissions', $data)) {
+                $user->syncPermissions($data['permissions'] ?? []);
+            }
+
             $this->historyRepository->createHistory([
                 'actor_id' => Auth::id(),
                 'target_user_id' => $user->id,
@@ -117,6 +121,10 @@ class UserService
 
             $user->syncRoles($data['roles']);
 
+            if (array_key_exists('permissions', $data)) {
+                $user->syncPermissions($data['permissions'] ?? []);
+            }
+
             $this->historyRepository->createHistory([
                 'actor_id' => Auth::id(),
                 'target_user_id' => $user->id,
@@ -124,6 +132,32 @@ class UserService
             ]);
 
             return $user;
+        });
+    }
+
+    /**
+     * Sinkronkan hak akses langsung (override per-user) di luar izin dari role.
+     *
+     * @param  list<string>  $permissionNames
+     */
+    public function syncPermissions(string $id, array $permissionNames): User
+    {
+        return DB::transaction(function () use ($id, $permissionNames) {
+            $user = $this->userRepository->findById($id);
+
+            if ($user->hasRole('owner')) {
+                throw new HttpException(403, 'Hak akses owner tidak dapat diubah (owner punya akses penuh).');
+            }
+
+            $user->syncPermissions($permissionNames);
+
+            $this->historyRepository->createHistory([
+                'actor_id' => Auth::id(),
+                'target_user_id' => $user->id,
+                'action' => 'updated',
+            ]);
+
+            return $user->load('permissions');
         });
     }
 

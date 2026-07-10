@@ -522,7 +522,7 @@ class PutawayController extends Controller
 
     #[OA\Get(
         path: '/api/v1/putaway/bins',
-        summary: 'List available bins for putaway with capacity info',
+        summary: 'List available bins for putaway',
         security: [['bearerAuth' => []]],
         tags: ['Putaway'],
         parameters: [

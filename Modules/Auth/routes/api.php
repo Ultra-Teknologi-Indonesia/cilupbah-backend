@@ -49,6 +49,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
 
     Route::middleware('role_or_permission:owner|edit-user')->group(function () {
         Route::put('/users/{id}', [UserController::class, 'update'])->whereUuid('id')->name('auth.users.update');
+        Route::put('/users/{id}/permissions', [UserController::class, 'syncPermissions'])->whereUuid('id')->name('auth.users.permissions');
     });
 
     Route::middleware('role_or_permission:owner|delete-user')->group(function () {
@@ -67,5 +68,6 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
 
     Route::middleware('role_or_permission:owner|view-permission')->group(function () {
         Route::get('/permissions', [PermissionController::class, 'index'])->name('auth.permissions.index');
+        Route::get('/permissions/catalog', [PermissionController::class, 'catalog'])->name('auth.permissions.catalog');
     });
 });

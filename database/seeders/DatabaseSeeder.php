@@ -13,6 +13,7 @@ class DatabaseSeeder extends Seeder
     {
 
         $this->call(RoleSeeder::class);
+        $this->call(RbacPermissionSeeder::class);
 
         $owner = User::firstOrCreate(
             ['email' => 'cilupbah@ultra-fit.id'],

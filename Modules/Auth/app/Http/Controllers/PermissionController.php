@@ -53,4 +53,19 @@ class PermissionController extends Controller
 
         return $this->successResponse(PermissionResource::collection($permissions), 'Daftar hak akses berhasil dimuat.');
     }
+
+    #[OA\Get(
+        path: '/api/v1/permissions/catalog',
+        summary: 'Get grouped permission catalog for the access-rights matrix',
+        security: [['bearerAuth' => []]],
+        tags: ['Permissions'],
+        responses: [
+            new OA\Response(response: 200, description: 'Permission catalog retrieved successfully'),
+            new OA\Response(response: 401, description: 'Unauthenticated'),
+        ]
+    )]
+    public function catalog(): JsonResponse
+    {
+        return $this->successResponse($this->permissionService->getCatalog(), 'Katalog hak akses berhasil dimuat.');
+    }
 }

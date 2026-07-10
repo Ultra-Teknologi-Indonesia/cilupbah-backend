@@ -61,7 +61,7 @@ class MultiRackPicklistSeeder extends Seeder
         foreach ($binCodes as $code) {
             $bins[$code] = LocationBin::firstOrCreate(
                 ['location_id' => $warehouse->id, 'bin_final_code' => $code],
-                ['is_inbound' => false, 'max_qty' => 200]
+                ['is_inbound' => false]
             );
         }
 

@@ -17,5 +17,6 @@
     "Tax": true,
     "Purchase": true,
     "Sales": true,
-    "IssueTracker": true
+    "IssueTracker": true,
+    "Dashboard": true
 }

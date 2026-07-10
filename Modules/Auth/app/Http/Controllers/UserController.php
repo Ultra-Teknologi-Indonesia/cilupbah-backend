@@ -9,6 +9,7 @@ use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Auth\Http\Requests\StoreUserRequest;
+use Modules\Auth\Http\Requests\SyncUserPermissionsRequest;
 use Modules\Auth\Http\Requests\UpdateUserRequest;
 use Modules\Auth\Http\Resources\ProfileResource;
 use Modules\Auth\Services\UserService;
@@ -212,6 +213,27 @@ class UserController extends Controller
         $user = $this->userService->updateUser($id, $request->validated());
 
         return $this->successResponse(new ProfileResource($user), 'Pengguna berhasil diperbarui.');
+    }
+
+    #[OA\Put(
+        path: '/api/v1/users/{id}/permissions',
+        summary: 'Sync direct (per-user override) permissions',
+        security: [['bearerAuth' => []]],
+        tags: ['Users'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'User permissions synced successfully'),
+            new OA\Response(response: 403, description: 'Forbidden access'),
+            new OA\Response(response: 422, description: 'Validation error'),
+        ]
+    )]
+    public function syncPermissions(SyncUserPermissionsRequest $request, string $id): JsonResponse
+    {
+        $user = $this->userService->syncPermissions($id, $request->validated()['permissions'] ?? []);
+
+        return $this->successResponse(new ProfileResource($user), 'Hak akses pengguna berhasil diperbarui.');
     }
 
     #[OA\Delete(
