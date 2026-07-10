@@ -139,7 +139,7 @@ class InboundRepository
                 AllowedSort::field('putaway_qty', 'inbound_items.putaway_qty'),
                 AllowedSort::field('created_at', 'inbound_items.created_at'),
             )
-            ->defaultSort('created_at')
+            ->defaultSort('-created_at')
             ->paginate($perPage)
             ->appends(request()->query());
     }
