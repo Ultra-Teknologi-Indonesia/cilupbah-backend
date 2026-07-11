@@ -314,4 +314,89 @@ class ReportRepository
             ])->with('items:id,order_id,sku,description,qty_in_base,price,amount')
             ->findOrFail($orderId);
     }
+
+    /**
+     * Ambil query builder riwayat stok minus (agregat per SKU + Lokasi + Rak).
+     *
+     * Sumber: kolom `balance` di `inventory_movements` (boleh negatif setelah
+     * BE dilonggarkan). Baris dikembalikan hanya bila grup pernah minus di
+     * dalam rentang tanggal, lengkap dengan `current_balance` (movement
+     * terakhir sepanjang waktu), `normalized_at` (movement pertama pasca-
+     * minus yang balance-nya >= 0), dan `triggered_by` (user pemicu minus).
+     */
+    public function negativeStockHistoryQuery(array $filters): \Illuminate\Database\Query\Builder
+    {
+        $from = $filters['from'] ?? null;
+        $to = $filters['to'] ?? null;
+        $locationId = $filters['location_id'] ?? null;
+        $search = $filters['search'] ?? null;
+        $stillNegative = ! empty($filters['still_negative']);
+
+        $agg = DB::table('inventory_movements')
+            ->select('item_id', 'location_id', 'bin_id')
+            ->selectRaw('MIN(transaction_date) AS first_negative_at')
+            ->selectRaw('MAX(transaction_date) AS last_negative_at')
+            ->selectRaw('MIN(balance) AS min_balance')
+            ->selectRaw('COUNT(*) AS negative_movements_count')
+            ->where('balance', '<', 0)
+            ->when($from, fn ($q, $v) => $q->where('transaction_date', '>=', $v . ' 00:00:00'))
+            ->when($to, fn ($q, $v) => $q->where('transaction_date', '<=', $v . ' 23:59:59'))
+            ->when($locationId, fn ($q, $v) => $q->where('location_id', $v))
+            ->groupBy('item_id', 'location_id', 'bin_id');
+
+        $currentBalanceSql = '(SELECT balance FROM inventory_movements m2 '
+            . 'WHERE m2.item_id = agg.item_id '
+            . 'AND m2.location_id IS NOT DISTINCT FROM agg.location_id '
+            . 'AND m2.bin_id IS NOT DISTINCT FROM agg.bin_id '
+            . 'ORDER BY m2.transaction_date DESC LIMIT 1)';
+
+        $normalizedAtSql = '(SELECT MIN(m3.transaction_date) FROM inventory_movements m3 '
+            . 'WHERE m3.item_id = agg.item_id '
+            . 'AND m3.location_id IS NOT DISTINCT FROM agg.location_id '
+            . 'AND m3.bin_id IS NOT DISTINCT FROM agg.bin_id '
+            . 'AND m3.balance >= 0 '
+            . 'AND m3.transaction_date > agg.first_negative_at)';
+
+        $triggeredBySql = '(SELECT m4.created_by FROM inventory_movements m4 '
+            . 'WHERE m4.item_id = agg.item_id '
+            . 'AND m4.location_id IS NOT DISTINCT FROM agg.location_id '
+            . 'AND m4.bin_id IS NOT DISTINCT FROM agg.bin_id '
+            . 'AND m4.balance < 0 '
+            . 'AND m4.transaction_date >= agg.first_negative_at '
+            . 'ORDER BY m4.transaction_date ASC LIMIT 1)';
+
+        $enriched = DB::query()
+            ->fromSub($agg, 'agg')
+            ->leftJoin('product_variants as pv', 'pv.id', '=', 'agg.item_id')
+            ->leftJoin('products as p', 'p.id', '=', 'pv.product_id')
+            ->leftJoin('locations as l', 'l.id', '=', 'agg.location_id')
+            ->leftJoin('location_bins as lb', 'lb.id', '=', 'agg.bin_id')
+            ->select([
+                'agg.item_id',
+                'agg.location_id',
+                'agg.bin_id',
+                'agg.first_negative_at',
+                'agg.last_negative_at',
+                'agg.min_balance',
+                'agg.negative_movements_count',
+                'pv.sku',
+                'p.name as product_name',
+                'l.location_name',
+                'lb.bin_final_code',
+            ])
+            ->selectRaw($currentBalanceSql . ' AS current_balance')
+            ->selectRaw($normalizedAtSql . ' AS normalized_at')
+            ->selectRaw($triggeredBySql . ' AS triggered_by');
+
+        return DB::query()
+            ->fromSub($enriched, 'e')
+            ->select('*')
+            ->when($search, fn ($q, $v) => $q->where(function ($qq) use ($v) {
+                $like = '%' . $v . '%';
+                $qq->whereRaw('e.sku ILIKE ?', [$like])
+                    ->orWhereRaw('e.product_name ILIKE ?', [$like]);
+            }))
+            ->when($stillNegative, fn ($q) => $q->whereRaw('e.current_balance < 0'))
+            ->orderBy('e.first_negative_at');
+    }
 }

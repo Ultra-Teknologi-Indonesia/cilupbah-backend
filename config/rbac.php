@@ -148,6 +148,7 @@ return [
                 ['key' => 'laporan-penjualan', 'label' => 'Laporan Penjualan', 'actions' => ['view', 'export']],
                 ['key' => 'laporan-gudang', 'label' => 'Laporan Gudang', 'actions' => ['view', 'export']],
                 ['key' => 'laporan-retur', 'label' => 'Laporan Retur', 'actions' => ['view', 'export']],
+                ['key' => 'laporan-stok-minus', 'label' => 'Riwayat Stok Minus', 'actions' => ['view', 'export']],
             ],
         ],
     ],

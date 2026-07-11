@@ -302,6 +302,69 @@ class ReportService
         return $this->repository->lazadaOrder($orderId);
     }
 
+    /**
+     * Baris riwayat stok minus (dipaginasi) untuk endpoint list.
+     */
+    public function negativeStockReport(array $filters): array
+    {
+        $perPage = (int) ($filters['per_page'] ?? 20);
+        $paginated = $this->repository
+            ->negativeStockHistoryQuery($filters)
+            ->paginate($perPage)
+            ->appends($filters);
+
+        $rows = collect($paginated->items())
+            ->map(fn ($row) => $this->formatNegativeStockRow($row))
+            ->all();
+
+        return [
+            'items' => $rows,
+            'meta' => [
+                'current_page' => $paginated->currentPage(),
+                'last_page' => $paginated->lastPage(),
+                'per_page' => $paginated->perPage(),
+                'total' => $paginated->total(),
+            ],
+        ];
+    }
+
+    /**
+     * Semua baris (tanpa pagination) untuk keperluan export XLSX.
+     */
+    public function negativeStockRows(array $filters): array
+    {
+        return $this->repository
+            ->negativeStockHistoryQuery($filters)
+            ->get()
+            ->map(fn ($row) => $this->formatNegativeStockRow($row))
+            ->all();
+    }
+
+    private function formatNegativeStockRow(object $row): array
+    {
+        $currentBalance = isset($row->current_balance) ? (float) $row->current_balance : null;
+        $normalizedAt = $row->normalized_at ?? null;
+        $stillNegative = $currentBalance !== null && $currentBalance < 0;
+
+        return [
+            'item_id' => $row->item_id,
+            'sku' => $row->sku,
+            'product_name' => $row->product_name,
+            'location_id' => $row->location_id,
+            'location_name' => $row->location_name,
+            'bin_id' => $row->bin_id,
+            'bin_code' => $row->bin_final_code,
+            'first_negative_at' => $row->first_negative_at,
+            'last_negative_at' => $row->last_negative_at,
+            'min_balance' => (float) $row->min_balance,
+            'current_balance' => $currentBalance,
+            'normalized_at' => $normalizedAt,
+            'triggered_by' => $row->triggered_by,
+            'negative_movements_count' => (int) $row->negative_movements_count,
+            'still_negative' => $stillNegative,
+        ];
+    }
+
     private function normalizeOrderIds($orderIds): ?array
     {
         if (is_string($orderIds)) {

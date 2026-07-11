@@ -251,7 +251,7 @@ class InventoryService
             );
 
             $newOnHand = $inventory->on_hand + $data['qty'];
-            if ($newOnHand < 0) {
+            if (! config('inventory.allow_negative_stock', true) && $newOnHand < 0) {
                 throw new \Exception("Stok tidak mencukupi. Adjustment akan menyebabkan stok minus (on_hand: {$inventory->on_hand}, adjustment: {$data['qty']}).");
             }
 
@@ -291,9 +291,18 @@ class InventoryService
                 $data['serial_no'] ?? ''
             );
 
-            if (!$inboundInventory || $inboundInventory->on_hand < $data['qty']) {
-                $current = $inboundInventory ? $inboundInventory->on_hand : 0;
-                throw new \Exception("Stok di bin inbound tidak mencukupi (tersedia: {$current}, diminta: {$data['qty']}).");
+            if (! $inboundInventory) {
+                $inboundInventory = $this->inventoryRepository->findOrCreateForUpdate(
+                    $data['item_id'],
+                    $data['location_id'],
+                    $data['source_bin_id'],
+                    $data['batch_no'] ?? '',
+                    $data['serial_no'] ?? ''
+                );
+            }
+
+            if (! config('inventory.allow_negative_stock', true) && $inboundInventory->on_hand < $data['qty']) {
+                throw new \Exception("Stok di bin inbound tidak mencukupi (tersedia: {$inboundInventory->on_hand}, diminta: {$data['qty']}).");
             }
 
             $inboundInventory->on_hand -= $data['qty'];
@@ -501,9 +510,18 @@ class InventoryService
                     $itemData['serial_no'] ?? '',
                 );
 
-                if (! $source || $source->on_hand < $qty) {
-                    $current = $source ? $source->on_hand : 0;
-                    throw new \Exception("Stok di rak asal tidak mencukupi untuk produk {$itemData['item_id']} (tersedia: {$current}, diminta: {$qty}).");
+                if (! $source) {
+                    $source = $this->inventoryRepository->findOrCreateForUpdate(
+                        $itemData['item_id'],
+                        $data['location_id'],
+                        $sourceBinId,
+                        $itemData['batch_no'] ?? '',
+                        $itemData['serial_no'] ?? '',
+                    );
+                }
+
+                if (! config('inventory.allow_negative_stock', true) && $source->on_hand < $qty) {
+                    throw new \Exception("Stok di rak asal tidak mencukupi untuk produk {$itemData['item_id']} (tersedia: {$source->on_hand}, diminta: {$qty}).");
                 }
 
                 BinTransferItem::create([
@@ -552,9 +570,18 @@ class InventoryService
                     $item->serial_no ?? '',
                 );
 
-                if (! $source || $source->on_hand < $qty) {
-                    $current = $source ? $source->on_hand : 0;
-                    throw new \Exception("Stok di rak asal tidak mencukupi untuk salah satu produk (tersedia: {$current}, diminta: {$qty}). Batalkan/ubah transfer.");
+                if (! $source) {
+                    $source = $this->inventoryRepository->findOrCreateForUpdate(
+                        $item->item_id,
+                        $header->location_id,
+                        $item->source_bin_id,
+                        $item->batch_no ?? '',
+                        $item->serial_no ?? '',
+                    );
+                }
+
+                if (! config('inventory.allow_negative_stock', true) && $source->on_hand < $qty) {
+                    throw new \Exception("Stok di rak asal tidak mencukupi untuk salah satu produk (tersedia: {$source->on_hand}, diminta: {$qty}). Batalkan/ubah transfer.");
                 }
 
                 $unitCost = (float) ($source->avg_cost ?? 0);
@@ -808,9 +835,18 @@ class InventoryService
                     $item->serial_no ?? '',
                 );
 
-                if (! $transit || $transit->on_hand < $qtyTerima) {
-                    $current = $transit ? $transit->on_hand : 0;
-                    throw new \Exception("Stok transit tidak mencukupi (tersedia: {$current}, diminta: {$qtyTerima}).");
+                if (! $transit) {
+                    $transit = $this->inventoryRepository->findOrCreateForUpdate(
+                        $item->item_id,
+                        $transitLocationId,
+                        $transitBinId,
+                        $item->batch_no ?? '',
+                        $item->serial_no ?? '',
+                    );
+                }
+
+                if (! config('inventory.allow_negative_stock', true) && $transit->on_hand < $qtyTerima) {
+                    throw new \Exception("Stok transit tidak mencukupi (tersedia: {$transit->on_hand}, diminta: {$qtyTerima}).");
                 }
 
                 $unitCost = (float) ($transit->avg_cost ?? 0);
@@ -1135,9 +1171,18 @@ class InventoryService
                     $itemData['serial_no'] ?? ''
                 );
 
-                if (! $sourceInventory || $sourceInventory->available < $itemData['qty']) {
-                    $current = $sourceInventory ? $sourceInventory->available : 0;
-                    throw new \Exception("Stok tidak mencukupi di lokasi asal (tersedia: {$current}, diminta: {$itemData['qty']}).");
+                if (! $sourceInventory) {
+                    $sourceInventory = $this->inventoryRepository->findOrCreateForUpdate(
+                        $itemData['item_id'],
+                        $data['source_location_id'],
+                        $itemData['source_bin_id'] ?? null,
+                        $itemData['batch_no'] ?? '',
+                        $itemData['serial_no'] ?? ''
+                    );
+                }
+
+                if (! config('inventory.allow_negative_stock', true) && $sourceInventory->available < $itemData['qty']) {
+                    throw new \Exception("Stok tidak mencukupi di lokasi asal (tersedia: {$sourceInventory->available}, diminta: {$itemData['qty']}).");
                 }
 
                 $sourceInventory->on_hand -= $itemData['qty'];
@@ -1245,7 +1290,7 @@ class InventoryService
             ->get();
 
         $totalAvailable = (int) $rows->sum('available');
-        if ($totalAvailable < $needed) {
+        if (! config('inventory.allow_negative_stock', true) && $totalAvailable < $needed) {
             $sku = optional($item->product)->sku ?? $item->item_id;
             throw new \Exception("Stok tidak mencukupi di gudang asal untuk SKU {$sku} (butuh {$needed}, tersedia {$totalAvailable}).");
         }
@@ -1854,9 +1899,16 @@ class InventoryService
                 $data['bin_id'] ?? null,
             );
 
-            if (!$sourceInventory || $sourceInventory->on_hand < $data['qty_to_split']) {
-                $current = $sourceInventory ? $sourceInventory->on_hand : 0;
-                throw new \Exception("Stok tidak mencukupi untuk split (tersedia: {$current}, diminta: {$data['qty_to_split']}).");
+            if (! $sourceInventory) {
+                $sourceInventory = $this->inventoryRepository->findOrCreateForUpdate(
+                    $data['source_item_id'],
+                    $data['location_id'],
+                    $data['bin_id'] ?? null,
+                );
+            }
+
+            if (! config('inventory.allow_negative_stock', true) && $sourceInventory->on_hand < $data['qty_to_split']) {
+                throw new \Exception("Stok tidak mencukupi untuk split (tersedia: {$sourceInventory->on_hand}, diminta: {$data['qty_to_split']}).");
             }
 
             $sourceInventory->on_hand -= $data['qty_to_split'];

@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Maatwebsite\Excel\Facades\Excel;
+use Modules\Report\Exports\NegativeStockReportExport;
 use Modules\Report\Http\Requests\BarcodeReportRequest;
 use Modules\Report\Http\Requests\HppReportRequest;
 use Modules\Report\Http\Requests\PenyesuaianStokPdfRequest;
@@ -340,6 +342,70 @@ class ReportController extends Controller
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => "{$disposition}; filename=\"{$filename}\"",
         ]);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/negative-stock',
+        summary: 'Riwayat Stok Minus per SKU + Lokasi + Rak (dari inventory_movements.balance < 0)',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        parameters: [
+            new OA\Parameter(name: 'from', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'to', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'location_id', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'uuid')),
+            new OA\Parameter(name: 'search', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'still_negative', in: 'query', required: false, schema: new OA\Schema(type: 'boolean')),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+        ],
+        responses: [new OA\Response(response: 200, description: 'Daftar riwayat stok minus')]
+    )]
+    public function negativeStock(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'from' => 'nullable|date',
+            'to' => 'nullable|date|after_or_equal:from',
+            'location_id' => 'nullable|uuid',
+            'search' => 'nullable|string|max:200',
+            'still_negative' => 'nullable|boolean',
+            'per_page' => 'nullable|integer|min:1|max:200',
+        ]);
+
+        $result = $this->reportService->negativeStockReport($validated);
+
+        return $this->successResponse(
+            $result['items'],
+            'Riwayat stok minus berhasil diambil.',
+            200,
+            $result['meta'],
+        );
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/negative-stock/export',
+        summary: 'Export Riwayat Stok Minus ke XLSX',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
+    )]
+    public function negativeStockExport(Request $request)
+    {
+        $validated = $request->validate([
+            'from' => 'nullable|date',
+            'to' => 'nullable|date|after_or_equal:from',
+            'location_id' => 'nullable|uuid',
+            'search' => 'nullable|string|max:200',
+            'still_negative' => 'nullable|boolean',
+        ]);
+
+        $export = new NegativeStockReportExport($this->reportService, $validated);
+
+        $filename = sprintf(
+            'riwayat-stok-minus_%s_%s.xlsx',
+            $validated['from'] ?? 'semua',
+            $validated['to'] ?? now()->format('Y-m-d'),
+        );
+
+        return Excel::download($export, $filename);
     }
 
     public function lazadaGetDocument(Request $request): JsonResponse

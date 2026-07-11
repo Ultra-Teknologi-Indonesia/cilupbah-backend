@@ -89,11 +89,20 @@ class SyncTransferDraftItemJob implements ShouldQueue
             $item->serial_no ?? '',
         );
 
-        if (!$sourceInventory || $sourceInventory->available < $this->qty) {
-            $current = $sourceInventory ? $sourceInventory->available : 0;
+        if (!$sourceInventory) {
+            $sourceInventory = $inventoryRepository->findOrCreateForUpdate(
+                $item->item_id,
+                $transfer->source_location_id,
+                $item->source_bin_id,
+                $item->batch_no ?? '',
+                $item->serial_no ?? '',
+            );
+        }
+
+        if (!config('inventory.allow_negative_stock', true) && $sourceInventory->available < $this->qty) {
             $item->update([
                 'sync_status' => 'FAILED',
-                'sync_error' => "Stok tidak mencukupi (tersedia: {$current}, diminta: {$this->qty})",
+                'sync_error' => "Stok tidak mencukupi (tersedia: {$sourceInventory->available}, diminta: {$this->qty})",
             ]);
             return;
         }
@@ -157,11 +166,20 @@ class SyncTransferDraftItemJob implements ShouldQueue
             $item->serial_no ?? '',
         );
 
-        if ($delta > 0 && (!$sourceInventory || $sourceInventory->available < $delta)) {
-            $current = $sourceInventory ? $sourceInventory->available : 0;
+        if ($delta > 0 && !$sourceInventory) {
+            $sourceInventory = $inventoryRepository->findOrCreateForUpdate(
+                $item->item_id,
+                $transfer->source_location_id,
+                $item->source_bin_id,
+                $item->batch_no ?? '',
+                $item->serial_no ?? '',
+            );
+        }
+
+        if ($delta > 0 && !config('inventory.allow_negative_stock', true) && $sourceInventory && $sourceInventory->available < $delta) {
             $item->update([
                 'sync_status' => 'FAILED',
-                'sync_error' => "Stok tidak mencukupi untuk penambahan (tersedia: {$current}, diminta: +{$delta})",
+                'sync_error' => "Stok tidak mencukupi untuk penambahan (tersedia: {$sourceInventory->available}, diminta: +{$delta})",
             ]);
             return;
         }

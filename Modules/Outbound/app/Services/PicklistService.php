@@ -407,7 +407,7 @@ class PicklistService
 
         $available = (int) $inventory->on_hand;
 
-        if ($available <= 0) {
+        if (! config('inventory.allow_negative_stock', true) && $available <= 0) {
             throw new OutboundValidationException("Stok tidak cukup di rak {$bin->bin_final_code}. Tersedia: {$available}. Silahkan pilih rak lain.");
         }
 
@@ -693,10 +693,20 @@ class PicklistService
             ->first();
 
         if (!$inventory) {
-            throw new OutboundValidationException("SKU ini tidak ditemukan di rak {$bin->bin_final_code}. Silahkan pilih rak lain.");
+            if (! config('inventory.allow_negative_stock', true)) {
+                throw new OutboundValidationException("SKU ini tidak ditemukan di rak {$bin->bin_final_code}. Silahkan pilih rak lain.");
+            }
+            $inventory = Inventory::create([
+                'item_id' => $item->item_id,
+                'location_id' => $picklist->location_id,
+                'bin_id' => $bin->id,
+                'on_hand' => 0,
+                'reserved' => 0,
+                'available' => 0,
+            ]);
         }
 
-        if ($inventory->on_hand < $qty) {
+        if (! config('inventory.allow_negative_stock', true) && $inventory->on_hand < $qty) {
             throw new OutboundValidationException("Stok tidak cukup di rak {$bin->bin_final_code}. Tersedia: {$inventory->on_hand}, dibutuhkan: {$qty}. Silahkan pilih rak lain.");
         }
 

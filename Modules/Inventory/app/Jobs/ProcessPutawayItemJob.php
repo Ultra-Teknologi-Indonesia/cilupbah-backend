@@ -72,9 +72,18 @@ class ProcessPutawayItemJob implements ShouldQueue
                     $putawayItem->serial_no ?? ''
                 );
 
-                if (!$sourceInventory || $sourceInventory->on_hand < $qty) {
-                    $current = $sourceInventory ? $sourceInventory->on_hand : 0;
-                    throw new \RuntimeException("Stok di source bin tidak mencukupi (tersedia: {$current}, diminta: {$qty}).");
+                if (!$sourceInventory) {
+                    $sourceInventory = $inventoryRepository->findOrCreateForUpdate(
+                        $putawayItem->item_id,
+                        $putaway->location_id,
+                        $putawayItem->source_bin_id,
+                        $putawayItem->batch_no ?? '',
+                        $putawayItem->serial_no ?? '',
+                    );
+                }
+
+                if (!config('inventory.allow_negative_stock', true) && $sourceInventory->on_hand < $qty) {
+                    throw new \RuntimeException("Stok di source bin tidak mencukupi (tersedia: {$sourceInventory->on_hand}, diminta: {$qty}).");
                 }
 
                 $unitCost = (float) ($sourceInventory->avg_cost ?? 0);

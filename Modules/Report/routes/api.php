@@ -30,5 +30,12 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('reports/penyesuaian-stok/pdf', [ReportController::class, 'penyesuaianStokPdf'])->name('reports.penyesuaian-stok.pdf');
     });
 
+    Route::middleware('role_or_permission:owner|view-laporan-stok-minus')->group(function () {
+        Route::get('reports/negative-stock', [ReportController::class, 'negativeStock'])->name('reports.negative-stock');
+    });
+    Route::middleware('role_or_permission:owner|export-laporan-stok-minus')->group(function () {
+        Route::get('reports/negative-stock/export', [ReportController::class, 'negativeStockExport'])->name('reports.negative-stock.export');
+    });
+
     Route::get('lazada/get-document', [ReportController::class, 'lazadaGetDocument'])->name('lazada.get-document');
 });
