@@ -42,12 +42,51 @@ class AppServiceProvider extends ServiceProvider
                 return $this;
             }
 
-            $columnsStr = collect($columns)
-                ->map(fn ($column) => "COALESCE({$column}::text, '')")
-                ->implode(" || ' ' || ");
+            $localColumns = [];
+            $relationColumns = [];
 
-            $this->whereRaw("to_tsvector('indonesian', {$columnsStr}) @@ websearch_to_tsquery('indonesian', ?)", [$search])
-                 ->orderByRaw("ts_rank_cd(to_tsvector('indonesian', {$columnsStr}), websearch_to_tsquery('indonesian', ?)) DESC", [$search]);
+            foreach ($columns as $column) {
+                if (str_contains($column, '.')) {
+                    [$relation, $col] = explode('.', $column, 2);
+                    $relationColumns[$relation][] = $col;
+                } else {
+                    $localColumns[] = $column;
+                }
+            }
+
+            if (empty($relationColumns)) {
+                $columnsStr = collect($localColumns)
+                    ->map(fn ($column) => "COALESCE({$column}::text, '')")
+                    ->implode(" || ' ' || ");
+
+                $this->whereRaw("to_tsvector('indonesian', {$columnsStr}) @@ websearch_to_tsquery('indonesian', ?)", [$search])
+                     ->orderByRaw("ts_rank_cd(to_tsvector('indonesian', {$columnsStr}), websearch_to_tsquery('indonesian', ?)) DESC", [$search]);
+            } else {
+                $this->where(function ($query) use ($localColumns, $relationColumns, $search) {
+                    if (!empty($localColumns)) {
+                        $columnsStr = collect($localColumns)
+                            ->map(fn ($col) => "COALESCE({$col}::text, '')")
+                            ->implode(" || ' ' || ");
+                        $query->whereRaw("to_tsvector('indonesian', {$columnsStr}) @@ websearch_to_tsquery('indonesian', ?)", [$search]);
+                    }
+
+                    foreach ($relationColumns as $relation => $cols) {
+                        $colsStr = collect($cols)
+                            ->map(fn ($col) => "COALESCE({$col}::text, '')")
+                            ->implode(" || ' ' || ");
+                        $query->orWhereHas($relation, function ($sub) use ($colsStr, $search) {
+                            $sub->whereRaw("to_tsvector('indonesian', {$colsStr}) @@ websearch_to_tsquery('indonesian', ?)", [$search]);
+                        });
+                    }
+                });
+
+                if (!empty($localColumns)) {
+                    $columnsStr = collect($localColumns)
+                        ->map(fn ($col) => "COALESCE({$col}::text, '')")
+                        ->implode(" || ' ' || ");
+                    $this->orderByRaw("ts_rank_cd(to_tsvector('indonesian', {$columnsStr}), websearch_to_tsquery('indonesian', ?)) DESC", [$search]);
+                }
+            }
 
             return $this;
         });

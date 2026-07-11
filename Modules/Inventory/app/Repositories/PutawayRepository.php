@@ -62,15 +62,7 @@ class PutawayRepository
                 AllowedFilter::exact('assigned_to'),
                 AllowedFilter::exact('source_type'),
             )
-            ->when(request()->query('search'), function ($query, $search) {
-                $query->where(function ($q) use ($search) {
-                    $q->where('putaway_no', 'ilike', "%{$search}%")
-                      ->orWhereHas('sources', function ($sub) use ($search) {
-                          $sub->where('reference_number', 'ilike', "%{$search}%")
-                              ->orWhere('transaction_number', 'ilike', "%{$search}%");
-                      });
-                });
-            })
+            ->allowedSearch('putaway_no', 'sources.reference_number', 'sources.transaction_number')
             ->allowedSorts('created_at', 'started_at', 'completed_at')
             ->defaultSort('-created_at')
             ->paginate(request('per_page', $limit))
@@ -85,15 +77,7 @@ class PutawayRepository
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('assigned_to'),
             )
-            ->when(request()->query('search'), function ($query, $search) {
-                $query->where(function ($q) use ($search) {
-                    $q->where('putaway_no', 'ilike', "%{$search}%")
-                      ->orWhereHas('sources', function ($sub) use ($search) {
-                          $sub->where('reference_number', 'ilike', "%{$search}%")
-                              ->orWhere('transaction_number', 'ilike', "%{$search}%");
-                      });
-                });
-            })
+            ->allowedSearch('putaway_no', 'sources.reference_number', 'sources.transaction_number')
             ->allowedSorts('created_at', 'started_at')
             ->defaultSort('-created_at')
             ->paginate(request('per_page', $limit))
