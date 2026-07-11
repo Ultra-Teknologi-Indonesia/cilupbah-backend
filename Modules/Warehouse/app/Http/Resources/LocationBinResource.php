@@ -22,8 +22,32 @@ class LocationBinResource extends JsonResource
             'is_stock_acknowledged' => (bool) $this->is_stock_acknowledged,
             'is_large_bin' => (bool) $this->is_large_bin,
             'category' => $this->category,
+            'skus' => $this->buildSkuSummary(),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];
+    }
+
+    protected function buildSkuSummary(): array
+    {
+        if (! $this->relationLoaded('activeInventories')) {
+            return [];
+        }
+
+        return $this->activeInventories
+            ->groupBy('item_id')
+            ->map(function ($group) {
+                $variant = $group->first()->product;
+
+                return [
+                    'variant_id' => $group->first()->item_id,
+                    'sku' => $variant?->sku,
+                    'name' => $variant?->product?->name,
+                    'on_hand' => (int) $group->sum('on_hand'),
+                    'reserved' => (int) $group->sum('reserved'),
+                ];
+            })
+            ->values()
+            ->all();
     }
 }

@@ -241,6 +241,11 @@ class InventoryService
     public function adjust(array $data): Inventory
     {
         $inventory = DB::transaction(function () use ($data) {
+            if (! empty($data['bin_id']) && (int) $data['qty'] > 0) {
+                app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
+                    ->assertBinFitsSku($data['bin_id'], $data['item_id']);
+            }
+
             $inventory = $this->inventoryRepository->findOrCreateForUpdate(
                 $data['item_id'],
                 $data['location_id'],
@@ -282,6 +287,9 @@ class InventoryService
     {
         return DB::transaction(function () use ($data) {
             $transactionNumber = 'PUT-' . Str::upper(Str::random(8));
+
+            app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
+                ->assertBinFitsSku($data['destination_bin_id'], $data['item_id']);
 
             $inboundInventory = $this->inventoryRepository->findExactForUpdate(
                 $data['item_id'],
@@ -391,6 +399,9 @@ class InventoryService
                 'transaction_date'   => now(),
                 'created_by'         => $data['created_by'],
             ]);
+
+            app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
+                ->assertBinFitsSku($data['to_bin_id'], $data['item_id']);
 
             $to = $this->inventoryRepository->findOrCreateForUpdate(
                 $data['item_id'],
@@ -865,6 +876,9 @@ class InventoryService
                     'transaction_date'   => now(),
                     'created_by'         => $data['received_by'],
                 ]);
+
+                app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
+                    ->assertBinFitsSku($destBinId, $item->item_id);
 
                 $dest = $this->inventoryRepository->findOrCreateForUpdate(
                     $item->item_id,
@@ -1656,6 +1670,11 @@ class InventoryService
                 ]);
 
                 if ($receivedQty > 0) {
+                    if (! empty($item->destination_bin_id)) {
+                        app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
+                            ->assertBinFitsSku($item->destination_bin_id, $item->item_id);
+                    }
+
                     $destInventory = $this->inventoryRepository->findOrCreateForUpdate(
                         $item->item_id,
                         $transfer->destination_location_id,

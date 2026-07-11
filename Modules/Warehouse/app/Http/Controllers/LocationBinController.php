@@ -68,13 +68,17 @@ class LocationBinController extends Controller
     )]
     public function index(string $locationId): JsonResponse
     {
-        $paginator = $this->binService->getByLocationPaginated($locationId);
+        try {
+            $paginator = $this->binService->getByLocationPaginated($locationId);
 
-        $paginator->setCollection(
-            LocationBinResource::collection($paginator->getCollection())->collection
-        );
+            $paginator->setCollection(
+                LocationBinResource::collection($paginator->getCollection())->collection
+            );
 
-        return $this->successPaginatedResponse($paginator, 'Daftar bin berhasil diambil');
+            return $this->successPaginatedResponse($paginator, 'Daftar bin berhasil diambil');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 500);
+        }
     }
 
     #[OA\Get(

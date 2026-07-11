@@ -5,7 +5,11 @@ namespace Modules\Warehouse\Models;
 use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Modules\Inventory\Models\Inventory;
+use Modules\Product\Models\ProductVariant;
 
 class LocationBin extends Model
 {
@@ -44,5 +48,33 @@ class LocationBin extends Model
     public function zone(): BelongsTo
     {
         return $this->belongsTo(LocationZone::class, 'zone_id');
+    }
+
+    public function inventories(): HasMany
+    {
+        return $this->hasMany(Inventory::class, 'bin_id');
+    }
+
+    public function activeInventories(): HasMany
+    {
+        return $this->hasMany(Inventory::class, 'bin_id')
+            ->where(function ($q) {
+                $q->where('on_hand', '>', 0)->orWhere('reserved', '>', 0);
+            });
+    }
+
+    public function productVariants(): HasManyThrough
+    {
+        return $this->hasManyThrough(
+            ProductVariant::class,
+            Inventory::class,
+            'bin_id',
+            'id',
+            'id',
+            'item_id'
+        )->where(function ($q) {
+            $q->where('inventories.on_hand', '>', 0)
+                ->orWhere('inventories.reserved', '>', 0);
+        });
     }
 }

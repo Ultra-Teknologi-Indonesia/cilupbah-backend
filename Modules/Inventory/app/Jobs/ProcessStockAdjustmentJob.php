@@ -12,6 +12,7 @@ use Modules\Finance\Services\AutoJournalService;
 use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
+use Modules\Warehouse\Services\BinOccupancyGuard;
 use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -48,6 +49,10 @@ class ProcessStockAdjustmentJob implements ShouldQueue
 
             $this->withStockLock($item->item_id, $adjustment->location_id, function () use ($item, $adjustment, $inventoryRepository, $movementRepository, &$totalSignedValue) {
                 DB::transaction(function () use ($item, $adjustment, $inventoryRepository, $movementRepository, &$totalSignedValue) {
+                    if (! empty($item->bin_id) && (float) $item->difference_qty > 0) {
+                        app(BinOccupancyGuard::class)->assertBinFitsSku($item->bin_id, $item->item_id);
+                    }
+
                     $inventory = $inventoryRepository->findOrCreateForUpdate(
                         $item->item_id,
                         $adjustment->location_id,

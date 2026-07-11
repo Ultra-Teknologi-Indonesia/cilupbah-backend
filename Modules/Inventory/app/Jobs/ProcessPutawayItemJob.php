@@ -16,6 +16,7 @@ use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundItem;
 use Modules\Inventory\Models\PutawayItemSource;
+use Modules\Warehouse\Services\BinOccupancyGuard;
 use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
 
@@ -63,6 +64,8 @@ class ProcessPutawayItemJob implements ShouldQueue
                 $putaway = $putawayItem->putaway;
                 $destinationBinId = $this->data['destination_bin_id'];
                 $transactionNumber = $putaway->putaway_no;
+
+                app(BinOccupancyGuard::class)->assertBinFitsSku($destinationBinId, $putawayItem->item_id);
 
                 $sourceInventory = $inventoryRepository->findExactForUpdate(
                     $putawayItem->item_id,

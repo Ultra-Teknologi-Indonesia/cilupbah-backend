@@ -21,14 +21,18 @@ class LocationBinRepository
 
     public function findByLocationPaginated(string $locationId): LengthAwarePaginator
     {
-        return QueryBuilder::for(LocationBin::where('location_id', $locationId))
+        $base = LocationBin::where('location_id', $locationId)
+            ->with(['activeInventories.product.product']);
+
+        return QueryBuilder::for($base)
             ->allowedSearch(
                 'bin_final_code',
                 'floor_code',
                 'row_code',
                 'column_code',
                 'bin_code',
-                'category'
+                'category',
+                'productVariants.sku'
             )
             ->allowedFilters(
                 AllowedFilter::exact('is_inbound'),
@@ -59,7 +63,8 @@ class LocationBinRepository
                 'row_code',
                 'column_code',
                 'bin_code',
-                'category'
+                'category',
+                'productVariants.sku'
             )
             ->allowedFilters(
                 AllowedFilter::exact('is_inbound'),
