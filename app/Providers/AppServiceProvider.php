@@ -45,10 +45,18 @@ class AppServiceProvider extends ServiceProvider
             $localColumns = [];
             $relationColumns = [];
 
+            $model = $this->getModel();
+            $baseTable = $model->getTable();
+
             foreach ($columns as $column) {
                 if (str_contains($column, '.')) {
-                    [$relation, $col] = explode('.', $column, 2);
-                    $relationColumns[$relation][] = $col;
+                    [$prefix, $col] = explode('.', $column, 2);
+
+                    if ($prefix === $baseTable || ! method_exists($model, $prefix)) {
+                        $localColumns[] = $column;
+                    } else {
+                        $relationColumns[$prefix][] = $col;
+                    }
                 } else {
                     $localColumns[] = $column;
                 }
