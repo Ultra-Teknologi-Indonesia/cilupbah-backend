@@ -42,14 +42,10 @@ class SalesReturnDetailSyncService
         if ($detail['channel_status'] !== null) {
             $decision = SalesReturn::normalizeMarketplaceDecision($channel, $detail['channel_status']);
 
-            // Override ke NOT_RETURN untuk kasus Failed Delivery (RTS — buyer tidak
-            // pernah menerima barang, retur otomatis oleh kurir).
             if ($return->reason_category === SalesReturn::REASON_CATEGORY_FAILED_DELIVERY) {
                 $decision = SalesReturn::MP_DECISION_NOT_RETURN;
             }
 
-            // Shopee edge case: CLOSED + refund_amount=0 = seller-win dispute
-            // → klasifikasi sebagai NOT_RETURN.
             if (
                 $channel === 'shopee'
                 && $decision === SalesReturn::MP_DECISION_CLOSED
