@@ -1270,7 +1270,7 @@ class InventoryService
                     continue;
                 }
 
-                $this->assignAndReserveItemLifo($transfer, $item, $data['approved_by']);
+                $this->assignAndReserveItemFifo($transfer, $item, $data['approved_by']);
             }
 
             $transfer->update([
@@ -1288,7 +1288,7 @@ class InventoryService
         return $transfer;
     }
 
-    protected function assignAndReserveItemLifo(InventoryTransfer $transfer, InventoryTransferItem $item, string $actor): void
+    protected function assignAndReserveItemFifo(InventoryTransfer $transfer, InventoryTransferItem $item, string $actor): void
     {
         $needed = (int) $item->qty;
         if ($needed <= 0) {
@@ -1299,7 +1299,7 @@ class InventoryService
             ->where('location_id', $transfer->source_location_id)
             ->whereNotNull('bin_id')
             ->where('available', '>', 0)
-            ->orderByDesc('created_at')
+            ->orderBy('created_at')
             ->lockForUpdate()
             ->get();
 
