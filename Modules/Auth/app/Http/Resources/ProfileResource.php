@@ -26,6 +26,7 @@ class ProfileResource extends JsonResource
                 ? []
                 : $this->getDirectPermissions()->pluck('name'),
             'nik' => $this->nik,
+            'phone' => $this->phone,
             'warehouse_id' => $this->warehouse_id,
             'locations' => $this->location_tree ?? collect(),
             'avatar_media_id' => $this->avatar_media_id,

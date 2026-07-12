@@ -16,8 +16,14 @@ Route::prefix('v1/auth')->group(function () {
 
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/profile', [AuthController::class, 'profile'])->name('auth.profile');
+    Route::put('/profile', [AuthController::class, 'updateProfile'])->name('auth.profile.update');
     Route::put('/profile/avatar', [AuthController::class, 'updateAvatar'])->name('auth.profile.avatar');
     Route::put('/profile/password', [AuthController::class, 'changePassword'])->name('auth.profile.password');
+    Route::get('/profile/histories', [AuthController::class, 'myHistories'])->name('auth.profile.histories');
+    Route::get('/profile/login-histories', [AuthController::class, 'myLoginHistories'])->name('auth.profile.login-histories');
+    Route::get('/profile/sessions', [AuthController::class, 'sessions'])->name('auth.profile.sessions');
+    Route::post('/profile/sessions/{id}/revoke', [AuthController::class, 'revokeSession'])->name('auth.profile.sessions.revoke');
+    Route::post('/profile/sessions/revoke-others', [AuthController::class, 'revokeOtherSessions'])->name('auth.profile.sessions.revoke-others');
 
     Route::get('/systemsetting/users', [UserController::class, 'lookup'])->name('auth.users.lookup');
 

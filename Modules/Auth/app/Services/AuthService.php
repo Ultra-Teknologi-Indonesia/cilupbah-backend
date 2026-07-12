@@ -5,6 +5,8 @@ namespace Modules\Auth\Services;
 use App\Models\LoginHistory;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Modules\Auth\Repositories\UserRepository;
 
@@ -70,5 +72,70 @@ class AuthService
         $this->userRepository->update($user, ['password' => Hash::make($newPassword)]);
 
         return true;
+    }
+
+    public function updateProfile(User $user, array $data): User
+    {
+        $updateData = [];
+        foreach (['name', 'nik', 'phone'] as $field) {
+            if (array_key_exists($field, $data)) {
+                $updateData[$field] = $data[$field] === '' ? null : $data[$field];
+            }
+        }
+
+        if (! empty($updateData)) {
+            $this->userRepository->update($user, $updateData);
+        }
+
+        return $user->refresh()->load('roles', 'permissions');
+    }
+
+    public function listSessions(User $user, ?string $currentTokenId): Collection
+    {
+        return DB::table('personal_access_tokens')
+            ->where('tokenable_type', $user->getMorphClass())
+            ->where('tokenable_id', $user->id)
+            ->orderByDesc('last_used_at')
+            ->orderByDesc('created_at')
+            ->get(['id', 'name', 'last_used_at', 'created_at', 'expires_at'])
+            ->map(function ($row) use ($currentTokenId) {
+                return [
+                    'id' => (string) $row->id,
+                    'name' => $row->name,
+                    'last_used_at' => $row->last_used_at,
+                    'created_at' => $row->created_at,
+                    'expires_at' => $row->expires_at,
+                    'is_current' => $currentTokenId !== null && (string) $row->id === $currentTokenId,
+                ];
+            });
+    }
+
+    public function revokeSession(User $user, string $tokenId, ?string $currentTokenId): void
+    {
+        if ($currentTokenId !== null && $tokenId === $currentTokenId) {
+            throw new \Symfony\Component\HttpKernel\Exception\HttpException(
+                422,
+                'Tidak dapat mencabut sesi saat ini di sini — gunakan tombol Keluar.'
+            );
+        }
+
+        DB::table('personal_access_tokens')
+            ->where('tokenable_type', $user->getMorphClass())
+            ->where('tokenable_id', $user->id)
+            ->where('id', $tokenId)
+            ->delete();
+    }
+
+    public function revokeOtherSessions(User $user, ?string $currentTokenId): int
+    {
+        $query = DB::table('personal_access_tokens')
+            ->where('tokenable_type', $user->getMorphClass())
+            ->where('tokenable_id', $user->id);
+
+        if ($currentTokenId !== null) {
+            $query->where('id', '!=', $currentTokenId);
+        }
+
+        return $query->delete();
     }
 }

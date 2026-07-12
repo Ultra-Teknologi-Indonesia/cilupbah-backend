@@ -3,11 +3,15 @@
 namespace Modules\Auth\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\LoginHistoryResource;
+use App\Http\Resources\UserHistoryResource;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Auth\Http\Requests\ChangePasswordRequest;
 use Modules\Auth\Http\Requests\LoginRequest;
 use Modules\Auth\Http\Requests\UpdateAvatarRequest;
+use Modules\Auth\Http\Requests\UpdateProfileRequest;
 use Modules\Auth\Http\Resources\ProfileResource;
 use Modules\Auth\Services\AuthService;
 use Modules\Auth\Services\UserService;
@@ -144,24 +148,83 @@ class AuthController extends Controller
         );
     }
 
-    public function changePassword(Request $request): JsonResponse
+    public function changePassword(ChangePasswordRequest $request): JsonResponse
     {
-        $request->validate([
-            'current_password' => 'required|string',
-            'new_password'     => 'required|string|min:8|confirmed',
-        ]);
-
         $changed = $this->authService->changePassword(
             $request->user(),
-            $request->current_password,
-            $request->new_password
+            $request->input('current_password'),
+            $request->input('new_password')
         );
 
         if (! $changed) {
-            return $this->errorResponse('Password lama tidak sesuai.', 422);
+            return $this->errorResponse('Kata sandi saat ini tidak sesuai.', 422);
         }
 
-        return $this->successResponse(null, 'Password berhasil diubah.');
+        return $this->successResponse(null, 'Kata sandi berhasil diubah.');
+    }
+
+    public function updateProfile(UpdateProfileRequest $request): JsonResponse
+    {
+        $user = $this->authService->updateProfile($request->user(), $request->validated());
+
+        return $this->successResponse(
+            new ProfileResource($this->userService->attachProfileContext($user)),
+            'Profil berhasil diperbarui.'
+        );
+    }
+
+    public function myHistories(Request $request): JsonResponse
+    {
+        $histories = $this->userService->getUserHistories($request->user()->id);
+
+        return $this->successPaginatedResponse(
+            UserHistoryResource::collection($histories)
+        );
+    }
+
+    public function myLoginHistories(Request $request): JsonResponse
+    {
+        $histories = $this->userService->getLoginHistories($request->user()->id);
+
+        return $this->successPaginatedResponse(
+            LoginHistoryResource::collection($histories)
+        );
+    }
+
+    public function sessions(Request $request): JsonResponse
+    {
+        $currentTokenId = $this->currentTokenId($request);
+        $sessions = $this->authService->listSessions($request->user(), $currentTokenId);
+
+        return $this->successResponse($sessions, 'Sesi aktif berhasil dimuat.');
+    }
+
+    public function revokeSession(Request $request, string $id): JsonResponse
+    {
+        $currentTokenId = $this->currentTokenId($request);
+        $this->authService->revokeSession($request->user(), $id, $currentTokenId);
+
+        return $this->successResponse(null, 'Sesi berhasil dicabut.');
+    }
+
+    public function revokeOtherSessions(Request $request): JsonResponse
+    {
+        $currentTokenId = $this->currentTokenId($request);
+        $count = $this->authService->revokeOtherSessions($request->user(), $currentTokenId);
+
+        return $this->successResponse(
+            ['revoked' => $count],
+            $count > 0
+                ? "Berhasil mencabut {$count} sesi lain."
+                : 'Tidak ada sesi lain untuk dicabut.'
+        );
+    }
+
+    protected function currentTokenId(Request $request): ?string
+    {
+        $token = $request->user()?->currentAccessToken();
+
+        return $token?->id ? (string) $token->id : null;
     }
 
     #[OA\Post(
