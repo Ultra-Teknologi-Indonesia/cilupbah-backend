@@ -8,17 +8,17 @@ use Modules\Product\Models\ProductVariant;
 
 class ProductVariantObserver
 {
-    private const PRICE_FIELDS = ['sell_price'];
+    private const SYNC_FIELDS = ['sell_price', 'weight'];
 
     public function updated(ProductVariant $variant): void
     {
         $changed = array_keys($variant->getChanges());
 
-        if (empty(array_intersect($changed, self::PRICE_FIELDS))) {
+        if (empty(array_intersect($changed, self::SYNC_FIELDS))) {
             return;
         }
 
-        $debounceKey = "variant_price_sync_debounce:{$variant->id}";
+        $debounceKey = "variant_sync_debounce:{$variant->id}";
         if (Cache::has($debounceKey)) {
             return;
         }
