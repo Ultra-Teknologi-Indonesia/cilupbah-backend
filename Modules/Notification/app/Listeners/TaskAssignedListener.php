@@ -4,8 +4,7 @@ namespace Modules\Notification\Listeners;
 
 use App\Models\User;
 use Modules\Notification\Events\TaskAssigned;
-use Modules\Notification\Models\Notification;
-use Modules\Notification\Jobs\SendPushNotificationJob;
+use Modules\Notification\Services\NotificationDispatcher;
 
 class TaskAssignedListener
 {
@@ -17,6 +16,10 @@ class TaskAssignedListener
         'stock_opname' => 'Stock Opname',
     ];
 
+    public function __construct(
+        private NotificationDispatcher $dispatcher,
+    ) {}
+
     public function handle(TaskAssigned $event): void
     {
         $label = self::TASK_LABELS[$event->taskType] ?? $event->taskType;
@@ -24,30 +27,16 @@ class TaskAssignedListener
         $assignerName = $this->resolveAssignerName($event->assignedBy);
         $message = "{$label} {$event->taskNumber} telah di-assign oleh {$assignerName}.";
 
-        $notification = Notification::create([
-            'user_id' => $event->assigneeUserId,
+        $this->dispatcher->toUser($event->assigneeUserId, [
+            'type' => 'task_assigned',
             'title' => $title,
             'message' => $message,
-            'type' => 'task_assigned',
-            'data' => [
+            'data' => array_merge([
                 'task_type' => $event->taskType,
                 'task_number' => $event->taskNumber,
                 'assigned_by' => $event->assignedBy,
-                ...$event->extra,
-            ],
+            ], $event->extra),
         ]);
-
-        SendPushNotificationJob::dispatch(
-            $event->assigneeUserId,
-            $title,
-            $message,
-            [
-                'type' => 'task_assigned',
-                'task_type' => $event->taskType,
-                'notification_id' => $notification->id,
-                ...$event->extra,
-            ],
-        );
     }
 
     private function resolveAssignerName(string $assignedBy): string

@@ -7,14 +7,23 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Inventory\Models\StockReplenishmentRequest;
 use Modules\Inventory\Repositories\StockReplenishmentRepository;
+use Modules\Notification\Services\NotificationDispatcher;
 use Modules\Warehouse\Models\Location;
 
 class StockReplenishmentService
 {
+    private const NOTIF_PERMISSION = 'manage-permintaan-restock';
+
     public function __construct(
         private InventoryService $inventoryService,
         private StockReplenishmentRepository $repository,
+        private NotificationDispatcher $notifications,
     ) {
+    }
+
+    private function requestLink(string $id): string
+    {
+        return "/dashboard/permintaan-restock/{$id}";
     }
 
     public function list(?string $status, int $perPage = 10): \Illuminate\Pagination\LengthAwarePaginator
@@ -39,7 +48,7 @@ class StockReplenishmentService
 
     public function create(array $payload): StockReplenishmentRequest
     {
-        return DB::transaction(function () use ($payload) {
+        $request = DB::transaction(function () use ($payload) {
             $fromId = $payload['from_location_id']
                 ?? $this->repository->resolveLocationId(Location::SYSTEM_PUSAT_CODE);
             $toId = $payload['to_location_id']
@@ -49,7 +58,7 @@ class StockReplenishmentService
                 throw new \RuntimeException('Gudang Pusat / Gudang Kecil belum di-seed.');
             }
 
-            $request = $this->repository->create([
+            $req = $this->repository->create([
                 'requested_by_user_id' => $payload['requested_by_user_id'] ?? (Auth::id() ?: null),
                 'from_location_id'     => $fromId,
                 'to_location_id'       => $toId,
@@ -60,7 +69,7 @@ class StockReplenishmentService
 
             foreach (($payload['items'] ?? []) as $item) {
                 $this->repository->createItem([
-                    'request_id' => $request->id,
+                    'request_id' => $req->id,
                     'item_id'    => $item['item_id'],
                     'sku'        => $item['sku'],
                     'qty'        => (int) $item['qty'],
@@ -68,13 +77,26 @@ class StockReplenishmentService
                 ]);
             }
 
-            return $request->fresh(['items']);
+            return $req->fresh(['items']);
         });
+
+        $skuCount = $request->items->count();
+        $this->notifications->toPermission(self::NOTIF_PERMISSION, [
+            'type' => 'stock_replenishment_request',
+            'title' => 'Permintaan pengisian stok baru',
+            'message' => "{$skuCount} SKU perlu diisi ke gudang kecil.",
+            'data' => [
+                'request_id' => $request->id,
+                'link' => $this->requestLink($request->id),
+            ],
+        ], excludeUserIds: array_filter([$request->requested_by_user_id]));
+
+        return $request;
     }
 
     public function accept(string $id, ?string $assigneeUserId = null, ?string $note = null): StockReplenishmentRequest
     {
-        return DB::transaction(function () use ($id, $assigneeUserId, $note) {
+        $request = DB::transaction(function () use ($id, $assigneeUserId, $note) {
             $request = $this->repository->findWithItems($id);
 
             if ($request->status !== StockReplenishmentRequest::STATUS_PENDING) {
@@ -132,6 +154,34 @@ class StockReplenishmentService
 
             return $request->fresh(['items', 'transferOut']);
         });
+
+        if ($request->requested_by_user_id) {
+            $this->notifications->toUser($request->requested_by_user_id, [
+                'type' => 'stock_replenishment_accepted',
+                'title' => 'Permintaan pengisian stok disetujui',
+                'message' => 'Permintaanmu diproses menjadi transfer keluar.',
+                'data' => [
+                    'request_id' => $request->id,
+                    'transfer_out_id' => $request->transfer_out_id,
+                    'link' => $this->requestLink($request->id),
+                ],
+            ]);
+        }
+
+        if ($assigneeUserId) {
+            $this->notifications->toUser($assigneeUserId, [
+                'type' => 'task_assigned',
+                'title' => 'Transfer keluar baru ditugaskan',
+                'message' => 'Kamu ditugaskan menangani transfer pengisian stok.',
+                'data' => [
+                    'task_type' => 'inventory_transfer',
+                    'transfer_out_id' => $request->transfer_out_id,
+                    'link' => "/dashboard/barang-keluar/transfer/{$request->transfer_out_id}",
+                ],
+            ]);
+        }
+
+        return $request;
     }
 
     public function reject(string $id, ?string $reason = null): StockReplenishmentRequest
@@ -149,7 +199,23 @@ class StockReplenishmentService
             'reject_reason'       => $reason,
         ]);
 
-        return $request->fresh();
+        $fresh = $request->fresh();
+
+        if ($fresh->requested_by_user_id) {
+            $reasonSuffix = $reason ? " Alasan: {$reason}" : '';
+            $this->notifications->toUser($fresh->requested_by_user_id, [
+                'type' => 'stock_replenishment_rejected',
+                'title' => 'Permintaan pengisian stok ditolak',
+                'message' => "Permintaanmu ditolak.{$reasonSuffix}",
+                'data' => [
+                    'request_id' => $fresh->id,
+                    'reason' => $reason,
+                    'link' => $this->requestLink($fresh->id),
+                ],
+            ]);
+        }
+
+        return $fresh;
     }
 
     public function addItem(string $id, array $payload): StockReplenishmentRequestItem
@@ -307,6 +373,17 @@ class StockReplenishmentService
 
             return $req->fresh(['items']);
         });
+
+        $skuCount = count($shortages);
+        $this->notifications->toPermission(self::NOTIF_PERMISSION, [
+            'type' => 'stock_replenishment_auto_detected',
+            'title' => 'Deteksi kekurangan stok otomatis',
+            'message' => "Sistem mendeteksi kekurangan {$skuCount} SKU di gudang kecil.",
+            'data' => [
+                'request_id' => $request->id,
+                'link' => $this->requestLink($request->id),
+            ],
+        ]);
 
         return ['shortages' => $shortages, 'request' => $request, 'skipped' => false];
     }
