@@ -26,6 +26,8 @@ class LoginHistory extends Model
         'agent_device',
         'agent_os',
         'agent_browser',
+        'device_model',
+        'device_manufacturer',
         'ip_address',
         'location_country',
         'location_region',
@@ -56,7 +58,9 @@ class LoginHistory extends Model
         string $ipAddress,
         string $userAgent,
         string $clientType = self::CLIENT_WEB,
-        ?int $tokenId = null
+        ?int $tokenId = null,
+        ?string $deviceModel = null,
+        ?string $deviceManufacturer = null
     ): self {
         [$device, $os, $browser] = self::parseAgent($userAgent, $clientType);
         $location = self::resolveLocation($ipAddress);
@@ -69,6 +73,8 @@ class LoginHistory extends Model
             'agent_device' => $device,
             'agent_os' => $os,
             'agent_browser' => $browser,
+            'device_model' => self::normalize($deviceModel),
+            'device_manufacturer' => self::normalize($deviceManufacturer),
             'ip_address' => $ipAddress,
             'location_country' => $location['country'],
             'location_region' => $location['region'],
@@ -82,7 +88,9 @@ class LoginHistory extends Model
         string $emailAttempt,
         string $ipAddress,
         string $userAgent,
-        string $clientType = self::CLIENT_WEB
+        string $clientType = self::CLIENT_WEB,
+        ?string $deviceModel = null,
+        ?string $deviceManufacturer = null
     ): self {
         [$device, $os, $browser] = self::parseAgent($userAgent, $clientType);
         $location = self::resolveLocation($ipAddress);
@@ -95,6 +103,8 @@ class LoginHistory extends Model
             'agent_device' => $device,
             'agent_os' => $os,
             'agent_browser' => $browser,
+            'device_model' => self::normalize($deviceModel),
+            'device_manufacturer' => self::normalize($deviceManufacturer),
             'ip_address' => $ipAddress,
             'location_country' => $location['country'],
             'location_region' => $location['region'],
@@ -102,6 +112,18 @@ class LoginHistory extends Model
             'location_lat' => $location['lat'],
             'location_lon' => $location['lon'],
         ]);
+    }
+
+    private static function normalize(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        $trimmed = trim($value);
+        if ($trimmed === '') {
+            return null;
+        }
+        return mb_substr($trimmed, 0, 190);
     }
 
     private static function parseAgent(string $userAgent, string $clientType): array

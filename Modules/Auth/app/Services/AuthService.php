@@ -22,12 +22,14 @@ class AuthService
 
         if (! $user || ! Hash::check($credentials['password'], $user->password)) {
             if ($request) {
-                [$clientType, $clientIp, $userAgent] = $this->resolveClientMeta($request);
+                $meta = $this->resolveClientMeta($request);
                 LoginHistory::recordFailed(
                     (string) ($credentials['email'] ?? ''),
-                    $clientIp,
-                    $userAgent,
-                    $clientType
+                    $meta['ip'],
+                    $meta['userAgent'],
+                    $meta['clientType'],
+                    $meta['deviceModel'],
+                    $meta['deviceManufacturer']
                 );
             }
 
@@ -36,26 +38,25 @@ class AuthService
 
         $this->userRepository->update($user, ['last_login_at' => now()]);
 
-        $clientType = LoginHistory::CLIENT_WEB;
-        $clientIp = '';
-        $userAgent = '';
-        if ($request) {
-            [$clientType, $clientIp, $userAgent] = $this->resolveClientMeta($request);
-        }
+        $meta = $request
+            ? $this->resolveClientMeta($request)
+            : ['clientType' => LoginHistory::CLIENT_WEB, 'ip' => '', 'userAgent' => '', 'deviceModel' => null, 'deviceManufacturer' => null];
 
         $user->load('roles', 'permissions');
 
-        $tokenName = $this->buildTokenName($clientType, $userAgent);
+        $tokenName = $this->buildTokenName($meta['clientType'], $meta['userAgent'], $meta['deviceModel']);
         $newToken = $user->createToken($tokenName);
         $accessToken = $newToken->plainTextToken;
 
         if ($request) {
             LoginHistory::recordLogin(
                 $user->id,
-                $clientIp,
-                $userAgent,
-                $clientType,
-                (int) $newToken->accessToken->getKey()
+                $meta['ip'],
+                $meta['userAgent'],
+                $meta['clientType'],
+                (int) $newToken->accessToken->getKey(),
+                $meta['deviceModel'],
+                $meta['deviceManufacturer']
             );
         }
 
@@ -67,7 +68,7 @@ class AuthService
     }
 
     /**
-     * @return array{0:string,1:string,2:string} [clientType, ip, userAgent]
+     * @return array{clientType:string, ip:string, userAgent:string, deviceModel:?string, deviceManufacturer:?string}
      */
     private function resolveClientMeta(Request $request): array
     {
@@ -85,14 +86,24 @@ class AuthService
             $clientIp = trim(explode(',', $clientIp)[0]);
         }
 
-        return [$clientType, $clientIp, $request->userAgent() ?? ''];
+        return [
+            'clientType' => $clientType,
+            'ip' => $clientIp,
+            'userAgent' => $request->userAgent() ?? '',
+            'deviceModel' => $request->header('X-Device-Model'),
+            'deviceManufacturer' => $request->header('X-Device-Manufacturer'),
+        ];
     }
 
-    private function buildTokenName(string $clientType, string $userAgent): string
+    private function buildTokenName(string $clientType, string $userAgent, ?string $deviceModel = null): string
     {
-        $label = trim($userAgent);
-        if ($label === '') {
-            $label = $clientType === LoginHistory::CLIENT_MOBILE ? 'Cilupbah App' : 'Web Browser';
+        if ($clientType === LoginHistory::CLIENT_MOBILE && $deviceModel !== null && trim($deviceModel) !== '') {
+            $label = trim($deviceModel);
+        } else {
+            $label = trim($userAgent);
+            if ($label === '') {
+                $label = $clientType === LoginHistory::CLIENT_MOBILE ? 'Cilupbah App' : 'Web Browser';
+            }
         }
         $label = mb_substr($label, 0, 120);
 
