@@ -12,12 +12,6 @@ use Modules\Sales\Exceptions\InsufficientStockException;
 use Modules\Sales\Services\StockService;
 use Tests\TestCase;
 
-/**
- * Regression: kebijakan "allow negative stock" HANYA berlaku untuk mutasi gudang
- * (putaway, adjust, transfer, picking). Reservasi pesanan penjualan tetap
- * mengunci stok — dengan atau tanpa flag, StockService::reserve() wajib
- * melempar InsufficientStockException saat stok tidak cukup.
- */
 class SalesNegativeStockRegressionTest extends TestCase
 {
     use RefreshDatabase;
@@ -83,7 +77,7 @@ class SalesNegativeStockRegressionTest extends TestCase
 
     public function test_sales_reserve_throws_insufficient_when_stock_zero_even_if_negative_allowed(): void
     {
-        config(['inventory.allow_negative_stock' => true]); // gudang boleh minus
+        config(['inventory.allow_negative_stock' => true]); 
         Queue::fake();
 
         $variant = $this->variant('SNR-SKU-1');

@@ -54,7 +54,7 @@ class BinTransferNegativeStockTest extends TestCase
     public function test_create_draft_for_missing_source_stock_succeeds_when_negative_allowed(): void
     {
         config(['inventory.allow_negative_stock' => true]);
-        $ctx = $this->seedFixture(0); // no inventory record
+        $ctx = $this->seedFixture(0); 
 
         $transfer = app(InventoryService::class)->createBinTransferDraft([
             'location_id' => $ctx['location']->id,
@@ -68,7 +68,6 @@ class BinTransferNegativeStockTest extends TestCase
         $this->assertSame(BinTransfer::STATUS_BARU_DIBUAT, $transfer->status);
         $this->assertCount(1, $transfer->items);
 
-        // findOrCreate should have materialised the source record with on_hand=0
         $inv = Inventory::where('bin_id', $ctx['binA']->id)
             ->where('item_id', $ctx['variant']->id)->first();
         $this->assertNotNull($inv);
@@ -78,7 +77,7 @@ class BinTransferNegativeStockTest extends TestCase
     public function test_print_bin_transfer_drives_source_negative_when_negative_allowed(): void
     {
         config(['inventory.allow_negative_stock' => true]);
-        $ctx = $this->seedFixture(2); // stock=2
+        $ctx = $this->seedFixture(2); 
 
         $svc = app(InventoryService::class);
         $transfer = $svc->createBinTransferDraft([
@@ -105,7 +104,6 @@ class BinTransferNegativeStockTest extends TestCase
             'transaction_number' => $transfer->transfer_number,
         ]);
 
-        // Transit inventory bertambah 10
         $this->assertDatabaseHas('inventory_movements', [
             'source' => 'TRANSIT_IN',
             'qty' => 10,
@@ -132,8 +130,7 @@ class BinTransferNegativeStockTest extends TestCase
 
     public function test_print_bin_transfer_throws_when_negative_disallowed(): void
     {
-        // Draft dibuat saat masih allow negative → lolos validasi draft;
-        // lalu print di-flip off → guard di printBinTransfer harus meledak.
+
         config(['inventory.allow_negative_stock' => true]);
         $ctx = $this->seedFixture(2);
 

@@ -302,9 +302,6 @@ class ReportService
         return $this->repository->lazadaOrder($orderId);
     }
 
-    /**
-     * Baris riwayat stok minus (dipaginasi) untuk endpoint list.
-     */
     public function negativeStockReport(array $filters): array
     {
         $perPage = (int) ($filters['per_page'] ?? 20);
@@ -328,9 +325,6 @@ class ReportService
         ];
     }
 
-    /**
-     * Semua baris (tanpa pagination) untuk keperluan export XLSX.
-     */
     public function negativeStockRows(array $filters): array
     {
         return $this->repository

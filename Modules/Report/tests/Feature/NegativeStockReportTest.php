@@ -87,15 +87,13 @@ class NegativeStockReportTest extends TestCase
 
     public function test_lists_only_groups_that_ever_went_negative(): void
     {
-        // NEG-1: masih minus (movement terakhir balance < 0)
+
         $this->movement($this->variantMinus, 5, '2025-07-01 08:00:00', 'alice');
         $this->movement($this->variantMinus, -3, '2025-07-05 09:00:00', 'bob');
 
-        // NEG-2: pernah minus lalu normal
         $this->movement($this->variantMinusNormalized, -2, '2025-07-02 08:00:00', 'carol');
         $this->movement($this->variantMinusNormalized, 4, '2025-07-06 10:00:00', 'carol');
 
-        // POS-1: tidak pernah minus
         $this->movement($this->variantNormal, 10, '2025-07-01 08:00:00', 'alice');
 
         $response = $this->actingAs($this->user, 'sanctum')

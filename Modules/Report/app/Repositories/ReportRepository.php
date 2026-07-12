@@ -315,15 +315,6 @@ class ReportRepository
             ->findOrFail($orderId);
     }
 
-    /**
-     * Ambil query builder riwayat stok minus (agregat per SKU + Lokasi + Rak).
-     *
-     * Sumber: kolom `balance` di `inventory_movements` (boleh negatif setelah
-     * BE dilonggarkan). Baris dikembalikan hanya bila grup pernah minus di
-     * dalam rentang tanggal, lengkap dengan `current_balance` (movement
-     * terakhir sepanjang waktu), `normalized_at` (movement pertama pasca-
-     * minus yang balance-nya >= 0), dan `triggered_by` (user pemicu minus).
-     */
     public function negativeStockHistoryQuery(array $filters): \Illuminate\Database\Query\Builder
     {
         $from = $filters['from'] ?? null;

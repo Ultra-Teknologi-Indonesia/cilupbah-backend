@@ -60,7 +60,7 @@ class InventoryTransferRepository
                 $userIds[] = $item->created_by;
             }
         }
-        
+
         if (!empty($userIds)) {
             $users = \App\Models\User::whereIn('id', array_unique($userIds))->pluck('name', 'id');
             foreach ($paginator->items() as $item) {
