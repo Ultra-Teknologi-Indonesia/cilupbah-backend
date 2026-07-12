@@ -34,7 +34,7 @@ class LazadaStoreController extends Controller
                 'Daftar toko Lazada berhasil diambil'
             );
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -57,7 +57,12 @@ class LazadaStoreController extends Controller
                 'Detail toko berhasil diambil'
             );
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 404);
+            return $this->errorResponse(
+                'Gagal memuat detail.',
+                404,
+                ['detail' => $e->getMessage()],
+                'Terjadi kesalahan',
+            );
         }
     }
 
@@ -79,7 +84,12 @@ class LazadaStoreController extends Controller
 
             return $this->successResponse(null, 'Toko berhasil diputuskan');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 404);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                404,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

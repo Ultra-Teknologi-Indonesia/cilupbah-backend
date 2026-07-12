@@ -72,7 +72,7 @@ class WarrantyController extends Controller
     {
         $warranty = $this->service->create($request->validated());
 
-        return $this->successResponse(new WarrantyResource($warranty), 'Warranty created successfully', 201);
+        return $this->successResponse(new WarrantyResource($warranty), 'Garansi berhasil dibuat', 201);
     }
 
     #[OA\Get(
@@ -93,7 +93,7 @@ class WarrantyController extends Controller
         $warranty = $this->service->getById($id);
 
         if (!$warranty) {
-            return $this->errorResponse('Warranty not found', 404);
+            return $this->errorResponse('Garansi tidak ditemukan', 404);
         }
 
         return $this->successResponse(new WarrantyResource($warranty));
@@ -126,12 +126,12 @@ class WarrantyController extends Controller
         $warranty = $this->service->getById($id);
 
         if (!$warranty) {
-            return $this->errorResponse('Warranty not found', 404);
+            return $this->errorResponse('Garansi tidak ditemukan', 404);
         }
 
         $warranty = $this->service->update($id, $request->validated());
 
-        return $this->successResponse(new WarrantyResource($warranty), 'Warranty updated successfully');
+        return $this->successResponse(new WarrantyResource($warranty), 'Garansi berhasil diperbarui');
     }
 
     #[OA\Delete(
@@ -152,11 +152,11 @@ class WarrantyController extends Controller
         $warranty = $this->service->getById($id);
 
         if (!$warranty) {
-            return $this->errorResponse('Warranty not found', 404);
+            return $this->errorResponse('Garansi tidak ditemukan', 404);
         }
 
         $this->service->delete($id);
 
-        return $this->successResponse(null, 'Warranty deleted successfully');
+        return $this->successResponse(null, 'Garansi berhasil dihapus');
     }
 }

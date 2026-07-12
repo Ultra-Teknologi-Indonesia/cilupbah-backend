@@ -42,7 +42,7 @@ class AttributeController extends Controller
             $attribute = $this->attributeService->createAttribute($validated);
             return $this->successResponse(new AttributeResource($attribute), 'Atribut berhasil dibuat', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -52,7 +52,12 @@ class AttributeController extends Controller
             $attribute = $this->attributeService->getAttributeById($id);
             return $this->successResponse(new AttributeResource($attribute), 'Berhasil mengambil detail atribut');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 404);
+            return $this->errorResponse(
+                'Gagal memuat detail.',
+                404,
+                ['detail' => $e->getMessage()],
+                'Terjadi kesalahan',
+            );
         }
     }
 
@@ -67,7 +72,7 @@ class AttributeController extends Controller
             $attribute = $this->attributeService->updateAttribute($id, $validated);
             return $this->successResponse(new AttributeResource($attribute), 'Atribut berhasil diperbarui');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -77,7 +82,12 @@ class AttributeController extends Controller
             $this->attributeService->deleteAttribute($id);
             return $this->successResponse(null, 'Atribut berhasil dihapus');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 400);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                400,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -92,7 +102,7 @@ class AttributeController extends Controller
             $attribute = $this->attributeService->mapToChannel($id, $validated['channel_attribute_ids']);
             return $this->successResponse(new AttributeResource($attribute), 'Berhasil memetakan atribut ke channel');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -107,7 +117,7 @@ class AttributeController extends Controller
             $option = $this->attributeService->mapOptionToChannel($id, $validated['channel_attribute_option_ids']);
             return $this->successResponse($option, 'Berhasil memetakan opsi atribut ke channel');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 }

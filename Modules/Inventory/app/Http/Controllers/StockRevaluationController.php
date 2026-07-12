@@ -77,7 +77,12 @@ class StockRevaluationController extends Controller
 
             return $this->successResponse(new StockRevaluationResource($revaluation), 'Penyesuaian nilai berhasil, harga pokok diperbarui.', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyimpan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -130,7 +135,12 @@ class StockRevaluationController extends Controller
 
             return $this->successResponse(new StockRevaluationResource($revaluation), 'Penyesuaian nilai berhasil diapprove, harga pokok diperbarui.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyetujui.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -141,7 +151,12 @@ class StockRevaluationController extends Controller
 
             return $this->successResponse(new StockRevaluationResource($revaluation), 'Penyesuaian nilai berhasil dibatalkan.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal membatalkan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 }

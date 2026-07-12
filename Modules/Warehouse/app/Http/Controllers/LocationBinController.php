@@ -77,7 +77,7 @@ class LocationBinController extends Controller
 
             return $this->successPaginatedResponse($paginator, 'Daftar bin berhasil diambil');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -170,7 +170,7 @@ class LocationBinController extends Controller
                 $preview['meta']
             );
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -184,7 +184,12 @@ class LocationBinController extends Controller
                 "Berhasil menerapkan ke {$affected} rak."
             );
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses pemetaan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -209,7 +214,12 @@ class LocationBinController extends Controller
         try {
             $this->binService->delete($id);
         } catch (\DomainException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(null, 'Bin berhasil dihapus');
@@ -244,7 +254,12 @@ class LocationBinController extends Controller
         } catch (UniqueConstraintViolationException $e) {
             return $this->errorResponse('Kode rak harus unik dalam satu lokasi. Ada kode yang duplikat.', 422);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memperbarui.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

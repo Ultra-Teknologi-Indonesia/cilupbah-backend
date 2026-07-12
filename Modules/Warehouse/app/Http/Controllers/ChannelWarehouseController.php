@@ -104,7 +104,12 @@ class ChannelWarehouseController extends Controller
 
             return $this->successResponse(new ChannelWarehouseResource($mapping), 'Channel warehouse mapping berhasil dibuat.', 201);
         } catch (\DomainException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyimpan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

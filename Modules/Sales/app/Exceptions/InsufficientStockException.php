@@ -13,7 +13,7 @@ class InsufficientStockException extends Exception
         private int $available,
         private int $requested,
     ) {
-        parent::__construct("Insufficient stock for SKU {$sku}: available {$available}, requested {$requested}");
+        parent::__construct("Stok tidak cukup untuk SKU {$sku}: tersedia {$available}, dibutuhkan {$requested}.");
     }
 
     public function getSku(): string

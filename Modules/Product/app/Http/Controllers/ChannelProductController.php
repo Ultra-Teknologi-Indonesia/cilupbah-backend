@@ -176,7 +176,7 @@ class ChannelProductController extends Controller
 
             return $this->successResponse($res, 'Produk berhasil dibuat dan dikirim ke channel', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse('Gagal membuat dan mengirim produk', 500, ['error' => $e->getMessage()]);
+            throw $e;
         }
     }
 

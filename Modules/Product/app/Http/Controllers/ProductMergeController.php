@@ -128,7 +128,12 @@ class ProductMergeController extends Controller
         try {
             return $action();
         } catch (DomainException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses aksi.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 }

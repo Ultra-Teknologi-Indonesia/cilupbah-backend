@@ -32,7 +32,12 @@ class WooCommerceSyncApiController extends Controller
 
             return $this->successResponse(['pulled' => $count], "{$count} pesanan WooCommerce ditarik");
         } catch (\Throwable $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyinkronkan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -76,7 +81,12 @@ class WooCommerceSyncApiController extends Controller
 
             return $this->successResponse($result, $result['message']);
         } catch (\Throwable $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses pengiriman.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -97,7 +107,12 @@ class WooCommerceSyncApiController extends Controller
 
             return $this->successResponse($result, $result['message']);
         } catch (\Throwable $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal membatalkan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

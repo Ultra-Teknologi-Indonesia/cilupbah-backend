@@ -35,7 +35,12 @@ class LocationZoneController extends Controller
 
             return $this->successResponse($zone, 'Zona berhasil dibuat', 201);
         } catch (\DomainException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyimpan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -55,7 +60,12 @@ class LocationZoneController extends Controller
         } catch (ModelNotFoundException $e) {
             return $this->errorResponse('Zona tidak ditemukan.', 404);
         } catch (\DomainException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memperbarui.',
+                404,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

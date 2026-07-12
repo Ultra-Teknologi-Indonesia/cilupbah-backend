@@ -73,7 +73,7 @@ class PurchaseReturnController extends Controller
             $return = $this->returnService->create($request->validated());
             return $this->successResponse($return, 'Purchase return berhasil dibuat', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -140,7 +140,12 @@ class PurchaseReturnController extends Controller
             $return = $this->returnService->process($id, $request->input('processed_by'));
             return $this->successResponse($return, 'Retur pembelian berhasil diproses');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses aksi.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -178,7 +183,7 @@ class PurchaseReturnController extends Controller
             $this->returnService->delete($request->input('id'));
             return $this->successResponse(null, 'Purchase return berhasil dihapus');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 }

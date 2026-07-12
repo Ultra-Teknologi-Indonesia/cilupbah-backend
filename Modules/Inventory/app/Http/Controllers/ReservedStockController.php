@@ -110,7 +110,12 @@ class ReservedStockController extends Controller
 
             return $this->successResponse(new ReservedStockResource($reservedStock), 'Dokumen reserved stock berhasil dibuat, reservasi sedang diproses.', 202);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyimpan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -134,7 +139,12 @@ class ReservedStockController extends Controller
 
             return $this->successResponse(new ReservedStockResource($reservedStock), 'Dokumen reserved stock berhasil di-cancel, reservasi di-rollback.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal membatalkan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 }

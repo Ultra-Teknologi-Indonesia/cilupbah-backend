@@ -49,7 +49,7 @@ class TikTokProductService
 
         $product = $this->productRepository->findById($productId);
         if (!$product) {
-            throw new \Exception("Product not found");
+            throw new \Exception("Produk tidak ditemukan");
         }
 
         $this->assertValidTikTokTitle($product->name ?? '');
@@ -780,7 +780,7 @@ class TikTokProductService
 
         $product = $this->productRepository->findById($productId);
         if (!$product) {
-            throw new \Exception("Product not found.");
+            throw new \Exception("Produk tidak ditemukan.");
         }
 
         $externalProductId = $this->productRepository->getExternalProductId($productId, $shopId);
@@ -863,7 +863,7 @@ class TikTokProductService
 
         $product = $this->productRepository->findById($productId);
         if (!$product) {
-            throw new \Exception("Product not found");
+            throw new \Exception("Produk tidak ditemukan");
         }
 
         $externalProductId = $this->productRepository->getExternalProductId($productId, $shopId);

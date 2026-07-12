@@ -63,7 +63,12 @@ class WooCommerceAuthController extends Controller
                 'count' => 1,
             ], "Toko WooCommerce berhasil dihubungkan: {$shop['shop_name']}");
         } catch (\Throwable $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses autentikasi.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

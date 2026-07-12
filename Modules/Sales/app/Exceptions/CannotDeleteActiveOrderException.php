@@ -10,6 +10,6 @@ class CannotDeleteActiveOrderException extends Exception
 
     public function __construct(string $status)
     {
-        parent::__construct("Cannot delete order with status '{$status}'. Only pending or cancelled orders can be deleted.");
+        parent::__construct("Order dengan status '{$status}' tidak bisa dihapus. Hanya order pending atau dibatalkan yang dapat dihapus.");
     }
 }

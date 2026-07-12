@@ -33,7 +33,7 @@ class ChannelAttributeController extends Controller
             $attributes = $this->service->getPaginated($categoryId);
             return $this->successPaginatedResponse(ChannelAttributeResource::collection($attributes), 'Berhasil mengambil daftar atribut channel');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 

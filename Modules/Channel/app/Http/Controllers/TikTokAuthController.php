@@ -21,7 +21,7 @@ class TikTokAuthController extends Controller
         $state = OAuthFlow::issueState(self::CHANNEL);
         $url = $client->getAuthUrl($redirectUri, $state);
 
-        return $this->successResponse(['auth_url' => $url], 'Auth URL generated successfully.');
+        return $this->successResponse(['auth_url' => $url], 'URL autentikasi berhasil dibuat.');
     }
 
     public function callback(Request $request, \Modules\Channel\Services\TikTokAuthService $authService)

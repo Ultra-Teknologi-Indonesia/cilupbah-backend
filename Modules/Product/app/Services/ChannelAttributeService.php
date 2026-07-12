@@ -31,13 +31,13 @@ class ChannelAttributeService
         $category = ChannelCategory::find($channelCategoryId);
 
         if (!$channel || !$category) {
-            throw new \Exception("Channel or Category not found");
+            throw new \Exception("Channel atau kategori tidak ditemukan");
         }
 
         if ($channel->code === 'tiktok') {
             $this->syncTikTokAttributes($channel, $category);
         } else {
-            throw new \Exception("Attribute sync for channel {$channel->code} is not supported yet.");
+            throw new \Exception("Sinkronisasi atribut untuk channel {$channel->code} belum didukung.");
         }
     }
 

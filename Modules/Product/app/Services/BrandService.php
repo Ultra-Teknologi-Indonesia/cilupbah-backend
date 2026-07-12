@@ -31,7 +31,7 @@ class BrandService
     {
         $brand = $this->repository->findById($id);
         if (!$brand) {
-            throw new Exception("Brand not found");
+            throw new Exception("Brand tidak ditemukan");
         }
         return $brand;
     }
@@ -52,7 +52,7 @@ class BrandService
         $brand = $this->getBrandById($id);
 
         if ($brand->products()->count() > 0) {
-            throw new Exception("Cannot delete brand because it is used by products");
+            throw new Exception("Brand tidak bisa dihapus karena masih dipakai produk");
         }
 
         return $this->repository->delete($brand);

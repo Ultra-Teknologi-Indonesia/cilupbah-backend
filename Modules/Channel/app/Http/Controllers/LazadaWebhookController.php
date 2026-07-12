@@ -37,7 +37,7 @@ class LazadaWebhookController extends Controller
         if (! $this->isValidSignature($request, $rawBody)) {
             Log::warning('Lazada webhook signature tidak valid', ['ip' => $request->ip()]);
 
-            return $this->errorResponse('Invalid signature', 401);
+            return $this->errorResponse('Signature tidak valid', 401);
         }
 
         $payload = json_decode($rawBody, true);

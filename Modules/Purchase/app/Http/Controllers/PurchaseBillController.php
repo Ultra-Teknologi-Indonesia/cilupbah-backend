@@ -27,7 +27,7 @@ class PurchaseBillController extends Controller
             $bill = $this->billService->create($request->validated());
             return $this->successResponse($bill, 'Tagihan berhasil dibuat', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -46,7 +46,7 @@ class PurchaseBillController extends Controller
             $bill = $this->billService->update($id, $request->validated());
             return $this->successResponse($bill, 'Tagihan berhasil diperbarui');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -56,7 +56,7 @@ class PurchaseBillController extends Controller
             $this->billService->delete($request->input('id'));
             return $this->successResponse(null, 'Tagihan berhasil dihapus');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 

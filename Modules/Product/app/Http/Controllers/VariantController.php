@@ -37,7 +37,12 @@ class VariantController extends Controller
         try {
             $this->service->deleteVariant($variant);
         } catch (DomainException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(null, 'Varian berhasil dihapus');

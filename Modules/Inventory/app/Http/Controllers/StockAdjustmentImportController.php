@@ -50,7 +50,12 @@ class StockAdjustmentImportController extends Controller
 
             return $this->successResponse($result, 'Preview import berhasil di-generate.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memuat detail.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Terjadi kesalahan',
+            );
         }
     }
 
@@ -103,7 +108,12 @@ class StockAdjustmentImportController extends Controller
         } catch (\Exception $e) {
             $this->activityService->markFailed($activity, $e->getMessage());
 
-            return $this->errorResponse($e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal menyetujui.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 }

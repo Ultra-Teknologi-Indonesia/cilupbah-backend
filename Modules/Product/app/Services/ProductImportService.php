@@ -52,10 +52,10 @@ class ProductImportService
             $componentVariant = $this->repository->findVariantBySku($componentSku);
 
             if (!$bundleVariant) {
-                throw new \Exception("Bundle SKU {$bundleSku} not found.");
+                throw new \Exception("SKU bundle {$bundleSku} tidak ditemukan.");
             }
             if (!$componentVariant) {
-                throw new \Exception("Component SKU {$componentSku} not found.");
+                throw new \Exception("SKU komponen {$componentSku} tidak ditemukan.");
             }
 
             $this->repository->upsertBundleItem($bundleVariant->product_id, $componentVariant->id, $qty);

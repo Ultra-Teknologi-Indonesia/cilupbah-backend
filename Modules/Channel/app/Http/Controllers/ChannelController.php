@@ -59,7 +59,7 @@ class ChannelController extends Controller
                 'Daftar channel berhasil diambil.'
             );
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 

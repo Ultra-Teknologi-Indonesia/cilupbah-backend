@@ -43,7 +43,12 @@ class CategoryController extends Controller
             $category = $this->categoryService->createCategory($validated);
             return $this->successResponse(new CategoryResource($category), 'Kategori berhasil dibuat', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyimpan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -53,7 +58,12 @@ class CategoryController extends Controller
             $category = $this->categoryService->getCategoryById($id);
             return $this->successResponse(new CategoryResource($category), 'Berhasil mengambil detail kategori');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 404);
+            return $this->errorResponse(
+                'Gagal memuat detail.',
+                404,
+                ['detail' => $e->getMessage()],
+                'Terjadi kesalahan',
+            );
         }
     }
 
@@ -69,7 +79,7 @@ class CategoryController extends Controller
             $category = $this->categoryService->updateCategory($id, $validated);
             return $this->successResponse(new CategoryResource($category), 'Kategori berhasil diperbarui');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -79,7 +89,12 @@ class CategoryController extends Controller
             $this->categoryService->deleteCategory($id);
             return $this->successResponse(null, 'Kategori berhasil dihapus');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 400);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                400,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -94,7 +109,7 @@ class CategoryController extends Controller
             $category = $this->categoryService->mapToChannel($id, $validated['channel_category_ids']);
             return $this->successResponse(new CategoryResource($category), 'Berhasil memetakan kategori ke channel');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -125,7 +140,12 @@ class CategoryController extends Controller
             $count = $this->categoryService->enableSystemCategories($validated['ids']);
             return $this->successResponse(['enabled_count' => $count], "Berhasil mengaktifkan {$count} kategori");
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses kategori.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -140,7 +160,12 @@ class CategoryController extends Controller
             $count = $this->categoryService->disableSystemCategories($validated['ids']);
             return $this->successResponse(['disabled_count' => $count], "Berhasil menonaktifkan {$count} kategori");
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses kategori.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -156,7 +181,12 @@ class CategoryController extends Controller
             $data = $this->categoryService->getAttributeMappingList($id);
             return $this->successResponse($data, 'Berhasil mengambil daftar mapping atribut');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 404);
+            return $this->errorResponse(
+                'Gagal memproses pemetaan.',
+                404,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -166,7 +196,12 @@ class CategoryController extends Controller
             $data = $this->categoryService->getVariationMappingList($id);
             return $this->successResponse($data, 'Berhasil mengambil daftar mapping variasi');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 404);
+            return $this->errorResponse(
+                'Gagal memproses pemetaan.',
+                404,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -184,7 +219,7 @@ class CategoryController extends Controller
             );
             return $this->successResponse(null, 'Berhasil memetakan atribut ke channel');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -202,7 +237,7 @@ class CategoryController extends Controller
             );
             return $this->successResponse(null, 'Berhasil menghapus mapping atribut');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -222,7 +257,12 @@ class CategoryController extends Controller
             );
             return $this->successResponse($data, 'Berhasil mengambil channel attributes');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 404);
+            return $this->errorResponse(
+                'Gagal memproses atribut.',
+                404,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 }

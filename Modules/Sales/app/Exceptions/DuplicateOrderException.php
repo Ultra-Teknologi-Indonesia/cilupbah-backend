@@ -10,6 +10,6 @@ class DuplicateOrderException extends Exception
 
     public function __construct(string $marketplace, string $marketplaceOrderId)
     {
-        parent::__construct("Order already processed: {$marketplace}:{$marketplaceOrderId}");
+        parent::__construct("Order sudah diproses sebelumnya: {$marketplace}:{$marketplaceOrderId}");
     }
 }

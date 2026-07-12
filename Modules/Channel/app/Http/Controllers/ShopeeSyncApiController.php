@@ -300,7 +300,12 @@ class ShopeeSyncApiController extends Controller
         try {
             return $this->successResponse($this->orderService->getLogistics($validated['shop_id']), 'Daftar kurir Shopee.');
         } catch (\Throwable $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memuat riwayat.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Terjadi kesalahan',
+            );
         }
     }
 
@@ -375,7 +380,12 @@ class ShopeeSyncApiController extends Controller
         try {
             return $this->successResponse($productService->getModelList($validated['shop_id'], $item), 'Daftar varian Shopee berhasil diambil.');
         } catch (\Throwable $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memuat data.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Terjadi kesalahan',
+            );
         }
     }
 }

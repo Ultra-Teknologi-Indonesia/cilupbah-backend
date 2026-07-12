@@ -411,7 +411,12 @@ class ShipmentController extends Controller
         try {
             $shipment = $this->shipmentService->scanAndAddOrder($id, $request->barcode);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memindai.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse($shipment);
@@ -443,7 +448,12 @@ class ShipmentController extends Controller
         try {
             $shipment = $this->shipmentService->scanShipment($request->barcode);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 404);
+            return $this->errorResponse(
+                'Gagal memindai.',
+                404,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse($shipment);
@@ -693,7 +703,12 @@ class ShipmentController extends Controller
                 $request->file('driver_id_card'),
             );
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses driver.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse($shipment, 'Panggilan driver berhasil dicatat.');
@@ -729,7 +744,12 @@ class ShipmentController extends Controller
                 $request->file('driver_id_card'),
             );
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memperbarui.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse($shipment, 'Data driver berhasil diperbarui.');
@@ -752,7 +772,12 @@ class ShipmentController extends Controller
         try {
             $shipment = $this->shipmentService->markDelivered($id);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses aksi.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse($shipment, 'Shipment berhasil ditandai DELIVERED.');
@@ -775,7 +800,12 @@ class ShipmentController extends Controller
         try {
             $summary = $this->shipmentService->reconcile($id);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses aksi.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse($summary, 'Reconcile selesai.');

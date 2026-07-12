@@ -404,7 +404,12 @@ class LazadaSyncApiController extends Controller
                 'Daftar alasan pembatalan berhasil diambil.'
             );
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal membatalkan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -426,7 +431,12 @@ class LazadaSyncApiController extends Controller
                 'Daftar kurir Lazada berhasil diambil.'
             );
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memuat riwayat.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Terjadi kesalahan',
+            );
         }
     }
 }

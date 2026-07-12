@@ -54,7 +54,7 @@ class PurchaseOrderController extends Controller
             $po = $this->poService->create($request->validated());
             return $this->successResponse($po, 'PO berhasil dibuat', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -64,7 +64,7 @@ class PurchaseOrderController extends Controller
             $po = $this->poService->update($id, $request->validated());
             return $this->successResponse($po, 'PO berhasil diperbarui');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -74,7 +74,7 @@ class PurchaseOrderController extends Controller
             $result = $this->poService->receive($id, $request->validated());
             return $this->successResponse($result, 'Receive berhasil, Inbound GRN dibuat');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -84,7 +84,7 @@ class PurchaseOrderController extends Controller
             $po = $this->poService->cancel($id);
             return $this->successResponse($po, 'PO berhasil dibatalkan');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -94,7 +94,7 @@ class PurchaseOrderController extends Controller
             $this->poService->delete($id);
             return $this->successResponse(null, 'PO berhasil dihapus');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 

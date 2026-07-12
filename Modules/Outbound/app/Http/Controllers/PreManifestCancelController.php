@@ -83,7 +83,12 @@ class PreManifestCancelController extends Controller
                 (string) (auth()->user()->email ?? 'system'),
             );
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses aksi.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse($order, 'Order ditandai sudah dipisahkan.');
@@ -107,7 +112,12 @@ class PreManifestCancelController extends Controller
         try {
             $order = $this->service->undismiss($orderId);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses aksi.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse($order, 'Undo dismiss berhasil.');

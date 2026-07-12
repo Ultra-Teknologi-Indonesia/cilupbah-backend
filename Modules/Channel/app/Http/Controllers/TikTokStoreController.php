@@ -30,7 +30,7 @@ class TikTokStoreController extends Controller
                 'Daftar toko berhasil diambil'
             );
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -40,7 +40,12 @@ class TikTokStoreController extends Controller
             $store = $this->authService->getStoreDetail($id);
             return $this->successResponse($store, 'Detail toko berhasil diambil');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 404);
+            return $this->errorResponse(
+                'Gagal memuat detail.',
+                404,
+                ['detail' => $e->getMessage()],
+                'Terjadi kesalahan',
+            );
         }
     }
 
@@ -50,7 +55,12 @@ class TikTokStoreController extends Controller
             $this->authService->disconnectStore($id);
             return $this->successResponse(null, 'Toko berhasil diputuskan');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 404);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                404,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -60,7 +70,7 @@ class TikTokStoreController extends Controller
             $result = $this->authService->refreshStoreToken($id);
             return $this->successResponse($result, 'Token berhasil diperbarui');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 }

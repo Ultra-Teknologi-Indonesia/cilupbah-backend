@@ -333,7 +333,12 @@ class PicklistController extends Controller
         try {
             $this->picklistService->pickItem($id, $itemId, $request->validated());
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses picking.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(null, 'Item berhasil di-pick.');
@@ -370,7 +375,12 @@ class PicklistController extends Controller
 
             return $this->successResponse($picklist, 'Pick berhasil dikoreksi.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses picking.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -388,7 +398,12 @@ class PicklistController extends Controller
 
             return $this->successResponse($picklist, 'Pick berhasil dikoreksi.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses picking.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -431,7 +446,12 @@ class PicklistController extends Controller
 
             return $this->successResponse($picklist, 'Item ditandai gagal.');
         } catch (OutboundValidationException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses aksi.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         } catch (Throwable $e) {
             report($e);
             return $this->errorResponse('Gagal menandai item: ' . $e->getMessage(), 500);
@@ -460,7 +480,12 @@ class PicklistController extends Controller
 
             return $this->successResponse($picklist, 'Fail item dibatalkan.');
         } catch (OutboundValidationException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses aksi.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         } catch (Throwable $e) {
             report($e);
             return $this->errorResponse('Gagal membatalkan fail item: ' . $e->getMessage(), 500);
@@ -515,7 +540,12 @@ class PicklistController extends Controller
 
             return $this->successResponse($picklist, 'Split pick berhasil.');
         } catch (OutboundValidationException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses picking.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         } catch (Throwable $e) {
             report($e);
             return $this->errorResponse('Split pick gagal: ' . $e->getMessage(), 500);
@@ -668,7 +698,12 @@ class PicklistController extends Controller
             $userId = (string) ($request->user()->id ?? 'system');
             $this->picklistService->revert($id, $userId);
         } catch (OutboundValidationException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal membatalkan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         } catch (Throwable $e) {
             report($e);
             return $this->errorResponse('Gagal mengembalikan picklist: ' . $e->getMessage(), 500);

@@ -48,7 +48,12 @@ class AdHocPickController extends Controller
         try {
             $order = $this->service->complete($data['order_id']);
         } catch (\Throwable $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyelesaikan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse($order);
@@ -92,7 +97,12 @@ class AdHocPickController extends Controller
                 (int) ($data['qty'] ?? 1),
             );
         } catch (\Throwable $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memindai.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse([

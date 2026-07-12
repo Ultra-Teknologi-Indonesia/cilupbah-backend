@@ -31,7 +31,7 @@ class AttributeService
     {
         $attribute = $this->repository->findById($id);
         if (!$attribute) {
-            throw new Exception("Attribute not found");
+            throw new Exception("Atribut tidak ditemukan");
         }
         return $attribute;
     }
@@ -68,7 +68,7 @@ class AttributeService
         $option = \Modules\Product\Models\AttributeOption::find($optionId);
 
         if (!$option) {
-            throw new Exception("Attribute Option not found");
+            throw new Exception("Opsi atribut tidak ditemukan");
         }
 
         $option->channelAttributeOptions()->sync($channelAttributeOptionIds);

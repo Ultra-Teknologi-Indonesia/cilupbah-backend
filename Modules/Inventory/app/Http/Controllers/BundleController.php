@@ -48,7 +48,12 @@ class BundleController extends Controller
         try {
             [$product, $isUpdate] = $this->bundleService->save($request->all());
         } catch (\RuntimeException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyimpan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(

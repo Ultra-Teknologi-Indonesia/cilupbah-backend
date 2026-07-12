@@ -37,7 +37,7 @@ class CategoryService
     {
         $category = $this->repository->findById($id);
         if (!$category) {
-            throw new Exception("Category not found");
+            throw new Exception("Kategori tidak ditemukan");
         }
         return $category;
     }

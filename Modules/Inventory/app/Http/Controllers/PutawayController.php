@@ -166,7 +166,7 @@ class PutawayController extends Controller
 
             return $this->successResponse($putaway, 'Penempatan barang berhasil dibuat.', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -288,7 +288,12 @@ class PutawayController extends Controller
 
             return $this->successPaginatedResponse($items, 'Daftar item putaway berhasil diambil.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 404);
+            return $this->errorResponse(
+                'Gagal memproses aksi.',
+                404,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -321,7 +326,12 @@ class PutawayController extends Controller
 
             return $this->successResponse($results, 'Staff berhasil di-assign ke putaway.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menetapkan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -345,7 +355,12 @@ class PutawayController extends Controller
 
             return $this->successResponse($putaway, 'Putaway berhasil dimulai.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memulai.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -377,7 +392,12 @@ class PutawayController extends Controller
 
             return $this->successResponse(null, 'Proses putaway item sedang dijalankan.', 202);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses aksi.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -419,7 +439,12 @@ class PutawayController extends Controller
 
             return $this->successResponse($putaway, 'Penempatan berhasil dikoreksi.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -464,7 +489,12 @@ class PutawayController extends Controller
 
             return $this->successResponse($putaway, 'Penempatan berhasil dikoreksi.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -488,7 +518,12 @@ class PutawayController extends Controller
 
             return $this->successResponse($putaway, 'Putaway berhasil diselesaikan.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyelesaikan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -513,7 +548,12 @@ class PutawayController extends Controller
 
             return $this->successResponse($result, 'Putaway berhasil diselesaikan. Selisih dialokasikan ke rak default.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyelesaikan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -698,7 +738,12 @@ class PutawayController extends Controller
 
             return $this->successResponse($result, $message);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -731,7 +776,12 @@ class PutawayController extends Controller
 
             return $this->successResponse($results, 'Penempatan terpilih berhasil diproses.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

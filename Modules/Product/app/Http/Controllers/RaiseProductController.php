@@ -73,7 +73,12 @@ class RaiseProductController extends Controller
         try {
             $raiseProduct = $this->service->create($validated['shop_id'], $request->user()?->id);
         } catch (DomainException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyimpan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(
@@ -94,7 +99,12 @@ class RaiseProductController extends Controller
         } catch (ModelNotFoundException) {
             return $this->errorResponse('Data naikkan produk tidak ditemukan', 404);
         } catch (DomainException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyimpan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(

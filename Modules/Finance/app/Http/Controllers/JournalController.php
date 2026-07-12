@@ -104,7 +104,12 @@ class JournalController extends Controller
         try {
             $result = $this->journalService->saveManual($request->validated(), Auth::id());
         } catch (\DomainException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyimpan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         if ($result === null) {

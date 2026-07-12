@@ -103,7 +103,12 @@ class InventoryTransactionController extends Controller
 
             return $this->successResponse($inventory, 'Stock adjustment berhasil.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyesuaikan stok.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -137,7 +142,12 @@ class InventoryTransactionController extends Controller
             $result = $this->inventoryService->transferOut($request->validated());
             return $this->successResponse(new InventoryTransferResource($result), 'Transfer Out berhasil dibuat sebagai draft.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses transfer.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -152,7 +162,12 @@ class InventoryTransactionController extends Controller
             $result = $this->inventoryService->approveTransfer($id, $validated);
             return $this->successResponse(new InventoryTransferResource($result), 'Transfer berhasil di-approve.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyetujui.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -167,7 +182,12 @@ class InventoryTransactionController extends Controller
             $result = $this->inventoryService->cancelTransfer($id, $validated);
             return $this->successResponse(new InventoryTransferResource($result), 'Transfer berhasil dibatalkan.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal membatalkan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -181,7 +201,12 @@ class InventoryTransactionController extends Controller
             $result = $this->inventoryService->shipTransfer($id, $validated);
             return $this->successResponse(new InventoryTransferResource($result), 'Transfer berhasil dikirim, barang dalam perjalanan.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses transfer.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -223,7 +248,12 @@ class InventoryTransactionController extends Controller
             $result = $this->inventoryService->transferIn($id, $request->validated());
             return $this->successResponse(new InventoryTransferResource($result), 'Transfer In berhasil, stok telah masuk ke gudang tujuan.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses transfer.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -356,7 +386,12 @@ class InventoryTransactionController extends Controller
             $this->inventoryService->deleteTransfer($id);
             return $this->successResponse(null, 'Transfer berhasil dihapus.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -568,7 +603,12 @@ class InventoryTransactionController extends Controller
             $result = $this->inventoryService->createDraft($validated);
             return $this->successResponse(new InventoryTransferResource($result), 'Draft transfer berhasil dibuat.', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyimpan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -578,7 +618,12 @@ class InventoryTransactionController extends Controller
             $result = $this->inventoryService->submitDraft($id);
             return $this->successResponse(new InventoryTransferResource($result), 'Transfer berhasil diajukan untuk approval.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -594,7 +639,12 @@ class InventoryTransactionController extends Controller
             $result = $this->inventoryService->updateDraft($id, $validated);
             return $this->successResponse(new InventoryTransferResource($result), 'Draft transfer berhasil diperbarui.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memperbarui.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -613,7 +663,12 @@ class InventoryTransactionController extends Controller
             $result = $this->inventoryService->addDraftItem($id, $validated);
             return $this->successResponse(new InventoryTransferResource($result), 'Item berhasil ditambahkan ke draft.', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyimpan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -634,7 +689,12 @@ class InventoryTransactionController extends Controller
             );
             return $this->successResponse(new InventoryTransferResource($result), 'Item berhasil diperbarui.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memperbarui.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -644,7 +704,12 @@ class InventoryTransactionController extends Controller
             $this->inventoryService->removeDraftItem($transferId, $itemId);
             return $this->successResponse(null, 'Item berhasil dihapus dari draft.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -655,7 +720,12 @@ class InventoryTransactionController extends Controller
             $result = $this->inventoryService->revertToDraft($id, ['actor' => $actor]);
             return $this->successResponse(new InventoryTransferResource($result), 'Transfer dikembalikan ke Baru Dibuat.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal membatalkan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -690,7 +760,12 @@ class InventoryTransactionController extends Controller
 
             return $this->successResponse($inventory, 'Putaway berhasil.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses putaway.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -706,7 +781,12 @@ class InventoryTransactionController extends Controller
 
             return $this->successResponse(new BinTransferResource($transfer), 'Transfer internal berhasil dibuat.', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses transfer.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -718,7 +798,12 @@ class InventoryTransactionController extends Controller
 
             return $this->successResponse(new BinTransferResource($transfer), 'Surat jalan dicetak, transfer sedang dijalan.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal mencetak.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -750,7 +835,12 @@ class InventoryTransactionController extends Controller
 
             return $this->successResponse(new BinTransferResource($transfer), 'Transfer dikembalikan ke Baru Dibuat.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal mencetak.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -774,7 +864,12 @@ class InventoryTransactionController extends Controller
 
             return $this->successResponse(new BinTransferReceiptResource($receipt), 'Penerimaan transfer internal berhasil.', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses transfer.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -784,7 +879,12 @@ class InventoryTransactionController extends Controller
             $this->inventoryService->deleteBinTransferDraft($id);
             return $this->successResponse(null, 'Transfer internal berhasil dihapus.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -829,7 +929,12 @@ class InventoryTransactionController extends Controller
 
             return $this->successResponse(new BinTransferResource($transfer), 'Baris pindah bin berhasil dikoreksi.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -847,7 +952,12 @@ class InventoryTransactionController extends Controller
 
             return $this->successResponse(new BinTransferResource($transfer), 'Baris pindah bin berhasil dikoreksi.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -889,7 +999,12 @@ class InventoryTransactionController extends Controller
 
             return $this->successResponse(new BinTransferResource($transfer), 'Pindah bin berhasil diperbarui.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memperbarui.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -918,7 +1033,12 @@ class InventoryTransactionController extends Controller
 
             return $this->successResponse(new BinTransferResource($transfer), 'Transfer ditandai sudah dicetak.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal mencetak.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

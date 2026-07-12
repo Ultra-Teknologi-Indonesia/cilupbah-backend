@@ -10,6 +10,6 @@ class InvalidStatusTransitionException extends Exception
 
     public function __construct(string $from, string $to)
     {
-        parent::__construct("Invalid status transition from '{$from}' to '{$to}'");
+        parent::__construct("Transisi status tidak valid dari '{$from}' ke '{$to}'.");
     }
 }

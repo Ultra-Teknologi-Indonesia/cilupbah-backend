@@ -37,7 +37,12 @@ class SalesmanController extends Controller
             $salesman = $this->salesmanService->create($request->all());
             return $this->successResponse(new SalesmanResource($salesman), 'Salesman berhasil ditambahkan');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyimpan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -66,7 +71,12 @@ class SalesmanController extends Controller
             $salesman = $this->salesmanService->update($id, $request->all());
             return $this->successResponse(new SalesmanResource($salesman), 'Salesman berhasil diperbarui');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memperbarui.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -77,7 +87,12 @@ class SalesmanController extends Controller
             $this->salesmanService->delete($request->input('id'));
             return $this->successResponse(null, 'Salesman berhasil dihapus');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

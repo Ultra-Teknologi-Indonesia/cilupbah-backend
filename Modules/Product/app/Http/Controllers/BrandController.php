@@ -41,7 +41,7 @@ class BrandController extends Controller
             $brand = $this->brandService->createBrand($validated);
             return $this->successResponse(new BrandResource($brand), 'Brand berhasil dibuat', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -51,7 +51,12 @@ class BrandController extends Controller
             $brand = $this->brandService->getBrandById($id);
             return $this->successResponse(new BrandResource($brand), 'Berhasil mengambil detail brand');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 404);
+            return $this->errorResponse(
+                'Gagal memuat detail.',
+                404,
+                ['detail' => $e->getMessage()],
+                'Terjadi kesalahan',
+            );
         }
     }
 
@@ -65,7 +70,7 @@ class BrandController extends Controller
             $brand = $this->brandService->updateBrand($id, $validated);
             return $this->successResponse(new BrandResource($brand), 'Brand berhasil diperbarui');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -75,7 +80,12 @@ class BrandController extends Controller
             $this->brandService->deleteBrand($id);
             return $this->successResponse(null, 'Brand berhasil dihapus');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 400);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                400,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 }

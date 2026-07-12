@@ -325,7 +325,7 @@ class InboundController extends Controller
             $inbound = $this->inboundService->createDraft($request->validated());
             return $this->successResponse($inbound, 'Draft Inbound berhasil dibuat', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -350,7 +350,7 @@ class InboundController extends Controller
             $inbound = $this->inboundService->receive($id, $request->validated());
             return $this->successResponse($inbound, 'Penerimaan Inbound berhasil diproses');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -366,7 +366,12 @@ class InboundController extends Controller
 
             return $this->successResponse($inbound, 'Penerimaan berhasil dikoreksi.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses penerimaan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -384,7 +389,12 @@ class InboundController extends Controller
 
             return $this->successResponse($inbound, 'Penerimaan berhasil dikoreksi.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses penerimaan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -421,7 +431,12 @@ class InboundController extends Controller
 
             return $this->successResponse($inbound, 'Jumlah diterima berhasil diperbarui.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses penerimaan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -455,7 +470,12 @@ class InboundController extends Controller
 
             return $this->successResponse($result, 'Penerimaan terpilih diproses.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal membatalkan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -487,7 +507,7 @@ class InboundController extends Controller
             $inbound = $this->inboundService->closeReceiving($id, $request->closed_by);
             return $this->successResponse($inbound, 'Receiving ditutup, discrepancy tercatat');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -512,7 +532,7 @@ class InboundController extends Controller
             $inbound = $this->inboundService->processPutaway($id, $request->validated());
             return $this->successResponse($inbound, 'Putaway berhasil diproses');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -541,7 +561,7 @@ class InboundController extends Controller
             $inbound = $this->inboundService->autoPutaway($id, $request->created_by);
             return $this->successResponse($inbound, 'Auto-putaway berhasil dieksekusi');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -622,7 +642,7 @@ class InboundController extends Controller
                 201
             );
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -714,7 +734,7 @@ class InboundController extends Controller
             $assignment = $this->inboundService->startAssignment($assignmentId, $request->user()->id);
             return $this->successResponse($assignment, 'Assignment dimulai');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -746,7 +766,12 @@ class InboundController extends Controller
             $item = $this->inboundService->lookupByQr($qrCode);
             return $this->successResponse($item, 'Item ditemukan');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 404);
+            return $this->errorResponse(
+                'Gagal memindai.',
+                404,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -825,7 +850,7 @@ class InboundController extends Controller
             $inbound = $this->inboundService->cancel($id);
             return $this->successResponse($inbound, 'Inbound berhasil dibatalkan');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 }

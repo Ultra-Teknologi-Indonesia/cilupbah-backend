@@ -71,7 +71,12 @@ class ProductSyncLogController extends Controller
         } catch (ModelNotFoundException) {
             return $this->errorResponse('Riwayat upload tidak ditemukan', 404);
         } catch (DomainException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal mengunggah.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(null, 'Produk diantrekan untuk upload ulang');

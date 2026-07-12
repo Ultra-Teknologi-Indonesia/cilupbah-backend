@@ -29,7 +29,7 @@ class TikTokWebhookController extends Controller
             Log::warning('TikTok Webhook Signature Mismatch', [
                 'shop_id' => $request->input('shop_id'),
             ]);
-            return $this->errorResponse('Unauthorized', 401);
+            return $this->errorResponse('Tidak diizinkan', 401);
         }
 
         $payload = $request->all();

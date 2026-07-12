@@ -78,7 +78,12 @@ class StockReplenishmentController extends Controller
                 $request->input('note'),
             );
         } catch (\RuntimeException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses penerimaan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(
@@ -96,7 +101,12 @@ class StockReplenishmentController extends Controller
         try {
             $req = $this->service->reject($id, $validated['reason'] ?? null);
         } catch (\RuntimeException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menolak.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(
@@ -117,7 +127,12 @@ class StockReplenishmentController extends Controller
         try {
             $this->service->addItem($id, $validated);
         } catch (\RuntimeException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyimpan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(
@@ -137,7 +152,12 @@ class StockReplenishmentController extends Controller
         try {
             $this->service->updateItem($id, $itemId, $validated);
         } catch (\RuntimeException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memperbarui.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(
@@ -151,7 +171,12 @@ class StockReplenishmentController extends Controller
         try {
             $this->service->removeItem($id, $itemId);
         } catch (\RuntimeException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(

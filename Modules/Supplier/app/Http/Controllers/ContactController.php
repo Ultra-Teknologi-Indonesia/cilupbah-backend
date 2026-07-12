@@ -70,7 +70,7 @@ class ContactController extends Controller
             $contact = $this->contactService->create($request->validated());
             return $this->successResponse(new ContactResource($contact), 'Contact berhasil dibuat', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -91,7 +91,7 @@ class ContactController extends Controller
             $contact = $this->contactService->update($id, $request->validated());
             return $this->successResponse(new ContactResource($contact), 'Contact berhasil diperbarui');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -124,7 +124,7 @@ class ContactController extends Controller
             $this->contactService->delete($request->input('id'));
             return $this->successResponse(null, 'Contact berhasil dihapus');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -207,7 +207,12 @@ class ContactController extends Controller
             $category = $this->contactService->createCategory($request->all());
             return $this->successResponse(new ContactResource($category), 'Kategori berhasil ditambahkan');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyimpan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -223,7 +228,12 @@ class ContactController extends Controller
             $category = $this->contactService->updateCategory($id, $request->all());
             return $this->successResponse(new ContactResource($category), 'Kategori berhasil diperbarui');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memperbarui.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -234,7 +244,12 @@ class ContactController extends Controller
             $this->contactService->deleteCategory($request->input('id'));
             return $this->successResponse(null, 'Kategori berhasil dihapus');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

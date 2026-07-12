@@ -10,6 +10,6 @@ class LocationNotConfiguredException extends Exception
 
     public function __construct(string $salesOrderNo)
     {
-        parent::__construct("No warehouse location could be resolved for order '{$salesOrderNo}'. Configure a default location or a channel-warehouse mapping.");
+        parent::__construct("Lokasi gudang untuk order '{$salesOrderNo}' tidak dapat ditentukan. Atur lokasi default atau mapping channel-gudang.");
     }
 }

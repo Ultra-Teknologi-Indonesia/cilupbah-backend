@@ -72,7 +72,7 @@ class SupplierController extends Controller
             $supplier = $this->supplierService->create($request->validated());
             return $this->successResponse(new SupplierResource($supplier), 'Supplier berhasil dibuat', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -127,7 +127,12 @@ class SupplierController extends Controller
             $supplier = $this->supplierService->update($id, $request->validated());
             return $this->successResponse(new SupplierResource($supplier), 'Supplier berhasil diupdate');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 404);
+            return $this->errorResponse(
+                'Gagal memperbarui.',
+                404,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -150,7 +155,12 @@ class SupplierController extends Controller
             $this->supplierService->delete($id);
             return $this->successResponse(null, 'Supplier berhasil dihapus');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 404);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                404,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 }

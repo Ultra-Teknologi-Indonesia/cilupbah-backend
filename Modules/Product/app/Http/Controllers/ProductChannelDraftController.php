@@ -57,7 +57,12 @@ class ProductChannelDraftController extends Controller
         } catch (ModelNotFoundException) {
             return $this->errorResponse('Draft tidak ditemukan', 404);
         } catch (DomainException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal mengunggah.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(null, 'Draft diantrekan untuk upload');

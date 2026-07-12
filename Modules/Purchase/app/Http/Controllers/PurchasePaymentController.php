@@ -63,7 +63,7 @@ class PurchasePaymentController extends Controller
             $payment = $this->paymentService->create($request->validated());
             return $this->successResponse($payment, 'Payment berhasil dibuat', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -107,7 +107,7 @@ class PurchasePaymentController extends Controller
             $this->paymentService->delete($request->input('id'));
             return $this->successResponse(null, 'Payment berhasil dihapus');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 }

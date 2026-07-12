@@ -145,9 +145,14 @@ class ProductController extends Controller
             ], 'Product created successfully', 201);
         } catch (\DomainException $e) {
 
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyimpan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         } catch (\Exception $e) {
-            return $this->errorResponse('Failed to create product', 500, ['error' => $e->getMessage()]);
+            return $this->errorResponse('Gagal membuat produk', 500, ['error' => $e->getMessage()]);
         }
     }
 
@@ -196,7 +201,12 @@ class ProductController extends Controller
             $this->productService->updateProduct($id, $request->validated());
         } catch (\DomainException $e) {
 
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memperbarui.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(
@@ -215,7 +225,12 @@ class ProductController extends Controller
         try {
             $this->productService->deleteProduct($product);
         } catch (\DomainException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(null, 'Produk berhasil dihapus');
@@ -329,7 +344,12 @@ class ProductController extends Controller
         try {
             $action($product);
         } catch (\DomainException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(
@@ -378,7 +398,12 @@ class ProductController extends Controller
         try {
             $product = $this->productService->createOrUpdateBundle($data);
         } catch (\DomainException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyimpan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         $isUpdate = isset($data['id']);
@@ -434,7 +459,12 @@ class ProductController extends Controller
         try {
             $result = $this->productService->bulkUpdateVariants($product, $data['action'], $data['variant_ids']);
         } catch (\DomainException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses batch.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse($result, 'Aksi massal varian berhasil.');

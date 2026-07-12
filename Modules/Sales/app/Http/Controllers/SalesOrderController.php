@@ -858,7 +858,12 @@ class SalesOrderController extends Controller
 
             return $this->successResponse($result, 'Shipping label berhasil diambil');
         } catch (\Modules\Sales\Exceptions\ShippingLabelPreparingException $e) {
-            return $this->errorResponse($e->getMessage(), 202);
+            return $this->errorResponse(
+                'Gagal memproses pengiriman.',
+                202,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         } catch (\InvalidArgumentException $e) {
             return $this->errorResponse($e->getMessage(), 422);
         } catch (\RuntimeException $e) {
@@ -882,7 +887,12 @@ class SalesOrderController extends Controller
 
             return $this->successResponse(null, 'Label sedang disiapkan ulang. Coba unduh lagi dalam 1-2 menit.', 202);
         } catch (\InvalidArgumentException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses pengiriman.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -1047,7 +1057,12 @@ class SalesOrderController extends Controller
 
             return $this->successResponse(new SalesOrderResource($order), 'Pesanan ditandai sudah dihubungi');
         } catch (\InvalidArgumentException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses kontak.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -1084,7 +1099,12 @@ class SalesOrderController extends Controller
 
             return $this->successResponse(['contacted' => $count], "{$count} pesanan ditandai sudah dihubungi");
         } catch (\InvalidArgumentException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses batch.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -1117,7 +1137,12 @@ class SalesOrderController extends Controller
 
             return $this->successResponse(new SalesOrderResource($order), 'Keputusan buyer tersimpan');
         } catch (\InvalidArgumentException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses aksi.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -1161,7 +1186,12 @@ class SalesOrderController extends Controller
 
             return $this->successResponse(new SalesOrderResource($order->load('items')), 'Item pesanan diperbarui (internal)');
         } catch (\InvalidArgumentException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memperbarui.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -1186,7 +1216,12 @@ class SalesOrderController extends Controller
 
             return $this->successResponse(new SalesOrderResource($order->load('items')), 'Item pesanan dihapus (internal)');
         } catch (\InvalidArgumentException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

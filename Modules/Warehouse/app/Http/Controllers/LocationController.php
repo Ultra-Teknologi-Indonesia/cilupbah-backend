@@ -204,7 +204,12 @@ class LocationController extends Controller
 
             return $this->successResponse(new LocationResource($location), 'Lokasi berhasil dibuat.', 201);
         } catch (\DomainException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyimpan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -275,7 +280,12 @@ class LocationController extends Controller
         try {
             $location = $this->locationService->update($id, $request->validated());
         } catch (\DomainException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memperbarui.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         if (!$location) {
@@ -319,7 +329,12 @@ class LocationController extends Controller
 
             return $this->successResponse(null, 'Lokasi berhasil dihapus.');
         } catch (\DomainException $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 }

@@ -53,7 +53,7 @@ class PurchaseReturnSettlementController extends Controller
             $this->settlementService->delete($request->input('id'));
             return $this->successResponse(null, 'Settlement berhasil dihapus');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -98,7 +98,7 @@ class PurchaseReturnSettlementController extends Controller
             $bill = $this->settlementService->createBill($request->only('settlement_id', 'bill_id', 'amount'));
             return $this->successResponse($bill, 'Bill ditambahkan ke settlement', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -168,7 +168,7 @@ class PurchaseReturnSettlementController extends Controller
             );
             return $this->successResponse($refund, 'Refund ditambahkan ke settlement', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 

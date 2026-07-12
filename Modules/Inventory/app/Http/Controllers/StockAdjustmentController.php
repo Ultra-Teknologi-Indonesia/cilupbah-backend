@@ -131,7 +131,12 @@ class StockAdjustmentController extends Controller
 
             return $this->successResponse(new StockAdjustmentResource($adjustment), 'Dokumen adjustment berhasil dibuat.', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyimpan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -155,7 +160,12 @@ class StockAdjustmentController extends Controller
 
             return $this->successResponse(null, 'Dokumen adjustment berhasil dihapus.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

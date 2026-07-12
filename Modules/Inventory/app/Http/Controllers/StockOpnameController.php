@@ -155,7 +155,12 @@ class StockOpnameController extends Controller
 
             return $this->successResponse(new StockOpnameResource($opname), 'Stock opname berhasil dibuat.', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menyimpan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -181,7 +186,12 @@ class StockOpnameController extends Controller
 
             return $this->successResponse(new StockOpnameResource($opname), 'Stock opname mulai diproses.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memulai.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -250,7 +260,12 @@ class StockOpnameController extends Controller
 
             return $this->successResponse(new StockOpnameResource($opname), 'Item berhasil dihitung.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memuat ringkasan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Terjadi kesalahan',
+            );
         }
     }
 
@@ -276,7 +291,12 @@ class StockOpnameController extends Controller
 
             return $this->successResponse(new StockOpnameResource($opname), 'Stock opname di-finalize, penyesuaian stok sedang diproses.', 202);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses aksi.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -301,7 +321,12 @@ class StockOpnameController extends Controller
 
             return $this->successResponse(new StockOpnameResource($opname), 'Stock opname berhasil di-cancel.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal membatalkan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -326,7 +351,12 @@ class StockOpnameController extends Controller
 
             return $this->successResponse(null, 'Stock opname berhasil dihapus.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menghapus.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -352,7 +382,12 @@ class StockOpnameController extends Controller
 
             return $this->successResponse(new StockOpnameResource($opname), 'Stock opname ditandai sudah dicetak.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal mencetak.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

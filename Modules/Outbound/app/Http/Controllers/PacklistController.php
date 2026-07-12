@@ -266,7 +266,12 @@ class PacklistController extends Controller
         try {
             $this->packlistService->unpackItem($id, $itemId, $validated['qty'] ?? null);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses packing.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(null, 'Pack berhasil dikoreksi.');
@@ -283,7 +288,12 @@ class PacklistController extends Controller
         try {
             $this->packlistService->unpackItems($id, $validated['items']);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses packing.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(null, 'Pack berhasil dikoreksi.');
@@ -395,7 +405,12 @@ class PacklistController extends Controller
         try {
             $this->packlistService->revert($id);
         } catch (Throwable $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal membatalkan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(null, 'Packlist dikembalikan, order kembali ke belum dipack.');

@@ -55,7 +55,7 @@ class TikTokSyncApiController extends Controller
                 'details' => $results
             ], "Berhasil menarik $totalCount pesanan dari seluruh toko TikTok.");
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -66,7 +66,7 @@ class TikTokSyncApiController extends Controller
             $count = $orderService->pullOrders($request->shop_id);
             return $this->successResponse(['count' => $count], "Berhasil menarik {$count} pesanan!");
         } catch (\Exception $e) {
-            return $this->errorResponse("Gagal menarik pesanan: " . $e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -81,7 +81,7 @@ class TikTokSyncApiController extends Controller
             $orderService->acceptOrder($request->shop_id, $request->order_id);
             return $this->successResponse(null, "Pesanan {$request->order_id} berhasil diterima (Processing)!");
         } catch (\Exception $e) {
-            return $this->errorResponse("Gagal menerima pesanan: " . $e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -97,7 +97,7 @@ class TikTokSyncApiController extends Controller
             $orderService->declineOrder($request->shop_id, $request->order_id, $request->reason);
             return $this->successResponse(null, "Pesanan {$request->order_id} berhasil ditolak!");
         } catch (\Exception $e) {
-            return $this->errorResponse("Gagal menolak pesanan: " . $e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -208,7 +208,7 @@ class TikTokSyncApiController extends Controller
             $reasons = $orderService->getCancelReasons();
             return $this->successResponse($reasons, 'Daftar alasan pembatalan TikTok.');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -241,7 +241,7 @@ class TikTokSyncApiController extends Controller
                 'details' => $results
             ], "Berhasil menarik produk dari seluruh toko TikTok.");
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -256,7 +256,7 @@ class TikTokSyncApiController extends Controller
             $productService->pushProduct($request->product_id, $request->shop_id);
             return $this->successResponse(null, "Produk (ID: {$request->product_id}) berhasil di-push ke TikTok!");
         } catch (\Exception $e) {
-            return $this->errorResponse("Gagal push produk: " . $e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -271,7 +271,7 @@ class TikTokSyncApiController extends Controller
             $productService->syncPriceAndInventory($request->product_id, $request->shop_id);
             return $this->successResponse(null, "Stok & Harga Produk (ID: {$request->product_id}) berhasil di-sync ke TikTok!");
         } catch (\Exception $e) {
-            return $this->errorResponse("Gagal sync produk: " . $e->getMessage(), 500);
+            throw $e;
         }
     }
 
@@ -286,7 +286,7 @@ class TikTokSyncApiController extends Controller
 
             return $this->successResponse(['fail_count' => $failCount], $message);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+            throw $e;
         }
     }
 
