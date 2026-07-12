@@ -21,36 +21,82 @@ class AuthService
         $user = $this->userRepository->findByEmail($credentials['email']);
 
         if (! $user || ! Hash::check($credentials['password'], $user->password)) {
+            if ($request) {
+                [$clientType, $clientIp, $userAgent] = $this->resolveClientMeta($request);
+                LoginHistory::recordFailed(
+                    (string) ($credentials['email'] ?? ''),
+                    $clientIp,
+                    $userAgent,
+                    $clientType
+                );
+            }
+
             return null;
         }
 
         $this->userRepository->update($user, ['last_login_at' => now()]);
 
+        $clientType = LoginHistory::CLIENT_WEB;
+        $clientIp = '';
+        $userAgent = '';
         if ($request) {
-            $clientIp = $request->header('X-Client-IP')
-                ?? $request->header('CF-Connecting-IP')
-                ?? $request->header('X-Forwarded-For')
-                ?? $request->ip()
-                ?? '';
-            if (str_contains($clientIp, ',')) {
-                $clientIp = trim(explode(',', $clientIp)[0]);
-            }
-
-            LoginHistory::recordLogin(
-                $user->id,
-                $clientIp,
-                $request->userAgent() ?? ''
-            );
+            [$clientType, $clientIp, $userAgent] = $this->resolveClientMeta($request);
         }
 
         $user->load('roles', 'permissions');
-        $token = $user->createToken('auth_token')->plainTextToken;
+
+        $tokenName = $this->buildTokenName($clientType, $userAgent);
+        $newToken = $user->createToken($tokenName);
+        $accessToken = $newToken->plainTextToken;
+
+        if ($request) {
+            LoginHistory::recordLogin(
+                $user->id,
+                $clientIp,
+                $userAgent,
+                $clientType,
+                (int) $newToken->accessToken->getKey()
+            );
+        }
 
         return [
-            'access_token' => $token,
+            'access_token' => $accessToken,
             'token_type' => 'Bearer',
             'user' => $user,
         ];
+    }
+
+    /**
+     * @return array{0:string,1:string,2:string} [clientType, ip, userAgent]
+     */
+    private function resolveClientMeta(Request $request): array
+    {
+        $clientTypeRaw = strtolower((string) $request->header('X-Client-Type', ''));
+        $clientType = $clientTypeRaw === LoginHistory::CLIENT_MOBILE
+            ? LoginHistory::CLIENT_MOBILE
+            : LoginHistory::CLIENT_WEB;
+
+        $clientIp = $request->header('X-Client-IP')
+            ?? $request->header('CF-Connecting-IP')
+            ?? $request->header('X-Forwarded-For')
+            ?? $request->ip()
+            ?? '';
+        if (str_contains($clientIp, ',')) {
+            $clientIp = trim(explode(',', $clientIp)[0]);
+        }
+
+        return [$clientType, $clientIp, $request->userAgent() ?? ''];
+    }
+
+    private function buildTokenName(string $clientType, string $userAgent): string
+    {
+        $label = trim($userAgent);
+        if ($label === '') {
+            $label = $clientType === LoginHistory::CLIENT_MOBILE ? 'Cilupbah App' : 'Web Browser';
+        }
+        $label = mb_substr($label, 0, 120);
+
+        return $clientType.':'.$label;
     }
 
     public function logout(User $user): void

@@ -11,8 +11,18 @@ class LoginHistory extends Model
 {
     public $timestamps = false;
 
+    public const CLIENT_WEB = 'web';
+    public const CLIENT_MOBILE = 'mobile';
+
+    public const STATUS_SUCCESS = 'success';
+    public const STATUS_FAILED = 'failed';
+
     protected $fillable = [
         'user_id',
+        'client_type',
+        'status',
+        'token_id',
+        'email_attempt',
         'agent_device',
         'agent_os',
         'agent_browser',
@@ -32,6 +42,7 @@ class LoginHistory extends Model
             'created_at' => 'datetime',
             'location_lat' => 'float',
             'location_lon' => 'float',
+            'token_id' => 'integer',
         ];
     }
 
@@ -40,7 +51,60 @@ class LoginHistory extends Model
         return $this->belongsTo(User::class);
     }
 
-    public static function recordLogin(string $userId, string $ipAddress, string $userAgent): self
+    public static function recordLogin(
+        string $userId,
+        string $ipAddress,
+        string $userAgent,
+        string $clientType = self::CLIENT_WEB,
+        ?int $tokenId = null
+    ): self {
+        [$device, $os, $browser] = self::parseAgent($userAgent, $clientType);
+        $location = self::resolveLocation($ipAddress);
+
+        return self::create([
+            'user_id' => $userId,
+            'client_type' => $clientType,
+            'status' => self::STATUS_SUCCESS,
+            'token_id' => $tokenId,
+            'agent_device' => $device,
+            'agent_os' => $os,
+            'agent_browser' => $browser,
+            'ip_address' => $ipAddress,
+            'location_country' => $location['country'],
+            'location_region' => $location['region'],
+            'location_city' => $location['city'],
+            'location_lat' => $location['lat'],
+            'location_lon' => $location['lon'],
+        ]);
+    }
+
+    public static function recordFailed(
+        string $emailAttempt,
+        string $ipAddress,
+        string $userAgent,
+        string $clientType = self::CLIENT_WEB
+    ): self {
+        [$device, $os, $browser] = self::parseAgent($userAgent, $clientType);
+        $location = self::resolveLocation($ipAddress);
+
+        return self::create([
+            'user_id' => null,
+            'client_type' => $clientType,
+            'status' => self::STATUS_FAILED,
+            'email_attempt' => $emailAttempt,
+            'agent_device' => $device,
+            'agent_os' => $os,
+            'agent_browser' => $browser,
+            'ip_address' => $ipAddress,
+            'location_country' => $location['country'],
+            'location_region' => $location['region'],
+            'location_city' => $location['city'],
+            'location_lat' => $location['lat'],
+            'location_lon' => $location['lon'],
+        ]);
+    }
+
+    private static function parseAgent(string $userAgent, string $clientType): array
     {
         $agent = new Agent();
         $agent->setUserAgent($userAgent);
@@ -55,20 +119,16 @@ class LoginHistory extends Model
             $device = 'Tablet';
         }
 
-        $location = self::resolveLocation($ipAddress);
+        if ($clientType === self::CLIENT_MOBILE) {
+            if ($device === 'Desktop' || $device === 'Other') {
+                $device = 'Mobile';
+            }
+            if ($browser === 'Other') {
+                $browser = 'Cilupbah App';
+            }
+        }
 
-        return self::create([
-            'user_id' => $userId,
-            'agent_device' => $device,
-            'agent_os' => $os,
-            'agent_browser' => $browser,
-            'ip_address' => $ipAddress,
-            'location_country' => $location['country'],
-            'location_region' => $location['region'],
-            'location_city' => $location['city'],
-            'location_lat' => $location['lat'],
-            'location_lon' => $location['lon'],
-        ]);
+        return [$device, $os, $browser];
     }
 
     private static function resolveLocation(string $ip): array
