@@ -265,7 +265,12 @@ class ShipmentController extends Controller
         try {
             $this->shipmentService->updateHandoverQty($id, $request->order_id, $request->qty_given);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage());
+            return $this->errorResponse(
+                'Gagal memproses pengiriman.',
+                400,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(null, 'Qty handover berhasil diperbarui.');

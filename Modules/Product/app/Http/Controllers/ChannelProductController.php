@@ -347,7 +347,12 @@ class ChannelProductController extends Controller
         try {
             $this->channelProductService->unlinkProduct($id, $shopId);
         } catch (\RuntimeException $e) {
-            return $this->errorResponse($e->getMessage(), $e->getCode() ?: 422);
+            return $this->errorResponse(
+                'Gagal memutuskan koneksi channel.',
+                $e->getCode() ?: 422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(['success' => true], 'Koneksi channel berhasil diputus');

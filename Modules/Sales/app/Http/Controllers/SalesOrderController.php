@@ -950,14 +950,20 @@ class SalesOrderController extends Controller
                 'label_message' => $e->getMessage(),
             ], 'Driver berhasil dipanggil, label masih disiapkan. Coba unduh dalam beberapa detik.', 202);
         } catch (\InvalidArgumentException|\RuntimeException $e) {
-            return $this->errorResponse('Driver berhasil dipanggil namun label gagal diambil: ' . $e->getMessage(), 422, [
-                'success' => $driverCallSuccess,
-                'driver_call_status'       => $order->driver_call_status,
-                'driver_call_message'      => $order->driver_call_message,
-                'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
-                'label' => null,
-                'label_error' => $e->getMessage(),
-            ]);
+            return $this->errorResponse(
+                'Driver berhasil dipanggil namun label gagal diambil.',
+                422,
+                [
+                    'success' => $driverCallSuccess,
+                    'driver_call_status'       => $order->driver_call_status,
+                    'driver_call_message'      => $order->driver_call_message,
+                    'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
+                    'label' => null,
+                    'label_error' => $e->getMessage(),
+                    'detail' => $e->getMessage(),
+                ],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse([

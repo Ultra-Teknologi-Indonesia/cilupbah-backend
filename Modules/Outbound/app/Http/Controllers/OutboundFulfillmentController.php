@@ -43,7 +43,12 @@ class OutboundFulfillmentController extends Controller
         try {
             $data = $this->fulfillmentService->getOrdersByStage($stage, $limit);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage());
+            return $this->errorResponse(
+                'Gagal memproses fulfillment.',
+                400,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse($data);
@@ -83,7 +88,12 @@ class OutboundFulfillmentController extends Controller
                 auth()->user()->email,
             );
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage());
+            return $this->errorResponse(
+                'Gagal memproses fulfillment.',
+                400,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse($order);
@@ -188,7 +198,12 @@ class OutboundFulfillmentController extends Controller
                 auth()->user()->email,
             );
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage());
+            return $this->errorResponse(
+                'Gagal memproses fulfillment.',
+                400,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse($order, 'Order dipindah ke ready-to-pick.');
@@ -222,7 +237,12 @@ class OutboundFulfillmentController extends Controller
         try {
             $order = $this->fulfillmentService->moveToReadyToProcess($request->order_id);
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage());
+            return $this->errorResponse(
+                'Gagal memproses fulfillment.',
+                400,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse($order, 'Order dipindah ke ready-to-process.');
@@ -242,7 +262,12 @@ class OutboundFulfillmentController extends Controller
                 auth()->user()->email,
             );
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage());
+            return $this->errorResponse(
+                'Gagal memproses fulfillment.',
+                400,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse($order);
@@ -342,7 +367,12 @@ class OutboundFulfillmentController extends Controller
                 auth()->user()->email,
             );
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage());
+            return $this->errorResponse(
+                'Gagal memproses fulfillment.',
+                400,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(null, 'Pesanan dikembalikan ke tahap sebelumnya.');

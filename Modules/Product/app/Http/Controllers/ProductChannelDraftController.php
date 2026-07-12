@@ -126,7 +126,12 @@ class ProductChannelDraftController extends Controller
                 $request->user()?->id
             );
         } catch (\RuntimeException $e) {
-            return $this->errorResponse($e->getMessage(), $e->getCode() ?: 422);
+            return $this->errorResponse(
+                'Gagal memproses draft channel produk.',
+                $e->getCode() ?: 422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(
@@ -200,7 +205,12 @@ class ProductChannelDraftController extends Controller
                 $request->user()?->id
             );
         } catch (\RuntimeException $e) {
-            return $this->errorResponse($e->getMessage(), $e->getCode() ?: 422);
+            return $this->errorResponse(
+                'Gagal memproses draft channel produk.',
+                $e->getCode() ?: 422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(
@@ -224,7 +234,12 @@ class ProductChannelDraftController extends Controller
         try {
             $result = $this->draftService->requiredAttributes($id, $shopId);
         } catch (\RuntimeException $e) {
-            return $this->errorResponse($e->getMessage(), $e->getCode() ?: 422);
+            return $this->errorResponse(
+                'Gagal memproses draft channel produk.',
+                $e->getCode() ?: 422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $result['message'] !== null
