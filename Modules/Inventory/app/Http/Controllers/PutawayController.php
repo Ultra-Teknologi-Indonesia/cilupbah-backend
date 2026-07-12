@@ -656,7 +656,12 @@ class PutawayController extends Controller
             return $pdf->stream($filename);
         } catch (Throwable $e) {
             report($e);
-            return $this->errorResponse('Gagal membuat PDF putaway: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal membuat PDF putaway.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -706,7 +711,12 @@ class PutawayController extends Controller
             return $pdf->stream($filename);
         } catch (Throwable $e) {
             report($e);
-            return $this->errorResponse('Gagal membuat PDF putaway bulk: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal membuat PDF putaway bulk.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

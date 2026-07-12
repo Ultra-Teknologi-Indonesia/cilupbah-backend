@@ -365,7 +365,12 @@ class LocationBinController extends Controller
         } catch (Throwable $e) {
             report($e);
 
-            return $this->errorResponse('Gagal membuat PDF QR bin: '.$e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal membuat PDF QR bin.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -391,7 +396,12 @@ class LocationBinController extends Controller
             $job = $service->createJob($locationId, $opts);
         } catch (\Throwable $e) {
             report($e);
-            return $this->errorResponse('Gagal membuat job print QR: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal membuat job print QR.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse([

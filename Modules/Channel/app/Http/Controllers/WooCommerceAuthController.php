@@ -93,7 +93,12 @@ class WooCommerceAuthController extends Controller
         } catch (\Throwable $e) {
             Log::error('WooCommerce callback gagal', ['message' => $e->getMessage()]);
 
-            return $this->errorResponse('Binding gagal: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Binding gagal.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 }

@@ -96,7 +96,12 @@ class ShopeeSyncApiController extends Controller
 
             return $this->successResponse($result, 'Order Shopee berhasil dikirim.');
         } catch (\Throwable $e) {
-            return $this->errorResponse('Gagal mengirim order: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal mengirim order.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -124,7 +129,12 @@ class ShopeeSyncApiController extends Controller
 
             return $this->successResponse($result, 'Kirim massal Shopee diproses.');
         } catch (\Throwable $e) {
-            return $this->errorResponse('Gagal kirim massal: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal kirim massal.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -150,7 +160,12 @@ class ShopeeSyncApiController extends Controller
 
             return $this->successResponse($result, 'Air waybill Shopee siap.');
         } catch (\Throwable $e) {
-            return $this->errorResponse('Gagal ambil AWB: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal ambil AWB.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -173,7 +188,12 @@ class ShopeeSyncApiController extends Controller
         try {
             return $this->successResponse($this->orderService->searchPackageList($validated['shop_id'], $opts), 'Daftar paket Shopee.');
         } catch (\Throwable $e) {
-            return $this->errorResponse('Gagal ambil daftar paket: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal ambil daftar paket.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -199,7 +219,12 @@ class ShopeeSyncApiController extends Controller
 
             return $this->successResponse($result, 'Pengiriman Shopee diperbarui.');
         } catch (\Throwable $e) {
-            return $this->errorResponse('Gagal retry pengiriman: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal retry pengiriman.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -221,7 +246,12 @@ class ShopeeSyncApiController extends Controller
 
             return $this->successResponse($result, 'Permintaan pembatalan pembeli ditanggapi.');
         } catch (\Throwable $e) {
-            return $this->errorResponse('Gagal menanggapi pembatalan: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menanggapi pembatalan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -243,7 +273,12 @@ class ShopeeSyncApiController extends Controller
 
             return $this->successResponse($result, 'Order Shopee dipisah.');
         } catch (\Throwable $e) {
-            return $this->errorResponse('Gagal memisah order: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memisah order.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -264,7 +299,12 @@ class ShopeeSyncApiController extends Controller
 
             return $this->successResponse($result, 'Order Shopee digabung kembali.');
         } catch (\Throwable $e) {
-            return $this->errorResponse('Gagal menggabung order: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menggabung order.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -282,7 +322,12 @@ class ShopeeSyncApiController extends Controller
 
             return $this->successResponse($result, 'Order Shopee berhasil dibatalkan.');
         } catch (\Throwable $e) {
-            return $this->errorResponse('Gagal membatalkan order: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal membatalkan order.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -337,7 +382,12 @@ class ShopeeSyncApiController extends Controller
         try {
             $count = $productService->syncCategoryTree($validated['shop_id']);
         } catch (\Throwable $e) {
-            return $this->errorResponse('Gagal sinkron kategori Shopee: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal sinkron kategori Shopee.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(['synced' => $count], "{$count} kategori Shopee disinkronkan.");
@@ -363,7 +413,12 @@ class ShopeeSyncApiController extends Controller
 
             $results = $productService->syncAllMappedCategoryAttributes($validated['shop_id']);
         } catch (\Throwable $e) {
-            return $this->errorResponse('Gagal sinkron atribut Shopee: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal sinkron atribut Shopee.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(

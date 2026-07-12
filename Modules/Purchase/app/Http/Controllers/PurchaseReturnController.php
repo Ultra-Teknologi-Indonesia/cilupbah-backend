@@ -129,7 +129,12 @@ class PurchaseReturnController extends Controller
             return $pdf->stream($filename);
         } catch (Throwable $e) {
             report($e);
-            return $this->errorResponse('Gagal membuat PDF retur pembelian: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal membuat PDF retur pembelian.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

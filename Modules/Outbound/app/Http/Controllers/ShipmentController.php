@@ -551,7 +551,12 @@ class ShipmentController extends Controller
             return $pdf->stream($filename);
         } catch (Throwable $e) {
             report($e);
-            return $this->errorResponse('Gagal membuat PDF manifest: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal membuat PDF manifest.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -587,7 +592,12 @@ class ShipmentController extends Controller
             return Excel::download(new ShipmentManifestExport($shipment), $filename);
         } catch (Throwable $e) {
             report($e);
-            return $this->errorResponse('Gagal membuat Excel manifest: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal membuat Excel manifest.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -638,7 +648,12 @@ class ShipmentController extends Controller
             return $pdf->stream($filename);
         } catch (Throwable $e) {
             report($e);
-            return $this->errorResponse('Gagal membuat PDF manifest bulk: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal membuat PDF manifest bulk.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

@@ -74,7 +74,12 @@ class InventoryController extends Controller
         } catch (\Throwable $e) {
             report($e);
 
-            return $this->errorResponse('Gagal mengambil data stok: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal mengambil data stok.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -92,7 +97,12 @@ class InventoryController extends Controller
         } catch (\Throwable $e) {
             report($e);
 
-            return $this->errorResponse('Gagal mengambil detail stok: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal mengambil detail stok.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Terjadi kesalahan',
+            );
         }
     }
 

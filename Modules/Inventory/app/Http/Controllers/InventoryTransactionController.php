@@ -341,7 +341,12 @@ class InventoryTransactionController extends Controller
             return $pdf->stream($filename);
         } catch (Throwable $e) {
             report($e);
-            return $this->errorResponse('Gagal membuat PDF transfer: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal membuat PDF transfer.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -506,7 +511,12 @@ class InventoryTransactionController extends Controller
             return $pdf->stream($filename);
         } catch (Throwable $e) {
             report($e);
-            return $this->errorResponse('Gagal membuat PDF transfer bulk: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal membuat PDF transfer bulk.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -823,7 +833,12 @@ class InventoryTransactionController extends Controller
             return $pdf->stream("{$transfer->transfer_number}.pdf");
         } catch (Throwable $e) {
             report($e);
-            return $this->errorResponse('Gagal membuat PDF transfer internal: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal membuat PDF transfer internal.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

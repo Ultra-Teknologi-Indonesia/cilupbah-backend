@@ -127,7 +127,12 @@ class TikTokSyncApiController extends Controller
 
             return $this->successResponse($result, 'Order TikTok berhasil dikirim.');
         } catch (\Exception $e) {
-            return $this->errorResponse('Gagal mengirim order: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal mengirim order.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -144,7 +149,12 @@ class TikTokSyncApiController extends Controller
             $result = $orderService->getShippingDocument($request->shop_id, $request->package_id, $docType);
             return $this->successResponse($result['data'] ?? $result, 'Air waybill TikTok siap.');
         } catch (\Exception $e) {
-            return $this->errorResponse('Gagal ambil AWB: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal ambil AWB.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -159,7 +169,12 @@ class TikTokSyncApiController extends Controller
             $result = $orderService->getPackageDetail($request->shop_id, $request->package_id);
             return $this->successResponse($result['data'] ?? $result, 'Detail package TikTok.');
         } catch (\Exception $e) {
-            return $this->errorResponse('Gagal ambil detail package: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal ambil detail package.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -182,7 +197,12 @@ class TikTokSyncApiController extends Controller
 
             return $this->successResponse($result, $msg);
         } catch (\Exception $e) {
-            return $this->errorResponse('Gagal menanggapi pembatalan: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menanggapi pembatalan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -198,7 +218,12 @@ class TikTokSyncApiController extends Controller
             return $this->successResponse($res, 'Order TikTok berhasil dibatalkan.');
         } catch (\Exception $e) {
             $status = strpos($e->getMessage(), 'Hanya berlaku') !== false || strpos($e->getMessage(), 'tidak ditemukan') !== false ? 422 : 500;
-            return $this->errorResponse('Gagal membatalkan order: ' . $e->getMessage(), $status);
+            return $this->errorResponse(
+                'Gagal membatalkan order.',
+                $status,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -297,7 +322,12 @@ class TikTokSyncApiController extends Controller
         try {
             $count = $productService->syncCategoryTree($validated['shop_id']);
         } catch (\Throwable $e) {
-            return $this->errorResponse('Gagal sinkron kategori TikTok: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal sinkron kategori TikTok.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(['synced' => $count], "{$count} kategori TikTok disinkronkan.");
@@ -328,7 +358,12 @@ class TikTokSyncApiController extends Controller
             app(CategoryAttributeSyncService::class)->materializeAllMapped();
             Artisan::queue('products:recompute-validation', ['--queue' => true]);
         } catch (\Throwable $e) {
-            return $this->errorResponse('Gagal sinkron atribut TikTok: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal sinkron atribut TikTok.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(

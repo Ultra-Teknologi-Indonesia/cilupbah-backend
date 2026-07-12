@@ -197,7 +197,12 @@ class PicklistController extends Controller
             return $pdf->stream($filename);
         } catch (Throwable $e) {
             report($e);
-            return $this->errorResponse('Gagal membuat PDF picklist: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal membuat PDF picklist.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -252,7 +257,12 @@ class PicklistController extends Controller
             return $pdf->stream($filename);
         } catch (Throwable $e) {
             report($e);
-            return $this->errorResponse('Gagal membuat PDF picklist bulk: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal membuat PDF picklist bulk.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -454,7 +464,12 @@ class PicklistController extends Controller
             );
         } catch (Throwable $e) {
             report($e);
-            return $this->errorResponse('Gagal menandai item: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal menandai item.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -488,7 +503,12 @@ class PicklistController extends Controller
             );
         } catch (Throwable $e) {
             report($e);
-            return $this->errorResponse('Gagal membatalkan fail item: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal membatalkan fail item.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -548,7 +568,12 @@ class PicklistController extends Controller
             );
         } catch (Throwable $e) {
             report($e);
-            return $this->errorResponse('Split pick gagal: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Split pick gagal.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -706,7 +731,12 @@ class PicklistController extends Controller
             );
         } catch (Throwable $e) {
             report($e);
-            return $this->errorResponse('Gagal mengembalikan picklist: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal mengembalikan picklist.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(null, 'Picklist dikembalikan, order kembali ke belum dipick.');

@@ -112,7 +112,12 @@ class ShopeeStoreController extends Controller
         } catch (\Exception $e) {
             $code = str_contains($e->getMessage(), 'tidak ditemukan') ? 404 : 422;
 
-            return $this->errorResponse($e->getMessage(), $code);
+            return $this->errorResponse(
+                'Gagal memproses aksi.',
+                $code,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 }

@@ -426,7 +426,12 @@ class ReportController extends Controller
                     'data' => $document,
                 ], 'Dokumen Lazada berhasil diambil.');
             } catch (\Exception $e) {
-                return $this->errorResponse('Gagal mengambil dokumen Lazada: ' . $e->getMessage(), 422);
+                return $this->errorResponse(
+                    'Gagal mengambil dokumen Lazada.',
+                    422,
+                    ['detail' => $e->getMessage()],
+                    'Terjadi kesalahan',
+                );
             }
         }
 

@@ -70,7 +70,12 @@ class ChannelController extends Controller
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             throw $e;
         } catch (\Throwable $e) {
-            return $this->errorResponse('Gagal memutuskan toko: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memutuskan toko.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(null, 'Toko berhasil diputuskan dari channel.');

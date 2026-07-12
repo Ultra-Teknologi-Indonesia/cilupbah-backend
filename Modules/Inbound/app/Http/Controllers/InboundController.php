@@ -280,7 +280,12 @@ class InboundController extends Controller
             return $pdf->stream($filename);
         } catch (\Throwable $e) {
             report($e);
-            return $this->errorResponse('Gagal membuat PDF penerimaan: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal membuat PDF penerimaan.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -809,7 +814,12 @@ class InboundController extends Controller
             return $this->successResponse($item, 'Putaway berhasil, stock diperbarui');
         } catch (\Exception $e) {
             $code = str_contains($e->getMessage(), 'tidak ditemukan') ? 404 : 500;
-            return $this->errorResponse($e->getMessage(), $code);
+            return $this->errorResponse(
+                'Gagal memindai.',
+                $code,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

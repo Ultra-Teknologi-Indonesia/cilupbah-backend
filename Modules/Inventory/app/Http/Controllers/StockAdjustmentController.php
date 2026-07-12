@@ -200,7 +200,12 @@ class StockAdjustmentController extends Controller
             return $pdf->stream($filename);
         } catch (Throwable $e) {
             report($e);
-            return $this->errorResponse('Gagal membuat PDF penyesuaian: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal membuat PDF penyesuaian.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -251,7 +256,12 @@ class StockAdjustmentController extends Controller
             return $pdf->stream($filename);
         } catch (Throwable $e) {
             report($e);
-            return $this->errorResponse('Gagal membuat PDF penyesuaian bulk: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal membuat PDF penyesuaian bulk.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

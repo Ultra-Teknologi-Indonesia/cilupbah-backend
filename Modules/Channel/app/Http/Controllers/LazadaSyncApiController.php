@@ -47,7 +47,12 @@ class LazadaSyncApiController extends Controller
         try {
             $count = $productService->syncCategoryTree($validated['shop_id']);
         } catch (\Throwable $e) {
-            return $this->errorResponse('Gagal sinkron kategori Lazada: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal sinkron kategori Lazada.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(['synced' => $count], "{$count} kategori Lazada disinkronkan.");
@@ -88,7 +93,12 @@ class LazadaSyncApiController extends Controller
 
             $results = $productService->syncAllMappedCategoryAttributes($validated['shop_id']);
         } catch (\Throwable $e) {
-            return $this->errorResponse('Gagal sinkron atribut Lazada: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal sinkron atribut Lazada.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(
@@ -129,7 +139,12 @@ class LazadaSyncApiController extends Controller
 
             return $this->successResponse(['count' => $count], "Berhasil menarik {$count} pesanan Lazada.");
         } catch (\Exception $e) {
-            return $this->errorResponse('Gagal menarik pesanan: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal menarik pesanan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -215,7 +230,12 @@ class LazadaSyncApiController extends Controller
 
             return $this->successResponse($result, 'Order berhasil di-pack.');
         } catch (\Exception $e) {
-            return $this->errorResponse('Gagal memproses pack: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses pack.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -289,7 +309,12 @@ class LazadaSyncApiController extends Controller
 
             return $this->successResponse($result, 'Dokumen AWB berhasil diambil.');
         } catch (\Exception $e) {
-            return $this->errorResponse('Gagal mengambil AWB: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal mengambil AWB.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -337,7 +362,12 @@ class LazadaSyncApiController extends Controller
 
             return $this->successResponse($result, 'Order berhasil ready-to-ship.');
         } catch (\Exception $e) {
-            return $this->errorResponse('Gagal memproses ready-to-ship: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses ready-to-ship.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -382,7 +412,12 @@ class LazadaSyncApiController extends Controller
 
             return $this->successResponse($result, 'Order berhasil dibatalkan.');
         } catch (\Exception $e) {
-            return $this->errorResponse('Gagal membatalkan order: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal membatalkan order.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

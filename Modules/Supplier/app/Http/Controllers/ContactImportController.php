@@ -37,7 +37,12 @@ class ContactImportController extends Controller
 
             return $this->successResponse($result, 'Validasi selesai');
         } catch (\Exception $e) {
-            return $this->errorResponse('Gagal memproses file: ' . $e->getMessage(), 422);
+            return $this->errorResponse(
+                'Gagal memproses file.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
@@ -67,7 +72,12 @@ class ContactImportController extends Controller
         } catch (\Exception $e) {
             $this->activityService->markFailed($activity, $e->getMessage());
 
-            return $this->errorResponse('Gagal menyimpan: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal menyimpan.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 }

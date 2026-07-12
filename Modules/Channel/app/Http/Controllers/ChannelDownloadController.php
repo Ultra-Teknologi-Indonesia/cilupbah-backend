@@ -42,7 +42,12 @@ class ChannelDownloadController extends Controller
         } catch (\RuntimeException $e) {
             return $this->errorResponse($e->getMessage(), $e->getCode() ?: 422);
         } catch (\Exception $e) {
-            return $this->errorResponse('Gagal memulai download: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal memulai download.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(
@@ -72,7 +77,12 @@ class ChannelDownloadController extends Controller
         try {
             $transactions = $this->downloadService->downloadBulk($channel, $data['shop_ids'], $request->user()?->id);
         } catch (\RuntimeException $e) {
-            return $this->errorResponse($e->getMessage(), $e->getCode() ?: 422);
+            return $this->errorResponse(
+                'Gagal memulai download massal.',
+                $e->getCode() ?: 422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         $collection = collect($transactions)->map(
@@ -102,7 +112,12 @@ class ChannelDownloadController extends Controller
         } catch (\RuntimeException $e) {
             return $this->errorResponse($e->getMessage(), $e->getCode() ?: 422);
         } catch (\Exception $e) {
-            return $this->errorResponse('Gagal mencari produk: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal mencari produk.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Terjadi kesalahan',
+            );
         }
 
         return $this->successResponse($items, 'Pencarian produk channel berhasil');
@@ -130,7 +145,12 @@ class ChannelDownloadController extends Controller
         } catch (\RuntimeException $e) {
             return $this->errorResponse($e->getMessage(), $e->getCode() ?: 422);
         } catch (\Exception $e) {
-            return $this->errorResponse('Gagal mengunduh produk: ' . $e->getMessage(), 500);
+            return $this->errorResponse(
+                'Gagal mengunduh produk.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(null, 'Produk berhasil diunduh dari channel');
