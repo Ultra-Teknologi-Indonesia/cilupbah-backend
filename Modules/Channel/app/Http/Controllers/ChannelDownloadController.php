@@ -40,7 +40,12 @@ class ChannelDownloadController extends Controller
         try {
             $transaction = $this->downloadService->download($channel, $data['shop_id'], $request->user()?->id);
         } catch (\RuntimeException $e) {
-            return $this->errorResponse($e->getMessage(), $e->getCode() ?: 422);
+            return $this->errorResponse(
+                'Gagal memulai download.',
+                $e->getCode() ?: 422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal memulai download.',
@@ -110,7 +115,12 @@ class ChannelDownloadController extends Controller
         try {
             $items = $this->downloadService->searchProducts($channel, $data['shop_id'], $data['q'] ?? '');
         } catch (\RuntimeException $e) {
-            return $this->errorResponse($e->getMessage(), $e->getCode() ?: 422);
+            return $this->errorResponse(
+                'Gagal mencari produk.',
+                $e->getCode() ?: 422,
+                ['detail' => $e->getMessage()],
+                'Terjadi kesalahan',
+            );
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal mencari produk.',
@@ -143,7 +153,12 @@ class ChannelDownloadController extends Controller
         try {
             $this->downloadService->downloadProduct($channel, $data['shop_id'], $data['external_product_id']);
         } catch (\RuntimeException $e) {
-            return $this->errorResponse($e->getMessage(), $e->getCode() ?: 422);
+            return $this->errorResponse(
+                'Gagal mengunduh produk.',
+                $e->getCode() ?: 422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal mengunduh produk.',
