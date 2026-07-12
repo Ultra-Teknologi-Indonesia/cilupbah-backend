@@ -121,7 +121,7 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
                 $q->where('channel_shop_id', $shop->id);
             })->first();
 
-            if (! $mapping || empty($variant->sku)) {
+            if (! $mapping || ! $mapping->sync_enabled || empty($variant->sku)) {
                 continue;
             }
 

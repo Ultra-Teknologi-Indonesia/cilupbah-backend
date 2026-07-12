@@ -8,6 +8,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Repositories\ProductRepository;
 
@@ -59,11 +60,23 @@ class SyncStockToChannelsJob implements ShouldQueue
                 continue;
             }
 
+            if ($this->listingSyncFullyDisabled($mapping)) {
+                continue;
+            }
+
             SyncProductToChannelJob::dispatch(
                 $product->id,
                 $mapping->channel_shop_id,
                 'sync_price_stock'
             );
         }
+    }
+
+    private function listingSyncFullyDisabled(ProductChannelMapping $mapping): bool
+    {
+        $variantMappings = $mapping->variantMappings()->get(['sync_enabled']);
+
+        return $variantMappings->isNotEmpty()
+            && $variantMappings->every(fn ($vm) => ! $vm->sync_enabled);
     }
 }

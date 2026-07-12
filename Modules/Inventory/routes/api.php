@@ -92,6 +92,16 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         });
     });
 
+    Route::prefix('inventory/sync-settings')->group(function () {
+        Route::middleware('role_or_permission:owner|view-pengaturan-persediaan')->group(function () {
+            Route::get('/', [\Modules\Inventory\Http\Controllers\InventorySyncSettingController::class, 'index'])->name('inventory.syncSettings.index');
+        });
+        Route::middleware('role_or_permission:owner|edit-pengaturan-persediaan')->group(function () {
+            Route::patch('/', [\Modules\Inventory\Http\Controllers\InventorySyncSettingController::class, 'update'])->name('inventory.syncSettings.update');
+            Route::post('bulk', [\Modules\Inventory\Http\Controllers\InventorySyncSettingController::class, 'bulkUpdate'])->name('inventory.syncSettings.bulk');
+        });
+    });
+
     Route::middleware('role_or_permission:owner|create-penyesuaian-stok')->group(function () {
         Route::post('inventory/adjustments', [InventoryTransactionController::class, 'adjust'])->name('inventory.adjust');
     });

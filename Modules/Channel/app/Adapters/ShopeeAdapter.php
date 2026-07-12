@@ -148,7 +148,7 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
                 $q->where('channel_shop_id', $shop->id);
             })->first();
 
-            if (! $mapping) {
+            if (! $mapping || ! $mapping->sync_enabled) {
                 continue;
             }
 

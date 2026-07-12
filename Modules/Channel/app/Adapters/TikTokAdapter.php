@@ -313,7 +313,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
                 $q->where('channel_shop_id', $shop->id);
             })->first();
 
-            if ($mapping && $mapping->external_sku_id) {
+            if ($mapping && $mapping->external_sku_id && $mapping->sync_enabled) {
                 $availableQty = (int) ($stockByVariant[$variant->id] ?? 0);
 
                 $inventorySkus[] = [

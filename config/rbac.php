@@ -76,6 +76,7 @@ return [
                     'extras' => [['name' => 'approve-revaluasi-stok', 'label' => 'Setujui Revaluasi']],
                 ],
                 ['key' => 'monitor-stok', 'label' => 'Monitor Stok', 'actions' => ['view', 'export']],
+                ['key' => 'pengaturan-persediaan', 'label' => 'Pengaturan Persediaan (Sync Stok & Harga)', 'actions' => ['view', 'edit']],
                 ['key' => 'harga-jual', 'label' => 'Harga Jual Internal', 'actions' => ['view', 'edit']],
                 ['key' => 'bundle', 'label' => 'Bundle', 'actions' => ['view', 'create', 'edit', 'delete']],
             ],
