@@ -4,12 +4,33 @@ namespace Modules\Channel\Repositories;
 
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Notification\Services\NotificationDispatcher;
 
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 
 class ChannelShopRepository
 {
+    private function notifyChannelDisconnected(string $id, string $type, string $title, string $message, ?string $error = null): void
+    {
+        $shop = ChannelShop::find($id);
+        if (! $shop) {
+            return;
+        }
+        app(NotificationDispatcher::class)->toPermission('manage-integrasi-channel', [
+            'type' => $type,
+            'title' => $title,
+            'message' => $message,
+            'data' => [
+                'channel_shop_id' => $id,
+                'shop_name' => $shop->shop_name ?? null,
+                'marketplace' => $shop->marketplace ?? null,
+                'error' => $error,
+                'link' => '/dashboard/integrasi-channel',
+            ],
+        ]);
+    }
+
     public function getPaginatedShops()
     {
         return QueryBuilder::for(ChannelShop::class)
@@ -119,10 +140,22 @@ class ChannelShopRepository
 
     public function markIntegrationError(string $id, ?string $message): void
     {
+        $previousStatus = ChannelShop::where('id', $id)->value('integration_status');
+
         ChannelShop::where('id', $id)->update([
             'integration_status' => 'error',
             'last_error' => $message,
         ]);
+
+        if ($previousStatus !== 'error') {
+            $this->notifyChannelDisconnected(
+                $id,
+                'channel_disconnected',
+                'Integrasi marketplace bermasalah',
+                'Koneksi ke marketplace terputus, sinkronisasi berhenti.',
+                $message,
+            );
+        }
     }
 
     public function findByUuid(string $id): ?ChannelShop
@@ -142,13 +175,24 @@ class ChannelShopRepository
 
     public function disconnectShop(string $id): bool
     {
-        return ChannelShop::where('id', $id)->update([
+        $updated = ChannelShop::where('id', $id)->update([
             'disconnected_at' => now(),
             'access_token' => null,
             'refresh_token' => null,
             'token_expires_at' => null,
             'refresh_token_expires_at' => null,
         ]) > 0;
+
+        if ($updated) {
+            $this->notifyChannelDisconnected(
+                $id,
+                'channel_disconnected',
+                'Koneksi marketplace diputus',
+                'Toko ini di-disconnect dari sistem.',
+            );
+        }
+
+        return $updated;
     }
 
     public function updateTokens(string $id, array $tokenData): bool

@@ -12,6 +12,7 @@ use Modules\Finance\Services\AutoJournalService;
 use Modules\Inventory\Models\StockOpname;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
+use Modules\Notification\Services\NotificationDispatcher;
 use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -30,8 +31,11 @@ class ProcessStockOpnameFinalizeJob implements ShouldQueue
         $this->onQueue(config('queue.names.stock_critical'));
     }
 
-    public function handle(InventoryRepository $inventoryRepository, InventoryMovementRepository $movementRepository): void
-    {
+    public function handle(
+        InventoryRepository $inventoryRepository,
+        InventoryMovementRepository $movementRepository,
+        NotificationDispatcher $notifications,
+    ): void {
         $opname = StockOpname::with('items')->find($this->opnameId);
 
         if (!$opname || $opname->status !== StockOpname::STATUS_FINALIZED) {
@@ -91,6 +95,22 @@ class ProcessStockOpnameFinalizeJob implements ShouldQueue
             Log::warning('AutoJournal stock opname gagal: ' . $e->getMessage(), [
                 'opname_no' => $opname->opname_no,
             ]);
+        }
+
+        if ($itemsWithDifference->isNotEmpty()) {
+            $varianceCount = $itemsWithDifference->count();
+            $notifications->toPermission('manage-stock-opname', [
+                'type' => 'stock_opname_variance',
+                'title' => 'Opname punya selisih stok',
+                'message' => "Opname {$opname->opname_no} mencatat {$varianceCount} SKU selisih.",
+                'data' => [
+                    'opname_id' => $opname->id,
+                    'opname_no' => $opname->opname_no,
+                    'variance_count' => $varianceCount,
+                    'total_signed_value' => round($totalSignedValue, 2),
+                    'link' => "/dashboard/transaksi-stok/opname/{$opname->id}",
+                ],
+            ], excludeUserIds: array_filter([$this->finalizedBy]));
         }
     }
 }

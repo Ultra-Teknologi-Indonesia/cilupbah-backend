@@ -26,6 +26,7 @@ use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
 use Modules\Outbound\Models\Shipment;
 use Modules\Inventory\Jobs\AutoDetectStockReplenishmentJob;
+use Modules\Notification\Services\NotificationDispatcher;
 use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Warehouse\Models\Location;
 
@@ -69,10 +70,18 @@ class SalesOrderService
         'blibli'     => 'BL',
     ];
 
+    private const NOTIF_ORDER_PERMISSION = 'manage-pesanan';
+
     public function __construct(
         protected SalesOrderRepository $orderRepository,
         protected StockService $stockService,
+        protected NotificationDispatcher $notifications,
     ) {}
+
+    private function orderLink(string $id): string
+    {
+        return "/dashboard/pesanan/{$id}";
+    }
 
     public function getPaginatedOrders()
     {
@@ -131,6 +140,28 @@ class SalesOrderService
         $skipped = [];
         foreach ($skippedIds as $id => $orderNo) {
             $skipped[] = ['id' => (string) $id, 'salesorder_no' => $orderNo];
+        }
+
+        if (! empty($skipped)) {
+            $actorId = null;
+            if ($actor instanceof \App\Models\User) {
+                $actorId = $actor->id;
+            } elseif (is_array($actor)) {
+                $actorId = $actor['id'] ?? null;
+            }
+
+            foreach ($skipped as $s) {
+                $this->notifications->toPermission(self::NOTIF_ORDER_PERMISSION, [
+                    'type' => 'order_empty_stock',
+                    'title' => 'Pesanan tidak bisa diproses (stok kosong)',
+                    'message' => "Pesanan {$s['salesorder_no']} di-skip karena ada SKU stok kosong.",
+                    'data' => [
+                        'sales_order_id' => $s['id'],
+                        'salesorder_no' => $s['salesorder_no'],
+                        'link' => $this->orderLink($s['id']),
+                    ],
+                ], excludeUserIds: array_filter([$actorId]));
+            }
         }
 
         $eligibleIds = array_values(array_diff($orderIds, array_keys($skippedIds)));
@@ -233,7 +264,7 @@ class SalesOrderService
         $finalReason = $reason ?? $order->cancel_request_reason ?? 'seller_cancel_reason_other';
 
         if ($order->status === 'shipped') {
-            return DB::transaction(function () use ($order, $actorId, $channel, $finalReason) {
+            $result = DB::transaction(function () use ($order, $actorId, $channel, $finalReason) {
                 app(SalesReturnService::class)->createFromCancelledShipped(
                     $order,
                     $finalReason,
@@ -251,9 +282,13 @@ class SalesOrderService
 
                 return $order->fresh();
             });
+
+            $this->notifyOrderCancelled($result, $finalReason, $channel, $actorId);
+
+            return $result;
         }
 
-        return DB::transaction(function () use ($order, $actorId, $channel, $finalReason) {
+        $result = DB::transaction(function () use ($order, $actorId, $channel, $finalReason) {
             $this->applyStockTransition($order, 'cancelled');
 
             $order->update([
@@ -275,6 +310,29 @@ class SalesOrderService
 
             return $order->fresh();
         });
+
+        $this->notifyOrderCancelled($result, $finalReason, $channel, $actorId);
+
+        return $result;
+    }
+
+    private function notifyOrderCancelled(SalesOrder $order, ?string $reason, string $channel, ?string $actorId): void
+    {
+        $sourceLabel = $order->source ? strtolower($order->source) : 'manual';
+        $reasonSuffix = $reason ? " Alasan: {$reason}" : '';
+        $this->notifications->toPermission(self::NOTIF_ORDER_PERMISSION, [
+            'type' => 'order_cancelled',
+            'title' => 'Pesanan dibatalkan',
+            'message' => "Pesanan {$order->salesorder_no} ({$sourceLabel}) dibatalkan via {$channel}.{$reasonSuffix}",
+            'data' => [
+                'sales_order_id' => $order->id,
+                'salesorder_no' => $order->salesorder_no,
+                'source' => $order->source,
+                'channel' => $channel,
+                'reason' => $reason,
+                'link' => $this->orderLink($order->id),
+            ],
+        ], excludeUserIds: array_filter([$actorId]));
     }
 
     public function rejectCancelRequest(string $orderId, ?string $reason = null, bool $auto = false): SalesOrder
@@ -672,6 +730,18 @@ class SalesOrderService
 
         Cache::put($idempotencyKey, true, self::IDEMPOTENCY_TTL);
 
+        $this->notifications->toPermission(self::NOTIF_ORDER_PERMISSION, [
+            'type' => 'order_new',
+            'title' => 'Pesanan baru masuk',
+            'message' => "Pesanan {$order->salesorder_no} ({$marketplace}) siap diproses.",
+            'data' => [
+                'sales_order_id' => $order->id,
+                'salesorder_no' => $order->salesorder_no,
+                'source' => $order->source,
+                'link' => $this->orderLink($order->id),
+            ],
+        ]);
+
         SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
 
         try {
@@ -773,6 +843,16 @@ class SalesOrderService
             if ($newStatus === 'cancelled' && $order->source) {
                 CancelChannelOrderJob::dispatch($order->id, $cancelReason)
                     ->onQueue(config('queue.names.orders'));
+            }
+
+            if ($newStatus === 'cancelled') {
+                $actorId = null;
+                if ($actor instanceof \App\Models\User) {
+                    $actorId = $actor->id;
+                } elseif (is_array($actor)) {
+                    $actorId = $actor['id'] ?? null;
+                }
+                $this->notifyOrderCancelled($order, $cancelReason, 'manual', $actorId);
             }
         }
 
@@ -991,6 +1071,7 @@ class SalesOrderService
                 ->lockForUpdate()
                 ->first();
 
+            $wasNewOrder = $existing === null;
             $previousStatus = $existing?->status;
 
             if ($existing && $existing->handed_to_warehouse_at && in_array($mappedStatus, ['picked', 'packed'], true)) {
@@ -1051,6 +1132,21 @@ class SalesOrderService
             $stockMutated = $this->reconcileStockTransition($order, $previousStatus, $finalStatus);
 
             DB::commit();
+
+            if ($wasNewOrder) {
+                $marketplace = $order->source ?: 'channel';
+                $this->notifications->toPermission(self::NOTIF_ORDER_PERMISSION, [
+                    'type' => 'order_new',
+                    'title' => 'Pesanan baru dari channel',
+                    'message' => "Pesanan {$order->salesorder_no} ({$marketplace}) masuk.",
+                    'data' => [
+                        'sales_order_id' => $order->id,
+                        'salesorder_no' => $order->salesorder_no,
+                        'source' => $order->source,
+                        'link' => $this->orderLink($order->id),
+                    ],
+                ]);
+            }
 
             if ($stockMutated) {
                 try {

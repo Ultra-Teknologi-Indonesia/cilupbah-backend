@@ -17,6 +17,7 @@ use Modules\Auth\Repositories\PermissionRepository;
 use Modules\Auth\Repositories\UserHistoryRepository;
 use Modules\Auth\Repositories\UserLocationRepository;
 use Modules\Auth\Repositories\UserRepository;
+use Modules\Notification\Services\NotificationDispatcher;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -28,7 +29,8 @@ class UserService
         protected UserRepository $userRepository,
         protected UserHistoryRepository $historyRepository,
         protected UserLocationRepository $userLocationRepository,
-        protected PermissionRepository $permissionRepository
+        protected PermissionRepository $permissionRepository,
+        protected NotificationDispatcher $notifications,
     ) {}
 
     public function attachProfileContext(User $user): User
@@ -75,7 +77,7 @@ class UserService
 
     public function createUser(array $data): User
     {
-        return DB::transaction(function () use ($data) {
+        $user = DB::transaction(function () use ($data) {
             $user = $this->userRepository->create([
                 'name' => $data['name'],
                 'email' => $data['email'],
@@ -99,6 +101,20 @@ class UserService
 
             return $user;
         });
+
+        $this->notifications->toPermission('view-user', [
+            'type' => 'user_created',
+            'title' => 'Pengguna baru terdaftar',
+            'message' => "{$user->name} ({$user->email}) ditambahkan sebagai pengguna.",
+            'data' => [
+                'user_id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'link' => "/dashboard/pengaturan/pengguna/{$user->id}",
+            ],
+        ], excludeUserIds: array_filter([Auth::id() ?: null]));
+
+        return $user;
     }
 
     public function updateUser(string $id, array $data): User

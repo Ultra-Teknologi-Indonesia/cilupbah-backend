@@ -8,6 +8,7 @@ use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Exceptions\InvalidReturnStateException;
 use Modules\Sales\Jobs\AdminAlertJob;
 use Modules\Inbound\Services\InboundService;
+use Modules\Notification\Services\NotificationDispatcher;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -15,11 +16,19 @@ use Illuminate\Support\Str;
 
 class SalesReturnService
 {
+    private const NOTIF_PERMISSION = 'manage-retur-penjualan';
+
     public function __construct(
         protected SalesReturnRepository $returnRepository,
         protected InboundService $inboundService,
-        protected SalesReturnSettingService $settings
+        protected SalesReturnSettingService $settings,
+        protected NotificationDispatcher $notifications,
     ) {}
+
+    private function returnLink(string $id): string
+    {
+        return "/dashboard/barang-masuk/retur/{$id}";
+    }
 
     public function getAllPaginated(int $limit = 10)
     {
@@ -68,7 +77,7 @@ class SalesReturnService
 
     public function create(array $data): SalesReturn
     {
-        return DB::transaction(function () use ($data) {
+        $return = DB::transaction(function () use ($data) {
             $data['return_number'] = $data['return_number'] ?? 'RET-' . now()->format('Ymd') . '-' . Str::upper(Str::random(4));
             $data['status'] = SalesReturn::STATUS_PENDING;
             $data['source'] = $data['source'] ?? SalesReturn::SOURCE_MANUAL;
@@ -101,6 +110,24 @@ class SalesReturnService
             return $this->getById($return->id)
                 ?? $return->load('items.product:id,sku,product_id', 'items.product.product:id,name');
         });
+
+        $skuCount = $return->items->count();
+        $sourceLabel = $return->source === SalesReturn::SOURCE_MARKETPLACE
+            ? 'marketplace'
+            : ($return->source === SalesReturn::SOURCE_CANCELLED_SHIPPED ? 'cancel-shipped' : 'manual');
+        $this->notifications->toPermission(self::NOTIF_PERMISSION, [
+            'type' => 'sales_return_new',
+            'title' => 'Retur baru masuk',
+            'message' => "{$return->return_number} ({$sourceLabel}) berisi {$skuCount} SKU perlu diproses.",
+            'data' => [
+                'sales_return_id' => $return->id,
+                'return_number' => $return->return_number,
+                'source' => $return->source,
+                'link' => $this->returnLink($return->id),
+            ],
+        ]);
+
+        return $return;
     }
 
     public function createFromCancelledShipped(SalesOrder $order, ?string $reason, string $createdBy): ?SalesReturn
@@ -223,7 +250,7 @@ class SalesReturnService
 
     public function accept(string $id, array $data): SalesReturn
     {
-        return DB::transaction(function () use ($id, $data) {
+        $return = DB::transaction(function () use ($id, $data) {
             $return = $this->returnRepository->findByIdForUpdate($id);
 
             if (! $return) {
@@ -267,11 +294,27 @@ class SalesReturnService
 
             return $this->getById($id);
         });
+
+        if ($return && $return->source === SalesReturn::SOURCE_MARKETPLACE) {
+            $this->notifications->toPermission(self::NOTIF_PERMISSION, [
+                'type' => 'sales_return_marketplace_decision',
+                'title' => 'Marketplace menyetujui retur',
+                'message' => "Retur {$return->return_number} disetujui, stok akan direstock.",
+                'data' => [
+                    'sales_return_id' => $return->id,
+                    'return_number' => $return->return_number,
+                    'decision' => 'accepted',
+                    'link' => $this->returnLink($return->id),
+                ],
+            ], excludeUserIds: array_filter([$data['processed_by'] ?? null]));
+        }
+
+        return $return;
     }
 
     public function reject(string $id, array $data): SalesReturn
     {
-        return DB::transaction(function () use ($id, $data) {
+        $return = DB::transaction(function () use ($id, $data) {
             $return = $this->returnRepository->findByIdForUpdate($id);
 
             if (! $return) {
@@ -287,6 +330,25 @@ class SalesReturnService
 
             return $this->getById($id);
         });
+
+        if ($return && $return->source === SalesReturn::SOURCE_MARKETPLACE) {
+            $reason = $data['reason'] ?? null;
+            $reasonSuffix = $reason ? " Alasan: {$reason}" : '';
+            $this->notifications->toPermission(self::NOTIF_PERMISSION, [
+                'type' => 'sales_return_marketplace_decision',
+                'title' => 'Marketplace menolak retur',
+                'message' => "Retur {$return->return_number} ditolak.{$reasonSuffix}",
+                'data' => [
+                    'sales_return_id' => $return->id,
+                    'return_number' => $return->return_number,
+                    'decision' => 'rejected',
+                    'reason' => $reason,
+                    'link' => $this->returnLink($return->id),
+                ],
+            ], excludeUserIds: array_filter([$data['processed_by'] ?? null]));
+        }
+
+        return $return;
     }
 
     public function buildChannelOnlinePutawayReport(?string $dateFrom, ?string $dateTo, ?string $locationId): array

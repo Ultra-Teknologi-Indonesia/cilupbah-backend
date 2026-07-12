@@ -4,6 +4,7 @@ namespace Modules\Inventory\Repositories;
 
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Support\InventoryMovementSourceMap;
+use Modules\Notification\Services\NotificationDispatcher;
 use Illuminate\Database\Eloquent\Collection;
 
 class InventoryMovementRepository
@@ -26,7 +27,36 @@ class InventoryMovementRepository
 
     public function create(array $data): InventoryMovement
     {
-        return InventoryMovement::create($data);
+        $movement = InventoryMovement::create($data);
+
+        $newBalance = $data['balance'] ?? null;
+        $qty = (int) ($data['qty'] ?? 0);
+        $previousBalance = $newBalance !== null ? ((int) $newBalance) - $qty : null;
+
+        if ($newBalance !== null && (int) $newBalance < 0 && $previousBalance !== null && $previousBalance >= 0) {
+            try {
+                app(NotificationDispatcher::class)->toPermission('view-laporan-stok-minus', [
+                    'type' => 'stock_negative_recorded',
+                    'title' => 'Stok tercatat minus',
+                    'message' => "Stok item turun ke {$newBalance} akibat gerakan {$movement->source}.",
+                    'data' => [
+                        'movement_id' => $movement->id,
+                        'item_id' => $data['item_id'] ?? null,
+                        'location_id' => $data['location_id'] ?? null,
+                        'source' => $data['source'] ?? null,
+                        'balance' => (int) $newBalance,
+                        'qty' => $qty,
+                        'link' => '/dashboard/laporan/stok-minus',
+                    ],
+                ]);
+            } catch (\Throwable $e) {
+                \Log::warning('Notifikasi stok minus gagal: ' . $e->getMessage(), [
+                    'movement_id' => $movement->id ?? null,
+                ]);
+            }
+        }
+
+        return $movement;
     }
 
     public function getHistoryPaginated(int $limit = 10)

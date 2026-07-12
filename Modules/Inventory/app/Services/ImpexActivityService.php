@@ -6,11 +6,24 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Modules\Inventory\Models\ImpexActivity;
 use Modules\Inventory\Repositories\ImpexActivityRepository;
+use Modules\Notification\Services\NotificationDispatcher;
 
 class ImpexActivityService
 {
-    public function __construct(private ImpexActivityRepository $repository)
+    public function __construct(
+        private ImpexActivityRepository $repository,
+        private NotificationDispatcher $notifications,
+    ) {
+    }
+
+    private function activityLink(ImpexActivity $activity): string
     {
+        return '/dashboard/aktivitas-impex?highlight=' . $activity->id;
+    }
+
+    private function activityLabel(ImpexActivity $activity): string
+    {
+        return trim(($activity->activity_type ?? 'Aktivitas') . ' ' . strtoupper($activity->direction ?? ''));
     }
 
     public function list(array $filters, int $perPage = 25): LengthAwarePaginator
@@ -83,6 +96,22 @@ class ImpexActivityService
             'completed_at' => Carbon::now(),
         ]);
 
+        if ($activity->user_id) {
+            $isExport = $activity->direction === 'export';
+            $this->notifications->toUser($activity->user_id, [
+                'type' => $isExport ? 'impex_export_ready' : 'impex_import_completed',
+                'title' => $isExport ? 'Export siap diunduh' : 'Import selesai',
+                'message' => $isExport
+                    ? "Berkas hasil {$this->activityLabel($activity)} siap diunduh."
+                    : "Proses {$this->activityLabel($activity)} berhasil.",
+                'data' => [
+                    'impex_activity_id' => $activity->id,
+                    'file_url' => $fileUrl,
+                    'link' => $this->activityLink($activity),
+                ],
+            ]);
+        }
+
         return $activity;
     }
 
@@ -93,6 +122,19 @@ class ImpexActivityService
             'error_message' => $errorMessage,
             'completed_at' => Carbon::now(),
         ]);
+
+        if ($activity->user_id) {
+            $this->notifications->toUser($activity->user_id, [
+                'type' => 'impex_import_failed',
+                'title' => 'Import gagal',
+                'message' => "Proses {$this->activityLabel($activity)} gagal: {$errorMessage}",
+                'data' => [
+                    'impex_activity_id' => $activity->id,
+                    'error' => $errorMessage,
+                    'link' => $this->activityLink($activity),
+                ],
+            ]);
+        }
 
         return $activity;
     }

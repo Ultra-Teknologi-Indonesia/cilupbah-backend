@@ -6,15 +6,24 @@ use Modules\Purchase\Repositories\PurchaseReturnRepository;
 use Modules\Purchase\Models\PurchaseReturn;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
+use Modules\Notification\Services\NotificationDispatcher;
 use Illuminate\Support\Facades\DB;
 
 class PurchaseReturnService
 {
+    private const NOTIF_PERMISSION = 'manage-retur-pembelian';
+
     public function __construct(
         protected PurchaseReturnRepository $returnRepository,
         protected InventoryRepository $inventoryRepository,
         protected InventoryMovementRepository $movementRepository,
+        protected NotificationDispatcher $notifications,
     ) {}
+
+    private function returnLink(string $id): string
+    {
+        return "/dashboard/barang-keluar/retur/{$id}";
+    }
 
     public function getAllPaginated(int $limit = 10)
     {
@@ -28,7 +37,7 @@ class PurchaseReturnService
 
     public function create(array $data): PurchaseReturn
     {
-        return DB::transaction(function () use ($data) {
+        $return = DB::transaction(function () use ($data) {
             $data['return_number'] = $data['return_number'] ?? $this->returnRepository->generateReturnNo();
             $data['status'] = $data['status'] ?? PurchaseReturn::STATUS_DRAFT;
 
@@ -48,6 +57,20 @@ class PurchaseReturnService
 
             return $return->load('items.variant.product:id,name');
         });
+
+        $skuCount = $return->items->count();
+        $this->notifications->toPermission(self::NOTIF_PERMISSION, [
+            'type' => 'purchase_return_submitted',
+            'title' => 'Retur pembelian dibuat',
+            'message' => "Draft retur {$return->return_number} berisi {$skuCount} SKU.",
+            'data' => [
+                'purchase_return_id' => $return->id,
+                'return_number' => $return->return_number,
+                'link' => $this->returnLink($return->id),
+            ],
+        ]);
+
+        return $return;
     }
 
     public function delete(string $id): bool

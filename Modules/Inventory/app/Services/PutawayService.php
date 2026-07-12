@@ -15,16 +15,42 @@ use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundItem;
 use Modules\Inventory\Jobs\ProcessPutawayItemJob;
 use Modules\Notification\Events\TaskAssigned;
+use Modules\Notification\Services\NotificationDispatcher;
 use Illuminate\Support\Facades\DB;
 
 class PutawayService
 {
+    private const NOTIF_PERMISSION = 'manage-penempatan';
+
     public function __construct(
         protected PutawayRepository $putawayRepository,
         protected InventoryRepository $inventoryRepository,
         protected InventoryMovementRepository $movementRepository,
         protected InventoryService $inventoryService,
+        protected NotificationDispatcher $notifications,
     ) {}
+
+    private function notifyPutawayCompleted(?Putaway $putaway, ?int $discrepancyCount = null): void
+    {
+        if (! $putaway) {
+            return;
+        }
+
+        $number = $putaway->putaway_number ?? substr((string) $putaway->id, 0, 8);
+        $suffix = $discrepancyCount ? " dengan {$discrepancyCount} selisih." : '.';
+
+        $this->notifications->toPermission(self::NOTIF_PERMISSION, [
+            'type' => 'putaway_completed',
+            'title' => 'Putaway selesai',
+            'message' => "Dokumen {$number} selesai di-putaway{$suffix}",
+            'data' => [
+                'putaway_id' => $putaway->id,
+                'putaway_number' => $putaway->putaway_number ?? null,
+                'discrepancy' => (bool) $discrepancyCount,
+                'link' => "/dashboard/barang-masuk/putaway/{$putaway->id}",
+            ],
+        ], excludeUserIds: array_filter([$putaway->assigned_to ?? null]));
+    }
 
     public function getAllPaginated(int $limit = 10)
     {
@@ -206,7 +232,7 @@ class PutawayService
 
     public function complete(string $id): Putaway
     {
-        return DB::transaction(function () use ($id) {
+        $putaway = DB::transaction(function () use ($id) {
             $putaway = $this->putawayRepository->findByIdForUpdate($id);
 
             if (!$putaway) {
@@ -236,11 +262,15 @@ class PutawayService
 
             return $this->putawayRepository->findById($id);
         });
+
+        $this->notifyPutawayCompleted($putaway);
+
+        return $putaway;
     }
 
     public function completeWithDiscrepancy(string $id, string $userId): array
     {
-        return DB::transaction(function () use ($id, $userId) {
+        $result = DB::transaction(function () use ($id, $userId) {
             $putaway = $this->putawayRepository->findByIdForUpdate($id);
 
             if (!$putaway) {
@@ -307,6 +337,13 @@ class PutawayService
                 'discrepancy_items' => $discrepancyItems,
             ];
         });
+
+        $this->notifyPutawayCompleted(
+            $result['putaway'] ?? null,
+            count($result['discrepancy_items'] ?? []),
+        );
+
+        return $result;
     }
 
     public function deletePlacement(string $putawayId, string $itemId, string $placementId, ?int $qty, string $userId): Putaway

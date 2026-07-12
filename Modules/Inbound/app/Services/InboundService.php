@@ -11,6 +11,7 @@ use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\PutawayService;
 use Modules\Notification\Events\TaskAssigned;
+use Modules\Notification\Services\NotificationDispatcher;
 use Modules\Purchase\Models\PurchaseOrder;
 use Modules\Purchase\Models\PurchaseOrderItem;
 use Modules\Warehouse\Services\LocationBinService;
@@ -19,12 +20,20 @@ use Illuminate\Support\Str;
 
 class InboundService
 {
+    private const NOTIF_PENEMPATAN = 'manage-penempatan';
+
     public function __construct(
         protected InboundRepository $inboundRepository,
         protected InventoryService $inventoryService,
         protected LocationBinService $binService,
         protected PutawayService $putawayService,
+        protected NotificationDispatcher $notifications,
     ) {}
+
+    private function inboundLink(string $id): string
+    {
+        return "/dashboard/barang-masuk/penerimaan/{$id}";
+    }
 
     public function getAllPaginated(int $limit = 10)
     {
@@ -183,7 +192,7 @@ class InboundService
             return $this->receiveFromTransfer($data);
         }
 
-        return DB::transaction(function () use ($inbound, $data) {
+        $inbound = DB::transaction(function () use ($inbound, $data) {
             $receivedByItem = collect($data['items'] ?? [])->keyBy('item_id');
             $anyShortfall = false;
 
@@ -202,6 +211,21 @@ class InboundService
 
             return $inbound->load('items');
         });
+
+        $shortfallSuffix = $inbound->status === Inbound::STATUS_PARTIAL ? ' (sebagian kurang)' : '';
+        $this->notifications->toPermission(self::NOTIF_PENEMPATAN, [
+            'type' => 'transfer_transit_received',
+            'title' => 'Transfer masuk diterima',
+            'message' => "Transfer {$inbound->transaction_number} tiba di gudang{$shortfallSuffix}.",
+            'data' => [
+                'inbound_id' => $inbound->id,
+                'transaction_number' => $inbound->transaction_number,
+                'transfer_id' => $transferId,
+                'link' => $this->inboundLink($inbound->id),
+            ],
+        ]);
+
+        return $inbound;
     }
 
     public function receiveFromSalesReturn(array $data): Inbound
@@ -220,7 +244,7 @@ class InboundService
 
     public function receive(string $inboundId, array $data): Inbound
     {
-        return DB::transaction(function () use ($inboundId, $data) {
+        $result = DB::transaction(function () use ($inboundId, $data) {
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
 
             if (! $inbound) {
@@ -341,6 +365,21 @@ class InboundService
 
             return $this->getById($inboundId);
         });
+
+        if ($result && $result->status === Inbound::STATUS_RECEIVED) {
+            $this->notifications->toPermission(self::NOTIF_PENEMPATAN, [
+                'type' => 'inbound_received',
+                'title' => 'Penerimaan selesai, siap penempatan',
+                'message' => "Dokumen {$result->transaction_number} sudah diterima penuh dan siap di-putaway.",
+                'data' => [
+                    'inbound_id' => $result->id,
+                    'transaction_number' => $result->transaction_number,
+                    'link' => $this->inboundLink($result->id),
+                ],
+            ], excludeUserIds: array_filter([$data['received_by'] ?? null]));
+        }
+
+        return $result;
     }
 
     public function closeReceiving(string $inboundId, string $closedBy): Inbound
