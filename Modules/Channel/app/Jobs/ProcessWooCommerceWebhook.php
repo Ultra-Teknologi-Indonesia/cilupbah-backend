@@ -22,6 +22,7 @@ class ProcessWooCommerceWebhook implements ShouldQueue
         public string $shopId,
         public string $topic,
         public string $resourceId,
+        public array $payload = [],
     ) {
         $this->onQueue('default');
     }
@@ -49,6 +50,57 @@ class ProcessWooCommerceWebhook implements ShouldQueue
 
         if ($this->topic === 'order.deleted') {
             return;
+        }
+
+        $this->detectAndHandleRefunds();
+    }
+
+    protected function detectAndHandleRefunds(): void
+    {
+        $refunds = $this->payload['refunds'] ?? [];
+        $status = strtolower((string) ($this->payload['status'] ?? ''));
+        $orderId = (string) ($this->payload['id'] ?? $this->resourceId);
+
+        if (empty($refunds) && $status !== 'refunded') {
+            return;
+        }
+
+        $refundEntries = ! empty($refunds)
+            ? $refunds
+            : [[
+                'id' => 'full-' . $orderId,
+                'reason' => 'Order fully refunded',
+                'total' => $this->payload['total'] ?? 0,
+            ]];
+
+        foreach ($refundEntries as $refund) {
+            try {
+                $refundId = (string) ($refund['id'] ?? '');
+                if ($refundId === '') {
+                    continue;
+                }
+
+                $reason = (string) ($refund['reason'] ?? '');
+                $salesReturn = app(\Modules\Sales\Services\SalesReturnService::class)->createFromChannel([
+                    'source'            => 'woocommerce',
+                    'channel_order_id'  => $orderId,
+                    'channel_return_id' => $refundId,
+                    'channel_shop_id'   => $this->shopId,
+                    'reason'            => $reason !== '' ? $reason : 'Refund WooCommerce',
+                    'created_by'        => 'system:woocommerce-webhook',
+                ]);
+
+                if ($salesReturn) {
+                    \Modules\Sales\Jobs\SyncReturnTrackingJob::dispatch((string) $salesReturn->id);
+                    \Modules\Sales\Jobs\SyncReturnDetailJob::dispatch((string) $salesReturn->id);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('WooCommerce auto SalesReturn gagal: ' . $e->getMessage(), [
+                    'shop_id' => $this->shopId,
+                    'order_id' => $orderId,
+                    'refund_id' => $refund['id'] ?? null,
+                ]);
+            }
         }
     }
 

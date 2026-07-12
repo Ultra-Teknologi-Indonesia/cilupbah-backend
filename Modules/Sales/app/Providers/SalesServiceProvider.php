@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Providers;
 
+use Illuminate\Console\Scheduling\Schedule;
 use Modules\Sales\Console\Commands\BackfillStatusHistory;
 use Modules\Sales\Console\Commands\PrepareShopeeLabelsBackfill;
 use Modules\Sales\Console\Commands\RelocateOrdersToKecil;
@@ -31,4 +32,12 @@ class SalesServiceProvider extends ModuleServiceProvider
         SyncReturnTracking::class,
         SyncReturnDetail::class,
     ];
+
+    protected function configureSchedules(Schedule $schedule): void
+    {
+        $schedule->command('returns:sync-detail')
+            ->everyThirtyMinutes()
+            ->withoutOverlapping()
+            ->runInBackground();
+    }
 }

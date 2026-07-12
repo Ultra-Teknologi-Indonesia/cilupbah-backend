@@ -128,43 +128,82 @@ class SalesReturn extends Model
     ];
 
     const MP_DECISION_MAP = [
+
         'shopee' => [
-            'REQUESTED'       => self::MP_DECISION_PENDING,
-            'ACCEPTED'        => self::MP_DECISION_APPROVED,
-            'DISPUTE'         => self::MP_DECISION_DISPUTE,
-            'SELLER_DISPUTE'  => self::MP_DECISION_DISPUTE,
-            'JUDGING'         => self::MP_DECISION_JUDGING,
-            'REFUND_PAID'     => self::MP_DECISION_REFUNDED,
-            'REFUND_SELLER'   => self::MP_DECISION_REFUNDED,
-            'PROCESSING'      => self::MP_DECISION_PENDING,
-            'CLOSED'          => self::MP_DECISION_CLOSED,
+            'REQUESTED'      => self::MP_DECISION_PENDING,
+            'ACCEPTED'       => self::MP_DECISION_APPROVED,
+            'PROCESSING'     => self::MP_DECISION_PENDING,
+            'SELLER_DISPUTE' => self::MP_DECISION_DISPUTE,
+            'JUDGING'        => self::MP_DECISION_JUDGING,
+            'CANCELLED'      => self::MP_DECISION_CLOSED,
+            'CLOSED'         => self::MP_DECISION_CLOSED,
         ],
+
         'tiktok' => [
-            'RETURN_OR_REFUND_REQUEST_INITIATED' => self::MP_DECISION_PENDING,
-            'RETURN_OR_REFUND_REQUEST_APPROVE'   => self::MP_DECISION_APPROVED,
-            'RETURN_OR_REFUND_REQUEST_REJECT'    => self::MP_DECISION_REJECTED,
-            'SELLER_REJECT_RETURN'               => self::MP_DECISION_REJECTED,
-            'PLATFORM_INTERVENTION'               => self::MP_DECISION_JUDGING,
-            'AWAITING_BUYER_SHIP'                 => self::MP_DECISION_PENDING,
-            'BUYER_SHIPPED_ITEM'                  => self::MP_DECISION_PENDING,
-            'RETURN_OR_REFUND_REQUEST_COMPLETE'   => self::MP_DECISION_REFUNDED,
-            'RETURN_OR_REFUND_REQUEST_CANCEL'     => self::MP_DECISION_CLOSED,
+            'RETURN_OR_REFUND_REQUEST_PENDING'  => self::MP_DECISION_PENDING,
+            'AWAITING_BUYER_SHIP'               => self::MP_DECISION_APPROVED,
+            'BUYER_SHIPPED_ITEM'                => self::MP_DECISION_APPROVED,
+            'REQUEST_SUCCESS'                   => self::MP_DECISION_APPROVED,
+            'REQUEST_REJECTED'                  => self::MP_DECISION_REJECTED,
+            'RECEIVE_REJECTED'                  => self::MP_DECISION_REJECTED,
+            'RETURN_OR_REFUND_REQUEST_COMPLETE' => self::MP_DECISION_REFUNDED,
+            'RETURN_OR_REFUND_CANCEL'           => self::MP_DECISION_CLOSED,
+
+            'PENDING_REQUEST_REVIEW'            => self::MP_DECISION_PENDING,
+            'REQUEST_REVIEW_COMPLETED'          => self::MP_DECISION_APPROVED,
+            'RMA_CREATED'                       => self::MP_DECISION_APPROVED,
+            'REFUND_SUCCESS'                    => self::MP_DECISION_REFUNDED,
         ],
+
         'lazada' => [
-            'PENDING'    => self::MP_DECISION_PENDING,
-            'APPROVED'   => self::MP_DECISION_APPROVED,
-            'REJECTED'   => self::MP_DECISION_REJECTED,
-            'PROCESSING' => self::MP_DECISION_PENDING,
+
+            'CANCEL_INIT'          => self::MP_DECISION_PENDING,
+            'CANCEL_SUCCESS'       => self::MP_DECISION_REFUNDED,
+            'CANCEL_REFUND_ISSUED' => self::MP_DECISION_REFUNDED,
+
+            'RTM_INIT'             => self::MP_DECISION_PENDING,
+            'RTM_CANCELED'         => self::MP_DECISION_CLOSED,
+            'RTM_SHIPPING_BACK'    => self::MP_DECISION_APPROVED,
+            'RTM_RECEIVE_ITEM'     => self::MP_DECISION_APPROVED,
+
+            'RTW_INIT'             => self::MP_DECISION_PENDING,
+            'RTW_CANCELED'         => self::MP_DECISION_CLOSED,
+            'RTW_SHIPPING_BACK'    => self::MP_DECISION_APPROVED,
+            'RTW_REJECT'           => self::MP_DECISION_REJECTED,
+            'RTW_REFUND_PENDING'   => self::MP_DECISION_REFUNDED,
+
+            'REFUND_INIT'          => self::MP_DECISION_PENDING,
+            'REFUND_PENDING'       => self::MP_DECISION_APPROVED,
+            'REFUND_SUCCESS'       => self::MP_DECISION_REFUNDED,
+            'REFUND_REJECTED'      => self::MP_DECISION_REJECTED,
+        ],
+
+        'woocommerce' => [
+            'REFUNDED'   => self::MP_DECISION_REFUNDED,
             'COMPLETED'  => self::MP_DECISION_REFUNDED,
+            'PROCESSING' => self::MP_DECISION_APPROVED,
+            'ON-HOLD'    => self::MP_DECISION_PENDING,
+            'PENDING'    => self::MP_DECISION_PENDING,
             'CANCELLED'  => self::MP_DECISION_CLOSED,
+            'FAILED'     => self::MP_DECISION_CLOSED,
         ],
     ];
 
     public static function normalizeMarketplaceDecision(string $channel, string $rawStatus): string
     {
         $map = self::MP_DECISION_MAP[$channel] ?? [];
+        $upperStatus = strtoupper($rawStatus);
 
-        return $map[strtoupper($rawStatus)] ?? self::MP_DECISION_PENDING;
+        if (! isset($map[$upperStatus])) {
+            \Illuminate\Support\Facades\Log::warning('Unmapped marketplace return status', [
+                'channel'    => $channel,
+                'raw_status' => $rawStatus,
+            ]);
+
+            return self::MP_DECISION_PENDING;
+        }
+
+        return $map[$upperStatus];
     }
 
     public function order(): BelongsTo

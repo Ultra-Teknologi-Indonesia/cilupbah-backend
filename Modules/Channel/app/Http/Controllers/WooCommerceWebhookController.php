@@ -72,7 +72,12 @@ class WooCommerceWebhookController extends Controller
             return response('', 200);
         }
 
-        ProcessWooCommerceWebhook::dispatch($shop->shop_id, $topic, (string) $payload['id']);
+        ProcessWooCommerceWebhook::dispatch(
+            $shop->shop_id,
+            $topic,
+            (string) $payload['id'],
+            $payload,
+        );
 
         return response('', 200);
     }

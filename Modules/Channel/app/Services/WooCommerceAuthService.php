@@ -14,7 +14,17 @@ class WooCommerceAuthService
 {
     private const CHANNEL = 'woocommerce';
     private const CONNECT_PREFIX = 'woocommerce:connect:';
-    private const WEBHOOK_TOPICS = ['order.created', 'order.updated', 'product.updated'];
+
+    private const WEBHOOK_TOPICS = [
+        'order.created',
+        'order.updated',
+        'order.deleted',
+        'order.restored',
+        'product.created',
+        'product.updated',
+        'product.deleted',
+        'product.restored',
+    ];
 
     public function __construct(
         protected WooCommerceClient $client,
