@@ -144,14 +144,39 @@ class PicklistRepository
 
     public function getItemsPaginated(string $picklistId, int $limit = 10)
     {
-        return QueryBuilder::for(PicklistItem::class)
+        $query = PicklistItem::query()
+            ->select('picklist_items.*')
+            ->leftJoin('bins', 'picklist_items.bin_id', '=', 'bins.id')
+            ->leftJoin('sales_orders', 'picklist_items.order_id', '=', 'sales_orders.id')
+            ->leftJoin('product_variants', 'picklist_items.item_id', '=', 'product_variants.id')
+            ->leftJoin('products', 'product_variants.product_id', '=', 'products.id')
             ->where('picklist_id', $picklistId)
-            ->with(['product:id,sku,product_id', 'bin:id,bin_final_code', 'order:id,salesorder_no'])
+            ->with([
+                'product:id,sku,product_id',
+                'product.product:id,name',
+                'product.media:id,variant_id,product_id,url,is_primary,sort_order,media_type',
+                'product.product.media:id,product_id,variant_id,url,is_primary,sort_order,media_type',
+                'bin:id,bin_final_code',
+                'order:id,salesorder_no,customer_name',
+            ]);
+
+        return QueryBuilder::for($query)
             ->allowedFilters(
                 AllowedFilter::exact('order_id'),
                 AllowedFilter::exact('item_id'),
             )
-            ->allowedSorts('created_at', 'sku')
+            ->allowedSorts(
+                'created_at', 
+                'qty_ordered', 
+                'qty_picked', 
+                'package_no', 
+                'item_status',
+                \Spatie\QueryBuilder\AllowedSort::field('sku', 'picklist_items.sku'),
+                \Spatie\QueryBuilder\AllowedSort::field('bin_code', 'bins.bin_final_code'),
+                \Spatie\QueryBuilder\AllowedSort::field('order_no', 'sales_orders.salesorder_no'),
+                \Spatie\QueryBuilder\AllowedSort::field('tracking_number', 'sales_orders.tracking_number'),
+                \Spatie\QueryBuilder\AllowedSort::field('produk', 'products.name')
+            )
             ->defaultSort('created_at')
             ->paginate($limit)
             ->appends(request()->query());
