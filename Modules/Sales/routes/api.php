@@ -238,6 +238,18 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     });
     Route::middleware('role_or_permission:owner|edit-pesanan')->group(function () {
         Route::post('sales/{id}/shipping-label/retry', [SalesOrderController::class, 'retryShippingLabel'])->whereUuid('id')->name('sales.orders.shipping-label.retry');
+
+        Route::post('sales/shipping-labels/bulk', [\Modules\Sales\Http\Controllers\BulkShippingLabelController::class, 'store'])
+            ->name('sales.shipping-labels.bulk.store');
+        Route::get('sales/shipping-labels/bulk/{batch}', [\Modules\Sales\Http\Controllers\BulkShippingLabelController::class, 'show'])
+            ->whereUuid('batch')
+            ->name('sales.shipping-labels.bulk.show');
+        Route::get('sales/shipping-labels/bulk/{batch}/pdf', [\Modules\Sales\Http\Controllers\BulkShippingLabelController::class, 'downloadPdf'])
+            ->whereUuid('batch')
+            ->name('sales.shipping-labels.bulk.pdf');
+        Route::post('sales/shipping-labels/bulk/{batch}/retry-failed', [\Modules\Sales\Http\Controllers\BulkShippingLabelController::class, 'retryFailed'])
+            ->whereUuid('batch')
+            ->name('sales.shipping-labels.bulk.retry-failed');
         Route::post('sales/{id}/print-with-driver-call', [SalesOrderController::class, 'printWithDriverCall'])->whereUuid('id')->name('sales.orders.print-with-driver-call');
         Route::post('sales/{id}/driver-call/retry', [SalesOrderController::class, 'retryDriverCall'])->whereUuid('id')->name('sales.orders.driver-call.retry');
         Route::put('sales/{id}/relocate', [SalesOrderController::class, 'relocate'])->whereUuid('id')->name('sales.orders.relocate');
