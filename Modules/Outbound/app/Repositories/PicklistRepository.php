@@ -96,7 +96,7 @@ class PicklistRepository
                 }),
             )
             ->allowedSearch('picklist_no')
-            ->allowedSorts('created_at', 'picklist_no', 'started_at', 'completed_at')
+            ->allowedSorts('created_at', 'picklist_no', 'started_at', 'completed_at', 'location_id', 'picker_id', 'status')
             ->defaultSort('-created_at')
             ->paginate($limit)
             ->appends(request()->query());

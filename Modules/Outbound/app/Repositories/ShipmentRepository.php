@@ -46,7 +46,7 @@ class ShipmentRepository
                 }),
             )
             ->allowedSearch('shipment_no')
-            ->allowedSorts('created_at', 'shipment_no', 'shipment_date')
+            ->allowedSorts('created_at', 'shipment_no', 'shipment_date', 'location_id', 'courier_name', 'shipment_type', 'status')
             ->defaultSort('-shipment_date')
             ->paginate($limit)
             ->appends(request()->query());
@@ -64,7 +64,7 @@ class ShipmentRepository
                 AllowedFilter::exact('shipment_type'),
             )
             ->allowedSearch('shipment_no')
-            ->allowedSorts('created_at', 'shipment_no', 'shipment_date')
+            ->allowedSorts('created_at', 'shipment_no', 'shipment_date', 'location_id', 'courier_name', 'shipment_type', 'status')
             ->defaultSort('-shipment_date')
             ->paginate($limit)
             ->appends(request()->query());
@@ -90,7 +90,7 @@ class ShipmentRepository
                 AllowedFilter::exact('status'),
             )
             ->allowedSearch('shipment_no')
-            ->allowedSorts('created_at', 'shipment_date', 'handed_over_at')
+            ->allowedSorts('created_at', 'shipment_date', 'handed_over_at', 'location_id', 'courier_name', 'shipment_type', 'status')
             ->defaultSort('-handed_over_at')
             ->paginate($limit)
             ->appends(request()->query());
@@ -108,7 +108,7 @@ class ShipmentRepository
                 AllowedFilter::exact('courier_code'),
             )
             ->allowedSearch('shipment_no')
-            ->allowedSorts('created_at', 'shipment_no', 'shipment_date')
+            ->allowedSorts('created_at', 'shipment_no', 'shipment_date', 'location_id', 'courier_name', 'shipment_type', 'status')
             ->defaultSort('-shipment_date')
             ->paginate($limit)
             ->appends(request()->query());

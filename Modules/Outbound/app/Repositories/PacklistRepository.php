@@ -38,7 +38,7 @@ class PacklistRepository
                 }),
             )
             ->allowedSearch('packlist_no')
-            ->allowedSorts('created_at', 'packlist_no', 'started_at', 'completed_at')
+            ->allowedSorts('created_at', 'packlist_no', 'started_at', 'completed_at', 'location_id', 'packer_id', 'status')
             ->defaultSort('-created_at')
             ->paginate($limit)
             ->appends(request()->query());
