@@ -196,7 +196,13 @@ class OutboundFulfillmentService
             default => throw new \Exception("Stage '{$stage}' tidak dikenal."),
         };
 
-        return $this->fulfillmentRepository->paginateStage($query, $limit);
+        $extraSelects = match ($stage) {
+            'finish-pick' => ['picker_name'],
+            'finish-pack' => ['packer_name'],
+            default       => [],
+        };
+
+        return $this->fulfillmentRepository->paginateStage($query, $limit, $extraSelects);
     }
 
     public function getPickers(?string $locationId, string $role): \Illuminate\Support\Collection

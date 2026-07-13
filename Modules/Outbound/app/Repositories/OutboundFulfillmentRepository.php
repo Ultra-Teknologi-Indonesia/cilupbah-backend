@@ -5,6 +5,9 @@ namespace Modules\Outbound\Repositories;
 use App\Models\User;
 use Illuminate\Contracts\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Modules\Outbound\Models\Packlist;
+use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Support\InstantOrderClassifier;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -28,8 +31,33 @@ class OutboundFulfillmentRepository
             ->get(['id', 'name', 'email']);
     }
 
-    public function paginateStage(Builder $query, int $limit = 10)
+    public function paginateStage(Builder $query, int $limit = 10, array $extraSelects = [])
     {
+        if (in_array('picker_name', $extraSelects, true)) {
+            $query->addSelect([
+                'picker_name' => DB::table('picklists')
+                    ->join('picklist_items', 'picklist_items.picklist_id', '=', 'picklists.id')
+                    ->join('users', 'users.id', '=', 'picklists.picker_id')
+                    ->whereColumn('picklist_items.order_id', 'sales_orders.id')
+                    ->where('picklists.status', Picklist::STATUS_COMPLETED)
+                    ->orderByDesc('picklists.completed_at')
+                    ->limit(1)
+                    ->select('users.name'),
+            ]);
+        }
+
+        if (in_array('packer_name', $extraSelects, true)) {
+            $query->addSelect([
+                'packer_name' => DB::table('packlists')
+                    ->join('users', 'users.id', '=', 'packlists.packer_id')
+                    ->whereColumn('packlists.order_id', 'sales_orders.id')
+                    ->where('packlists.status', Packlist::STATUS_COMPLETED)
+                    ->orderByDesc('packlists.completed_at')
+                    ->limit(1)
+                    ->select('users.name'),
+            ]);
+        }
+
         return QueryBuilder::for($query->with(['items', 'items.product.media', 'items.product.product.media', 'location:id,location_name,location_code']))
             ->allowedFilters(
                 AllowedFilter::exact('source'),
