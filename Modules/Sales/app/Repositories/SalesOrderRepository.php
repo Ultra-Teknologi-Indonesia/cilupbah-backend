@@ -61,13 +61,10 @@ class SalesOrderRepository
         }
 
         if ($q = request('q')) {
+            request()->query->set('search', $q);
             if (request('search_by', 'order') === 'sku') {
-
-                $query->whereHas('items', fn ($sub) => $sub->where('sku', 'like', "%{$q}%")
-                    ->orWhere('description', 'like', "%{$q}%"));
+                $query->allowedSearch('items.sku', 'items.description');
             } else {
-
-                request()->query->set('search', $q);
                 $query->allowedSearch('salesorder_no', 'customer_name');
             }
         }

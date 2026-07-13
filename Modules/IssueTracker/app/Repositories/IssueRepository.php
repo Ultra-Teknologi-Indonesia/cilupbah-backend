@@ -46,14 +46,7 @@ class IssueRepository
         if (! empty($filters['priority'])) {
             $query->where('priority', $filters['priority']);
         }
-        if (! empty($filters['search'])) {
-            $search = $filters['search'];
-            $query->where(function ($q) use ($search) {
-                $q->where('title', 'like', "%{$search}%")
-                  ->orWhere('reporter_name', 'like', "%{$search}%")
-                  ->orWhere('tracking_token', $search);
-            });
-        }
+        $query->allowedSearch('title', 'reporter_name', 'tracking_token');
 
         return $query;
     }

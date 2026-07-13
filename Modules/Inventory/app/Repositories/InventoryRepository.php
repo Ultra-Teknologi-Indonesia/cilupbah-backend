@@ -567,13 +567,7 @@ class InventoryRepository
                 'product.media' => fn ($q) => $q->orderByDesc('is_primary')->orderBy('sort_order'),
             ]);
 
-        if ($search !== '') {
-            $like = '%' . $search . '%';
-            $query->where(function ($q) use ($like) {
-                $q->where('product_variants.sku', 'like', $like)
-                    ->orWhereHas('product', fn ($p) => $p->where('name', 'like', $like));
-            });
-        }
+        $query->allowedSearch('product_variants.sku', 'product.name');
 
         return $query
             ->orderBy('product_variants.sku')

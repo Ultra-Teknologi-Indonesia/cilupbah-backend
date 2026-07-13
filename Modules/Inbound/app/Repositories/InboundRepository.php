@@ -230,12 +230,7 @@ class InboundRepository
             $query->where('status', $status);
         }
 
-        if ($search) {
-            $query->whereHas('inbound', function ($q) use ($search) {
-                $q->where('transaction_number', 'like', "%{$search}%")
-                  ->orWhere('reference_number', 'like', "%{$search}%");
-            });
-        }
+        $query->allowedSearch('inbound.transaction_number', 'inbound.reference_number');
 
         $direction = str_starts_with($sort, '-') ? 'desc' : 'asc';
         $column = ltrim($sort, '-');

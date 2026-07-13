@@ -18,9 +18,7 @@ class PutawayRepository
             ->where('is_inbound', false)
             ->orderBy('bin_final_code');
 
-        if ($search) {
-            $query->where('bin_final_code', 'like', "%{$search}%");
-        }
+        $query->allowedSearch('bin_final_code');
 
         return $query->get(['id', 'bin_final_code']);
     }

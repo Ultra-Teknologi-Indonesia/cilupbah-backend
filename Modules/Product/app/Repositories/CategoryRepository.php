@@ -45,9 +45,9 @@ class CategoryRepository
             $query->where('is_enabled', true);
         }
 
-        if ($search = request('search')) {
-            $query->where('name', 'ilike', "%{$search}%");
-        } elseif (! request()->has('filter.parent_id')) {
+        $query->allowedSearch('name');
+
+        if (! request('search') && ! request()->has('filter.parent_id')) {
             $query->whereNull('parent_id');
         }
 
