@@ -197,7 +197,7 @@ class OutboundFulfillmentService
         };
 
         $extraSelects = match ($stage) {
-            'finish-pick' => ['picker_name'],
+            'finish-pick' => ['picker_name', 'picklist_ref'],
             'finish-pack' => ['packer_name'],
             default       => [],
         };

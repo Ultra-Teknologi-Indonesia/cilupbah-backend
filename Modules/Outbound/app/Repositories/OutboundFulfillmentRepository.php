@@ -58,6 +58,25 @@ class OutboundFulfillmentRepository
             ]);
         }
 
+        if (in_array('picklist_ref', $extraSelects, true)) {
+            $query->addSelect([
+                'picklist_id' => DB::table('picklist_items')
+                    ->join('picklists', 'picklists.id', '=', 'picklist_items.picklist_id')
+                    ->whereColumn('picklist_items.order_id', 'sales_orders.id')
+                    ->where('picklists.status', Picklist::STATUS_COMPLETED)
+                    ->orderByDesc('picklists.completed_at')
+                    ->limit(1)
+                    ->select('picklists.id'),
+                'picklist_no' => DB::table('picklist_items')
+                    ->join('picklists', 'picklists.id', '=', 'picklist_items.picklist_id')
+                    ->whereColumn('picklist_items.order_id', 'sales_orders.id')
+                    ->where('picklists.status', Picklist::STATUS_COMPLETED)
+                    ->orderByDesc('picklists.completed_at')
+                    ->limit(1)
+                    ->select('picklists.picklist_no'),
+            ]);
+        }
+
         return QueryBuilder::for($query->with(['items', 'items.product.media', 'items.product.product.media', 'location:id,location_name,location_code']))
             ->allowedFilters(
                 AllowedFilter::exact('source'),
