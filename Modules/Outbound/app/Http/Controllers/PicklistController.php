@@ -13,7 +13,7 @@ use Modules\Outbound\Services\PicklistService;
 use Modules\Outbound\Http\Requests\CreatePicklistRequest;
 use Modules\Outbound\Http\Requests\PickItemRequest;
 use Modules\Outbound\Http\Requests\FailPickItemRequest;
-use Modules\Outbound\Http\Requests\SplitPickItemRequest;
+
 use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Report\Services\ReportService;
 use OpenApi\Attributes as OA;
@@ -512,70 +512,6 @@ class PicklistController extends Controller
         }
     }
 
-    #[OA\Post(
-        path: '/api/v1/outbound/picklists/{id}/items/{itemId}/split-pick',
-        summary: 'Pick a single item across multiple bins atomically',
-        security: [['bearerAuth' => []]],
-        tags: ['Outbound - Picklist'],
-        parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
-            new OA\Parameter(name: 'itemId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
-        ],
-        requestBody: new OA\RequestBody(
-            required: true,
-            content: new OA\JsonContent(
-                required: ['allocations'],
-                properties: [
-                    new OA\Property(
-                        property: 'allocations',
-                        type: 'array',
-                        minItems: 2,
-                        items: new OA\Items(
-                            required: ['bin_code', 'qty'],
-                            properties: [
-                                new OA\Property(property: 'bin_code', type: 'string'),
-                                new OA\Property(property: 'qty', type: 'integer', minimum: 1),
-                            ],
-                            type: 'object',
-                        )
-                    ),
-                ]
-            )
-        ),
-        responses: [
-            new OA\Response(response: 200, description: 'Split pick berhasil.'),
-            new OA\Response(response: 422, description: 'Validation Error'),
-        ]
-    )]
-    public function splitPick(string $id, string $itemId, SplitPickItemRequest $request): JsonResponse
-    {
-        try {
-            $userId = (string) ($request->user()->id ?? 'system');
-            $picklist = $this->picklistService->splitPickItem(
-                $id,
-                $itemId,
-                $request->validated()['allocations'],
-                $userId,
-            );
-
-            return $this->successResponse($picklist, 'Split pick berhasil.');
-        } catch (OutboundValidationException $e) {
-            return $this->errorResponse(
-                'Gagal memproses picking.',
-                422,
-                ['detail' => $e->getMessage()],
-                'Aksi tidak dapat diproses',
-            );
-        } catch (Throwable $e) {
-            report($e);
-            return $this->errorResponse(
-                'Split pick gagal.',
-                500,
-                ['detail' => $e->getMessage()],
-                'Aksi tidak dapat diproses',
-            );
-        }
-    }
 
     #[OA\Post(
         path: '/api/v1/outbound/picklists/{id}/scan',

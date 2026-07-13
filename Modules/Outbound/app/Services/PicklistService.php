@@ -616,69 +616,6 @@ class PicklistService
         });
     }
 
-    public function splitPickItem(string $picklistId, string $itemId, array $allocations, string $userId): Picklist
-    {
-        if (count($allocations) < 2) {
-            throw new OutboundValidationException('Split pick minimal 2 alokasi rak.');
-        }
-
-        return DB::transaction(function () use ($picklistId, $itemId, $allocations, $userId) {
-            $picklist = $this->picklistRepository->findById($picklistId);
-
-            if (!$picklist) {
-                throw new OutboundValidationException('Picklist tidak ditemukan.');
-            }
-
-            if (!in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS], true)) {
-                throw new OutboundValidationException("Picklist tidak bisa di-pick (status saat ini: {$picklist->status}).");
-            }
-
-            $item = PicklistItem::where('picklist_id', $picklistId)
-                ->where('id', $itemId)
-                ->lockForUpdate()
-                ->first();
-
-            if (!$item) {
-                throw new OutboundValidationException('Item picklist tidak ditemukan.');
-            }
-
-            $remaining = (int) $item->qty_ordered - (int) $item->qty_picked;
-            if ($remaining <= 0) {
-                throw new OutboundValidationException('Item sudah selesai di-pick.');
-            }
-
-            $sum = 0;
-            foreach ($allocations as $alloc) {
-                $sum += (int) ($alloc['qty'] ?? 0);
-            }
-
-            if ($sum > $remaining) {
-                throw new OutboundValidationException("Total qty alokasi ({$sum}) melebihi sisa yang perlu di-pick ({$remaining}).");
-            }
-
-            $lastBinId = null;
-            $totalNewlyPicked = 0;
-            foreach ($allocations as $alloc) {
-                $binCode = (string) ($alloc['bin_code'] ?? '');
-                $qty = (int) ($alloc['qty'] ?? 0);
-                if ($qty <= 0 || $binCode === '') {
-                    throw new OutboundValidationException('Alokasi tidak valid.');
-                }
-
-                $bin = $this->resolveBin($picklist, $binCode);
-                $this->commitPickAllocation($picklist, $item, $bin, $qty, $userId);
-                $lastBinId = $bin->id;
-                $totalNewlyPicked += $qty;
-            }
-
-            $this->picklistRepository->updateItem($itemId, [
-                'qty_picked' => (int) $item->qty_picked + $totalNewlyPicked,
-                'bin_id'     => $lastBinId,
-            ]);
-
-            return $this->picklistRepository->findById($picklistId);
-        });
-    }
 
     private function commitPickAllocation(Picklist $picklist, PicklistItem $item, LocationBin $bin, int $qty, string $userId): void
     {
