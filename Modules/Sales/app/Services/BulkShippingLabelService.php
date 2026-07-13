@@ -33,6 +33,9 @@ class BulkShippingLabelService
     public const SHOPEE_PREP_POLL_SECONDS = 5;
     public const TIKTOK_DOWNLOAD_TIMEOUT = 20;
     public const TIKTOK_DOWNLOAD_RETRIES = 2;
+    public const TIKTOK_PARALLEL_LANES = 8;
+    public const SPLIT_SUB_BATCH_THRESHOLD = 500;
+    public const SUB_BATCH_SIZE = 100;
 
     public function __construct(private SalesOrderService $salesOrderService)
     {
@@ -94,6 +97,101 @@ class BulkShippingLabelService
         }
 
         return [BulkShippingLabelItem::STATUS_PENDING, null];
+    }
+
+    public function processPendingItems(BulkShippingLabelBatch $batch, ?array $perChannelOpts): void
+    {
+        $pending = $batch->items()
+            ->where('status', BulkShippingLabelItem::STATUS_PENDING)
+            ->get();
+
+        $shopeeItems = $pending->where('channel', self::CHANNEL_SHOPEE);
+        $tikTokItems = $pending->where('channel', self::CHANNEL_TIKTOK);
+        $otherItems = $pending->whereNotIn('channel', self::SUPPORTED_CHANNELS);
+
+        foreach ($shopeeItems as $item) {
+            $this->processItem($item, $perChannelOpts);
+        }
+        foreach ($otherItems as $item) {
+            $this->fail($item, BulkShippingLabelItem::REASON_CHANNEL_UNSUPPORTED);
+        }
+        if ($tikTokItems->isNotEmpty()) {
+            $this->processTikTokBatch($tikTokItems->values(), $perChannelOpts);
+        }
+
+        $batch->recomputeCounts();
+    }
+
+    private function processTikTokBatch($items, ?array $perChannelOpts): void
+    {
+        $options = ($perChannelOpts[self::CHANNEL_TIKTOK] ?? [
+            'document_type' => 'SHIPPING_LABEL',
+            'document_size' => 'A6',
+        ]);
+
+        $urlMap = [];
+        foreach ($items as $item) {
+            try {
+                $item->update(['status' => BulkShippingLabelItem::STATUS_DOWNLOADING]);
+                $order = SalesOrder::find($item->order_id);
+                if (! $order) {
+                    $this->fail($item, BulkShippingLabelItem::REASON_NO_AWB);
+                    continue;
+                }
+                $result = $this->salesOrderService->getShippingLabel($order, $options);
+                $type = $result['type'] ?? null;
+
+                if ($type === 'url' && ! empty($result['doc_url'])) {
+                    $urlMap[$item->id] = $result['doc_url'];
+                    continue;
+                }
+                if ($type === 'blob' || ! empty($result['data'])) {
+                    $bytes = $this->decodeLabelPayload($result);
+                    if ($bytes === null) {
+                        $this->fail($item, 'tiktok_decode_failed');
+                        continue;
+                    }
+                    $this->succeed($item, $bytes);
+                    continue;
+                }
+                $this->fail($item, 'tiktok_no_label');
+            } catch (Throwable $e) {
+                Log::warning('TikTok batch prep failed', [
+                    'item_id' => $item->id,
+                    'error' => $e->getMessage(),
+                ]);
+                $this->fail($item, substr($e->getMessage(), 0, 250));
+            }
+        }
+
+        if (empty($urlMap)) {
+            return;
+        }
+
+        foreach (array_chunk($urlMap, self::TIKTOK_PARALLEL_LANES, true) as $chunk) {
+            $responses = Http::pool(function ($pool) use ($chunk) {
+                $reqs = [];
+                foreach ($chunk as $itemId => $url) {
+                    $reqs[$itemId] = $pool
+                        ->as((string) $itemId)
+                        ->timeout(self::TIKTOK_DOWNLOAD_TIMEOUT)
+                        ->retry(self::TIKTOK_DOWNLOAD_RETRIES, 500)
+                        ->get($url);
+                }
+                return $reqs;
+            });
+
+            foreach ($chunk as $itemId => $_url) {
+                $item = $items->firstWhere('id', $itemId);
+                if (! $item) continue;
+                $response = $responses[$itemId] ?? null;
+                if ($response instanceof \Throwable || $response === null || ! $response->successful()) {
+                    $this->fail($item, 'tiktok_download_failed');
+                    continue;
+                }
+                $this->succeed($item, $response->body());
+            }
+        }
     }
 
     public function processItem(BulkShippingLabelItem $item, ?array $perChannelOpts): void

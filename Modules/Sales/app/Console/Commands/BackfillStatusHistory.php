@@ -28,30 +28,48 @@ class BackfillStatusHistory extends Command
             $this->warn("User dengan email {$processActorEmail} tidak ditemukan; entri PROCESS dicatat tanpa actor_id.");
         }
 
-        $createdCount = 0;
-        $processCount = 0;
+        $counts = [
+            'CREATED'     => 0,
+            'PROCESS'     => 0,
+            'FINISH_PICK' => 0,
+            'FINISH_PACK' => 0,
+            'SHIPPED'     => 0,
+            'COMPLETED'   => 0,
+            'CANCELLED'   => 0,
+        ];
+
+        $trackedActions = array_keys($counts);
 
         SalesOrder::query()
-            ->select(['id', 'status', 'created_at', 'handed_to_warehouse_at'])
+            ->select([
+                'id',
+                'status',
+                'created_at',
+                'updated_at',
+                'handed_to_warehouse_at',
+                'is_canceled',
+                'cancel_reason',
+            ])
             ->orderBy('id')
             ->chunkById(500, function ($orders) use (
-                &$createdCount,
-                &$processCount,
+                &$counts,
                 $dryRun,
                 $processActorEmail,
                 $processActorName,
-                $processActorId
+                $processActorId,
+                $trackedActions
             ) {
                 $ids = $orders->pluck('id')->all();
 
                 $existing = SalesOrderStatusHistory::whereIn('salesorder_id', $ids)
-                    ->whereIn('action', ['CREATED', 'PROCESS'])
+                    ->whereIn('action', $trackedActions)
                     ->get(['salesorder_id', 'action'])
                     ->groupBy('salesorder_id')
                     ->map(fn ($rows) => $rows->pluck('action')->all());
 
                 foreach ($orders as $order) {
                     $actions = $existing->get($order->id, []);
+                    $timestamp = $order->handed_to_warehouse_at ?? $order->updated_at ?? $order->created_at;
 
                     if (! in_array('CREATED', $actions, true)) {
                         if (! $dryRun) {
@@ -66,13 +84,13 @@ class BackfillStatusHistory extends Command
                                 'created_at'    => $order->created_at,
                             ]);
                         }
-                        $createdCount++;
+                        $counts['CREATED']++;
                     }
 
-                    $isProcessed = $order->handed_to_warehouse_at !== null
-                        || in_array($order->status, ['picked', 'packed', 'shipped'], true);
+                    $reachedProcess = $order->handed_to_warehouse_at !== null
+                        || in_array($order->status, ['reserved', 'picked', 'packed', 'shipped'], true);
 
-                    if ($isProcessed && ! in_array('PROCESS', $actions, true)) {
+                    if ($reachedProcess && ! in_array('PROCESS', $actions, true)) {
                         if (! $dryRun) {
                             SalesOrderStatusHistory::create([
                                 'salesorder_id' => $order->id,
@@ -85,14 +103,90 @@ class BackfillStatusHistory extends Command
                                 'created_at'    => $order->handed_to_warehouse_at ?? $order->created_at,
                             ]);
                         }
-                        $processCount++;
+                        $counts['PROCESS']++;
+                    }
+
+                    $backfillPhases = [
+                        ['action' => 'FINISH_PICK', 'action_id' => '600', 'from' => 'reserved', 'to' => 'picked',  'reachedStatuses' => ['picked', 'packed', 'shipped']],
+                        ['action' => 'FINISH_PACK', 'action_id' => '800', 'from' => 'picked',   'to' => 'packed',  'reachedStatuses' => ['packed', 'shipped']],
+                        ['action' => 'SHIPPED',     'action_id' => '999', 'from' => 'packed',   'to' => 'shipped', 'reachedStatuses' => ['shipped']],
+                    ];
+
+                    foreach ($backfillPhases as $phase) {
+                        if (! in_array($order->status, $phase['reachedStatuses'], true)) {
+                            continue;
+                        }
+                        if (in_array($phase['action'], $actions, true)) {
+                            continue;
+                        }
+                        if (! $dryRun) {
+                            SalesOrderStatusHistory::create([
+                                'salesorder_id' => $order->id,
+                                'action_id'     => $phase['action_id'],
+                                'action'        => $phase['action'],
+                                'actor_email'   => 'system',
+                                'actor_id'      => null,
+                                'actor_name'    => 'System',
+                                'metadata'      => [
+                                    'backfill'    => true,
+                                    'prev_values' => ['status' => $phase['from']],
+                                    'new_values'  => ['status' => $phase['to']],
+                                ],
+                                'created_at'    => $timestamp,
+                            ]);
+                        }
+                        $counts[$phase['action']]++;
+                    }
+
+                    if ($order->status === 'shipped' && ! in_array('COMPLETED', $actions, true) && $order->handed_to_warehouse_at !== null) {
+                        if (! $dryRun) {
+                            SalesOrderStatusHistory::create([
+                                'salesorder_id' => $order->id,
+                                'action_id'     => '912',
+                                'action'        => 'COMPLETED',
+                                'actor_email'   => 'system',
+                                'actor_id'      => null,
+                                'actor_name'    => 'System',
+                                'metadata'      => [
+                                    'backfill'    => true,
+                                    'prev_values' => ['status' => 'shipped'],
+                                    'new_values'  => ['status' => 'completed'],
+                                ],
+                                'created_at'    => $order->updated_at ?? $timestamp,
+                            ]);
+                        }
+                        $counts['COMPLETED']++;
+                    }
+
+                    if ($order->is_canceled && ! in_array('CANCELLED', $actions, true)) {
+                        if (! $dryRun) {
+                            SalesOrderStatusHistory::create([
+                                'salesorder_id' => $order->id,
+                                'action_id'     => '000',
+                                'action'        => 'CANCELLED',
+                                'actor_email'   => 'system',
+                                'actor_id'      => null,
+                                'actor_name'    => 'System',
+                                'metadata'      => [
+                                    'backfill'    => true,
+                                    'prev_values' => ['is_canceled' => false],
+                                    'new_values'  => [
+                                        'is_canceled'   => true,
+                                        'cancel_reason' => $order->cancel_reason,
+                                    ],
+                                ],
+                                'created_at'    => $order->updated_at ?? $order->created_at,
+                            ]);
+                        }
+                        $counts['CANCELLED']++;
                     }
                 }
             });
 
         $prefix = $dryRun ? '[dry-run] ' : '';
-        $this->info("{$prefix}CREATED dibuat: {$createdCount}");
-        $this->info("{$prefix}PROCESS dibuat: {$processCount} (actor: {$processActorEmail})");
+        foreach ($counts as $action => $count) {
+            $this->info("{$prefix}{$action} dibuat: {$count}");
+        }
 
         return self::SUCCESS;
     }

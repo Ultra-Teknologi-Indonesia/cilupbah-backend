@@ -4,6 +4,7 @@ namespace Modules\Sales\Providers;
 
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Observers\SalesOrderAuditObserver;
 use Modules\Sales\Observers\SalesOrderCancelObserver;
 
 class EventServiceProvider extends ServiceProvider
@@ -15,5 +16,6 @@ class EventServiceProvider extends ServiceProvider
         parent::boot();
 
         SalesOrder::observe(SalesOrderCancelObserver::class);
+        SalesOrder::observe(SalesOrderAuditObserver::class);
     }
 }

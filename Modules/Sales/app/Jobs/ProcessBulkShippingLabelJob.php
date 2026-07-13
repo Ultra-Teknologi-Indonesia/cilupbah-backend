@@ -39,15 +39,9 @@ class ProcessBulkShippingLabelJob implements ShouldQueue
         $batch->update(['started_at' => now()]);
 
         try {
-            // First pass — process every pending item
-            $pending = $batch->items()
-                ->where('status', BulkShippingLabelItem::STATUS_PENDING)
-                ->get();
-
-            foreach ($pending as $item) {
-                $svc->processItem($item, $batch->per_channel_opts);
-                $batch->recomputeCounts();
-            }
+            // First pass — process every pending item; Shopee sequential (cheap cache),
+            // TikTok via Http::pool (paralel 8). Non-supported channels are failed here.
+            $svc->processPendingItems($batch, $batch->per_channel_opts);
 
             // Second pass — wait for Shopee prep (bounded)
             $deadline = now()->addSeconds(BulkShippingLabelService::SHOPEE_PREP_DEADLINE_SECONDS);

@@ -50,14 +50,39 @@ class SalesOrderService
     ];
 
     private const STATUS_HISTORY_ACTION_IDS = [
-        'CREATED'     => '100',
-        'PAID'        => '120',
-        'PROCESS'     => '200',
-        'FINISH_PICK' => '600',
-        'FINISH_PACK' => '800',
-        'SHIPPED'     => '999',
-        'COMPLETED'   => '912',
-        'CANCELLED'   => '000',
+        'CREATED'           => '100',
+        'PAID'              => '120',
+        'PROCESS'           => '200',
+        'PICK_STARTED'      => '500',
+        'PICK_FAILED'       => '510',
+        'FINISH_PICK'       => '600',
+        'PACK_STARTED'      => '700',
+        'LABEL_PRINTED'     => '750',
+        'FINISH_PACK'       => '800',
+        'READY_TO_SHIP'     => '850',
+        'DRIVER_CALLED'     => '870',
+        'TRACKING_UPDATED'  => '900',
+        'CHANNEL_STATUS'    => '910',
+        'RECEIVED_BY_BUYER' => '913',
+        'RETURN_DECISION'   => '920',
+        'FIELD_CHANGED'     => '990',
+        'SHIPPED'           => '999',
+        'COMPLETED'         => '912',
+        'CANCELLED'         => '000',
+    ];
+
+    private const AUDITED_CHANNEL_FIELDS = [
+        'channel_status',
+        'tracking_number',
+        'courier',
+        'shipping_provider',
+        'shipping_address',
+        'shipping_full_name',
+        'customer_name',
+        'shipping_phone',
+        'payment_method',
+        'mp_completed_date',
+        'is_escrow_updated',
     ];
 
     private const IDEMPOTENCY_TTL = 172800;
@@ -797,6 +822,53 @@ class SalesOrderService
             'metadata'      => $metadata,
             'created_at'    => now(),
         ]);
+    }
+
+    public function logFieldChange(
+        SalesOrder $order,
+        string $action,
+        array $prev,
+        array $new,
+        ?string $entityNo = null,
+        ?string $note = null,
+        $actor = null,
+    ): void {
+        $changedKeys = [];
+        foreach ($new as $key => $value) {
+            $prevValue = $prev[$key] ?? null;
+            if ($prevValue !== $value) {
+                $changedKeys[] = $key;
+            }
+        }
+
+        if (empty($changedKeys)) {
+            return;
+        }
+
+        $prevValues = [];
+        $newValues  = [];
+        foreach ($changedKeys as $key) {
+            $prevValues[$key] = $prev[$key] ?? null;
+            $newValues[$key]  = $new[$key] ?? null;
+        }
+
+        $metadata = [
+            'prev_values' => $prevValues,
+            'new_values'  => $newValues,
+        ];
+        if ($entityNo !== null) {
+            $metadata['entity_no'] = $entityNo;
+        }
+        if ($note !== null) {
+            $metadata['note'] = $note;
+        }
+
+        $this->logStatusHistory($order, $action, $metadata, $actor);
+    }
+
+    public function auditedChannelFields(): array
+    {
+        return self::AUDITED_CHANNEL_FIELDS;
     }
 
     public function updateOrder(SalesOrder $order, array $validated, $actor = null): SalesOrder

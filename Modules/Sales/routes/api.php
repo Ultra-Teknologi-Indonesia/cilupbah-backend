@@ -233,6 +233,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::middleware('role_or_permission:owner|view-pesanan')->group(function () {
         Route::get('sales/{id}/invoice', [SalesOrderController::class, 'invoice'])->whereUuid('id')->name('sales.orders.invoice');
+        Route::post('sales/invoices/bulk-pdf', [\Modules\Sales\Http\Controllers\BulkInvoiceController::class, 'bulkPdf'])->name('sales.invoices.bulk-pdf');
         Route::get('sales/{id}/breakdown', [SalesOrderController::class, 'breakdown'])->whereUuid('id')->name('sales.orders.breakdown');
         Route::get('sales/{id}/shipping-label', [SalesOrderController::class, 'getShippingLabel'])->whereUuid('id')->name('sales.orders.shipping-label');
     });
