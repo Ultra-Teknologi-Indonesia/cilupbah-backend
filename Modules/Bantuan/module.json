@@ -1,0 +1,11 @@
+{
+    "name": "Bantuan",
+    "alias": "bantuan",
+    "description": "Modul internal untuk generator dokumentasi API (halaman Bantuan FE).",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Bantuan\\Providers\\BantuanServiceProvider"
+    ],
+    "files": []
+}

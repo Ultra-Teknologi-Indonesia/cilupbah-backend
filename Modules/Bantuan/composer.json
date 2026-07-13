@@ -1,0 +1,28 @@
+{
+    "name": "nwidart/bantuan",
+    "description": "Generator dokumentasi API untuk halaman Bantuan.",
+    "authors": [
+        {
+            "name": "cilupbah",
+            "email": "dev@cilupbah.local"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {}
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\Bantuan\\": "app/",
+            "Modules\\Bantuan\\Database\\Factories\\": "database/factories/",
+            "Modules\\Bantuan\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\Bantuan\\Tests\\": "tests/"
+        }
+    }
+}
