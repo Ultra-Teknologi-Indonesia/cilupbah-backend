@@ -91,7 +91,7 @@ class Inventory extends Model
     {
 
         $this->available = $this->isPlaced()
-            ? max(0, (int) $this->on_hand - (int) $this->reserved)
+            ? (int) $this->on_hand - (int) $this->reserved
             : 0;
     }
 }
