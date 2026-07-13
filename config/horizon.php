@@ -137,6 +137,17 @@ return [
             'memory' => 256,
             'nice' => 0,
         ],
+        'supervisor-labels' => [
+            'connection' => 'redis-long',
+            'queue' => ['labels'],
+            'balance' => 'auto',
+            'minProcesses' => 1,
+            'maxProcesses' => 3,
+            'timeout' => 600,
+            'tries' => 1,
+            'memory' => 1024,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
@@ -170,6 +181,10 @@ return [
                 'minProcesses' => 1,
                 'maxProcesses' => 5,
             ],
+            'supervisor-labels' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 3,
+            ],
         ],
 
         'staging' => [
@@ -202,6 +217,10 @@ return [
                 'minProcesses' => 1,
                 'maxProcesses' => 1,
             ],
+            'supervisor-labels' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 1,
+            ],
         ],
 
         'local' => [
@@ -229,6 +248,10 @@ return [
                 'maxProcesses' => 2,
             ],
             'supervisor-downloads' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 2,
+            ],
+            'supervisor-labels' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 2,
             ],
