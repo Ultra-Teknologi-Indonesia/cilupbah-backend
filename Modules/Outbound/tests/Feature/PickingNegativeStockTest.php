@@ -140,9 +140,8 @@ class PickingNegativeStockTest extends TestCase
         return ['picklist_id' => $picklistId, 'item_id' => $itemPkId];
     }
 
-    public function test_pick_qty_exceeding_bin_stock_succeeds_when_negative_allowed(): void
+    public function test_pick_qty_exceeding_bin_stock_always_throws_validation_exception(): void
     {
-        config(['inventory.allow_negative_stock' => true]);
         Queue::fake();
 
         $userId = $this->seedUser();
@@ -154,46 +153,12 @@ class PickingNegativeStockTest extends TestCase
 
         $this->actingAs(\App\Models\User::find($userId), 'sanctum');
 
-        app(PicklistService::class)->pickItem($ids['picklist_id'], $ids['item_id'], [
-            'qty_picked' => 5,
-            'bin_code' => 'RACK-PICK-NEG',
-        ]);
-
-        $item = PicklistItem::find($ids['item_id']);
-        $this->assertSame(5, (int) $item->qty_picked);
-
-        $inv = Inventory::where('bin_id', $binId)->where('item_id', $variantId)->first();
-        $this->assertSame(-4, (int) $inv->on_hand);
-
-        $this->assertDatabaseHas('inventory_movements', [
-            'bin_id' => $binId,
-            'item_id' => $variantId,
-            'source' => 'PICKING',
-            'qty' => -5,
-            'balance' => -4,
-        ]);
-    }
-
-    public function test_pick_qty_exceeding_bin_stock_throws_when_negative_disallowed(): void
-    {
-        config(['inventory.allow_negative_stock' => false]);
-        Queue::fake();
-
-        $userId = $this->seedUser();
-        $locationId = $this->seedLocation();
-        $binId = $this->seedBin($locationId, 'RACK-PICK-NEG2');
-        $variantId = $this->seedProductVariant('SKU-PN-2');
-        $this->seedInventory($variantId, $locationId, $binId, 1);
-        $ids = $this->seedPicklistWithItem($locationId, $variantId, 'SKU-PN-2', 5, $userId);
-
-        $this->actingAs(\App\Models\User::find($userId), 'sanctum');
-
         $this->expectException(OutboundValidationException::class);
         $this->expectExceptionMessage('Stok tidak cukup di rak');
 
         app(PicklistService::class)->pickItem($ids['picklist_id'], $ids['item_id'], [
             'qty_picked' => 5,
-            'bin_code' => 'RACK-PICK-NEG2',
+            'bin_code' => 'RACK-PICK-NEG',
         ]);
     }
 }
