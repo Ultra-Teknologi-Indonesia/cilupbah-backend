@@ -2,6 +2,7 @@
 
 namespace Modules\Channel\Services;
 
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Repositories\ChannelRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
@@ -58,8 +59,8 @@ class TikTokAuthService
                     'shop_cipher' => $shopCipher,
                     'access_token' => $accessToken,
                     'refresh_token' => $data['refresh_token'] ?? null,
-                    'token_expires_at' => isset($data['access_token_expire_in']) ? now()->addSeconds($data['access_token_expire_in']) : null,
-                    'refresh_token_expires_at' => isset($data['refresh_token_expire_in']) ? now()->addSeconds($data['refresh_token_expire_in']) : null,
+                    'token_expires_at' => isset($data['access_token_expire_in']) ? Carbon::createFromTimestamp($data['access_token_expire_in']) : null,
+                    'refresh_token_expires_at' => isset($data['refresh_token_expire_in']) ? Carbon::createFromTimestamp($data['refresh_token_expire_in']) : null,
                     'is_active' => true,
                     'created_at' => now(),
                     'updated_at' => now(),
@@ -149,8 +150,8 @@ class TikTokAuthService
         $this->shopRepository->updateTokens($id, [
             'access_token' => $data['access_token'] ?? $shop->access_token,
             'refresh_token' => $data['refresh_token'] ?? $shop->refresh_token,
-            'token_expires_at' => isset($data['access_token_expire_in']) ? now()->addSeconds($data['access_token_expire_in']) : $shop->token_expires_at,
-            'refresh_token_expires_at' => isset($data['refresh_token_expire_in']) ? now()->addSeconds($data['refresh_token_expire_in']) : $shop->refresh_token_expires_at,
+            'token_expires_at' => isset($data['access_token_expire_in']) ? Carbon::createFromTimestamp($data['access_token_expire_in']) : $shop->token_expires_at,
+            'refresh_token_expires_at' => isset($data['refresh_token_expire_in']) ? Carbon::createFromTimestamp($data['refresh_token_expire_in']) : $shop->refresh_token_expires_at,
             'updated_at' => now(),
         ]);
 
@@ -159,7 +160,7 @@ class TikTokAuthService
         return [
             'shop_id' => $shop->shop_id,
             'shop_name' => $shop->shop_name,
-            'token_expires_at' => isset($data['access_token_expire_in']) ? now()->addSeconds($data['access_token_expire_in'])->toIso8601String() : null,
+            'token_expires_at' => isset($data['access_token_expire_in']) ? Carbon::createFromTimestamp($data['access_token_expire_in'])->toIso8601String() : null,
         ];
     }
 
