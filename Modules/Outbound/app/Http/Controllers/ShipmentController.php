@@ -222,9 +222,10 @@ class ShipmentController extends Controller
             'courier_name' => 'nullable|string|max:100',
             'courier_code' => 'nullable|string|max:50',
             'notes' => 'nullable|string|max:500',
+            'shipper_id' => 'nullable|integer|exists:users,id',
         ]);
 
-        $data = $request->only(['location_id', 'shipment_date', 'courier_name', 'courier_code', 'notes']);
+        $data = $request->only(['location_id', 'shipment_date', 'courier_name', 'courier_code', 'notes', 'shipper_id']);
         $data['created_by'] = auth()->user()->email;
 
         $shipment = $this->shipmentService->createInstant($data);
@@ -714,12 +715,13 @@ class ShipmentController extends Controller
             'driver_vehicle_plate' => 'nullable|string|max:20',
             'driver_booking_code'  => 'nullable|string|max:100',
             'driver_id_card'       => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
+            'shipper_id'           => 'nullable|integer|exists:users,id',
         ]);
 
         try {
             $shipment = $this->shipmentService->recordDriverCall(
                 $id,
-                $request->only(['driver_name', 'driver_phone', 'driver_vehicle_plate', 'driver_booking_code']),
+                $request->only(['driver_name', 'driver_phone', 'driver_vehicle_plate', 'driver_booking_code', 'shipper_id']),
                 $request->file('driver_id_card'),
             );
         } catch (\Exception $e) {
@@ -755,12 +757,13 @@ class ShipmentController extends Controller
             'driver_booking_code'  => 'nullable|string|max:100',
             'driver_call_status'   => 'nullable|string|in:CALLED,PICKED_UP,FAILED',
             'driver_id_card'       => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
+            'shipper_id'           => 'nullable|integer|exists:users,id',
         ]);
 
         try {
             $shipment = $this->shipmentService->updateDriverCall(
                 $id,
-                $request->only(['driver_name', 'driver_phone', 'driver_vehicle_plate', 'driver_booking_code', 'driver_call_status']),
+                $request->only(['driver_name', 'driver_phone', 'driver_vehicle_plate', 'driver_booking_code', 'driver_call_status', 'shipper_id']),
                 $request->file('driver_id_card'),
             );
         } catch (\Exception $e) {
@@ -848,5 +851,35 @@ class ShipmentController extends Controller
         $this->shipmentService->delete($id);
 
         return $this->successResponse(null, 'Shipment berhasil dihapus.');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/outbound/shipments/{id}/refresh-tracking',
+        summary: 'Refresh tracking driver on-demand (dispatch RefreshInstantTrackingJob sync)',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Shipment'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 202, description: 'Diproses'),
+        ]
+    )]
+    public function refreshTracking(string $id): JsonResponse
+    {
+        \Modules\Outbound\Jobs\RefreshInstantTrackingJob::dispatchSync($id);
+
+        return $this->successResponse(null, 'Refresh tracking diproses.', 202);
+    }
+
+    public function trackingEvents(string $id): JsonResponse
+    {
+        $events = \Modules\Outbound\Models\ShipmentTrackingEvent::query()
+            ->where('shipment_id', $id)
+            ->orderByDesc('occurred_at')
+            ->limit(100)
+            ->get();
+
+        return $this->successResponse($events, 'Timeline tracking shipment.');
     }
 }

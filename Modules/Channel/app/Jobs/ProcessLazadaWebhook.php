@@ -103,6 +103,51 @@ class ProcessLazadaWebhook implements ShouldQueue
         }
 
         $orderService->pullOrderById($sellerId, $orderId);
+        $this->recordLazadaTrackingEvent($orderId, $data);
+    }
+
+    protected function recordLazadaTrackingEvent(string $orderId, array $data): void
+    {
+        $status = strtoupper((string) ($data['order_status'] ?? $data['status'] ?? ''));
+        $isDriverEvent = in_array($status, [
+            'READY_TO_SHIP',
+            'SHIPPED',
+            'DELIVERED',
+        ], true);
+        if (! $isDriverEvent) return;
+
+        $order = \Modules\Sales\Models\SalesOrder::query()
+            ->where('source', 'lazada')
+            ->where('channel_order_no', $orderId)
+            ->first();
+        if (! $order) return;
+
+        $shipment = \Modules\Outbound\Models\Shipment::query()
+            ->whereHas('orders', fn ($q) => $q->where('order_id', $order->id))
+            ->latest('id')
+            ->first();
+        if (! $shipment) return;
+
+        $eventType = match ($status) {
+            'READY_TO_SHIP' => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_DRIVER_ASSIGNED,
+            'SHIPPED' => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_PICKED_UP,
+            'DELIVERED' => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_DELIVERED,
+            default => 'lazada_' . strtolower($status),
+        };
+
+        \Modules\Outbound\Models\ShipmentTrackingEvent::create([
+            'shipment_id' => $shipment->id,
+            'source' => 'lazada',
+            'event_type' => $eventType,
+            'driver_name' => null,
+            'driver_phone' => null,
+            'driver_vehicle_plate' => null,
+            'raw_payload' => $data,
+            'occurred_at' => now(),
+            'received_at' => now(),
+        ]);
+
+        \Modules\Outbound\Jobs\RefreshInstantTrackingJob::dispatch($shipment->id);
     }
 
     protected function handleProductEvent(ChannelDownloadService $downloadService, string $sellerId, array $data): void

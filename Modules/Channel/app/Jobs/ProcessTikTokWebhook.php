@@ -53,6 +53,7 @@ class ProcessTikTokWebhook implements ShouldQueue
                     $orderId = $this->payload['data']['order_id'] ?? null;
                     if ($orderId) {
                         $orderService->pullOrderById($shopId, $orderId);
+                        $this->recordTikTokTrackingEvent((string) $orderId, $this->payload['data'] ?? []);
                     }
                     break;
                 case 2:
@@ -109,5 +110,49 @@ class ProcessTikTokWebhook implements ShouldQueue
             Cache::forget($idempotencyKey);
             throw $e;
         }
+    }
+
+    protected function recordTikTokTrackingEvent(string $orderId, array $data): void
+    {
+        $status = strtoupper((string) ($data['order_status'] ?? $data['status'] ?? ''));
+        $isDriverEvent = in_array($status, [
+            'AWAITING_COLLECTION',
+            'IN_TRANSIT',
+            'DELIVERED',
+        ], true);
+        if (! $isDriverEvent) return;
+
+        $order = \Modules\Sales\Models\SalesOrder::query()
+            ->where('source', 'tiktok')
+            ->where('channel_order_no', $orderId)
+            ->first();
+        if (! $order) return;
+
+        $shipment = \Modules\Outbound\Models\Shipment::query()
+            ->whereHas('orders', fn ($q) => $q->where('order_id', $order->id))
+            ->latest('id')
+            ->first();
+        if (! $shipment) return;
+
+        $eventType = match ($status) {
+            'AWAITING_COLLECTION' => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_DRIVER_ASSIGNED,
+            'IN_TRANSIT' => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_IN_TRANSIT,
+            'DELIVERED' => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_DELIVERED,
+            default => 'tiktok_' . strtolower($status),
+        };
+
+        \Modules\Outbound\Models\ShipmentTrackingEvent::create([
+            'shipment_id' => $shipment->id,
+            'source' => 'tiktok',
+            'event_type' => $eventType,
+            'driver_name' => null,
+            'driver_phone' => null,
+            'driver_vehicle_plate' => null,
+            'raw_payload' => $data,
+            'occurred_at' => now(),
+            'received_at' => now(),
+        ]);
+
+        \Modules\Outbound\Jobs\RefreshInstantTrackingJob::dispatch($shipment->id);
     }
 }

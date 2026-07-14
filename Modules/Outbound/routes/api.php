@@ -20,6 +20,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('orders/request-cancel', [OutboundFulfillmentController::class, 'requestCancelOrder'])->name('outbound.orders.request-cancel')->middleware('role_or_permission:owner|edit-pesanan');
     Route::post('orders/ready-to-ship', [OutboundFulfillmentController::class, 'readyToShip'])->name('outbound.orders.ready-to-ship')->middleware('role_or_permission:owner|edit-pesanan');
     Route::post('orders/retry-pickup', [OutboundFulfillmentController::class, 'retryPickup'])->name('outbound.orders.retry-pickup')->middleware('role_or_permission:owner|edit-pesanan');
+    Route::post('orders/instant-driver-call', [OutboundFulfillmentController::class, 'bulkInstantDriverCall'])->name('outbound.orders.instant-driver-call')->middleware('role_or_permission:owner|edit-pesanan');
     Route::post('orders/ad-hoc-pick', [AdHocPickController::class, 'complete'])->name('outbound.orders.ad-hoc-pick')->middleware('role_or_permission:owner|edit-picking');
     Route::post('orders/ad-hoc-pick/scan', [AdHocPickController::class, 'scan'])->name('outbound.orders.ad-hoc-pick.scan')->middleware('role_or_permission:owner|edit-picking');
     Route::get('pickers', [OutboundFulfillmentController::class, 'pickers'])->name('outbound.pickers.index');
@@ -78,6 +79,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::patch('shipments/{id}/driver-call', [ShipmentController::class, 'updateDriverCall'])->name('outbound.shipments.update-driver-call')->middleware('role_or_permission:owner|edit-pengiriman');
     Route::post('shipments/{id}/mark-delivered', [ShipmentController::class, 'markDelivered'])->name('outbound.shipments.mark-delivered')->middleware('role_or_permission:owner|edit-pengiriman');
     Route::post('shipments/{id}/reconcile', [ShipmentController::class, 'reconcile'])->name('outbound.shipments.reconcile')->middleware('role_or_permission:owner|edit-pengiriman');
+    Route::post('shipments/{id}/refresh-tracking', [ShipmentController::class, 'refreshTracking'])->name('outbound.shipments.refresh-tracking')->middleware('role_or_permission:owner|edit-pengiriman');
+    Route::get('shipments/{id}/tracking-events', [ShipmentController::class, 'trackingEvents'])->name('outbound.shipments.tracking-events')->middleware('role_or_permission:owner|view-pengiriman');
     Route::get('shipments/{id}', [ShipmentController::class, 'show'])->name('outbound.shipments.show')->middleware('role_or_permission:owner|view-pengiriman');
     Route::get('shipments/{id}/orders', [ShipmentController::class, 'orders'])->name('outbound.shipments.orders')->middleware('role_or_permission:owner|view-pengiriman');
     Route::post('shipments/{id}/scan-order', [ShipmentController::class, 'scanOrder'])->name('outbound.shipments.scan-order');

@@ -125,6 +125,28 @@ class ShopeeOrderService
         return $this->resolveLogistics($shop, $orderSn, $status)['tracking_number'];
     }
 
+    public function getTrackingInfo(string $shopId, string $orderSn): array
+    {
+        if ($orderSn === '') return [];
+
+        try {
+            $shop = $this->requireShop($shopId);
+            $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+                'GET',
+                '/api/v2/logistics/get_tracking_info',
+                ['order_sn' => $orderSn],
+                $token,
+                $shop->shop_id,
+            ));
+
+            return $res['response']['tracking_info'] ?? [];
+        } catch (\Throwable $e) {
+            Log::warning("Shopee: gagal ambil tracking info {$orderSn}: " . $e->getMessage());
+
+            return [];
+        }
+    }
+
     public function resolveLogistics(object $shop, string $orderSn, string $status): array
     {
         $empty = ['tracking_number' => null, 'pickup_code' => null];

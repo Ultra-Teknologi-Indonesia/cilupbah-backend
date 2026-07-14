@@ -65,6 +65,62 @@ class ProcessShopeeWebhook implements ShouldQueue
             self::PUSH_ITEM_UPDATE => $this->logItemEvent($downloadService, $shopId, $data),
             default => Log::info("Shopee webhook code {$code} belum ditangani — diabaikan.", ['shop_id' => $shopId]),
         };
+
+        if (in_array($code, [
+            self::PUSH_TRACKING_NO,
+            self::PUSH_PACKAGE_FULFILLMENT,
+            self::PUSH_COURIER_DELIVERY_BINDING,
+            self::PUSH_BOOKING_TRACKING_NO,
+        ], true)) {
+            $this->recordShopeeTrackingEvent($shopId, $code, $data);
+        }
+    }
+
+    protected function recordShopeeTrackingEvent(string $shopId, int $code, array $data): void
+    {
+        $orderSn = (string) ($data['ordersn'] ?? $data['order_sn'] ?? '');
+        if ($orderSn === '') return;
+
+        $order = \Modules\Sales\Models\SalesOrder::query()
+            ->where('source', 'shopee')
+            ->where('channel_order_no', $orderSn)
+            ->first();
+        if (! $order) return;
+
+        $shipment = \Modules\Outbound\Models\Shipment::query()
+            ->whereHas('orders', fn ($q) => $q->where('order_id', $order->id))
+            ->latest('id')
+            ->first();
+        if (! $shipment) return;
+
+        $eventType = match ($code) {
+            self::PUSH_TRACKING_NO,
+            self::PUSH_BOOKING_TRACKING_NO => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_DRIVER_ASSIGNED,
+            self::PUSH_PACKAGE_FULFILLMENT => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_PICKED_UP,
+            self::PUSH_COURIER_DELIVERY_BINDING => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_DRIVER_ARRIVED,
+            default => 'shopee_event_' . $code,
+        };
+
+        \Modules\Outbound\Models\ShipmentTrackingEvent::create([
+            'shipment_id' => $shipment->id,
+            'source' => 'shopee',
+            'event_type' => $eventType,
+            'driver_name' => null,
+            'driver_phone' => null,
+            'driver_vehicle_plate' => null,
+            'raw_payload' => $data,
+            'occurred_at' => now(),
+            'received_at' => now(),
+        ]);
+
+        $trackingNo = $data['tracking_no'] ?? null;
+        if ($trackingNo) {
+            $shipment->orders()
+                ->where('order_id', $order->id)
+                ->update(['tracking_number' => $trackingNo]);
+        }
+
+        \Modules\Outbound\Jobs\RefreshInstantTrackingJob::dispatch($shipment->id);
     }
 
     protected function handleDeauthorized(string $shopId): void

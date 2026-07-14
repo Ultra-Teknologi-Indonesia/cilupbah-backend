@@ -22,6 +22,9 @@ class Shipment extends Model implements HasMedia
 
     const DRIVER_CALL_METHOD_MANUAL = 'MANUAL';
     const DRIVER_CALL_METHOD_SHOPEE_AUTO = 'SHOPEE_AUTO';
+    const DRIVER_CALL_METHOD_SHOPEE_INSTANT = 'SHOPEE_INSTANT';
+    const DRIVER_CALL_METHOD_TIKTOK_INSTANT = 'TIKTOK_INSTANT';
+    const DRIVER_CALL_METHOD_LAZADA_INSTANT = 'LAZADA_INSTANT';
 
     const DRIVER_STATUS_NONE = 'NONE';
     const DRIVER_STATUS_CALLED = 'CALLED';
@@ -47,6 +50,7 @@ class Shipment extends Model implements HasMedia
         'driver_call_status',
         'driver_called_at',
         'driver_called_by',
+        'shipper_id',
     ];
 
     protected $casts = [
@@ -91,5 +95,16 @@ class Shipment extends Model implements HasMedia
     public function location(): BelongsTo
     {
         return $this->belongsTo(\Modules\Warehouse\Models\Location::class);
+    }
+
+    public function shipper(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\User::class, 'shipper_id');
+    }
+
+    public function trackingEvents(): HasMany
+    {
+        return $this->hasMany(ShipmentTrackingEvent::class)
+            ->orderByDesc('occurred_at');
     }
 }

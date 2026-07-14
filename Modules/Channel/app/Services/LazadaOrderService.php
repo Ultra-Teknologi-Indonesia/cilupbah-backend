@@ -130,6 +130,24 @@ class LazadaOrderService
         ];
     }
 
+    public function getOrderTrace(string $shopId, string $orderId): array
+    {
+        if ($orderId === '') return [];
+
+        try {
+            $shop = $this->requireShop($shopId);
+            $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/logistic/order/trace', [
+                'order_id' => $orderId,
+            ], $token));
+
+            return $res['data'] ?? $res['result'] ?? [];
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Lazada: gagal ambil order trace {$orderId}: " . $e->getMessage());
+
+            return [];
+        }
+    }
+
     public function printAwb(string $shopId, string $orderId, int $maxAttempts = 5, int $delayMicroseconds = 1_000_000): array
     {
         $attempt = 0;

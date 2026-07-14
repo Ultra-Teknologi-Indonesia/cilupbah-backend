@@ -23,3 +23,7 @@ Schedule::command('returns:sync-detail')->everyThirtyMinutes()->withoutOverlappi
 Schedule::command('raise-products:auto-raise')->everyThirtyMinutes()->withoutOverlapping();
 
 Schedule::command('horizon:snapshot')->everyFiveMinutes();
+
+Schedule::job(new \Modules\Outbound\Jobs\RefreshInstantTrackingJob())
+    ->everyThreeMinutes()
+    ->withoutOverlapping();

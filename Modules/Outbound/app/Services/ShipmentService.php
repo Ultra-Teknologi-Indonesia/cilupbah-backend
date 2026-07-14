@@ -68,6 +68,7 @@ class ShipmentService
             'status' => Shipment::STATUS_SCHEDULED,
             'notes' => $data['notes'] ?? null,
             'created_by' => $data['created_by'],
+            'shipper_id' => $data['shipper_id'] ?? null,
         ]);
     }
 
@@ -411,6 +412,7 @@ class ShipmentService
             'driver_call_status'   => Shipment::DRIVER_STATUS_CALLED,
             'driver_called_at'     => now(),
             'driver_called_by'     => $data['driver_called_by'] ?? auth()->user()?->email,
+            'shipper_id'           => $data['shipper_id'] ?? null,
         ]);
 
         if ($idCardPhoto) {
@@ -435,6 +437,7 @@ class ShipmentService
             'driver_vehicle_plate' => $data['driver_vehicle_plate'] ?? null,
             'driver_booking_code'  => $data['driver_booking_code'] ?? null,
             'driver_call_status'   => $data['driver_call_status'] ?? null,
+            'shipper_id'           => $data['shipper_id'] ?? null,
         ], fn ($v) => $v !== null);
 
         if (!empty($updates)) {
