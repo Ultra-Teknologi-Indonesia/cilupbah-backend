@@ -28,14 +28,11 @@ return Application::configure(basePath: dirname(__DIR__))
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
             'dev.only' => \App\Http\Middleware\DevOnly::class,
             'client.channel' => \App\Http\Middleware\ResolveClientChannel::class,
-            'client.version' => \App\Http\Middleware\RequireMinClientVersion::class,
-            'idempotent' => \App\Http\Middleware\IdempotencyKey::class,
         ]);
 
-        // Auto-apply channel + version middleware to all API routes.
+        // Auto-apply channel resolver to all API routes.
         $middleware->api(prepend: [
             \App\Http\Middleware\ResolveClientChannel::class,
-            \App\Http\Middleware\RequireMinClientVersion::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

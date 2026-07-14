@@ -6,7 +6,6 @@ use App\Enums\ClientChannelEnum;
 use App\Enums\UnassignReasonEnum;
 use App\Exceptions\AssignmentLockException;
 use App\Exceptions\AssignmentTakenOverException;
-use App\Exceptions\ClientVersionTooOldException;
 use App\Exceptions\PutawayActiveException;
 use App\Exceptions\StaleWriteException;
 use PHPUnit\Framework\TestCase;
@@ -41,13 +40,6 @@ class InfraSmokeTest extends TestCase
         $this->assertSame(422, $ex->getStatus());
         $this->assertSame('PUTAWAY_ACTIVE', $ex->getErrors()['code']);
         $this->assertSame(['PA-001', 'PA-002'], $ex->getErrors()['active_putaways']);
-    }
-
-    public function test_client_version_too_old_exception_carries_426(): void
-    {
-        $ex = new ClientVersionTooOldException('1.9.0', '2.0.0', 'https://x/upg');
-        $this->assertSame(426, $ex->getStatus());
-        $this->assertSame('CLIENT_VERSION_TOO_OLD', $ex->getErrors()['code']);
     }
 
     public function test_client_channel_enum_values(): void
