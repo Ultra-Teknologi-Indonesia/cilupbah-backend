@@ -162,6 +162,7 @@ class ReportService
         $jenis = $data['jenis'];
         $ids = $data['ids'];
         $harga = $data['harga'];
+        $paper = $data['paper'] ?? 'thermal_50x40';
 
         $variants = $this->repository->barcodeVariants($jenis, $ids);
 
@@ -217,8 +218,20 @@ class ReportService
         $pdf = Pdf::loadView('report::pdf.barcode', [
             'cells' => $cells,
             'mode' => $harga,
+            'paper' => $paper,
         ]);
-        $pdf->setPaper('a4', 'portrait');
+
+        switch ($paper) {
+            case 'thermal_50x40':
+                $pdf->setPaper([0, 0, 141.7, 113.4], 'landscape');
+                break;
+            case 'thermal_80x40':
+                $pdf->setPaper([0, 0, 226.8, 113.4], 'landscape');
+                break;
+            default:
+                $pdf->setPaper('a4', 'portrait');
+                break;
+        }
 
         return $pdf;
     }
