@@ -14,52 +14,54 @@
         @page { margin: 8mm; }
         body {
             font-family: DejaVu Sans, sans-serif;
-            color: #111;
+            color: #000;
             margin: 0;
             padding: 0;
         }
-        table.grid { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        table.grid td {
-            width: 33.33%;
+        table.grid { width: 100%; border-collapse: separate; border-spacing: 6px; table-layout: fixed; }
+        table.grid > tbody > tr > td {
+            width: 50%;
             vertical-align: top;
-            padding: 4px;
+            padding: 0;
         }
         .label {
-            border: 1px solid #e2e2e2;
-            border-radius: 4px;
-            padding: 6px 4px;
-            text-align: center;
-            height: 128px;
+            border: 1px solid #000;
+            background: #fff;
+            padding: 6px 8px;
+            height: 78px;
             box-sizing: border-box;
         }
-        .label .store {
+        table.label-row { width: 100%; border-collapse: collapse; }
+        table.label-row > tr > td, table.label-row td { vertical-align: middle; padding: 0; }
+        td.qr-cell { width: 72px; }
+        td.qr-cell img { width: 66px; height: 66px; display: block; }
+        td.text-cell { padding-left: 8px; }
+        .store {
             font-size: 7px;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.2px;
-            height: 9px;
+            letter-spacing: 0.3px;
+            margin-bottom: 2px;
             overflow: hidden;
             white-space: nowrap;
         }
-        .label .name {
-            font-size: 7px;
-            line-height: 1.15;
-            height: 24px;
-            overflow: hidden;
-            margin-bottom: 2px;
-        }
-        .label .qr { margin: 1px auto; }
-        .label .qr img { width: 62px; height: 62px; }
-        .label .sku {
-            font-size: 8.5px;
+        .sku {
+            font-size: 11px;
             font-weight: 700;
-            margin-top: 2px;
+            line-height: 1.15;
             word-break: break-all;
         }
-        .label .price {
-            font-size: 8.5px;
+        .name {
+            font-size: 8px;
+            line-height: 1.15;
+            margin-top: 4px;
+            overflow: hidden;
+            max-height: 20px;
+        }
+        .price {
+            font-size: 9px;
             font-weight: 700;
-            margin-top: 1px;
+            margin-top: 4px;
         }
         .empty { text-align: center; padding: 40px; color: #666; font-size: 11px; }
     </style>
@@ -70,27 +72,34 @@
             {{ $mode === 'online' ? 'listing toko yang sudah tersinkron.' : 'SKU aktif.' }}</div>
     @else
         <table class="grid">
-            @foreach(array_chunk($cells, 3) as $rowCells)
+            @foreach(array_chunk($cells, 2) as $rowCells)
                 <tr>
                     @foreach($rowCells as $cell)
                         <td>
                             <div class="label">
-                                @if($showStore)
-                                    <div class="store">{{ $cell['store_name'] ?: '—' }}</div>
-                                @else
-                                    <div class="name">{{ $cell['name'] }}</div>
-                                @endif
-                                @if($cell['qr'])
-                                    <div class="qr"><img src="{{ $cell['qr'] }}" alt="QR"></div>
-                                @endif
-                                <div class="sku">{{ $cell['sku'] }}</div>
-                                @if($showPrice)
-                                    <div class="price">{{ $fmtPrice($cell['price']) }}</div>
-                                @endif
+                                <table class="label-row">
+                                    <tr>
+                                        <td class="qr-cell">
+                                            @if($cell['qr'])
+                                                <img src="{{ $cell['qr'] }}" alt="QR">
+                                            @endif
+                                        </td>
+                                        <td class="text-cell">
+                                            @if($showStore)
+                                                <div class="store">{{ $cell['store_name'] ?: '—' }}</div>
+                                            @endif
+                                            <div class="sku">{{ $cell['sku'] }}</div>
+                                            <div class="name">{{ $cell['name'] }}</div>
+                                            @if($showPrice)
+                                                <div class="price">{{ $fmtPrice($cell['price']) }}</div>
+                                            @endif
+                                        </td>
+                                    </tr>
+                                </table>
                             </div>
                         </td>
                     @endforeach
-                    @for($i = count($rowCells); $i < 3; $i++)
+                    @for($i = count($rowCells); $i < 2; $i++)
                         <td></td>
                     @endfor
                 </tr>
