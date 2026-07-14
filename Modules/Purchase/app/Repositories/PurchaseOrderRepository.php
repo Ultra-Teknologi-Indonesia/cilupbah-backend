@@ -34,7 +34,12 @@ class PurchaseOrderRepository
     {
         return QueryBuilder::for(PurchaseOrder::class)
             ->receivable()
-            ->with(['contact:id,name,code', 'location:id,location_name', 'items.variant.product:id,name'])
+            ->with([
+                'contact:id,name,code',
+                'location:id,location_name',
+                'bills:id,purchase_order_id,bill_number',
+                'items:id,purchase_order_id,qty,received_qty',
+            ])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('contact_id'),
