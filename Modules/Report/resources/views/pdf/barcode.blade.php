@@ -6,7 +6,7 @@
     $showPrice = $mode === 'default' || $mode === 'online';
     $showStore = $mode === 'online';
     $fmtPrice = fn ($p) => $p !== null ? 'Rp' . number_format($p, 0, ',', '.') : '-';
-    $perPage = in_array($paper, ['thermal_50x40', 'thermal_80x40', 'a4_single'], true);
+    $perPage = in_array($paper, ['thermal_50x40', 'thermal_80x40', 'thermal_40x30', 'thermal_30x20', 'a4_single'], true);
 @endphp
 <!DOCTYPE html>
 <html lang="id">
@@ -72,6 +72,30 @@
         .sku { font-size: 10pt; }
         .name { font-size: 7pt; max-height: 10mm; }
         .price { font-size: 9pt; }
+        @endif
+
+        @if($paper === 'thermal_40x30')
+        @page { margin: 1.5mm; }
+        body { font-size: 6pt; }
+        td.qr-cell { width: 22mm; }
+        td.qr-cell img { width: 20mm; height: 20mm; }
+        td.text-cell { padding-left: 2mm; }
+        .store { font-size: 5pt; }
+        .sku { font-size: 7pt; }
+        .name { font-size: 5pt; max-height: 8mm; }
+        .price { font-size: 7pt; }
+        @endif
+
+        @if($paper === 'thermal_30x20')
+        @page { margin: 1mm; }
+        body { font-size: 5pt; }
+        td.qr-cell { width: 14mm; }
+        td.qr-cell img { width: 13mm; height: 13mm; }
+        td.text-cell { padding-left: 1.5mm; }
+        .store { font-size: 4pt; margin-bottom: 0.3mm; }
+        .sku { font-size: 6pt; }
+        .name { font-size: 4pt; max-height: 5mm; margin-top: 0.3mm; }
+        .price { font-size: 5.5pt; margin-top: 0.3mm; }
         @endif
 
         @if($paper === 'a4_single')

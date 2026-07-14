@@ -20,7 +20,7 @@ class BarcodeReportRequest extends FormRequest
             'ids'       => ['required', 'array', 'min:1'],
             'ids.*'     => ['required', 'uuid'],
             'harga'     => ['required', 'in:tanpa_harga,default,online'],
-            'paper'     => ['nullable', 'in:thermal_50x40,thermal_80x40,a4_single,a4_multi'],
+            'paper'     => ['nullable', 'in:thermal_50x40,thermal_80x40,thermal_40x30,thermal_30x20,a4_single,a4_multi'],
             'download'  => ['nullable', 'boolean'],
         ];
     }

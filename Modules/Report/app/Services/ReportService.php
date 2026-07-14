@@ -228,6 +228,12 @@ class ReportService
             case 'thermal_80x40':
                 $pdf->setPaper([0, 0, 226.8, 113.4], 'landscape');
                 break;
+            case 'thermal_40x30':
+                $pdf->setPaper([0, 0, 113.4, 85.0], 'landscape');
+                break;
+            case 'thermal_30x20':
+                $pdf->setPaper([0, 0, 85.0, 56.7], 'landscape');
+                break;
             default:
                 $pdf->setPaper('a4', 'portrait');
                 break;
