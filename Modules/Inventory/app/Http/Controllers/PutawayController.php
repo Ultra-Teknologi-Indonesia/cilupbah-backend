@@ -931,4 +931,56 @@ class PutawayController extends Controller
             return null;
         }
     }
+
+    /**
+     * Tombol A "Alihkan Tugas" — TAHAN placement.
+     * DELETE /api/v1/putaway/{id}/assignment
+     */
+    public function unassign(string $id, Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'reason_code' => ['required', 'string', 'in:SALAH_TAP,SHIFT_HABIS,SAKIT,KENDALA_TEKNIS,LAINNYA'],
+            'reason_note' => ['nullable', 'string', 'max:500'],
+            'new_assignee_id' => ['nullable', 'string', 'exists:users,id'],
+        ]);
+
+        $putaway = $this->putawayService->unassign(
+            $id,
+            (string) $request->user()->id,
+            \App\Enums\UnassignReasonEnum::from($validated['reason_code']),
+            $validated['reason_note'] ?? null,
+            $validated['new_assignee_id'] ?? null,
+        );
+
+        return $this->successResponse(
+            $putaway,
+            $validated['new_assignee_id'] ?? false
+                ? 'Tugas putaway berhasil dialihkan.'
+                : 'Assignment putaway berhasil dibatalkan. Dokumen kembali ke antrian web.',
+        );
+    }
+
+    /**
+     * Tombol B "Reset & Alihkan" — reverse semua placement.
+     * POST /api/v1/putaway/{id}/assignment/reset
+     */
+    public function resetAssignment(string $id, Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'reason_note' => ['required', 'string', 'min:10', 'max:500'],
+            'new_assignee_id' => ['nullable', 'string', 'exists:users,id'],
+        ]);
+
+        $putaway = $this->putawayService->resetAssignmentDestructive(
+            $id,
+            (string) $request->user()->id,
+            $validated['reason_note'],
+            $validated['new_assignee_id'] ?? null,
+        );
+
+        return $this->successResponse(
+            $putaway,
+            'Putaway berhasil di-reset. Semua penempatan telah dibalik.',
+        );
+    }
 }

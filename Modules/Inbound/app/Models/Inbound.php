@@ -42,11 +42,29 @@ class Inbound extends Model
         'expected_date',
         'created_by',
         'notes',
+        'assigned_to',
+        'assigned_by',
+        'assigned_at',
+        'once_received_at',
+        'updated_version_at',
     ];
 
     protected $casts = [
         'expected_date' => 'datetime',
+        'assigned_at' => 'datetime',
+        'once_received_at' => 'datetime',
+        'updated_version_at' => 'datetime',
     ];
+
+    public function assignee(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\User::class, 'assigned_to');
+    }
+
+    public function assignedByUser(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\User::class, 'assigned_by');
+    }
 
     public function location(): BelongsTo
     {

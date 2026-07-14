@@ -13,6 +13,9 @@ use Modules\Inbound\Http\Requests\PutawayRequest;
 use Modules\Inbound\Http\Requests\AutoPutawayRequest;
 use Modules\Inbound\Http\Requests\AssignInboundRequest;
 use Modules\Inbound\Http\Requests\ScanPutawayRequest;
+use Modules\Inbound\Http\Requests\UnassignInboundRequest;
+use Modules\Inbound\Http\Requests\ResetInboundAssignmentRequest;
+use App\Enums\UnassignReasonEnum;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Inbounds', description: 'API Endpoints for Inbounds')]
@@ -649,6 +652,64 @@ class InboundController extends Controller
         } catch (\Exception $e) {
             throw $e;
         }
+    }
+
+    /**
+     * Tombol A "Alihkan Tugas" — TAHAN progress.
+     * DELETE /api/v1/inbounds/{id}/assignment
+     */
+    public function unassign(string $id, UnassignInboundRequest $request): JsonResponse
+    {
+        $inbound = $this->inboundService->unassignWorker(
+            $id,
+            (string) $request->user()->id,
+            UnassignReasonEnum::from($request->reason_code),
+            $request->reason_note,
+            $request->new_assignee_id,
+        );
+
+        return $this->successResponse(
+            $inbound,
+            $request->new_assignee_id
+                ? 'Tugas berhasil dialihkan.'
+                : 'Assignment berhasil dibatalkan. Dokumen kembali ke antrian web.',
+        );
+    }
+
+    /**
+     * Tombol B "Reset & Alihkan" — reverse received_qty + audit.
+     * POST /api/v1/inbounds/{id}/assignment/reset
+     */
+    public function resetAssignment(string $id, ResetInboundAssignmentRequest $request): JsonResponse
+    {
+        $inbound = $this->inboundService->resetAssignment(
+            $id,
+            (string) $request->user()->id,
+            $request->reason_note,
+            $request->new_assignee_id,
+        );
+
+        return $this->successResponse(
+            $inbound,
+            'Penerimaan berhasil di-reset. Semua qty diterima dikembalikan ke 0.',
+        );
+    }
+
+    /**
+     * Mobile "Tandai Selesai" — status → RECEIVED, unlock web edit.
+     * POST /api/v1/inbounds/{id}/mark-received
+     */
+    public function markReceived(string $id): JsonResponse
+    {
+        $inbound = $this->inboundService->markReceived(
+            $id,
+            (string) request()->user()->id,
+        );
+
+        return $this->successResponse(
+            $inbound,
+            'Penerimaan berhasil ditandai selesai. Admin sekarang bisa mengoreksi qty dari web.',
+        );
     }
 
     #[OA\Get(

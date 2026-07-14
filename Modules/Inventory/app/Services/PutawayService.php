@@ -2,6 +2,11 @@
 
 namespace Modules\Inventory\Services;
 
+use App\Enums\AssignmentActionEnum;
+use App\Enums\UnassignReasonEnum;
+use App\Models\AssignmentHistory;
+use App\Traits\EnforcesAssignmentChannel;
+use Illuminate\Database\Eloquent\Model;
 use Modules\Inventory\Repositories\PutawayRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
@@ -20,7 +25,14 @@ use Illuminate\Support\Facades\DB;
 
 class PutawayService
 {
+    use EnforcesAssignmentChannel;
+
     private const NOTIF_PERMISSION = 'manage-penempatan';
+
+    protected function unlockedOnceColumn(Model $doc): string
+    {
+        return 'completed_at';
+    }
 
     public function __construct(
         protected PutawayRepository $putawayRepository,
@@ -109,6 +121,43 @@ class PutawayService
     public function create(array $data): Putaway
     {
         return DB::transaction(function () use ($data) {
+            // Fix C2: WAJIB row-lock semua inbound_items sumber SEBELUM baca pending.
+            // Cegah race 2 admin bareng POST /putaway untuk 30 pending yang sama
+            // → dobel target (60) padahal fisik cuma 30 → putaway_qty > received_qty.
+            $inboundItemIds = collect($data['items'] ?? [])
+                ->flatMap(fn ($item) => collect($item['sources'] ?? [])->pluck('inbound_item_id'))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            if (! empty($inboundItemIds)) {
+                $locked = InboundItem::whereIn('id', $inboundItemIds)
+                    ->lockForUpdate()
+                    ->get()
+                    ->keyBy('id');
+
+                // Revalidate: qty putaway baru <= pending (received - putaway) per item.
+                $requestedPerItem = collect($data['items'] ?? [])
+                    ->flatMap(fn ($item) => $item['sources'] ?? [])
+                    ->groupBy('inbound_item_id')
+                    ->map(fn ($rows) => collect($rows)->sum('qty'));
+
+                foreach ($requestedPerItem as $inboundItemId => $requested) {
+                    $item = $locked->get($inboundItemId);
+                    if (! $item) {
+                        throw new \Exception("Item inbound {$inboundItemId} tidak ditemukan.");
+                    }
+                    $pending = (int) $item->received_qty - (int) $item->putaway_qty;
+                    if ((int) $requested > $pending) {
+                        throw new \Exception(
+                            "Qty penempatan ({$requested}) melebihi sisa yang bisa diputaway ({$pending}) untuk item {$item->item_id}. "
+                            . "Kemungkinan sudah ada putaway lain untuk item ini — refresh halaman."
+                        );
+                    }
+                }
+            }
+
             $putawayNo = $this->putawayRepository->generatePutawayNo();
 
             $putaway = $this->putawayRepository->create([
@@ -154,6 +203,87 @@ class PutawayService
         });
     }
 
+    /**
+     * Tombol A "Alihkan Tugas" — TAHAN placement.
+     */
+    public function unassign(
+        string $putawayId,
+        string $actorId,
+        UnassignReasonEnum $reason,
+        ?string $reasonNote = null,
+        ?string $newAssigneeId = null,
+    ): Putaway {
+        return DB::transaction(function () use ($putawayId, $actorId, $reason, $reasonNote, $newAssigneeId) {
+            $putaway = Putaway::lockForUpdate()->findOrFail($putawayId);
+            $previousAssignee = $putaway->assigned_to;
+            $isSelf = $previousAssignee !== null && (string) $previousAssignee === $actorId;
+            $action = $isSelf ? AssignmentActionEnum::SELF_UNASSIGN : AssignmentActionEnum::UNASSIGN;
+
+            $putaway->forceFill([
+                'assigned_to' => $newAssigneeId,
+                'assigned_by' => $newAssigneeId ? $actorId : null,
+                'assigned_at' => $newAssigneeId ? now() : null,
+                'updated_version_at' => now(),
+            ])->save();
+
+            AssignmentHistory::create([
+                'subject_type' => Putaway::class,
+                'subject_id'   => $putaway->id,
+                'from_user_id' => $previousAssignee,
+                'to_user_id'   => $newAssigneeId,
+                'actor_id'     => $actorId,
+                'action'       => $action->value,
+                'channel'      => $this->currentChannel()->value,
+                'reason_code'  => $reason->value,
+                'reason_note'  => $reasonNote,
+            ]);
+
+            return $putaway->fresh();
+        });
+    }
+
+    /**
+     * Tombol B "Reset & Alihkan" — reverse semua placement via resetAllPlacements + audit.
+     */
+    public function resetAssignmentDestructive(
+        string $putawayId,
+        string $actorId,
+        string $reasonNote,
+        ?string $newAssigneeId = null,
+    ): Putaway {
+        return DB::transaction(function () use ($putawayId, $actorId, $reasonNote, $newAssigneeId) {
+            $putaway = Putaway::lockForUpdate()->findOrFail($putawayId);
+            $previousAssignee = $putaway->assigned_to;
+
+            // Reverse semua placement — reuse existing method (yang sudah reverse stok atomic).
+            $this->resetAllPlacements($putawayId, $actorId);
+
+            $putaway->refresh()->forceFill([
+                'assigned_to' => $newAssigneeId,
+                'assigned_by' => $newAssigneeId ? $actorId : null,
+                'assigned_at' => $newAssigneeId ? now() : null,
+                'status'      => Putaway::STATUS_NOT_STARTED,
+                'started_at'  => null,
+                'completed_at' => null,
+                'updated_version_at' => now(),
+            ])->save();
+
+            AssignmentHistory::create([
+                'subject_type' => Putaway::class,
+                'subject_id'   => $putaway->id,
+                'from_user_id' => $previousAssignee,
+                'to_user_id'   => $newAssigneeId,
+                'actor_id'     => $actorId,
+                'action'       => AssignmentActionEnum::FORCE_RESET->value,
+                'channel'      => $this->currentChannel()->value,
+                'reason_code'  => UnassignReasonEnum::FORCE_RESET->value,
+                'reason_note'  => $reasonNote,
+            ]);
+
+            return $putaway->fresh();
+        });
+    }
+
     public function assignStaff(array $data): array
     {
         $results = [];
@@ -169,9 +299,26 @@ class PutawayService
                 throw new \Exception("Putaway {$putaway->putaway_no} sudah {$putaway->status}, tidak bisa di-assign.");
             }
 
+            $previousAssignee = $putaway->assigned_to;
+            $action = $previousAssignee === null
+                ? AssignmentActionEnum::ASSIGN
+                : AssignmentActionEnum::REASSIGN;
+
             $putaway->update([
                 'assigned_to' => $assignment['assigned_to'],
                 'assigned_by' => $data['performed_by'],
+                'assigned_at' => now(),
+                'updated_version_at' => now(),
+            ]);
+
+            AssignmentHistory::create([
+                'subject_type' => Putaway::class,
+                'subject_id'   => $putaway->id,
+                'from_user_id' => $previousAssignee,
+                'to_user_id'   => $assignment['assigned_to'],
+                'actor_id'     => $data['performed_by'],
+                'action'       => $action->value,
+                'channel'      => $this->currentChannel()->value,
             ]);
 
             $putaway = $this->putawayRepository->findById($assignment['putaway_id']);
@@ -217,6 +364,16 @@ class PutawayService
 
         if (!$putaway) {
             throw new \Exception('Putaway tidak ditemukan.');
+        }
+
+        // Channel lock guard: web boleh proses hanya kalau belum di-assign;
+        // mobile hanya oleh assignee (STRICT H1).
+        $actorId = (string) ($data['actor_id'] ?? request()?->user()?->id ?? '');
+        $channel = $this->currentChannel();
+        if ($channel === \App\Enums\ClientChannelEnum::MOBILE) {
+            $this->assertMobileCanMutate($putaway, $actorId);
+        } else {
+            $this->assertWebCanMutate($putaway);
         }
 
         if ($putaway->status === Putaway::STATUS_NOT_STARTED) {
@@ -631,8 +788,23 @@ class PutawayService
             ? Inbound::STATUS_COMPLETED
             : ($anyPutaway ? Inbound::STATUS_PUTAWAY_IN_PROGRESS : Inbound::STATUS_RECEIVED);
 
+        $updates = [];
         if ($inbound->status !== $newStatus) {
-            $inbound->update(['status' => $newStatus]);
+            $updates['status'] = $newStatus;
+        }
+
+        // Fix C1 (idempoten): set once_received_at pertama kali capai RECEIVED+.
+        if ($inbound->once_received_at === null
+            && in_array($newStatus, [
+                Inbound::STATUS_RECEIVED,
+                Inbound::STATUS_PUTAWAY_IN_PROGRESS,
+                Inbound::STATUS_COMPLETED,
+            ], true)) {
+            $updates['once_received_at'] = now();
+        }
+
+        if (! empty($updates)) {
+            $inbound->update($updates);
         }
     }
 

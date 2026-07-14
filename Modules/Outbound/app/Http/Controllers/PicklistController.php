@@ -713,4 +713,56 @@ class PicklistController extends Controller
             return null;
         }
     }
+
+    /**
+     * Tombol A "Alihkan Tugas" — TAHAN alokasi pick.
+     * DELETE /api/v1/picklists/{id}/assignment
+     */
+    public function unassign(string $id, \Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'reason_code' => ['required', 'string', 'in:SALAH_TAP,SHIFT_HABIS,SAKIT,KENDALA_TEKNIS,LAINNYA'],
+            'reason_note' => ['nullable', 'string', 'max:500'],
+            'new_assignee_id' => ['nullable', 'string', 'exists:users,id'],
+        ]);
+
+        $picklist = $this->picklistService->unassign(
+            $id,
+            (string) $request->user()->id,
+            \App\Enums\UnassignReasonEnum::from($validated['reason_code']),
+            $validated['reason_note'] ?? null,
+            $validated['new_assignee_id'] ?? null,
+        );
+
+        return $this->successResponse(
+            $picklist,
+            $validated['new_assignee_id'] ?? false
+                ? 'Tugas picking berhasil dialihkan.'
+                : 'Assignment picking berhasil dibatalkan. Dokumen kembali ke antrian.',
+        );
+    }
+
+    /**
+     * Tombol B "Reset & Alihkan" — reverse alokasi pick + audit.
+     * POST /api/v1/picklists/{id}/assignment/reset
+     */
+    public function resetAssignment(string $id, \Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'reason_note' => ['required', 'string', 'min:10', 'max:500'],
+            'new_assignee_id' => ['nullable', 'string', 'exists:users,id'],
+        ]);
+
+        $picklist = $this->picklistService->resetAssignmentDestructive(
+            $id,
+            (string) $request->user()->id,
+            $validated['reason_note'],
+            $validated['new_assignee_id'] ?? null,
+        );
+
+        return $this->successResponse(
+            $picklist,
+            'Picklist berhasil di-reset. Semua alokasi dikembalikan.',
+        );
+    }
 }

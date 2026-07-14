@@ -292,6 +292,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('/{id}', [PutawayController::class, 'show'])->middleware('role_or_permission:owner|view-penempatan')->name('putaway.show');
         Route::get('/{id}/items', [PutawayController::class, 'items'])->middleware('role_or_permission:owner|view-penempatan')->name('putaway.items');
         Route::post('/assign-staff', [PutawayController::class, 'assignStaff'])->middleware('role_or_permission:owner|edit-penempatan')->name('putaway.assignStaff');
+        // Channel lock endpoints
+        Route::delete('/{id}/assignment', [PutawayController::class, 'unassign'])->middleware('role_or_permission:owner|edit-penempatan')->name('putaway.unassign');
+        Route::post('/{id}/assignment/reset', [PutawayController::class, 'resetAssignment'])->middleware('role_or_permission:owner|delete-penempatan')->name('putaway.resetAssignment');
         Route::post('/{id}/start', [PutawayController::class, 'start'])->name('putaway.start');
         Route::post('/{id}/items/{itemId}/process', [PutawayController::class, 'processItem'])->name('putaway.processItem');
         Route::delete('/{id}/placements', [PutawayController::class, 'deletePlacements'])->middleware('role_or_permission:owner|delete-penempatan')->name('putaway.deletePlacements');

@@ -33,6 +33,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::middleware('role_or_permission:owner|edit-barang-masuk')->group(function () {
         Route::post('inbounds/{id}/assign', [InboundController::class, 'assign'])->name('inbounds.assign');
+        // Channel lock: unassign (tombol A, TAHAN) + reset (tombol B, destruktif)
+        Route::delete('inbounds/{id}/assignment', [InboundController::class, 'unassign'])->name('inbounds.unassign');
+        Route::post('inbounds/{id}/assignment/reset', [InboundController::class, 'resetAssignment'])->name('inbounds.resetAssignment');
     });
     Route::middleware('role_or_permission:owner|view-barang-masuk')->group(function () {
         Route::get('inbounds/{id}/assignments', [InboundController::class, 'assignments'])->name('inbounds.assignments');
@@ -42,6 +45,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::middleware('role_or_permission:owner|edit-barang-masuk')->group(function () {
         Route::post('inbounds/{id}/receive', [InboundController::class, 'receive'])->name('inbounds.receive');
+        // Mobile: Tandai Selesai (barang kurang) — unlock web edit via once_received_at
+        Route::post('inbounds/{id}/mark-received', [InboundController::class, 'markReceived'])->name('inbounds.markReceived');
         Route::patch('inbounds/{id}/items/{itemId}/received-qty', [InboundController::class, 'setReceivedQty'])->name('inbounds.setReceivedQty');
     });
     Route::middleware('role_or_permission:owner|delete-barang-masuk')->group(function () {

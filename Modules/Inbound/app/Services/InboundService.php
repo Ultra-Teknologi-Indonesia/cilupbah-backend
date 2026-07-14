@@ -2,12 +2,20 @@
 
 namespace Modules\Inbound\Services;
 
+use App\Enums\AssignmentActionEnum;
+use App\Enums\UnassignReasonEnum;
+use App\Exceptions\AssignmentLockException;
+use App\Exceptions\PutawayActiveException;
+use App\Models\AssignmentHistory;
+use App\Traits\EnforcesAssignmentChannel;
+use Illuminate\Database\Eloquent\Model;
 use Modules\Inbound\Repositories\InboundRepository;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundAssignment;
 use Modules\Inbound\Models\InboundItem;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
+use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\PutawayService;
 use Modules\Notification\Events\TaskAssigned;
@@ -20,6 +28,8 @@ use Illuminate\Support\Str;
 
 class InboundService
 {
+    use EnforcesAssignmentChannel;
+
     private const NOTIF_PENEMPATAN = 'manage-penempatan';
 
     public function __construct(
@@ -29,6 +39,11 @@ class InboundService
         protected PutawayService $putawayService,
         protected NotificationDispatcher $notifications,
     ) {}
+
+    protected function unlockedOnceColumn(Model $doc): string
+    {
+        return 'once_received_at';
+    }
 
     private function inboundLink(string $id): string
     {
@@ -250,6 +265,9 @@ class InboundService
             if (! $inbound) {
                 throw new \Exception("Dokumen Inbound tidak ditemukan.");
             }
+
+            // Fix H1 (mobile STRICT): mutasi mobile hanya oleh assignee.
+            $this->assertMobileCanMutate($inbound, (string) $data['received_by']);
 
             if (! $inbound->isReceivable()) {
                 throw new \Exception("Inbound sudah berstatus {$inbound->status}, tidak bisa menerima barang.");
@@ -541,33 +559,255 @@ class InboundService
 
     public function assignWorker(string $inboundId, string $assignedTo, string $assignedBy, ?string $notes = null): InboundAssignment
     {
-        $inbound = $this->inboundRepository->findById($inboundId);
+        return DB::transaction(function () use ($inboundId, $assignedTo, $assignedBy, $notes) {
+            $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
 
-        if (! $inbound) {
-            throw new \Exception("Dokumen Inbound tidak ditemukan.");
-        }
+            if (! $inbound) {
+                throw new \Exception("Dokumen Inbound tidak ditemukan.");
+            }
 
-        if ($inbound->status === Inbound::STATUS_CANCELLED || $inbound->status === Inbound::STATUS_COMPLETED) {
-            throw new \Exception("Inbound berstatus {$inbound->status}, tidak bisa di-assign.");
-        }
+            if ($inbound->status === Inbound::STATUS_CANCELLED || $inbound->status === Inbound::STATUS_COMPLETED) {
+                throw new \Exception("Inbound berstatus {$inbound->status}, tidak bisa di-assign.");
+            }
 
-        $assignment = $this->inboundRepository->createAssignment([
-            'inbound_id'  => $inboundId,
-            'assigned_to' => $assignedTo,
-            'assigned_by' => $assignedBy,
-            'status'      => InboundAssignment::STATUS_PENDING,
-            'notes'       => $notes,
+            $previousAssignee = $inbound->assigned_to;
+            $action = $previousAssignee === null
+                ? AssignmentActionEnum::ASSIGN
+                : AssignmentActionEnum::REASSIGN;
+
+            $assignment = $this->inboundRepository->createAssignment([
+                'inbound_id'  => $inboundId,
+                'assigned_to' => $assignedTo,
+                'assigned_by' => $assignedBy,
+                'status'      => InboundAssignment::STATUS_PENDING,
+                'notes'       => $notes,
+            ]);
+
+            // Denormalize ke inbounds.assigned_to untuk guard channel lock.
+            $inbound->forceFill([
+                'assigned_to' => $assignedTo,
+                'assigned_by' => $assignedBy,
+                'assigned_at' => now(),
+                'updated_version_at' => now(),
+            ])->save();
+
+            $this->recordHistory($inbound, $previousAssignee, $assignedTo, $assignedBy, $action);
+
+            TaskAssigned::dispatch(
+                $assignedTo,
+                'inbound',
+                $inbound->transaction_number,
+                $assignedBy,
+                ['inbound_id' => $inboundId, 'assignment_id' => $assignment->id],
+            );
+
+            return $assignment;
+        });
+    }
+
+    /**
+     * Tombol A "Alihkan Tugas" — TAHAN progress, opsional reassign ke user baru.
+     */
+    public function unassignWorker(
+        string $inboundId,
+        string $actorId,
+        UnassignReasonEnum $reason,
+        ?string $reasonNote = null,
+        ?string $newAssigneeId = null,
+    ): Inbound {
+        return DB::transaction(function () use ($inboundId, $actorId, $reason, $reasonNote, $newAssigneeId) {
+            $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
+            if (! $inbound) {
+                throw new \Exception('Dokumen Inbound tidak ditemukan.');
+            }
+
+            $previousAssignee = $inbound->assigned_to;
+            $isSelf = $previousAssignee !== null && (string) $previousAssignee === $actorId;
+            $action = $isSelf ? AssignmentActionEnum::SELF_UNASSIGN : AssignmentActionEnum::UNASSIGN;
+
+            // Progress TAHAN — hanya swap assignee (atau null).
+            InboundAssignment::where('inbound_id', $inboundId)
+                ->whereIn('status', [InboundAssignment::STATUS_PENDING, InboundAssignment::STATUS_IN_PROGRESS])
+                ->update([
+                    'status' => InboundAssignment::STATUS_COMPLETED,
+                    'completed_at' => now(),
+                ]);
+
+            $inbound->forceFill([
+                'assigned_to' => $newAssigneeId,
+                'assigned_by' => $newAssigneeId ? $actorId : null,
+                'assigned_at' => $newAssigneeId ? now() : null,
+                'updated_version_at' => now(),
+            ])->save();
+
+            if ($newAssigneeId) {
+                $this->inboundRepository->createAssignment([
+                    'inbound_id'  => $inboundId,
+                    'assigned_to' => $newAssigneeId,
+                    'assigned_by' => $actorId,
+                    'status'      => InboundAssignment::STATUS_PENDING,
+                    'notes'       => "Handover: {$reason->label()}",
+                ]);
+            }
+
+            $this->recordHistory(
+                $inbound,
+                $previousAssignee,
+                $newAssigneeId,
+                $actorId,
+                $action,
+                $reason,
+                $reasonNote,
+            );
+
+            return $inbound->fresh();
+        });
+    }
+
+    /**
+     * Tombol B "Reset & Alihkan" — reverse received_qty ke 0 per item + audit.
+     * Guard: tolak kalau ada putaway aktif turunan (fix planning — putaway data
+     * jadi inconsistent kalau received_qty dihapus).
+     * Guard: tolak kalau mobile session aktif tanpa unassign dulu (fix H2).
+     */
+    public function resetAssignment(
+        string $inboundId,
+        string $actorId,
+        string $reasonNote,
+        ?string $newAssigneeId = null,
+    ): Inbound {
+        return DB::transaction(function () use ($inboundId, $actorId, $reasonNote, $newAssigneeId) {
+            $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
+            if (! $inbound) {
+                throw new \Exception('Dokumen Inbound tidak ditemukan.');
+            }
+
+            // Fix H2: tolak kalau mobile session masih aktif (PARTIAL + assigned).
+            if ($inbound->assigned_to !== null
+                && $inbound->status === Inbound::STATUS_PARTIAL) {
+                throw new AssignmentLockException(
+                    assignedToName: $this->resolveUserName($inbound->assigned_to),
+                    assignedToId: (string) $inbound->assigned_to,
+                    assignedAt: $inbound->assigned_at?->toDateTimeString(),
+                );
+            }
+
+            // Guard planning: blok kalau ada putaway aktif turunan.
+            $activePutaways = Putaway::whereHas('sources', fn ($q) => $q->where('inbound_id', $inboundId))
+                ->whereIn('status', [Putaway::STATUS_NOT_STARTED, Putaway::STATUS_IN_PROGRESS])
+                ->pluck('putaway_no')
+                ->toArray();
+
+            if (! empty($activePutaways)) {
+                throw new PutawayActiveException($activePutaways);
+            }
+
+            $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
+            if (! $defaultBin) {
+                throw new \Exception('Gudang ini belum memiliki Bin Inbound default.');
+            }
+
+            $previousAssignee = $inbound->assigned_to;
+
+            $inbound->load('items');
+            foreach ($inbound->items as $item) {
+                $received = (int) $item->received_qty;
+                if ($received <= 0) {
+                    continue;
+                }
+
+                $this->inventoryService->adjust([
+                    'item_id'            => $item->item_id,
+                    'location_id'        => $inbound->location_id,
+                    'bin_id'             => $defaultBin->id,
+                    'qty'                => -$received,
+                    'transaction_number' => $inbound->transaction_number . '-RESET',
+                    'source'             => $this->movementSourceFor($inbound),
+                    'created_by'         => "user:{$actorId}",
+                ]);
+
+                $this->inboundRepository->updateItemReceivedQty($item->id, -$received);
+            }
+
+            $inbound->forceFill([
+                'assigned_to' => $newAssigneeId,
+                'assigned_by' => $newAssigneeId ? $actorId : null,
+                'assigned_at' => $newAssigneeId ? now() : null,
+                'status'      => Inbound::STATUS_DRAFT,
+                'updated_version_at' => now(),
+            ])->save();
+
+            $this->recordHistory(
+                $inbound,
+                $previousAssignee,
+                $newAssigneeId,
+                $actorId,
+                AssignmentActionEnum::FORCE_RESET,
+                UnassignReasonEnum::FORCE_RESET,
+                $reasonNote,
+            );
+
+            return $inbound->fresh();
+        });
+    }
+
+    /**
+     * Mobile "Tandai Selesai" — status → RECEIVED walaupun received < expected.
+     * Unlock web edit via once_received_at.
+     */
+    public function markReceived(string $inboundId, string $actorId): Inbound
+    {
+        return DB::transaction(function () use ($inboundId, $actorId) {
+            $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
+            if (! $inbound) {
+                throw new \Exception('Dokumen Inbound tidak ditemukan.');
+            }
+
+            $this->assertMobileCanMutate($inbound, $actorId);
+
+            if (! $inbound->isReceivable()) {
+                throw new \Exception("Inbound berstatus {$inbound->status}, tidak bisa ditandai selesai.");
+            }
+
+            $this->inboundRepository->updateStatus($inbound, Inbound::STATUS_RECEIVED);
+
+            $inbound->forceFill([
+                'once_received_at' => $inbound->once_received_at ?? now(),
+                'updated_version_at' => now(),
+            ])->save();
+
+            InboundAssignment::where('inbound_id', $inboundId)
+                ->where('assigned_to', $actorId)
+                ->whereIn('status', [InboundAssignment::STATUS_PENDING, InboundAssignment::STATUS_IN_PROGRESS])
+                ->update([
+                    'status' => InboundAssignment::STATUS_COMPLETED,
+                    'completed_at' => now(),
+                ]);
+
+            return $inbound->fresh();
+        });
+    }
+
+    private function recordHistory(
+        Inbound $inbound,
+        ?string $fromUserId,
+        ?string $toUserId,
+        ?string $actorId,
+        AssignmentActionEnum $action,
+        ?UnassignReasonEnum $reason = null,
+        ?string $reasonNote = null,
+    ): void {
+        AssignmentHistory::create([
+            'subject_type' => Inbound::class,
+            'subject_id'   => $inbound->id,
+            'from_user_id' => $fromUserId,
+            'to_user_id'   => $toUserId,
+            'actor_id'     => $actorId,
+            'action'       => $action->value,
+            'channel'      => $this->currentChannel()->value,
+            'reason_code'  => $reason?->value,
+            'reason_note'  => $reasonNote,
         ]);
-
-        TaskAssigned::dispatch(
-            $assignedTo,
-            'inbound',
-            $inbound->transaction_number,
-            $assignedBy,
-            ['inbound_id' => $inboundId, 'assignment_id' => $assignment->id],
-        );
-
-        return $assignment;
     }
 
     public function getAssignments(string $inboundId)
@@ -710,6 +950,9 @@ class InboundService
                 throw new \Exception("Inbound sudah dibatalkan.");
             }
 
+            // Fix C1: koreksi web hanya boleh setelah sekali RECEIVED atau belum di-assign.
+            $this->assertWebCanMutate($inbound);
+
             $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
             if (! $defaultBin) {
                 throw new \Exception("Gudang ini belum memiliki Bin Inbound default.");
@@ -772,6 +1015,9 @@ class InboundService
                 throw new \Exception('Inbound sudah dibatalkan.');
             }
 
+            // Fix C1 (guard web via once_received_at, bukan status current).
+            $this->assertWebCanMutate($inbound);
+
             $item = $this->inboundRepository->findItemByUuidForUpdate($inboundItemId);
             if (! $item || $item->inbound_id !== $inbound->id) {
                 throw new \Exception('Item inbound tidak ditemukan.');
@@ -830,6 +1076,16 @@ class InboundService
 
         if ($inbound->status !== $newStatus) {
             $this->inboundRepository->updateStatus($inbound, $newStatus);
+        }
+
+        // Fix C1: set once_received_at pertama kali capai RECEIVED+. Idempoten — tidak reset.
+        if ($inbound->once_received_at === null
+            && in_array($newStatus, [
+                Inbound::STATUS_RECEIVED,
+                Inbound::STATUS_PUTAWAY_IN_PROGRESS,
+                Inbound::STATUS_COMPLETED,
+            ], true)) {
+            $inbound->forceFill(['once_received_at' => now()])->save();
         }
     }
 

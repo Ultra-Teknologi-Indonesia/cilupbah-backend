@@ -38,6 +38,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::get('picklists/{id}/pdf', [PicklistController::class, 'pdf'])->name('outbound.picklists.pdf')->middleware('role_or_permission:owner|export-picking');
     Route::post('picklists/documents/bulk/pdf', [PicklistController::class, 'bulkPdf'])->name('outbound.picklists.bulk-pdf')->middleware('role_or_permission:owner|export-picking');
     Route::post('picklists/{id}/assign-picker', [PicklistController::class, 'assignPicker'])->name('outbound.picklists.assign-picker')->middleware('role_or_permission:owner|edit-picking');
+    // Channel lock endpoints
+    Route::delete('picklists/{id}/assignment', [PicklistController::class, 'unassign'])->name('outbound.picklists.unassign')->middleware('role_or_permission:owner|edit-picking');
+    Route::post('picklists/{id}/assignment/reset', [PicklistController::class, 'resetAssignment'])->name('outbound.picklists.resetAssignment')->middleware('role_or_permission:owner|delete-picking');
     Route::post('picklists/{id}/start', [PicklistController::class, 'start'])->name('outbound.picklists.start');
     Route::post('picklists/{id}/scan', [PicklistController::class, 'scan'])->name('outbound.picklists.scan');
     Route::post('picklists/{id}/items/{itemId}/pick', [PicklistController::class, 'pickItem'])->name('outbound.picklists.pick-item');

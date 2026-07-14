@@ -22,18 +22,27 @@ class Picklist extends Model
         'location_id',
         'picker_id',
         'assigned_by',
+        'assigned_at',
         'status',
         'started_at',
         'completed_at',
         'notes',
         'created_by',
+        'updated_version_at',
     ];
 
     protected $casts = [
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
+        'assigned_at' => 'datetime',
+        'updated_version_at' => 'datetime',
         'has_instant' => 'boolean',
     ];
+
+    public function assignedByUser(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\User::class, 'assigned_by');
+    }
 
     public function items(): HasMany
     {

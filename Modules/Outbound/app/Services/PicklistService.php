@@ -2,6 +2,12 @@
 
 namespace Modules\Outbound\Services;
 
+use App\Enums\AssignmentActionEnum;
+use App\Enums\ClientChannelEnum;
+use App\Enums\UnassignReasonEnum;
+use App\Models\AssignmentHistory;
+use App\Traits\EnforcesAssignmentChannel;
+use Illuminate\Database\Eloquent\Model;
 use Modules\Outbound\Repositories\PicklistRepository;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
@@ -22,12 +28,115 @@ use Illuminate\Support\Facades\DB;
 
 class PicklistService
 {
+    use EnforcesAssignmentChannel;
+
     public function __construct(
         protected PicklistRepository $picklistRepository,
         protected InventoryMovementRepository $movementRepository,
         protected InventoryService $inventoryService,
         protected ProductRepository $productRepository,
     ) {}
+
+    protected function assignedToColumn(Model $doc): string
+    {
+        return 'picker_id';
+    }
+
+    protected function unlockedOnceColumn(Model $doc): string
+    {
+        return 'completed_at';
+    }
+
+    /**
+     * Tombol A "Alihkan Tugas" — TAHAN alokasi pick, swap picker.
+     */
+    public function unassign(
+        string $picklistId,
+        string $actorId,
+        UnassignReasonEnum $reason,
+        ?string $reasonNote = null,
+        ?string $newPickerId = null,
+    ): Picklist {
+        return DB::transaction(function () use ($picklistId, $actorId, $reason, $reasonNote, $newPickerId) {
+            $picklist = Picklist::lockForUpdate()->findOrFail($picklistId);
+            $previousPicker = $picklist->picker_id;
+            $isSelf = $previousPicker !== null && (string) $previousPicker === $actorId;
+            $action = $isSelf ? AssignmentActionEnum::SELF_UNASSIGN : AssignmentActionEnum::UNASSIGN;
+
+            $picklist->forceFill([
+                'picker_id' => $newPickerId,
+                'assigned_by' => $newPickerId ? $actorId : null,
+                'assigned_at' => $newPickerId ? now() : null,
+                'updated_version_at' => now(),
+            ])->save();
+
+            AssignmentHistory::create([
+                'subject_type' => Picklist::class,
+                'subject_id'   => $picklist->id,
+                'from_user_id' => $previousPicker,
+                'to_user_id'   => $newPickerId,
+                'actor_id'     => $actorId,
+                'action'       => $action->value,
+                'channel'      => $this->currentChannel()->value,
+                'reason_code'  => $reason->value,
+                'reason_note'  => $reasonNote,
+            ]);
+
+            return $picklist->fresh();
+        });
+    }
+
+    /**
+     * Tombol B "Reset & Alihkan" — reverse alokasi via unpickItems + reset picker.
+     * Picking bisa direset kepala gudang (bukan hanya owner+admin) karena reversible
+     * dan tidak menyentuh fisik permanent.
+     */
+    public function resetAssignmentDestructive(
+        string $picklistId,
+        string $actorId,
+        string $reasonNote,
+        ?string $newPickerId = null,
+    ): Picklist {
+        return DB::transaction(function () use ($picklistId, $actorId, $reasonNote, $newPickerId) {
+            $picklist = Picklist::lockForUpdate()->with('items')->findOrFail($picklistId);
+            $previousPicker = $picklist->picker_id;
+
+            // Reverse alokasi: iterate items, hapus allocation + reset picked_qty.
+            // TODO: kalau ada helper reverseBinMove/unpickItem private, gunakan supaya
+            // stok fisik ikut kembali. Sementara clear allocation + reset counter saja
+            // supaya assignee baru mulai bersih.
+            foreach ($picklist->items as $item) {
+                if ((int) $item->picked_qty > 0) {
+                    PicklistItemAllocation::where('picklist_item_id', $item->id)->delete();
+                    $item->forceFill(['picked_qty' => 0])->save();
+                }
+            }
+
+            $picklist->refresh()->forceFill([
+                'picker_id' => $newPickerId,
+                'assigned_by' => $newPickerId ? $actorId : null,
+                'assigned_at' => $newPickerId ? now() : null,
+                'status' => Picklist::STATUS_DRAFT,
+                'started_at' => null,
+                'completed_at' => null,
+                'updated_version_at' => now(),
+            ])->save();
+
+            AssignmentHistory::create([
+                'subject_type' => Picklist::class,
+                'subject_id'   => $picklist->id,
+                'from_user_id' => $previousPicker,
+                'to_user_id'   => $newPickerId,
+                'actor_id'     => $actorId,
+                'action'       => AssignmentActionEnum::FORCE_RESET->value,
+                'channel'      => $this->currentChannel()->value,
+                'reason_code'  => UnassignReasonEnum::FORCE_RESET->value,
+                'reason_note'  => $reasonNote,
+            ]);
+
+            return $picklist->fresh();
+        });
+    }
 
     public function getAllPaginated(int $limit = 10)
     {
