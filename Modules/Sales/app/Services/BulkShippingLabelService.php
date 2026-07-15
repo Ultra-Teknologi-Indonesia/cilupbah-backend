@@ -239,7 +239,7 @@ class BulkShippingLabelService
         }
 
         if (in_array($status, ['preparing', null], true)) {
-            PrepareShopeeShippingLabelJob::dispatch($order->id, $options);
+            PrepareShopeeShippingLabelJob::dispatch($order->id);
             $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP]);
             return;
         }
