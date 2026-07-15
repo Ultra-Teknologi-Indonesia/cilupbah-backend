@@ -1242,7 +1242,15 @@ class InboundService
      */
     public function lookupByQr(string $code): InboundItem
     {
-        $item = $this->inboundRepository->findItemByUuid($code);
+        $code = trim($code);
+        $item = null;
+
+        // UUID lookup hanya kalau format-nya UUID valid. Kalau langsung
+        // query dengan string SKU, Postgres crash di parser karena kolom
+        // id bertype uuid (SQLSTATE 22P02).
+        if (Str::isUuid($code)) {
+            $item = $this->inboundRepository->findItemByUuid($code);
+        }
 
         if (! $item) {
             $item = InboundItem::whereHas('variant', fn ($q) => $q->where('sku', $code)->orWhere('barcode', $code))
@@ -1267,10 +1275,15 @@ class InboundService
      */
     public function lookupCandidatesByQr(string $code): \Illuminate\Support\Collection
     {
-        // 1. UUID (inbound_item.id) → 1 hasil pasti.
-        $direct = $this->inboundRepository->findItemByUuid($code);
-        if ($direct) {
-            return collect([$direct->load('inbound.location', 'variant:id,sku,product_id')]);
+        $code = trim($code);
+
+        // 1. UUID (inbound_item.id) → 1 hasil pasti. Guard Str::isUuid supaya
+        //    Postgres tidak crash 22P02 saat code adalah SKU/barcode.
+        if (Str::isUuid($code)) {
+            $direct = $this->inboundRepository->findItemByUuid($code);
+            if ($direct) {
+                return collect([$direct->load('inbound.location', 'variant:id,sku,product_id')]);
+            }
         }
 
         // 2. SKU/barcode → semua inbound aktif yang ada item ini.
