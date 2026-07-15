@@ -19,6 +19,7 @@ use Modules\Outbound\Events\PicklistItemFailed;
 use Modules\Notification\Events\TaskAssigned;
 use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Product\Repositories\ProductRepository;
@@ -525,12 +526,22 @@ class PicklistService
 
     private function suggestBinsForItem(Picklist $picklist, PicklistItem $item): \Illuminate\Support\Collection
     {
+        $lastInSub = InventoryMovement::query()
+            ->selectRaw('MAX(transaction_date)')
+            ->whereColumn('inventory_movements.item_id', 'inventories.item_id')
+            ->whereColumn('inventory_movements.location_id', 'inventories.location_id')
+            ->whereColumn('inventory_movements.bin_id', 'inventories.bin_id')
+            ->where('qty', '>', 0);
+
         $rows = Inventory::where('item_id', $item->item_id)
             ->where('location_id', $picklist->location_id)
             ->placed()
             ->where('on_hand', '>', 0)
             ->with(['bin:id,bin_final_code'])
-            ->orderBy('created_at')
+            ->select('inventories.*')
+            ->selectSub($lastInSub, 'last_in_at')
+            ->orderByRaw('last_in_at DESC NULLS LAST')
+            ->orderBy('inventories.created_at', 'desc')
             ->get();
 
         return $rows
