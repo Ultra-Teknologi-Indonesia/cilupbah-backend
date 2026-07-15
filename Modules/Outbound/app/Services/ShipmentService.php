@@ -32,7 +32,9 @@ class ShipmentService
 
     public function getCompleted(string $type, ?string $courierIds = null, int $limit = 10)
     {
-        $courierCodes = $courierIds ? explode(',', $courierIds) : [];
+        $courierCodes = ($courierIds && strtolower($courierIds) !== 'all')
+            ? array_filter(array_map('trim', explode(',', $courierIds)))
+            : [];
 
         return $this->shipmentRepository->getCompleted($type, $courierCodes, $limit);
     }

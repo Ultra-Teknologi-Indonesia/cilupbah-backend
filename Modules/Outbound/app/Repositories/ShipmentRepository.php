@@ -72,12 +72,15 @@ class ShipmentRepository
 
     public function getCompleted(string $type, array $courierCodes = [], int $limit = 10)
     {
-        $query = Shipment::where('shipment_type', strtoupper($type))
-            ->whereIn('status', [
-                Shipment::STATUS_HANDED_OVER,
-                Shipment::STATUS_IN_TRANSIT,
-                Shipment::STATUS_DELIVERED,
-            ]);
+        $query = Shipment::whereIn('status', [
+            Shipment::STATUS_HANDED_OVER,
+            Shipment::STATUS_IN_TRANSIT,
+            Shipment::STATUS_DELIVERED,
+        ]);
+
+        if (strtolower($type) !== 'all') {
+            $query->where('shipment_type', strtoupper($type));
+        }
 
         if (!empty($courierCodes)) {
             $query->whereIn('courier_code', $courierCodes);
