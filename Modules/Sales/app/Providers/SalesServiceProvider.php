@@ -12,6 +12,7 @@ use Modules\Sales\Console\Commands\RestoreTrackingNumbers;
 use Modules\Sales\Console\Commands\SyncOrderFinance;
 use Modules\Sales\Console\Commands\SyncReturnDetail;
 use Modules\Sales\Console\Commands\SyncReturnTracking;
+use Modules\Sales\Console\Commands\SyncShippingStatus;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class SalesServiceProvider extends ModuleServiceProvider
@@ -35,6 +36,7 @@ class SalesServiceProvider extends ModuleServiceProvider
         SyncReturnDetail::class,
         CleanupBulkLabelBatchesCommand::class,
         ReapStaleBulkLabelBatches::class,
+        SyncShippingStatus::class,
     ];
 
     protected function configureSchedules(Schedule $schedule): void
@@ -51,6 +53,11 @@ class SalesServiceProvider extends ModuleServiceProvider
 
         $schedule->command('bulk-shipping-labels:reap-stale')
             ->everyFiveMinutes()
+            ->withoutOverlapping()
+            ->runInBackground();
+
+        $schedule->command('sales:sync-shipping-status')
+            ->everyFifteenMinutes()
             ->withoutOverlapping()
             ->runInBackground();
     }

@@ -9,6 +9,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Outbound\Services\OutboundFulfillmentService;
@@ -72,6 +73,8 @@ class RequestChannelAwbJob implements ShouldQueue
                 $gotTracking = $this->fetchShopeeTracking($order);
             } elseif ($source === 'tiktok') {
                 $gotTracking = $this->fetchTiktokTracking($order);
+            } elseif ($source === 'lazada') {
+                $gotTracking = $this->fetchLazadaTracking($order);
             }
 
             if (! $gotTracking && isset(self::TRACKING_RETRY_DELAYS[$this->trackingAttempt])) {
@@ -171,6 +174,36 @@ class RequestChannelAwbJob implements ShouldQueue
             }
         } catch (\Throwable $e) {
             Log::warning('RequestChannelAwbJob: gagal fetch tracking_number', [
+                'order_id'  => $order->id,
+                'exception' => $e->getMessage(),
+            ]);
+        }
+
+        return false;
+    }
+
+    private function fetchLazadaTracking(SalesOrder $order): bool
+    {
+        try {
+            app(LazadaOrderService::class)->pullOrderById(
+                (string) $order->channel_shop_id,
+                (string) $order->channel_order_no,
+            );
+
+            $fresh = SalesOrder::find($order->id);
+            $tn = (string) ($fresh->tracking_number ?? '');
+
+            if ($tn !== '') {
+                Log::info('RequestChannelAwbJob: Lazada tracking_number tersimpan via pullOrderById', [
+                    'order_id'        => $order->id,
+                    'salesorder_no'   => $order->salesorder_no,
+                    'tracking_number' => $tn,
+                ]);
+
+                return true;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('RequestChannelAwbJob: gagal fetch Lazada tracking_number', [
                 'order_id'  => $order->id,
                 'exception' => $e->getMessage(),
             ]);

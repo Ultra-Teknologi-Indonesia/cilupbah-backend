@@ -17,7 +17,6 @@ use Modules\Sales\Services\SalesOrderService;
 use Modules\Sales\Services\SalesOrderDriverCallService;
 use Modules\Sales\Http\Requests\SaveCourierPickupRequest;
 use Modules\Sales\Http\Resources\SalesOrderResource;
-use Modules\Sales\Support\ShopeeInstantEligibility;
 
 #[OA\Tag(name: 'Sales Orders', description: 'API Endpoints for Sales Orders')]
 #[OA\Schema(
@@ -912,14 +911,24 @@ class SalesOrderController extends Controller
 
         if ($order->isManual()) {
             return $this->errorResponse(
-                'Pesanan manual tidak memicu panggilan driver Shopee.',
+                'Pesanan manual tidak memicu panggilan driver marketplace.',
                 422
             );
         }
 
-        if (! ShopeeInstantEligibility::isEligible($order)) {
+        $source = strtolower((string) $order->source);
+        $supported = in_array($source, ['shopee', 'tiktok', 'lazada'], true);
+
+        if (! $supported) {
             return $this->errorResponse(
-                'Endpoint ini hanya untuk pesanan Shopee Instant atau Same Day.',
+                "Panggil driver belum didukung untuk source '{$source}'.",
+                422
+            );
+        }
+
+        if (! \Modules\Outbound\Support\InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type)) {
+            return $this->errorResponse(
+                'Endpoint ini hanya untuk pesanan Instant / Same Day (Shopee / TikTok / Lazada).',
                 422
             );
         }
@@ -935,7 +944,7 @@ class SalesOrderController extends Controller
         $driverCallSuccess = $driverCall->callDriver($order);
 
         if (! $driverCallSuccess && ! $forceLabel) {
-            return $this->errorResponse('Panggilan driver Shopee gagal. Tambahkan ?force_label=1 untuk tetap mencetak label.', 422, [
+            return $this->errorResponse('Panggilan driver marketplace gagal. Tambahkan ?force_label=1 untuk tetap mencetak label.', 422, [
                 'driver_call_status'       => $order->driver_call_status,
                 'driver_call_message'      => $order->driver_call_message,
                 'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
@@ -982,7 +991,7 @@ class SalesOrderController extends Controller
             'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
             'label' => $labelResult,
         ], $driverCallSuccess
-            ? 'Driver Shopee terpanggil dan label siap diunduh.'
+            ? 'Driver terpanggil dan label siap diunduh.'
             : 'Label siap; panggilan driver gagal — silakan retry.');
     }
 
@@ -990,8 +999,13 @@ class SalesOrderController extends Controller
     {
         $order = $driverCall->findOrder($id);
 
-        if (! ShopeeInstantEligibility::isEligible($order)) {
-            return $this->errorResponse('Endpoint ini hanya untuk pesanan Shopee Instant atau Same Day.', 422);
+        $source = strtolower((string) $order->source);
+        if (! in_array($source, ['shopee', 'tiktok', 'lazada'], true)) {
+            return $this->errorResponse("Retry driver belum didukung untuk source '{$source}'.", 422);
+        }
+
+        if (! \Modules\Outbound\Support\InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type)) {
+            return $this->errorResponse('Endpoint ini hanya untuk pesanan Instant / Same Day (Shopee / TikTok / Lazada).', 422);
         }
 
         $driverCall->retryDriverCall($order);

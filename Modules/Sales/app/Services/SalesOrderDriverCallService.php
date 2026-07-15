@@ -2,8 +2,12 @@
 
 namespace Modules\Sales\Services;
 
+use Modules\Channel\Jobs\ProcessLazadaFulfillmentJob;
 use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Channel\Services\TikTokOrderService;
+use Modules\Sales\Jobs\CallLazadaDriverJob;
 use Modules\Sales\Jobs\CallShopeeDriverJob;
+use Modules\Sales\Jobs\CallTikTokDriverJob;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Repositories\SalesOrderRepository;
 
@@ -11,6 +15,7 @@ class SalesOrderDriverCallService
 {
     public function __construct(
         protected ShopeeOrderService $shopee,
+        protected TikTokOrderService $tiktok,
         protected SalesOrderRepository $orderRepository,
     ) {}
 
@@ -20,6 +25,35 @@ class SalesOrderDriverCallService
     }
 
     public function callDriver(SalesOrder $order): bool
+    {
+        $source = strtolower((string) $order->source);
+
+        return match ($source) {
+            'shopee' => $this->callShopee($order),
+            'tiktok' => $this->callTikTok($order),
+            'lazada' => $this->callLazada($order),
+            default  => $this->markUnsupported($order, "Panggil driver untuk source '{$source}' belum didukung."),
+        };
+    }
+
+    public function retryDriverCall(SalesOrder $order): void
+    {
+        $order->update([
+            'driver_call_status'  => 'pending',
+            'driver_call_message' => null,
+        ]);
+
+        $source = strtolower((string) $order->source);
+
+        match ($source) {
+            'shopee' => CallShopeeDriverJob::dispatch($order->id),
+            'tiktok' => CallTikTokDriverJob::dispatch($order->id),
+            'lazada' => CallLazadaDriverJob::dispatch($order->id),
+            default  => $this->markUnsupported($order, "Retry driver untuk source '{$source}' belum didukung."),
+        };
+    }
+
+    private function callShopee(SalesOrder $order): bool
     {
         $shopId = (string) $order->channel_shop_id;
         $orderSn = (string) $order->channel_order_no;
@@ -69,13 +103,108 @@ class SalesOrderDriverCallService
         return $driverCallSuccess;
     }
 
-    public function retryDriverCall(SalesOrder $order): void
+    private function callTikTok(SalesOrder $order): bool
     {
+        $shopId = (string) $order->channel_shop_id;
+        $channelOrderNo = (string) $order->channel_order_no;
+
         $order->update([
-            'driver_call_status'  => 'pending',
-            'driver_call_message' => null,
+            'driver_call_status'       => 'pending',
+            'driver_call_attempted_at' => now(),
         ]);
 
-        CallShopeeDriverJob::dispatch($order->id);
+        try {
+            $result = $this->tiktok->readyToShip($shopId, $channelOrderNo);
+            $shipped = (bool) ($result['shipped'] ?? false);
+
+            if ($shipped) {
+                $order->update([
+                    'driver_call_status'   => 'success',
+                    'driver_call_message'  => null,
+                    'driver_call_response' => $result,
+                ]);
+                $order->refresh();
+
+                return true;
+            }
+
+            $msg = (string) ($result['message'] ?? 'TikTok readyToShip gagal tanpa pesan');
+            $order->update([
+                'driver_call_status'   => 'failed',
+                'driver_call_message'  => mb_substr($msg, 0, 500),
+                'driver_call_response' => $result,
+            ]);
+        } catch (\Throwable $e) {
+            $order->update([
+                'driver_call_status'  => 'failed',
+                'driver_call_message' => mb_substr($e->getMessage(), 0, 500),
+            ]);
+        }
+
+        $order->refresh();
+
+        return false;
+    }
+
+    private function callLazada(SalesOrder $order): bool
+    {
+        $shopId = (string) $order->channel_shop_id;
+        $channelOrderNo = (string) $order->channel_order_no;
+        $shippingProvider = (string) ($order->channel_shipping_provider_code ?? $order->shipping_provider ?? '');
+
+        if ($shippingProvider === '') {
+            $order->update([
+                'driver_call_status'       => 'failed',
+                'driver_call_message'      => 'Lazada: shipping_provider order kosong.',
+                'driver_call_attempted_at' => now(),
+            ]);
+            $order->refresh();
+
+            return false;
+        }
+
+        $order->update([
+            'driver_call_status'       => 'pending',
+            'driver_call_attempted_at' => now(),
+        ]);
+
+        try {
+            ProcessLazadaFulfillmentJob::dispatch(
+                $shopId,
+                $channelOrderNo,
+                $shippingProvider,
+                'dropship',
+                $order->tracking_number ?: null,
+                null,
+            )->afterCommit();
+
+            $order->update([
+                'driver_call_status'   => 'success',
+                'driver_call_message'  => null,
+                'driver_call_response' => ['queued' => true, 'pipeline' => 'lazada_fulfillment'],
+            ]);
+            $order->refresh();
+
+            return true;
+        } catch (\Throwable $e) {
+            $order->update([
+                'driver_call_status'  => 'failed',
+                'driver_call_message' => mb_substr($e->getMessage(), 0, 500),
+            ]);
+            $order->refresh();
+
+            return false;
+        }
+    }
+
+    private function markUnsupported(SalesOrder $order, string $message): bool
+    {
+        $order->update([
+            'driver_call_status'       => 'failed',
+            'driver_call_message'      => mb_substr($message, 0, 500),
+            'driver_call_attempted_at' => now(),
+        ]);
+
+        return false;
     }
 }

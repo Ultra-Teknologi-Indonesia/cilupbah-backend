@@ -2,6 +2,8 @@
 
 namespace Modules\Outbound\Contracts;
 
+use Modules\Sales\Models\SalesOrder;
+
 interface MarketPlaceLogisticsInterface
 {
     /**
@@ -25,4 +27,11 @@ interface MarketPlaceLogisticsInterface
      * Digunakan job RefreshInstantTrackingJob dan tombol refresh manual.
      */
     public function getTrackingStatus(string $orderId): array;
+
+    /**
+     * Dispatcher RTS ke marketplace untuk 1 order.
+     * Return: ['status' => 'success'|'failed'|'queued'|'skipped', 'message' => string].
+     * WC adapter mengembalikan 'skipped' (tandai lokal saja, tidak ada API).
+     */
+    public function readyToShip(SalesOrder $order): array;
 }

@@ -4,6 +4,7 @@ namespace Modules\Outbound\Services\Logistics;
 
 use Modules\Outbound\Contracts\DriverCallResult;
 use Modules\Outbound\Contracts\MarketPlaceLogisticsInterface;
+use Modules\Sales\Models\SalesOrder;
 
 class WooCommerceLogisticsService implements MarketPlaceLogisticsInterface
 {
@@ -20,6 +21,16 @@ class WooCommerceLogisticsService implements MarketPlaceLogisticsInterface
     public function getTrackingStatus(string $orderId): array
     {
         return [];
+    }
+
+    public function readyToShip(SalesOrder $order): array
+    {
+        $order->update(['status' => 'ready-to-ship']);
+
+        return [
+            'status'  => 'skipped',
+            'message' => 'Order manual/WooCommerce: ditandai siap dikirim secara lokal (tidak ada API RTS).',
+        ];
     }
 
     private function stub(array $orderIds): DriverCallResult

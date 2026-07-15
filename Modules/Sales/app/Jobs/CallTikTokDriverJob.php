@@ -6,13 +6,14 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
-use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Channel\Services\TikTokOrderService;
 use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Models\SalesOrder;
 
-class CallShopeeDriverJob implements ShouldQueue
+class CallTikTokDriverJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -24,18 +25,27 @@ class CallShopeeDriverJob implements ShouldQueue
         $this->onQueue(config('queue.names.channel_sync'));
     }
 
-    public function handle(ShopeeOrderService $shopee): void
+    public function middleware(): array
+    {
+        return [
+            (new WithoutOverlapping("tiktok_driver_call:{$this->orderId}"))->releaseAfter(60),
+        ];
+    }
+
+    public function handle(TikTokOrderService $tiktok): void
     {
         $order = SalesOrder::find($this->orderId);
         if (! $order) {
             return;
         }
 
-        if (strtolower((string) $order->source) !== 'shopee'
-            || ! InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type)) {
-            Log::info('CallShopeeDriverJob: bukan Shopee Instant/Same Day, skip', [
+        if (strtolower((string) $order->source) !== 'tiktok') {
+            return;
+        }
+
+        if (! InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type)) {
+            Log::info('CallTikTokDriverJob: bukan TikTok instant/same-day, skip', [
                 'order_id'          => $order->id,
-                'source'            => $order->source,
                 'shipping_type'     => $order->shipping_type,
                 'shipping_provider' => $order->shipping_provider,
             ]);
@@ -48,8 +58,8 @@ class CallShopeeDriverJob implements ShouldQueue
         }
 
         $shopId = (string) $order->channel_shop_id;
-        $orderSn = (string) $order->channel_order_no;
-        if ($shopId === '' || $orderSn === '') {
+        $orderId = (string) $order->channel_order_no;
+        if ($shopId === '' || $orderId === '') {
             $order->update([
                 'driver_call_status'       => 'failed',
                 'driver_call_message'      => 'channel_shop_id / channel_order_no kosong',
@@ -65,19 +75,14 @@ class CallShopeeDriverJob implements ShouldQueue
         ]);
 
         try {
-            if ($order->channel_status === 'RETRY_SHIP') {
-                $result = $shopee->retryPickup($shopId, $orderSn);
-            } else {
-                $result = $shopee->shipOrder($shopId, $orderSn);
-            }
+            $result = $tiktok->readyToShip($shopId, $orderId);
         } catch (\Throwable $e) {
             $order->update([
                 'driver_call_status'  => 'failed',
                 'driver_call_message' => $this->truncate($e->getMessage()),
             ]);
-            Log::error('CallShopeeDriverJob: shipOrder throw exception', [
+            Log::error('CallTikTokDriverJob: readyToShip throw', [
                 'order_id' => $order->id,
-                'order_sn' => $orderSn,
                 'error'    => $e->getMessage(),
             ]);
 
@@ -89,7 +94,6 @@ class CallShopeeDriverJob implements ShouldQueue
         }
 
         $shipped = (bool) ($result['shipped'] ?? false);
-        $error = $result['error'] ?? null;
 
         if ($shipped) {
             $order->update([
@@ -101,31 +105,20 @@ class CallShopeeDriverJob implements ShouldQueue
             return;
         }
 
-        $errStr = (string) $error;
-        if ($this->isAlreadyShipped($errStr)) {
-            $order->update([
-                'driver_call_status'   => 'success',
-                'driver_call_message'  => null,
-                'driver_call_response' => $result,
-            ]);
-
-            return;
-        }
-
+        $errMsg = (string) ($result['message'] ?? 'TikTok readyToShip gagal tanpa pesan');
         $order->update([
             'driver_call_status'   => 'failed',
-            'driver_call_message'  => $this->truncate($errStr !== '' ? $errStr : 'ship_order gagal tanpa pesan'),
+            'driver_call_message'  => $this->truncate($errMsg),
             'driver_call_response' => $result,
         ]);
 
-        Log::error('CallShopeeDriverJob: shipOrder gagal', [
+        Log::error('CallTikTokDriverJob: readyToShip gagal', [
             'order_id' => $order->id,
-            'order_sn' => $orderSn,
-            'error'    => $errStr,
+            'message'  => $errMsg,
         ]);
 
         if ($this->attempts() < $this->tries) {
-            throw new \RuntimeException('Shopee ship_order gagal: ' . $errStr);
+            throw new \RuntimeException('TikTok readyToShip gagal: ' . $errMsg);
         }
     }
 
@@ -139,17 +132,10 @@ class CallShopeeDriverJob implements ShouldQueue
             ]);
         }
 
-        Log::error('CallShopeeDriverJob failed permanently', [
+        Log::error('CallTikTokDriverJob failed permanently', [
             'order_id' => $this->orderId,
             'error'    => $exception->getMessage(),
         ]);
-    }
-
-    private function isAlreadyShipped(string $errCode): bool
-    {
-        $lower = strtolower($errCode);
-
-        return str_contains($lower, 'already') || str_contains($lower, 'duplicate') || str_contains($lower, 'shipped');
     }
 
     private function truncate(string $s, int $max = 500): string

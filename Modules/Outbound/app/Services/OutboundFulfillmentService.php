@@ -12,17 +12,15 @@ use Modules\Outbound\Repositories\OutboundFulfillmentRepository;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ShopeeOrderService;
-use Modules\Channel\Services\TikTokOrderService;
-use Modules\Channel\Services\LazadaOrderService;
+use Modules\Outbound\Services\Logistics\LogisticsGateway;
 
 class OutboundFulfillmentService
 {
     public function __construct(
         protected \Modules\Sales\Services\SalesOrderService $orderService,
         protected ShopeeOrderService $shopeeOrderService,
-        protected TikTokOrderService $tiktokOrderService,
-        protected LazadaOrderService $lazadaOrderService,
         protected OutboundFulfillmentRepository $fulfillmentRepository,
+        protected LogisticsGateway $logisticsGateway,
     ) {}
 
     public function readyToShip(array $orderIds): array
@@ -43,71 +41,23 @@ class OutboundFulfillmentService
                 continue;
             }
 
-            $source = strtolower((string) $order->source);
-            $shopId = (string) ($order->channel_shop_id ?? '');
-            $channelOrderNo = (string) ($order->channel_order_no ?? '');
-
-            if ($source === 'tiktok' && strtoupper((string) $order->fulfillment_type) === 'FULFILLMENT_BY_TIKTOK') {
-                $results[] = $this->result($order, 'failed', 'TikTok: order ini FULFILLMENT_BY_TIKTOK (FBT) — RTS dikelola oleh TikTok, bukan seller.');
-                continue;
-            }
-
             try {
-                switch ($source) {
-                    case 'shopee':
-                        $this->assertChannelRefs($source, $shopId, $channelOrderNo);
-
-                        if ($order->channel_status === 'RETRY_SHIP') {
-                            $ship = $this->shopeeOrderService->retryPickup($shopId, $channelOrderNo);
-                            if (!empty($ship['updated'])) {
-                                $results[] = $this->result($order, 'success', 'Shopee: berhasil dijadwalkan ulang (Retry Pickup).');
-                            } else {
-                                $err = is_array($ship) ? ($ship['error'] ?? null) : null;
-                                $results[] = $this->result($order, 'failed', 'Shopee: gagal retry pickup' . ($err ? " ({$err})" : '') . '.');
-                            }
-                        } else {
-                            $ship = $this->shopeeOrderService->shipOrder($shopId, $channelOrderNo);
-                            if (!empty($ship['shipped'])) {
-                                $results[] = $this->result($order, 'success', 'Shopee: berhasil dikirim (RTS).');
-                            } else {
-                                $err = is_array($ship) ? ($ship['error'] ?? null) : null;
-                                $results[] = $this->result($order, 'failed', 'Shopee: gagal ship_order' . ($err ? " ({$err})" : '') . '.');
-                            }
-                        }
-                        break;
-
-                    case 'tiktok':
-                        $this->assertChannelRefs($source, $shopId, $channelOrderNo);
-                        $rts = $this->tiktokOrderService->readyToShip($shopId, $channelOrderNo);
-                        if (!empty($rts['shipped'])) {
-                            $results[] = $this->result($order, 'success', $rts['message'] ?? 'TikTok: RTS berhasil.');
-                        } else {
-                            $results[] = $this->result($order, 'failed', $rts['message'] ?? 'TikTok: RTS gagal.');
-                        }
-                        break;
-
-                    case 'lazada':
-                        $this->assertChannelRefs($source, $shopId, $channelOrderNo);
-                        $this->lazadaOrderService->packOrder($shopId, $channelOrderNo);
-                        $results[] = $this->result($order, 'success', 'Lazada: berhasil di-pack & RTS.');
-                        break;
-
-                    default:
-
-                        $order->update(['status' => 'ready-to-ship']);
-                        $results[] = $this->result($order, 'skipped', 'Order manual/non-marketplace: ditandai siap dikirim secara lokal.');
-                        break;
-                }
+                $adapter = $this->logisticsGateway->for($order->source);
+                $outcome = $adapter->readyToShip($order);
+                $results[] = $this->result(
+                    $order,
+                    (string) ($outcome['status'] ?? 'failed'),
+                    (string) ($outcome['message'] ?? ''),
+                );
             } catch (\Throwable $e) {
                 Log::error('readyToShip dispatcher gagal untuk order', [
                     'order_id'         => $order->id,
                     'salesorder_no'    => $order->salesorder_no,
-                    'source'           => $source,
-                    'channel_shop_id'  => $shopId,
-                    'channel_order_no' => $channelOrderNo,
+                    'source'           => $order->source,
+                    'channel_shop_id'  => (string) ($order->channel_shop_id ?? ''),
+                    'channel_order_no' => (string) ($order->channel_order_no ?? ''),
                     'error'            => $e->getMessage(),
                 ]);
-
                 $results[] = $this->result($order, 'failed', $e->getMessage());
             }
         }

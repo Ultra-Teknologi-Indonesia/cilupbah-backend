@@ -54,6 +54,36 @@ class LazadaLogisticsService extends AbstractLogisticsService
         ];
     }
 
+    public function readyToShip(SalesOrder $order): array
+    {
+        $shopId = (string) ($order->channel_shop_id ?? $order->store?->channel_shop_id ?? '');
+        $channelOrderNo = (string) $order->channel_order_no;
+        $shippingProvider = (string) ($order->channel_shipping_provider_code ?? $order->shipping_provider ?? '');
+
+        if ($shopId === '' || $channelOrderNo === '') {
+            return ['status' => 'failed', 'message' => 'Lazada: channel_shop_id atau channel_order_no kosong.'];
+        }
+
+        if ($shippingProvider === '') {
+            return ['status' => 'failed', 'message' => 'Lazada: shipping_provider kosong pada order — isi dulu di detail order sebelum RTS.'];
+        }
+
+        try {
+            \Modules\Channel\Jobs\ProcessLazadaFulfillmentJob::dispatch(
+                $shopId,
+                $channelOrderNo,
+                $shippingProvider,
+                'dropship',
+                $order->tracking_number ?: null,
+                null,
+            )->afterCommit();
+
+            return ['status' => 'queued', 'message' => 'Lazada: pack → AWB → RTS dijadwalkan (async, retry otomatis).'];
+        } catch (\Throwable $e) {
+            return ['status' => 'failed', 'message' => $e->getMessage()];
+        }
+    }
+
     public function getTrackingStatus(string $orderId): array
     {
         $order = SalesOrder::query()->find($orderId);

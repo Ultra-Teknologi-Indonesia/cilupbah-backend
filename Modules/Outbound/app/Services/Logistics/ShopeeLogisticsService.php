@@ -120,4 +120,38 @@ class ShopeeLogisticsService extends AbstractLogisticsService
         }
         return null;
     }
+
+    public function readyToShip(SalesOrder $order): array
+    {
+        $shopId = $this->resolveShopId($order);
+        $orderSn = (string) $order->channel_order_no;
+
+        if (! $shopId || $orderSn === '') {
+            return ['status' => 'failed', 'message' => 'Shopee: channel_shop_id atau channel_order_no kosong.'];
+        }
+
+        $service = app(\Modules\Channel\Services\ShopeeOrderService::class);
+
+        try {
+            if ($order->channel_status === 'RETRY_SHIP') {
+                $result = $service->retryPickup((string) $shopId, $orderSn);
+                if (! empty($result['updated'])) {
+                    return ['status' => 'success', 'message' => 'Shopee: berhasil dijadwalkan ulang (Retry Pickup).'];
+                }
+                $err = is_array($result) ? ($result['error'] ?? null) : null;
+
+                return ['status' => 'failed', 'message' => 'Shopee: gagal retry pickup' . ($err ? " ({$err})" : '') . '.'];
+            }
+
+            $result = $service->shipOrder((string) $shopId, $orderSn);
+            if (! empty($result['shipped'])) {
+                return ['status' => 'success', 'message' => 'Shopee: berhasil dikirim (RTS).'];
+            }
+            $err = is_array($result) ? ($result['error'] ?? null) : null;
+
+            return ['status' => 'failed', 'message' => 'Shopee: gagal ship_order' . ($err ? " ({$err})" : '') . '.'];
+        } catch (\Throwable $e) {
+            return ['status' => 'failed', 'message' => $e->getMessage()];
+        }
+    }
 }

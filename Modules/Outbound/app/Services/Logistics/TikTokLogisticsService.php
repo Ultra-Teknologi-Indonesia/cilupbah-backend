@@ -49,6 +49,36 @@ class TikTokLogisticsService extends AbstractLogisticsService
         ];
     }
 
+    public function readyToShip(SalesOrder $order): array
+    {
+        if (strtoupper((string) $order->fulfillment_type) === 'FULFILLMENT_BY_TIKTOK') {
+            return [
+                'status'  => 'failed',
+                'message' => 'TikTok: order ini FULFILLMENT_BY_TIKTOK (FBT) — RTS dikelola oleh TikTok, bukan seller.',
+            ];
+        }
+
+        $shopId = $order->channel_shop_id ?? $order->store?->channel_shop_id ?? null;
+        $channelOrderNo = (string) $order->channel_order_no;
+
+        if (! $shopId || $channelOrderNo === '') {
+            return ['status' => 'failed', 'message' => 'TikTok: channel_shop_id atau channel_order_no kosong.'];
+        }
+
+        try {
+            $service = app(\Modules\Channel\Services\TikTokOrderService::class);
+            $rts = $service->readyToShip((string) $shopId, $channelOrderNo);
+
+            if (! empty($rts['shipped'])) {
+                return ['status' => 'success', 'message' => $rts['message'] ?? 'TikTok: RTS berhasil.'];
+            }
+
+            return ['status' => 'failed', 'message' => $rts['message'] ?? 'TikTok: RTS gagal.'];
+        } catch (\Throwable $e) {
+            return ['status' => 'failed', 'message' => $e->getMessage()];
+        }
+    }
+
     public function getTrackingStatus(string $orderId): array
     {
         $order = SalesOrder::query()->find($orderId);

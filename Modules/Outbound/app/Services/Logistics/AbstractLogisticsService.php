@@ -46,6 +46,17 @@ abstract class AbstractLogisticsService implements MarketPlaceLogisticsInterface
         return [];
     }
 
+    public function readyToShip(SalesOrder $order): array
+    {
+        return [
+            'status'  => 'failed',
+            'message' => sprintf(
+                "Ready-to-ship belum diimplementasikan untuk source '%s'.",
+                strtolower((string) $order->source),
+            ),
+        ];
+    }
+
     /**
      * @param  callable(SalesOrder):array  $handler
      */
