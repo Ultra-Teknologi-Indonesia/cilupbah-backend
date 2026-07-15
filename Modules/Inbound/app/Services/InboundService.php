@@ -101,7 +101,13 @@ class InboundService
             $items = $data['items'] ?? [];
             unset($data['items']);
 
-            $data['transaction_number'] = $data['reference_number'] ?? ('INB-' . Str::upper(Str::random(8)));
+            // transaction_number harus unique auto-generate; reference_number
+            // (dari user "No. Ref" atau PO number) BUKAN sumber transaction_number.
+            // Retry sampai dapat yang tidak collision (probabilitas tabrakan random 8 char sangat kecil).
+            do {
+                $candidate = 'INB-' . Str::upper(Str::random(8));
+            } while (Inbound::where('transaction_number', $candidate)->exists());
+            $data['transaction_number'] = $candidate;
             $data['status'] = Inbound::STATUS_DRAFT;
 
             $inbound = $this->inboundRepository->create($data);
@@ -226,7 +232,10 @@ class InboundService
 
             $inbound->update([
                 'status'             => $anyShortfall ? Inbound::STATUS_PARTIAL : Inbound::STATUS_RECEIVED,
-                'transaction_number' => $data['transaction_number'] ?? $data['reference_number'] ?? $inbound->transaction_number,
+                // Jangan overwrite transaction_number dengan reference_number
+                // (collision unique kalau ref_number kebetulan sama dengan tx_number
+                // dokumen lain). Keep existing tx_number sebagai default aman.
+                'transaction_number' => $data['transaction_number'] ?? $inbound->transaction_number,
             ]);
 
             return $inbound->load('items');
