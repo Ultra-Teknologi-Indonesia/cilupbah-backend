@@ -5,7 +5,10 @@ namespace Modules\Inbound\Services;
 use App\Enums\AssignmentActionEnum;
 use App\Enums\UnassignReasonEnum;
 use App\Exceptions\AssignmentLockException;
+use App\Exceptions\InboundSessionClosedException;
+use App\Exceptions\MobileSessionActiveException;
 use App\Exceptions\PutawayActiveException;
+use App\Exceptions\UserFacingException;
 use App\Models\AssignmentHistory;
 use App\Traits\EnforcesAssignmentChannel;
 use Illuminate\Database\Eloquent\Model;
@@ -13,6 +16,7 @@ use Modules\Inbound\Repositories\InboundRepository;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundAssignment;
 use Modules\Inbound\Models\InboundItem;
+use Modules\Inbound\Models\InboundParticipant;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\Putaway;
@@ -48,6 +52,117 @@ class InboundService
     protected function unlockedOnceColumn(Model $doc): string
     {
         return 'once_received_at';
+    }
+
+    /**
+     * Fase 2 override: web edit ditolak selagi ada participant mobile ACTIVE.
+     * Butuh once_received_at IS NOT NULL DAN tidak ada participant ACTIVE.
+     */
+    protected function assertWebCanMutate(Model $doc): void
+    {
+        $doc->refresh();
+
+        if ($this->isCancelled($doc)) {
+            return;
+        }
+
+        // Guard fase 1: butuh sekali pernah RECEIVED.
+        if (! $this->isUnlockedByCompletion($doc)) {
+            // Fallback: kalau belum pernah receive DAN belum ada participant → izinkan (dokumen belum tersentuh mobile).
+            if (! $doc instanceof Inbound || ! $doc->hasActiveParticipant()) {
+                return;
+            }
+        }
+
+        // Guard fase 2: tolak kalau ada participant ACTIVE.
+        if ($doc instanceof Inbound && $doc->hasActiveParticipant()) {
+            $active = InboundParticipant::where('inbound_id', $doc->id)
+                ->where('status', InboundParticipant::STATUS_ACTIVE)
+                ->with('user:id,name')
+                ->get()
+                ->map(fn ($p) => [
+                    'user_id' => (string) $p->user_id,
+                    'name' => $p->user?->name ?? 'staff',
+                ])
+                ->toArray();
+
+            throw new MobileSessionActiveException($active);
+        }
+    }
+
+    /**
+     * Fase 2 override: multi-participant self-claim.
+     * - Tolak kalau session sudah tertutup (once_received_at set) — F2.
+     * - Tolak kalau user pernah WITHDRAWN — F3.
+     * - Auto-insert participant ACTIVE kalau belum ada — self-claim.
+     */
+    protected function assertMobileCanMutate(Model $doc, string $actorId): void
+    {
+        $doc->refresh();
+
+        if (! $doc instanceof Inbound) {
+            // Fallback ke logic default trait untuk model non-Inbound (tidak dipakai
+            // di service ini tapi jaga kontrak). Trait tidak ada parent; kalau tipe
+            // beda, lempar biar caller sadar.
+            throw new UserFacingException(
+                title: 'Guard tidak berlaku',
+                message: 'assertMobileCanMutate hanya untuk Inbound.',
+                status: 500,
+                errors: ['code' => 'GUARD_MISUSE'],
+            );
+        }
+
+        if ($this->isCancelled($doc) || $this->isFinalCompletion($doc)) {
+            throw new UserFacingException(
+                title: 'Dokumen sudah tidak bisa diubah',
+                message: "Inbound berstatus {$doc->status}, mobile tidak bisa menambah receipt.",
+                status: 409,
+                errors: ['code' => 'INBOUND_LOCKED_FINAL'],
+            );
+        }
+
+        // F2: sesi sudah ditutup — tidak ada auto-join lagi.
+        if ($doc->isSessionClosed()) {
+            throw new InboundSessionClosedException($doc->transaction_number);
+        }
+
+        $existing = InboundParticipant::where('inbound_id', $doc->id)
+            ->where('user_id', $actorId)
+            ->first();
+
+        if ($existing) {
+            if ($existing->status === InboundParticipant::STATUS_WITHDRAWN) {
+                // F3: tidak auto-reactivate.
+                throw new UserFacingException(
+                    title: 'Anda ditarik dari sesi ini',
+                    message: 'Anda ditarik dari sesi penerimaan ini oleh admin. Hubungi admin untuk bergabung ulang.',
+                    status: 403,
+                    errors: ['code' => 'PARTICIPANT_WITHDRAWN'],
+                );
+            }
+            if ($existing->status === InboundParticipant::STATUS_DONE) {
+                // User sudah tandai Selesai; re-scan → re-open participant miliknya.
+                $existing->update([
+                    'status' => InboundParticipant::STATUS_ACTIVE,
+                    'completed_at' => null,
+                ]);
+            }
+            // ACTIVE — biarkan.
+            return;
+        }
+
+        // Auto-join baru.
+        InboundParticipant::create([
+            'inbound_id' => $doc->id,
+            'user_id' => $actorId,
+            'role' => InboundParticipant::ROLE_RECEIVER,
+            'joined_at' => now(),
+            'status' => InboundParticipant::STATUS_ACTIVE,
+        ]);
+
+        if ($doc->receiving_started_at === null) {
+            $doc->forceFill(['receiving_started_at' => now()])->save();
+        }
     }
 
     private function inboundLink(string $id): string
@@ -86,6 +201,67 @@ class InboundService
             foreach ($data['items'] as $itemData) {
                 $itemData['inbound_id'] = $inbound->id;
                 $this->inboundRepository->createItem($itemData);
+            }
+
+            return $inbound->load('items');
+        });
+    }
+
+    /**
+     * F5: Auto-create Inbound DRAFT dari PO (tanpa langsung receive).
+     * Dipakai listener PO Confirmed dan tombol "Terima Susulan" (isAdditional=true).
+     * Idempoten: kalau isAdditional=false dan sudah ada Inbound aktif untuk PO ini → return existing.
+     */
+    public function createDraftFromPO(PurchaseOrder $po, string $createdBy, bool $isAdditional = false): Inbound
+    {
+        return DB::transaction(function () use ($po, $createdBy, $isAdditional) {
+            if (! $isAdditional) {
+                $existing = Inbound::where('source_type', 'purchase_order')
+                    ->where('source_id', $po->id)
+                    ->where('status', '!=', Inbound::STATUS_CANCELLED)
+                    ->first();
+                if ($existing) {
+                    return $existing->load('items');
+                }
+            }
+
+            $po->loadMissing('items');
+
+            do {
+                $candidate = 'INB-' . Str::upper(Str::random(8));
+            } while (Inbound::where('transaction_number', $candidate)->exists());
+
+            $poNumber = $po->po_number ?? $po->purchase_order_number ?? '';
+            $inbound = $this->inboundRepository->create([
+                'location_id'        => $po->location_id,
+                'transaction_number' => $candidate,
+                'reference_number'   => $poNumber ?: null,
+                'type'               => Inbound::TYPE_PURCHASE_ORDER,
+                'source_type'        => 'purchase_order',
+                'source_id'          => $po->id,
+                'status'             => Inbound::STATUS_DRAFT,
+                'expected_date'      => now(),
+                'created_by'         => $createdBy,
+                'notes'              => $isAdditional
+                    ? "Penerimaan susulan PO {$poNumber}"
+                    : "Auto-generated dari PO {$poNumber}",
+            ]);
+
+            foreach ($po->items as $poItem) {
+                if ($isAdditional) {
+                    $remaining = max(0, (int) $poItem->qty - (int) $poItem->received_qty);
+                    if ($remaining <= 0) continue;
+                    $expectedQty = $remaining;
+                } else {
+                    $expectedQty = (int) $poItem->qty;
+                }
+
+                $this->inboundRepository->createItem([
+                    'inbound_id'   => $inbound->id,
+                    'item_id'      => $poItem->item_id,
+                    'expected_qty' => $expectedQty,
+                    'received_qty' => 0,
+                ]);
             }
 
             return $inbound->load('items');
@@ -313,11 +489,9 @@ class InboundService
                 $condition = $receiptData['condition'] ?? 'GOOD';
                 $isDamage = $condition === 'DAMAGE';
 
-                $currentTotal = $inboundItem->received_qty + ($inboundItem->rejected_qty ?? 0);
-                $newTotal = $currentTotal + $receiptData['qty'];
-                if ($newTotal > $inboundItem->expected_qty) {
-                    throw new \Exception("Jumlah terima melebihi ekspektasi untuk item {$inboundItem->item_id} (expected: {$inboundItem->expected_qty}, total: {$newTotal}).");
-                }
+                // F1 (keputusan Darel 15 Jul): cap `newTotal > expected_qty` DILEPAS.
+                // Mobile tidak lihat expected; staff scan sesuai fisik. Over/under receipt
+                // (positif atau negatif) normal, admin koreksi via edit web setelah semua Selesai.
 
                 $this->inboundRepository->createReceipt([
                     'inbound_item_id' => $inboundItem->id,
@@ -379,29 +553,38 @@ class InboundService
                 }
             }
 
-            $allReceived = $inbound->items->every(fn ($item) => $item->isFullyReceived());
-            $newStatus = $allReceived ? Inbound::STATUS_RECEIVED : Inbound::STATUS_PARTIAL;
-            $this->inboundRepository->updateStatus($inbound, $newStatus);
+            // Fase 2: selama masih ada participant ACTIVE, status maksimal PARTIAL —
+            // walau sum(received_qty) == expected. Status naik ke RECEIVED hanya di
+            // markParticipantDone saat semua participant DONE.
+            $inbound->load('items');
+            $hasActive = InboundParticipant::where('inbound_id', $inbound->id)
+                ->where('status', InboundParticipant::STATUS_ACTIVE)
+                ->exists();
 
-            if ($allReceived) {
-                foreach ($inbound->items as $item) {
-                    $disc = $item->expected_qty - $item->received_qty - ($item->rejected_qty ?? 0);
-                    if ($disc !== 0) {
-                        $this->inboundRepository->updateItemDiscrepancy(
-                            $item->id,
-                            $disc,
-                            "Expected {$item->expected_qty}, received {$item->received_qty}"
-                        );
+            if ($hasActive) {
+                $this->inboundRepository->updateStatus($inbound, Inbound::STATUS_PARTIAL);
+            } else {
+                // Tidak ada participant ACTIVE (kasus: web-created receive lama, atau semua sudah DONE).
+                $allReceived = $inbound->items->every(fn ($item) => $item->isFullyReceived());
+                $newStatus = $allReceived ? Inbound::STATUS_RECEIVED : Inbound::STATUS_PARTIAL;
+                $this->inboundRepository->updateStatus($inbound, $newStatus);
+
+                if ($allReceived) {
+                    foreach ($inbound->items as $item) {
+                        $disc = $item->expected_qty - $item->received_qty - ($item->rejected_qty ?? 0);
+                        if ($disc !== 0) {
+                            $this->inboundRepository->updateItemDiscrepancy(
+                                $item->id,
+                                $disc,
+                                "Expected {$item->expected_qty}, received {$item->received_qty}"
+                            );
+                        }
                     }
                 }
-
-                $inbound->assignments()
-                    ->where('status', InboundAssignment::STATUS_IN_PROGRESS)
-                    ->update([
-                        'status'       => InboundAssignment::STATUS_COMPLETED,
-                        'completed_at' => now(),
-                    ]);
             }
+
+            // F9: bump updated_version_at supaya optimistic lock web tetap valid pasca mobile mutate.
+            $inbound->forceFill(['updated_version_at' => now()])->save();
 
             return $this->getById($inboundId);
         });
@@ -774,10 +957,20 @@ class InboundService
     }
 
     /**
-     * Mobile "Tandai Selesai" — status → RECEIVED walaupun received < expected.
-     * Unlock web edit via once_received_at.
+     * DEPRECATED alias — panggil markParticipantDone($inboundId, $actorId).
+     * Dipertahankan untuk kompat mobile client versi lama.
      */
     public function markReceived(string $inboundId, string $actorId): Inbound
+    {
+        return $this->markParticipantDone($inboundId, $actorId);
+    }
+
+    /**
+     * Mobile "Tandai Selesai" per user (fase 2).
+     * Set participant DONE. Status inbound naik ke RECEIVED hanya kalau semua participant DONE.
+     * Set once_received_at pertama kali capai kondisi tersebut → unlock web edit.
+     */
+    public function markParticipantDone(string $inboundId, string $actorId): Inbound
     {
         return DB::transaction(function () use ($inboundId, $actorId) {
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
@@ -785,26 +978,206 @@ class InboundService
                 throw new \Exception('Dokumen Inbound tidak ditemukan.');
             }
 
-            $this->assertMobileCanMutate($inbound, $actorId);
-
-            if (! $inbound->isReceivable()) {
-                throw new \Exception("Inbound berstatus {$inbound->status}, tidak bisa ditandai selesai.");
+            if ($this->isCancelled($inbound) || $this->isFinalCompletion($inbound)) {
+                throw new UserFacingException(
+                    title: 'Sesi sudah berakhir',
+                    message: "Inbound berstatus {$inbound->status}, tidak bisa tandai Selesai lagi.",
+                    status: 409,
+                    errors: ['code' => 'INBOUND_LOCKED_FINAL'],
+                );
             }
 
-            $this->inboundRepository->updateStatus($inbound, Inbound::STATUS_RECEIVED);
+            $participant = InboundParticipant::where('inbound_id', $inboundId)
+                ->where('user_id', $actorId)
+                ->lockForUpdate()
+                ->first();
 
-            $inbound->forceFill([
-                'once_received_at' => $inbound->once_received_at ?? now(),
-                'updated_version_at' => now(),
-            ])->save();
+            if (! $participant) {
+                throw new UserFacingException(
+                    title: 'Belum bergabung dalam sesi',
+                    message: 'Anda belum mulai penerimaan untuk dokumen ini. Scan barang pertama untuk gabung.',
+                    status: 409,
+                    errors: ['code' => 'NOT_PARTICIPANT'],
+                );
+            }
 
-            InboundAssignment::where('inbound_id', $inboundId)
-                ->where('assigned_to', $actorId)
-                ->whereIn('status', [InboundAssignment::STATUS_PENDING, InboundAssignment::STATUS_IN_PROGRESS])
-                ->update([
-                    'status' => InboundAssignment::STATUS_COMPLETED,
-                    'completed_at' => now(),
-                ]);
+            if ($participant->status === InboundParticipant::STATUS_WITHDRAWN) {
+                throw new UserFacingException(
+                    title: 'Anda ditarik dari sesi',
+                    message: 'Anda tidak bisa menandai Selesai karena sudah ditarik dari sesi ini.',
+                    status: 403,
+                    errors: ['code' => 'PARTICIPANT_WITHDRAWN'],
+                );
+            }
+
+            if ($participant->status === InboundParticipant::STATUS_DONE) {
+                // Idempoten.
+                return $inbound->fresh();
+            }
+
+            $participant->update([
+                'status' => InboundParticipant::STATUS_DONE,
+                'completed_at' => now(),
+            ]);
+
+            // Cek: masih ada participant ACTIVE?
+            $stillActive = InboundParticipant::where('inbound_id', $inboundId)
+                ->where('status', InboundParticipant::STATUS_ACTIVE)
+                ->exists();
+
+            if (! $stillActive) {
+                // Semua participant DONE (atau WITHDRAWN) → sesi ditutup.
+                $inbound->forceFill([
+                    'once_received_at' => $inbound->once_received_at ?? now(),
+                    'updated_version_at' => now(),
+                ])->save();
+
+                $this->recomputeStatus($inbound->fresh('items'));
+            } else {
+                // Masih ada rekan aktif → tetap PARTIAL, tapi bump version supaya web tahu ada perubahan.
+                $inbound->forceFill(['updated_version_at' => now()])->save();
+            }
+
+            return $inbound->fresh();
+        });
+    }
+
+    /**
+     * Explicit join tanpa scan — mobile buka layar tapi belum scan apa-apa.
+     */
+    public function joinSession(string $inboundId, string $userId): Inbound
+    {
+        return DB::transaction(function () use ($inboundId, $userId) {
+            $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
+            if (! $inbound) {
+                throw new \Exception('Dokumen Inbound tidak ditemukan.');
+            }
+
+            $this->assertMobileCanMutate($inbound, $userId);
+
+            return $inbound->fresh('participants');
+        });
+    }
+
+    /**
+     * Self-leave (mobile): hanya kalau participant belum sempat input receipt apa pun.
+     */
+    public function leaveSession(string $inboundId, string $userId): Inbound
+    {
+        return DB::transaction(function () use ($inboundId, $userId) {
+            $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
+            if (! $inbound) {
+                throw new \Exception('Dokumen Inbound tidak ditemukan.');
+            }
+
+            $participant = InboundParticipant::where('inbound_id', $inboundId)
+                ->where('user_id', $userId)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $participant) {
+                return $inbound->fresh();
+            }
+
+            if ($participant->status !== InboundParticipant::STATUS_ACTIVE) {
+                throw new UserFacingException(
+                    title: 'Tidak bisa keluar',
+                    message: 'Sesi Anda sudah tidak aktif.',
+                    status: 409,
+                    errors: ['code' => 'PARTICIPANT_NOT_ACTIVE'],
+                );
+            }
+
+            $receiptCount = DB::table('inbound_receipts as r')
+                ->join('inbound_items as i', 'r.inbound_item_id', '=', 'i.id')
+                ->where('i.inbound_id', $inboundId)
+                ->where('r.received_by', $userId)
+                ->count();
+
+            if ($receiptCount > 0) {
+                throw new UserFacingException(
+                    title: 'Sudah ada input',
+                    message: 'Anda sudah menginput receipt. Tekan Tandai Selesai untuk mengakhiri sesi.',
+                    status: 409,
+                    errors: ['code' => 'PARTICIPANT_HAS_RECEIPTS'],
+                );
+            }
+
+            $participant->update([
+                'status' => InboundParticipant::STATUS_WITHDRAWN,
+                'withdrawn_by' => $userId,
+                'withdraw_reason' => 'self_leave',
+                'withdrawn_at' => now(),
+            ]);
+
+            $stillActive = InboundParticipant::where('inbound_id', $inboundId)
+                ->where('status', InboundParticipant::STATUS_ACTIVE)
+                ->exists();
+
+            if (! $stillActive && $inbound->receiving_started_at !== null) {
+                $this->recomputeStatus($inbound->fresh('items'));
+            }
+
+            return $inbound->fresh();
+        });
+    }
+
+    /**
+     * Admin tarik participant dari web. Receipts milik participant tetap ada (append-only).
+     */
+    public function withdrawParticipant(
+        string $inboundId,
+        string $targetUserId,
+        string $actorId,
+        ?string $reasonNote = null,
+    ): Inbound {
+        return DB::transaction(function () use ($inboundId, $targetUserId, $actorId, $reasonNote) {
+            $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
+            if (! $inbound) {
+                throw new \Exception('Dokumen Inbound tidak ditemukan.');
+            }
+
+            $participant = InboundParticipant::where('inbound_id', $inboundId)
+                ->where('user_id', $targetUserId)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $participant) {
+                throw new UserFacingException(
+                    title: 'Peserta tidak ditemukan',
+                    message: 'User target bukan peserta sesi ini.',
+                    status: 404,
+                    errors: ['code' => 'PARTICIPANT_NOT_FOUND'],
+                );
+            }
+
+            if ($participant->status !== InboundParticipant::STATUS_ACTIVE) {
+                throw new UserFacingException(
+                    title: 'Tidak perlu ditarik',
+                    message: 'Peserta sudah tidak aktif (status: ' . $participant->status . ').',
+                    status: 409,
+                    errors: ['code' => 'PARTICIPANT_NOT_ACTIVE'],
+                );
+            }
+
+            $participant->update([
+                'status' => InboundParticipant::STATUS_WITHDRAWN,
+                'withdrawn_by' => $actorId,
+                'withdraw_reason' => $reasonNote,
+                'withdrawn_at' => now(),
+            ]);
+
+            $stillActive = InboundParticipant::where('inbound_id', $inboundId)
+                ->where('status', InboundParticipant::STATUS_ACTIVE)
+                ->exists();
+
+            if (! $stillActive && $inbound->receiving_started_at !== null) {
+                $inbound->forceFill([
+                    'once_received_at' => $inbound->once_received_at ?? now(),
+                    'updated_version_at' => now(),
+                ])->save();
+                $this->recomputeStatus($inbound->fresh('items'));
+            }
 
             return $inbound->fresh();
         });
@@ -862,13 +1235,21 @@ class InboundService
         return $assignment->fresh()->load('inbound.items', 'worker:id,name');
     }
 
+    /**
+     * Legacy signature — return single item. Pertahankan untuk backward-compat
+     * pemanggil lain. Untuk mobile dengan disambiguation multi-inbound, pakai
+     * lookupCandidatesByQr() (F7).
+     */
     public function lookupByQr(string $code): InboundItem
     {
         $item = $this->inboundRepository->findItemByUuid($code);
 
         if (! $item) {
             $item = InboundItem::whereHas('variant', fn ($q) => $q->where('sku', $code)->orWhere('barcode', $code))
-                ->whereHas('inbound', fn ($q) => $q->whereIn('status', ['DRAFT', 'CONFIRMED', 'RECEIVING', 'IN_PROGRESS']))
+                ->whereHas('inbound', fn ($q) => $q->whereIn('status', [
+                    Inbound::STATUS_DRAFT,
+                    Inbound::STATUS_PARTIAL,
+                ]))
                 ->latest()
                 ->first();
         }
@@ -878,6 +1259,29 @@ class InboundService
         }
 
         return $item->load('inbound.location', 'variant:id,sku,product_id');
+    }
+
+    /**
+     * F7: return semua kandidat inbound item yang match SKU/barcode/QR — mobile
+     * disambiguation bottom-sheet. Kalau UUID (langsung inbound_item.id) hanya 1.
+     */
+    public function lookupCandidatesByQr(string $code): \Illuminate\Support\Collection
+    {
+        // 1. UUID (inbound_item.id) → 1 hasil pasti.
+        $direct = $this->inboundRepository->findItemByUuid($code);
+        if ($direct) {
+            return collect([$direct->load('inbound.location', 'variant:id,sku,product_id')]);
+        }
+
+        // 2. SKU/barcode → semua inbound aktif yang ada item ini.
+        return InboundItem::whereHas('variant', fn ($q) => $q->where('sku', $code)->orWhere('barcode', $code))
+            ->whereHas('inbound', fn ($q) => $q->whereIn('status', [
+                Inbound::STATUS_DRAFT,
+                Inbound::STATUS_PARTIAL,
+            ]))
+            ->with('inbound.location', 'variant:id,sku,product_id')
+            ->latest()
+            ->get();
     }
 
     public function scanPutaway(string $inboundItemId, string $binId, int $qty, string $userId): InboundItem
@@ -1095,12 +1499,22 @@ class InboundService
             return;
         }
 
+        // Fase 2: participant ACTIVE cap status ke PARTIAL max (kecuali putaway sudah jalan).
+        $hasActive = InboundParticipant::where('inbound_id', $inbound->id)
+            ->where('status', InboundParticipant::STATUS_ACTIVE)
+            ->exists();
+
         $allPutaway = $inbound->items->every(fn ($i) => $i->isFullyPutaway());
         $anyPutaway = $inbound->items->contains(fn ($i) => (int) $i->putaway_qty > 0);
 
-        $newStatus = $allPutaway
-            ? Inbound::STATUS_COMPLETED
-            : ($anyPutaway ? Inbound::STATUS_PUTAWAY_IN_PROGRESS : Inbound::STATUS_RECEIVED);
+        if ($hasActive) {
+            // Boleh naik ke PUTAWAY_IN_PROGRESS (partial putaway) tapi tidak lebih.
+            $newStatus = $anyPutaway ? Inbound::STATUS_PUTAWAY_IN_PROGRESS : Inbound::STATUS_PARTIAL;
+        } else {
+            $newStatus = $allPutaway
+                ? Inbound::STATUS_COMPLETED
+                : ($anyPutaway ? Inbound::STATUS_PUTAWAY_IN_PROGRESS : Inbound::STATUS_RECEIVED);
+        }
 
         if ($inbound->status !== $newStatus) {
             $this->inboundRepository->updateStatus($inbound, $newStatus);
@@ -1132,6 +1546,20 @@ class InboundService
 
             if ($inbound->status === Inbound::STATUS_DRAFT) {
                 throw new \Exception("Inbound DRAFT tidak perlu dibatalkan.");
+            }
+
+            // F4: tolak cancel kalau ada participant mobile ACTIVE — cegah race reverse-stock vs scan realtime.
+            if ($inbound->hasActiveParticipant()) {
+                $active = InboundParticipant::where('inbound_id', $inbound->id)
+                    ->where('status', InboundParticipant::STATUS_ACTIVE)
+                    ->with('user:id,name')
+                    ->get()
+                    ->map(fn ($p) => [
+                        'user_id' => (string) $p->user_id,
+                        'name' => $p->user?->name ?? 'staff',
+                    ])
+                    ->toArray();
+                throw new MobileSessionActiveException($active);
             }
 
             $inbound->loadMissing('items');
@@ -1503,7 +1931,12 @@ class InboundService
     {
         $allPutaway = $inbound->items->every(fn ($item) => $item->isFullyPutaway());
 
-        $newStatus = $allPutaway
+        // Fase 2 (§4.5): jangan promote ke COMPLETED selagi masih ada participant ACTIVE.
+        $hasActive = InboundParticipant::where('inbound_id', $inbound->id)
+            ->where('status', InboundParticipant::STATUS_ACTIVE)
+            ->exists();
+
+        $newStatus = ($allPutaway && ! $hasActive)
             ? Inbound::STATUS_COMPLETED
             : Inbound::STATUS_PUTAWAY_IN_PROGRESS;
 

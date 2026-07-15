@@ -1,0 +1,269 @@
+<?php
+
+namespace Modules\Inbound\Tests\Feature;
+
+use App\Enums\ClientChannelEnum;
+use App\Exceptions\InboundSessionClosedException;
+use App\Exceptions\MobileSessionActiveException;
+use App\Exceptions\UserFacingException;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
+use Modules\Inbound\Models\Inbound;
+use Modules\Inbound\Models\InboundItem;
+use Modules\Inbound\Models\InboundParticipant;
+use Modules\Inbound\Services\InboundService;
+use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductVariant;
+use Modules\Warehouse\Models\Location;
+use Modules\Warehouse\Models\LocationBin;
+use Tests\TestCase;
+
+class MultiParticipantReceiveTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private Location $location;
+    private LocationBin $inboundBin;
+    private ProductVariant $variant;
+    private array $staff;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Queue::fake();
+
+        $this->location = Location::create([
+            'location_code' => 'WH-MP', 'location_name' => 'Gudang MP',
+            'location_type' => 'warehouse', 'is_warehouse' => true, 'is_active' => true,
+        ]);
+        $this->inboundBin = LocationBin::create([
+            'location_id' => $this->location->id, 'bin_code' => 'IN', 'bin_final_code' => 'WH-MP-IN',
+            'is_inbound' => true,
+        ]);
+
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Cat MP', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $product = Product::create([
+            'category_id' => $categoryId, 'name' => 'P-MP', 'sku' => 'P-MP', 'is_active' => true,
+        ]);
+        $this->variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V-MP']);
+
+        $this->staff = [];
+        foreach (['s1', 's2', 's3', 's4'] as $key) {
+            $this->staff[$key] = User::factory()->create(['name' => strtoupper($key)]);
+        }
+    }
+
+    private function makeInbound(int $expected = 20000): Inbound
+    {
+        $inbound = Inbound::create([
+            'location_id' => $this->location->id,
+            'transaction_number' => 'INB-' . fake()->unique()->numerify('########'),
+            'type' => Inbound::TYPE_PURCHASE_ORDER,
+            'source_type' => 'purchase_order',
+            'status' => Inbound::STATUS_DRAFT,
+            'expected_date' => now(),
+            'created_by' => 'admin',
+        ]);
+
+        InboundItem::create([
+            'inbound_id' => $inbound->id,
+            'item_id' => $this->variant->id,
+            'expected_qty' => $expected,
+            'received_qty' => 0,
+        ]);
+
+        return $inbound->fresh('items');
+    }
+
+    private function asMobile(): void
+    {
+        request()->attributes->set('client_channel', ClientChannelEnum::MOBILE);
+    }
+
+    private function receive(Inbound $inbound, string $userId, int $qty): Inbound
+    {
+        $this->asMobile();
+        return app(InboundService::class)->receive($inbound->id, [
+            'received_by' => $userId,
+            'items' => [[
+                'inbound_item_id' => $inbound->items->first()->id,
+                'qty' => $qty,
+                'condition' => 'GOOD',
+            ]],
+        ]);
+    }
+
+    public function test_multi_participant_auto_join_via_receive(): void
+    {
+        $inbound = $this->makeInbound(20000);
+
+        $this->receive($inbound, $this->staff['s1']->id, 6000);
+        $this->receive($inbound, $this->staff['s2']->id, 5000);
+        $this->receive($inbound, $this->staff['s3']->id, 5000);
+        $this->receive($inbound, $this->staff['s4']->id, 4000);
+
+        $participants = InboundParticipant::where('inbound_id', $inbound->id)->get();
+        $this->assertCount(4, $participants);
+        $this->assertTrue($participants->every(fn ($p) => $p->status === InboundParticipant::STATUS_ACTIVE));
+
+        $item = $inbound->fresh('items')->items->first();
+        $this->assertEquals(20000, $item->received_qty);
+
+        $refreshed = $inbound->fresh();
+        $this->assertEquals(Inbound::STATUS_PARTIAL, $refreshed->status, 'Status max PARTIAL selama participant ACTIVE');
+        $this->assertNotNull($refreshed->receiving_started_at);
+    }
+
+    public function test_over_receipt_allowed_no_cap_F1(): void
+    {
+        $inbound = $this->makeInbound(100);
+
+        // Staff scan 150 padahal expected 100.
+        $this->receive($inbound, $this->staff['s1']->id, 150);
+
+        $item = $inbound->fresh('items')->items->first();
+        $this->assertEquals(150, $item->received_qty, 'F1: over-receipt tidak diblok');
+    }
+
+    public function test_web_edit_locked_while_participant_active_F2(): void
+    {
+        $inbound = $this->makeInbound(100);
+        $this->receive($inbound, $this->staff['s1']->id, 50);
+
+        request()->attributes->set('client_channel', ClientChannelEnum::WEB);
+
+        $this->expectException(MobileSessionActiveException::class);
+        app(InboundService::class)->setReceivedQty(
+            $inbound->id,
+            $inbound->items->first()->id,
+            60,
+            $this->staff['s1']->id,
+        );
+    }
+
+    public function test_all_participants_done_unlocks_web_and_status_received(): void
+    {
+        $inbound = $this->makeInbound(100);
+        $this->receive($inbound, $this->staff['s1']->id, 50);
+        $this->receive($inbound, $this->staff['s2']->id, 50);
+
+        app(InboundService::class)->markParticipantDone($inbound->id, $this->staff['s1']->id);
+        $mid = $inbound->fresh();
+        $this->assertEquals(Inbound::STATUS_PARTIAL, $mid->status, '1/2 selesai — masih PARTIAL');
+
+        app(InboundService::class)->markParticipantDone($inbound->id, $this->staff['s2']->id);
+        $done = $inbound->fresh();
+        $this->assertEquals(Inbound::STATUS_RECEIVED, $done->status);
+        $this->assertNotNull($done->once_received_at);
+
+        // Web edit sekarang boleh.
+        request()->attributes->set('client_channel', ClientChannelEnum::WEB);
+        app(InboundService::class)->setReceivedQty(
+            $inbound->id,
+            $inbound->items->first()->id,
+            90,
+            $this->staff['s1']->id,
+        );
+        $this->assertEquals(90, $inbound->fresh('items')->items->first()->received_qty);
+    }
+
+    public function test_late_join_blocked_after_session_closed_F2(): void
+    {
+        $inbound = $this->makeInbound(100);
+        $this->receive($inbound, $this->staff['s1']->id, 100);
+        app(InboundService::class)->markParticipantDone($inbound->id, $this->staff['s1']->id);
+
+        $this->assertNotNull($inbound->fresh()->once_received_at);
+
+        $this->expectException(InboundSessionClosedException::class);
+        $this->receive($inbound->fresh('items'), $this->staff['s5' ?? 's2']->id ?? $this->staff['s2']->id, 5);
+    }
+
+    public function test_withdrawn_participant_cannot_rejoin_F3(): void
+    {
+        $inbound = $this->makeInbound(100);
+        $this->receive($inbound, $this->staff['s1']->id, 30);
+
+        $admin = User::factory()->create(['name' => 'ADMIN']);
+        app(InboundService::class)->withdrawParticipant(
+            $inbound->id,
+            $this->staff['s1']->id,
+            $admin->id,
+            'test withdraw',
+        );
+
+        $this->expectException(UserFacingException::class);
+        $this->receive($inbound->fresh('items'), $this->staff['s1']->id, 5);
+    }
+
+    public function test_cancel_blocked_when_participant_active_F4(): void
+    {
+        $inbound = $this->makeInbound(100);
+        $this->receive($inbound, $this->staff['s1']->id, 30);
+
+        $this->expectException(MobileSessionActiveException::class);
+        app(InboundService::class)->cancel($inbound->id, $this->staff['s1']->id);
+    }
+
+    public function test_admin_withdraw_unlocks_session(): void
+    {
+        $inbound = $this->makeInbound(100);
+        $this->receive($inbound, $this->staff['s1']->id, 30);
+
+        $admin = User::factory()->create(['name' => 'ADMIN']);
+        app(InboundService::class)->withdrawParticipant(
+            $inbound->id,
+            $this->staff['s1']->id,
+            $admin->id,
+        );
+
+        $refreshed = $inbound->fresh();
+        $this->assertFalse($refreshed->hasActiveParticipant());
+        $this->assertNotNull($refreshed->once_received_at, 'once_received_at set saat withdraw menutup sesi');
+    }
+
+    public function test_mark_done_idempotent(): void
+    {
+        $inbound = $this->makeInbound(100);
+        $this->receive($inbound, $this->staff['s1']->id, 100);
+        app(InboundService::class)->markParticipantDone($inbound->id, $this->staff['s1']->id);
+
+        // Panggil lagi — tidak throw, tidak double-toggle.
+        $result = app(InboundService::class)->markParticipantDone($inbound->id, $this->staff['s1']->id);
+        $this->assertNotNull($result);
+    }
+
+    public function test_leave_blocked_when_has_receipts(): void
+    {
+        $inbound = $this->makeInbound(100);
+        $this->receive($inbound, $this->staff['s1']->id, 10);
+
+        $this->expectException(UserFacingException::class);
+        app(InboundService::class)->leaveSession($inbound->id, $this->staff['s1']->id);
+    }
+
+    public function test_join_session_then_leave_before_scan(): void
+    {
+        $inbound = $this->makeInbound(100);
+        app(InboundService::class)->joinSession($inbound->id, $this->staff['s1']->id);
+
+        $this->assertTrue(
+            InboundParticipant::where('inbound_id', $inbound->id)
+                ->where('user_id', $this->staff['s1']->id)
+                ->where('status', InboundParticipant::STATUS_ACTIVE)
+                ->exists()
+        );
+
+        app(InboundService::class)->leaveSession($inbound->id, $this->staff['s1']->id);
+        $this->assertTrue(
+            InboundParticipant::where('inbound_id', $inbound->id)
+                ->where('user_id', $this->staff['s1']->id)
+                ->where('status', InboundParticipant::STATUS_WITHDRAWN)
+                ->exists()
+        );
+    }
+}

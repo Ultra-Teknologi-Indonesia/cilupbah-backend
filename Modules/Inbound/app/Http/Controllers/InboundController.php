@@ -245,7 +245,54 @@ class InboundController extends Controller
             return $this->errorResponse('Dokumen Inbound tidak ditemukan', 404);
         }
 
-        return $this->successResponse($inbound, 'Detail Inbound berhasil diambil');
+        // Fase 2: sertakan participants + edit_lock untuk panel Sesi Aktif FE web.
+        $inbound->load(['participants.user:id,name']);
+
+        $participantsData = $inbound->participants->map(function ($p) use ($inbound) {
+            $receiptCount = \Modules\Inbound\Models\InboundReceipt::query()
+                ->join('inbound_items as i', 'inbound_receipts.inbound_item_id', '=', 'i.id')
+                ->where('i.inbound_id', $inbound->id)
+                ->where('inbound_receipts.received_by', $p->user_id)
+                ->count();
+
+            $receiptQtySum = \Modules\Inbound\Models\InboundReceipt::query()
+                ->join('inbound_items as i', 'inbound_receipts.inbound_item_id', '=', 'i.id')
+                ->where('i.inbound_id', $inbound->id)
+                ->where('inbound_receipts.received_by', $p->user_id)
+                ->sum('inbound_receipts.qty');
+
+            return [
+                'id' => $p->id,
+                'user_id' => $p->user_id,
+                'name' => $p->user?->name ?? 'staff',
+                'role' => $p->role,
+                'status' => $p->status,
+                'joined_at' => $p->joined_at?->toIso8601String(),
+                'completed_at' => $p->completed_at?->toIso8601String(),
+                'withdrawn_at' => $p->withdrawn_at?->toIso8601String(),
+                'withdraw_reason' => $p->withdraw_reason,
+                'receipts_count' => $receiptCount,
+                'receipts_qty_sum' => (int) $receiptQtySum,
+            ];
+        })->values();
+
+        $activeParticipants = $participantsData
+            ->where('status', \Modules\Inbound\Models\InboundParticipant::STATUS_ACTIVE)
+            ->values();
+
+        $editLock = [
+            'locked' => $activeParticipants->isNotEmpty(),
+            'reason' => $activeParticipants->isNotEmpty() ? 'mobile_session_active' : null,
+            'active_participants' => $activeParticipants
+                ->map(fn ($p) => ['user_id' => $p['user_id'], 'name' => $p['name']])
+                ->values(),
+        ];
+
+        $data = $inbound->toArray();
+        $data['participants'] = $participantsData;
+        $data['edit_lock'] = $editLock;
+
+        return $this->successResponse($data, 'Detail Inbound berhasil diambil');
     }
 
     #[OA\Get(
@@ -703,20 +750,92 @@ class InboundController extends Controller
     }
 
     /**
-     * Mobile "Tandai Selesai" — status → RECEIVED, unlock web edit.
-     * POST /api/v1/inbounds/{id}/mark-received
+     * DEPRECATED — alias untuk markParticipantDone (backward-compat mobile lama).
      */
     public function markReceived(string $id): JsonResponse
     {
-        $inbound = $this->inboundService->markReceived(
+        return $this->markParticipantDone($id);
+    }
+
+    /**
+     * Mobile per-user "Tandai Selesai" (fase 2).
+     * POST /api/v1/inbounds/{id}/mark-done
+     */
+    public function markParticipantDone(string $id): JsonResponse
+    {
+        $inbound = $this->inboundService->markParticipantDone(
             $id,
             (string) request()->user()->id,
         );
 
         return $this->successResponse(
             $inbound,
-            'Penerimaan berhasil ditandai selesai. Admin sekarang bisa mengoreksi qty dari web.',
+            'Anda ditandai Selesai. Sesi ditutup penuh setelah semua staff Selesai.',
         );
+    }
+
+    /**
+     * Mobile eksplisit join sesi (tanpa scan) — fase 2.
+     * POST /api/v1/inbounds/{id}/join
+     */
+    public function joinSession(string $id): JsonResponse
+    {
+        $inbound = $this->inboundService->joinSession(
+            $id,
+            (string) request()->user()->id,
+        );
+
+        return $this->successResponse($inbound, 'Anda bergabung dalam sesi penerimaan.');
+    }
+
+    /**
+     * Mobile self-leave (belum sempat input) — fase 2.
+     * POST /api/v1/inbounds/{id}/leave
+     */
+    public function leaveSession(string $id): JsonResponse
+    {
+        $inbound = $this->inboundService->leaveSession(
+            $id,
+            (string) request()->user()->id,
+        );
+
+        return $this->successResponse($inbound, 'Anda keluar dari sesi penerimaan.');
+    }
+
+    /**
+     * Admin tarik participant dari web (fase 2).
+     * POST /api/v1/inbounds/{id}/participants/{userId}/withdraw
+     */
+    public function withdrawParticipant(string $id, string $userId, Request $request): JsonResponse
+    {
+        $inbound = $this->inboundService->withdrawParticipant(
+            $id,
+            $userId,
+            (string) request()->user()->id,
+            $request->input('reason_note'),
+        );
+
+        return $this->successResponse($inbound, 'Peserta berhasil ditarik dari sesi.');
+    }
+
+    /**
+     * F5: Buat Inbound susulan dari PO (delivery bertahap).
+     * POST /api/v1/purchase-orders/{poId}/receive-additional
+     */
+    public function receiveAdditional(string $poId): JsonResponse
+    {
+        $po = \Modules\Purchase\Models\PurchaseOrder::find($poId);
+        if (! $po) {
+            return $this->errorResponse('PO tidak ditemukan', 404);
+        }
+
+        $inbound = $this->inboundService->createDraftFromPO(
+            po: $po,
+            createdBy: (string) request()->user()->id,
+            isAdditional: true,
+        );
+
+        return $this->successResponse($inbound, 'Penerimaan susulan berhasil dibuat.');
     }
 
     #[OA\Get(

@@ -46,6 +46,7 @@ class Inbound extends Model
         'assigned_by',
         'assigned_at',
         'once_received_at',
+        'receiving_started_at',
         'updated_version_at',
     ];
 
@@ -53,6 +54,7 @@ class Inbound extends Model
         'expected_date' => 'datetime',
         'assigned_at' => 'datetime',
         'once_received_at' => 'datetime',
+        'receiving_started_at' => 'datetime',
         'updated_version_at' => 'datetime',
     ];
 
@@ -79,6 +81,29 @@ class Inbound extends Model
     public function assignments(): HasMany
     {
         return $this->hasMany(InboundAssignment::class);
+    }
+
+    public function participants(): HasMany
+    {
+        return $this->hasMany(InboundParticipant::class);
+    }
+
+    public function activeParticipants(): HasMany
+    {
+        return $this->hasMany(InboundParticipant::class)
+            ->where('status', InboundParticipant::STATUS_ACTIVE);
+    }
+
+    public function hasActiveParticipant(): bool
+    {
+        return $this->participants()
+            ->where('status', InboundParticipant::STATUS_ACTIVE)
+            ->exists();
+    }
+
+    public function isSessionClosed(): bool
+    {
+        return $this->once_received_at !== null;
     }
 
     public function putaways(): BelongsToMany

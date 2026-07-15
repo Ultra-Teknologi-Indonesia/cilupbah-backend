@@ -45,9 +45,23 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::middleware('role_or_permission:owner|edit-barang-masuk')->group(function () {
         Route::post('inbounds/{id}/receive', [InboundController::class, 'receive'])->name('inbounds.receive');
-        // Mobile: Tandai Selesai (barang kurang) — unlock web edit via once_received_at
+        // Fase 2 multi-staff:
+        Route::post('inbounds/{id}/join', [InboundController::class, 'joinSession'])->name('inbounds.join');
+        Route::post('inbounds/{id}/leave', [InboundController::class, 'leaveSession'])->name('inbounds.leave');
+        Route::post('inbounds/{id}/mark-done', [InboundController::class, 'markParticipantDone'])->name('inbounds.markDone');
+        // Backward-compat alias mobile lama:
         Route::post('inbounds/{id}/mark-received', [InboundController::class, 'markReceived'])->name('inbounds.markReceived');
         Route::patch('inbounds/{id}/items/{itemId}/received-qty', [InboundController::class, 'setReceivedQty'])->name('inbounds.setReceivedQty');
+    });
+
+    // Admin withdraw participant (fase 2)
+    Route::middleware('role_or_permission:owner|edit-barang-masuk')->group(function () {
+        Route::post('inbounds/{id}/participants/{userId}/withdraw', [InboundController::class, 'withdrawParticipant'])->name('inbounds.participants.withdraw');
+    });
+
+    // F5: Terima Susulan dari PO
+    Route::middleware('role_or_permission:owner|create-barang-masuk')->group(function () {
+        Route::post('purchase-orders/{poId}/receive-additional', [InboundController::class, 'receiveAdditional'])->name('inbounds.receiveAdditional');
     });
     Route::middleware('role_or_permission:owner|delete-barang-masuk')->group(function () {
         Route::delete('inbounds/{id}/received', [InboundController::class, 'correctReceivedLines'])->name('inbounds.correctReceivedBulk');
