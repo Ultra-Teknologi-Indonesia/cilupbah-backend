@@ -70,31 +70,44 @@ class ShipmentRepository
             ->appends(request()->query());
     }
 
+    /**
+     * Return paginator ShipmentOrder-per-row untuk tampilan "Sudah Dikirim" (per pesanan, bukan per manifest).
+     * Filter: shipment.status ∈ {HANDED_OVER, IN_TRANSIT, DELIVERED}.
+     * Type/courier 'all' = tidak filter.
+     */
     public function getCompleted(string $type, array $courierCodes = [], int $limit = 10)
     {
-        $query = Shipment::whereIn('status', [
-            Shipment::STATUS_HANDED_OVER,
-            Shipment::STATUS_IN_TRANSIT,
-            Shipment::STATUS_DELIVERED,
-        ]);
+        $normalizedType = strtolower($type);
+        $normalizedCourierCodes = array_values(array_filter(
+            $courierCodes,
+            fn ($c) => is_string($c) && strtolower($c) !== 'all' && $c !== ''
+        ));
 
-        if (strtolower($type) !== 'all') {
-            $query->where('shipment_type', strtoupper($type));
-        }
-
-        if (!empty($courierCodes)) {
-            $query->whereIn('courier_code', $courierCodes);
-        }
+        $query = ShipmentOrder::query()
+            ->whereHas('shipment', function ($q) use ($normalizedType, $normalizedCourierCodes) {
+                $q->whereIn('status', [
+                    Shipment::STATUS_HANDED_OVER,
+                    Shipment::STATUS_IN_TRANSIT,
+                    Shipment::STATUS_DELIVERED,
+                ]);
+                if ($normalizedType !== 'all') {
+                    $q->where('shipment_type', strtoupper($normalizedType));
+                }
+                if (! empty($normalizedCourierCodes)) {
+                    $q->whereIn('courier_code', $normalizedCourierCodes);
+                }
+            })
+            ->with([
+                'shipment:id,shipment_no,shipment_date,shipment_type,status,handed_over_at,courier_code,courier_name,location_id',
+                'shipment.location:id,location_name,location_code',
+                'order:id,salesorder_no,customer_name,source,channel_status,channel_order_no,courier_name,shipping_provider,tracking_number,transaction_date,shipping_address,shipping_city,shipping_province',
+                'packlist:id,packlist_no',
+            ]);
 
         return QueryBuilder::for($query)
-            ->with(['location:id,location_name,location_code'])
-            ->withCount('orders')
-            ->allowedFilters(
-                AllowedFilter::exact('status'),
-            )
-            ->allowedSearch('shipment_no')
-            ->allowedSorts('created_at', 'shipment_date', 'handed_over_at', 'location_id', 'courier_name', 'shipment_type', 'status')
-            ->defaultSort('-handed_over_at')
+            ->allowedSearch('tracking_number')
+            ->allowedSorts('created_at')
+            ->defaultSort('-created_at')
             ->paginate($limit)
             ->appends(request()->query());
     }

@@ -163,11 +163,54 @@ class ShipmentController extends Controller
     public function completed(string $type, string $courierIds, Request $request): JsonResponse
     {
         $limit = (int) $request->query('per_page', $request->query('limit', 10));
-        $data = $this->shipmentService->getCompleted($type, $courierIds, $limit);
+        $paginator = $this->shipmentService->getCompleted($type, $courierIds, $limit);
 
-        $data->through(fn ($shipment) => new ShipmentResource($shipment));
+        $items = collect($paginator->items())->map(fn ($so) => $this->mapCompletedOrderRow($so))->all();
 
-        return $this->successResponse($data);
+        return $this->successResponse([
+            'data' => $items,
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'per_page'     => $paginator->perPage(),
+                'last_page'    => $paginator->lastPage(),
+                'total'        => $paginator->total(),
+            ],
+        ]);
+    }
+
+    /**
+     * Map ShipmentOrder → shape flat per-pesanan (ala Jubelio, disederhanakan).
+     */
+    private function mapCompletedOrderRow($shipmentOrder): array
+    {
+        $order = $shipmentOrder->order;
+        $shipment = $shipmentOrder->shipment;
+        $packlist = $shipmentOrder->packlist;
+
+        return [
+            'order_id'          => $order?->id,
+            'salesorder_no'     => $order?->salesorder_no,
+            'customer_name'     => $order?->customer_name,
+            'tracking_number'   => $shipmentOrder->tracking_number ?? $order?->tracking_number,
+            'source'            => $order?->source,
+            'channel_status'    => $order?->channel_status,
+            'channel_order_no'  => $order?->channel_order_no,
+            'transaction_date'  => $order?->transaction_date,
+            'shipping_provider' => $order?->shipping_provider,
+            'courier_name'      => $shipment?->courier_name ?? $order?->courier_name,
+            'shipping_address'  => $order?->shipping_address,
+            'shipping_city'     => $order?->shipping_city,
+            'shipping_province' => $order?->shipping_province,
+            'shipment_id'       => $shipment?->id,
+            'shipment_no'       => $shipment?->shipment_no,
+            'shipment_type'     => $shipment?->shipment_type,
+            'shipment_status'   => $shipment?->status,
+            'shipment_date'     => $shipment?->shipment_date,
+            'handed_over_at'    => $shipment?->handed_over_at,
+            'location_name'    => $shipment?->location?->location_name,
+            'picklist_no'       => $packlist?->packlist_no,
+            'qty_given'         => $shipmentOrder->qty_given,
+        ];
     }
 
     #[OA\Get(
