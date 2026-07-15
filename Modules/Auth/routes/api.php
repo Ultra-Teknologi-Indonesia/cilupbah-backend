@@ -2,12 +2,25 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\Auth\Http\Controllers\AuthController;
+use Modules\Auth\Http\Controllers\ForgotPasswordController;
 use Modules\Auth\Http\Controllers\PermissionController;
 use Modules\Auth\Http\Controllers\RoleController;
 use Modules\Auth\Http\Controllers\UserController;
 
 Route::prefix('v1/auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1')->name('auth.login');
+
+    Route::prefix('forgot-password')->group(function () {
+        Route::post('/', [ForgotPasswordController::class, 'send'])
+            ->middleware('throttle:5,1')
+            ->name('auth.forgot-password.send');
+        Route::post('/verify-otp', [ForgotPasswordController::class, 'verify'])
+            ->middleware('throttle:10,1')
+            ->name('auth.forgot-password.verify');
+        Route::post('/reset', [ForgotPasswordController::class, 'reset'])
+            ->middleware('throttle:5,1')
+            ->name('auth.forgot-password.reset');
+    });
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout'])->name('auth.logout');
