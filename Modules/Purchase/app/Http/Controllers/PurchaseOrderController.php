@@ -104,4 +104,9 @@ class PurchaseOrderController extends Controller
         $result = $this->poService->bulkDelete($request->ids);
         return $this->successResponse($result, "{$result['deleted']} PO berhasil dihapus, {$result['failed']} gagal.");
     }
+
+    public function downloadPdf(string $id)
+    {
+        return $this->poService->downloadPdf($id);
+    }
 }
