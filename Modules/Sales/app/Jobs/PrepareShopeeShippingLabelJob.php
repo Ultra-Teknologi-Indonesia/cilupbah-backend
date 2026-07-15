@@ -10,6 +10,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Services\BulkShippingLabelService;
 
 class PrepareShopeeShippingLabelJob implements ShouldQueue
 {
@@ -90,6 +91,7 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
                 'order_sn' => $orderSn,
             ]);
 
+            $this->notifyBulkListeners();
             return;
         }
 
@@ -121,6 +123,7 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
                     'error'     => $errCode,
                     'message'   => $failDetail,
                 ]);
+                $this->notifyBulkListeners();
                 throw new \RuntimeException("Shopee createShippingDocument gagal: {$errCode} {$failDetail}");
             }
 
@@ -150,6 +153,7 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
                     'doc_type' => $docType,
                 ]);
 
+                $this->notifyBulkListeners();
                 return;
             }
 
@@ -161,6 +165,7 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
                     'fail_error' => $row['fail_error'] ?? null,
                     'fail_msg'   => $row['fail_message'] ?? null,
                 ]);
+                $this->notifyBulkListeners();
                 throw new \RuntimeException('Shopee shipping document FAILED: ' . ($row['fail_message'] ?? $row['fail_error'] ?? 'unknown'));
             }
 
@@ -197,6 +202,24 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
         $order = SalesOrder::find($this->orderId);
         if ($order && $order->shipping_label_status !== 'ready') {
             $order->update(['shipping_label_status' => 'failed']);
+        }
+
+        $this->notifyBulkListeners();
+    }
+
+    /**
+     * Beritahu BulkShippingLabelService bahwa status label untuk order ini sudah final —
+     * service akan transition item WAITING_SHOPEE_PREP dan finalize batch bila komplit.
+     */
+    private function notifyBulkListeners(): void
+    {
+        try {
+            app(BulkShippingLabelService::class)->onOrderLabelReady($this->orderId);
+        } catch (\Throwable $e) {
+            Log::warning('PrepareShopeeShippingLabelJob: notifyBulkListeners gagal', [
+                'order_id' => $this->orderId,
+                'exception' => $e->getMessage(),
+            ]);
         }
     }
 }

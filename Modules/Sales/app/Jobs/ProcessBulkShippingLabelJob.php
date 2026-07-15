@@ -9,7 +9,6 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Sales\Models\BulkShippingLabelBatch;
-use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Services\BulkShippingLabelService;
 use Throwable;
 
@@ -20,7 +19,7 @@ class ProcessBulkShippingLabelJob implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
-    public int $timeout = 600;
+    public int $timeout = 120;
     public int $tries = 1;
 
     public function __construct(public string $batchId)
@@ -39,23 +38,14 @@ class ProcessBulkShippingLabelJob implements ShouldQueue
         $batch->update(['started_at' => now()]);
 
         try {
-            // First pass — process every pending item; Shopee sequential (cheap cache),
-            // TikTok via Http::pool (paralel 8). Non-supported channels are failed here.
+            // Proses semua item pending:
+            // - Shopee ready → download langsung; Shopee preparing → dispatch PrepareShopeeShippingLabelJob (async)
+            // - TikTok → parallel download
+            // - Instant courier → skipped_instant
+            // Setelah selesai processPendingItems memanggil tryFinalize.
+            // Bila masih ada item WAITING_SHOPEE_PREP, finalisasi ditunda hingga callback
+            // onOrderLabelReady dari prep job.
             $svc->processPendingItems($batch, $batch->per_channel_opts);
-
-            // Second pass — wait for Shopee prep (bounded)
-            $deadline = now()->addSeconds(BulkShippingLabelService::SHOPEE_PREP_DEADLINE_SECONDS);
-            $svc->awaitShopeePreparations($batch, $deadline);
-
-            // Merge + persist
-            $svc->mergeAndPersist($batch);
-
-            if ($batch->fresh()->status !== BulkShippingLabelBatch::STATUS_FAILED) {
-                $batch->update([
-                    'status' => BulkShippingLabelBatch::STATUS_READY,
-                    'finished_at' => now(),
-                ]);
-            }
         } catch (Throwable $e) {
             Log::error('ProcessBulkShippingLabelJob crashed', [
                 'batch_id' => $this->batchId,

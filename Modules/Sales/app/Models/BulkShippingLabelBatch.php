@@ -23,6 +23,7 @@ class BulkShippingLabelBatch extends Model
         'total_count',
         'done_count',
         'failed_count',
+        'skipped_count',
         'merged_pdf_path',
         'merged_pdf_bytes',
         'started_at',
@@ -34,6 +35,7 @@ class BulkShippingLabelBatch extends Model
         'total_count' => 'integer',
         'done_count' => 'integer',
         'failed_count' => 'integer',
+        'skipped_count' => 'integer',
         'merged_pdf_bytes' => 'integer',
         'started_at' => 'datetime',
         'finished_at' => 'datetime',
@@ -53,6 +55,11 @@ class BulkShippingLabelBatch extends Model
     {
         $done = $this->items()->where('status', BulkShippingLabelItem::STATUS_DONE)->count();
         $failed = $this->items()->where('status', BulkShippingLabelItem::STATUS_FAILED)->count();
-        $this->update(['done_count' => $done, 'failed_count' => $failed]);
+        $skipped = $this->items()->where('status', BulkShippingLabelItem::STATUS_SKIPPED_INSTANT)->count();
+        $this->update([
+            'done_count' => $done,
+            'failed_count' => $failed,
+            'skipped_count' => $skipped,
+        ]);
     }
 }

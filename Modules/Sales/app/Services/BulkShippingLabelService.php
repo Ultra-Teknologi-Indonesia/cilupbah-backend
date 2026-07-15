@@ -3,11 +3,12 @@
 namespace Modules\Sales\Services;
 
 use App\Models\User;
-use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
@@ -29,13 +30,28 @@ class BulkShippingLabelService
         self::CHANNEL_TIKTOK,
     ];
 
-    public const SHOPEE_PREP_DEADLINE_SECONDS = 90;
-    public const SHOPEE_PREP_POLL_SECONDS = 5;
     public const TIKTOK_DOWNLOAD_TIMEOUT = 20;
     public const TIKTOK_DOWNLOAD_RETRIES = 2;
     public const TIKTOK_PARALLEL_LANES = 8;
     public const SPLIT_SUB_BATCH_THRESHOLD = 500;
     public const SUB_BATCH_SIZE = 100;
+
+    /**
+     * Kata kunci nama kurir yang tidak menerbitkan AWB via marketplace API
+     * (driver dipanggil manual dari tab Shipping).
+     */
+    private const INSTANT_COURIER_KEYWORDS = [
+        'INSTANT',
+        'SAMEDAY_INSTANT',
+        'SAME DAY INSTANT',
+        'GOJEK',
+        'GRAB',
+        'LALAMOVE',
+        'BORZO',
+        'DEALIVER',
+        'LEX ID',
+        'PICKUP',
+    ];
 
     public function __construct(private SalesOrderService $salesOrderService)
     {
@@ -51,6 +67,7 @@ class BulkShippingLabelService
                 'total_count' => count($orderIds),
                 'done_count' => 0,
                 'failed_count' => 0,
+                'skipped_count' => 0,
             ]);
 
             $orders = SalesOrder::whereIn('id', $orderIds)
@@ -88,6 +105,10 @@ class BulkShippingLabelService
             return [BulkShippingLabelItem::STATUS_FAILED, BulkShippingLabelItem::REASON_CHANNEL_UNSUPPORTED];
         }
 
+        if ($this->isInstantCourier($order)) {
+            return [BulkShippingLabelItem::STATUS_SKIPPED_INSTANT, BulkShippingLabelItem::REASON_INSTANT_COURIER];
+        }
+
         $hasAwb = ! empty($order->tracking_number)
             || ! empty($order->awb_no)
             || ! empty($order->channel_order_no);
@@ -97,6 +118,29 @@ class BulkShippingLabelService
         }
 
         return [BulkShippingLabelItem::STATUS_PENDING, null];
+    }
+
+    public function isInstantCourier(?SalesOrder $order): bool
+    {
+        if (! $order) {
+            return false;
+        }
+        $haystack = strtoupper(trim((string) ($order->courier_name ?? '').' '.($order->courier_type_code ?? '')));
+        if ($haystack === '') {
+            return false;
+        }
+        foreach (self::INSTANT_COURIER_KEYWORDS as $needle) {
+            if (Str::contains($haystack, $needle)) {
+                // Exclusi: "SPX Instant Prioritas" & "SPX Instant" tetap punya AWB Shopee — bukan instant courier eksternal.
+                // Kata "INSTANT" pada nama kurir Shopee-native tetap generate AWB. Cek berdasar channel.
+                if ($needle === 'INSTANT' && strtolower((string) $order->source) === self::CHANNEL_SHOPEE
+                    && Str::startsWith($haystack, 'SPX')) {
+                    continue;
+                }
+                return true;
+            }
+        }
+        return false;
     }
 
     public function processPendingItems(BulkShippingLabelBatch $batch, ?array $perChannelOpts): void
@@ -120,6 +164,8 @@ class BulkShippingLabelService
         }
 
         $batch->recomputeCounts();
+
+        $this->tryFinalize($batch);
     }
 
     private function processTikTokBatch($items, ?array $perChannelOpts): void
@@ -204,6 +250,11 @@ class BulkShippingLabelService
                 return;
             }
 
+            if ($this->isInstantCourier($order)) {
+                $this->skipInstant($item);
+                return;
+            }
+
             $options = $perChannelOpts[$item->channel] ?? [
                 'document_type' => $item->channel === self::CHANNEL_SHOPEE ? 'AWB' : 'SHIPPING_LABEL',
                 'document_size' => 'A6',
@@ -231,7 +282,7 @@ class BulkShippingLabelService
         if ($status === 'ready' && ! empty($result['data'])) {
             $bytes = $this->decodeLabelPayload($result);
             if ($bytes === null) {
-                $this->fail($item, 'shopee_decode_failed');
+                $this->fail($item, BulkShippingLabelItem::REASON_SHOPEE_DECODE_FAILED);
                 return;
             }
             $this->succeed($item, $bytes);
@@ -245,7 +296,7 @@ class BulkShippingLabelService
         }
 
         if ($status === 'failed') {
-            $this->fail($item, 'shopee_prep_failed');
+            $this->fail($item, BulkShippingLabelItem::REASON_SHOPEE_PREP_FAILED);
             return;
         }
 
@@ -326,56 +377,129 @@ class BulkShippingLabelService
         ]);
     }
 
-    public function awaitShopeePreparations(BulkShippingLabelBatch $batch, Carbon $deadline): void
+    private function skipInstant(BulkShippingLabelItem $item): void
     {
-        while (now()->lt($deadline)) {
-            $waiting = $batch->items()
-                ->where('status', BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP)
-                ->get();
+        $item->update([
+            'status' => BulkShippingLabelItem::STATUS_SKIPPED_INSTANT,
+            'reason' => BulkShippingLabelItem::REASON_INSTANT_COURIER,
+        ]);
+    }
 
-            if ($waiting->isEmpty()) {
-                return;
+    /**
+     * Callback dari PrepareShopeeShippingLabelJob setelah shipping_label_status ditetapkan.
+     * Transition semua item WAITING untuk order ini, lalu coba finalize batch yang terdampak.
+     */
+    public function onOrderLabelReady(string $orderId): void
+    {
+        $items = BulkShippingLabelItem::where('order_id', $orderId)
+            ->where('status', BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP)
+            ->get();
+
+        if ($items->isEmpty()) {
+            return;
+        }
+
+        $order = SalesOrder::find($orderId);
+        if (! $order) {
+            foreach ($items as $item) {
+                $this->fail($item, BulkShippingLabelItem::REASON_NO_AWB);
             }
+            $this->finalizeAffectedBatches($items);
+            return;
+        }
 
-            foreach ($waiting as $item) {
-                $order = SalesOrder::find($item->order_id);
-                if (! $order) {
-                    $this->fail($item, BulkShippingLabelItem::REASON_NO_AWB);
-                    continue;
-                }
+        $labelStatus = $order->shipping_label_status ?? null;
 
-                $status = $order->shipping_label_status ?? null;
-                if ($status === 'ready') {
-                    $options = ($batch->per_channel_opts[self::CHANNEL_SHOPEE] ?? [
+        foreach ($items as $item) {
+            try {
+                if ($labelStatus === 'ready') {
+                    $batch = $item->batch;
+                    $options = ($batch?->per_channel_opts[self::CHANNEL_SHOPEE] ?? [
                         'document_type' => 'AWB',
                         'document_size' => 'A6',
                     ]);
                     $this->processShopee($item, $order, $options);
-                } elseif ($status === 'failed') {
-                    $this->fail($item, 'shopee_prep_failed');
-                } elseif ($status === 'self_design_required') {
+                } elseif ($labelStatus === 'self_design_required') {
                     $this->fail($item, BulkShippingLabelItem::REASON_SELF_DESIGN);
+                } elseif ($labelStatus === 'failed') {
+                    $this->fail($item, BulkShippingLabelItem::REASON_SHOPEE_PREP_FAILED);
                 }
-            }
-
-            $batch->recomputeCounts();
-
-            if ($batch->fresh()->items()
-                ->where('status', BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP)
-                ->exists()) {
-                sleep(self::SHOPEE_PREP_POLL_SECONDS);
-            } else {
-                return;
+                // Kalau masih 'preparing' → biarkan tetap WAITING; prep job berikutnya akan callback lagi.
+            } catch (Throwable $e) {
+                Log::warning('onOrderLabelReady: transition failed', [
+                    'item_id' => $item->id,
+                    'order_id' => $orderId,
+                    'error' => $e->getMessage(),
+                ]);
+                $this->fail($item, substr($e->getMessage(), 0, 250));
             }
         }
 
-        // Deadline hit — flag any still-waiting items as timeout
-        $batch->items()
-            ->where('status', BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP)
-            ->get()
-            ->each(fn ($i) => $this->fail($i, BulkShippingLabelItem::REASON_SHOPEE_PREP_TIMEOUT));
+        $this->finalizeAffectedBatches($items);
+    }
 
-        $batch->recomputeCounts();
+    private function finalizeAffectedBatches($items): void
+    {
+        $batchIds = $items->pluck('batch_id')->unique()->values();
+        foreach ($batchIds as $batchId) {
+            $batch = BulkShippingLabelBatch::find($batchId);
+            if ($batch) {
+                $this->tryFinalize($batch);
+            }
+        }
+    }
+
+    /**
+     * Race-safe finalizer. Dipicu setiap kali status item berubah.
+     * Kalau semua item terminal → merge PDF & set batch READY/FAILED.
+     * Kalau masih ada transient → no-op, callback berikutnya yang akan finalize.
+     */
+    public function tryFinalize(BulkShippingLabelBatch $batch): void
+    {
+        Cache::lock("bulk-label-finalize:{$batch->id}", 15)->block(5, function () use ($batch) {
+            $fresh = BulkShippingLabelBatch::find($batch->id);
+            if (! $fresh) {
+                return;
+            }
+            if ($fresh->status !== BulkShippingLabelBatch::STATUS_PROCESSING) {
+                return;
+            }
+
+            $hasTransient = $fresh->items()
+                ->whereIn('status', BulkShippingLabelItem::TRANSIENT_STATUSES)
+                ->exists();
+
+            if ($hasTransient) {
+                return;
+            }
+
+            $this->mergeAndPersist($fresh);
+        });
+    }
+
+    /**
+     * Force-terminate semua item transient dengan reason tertentu. Dipakai reaper.
+     */
+    public function forceFinalize(BulkShippingLabelBatch $batch, string $reason): void
+    {
+        Cache::lock("bulk-label-finalize:{$batch->id}", 15)->block(5, function () use ($batch, $reason) {
+            $fresh = BulkShippingLabelBatch::find($batch->id);
+            if (! $fresh) {
+                return;
+            }
+            if ($fresh->status !== BulkShippingLabelBatch::STATUS_PROCESSING) {
+                return;
+            }
+
+            $fresh->items()
+                ->whereIn('status', BulkShippingLabelItem::TRANSIENT_STATUSES)
+                ->update([
+                    'status' => BulkShippingLabelItem::STATUS_FAILED,
+                    'reason' => $reason,
+                ]);
+
+            $this->mergeAndPersist($fresh);
+        });
     }
 
     public function mergeAndPersist(BulkShippingLabelBatch $batch): void
@@ -390,6 +514,7 @@ class BulkShippingLabelService
                 'status' => BulkShippingLabelBatch::STATUS_FAILED,
                 'finished_at' => now(),
             ]);
+            $batch->recomputeCounts();
             return;
         }
 
@@ -416,12 +541,13 @@ class BulkShippingLabelService
         $path = "bulk-labels/{$batch->id}.pdf";
         Storage::disk('documents')->put($path, $blob);
 
-        // Bersihkan pdf_bytes untuk hemat storage row
         $batch->items()->update(['pdf_bytes' => null]);
 
         $batch->update([
             'merged_pdf_path' => $path,
             'merged_pdf_bytes' => strlen($blob),
+            'status' => BulkShippingLabelBatch::STATUS_READY,
+            'finished_at' => now(),
         ]);
 
         $batch->recomputeCounts();
@@ -430,11 +556,7 @@ class BulkShippingLabelService
     public function markCrashed(BulkShippingLabelBatch $batch): void
     {
         $batch->items()
-            ->whereIn('status', [
-                BulkShippingLabelItem::STATUS_PENDING,
-                BulkShippingLabelItem::STATUS_DOWNLOADING,
-                BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP,
-            ])
+            ->whereIn('status', BulkShippingLabelItem::TRANSIENT_STATUSES)
             ->update([
                 'status' => BulkShippingLabelItem::STATUS_FAILED,
                 'reason' => BulkShippingLabelItem::REASON_BATCH_CRASHED,

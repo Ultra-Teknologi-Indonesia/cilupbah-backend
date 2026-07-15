@@ -6,6 +6,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Modules\Sales\Console\Commands\BackfillStatusHistory;
 use Modules\Sales\Console\Commands\CleanupBulkLabelBatchesCommand;
 use Modules\Sales\Console\Commands\PrepareShopeeLabelsBackfill;
+use Modules\Sales\Console\Commands\ReapStaleBulkLabelBatches;
 use Modules\Sales\Console\Commands\RelocateOrdersToKecil;
 use Modules\Sales\Console\Commands\RestoreTrackingNumbers;
 use Modules\Sales\Console\Commands\SyncOrderFinance;
@@ -33,6 +34,7 @@ class SalesServiceProvider extends ModuleServiceProvider
         SyncReturnTracking::class,
         SyncReturnDetail::class,
         CleanupBulkLabelBatchesCommand::class,
+        ReapStaleBulkLabelBatches::class,
     ];
 
     protected function configureSchedules(Schedule $schedule): void
@@ -44,6 +46,11 @@ class SalesServiceProvider extends ModuleServiceProvider
 
         $schedule->command('sales:cleanup-bulk-label-batches')
             ->daily()
+            ->withoutOverlapping()
+            ->runInBackground();
+
+        $schedule->command('bulk-shipping-labels:reap-stale')
+            ->everyFiveMinutes()
             ->withoutOverlapping()
             ->runInBackground();
     }
