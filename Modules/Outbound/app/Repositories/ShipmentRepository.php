@@ -100,7 +100,7 @@ class ShipmentRepository
             ->with([
                 'shipment:id,shipment_no,shipment_date,shipment_type,status,handed_over_at,courier_code,courier_name,location_id',
                 'shipment.location:id,location_name,location_code',
-                'order:id,salesorder_no,customer_name,source,channel_status,channel_order_no,courier_name,shipping_provider,tracking_number,transaction_date,shipping_address,shipping_city,shipping_province',
+                'order:id,salesorder_no,customer_name,source,channel_status,channel_order_no,courier_name,shipping_provider,tracking_number,transaction_date,shipping_address,shipping_city,shipping_province,pickup_code',
                 'packlist:id,packlist_no',
             ]);
 

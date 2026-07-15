@@ -210,6 +210,7 @@ class ShipmentController extends Controller
             'location_name'    => $shipment?->location?->location_name,
             'picklist_no'       => $packlist?->packlist_no,
             'qty_given'         => $shipmentOrder->qty_given,
+            'pickup_code'       => $order?->pickup_code,
         ];
     }
 
