@@ -15,7 +15,7 @@ class InboundRepository
     public function getAllPaginated(int $limit = 10)
     {
         $paginator = QueryBuilder::for(Inbound::class)
-            ->with(['location:id,location_name', 'items.variant:id,sku,product_id', 'assignments.worker:id,name', 'putaways:id,source_id,status,assigned_to', 'putaways.assignee:id,name'])
+            ->with(['location:id,location_name', 'items.variant:id,sku,product_id', 'assignments.worker:id,name', 'putaways:id,source_id,status,assigned_to', 'putaways.assignee:id,name', 'assignee:id,name', 'assignedByUser:id,name'])
             ->allowedFilters(
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('type'),
@@ -58,6 +58,8 @@ class InboundRepository
             'items.variant.product:id,name',
             'items.variant.media',
             'items.variant.product.media',
+            'assignee:id,name',
+            'assignedByUser:id,name',
         ])->find($id);
 
         if ($inbound && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $inbound->created_by)) {
