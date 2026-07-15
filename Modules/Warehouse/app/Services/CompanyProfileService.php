@@ -51,11 +51,9 @@ class CompanyProfileService
 
         return $this->pdfMemo = [
             'name' => $profile->legal_name,
-            'brand' => $profile->brand_name,
             'address' => $profile->address,
             'city' => $profile->city,
             'postal_code' => $profile->postal_code,
-            'npwp' => $profile->npwp,
             'phone' => $profile->phone,
             'email' => $profile->email,
             'logo_url' => $this->mediaUrl($profile->logo_media_id),

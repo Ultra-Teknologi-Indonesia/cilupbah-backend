@@ -13,8 +13,6 @@ class CompanyProfile extends Model
 
     protected $fillable = [
         'legal_name',
-        'brand_name',
-        'npwp',
         'address',
         'city',
         'postal_code',

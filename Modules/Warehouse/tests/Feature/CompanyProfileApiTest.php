@@ -40,9 +40,8 @@ class CompanyProfileApiTest extends TestCase
     {
         $payload = [
             'legal_name' => 'PT CILUPBAH JAYA',
-            'brand_name' => 'Cilupbah',
-            'npwp' => '01.234.567.8-901.000',
             'address' => 'Jl. Gudang No. 1, Bandung',
+            'city' => 'Bandung',
             'phone' => '+62221234567',
             'email' => 'ops@cilupbah.test',
         ];
@@ -51,7 +50,7 @@ class CompanyProfileApiTest extends TestCase
             ->postJson('/api/v1/systemsetting/company', $payload)
             ->assertStatus(200)
             ->assertJsonPath('data.legal_name', 'PT CILUPBAH JAYA')
-            ->assertJsonPath('data.npwp', '01.234.567.8-901.000');
+            ->assertJsonPath('data.city', 'Bandung');
 
         $this->assertDatabaseHas('company_profile', ['legal_name' => 'PT CILUPBAH JAYA']);
 

@@ -15,8 +15,6 @@ class SaveCompanyProfileRequest extends FormRequest
     {
         return [
             'legal_name' => ['required', 'string', 'max:255'],
-            'brand_name' => ['nullable', 'string', 'max:255'],
-            'npwp' => ['nullable', 'string', 'max:64'],
             'address' => ['nullable', 'string', 'max:1000'],
             'city' => ['nullable', 'string', 'max:255'],
             'postal_code' => ['nullable', 'string', 'max:16'],
