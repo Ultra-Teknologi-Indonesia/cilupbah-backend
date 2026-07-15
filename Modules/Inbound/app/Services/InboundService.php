@@ -1000,13 +1000,13 @@ class InboundService
         });
     }
 
-    public function setReceivedQty(string $inboundId, string $inboundItemId, int $targetQty, string $userId): Inbound
+    public function setReceivedQty(string $inboundId, string $inboundItemId, int $targetQty, string $userId, ?string $expectedUpdatedAt = null): Inbound
     {
         if ($targetQty < 0) {
             throw new \Exception('Jumlah tidak boleh negatif.');
         }
 
-        return DB::transaction(function () use ($inboundId, $inboundItemId, $targetQty, $userId) {
+        return DB::transaction(function () use ($inboundId, $inboundItemId, $targetQty, $userId, $expectedUpdatedAt) {
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
             if (! $inbound) {
                 throw new \Exception('Dokumen Inbound tidak ditemukan.');
@@ -1017,6 +1017,9 @@ class InboundService
 
             // Fix C1 (guard web via once_received_at, bukan status current).
             $this->assertWebCanMutate($inbound);
+
+            // Fix H4 (optimistic lock — cegah 2 admin edit bareng).
+            $this->assertVersionMatches($inbound, $expectedUpdatedAt);
 
             $item = $this->inboundRepository->findItemByUuidForUpdate($inboundItemId);
             if (! $item || $item->inbound_id !== $inbound->id) {
@@ -1053,6 +1056,9 @@ class InboundService
             if ($delta < 0) {
                 $this->putawayService->reduceOpenTargetForInboundItem($item->id, -$delta);
             }
+
+            // Bump updated_version_at supaya optimistic lock berikutnya kena update.
+            $inbound->forceFill(['updated_version_at' => now()])->save();
 
             $this->recomputeStatus($inbound->fresh('items'));
 

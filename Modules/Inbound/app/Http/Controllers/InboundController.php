@@ -431,11 +431,18 @@ class InboundController extends Controller
     {
         $validated = $request->validate([
             'qty' => 'required|integer|min:0',
+            '_expected_updated_at' => 'nullable|string',
         ]);
 
         try {
             $userId = (string) ($request->user()->id ?? 'system');
-            $inbound = $this->inboundService->setReceivedQty($id, $itemId, (int) $validated['qty'], $userId);
+            $inbound = $this->inboundService->setReceivedQty(
+                $id,
+                $itemId,
+                (int) $validated['qty'],
+                $userId,
+                $validated['_expected_updated_at'] ?? null,
+            );
 
             return $this->successResponse($inbound, 'Jumlah diterima berhasil diperbarui.');
         } catch (\Exception $e) {
