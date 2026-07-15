@@ -329,6 +329,30 @@ class ShipmentService
         'DELIVERED', 'COMPLETED',
     ];
 
+    /**
+     * Mapping channel_status marketplace ke status internal shipment.
+     * Nilai selain di daftar ini tidak memicu perubahan status.
+     */
+    private const CHANNEL_TO_SHIPMENT_STATUS = [
+        'IN_TRANSIT'         => Shipment::STATUS_IN_TRANSIT,
+        'SHIPPED'            => Shipment::STATUS_IN_TRANSIT,
+        'PARTIALLY_SHIPPING' => Shipment::STATUS_IN_TRANSIT,
+        'TO_CONFIRM_RECEIVE' => Shipment::STATUS_DELIVERED,
+        'DELIVERED'          => Shipment::STATUS_DELIVERED,
+        'COMPLETED'          => Shipment::STATUS_DELIVERED,
+    ];
+
+    /**
+     * Rank state machine — forward-only.
+     * Sync tidak akan menurunkan status shipment.
+     */
+    private const SHIPMENT_STATUS_RANK = [
+        Shipment::STATUS_SCHEDULED   => 1,
+        Shipment::STATUS_HANDED_OVER => 2,
+        Shipment::STATUS_IN_TRANSIT  => 3,
+        Shipment::STATUS_DELIVERED   => 4,
+    ];
+
     public function autoCreateForChannelOrder(Order $order): ?Shipment
     {
         if ($order->status !== 'packed') {
@@ -393,6 +417,56 @@ class ShipmentService
         ]);
 
         return $shipment;
+    }
+
+    /**
+     * Sinkronkan status shipment berdasar channel_status marketplace.
+     * Dipanggil observer setiap kali channel_status sales_order berubah.
+     *
+     * - Kalau shipment belum ada, coba auto-create dulu (kalau eligible).
+     * - Kalau shipment sudah ada, advance status hanya maju (SCHEDULED → IN_TRANSIT → DELIVERED).
+     * - Set handed_over_at saat pertama kali maju dari SCHEDULED.
+     * - Idempotent: kalau target sama atau lebih rendah dari state sekarang, no-op.
+     */
+    public function syncFromChannelStatus(Order $order): ?Shipment
+    {
+        $targetStatus = self::CHANNEL_TO_SHIPMENT_STATUS[$order->channel_status] ?? null;
+        if ($targetStatus === null) {
+            return null;
+        }
+
+        $shipmentOrder = ShipmentOrder::where('order_id', $order->id)->first();
+        $shipment = $shipmentOrder
+            ? $this->shipmentRepository->findById($shipmentOrder->shipment_id)
+            : $this->autoCreateForChannelOrder($order);
+
+        if (! $shipment) {
+            return null;
+        }
+
+        $currentRank = self::SHIPMENT_STATUS_RANK[$shipment->status] ?? 0;
+        $targetRank = self::SHIPMENT_STATUS_RANK[$targetStatus] ?? 0;
+
+        if ($targetRank <= $currentRank) {
+            return $shipment;
+        }
+
+        $update = ['status' => $targetStatus];
+        if (empty($shipment->handed_over_at)) {
+            $update['handed_over_at'] = now();
+        }
+
+        $this->shipmentRepository->update($shipment->id, $update);
+
+        Log::info('Shipment status advanced from channel_status', [
+            'shipment_id'    => $shipment->id,
+            'order_id'       => $order->id,
+            'channel_status' => $order->channel_status,
+            'from'           => $shipment->status,
+            'to'             => $targetStatus,
+        ]);
+
+        return $this->shipmentRepository->findById($shipment->id);
     }
 
     private const MANUAL_DRIVER_COURIER_REGEX = '/grab|gojek|gosend|gokilat|lalamove/i';
