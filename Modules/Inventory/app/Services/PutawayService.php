@@ -627,6 +627,32 @@ class PutawayService
         });
     }
 
+    /**
+     * Reverse & hard-delete semua Putaway yang berasal dari Inbound tertentu.
+     * Dipakai saat Inbound COMPLETED dihapus di Penerimaan (cascade).
+     */
+    public function reverseAndDeleteForInbound(string $inboundId, string $userId): void
+    {
+        $putawayIds = PutawaySource::where('inbound_id', $inboundId)
+            ->pluck('putaway_id')
+            ->unique()
+            ->all();
+
+        if (empty($putawayIds)) {
+            return;
+        }
+
+        foreach ($putawayIds as $putawayId) {
+            $putaway = $this->putawayRepository->findByIdForUpdate($putawayId);
+            if (! $putaway) {
+                continue;
+            }
+
+            $this->resetAllPlacements($putaway, $userId);
+            $this->hardDeletePutaway($putaway);
+        }
+    }
+
     private function resetAllPlacements(Putaway $putaway, string $userId): void
     {
         $putaway->load(['items.placements']);

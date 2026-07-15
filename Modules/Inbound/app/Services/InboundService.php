@@ -16,8 +16,13 @@ use Modules\Inbound\Models\InboundItem;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\Putaway;
+use Modules\Inventory\Models\PutawayItem;
+use Modules\Inventory\Models\PutawayPlacement;
+use Modules\Inventory\Models\PutawaySource;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\PutawayService;
+use Modules\Product\Models\ProductVariant;
+use Modules\Warehouse\Models\LocationBin;
 use Modules\Notification\Events\TaskAssigned;
 use Modules\Notification\Services\NotificationDispatcher;
 use Modules\Purchase\Models\PurchaseOrder;
@@ -1104,20 +1109,169 @@ class InboundService
                 throw new \Exception("Dokumen Inbound tidak ditemukan.");
             }
 
-            if ($inbound->status === Inbound::STATUS_COMPLETED) {
-                throw new \Exception("Inbound yang sudah COMPLETED tidak bisa dibatalkan.");
-            }
-
             if ($inbound->status === Inbound::STATUS_CANCELLED) {
                 throw new \Exception("Inbound sudah dibatalkan.");
+            }
+
+            if ($inbound->status === Inbound::STATUS_DRAFT) {
+                throw new \Exception("Inbound DRAFT tidak perlu dibatalkan.");
+            }
+
+            $inbound->loadMissing('items');
+
+            // Guard: pastikan reverse tidak akan bikin stok bin negatif (mis. sudah dipicking/dipindah).
+            // Override memory allow-negative-stock khusus flow ini — client eksplisit minta block.
+            $this->assertNoStockShortfall($inbound);
+
+            // Cascade reverse putaway kalau ada. Aman untuk semua status (skip kalau tidak ada placement).
+            $hasPutaway = $inbound->items->contains(fn ($it) => (int) $it->putaway_qty > 0);
+            if ($hasPutaway) {
+                $this->putawayService->reverseAndDeleteForInbound($inbound->id, $userId ?? 'system');
+                // reload untuk dapat putaway_qty terbaru (0) setelah reverse.
+                $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
+                $inbound->loadMissing('items');
+            }
+
+            if ($inbound->source_type === 'transfer' && $inbound->source_id) {
+                $this->revertTransferReceipt($inbound, $userId);
+                return $this->getById($inboundId);
             }
 
             $this->reverseReceivedStock($inbound, $userId);
 
             $this->inboundRepository->updateStatus($inbound, Inbound::STATUS_CANCELLED);
 
+            if ($inbound->source_type === 'purchase_order' && $inbound->source_id) {
+                $this->rollbackPurchaseOrderReceipt($inbound);
+            }
+
             return $this->getById($inboundId);
         });
+    }
+
+    /**
+     * Guard: tolak cancel kalau reverse-putaway akan bikin stok bin negatif.
+     * Pesan detail per SKU/bin/qty shortfall (keputusan client 15 Jul).
+     */
+    private function assertNoStockShortfall(Inbound $inbound): void
+    {
+        $putawayIds = PutawaySource::where('inbound_id', $inbound->id)
+            ->pluck('putaway_id')
+            ->unique();
+
+        if ($putawayIds->isEmpty()) {
+            return;
+        }
+
+        $itemIds = PutawayItem::whereIn('putaway_id', $putawayIds)->pluck('id');
+        $placements = PutawayPlacement::whereIn('putaway_item_id', $itemIds)
+            ->with('putawayItem')
+            ->get();
+
+        $needed = [];
+        foreach ($placements as $p) {
+            $variantId = $p->putawayItem->item_id ?? null;
+            $binId = $p->destination_bin_id ?? null;
+            if (! $variantId || ! $binId) {
+                continue;
+            }
+            $key = $variantId . '|' . $binId;
+            $needed[$key] = ($needed[$key] ?? 0) + (int) $p->qty;
+        }
+
+        if (empty($needed)) {
+            return;
+        }
+
+        $shortfalls = [];
+        foreach ($needed as $key => $need) {
+            [$variantId, $binId] = explode('|', $key);
+            $current = (int) Inventory::where('item_id', $variantId)
+                ->where('bin_id', $binId)
+                ->value('on_hand');
+            if ($current < $need) {
+                $shortfalls[] = [
+                    'variant_id' => $variantId,
+                    'bin_id'     => $binId,
+                    'shortfall'  => $need - $current,
+                ];
+            }
+        }
+
+        if (empty($shortfalls)) {
+            return;
+        }
+
+        $lines = [];
+        foreach ($shortfalls as $s) {
+            $sku = ProductVariant::where('id', $s['variant_id'])->value('sku') ?? $s['variant_id'];
+            $binCode = LocationBin::where('id', $s['bin_id'])->value('bin_final_code') ?? $s['bin_id'];
+            $lines[] = "- {$sku} @ {$binCode}: minus {$s['shortfall']}";
+        }
+
+        $message = "Tidak dapat dihapus. Stok berikut akan minus:\n"
+            . implode("\n", $lines)
+            . "\n\nSebagian barang sudah dipicking/dipindah. Batalkan pesanan/transfer terkait dulu.";
+
+        throw new \Exception($message);
+    }
+
+    /**
+     * Rollback PO ke "Belum Diterima" (STATUS_OPEN) saat inbound PO dihapus.
+     * Handle multi-inbound: kalau masih ada inbound lain aktif, recompute status dari total received tersisa.
+     * Keputusan client 15 Jul: tim ops butuh proses ulang penerimaan dari awal.
+     */
+    private function rollbackPurchaseOrderReceipt(Inbound $inbound): void
+    {
+        $po = PurchaseOrder::with('items')
+            ->whereKey($inbound->source_id)
+            ->lockForUpdate()
+            ->first();
+
+        if (! $po) {
+            return;
+        }
+
+        $otherActiveInbounds = Inbound::where('source_type', 'purchase_order')
+            ->where('source_id', $po->id)
+            ->where('status', '!=', Inbound::STATUS_CANCELLED)
+            ->where('id', '!=', $inbound->id)
+            ->with('items')
+            ->get();
+
+        // Sum received qty tersisa per variant dari inbound aktif lain
+        $totalReceivedByVariant = [];
+        foreach ($otherActiveInbounds as $inb) {
+            foreach ($inb->items as $item) {
+                $vid = $item->item_id;
+                $totalReceivedByVariant[$vid] = ($totalReceivedByVariant[$vid] ?? 0) + (int) $item->received_qty;
+            }
+        }
+
+        // Reset PO items received_qty sesuai sisa penerimaan aktif
+        foreach ($po->items as $poItem) {
+            $newReceived = min(
+                (int) ($totalReceivedByVariant[$poItem->item_id] ?? 0),
+                (int) $poItem->qty
+            );
+            $delta = $newReceived - (int) $poItem->received_qty;
+            if ($delta !== 0) {
+                $poItem->update(['received_qty' => $newReceived]);
+            }
+        }
+
+        // Recompute PO status
+        $po->load('items');
+        $anyReceived = $po->items->contains(fn ($i) => (int) $i->received_qty > 0);
+        $allReceived = $po->items->every(fn ($i) => (int) $i->received_qty >= (int) $i->qty);
+
+        $newStatus = $allReceived
+            ? PurchaseOrder::STATUS_FULLY_RECEIVED
+            : ($anyReceived ? PurchaseOrder::STATUS_PARTIAL_RECEIVED : PurchaseOrder::STATUS_OPEN);
+
+        if ($po->status !== $newStatus) {
+            $po->update(['status' => $newStatus]);
+        }
     }
 
     public function cancelMany(array $ids, ?string $userId = null): array
@@ -1158,6 +1312,59 @@ class InboundService
                     'created_by'         => $createdBy,
                 ]);
             }
+        }
+    }
+
+    private function revertTransferReceipt(Inbound $inbound, ?string $userId = null): void
+    {
+        $createdBy = $userId ? "user:{$userId}" : 'system';
+        $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
+        [$transitLocationId, $transitBinId] = $this->inventoryService->resolveTransitLocation();
+
+        foreach ($inbound->items as $item) {
+            $qty = (int) $item->received_qty;
+            if ($qty <= 0) {
+                continue;
+            }
+
+            if ($defaultBin) {
+                $this->inventoryService->adjust([
+                    'item_id'            => $item->item_id,
+                    'location_id'        => $inbound->location_id,
+                    'bin_id'             => $defaultBin->id,
+                    'qty'                => -$qty,
+                    'transaction_number' => $inbound->transaction_number . '-REVERT',
+                    'source'             => 'TRANSFER_REVERT',
+                    'created_by'         => $createdBy,
+                ]);
+            }
+
+            $this->inventoryService->adjust([
+                'item_id'            => $item->item_id,
+                'location_id'        => $transitLocationId,
+                'bin_id'             => $transitBinId,
+                'qty'                => $qty,
+                'transaction_number' => $inbound->transaction_number . '-REVERT',
+                'source'             => 'TRANSFER_REVERT',
+                'created_by'         => $createdBy,
+            ]);
+
+            $item->update(['received_qty' => 0]);
+        }
+
+        $this->inboundRepository->updateStatus($inbound, Inbound::STATUS_DRAFT);
+
+        $transfer = \Modules\Inventory\Models\InventoryTransfer::whereKey($inbound->source_id)
+            ->lockForUpdate()
+            ->first();
+
+        if ($transfer && $transfer->status === \Modules\Inventory\Models\InventoryTransfer::STATUS_RECEIVED) {
+            $transfer->update([
+                'status'         => \Modules\Inventory\Models\InventoryTransfer::STATUS_IN_TRANSIT,
+                'receive_number' => null,
+                'received_by'    => null,
+                'received_at'    => null,
+            ]);
         }
     }
 
