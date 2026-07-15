@@ -1492,6 +1492,19 @@ class InventoryService
                 throw new \Exception("Transfer berstatus {$transfer->status} tidak bisa dikembalikan ke Baru Dibuat.");
             }
 
+            $blockingInbound = \Modules\Inbound\Models\Inbound::where('source_type', 'transfer')
+                ->where('source_id', $transfer->id)
+                ->whereIn('status', [
+                    \Modules\Inbound\Models\Inbound::STATUS_PARTIAL,
+                    \Modules\Inbound\Models\Inbound::STATUS_RECEIVED,
+                    \Modules\Inbound\Models\Inbound::STATUS_PUTAWAY_IN_PROGRESS,
+                    \Modules\Inbound\Models\Inbound::STATUS_COMPLETED,
+                ])
+                ->exists();
+            if ($blockingInbound) {
+                throw new \Exception("Transfer {$transfer->transfer_number} sudah/masih diterima di gudang tujuan. Hapus dulu penerimaan di menu Penerimaan Barang sebelum mengembalikan ke Baru Dibuat.");
+            }
+
             $actor = $data['actor'] ?? $transfer->created_by ?? 'system';
 
             if ($transfer->status === InventoryTransfer::STATUS_IN_TRANSIT) {
@@ -1537,6 +1550,11 @@ class InventoryService
                 'approved_at' => null,
                 'approved_by' => null,
             ]);
+
+            \Modules\Inbound\Models\Inbound::where('source_type', 'transfer')
+                ->where('source_id', $transfer->id)
+                ->where('status', \Modules\Inbound\Models\Inbound::STATUS_DRAFT)
+                ->delete();
 
             return $this->transferRepository->findById($transferId);
         });

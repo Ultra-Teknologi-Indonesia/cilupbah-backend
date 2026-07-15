@@ -9,18 +9,16 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('shipments', function (Blueprint $table) {
-            $table->foreignId('shipper_id')
-                ->nullable()
-                ->after('driver_called_by')
-                ->constrained('users')
-                ->nullOnDelete();
+            $table->uuid('shipper_id')->nullable()->after('driver_called_by');
+            $table->foreign('shipper_id')->references('id')->on('users')->nullOnDelete();
         });
     }
 
     public function down(): void
     {
         Schema::table('shipments', function (Blueprint $table) {
-            $table->dropConstrainedForeignId('shipper_id');
+            $table->dropForeign(['shipper_id']);
+            $table->dropColumn('shipper_id');
         });
     }
 };
