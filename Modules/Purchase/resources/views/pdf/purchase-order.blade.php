@@ -17,66 +17,118 @@
     <meta charset="UTF-8">
     <title>Barang Masuk Pembelian {{ $po->po_number }}</title>
     <style>
-        @page { margin: 14mm 14mm 16mm 14mm; }
+        @page { margin: 18mm 16mm 20mm 16mm; }
         body {
             font-family: DejaVu Sans, sans-serif;
             font-size: 10px;
             color: #1a1a1a;
             margin: 0;
             padding: 0;
-            line-height: 1.4;
+            line-height: 1.45;
         }
-        .header { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
-        .header td { vertical-align: top; }
-        .header .logo { width: 90px; }
-        .header .logo img { max-width: 80px; max-height: 80px; }
-        .header .title {
-            text-align: right;
+
+        .top { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+        .top td { vertical-align: top; }
+        .top .logo-cell { width: 100px; }
+        .top .logo-cell img { max-width: 90px; max-height: 70px; }
+        .top .title-cell { text-align: right; }
+        .top .title-cell .title {
             font-size: 22px;
             font-weight: 700;
+            line-height: 1.1;
         }
-        .company-block { margin-bottom: 18px; }
-        .company-block table { width: 100%; border-collapse: collapse; }
-        .company-block td { vertical-align: top; padding: 1px 0; }
-        .company-block .name { font-weight: 700; text-transform: uppercase; font-size: 11px; }
-        .company-block .kepada-label {
-            display: inline-block;
-            font-weight: 700;
-            margin-right: 6px;
-            margin-left: 12px;
+
+        .info { width: 100%; border-collapse: collapse; margin-bottom: 22px; }
+        .info td { vertical-align: top; padding: 0; }
+        .info .left {
+            width: 60%;
+            padding-right: 16px;
         }
-        .info-right { text-align: right; font-size: 10px; }
-        .info-right table { border-collapse: collapse; margin-left: auto; }
-        .info-right td { padding: 1px 0; }
-        .info-right .label { font-weight: 700; padding-right: 18px; }
-        table.items { width: 100%; border-collapse: collapse; margin-top: 4px; }
-        table.items th, table.items td {
-            border: 1px solid #555;
-            padding: 6px 8px;
-            vertical-align: top;
-            font-size: 10px;
+        .info .right {
+            width: 40%;
+            text-align: right;
         }
-        table.items th {
-            background: #f2f2f2;
-            text-align: left;
+        .info .company-name {
             font-weight: 700;
             text-transform: uppercase;
-            font-size: 9px;
+            font-size: 11px;
             letter-spacing: 0.3px;
+            margin-bottom: 3px;
         }
-        table.items th.center, table.items td.center { text-align: center; }
-        table.items th.num, table.items td.num { text-align: right; }
-        .mono { font-family: DejaVu Sans Mono, monospace; }
-        .notes { margin-top: 16px; }
-        .notes .label { font-weight: 700; margin-bottom: 4px; }
-        .notes .body { min-height: 24px; }
+        .info .company-address {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .info .kepada {
+            margin-top: 4px;
+        }
+        .info .kepada .label {
+            font-weight: 700;
+            margin-right: 6px;
+        }
+
+        .meta-table {
+            border-collapse: collapse;
+            margin-left: auto;
+            font-size: 10px;
+        }
+        .meta-table td { padding: 2px 0; vertical-align: top; }
+        .meta-table .label {
+            font-weight: 700;
+            padding-right: 24px;
+            text-align: left;
+        }
+        .meta-table .value {
+            text-align: left;
+            min-width: 100px;
+        }
+
+        table.items {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 4px;
+        }
+        table.items th, table.items td {
+            border: 1px solid #444;
+            padding: 7px 8px;
+            vertical-align: middle;
+            font-size: 10px;
+        }
+        table.items thead th {
+            background: #f2f2f2;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 9.5px;
+            letter-spacing: 0.4px;
+        }
+        table.items .th-no, table.items .td-no {
+            text-align: center;
+            width: 36px;
+        }
+        table.items .th-sku { text-align: left; width: 150px; }
+        table.items .td-sku { font-family: DejaVu Sans Mono, monospace; }
+        table.items .th-nama { text-align: left; }
+        table.items .th-qty, table.items .td-qty {
+            text-align: right;
+            width: 90px;
+            font-family: DejaVu Sans Mono, monospace;
+        }
+
+        .catatan { margin-top: 20px; }
+        .catatan .label { font-weight: 700; margin-bottom: 6px; }
+        .catatan .body {
+            min-height: 40px;
+            color: #333;
+            white-space: pre-line;
+        }
+
         .footer {
             position: fixed;
-            bottom: -8mm;
+            bottom: -12mm;
             left: 0;
             right: 0;
             font-size: 9px;
-            color: #555;
+            color: #666;
         }
         .footer table { width: 100%; border-collapse: collapse; }
         .footer .right { text-align: right; }
@@ -84,38 +136,44 @@
     </style>
 </head>
 <body>
-    <table class="header">
+    <table class="top">
         <tr>
-            <td class="logo">
+            <td class="logo-cell">
                 @if (!empty($company['logo_url']))
                     <img src="{{ $company['logo_url'] }}" alt="Logo">
                 @endif
             </td>
-            <td class="title">Barang Masuk Pembelian</td>
+            <td class="title-cell">
+                <div class="title">Barang Masuk Pembelian</div>
+            </td>
         </tr>
     </table>
 
-    <table class="company-block">
+    <table class="info">
         <tr>
-            <td>
-                <span class="name">{{ $company['name'] ?? '—' }}</span>
-                <span class="kepada-label">Kepada:</span>
-                <span>{{ $supplierName }}</span>
-                <div>{{ $companyAddress }}</div>
+            <td class="left">
+                <div class="company-name">{{ $company['name'] ?? '—' }}</div>
+                @if (!empty($companyAddress))
+                    <div class="company-address">{{ $companyAddress }}</div>
+                @endif
+                <div class="kepada">
+                    <span class="label">Kepada:</span>
+                    <span>{{ $supplierName }}</span>
+                </div>
             </td>
-            <td class="info-right">
-                <table>
+            <td class="right">
+                <table class="meta-table">
                     <tr>
                         <td class="label">No PO</td>
-                        <td>{{ $po->po_number }}</td>
+                        <td class="value">{{ $po->po_number }}</td>
                     </tr>
                     <tr>
                         <td class="label">Tanggal</td>
-                        <td>{{ optional($po->order_date)->format('d M Y') ?? '—' }}</td>
+                        <td class="value">{{ optional($po->order_date)->format('d M Y') ?? '—' }}</td>
                     </tr>
                     <tr>
                         <td class="label">Lokasi</td>
-                        <td>{{ optional($po->location ?? null)->location_name ?? '—' }}</td>
+                        <td class="value">{{ optional($po->location ?? null)->location_name ?? '—' }}</td>
                     </tr>
                 </table>
             </td>
@@ -125,10 +183,10 @@
     <table class="items">
         <thead>
             <tr>
-                <th class="center" style="width:32px">NO</th>
-                <th style="width:140px">SKU</th>
-                <th>NAMA BARANG</th>
-                <th class="num" style="width:90px">QTY PESAN</th>
+                <th class="th-no">No</th>
+                <th class="th-sku">SKU</th>
+                <th class="th-nama">Nama Barang</th>
+                <th class="th-qty">Qty Pesan</th>
             </tr>
         </thead>
         <tbody>
@@ -139,20 +197,20 @@
                     $name = optional(optional($variant)->product)->name ?? optional($variant)->name ?? '—';
                 @endphp
                 <tr>
-                    <td class="center mono">{{ $i + 1 }}</td>
-                    <td class="mono">{{ $sku }}</td>
+                    <td class="td-no">{{ $i + 1 }}</td>
+                    <td class="td-sku">{{ $sku }}</td>
                     <td>{{ $name }}</td>
-                    <td class="num mono">{{ number_format((int) $item->qty, 0, ',', '.') }}</td>
+                    <td class="td-qty">{{ number_format((int) $item->qty, 0, ',', '.') }}</td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="4" class="center" style="padding: 18px;">Tidak ada item.</td>
+                    <td colspan="4" style="text-align:center; padding:22px;">Tidak ada item.</td>
                 </tr>
             @endforelse
         </tbody>
     </table>
 
-    <div class="notes">
+    <div class="catatan">
         <div class="label">Catatan :</div>
         <div class="body">{{ $po->notes ?? '' }}</div>
     </div>
