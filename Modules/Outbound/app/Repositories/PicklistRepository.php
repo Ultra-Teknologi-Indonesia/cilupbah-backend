@@ -146,7 +146,7 @@ class PicklistRepository
     {
         $query = PicklistItem::query()
             ->select('picklist_items.*')
-            ->leftJoin('bins', 'picklist_items.bin_id', '=', 'bins.id')
+            ->leftJoin('location_bins', 'picklist_items.bin_id', '=', 'location_bins.id')
             ->leftJoin('sales_orders', 'picklist_items.order_id', '=', 'sales_orders.id')
             ->leftJoin('product_variants', 'picklist_items.item_id', '=', 'product_variants.id')
             ->leftJoin('products', 'product_variants.product_id', '=', 'products.id')
@@ -172,7 +172,7 @@ class PicklistRepository
                 'package_no', 
                 'item_status',
                 \Spatie\QueryBuilder\AllowedSort::field('sku', 'picklist_items.sku'),
-                \Spatie\QueryBuilder\AllowedSort::field('bin_code', 'bins.bin_final_code'),
+                \Spatie\QueryBuilder\AllowedSort::field('bin_code', 'location_bins.bin_final_code'),
                 \Spatie\QueryBuilder\AllowedSort::field('order_no', 'sales_orders.salesorder_no'),
                 \Spatie\QueryBuilder\AllowedSort::field('tracking_number', 'sales_orders.tracking_number'),
                 \Spatie\QueryBuilder\AllowedSort::field('produk', 'products.name')
