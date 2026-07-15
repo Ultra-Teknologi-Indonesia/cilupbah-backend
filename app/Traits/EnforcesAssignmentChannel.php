@@ -81,10 +81,11 @@ trait EnforcesAssignmentChannel
         $assignedTo = $doc->getAttribute($this->assignedToColumn($doc));
 
         if ($assignedTo === null) {
-            throw new AssignmentLockException(
-                assignedToName: 'belum di-assign',
-                assignedToId: null,
-                assignedAt: null,
+            throw new \App\Exceptions\UserFacingException(
+                title: 'Dokumen belum di-assign',
+                message: 'Dokumen ini belum di-assign ke siapa pun. Mobile tidak boleh menerima tanpa assignment. Admin harus assign dulu dari web.',
+                status: 409,
+                errors: ['code' => 'NOT_ASSIGNED'],
             );
         }
 

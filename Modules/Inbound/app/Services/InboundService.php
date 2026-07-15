@@ -271,8 +271,16 @@ class InboundService
                 throw new \Exception("Dokumen Inbound tidak ditemukan.");
             }
 
-            // Fix H1 (mobile STRICT): mutasi mobile hanya oleh assignee.
-            $this->assertMobileCanMutate($inbound, (string) $data['received_by']);
+            // Channel-aware guard:
+            // - Web (admin buat Penerimaan Barang manual, tanpa assign staff mobile) → assertWebCanMutate.
+            //   Sah kalau dokumen belum di-assign atau sudah pernah RECEIVED (once_received_at).
+            // - Mobile (staff scan dari HP) → assertMobileCanMutate STRICT (H1) —
+            //   wajib ada assignment, actor = assignee.
+            if ($this->currentChannel() === \App\Enums\ClientChannelEnum::MOBILE) {
+                $this->assertMobileCanMutate($inbound, (string) $data['received_by']);
+            } else {
+                $this->assertWebCanMutate($inbound);
+            }
 
             if (! $inbound->isReceivable()) {
                 throw new \Exception("Inbound sudah berstatus {$inbound->status}, tidak bisa menerima barang.");
