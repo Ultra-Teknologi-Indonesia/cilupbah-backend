@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
+use Modules\Auth\Exceptions\PasswordResetException;
 use Modules\Auth\Repositories\UserRepository;
 
 class PasswordResetService
@@ -72,23 +72,32 @@ class PasswordResetService
             ->first();
 
         if (! $row) {
-            throw ValidationException::withMessages([
-                'otp' => 'Kode OTP tidak valid atau sudah kedaluwarsa. Silakan minta kode baru.',
-            ]);
+            throw new PasswordResetException(
+                title: 'Kode OTP tidak berlaku',
+                userMessage: 'Kode belum diminta atau sudah kedaluwarsa. Kembali ke halaman lupa kata sandi dan minta kode baru.',
+                errors: ['otp' => ['Kode OTP tidak berlaku.']],
+            );
         }
 
         if ($row->attempts >= self::MAX_ATTEMPTS) {
             $row->update(['expires_at' => now()]);
-            throw ValidationException::withMessages([
-                'otp' => 'Terlalu banyak percobaan. Silakan minta kode baru.',
-            ]);
+            throw new PasswordResetException(
+                title: 'Terlalu banyak percobaan',
+                userMessage: 'Anda salah memasukkan kode terlalu banyak. Demi keamanan, kode ini dinonaktifkan — silakan minta kode baru.',
+                errors: ['otp' => ['Kode dinonaktifkan setelah 5 kali salah.']],
+            );
         }
 
         if (! Hash::check($otp, $row->otp_hash)) {
             $row->increment('attempts');
-            throw ValidationException::withMessages([
-                'otp' => 'Kode OTP salah.',
-            ]);
+            $sisa = max(0, self::MAX_ATTEMPTS - $row->attempts);
+            throw new PasswordResetException(
+                title: 'Kode OTP salah',
+                userMessage: $sisa > 0
+                    ? "Periksa kembali 6 digit kode yang kami kirim ke email Anda. Sisa {$sisa} percobaan sebelum kode dinonaktifkan."
+                    : 'Periksa kembali 6 digit kode yang kami kirim ke email Anda.',
+                errors: ['otp' => ['Kode OTP salah.']],
+            );
         }
 
         $plainToken = Str::random(64);
@@ -119,16 +128,20 @@ class PasswordResetService
             ->first();
 
         if (! $row || ! Hash::check($token, (string) $row->reset_token_hash)) {
-            throw ValidationException::withMessages([
-                'reset_token' => 'Sesi reset kata sandi tidak valid atau sudah kedaluwarsa. Silakan mulai ulang.',
-            ]);
+            throw new PasswordResetException(
+                title: 'Sesi reset kedaluwarsa',
+                userMessage: 'Sesi reset kata sandi Anda sudah tidak berlaku (lewat 15 menit atau tautan tidak cocok). Silakan mulai ulang dari halaman lupa kata sandi.',
+                errors: ['reset_token' => ['Sesi reset tidak valid.']],
+            );
         }
 
         $user = $this->userRepository->findByEmail($email);
         if (! $user) {
-            throw ValidationException::withMessages([
-                'reset_token' => 'Akun tidak ditemukan.',
-            ]);
+            throw new PasswordResetException(
+                title: 'Akun tidak ditemukan',
+                userMessage: 'Kami tidak dapat menemukan akun untuk email ini. Silakan mulai ulang dari halaman lupa kata sandi.',
+                errors: ['email' => ['Akun tidak ditemukan.']],
+            );
         }
 
         $user->password = $newPassword;
