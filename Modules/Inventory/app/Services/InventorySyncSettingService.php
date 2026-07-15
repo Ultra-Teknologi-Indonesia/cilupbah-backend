@@ -51,6 +51,7 @@ class InventorySyncSettingService
     {
         return ChannelShop::query()
             ->where('is_active', true)
+            ->whereNull('disconnected_at')
             ->when(! empty($filters['channel_code']), fn ($q) => $q->whereHas('channel', fn ($c) => $c->where('code', $filters['channel_code'])))
             ->when(! empty($filters['channel_shop_id']), fn ($q) => $q->where('id', $filters['channel_shop_id']))
             ->with('channel:id,code')
@@ -152,6 +153,8 @@ class InventorySyncSettingService
 
         if (! empty($filters['channel_code'])) {
             return ChannelShop::query()
+                ->where('is_active', true)
+                ->whereNull('disconnected_at')
                 ->whereHas('channel', fn ($c) => $c->where('code', $filters['channel_code']))
                 ->pluck('id')
                 ->all();
