@@ -14,8 +14,14 @@ class InboundRepository
 {
     public function getAllPaginated(int $limit = 10)
     {
-        $paginator = QueryBuilder::for(Inbound::class)
-            ->with(['location:id,location_name', 'items.variant:id,sku,product_id', 'assignments.worker:id,name', 'putaways:id,source_id,status,assigned_to', 'putaways.assignee:id,name', 'assignee:id,name', 'assignedByUser:id,name'])
+        $query = QueryBuilder::for(Inbound::class)
+            ->with(['location:id,location_name', 'items.variant:id,sku,product_id', 'assignments.worker:id,name', 'putaways:id,source_id,status,assigned_to', 'putaways.assignee:id,name', 'assignee:id,name', 'assignedByUser:id,name']);
+
+        if (! request()->query('filter.status')) {
+            $query->where('status', '!=', Inbound::STATUS_CANCELLED);
+        }
+
+        $paginator = $query
             ->allowedFilters(
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('type'),
