@@ -279,6 +279,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     });
 
     Route::prefix('putaway')->group(function () {
+        Route::get('/counts', [PutawayController::class, 'counts'])->middleware('role_or_permission:owner|view-penempatan')->name('putaway.counts');
         Route::get('/', [PutawayController::class, 'index'])->middleware('role_or_permission:owner|view-penempatan')->name('putaway.index');
         Route::post('/', [PutawayController::class, 'store'])->middleware('role_or_permission:owner|create-penempatan')->name('putaway.store');
         Route::get('/not-started', [PutawayController::class, 'notStarted'])->middleware('role_or_permission:owner|view-penempatan')->name('putaway.notStarted');

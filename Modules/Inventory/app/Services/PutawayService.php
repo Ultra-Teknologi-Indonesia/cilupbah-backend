@@ -74,6 +74,43 @@ class PutawayService
         return $this->putawayRepository->getByStatus($status, $limit);
     }
 
+    /**
+     * Jumlah putaway per status untuk badge angka di filter tabs mobile.
+     * 1 request untuk semua tab, tidak perlu 3x paginated call ke list.
+     */
+    public function getStatusCounts(?string $locationId = null): array
+    {
+        $query = Putaway::query();
+        if ($locationId !== null && $locationId !== '') {
+            $query->where('location_id', $locationId);
+        }
+
+        $rows = $query
+            ->selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status')
+            ->toArray();
+
+        $statuses = [
+            Putaway::STATUS_NOT_STARTED,
+            Putaway::STATUS_IN_PROGRESS,
+            Putaway::STATUS_COMPLETED,
+            Putaway::STATUS_CANCELLED,
+        ];
+
+        $counts = [];
+        foreach ($statuses as $s) {
+            $counts[$s] = (int) ($rows[$s] ?? 0);
+        }
+        foreach ($rows as $s => $n) {
+            if (! array_key_exists($s, $counts)) {
+                $counts[$s] = (int) $n;
+            }
+        }
+
+        return $counts;
+    }
+
     public function listBins(string $locationId, ?string $search = null): array
     {
         $bins = $this->putawayRepository->getPutawayBins($locationId, $search);

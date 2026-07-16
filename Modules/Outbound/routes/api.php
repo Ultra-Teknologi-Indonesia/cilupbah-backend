@@ -31,6 +31,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::get('packlists/on-packing', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('on-packing', $request))->name('outbound.packlists.on-packing');
     Route::get('packlists/finish-pack', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('finish-pack', $request))->name('outbound.packlists.finish-pack');
 
+    Route::get('picklists/counts', [PicklistController::class, 'counts'])->name('outbound.picklists.counts')->middleware('role_or_permission:owner|view-picking');
     Route::get('picklists', [PicklistController::class, 'index'])->name('outbound.picklists.index')->middleware('role_or_permission:owner|view-picking');
     Route::post('picklists', [PicklistController::class, 'store'])->name('outbound.picklists.store')->middleware('role_or_permission:owner|create-picking');
     Route::get('picklists/{id}', [PicklistController::class, 'show'])->name('outbound.picklists.show')->middleware('role_or_permission:owner|view-picking');

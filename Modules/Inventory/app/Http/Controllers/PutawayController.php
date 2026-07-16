@@ -179,6 +179,41 @@ class PutawayController extends Controller
     }
 
     #[OA\Get(
+        path: '/api/v1/putaway/counts',
+        summary: 'Get count of putaway documents grouped by status',
+        description: 'Dedicated endpoint untuk badge angka di filter tabs mobile — 1 request untuk semua tab, tanpa perlu 3x paginated call.',
+        security: [['bearerAuth' => []]],
+        tags: ['Putaway'],
+        parameters: [
+            new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Jumlah putaway per status',
+                content: new OA\JsonContent(properties: [
+                    new OA\Property(property: 'status', type: 'string', example: 'success'),
+                    new OA\Property(property: 'data', type: 'object', example: [
+                        'NOT_STARTED' => 3,
+                        'IN_PROGRESS' => 1,
+                        'COMPLETED' => 5,
+                        'CANCELLED' => 0,
+                    ]),
+                ])
+            ),
+        ]
+    )]
+    public function counts(Request $request): JsonResponse
+    {
+        $filter = (array) $request->query('filter', []);
+        $counts = $this->putawayService->getStatusCounts(
+            locationId: $filter['location_id'] ?? null,
+        );
+
+        return $this->successResponse($counts, 'Jumlah putaway per status');
+    }
+
+    #[OA\Get(
         path: '/api/v1/putaway/not-started',
         summary: 'Get list of not started putaway documents',
         security: [['bearerAuth' => []]],
