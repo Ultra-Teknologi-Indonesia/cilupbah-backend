@@ -932,12 +932,13 @@ class InboundController extends Controller
 
     #[OA\Get(
         path: '/api/v1/inbounds/scan/{qrCode}',
-        summary: 'Scan QR — lookup inbound item by UUID primary key',
-        description: 'Pekerja scan QR code pada label barang. UUID pada QR = primary key inbound_items. Mengembalikan detail item inbound beserta info gudang dan produk.',
+        summary: 'Scan QR — lookup inbound item by SKU/barcode (atau UUID untuk backward compat)',
+        description: 'Pekerja scan QR code pada label barang. Isi QR biasanya SKU/barcode. Query param inbound_id (opsional tapi disarankan) menyempitkan lookup ke inbound yang sedang dibuka user — supaya SKU yang muncul di banyak inbound aktif tidak salah pilih.',
         security: [['bearerAuth' => []]],
         tags: ['Inbounds - QR Scan'],
         parameters: [
-            new OA\Parameter(name: 'qrCode', in: 'path', required: true, description: 'UUID primary key inbound item (= QR code label)', schema: new OA\Schema(type: 'string', example: '019ea2afad1d733eafb905816d10590e'))
+            new OA\Parameter(name: 'qrCode', in: 'path', required: true, description: 'Isi QR: SKU / barcode / UUID inbound_item.id', schema: new OA\Schema(type: 'string', example: 'DENIM-GREY-17PM')),
+            new OA\Parameter(name: 'inbound_id', in: 'query', required: false, description: 'Scope lookup ke inbound tertentu (UUID). Tanpa ini, backend jatuh ke "latest" — bisa salah inbound.', schema: new OA\Schema(type: 'string'))
         ],
         responses: [
             new OA\Response(
@@ -952,10 +953,10 @@ class InboundController extends Controller
             new OA\Response(response: 404, description: 'QR Code tidak ditemukan')
         ]
     )]
-    public function scanQr(string $qrCode): JsonResponse
+    public function scanQr(string $qrCode, Request $request): JsonResponse
     {
         try {
-            $item = $this->inboundService->lookupByQr($qrCode);
+            $item = $this->inboundService->lookupByQr($qrCode, $request->query('inbound_id'));
             return $this->successResponse($item, 'Item ditemukan');
         } catch (\Exception $e) {
             return $this->errorResponse(
