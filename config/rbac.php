@@ -178,6 +178,7 @@ return [
         'picker' => ['picking:view', 'picking:edit', 'pesanan:view', 'posisi-stok:view', 'dashboard:view'],
         'checker' => ['packing:view', 'packing:edit', 'pesanan:view', 'posisi-stok:view', 'dashboard:view'],
         'handover' => ['pengiriman:view', 'pengiriman:edit', 'pesanan:view', 'dashboard:view'],
+        'shipper' => ['pengiriman:view', 'pengiriman:create', 'pengiriman:edit', 'pesanan:view', 'dashboard:view'],
         'putaway' => ['penempatan:*', 'barang-masuk:view', 'manajemen-rak:view', 'posisi-stok:view', 'dashboard:view'],
 
         'purchasing' => [

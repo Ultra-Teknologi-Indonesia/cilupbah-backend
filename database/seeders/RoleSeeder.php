@@ -18,6 +18,7 @@ class RoleSeeder extends Seeder
             'picker' => 'Bertanggung jawab untuk mengambil barang dari rak penyimpanan sesuai dengan detail pesanan.',
             'checker' => 'Bertanggung jawab untuk memeriksa kualitas, kuantitas, dan kesesuaian barang sebelum dipacking.',
             'handover' => 'Bertanggung jawab untuk menyerahkan paket pesanan yang sudah dikemas kepada pihak kurir/ekspedisi.',
+            'shipper' => 'Bertanggung jawab untuk memasukkan pesanan ke pengiriman dan memastikan paket diserahkan ke kurir/ekspedisi sesuai jadwal.',
             'cs marketplace' => 'Bertanggung jawab untuk melayani pertanyaan, membalas chat, dan menangani komplain pelanggan di marketplace.',
             'putaway' => 'Bertanggung jawab untuk menyimpan dan memindahkan barang yang baru datang ke rak penyimpanan yang tepat.',
             'kepala gudang' => 'Bertanggung jawab penuh untuk memimpin, mengawasi, dan memastikan efisiensi seluruh aktivitas gudang.',
