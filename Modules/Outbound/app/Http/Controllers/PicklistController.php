@@ -72,6 +72,42 @@ class PicklistController extends Controller
         return $this->successPaginatedResponse(PicklistResource::collection($data));
     }
 
+    #[OA\Get(
+        path: '/api/v1/outbound/picklists/counts',
+        summary: 'Get count of picklists grouped by status',
+        description: 'Dedicated endpoint untuk badge angka di filter tabs mobile — 1 request untuk semua tab, tanpa perlu 3x paginated call.',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Picklist'],
+        parameters: [
+            new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Jumlah picklist per status',
+                content: new OA\JsonContent(properties: [
+                    new OA\Property(property: 'status', type: 'string', example: 'success'),
+                    new OA\Property(property: 'data', type: 'object', example: [
+                        'DRAFT' => 4,
+                        'IN_PROGRESS' => 1,
+                        'COMPLETED' => 2,
+                        'FAILED' => 0,
+                        'CANCELLED' => 0,
+                    ]),
+                ])
+            ),
+        ]
+    )]
+    public function counts(Request $request): JsonResponse
+    {
+        $filter = (array) $request->query('filter', []);
+        $counts = $this->picklistService->getStatusCounts(
+            locationId: $filter['location_id'] ?? null,
+        );
+
+        return $this->successResponse($counts, 'Jumlah picklist per status');
+    }
+
     #[OA\Post(
         path: '/api/v1/outbound/picklists',
         summary: 'Create a new picklist',

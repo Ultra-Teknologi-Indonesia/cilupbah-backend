@@ -144,6 +144,44 @@ class PicklistService
         return $this->picklistRepository->getAllPaginated($limit);
     }
 
+    /**
+     * Jumlah picklist per status untuk badge angka di filter tabs mobile.
+     * 1 request untuk semua tab, tidak perlu 3x paginated call ke list.
+     */
+    public function getStatusCounts(?string $locationId = null): array
+    {
+        $query = Picklist::query();
+        if ($locationId !== null && $locationId !== '') {
+            $query->where('location_id', $locationId);
+        }
+
+        $rows = $query
+            ->selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status')
+            ->toArray();
+
+        $statuses = [
+            Picklist::STATUS_DRAFT,
+            Picklist::STATUS_IN_PROGRESS,
+            Picklist::STATUS_COMPLETED,
+            Picklist::STATUS_FAILED,
+            Picklist::STATUS_CANCELLED,
+        ];
+
+        $counts = [];
+        foreach ($statuses as $s) {
+            $counts[$s] = (int) ($rows[$s] ?? 0);
+        }
+        foreach ($rows as $s => $n) {
+            if (! array_key_exists($s, $counts)) {
+                $counts[$s] = (int) $n;
+            }
+        }
+
+        return $counts;
+    }
+
     public function getById(string $id): ?Picklist
     {
         return $this->picklistRepository->findById($id);
