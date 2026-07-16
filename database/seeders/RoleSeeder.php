@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\Permission;
 use App\Models\Role;
 use Illuminate\Database\Seeder;
 
@@ -30,26 +29,6 @@ class RoleSeeder extends Seeder
             $roleModel = Role::firstOrCreate(['name' => strtolower($role), 'guard_name' => 'web']);
             $roleModel->description = $description;
             $roleModel->save();
-        }
-
-        $permissions = [
-            'view-user-history',
-            'view-user',
-            'create-user',
-            'edit-user',
-            'delete-user',
-            'export-user',
-            'view-dashboard',
-            'force-logout-user',
-            'view-role',
-            'create-role',
-            'edit-role',
-            'delete-role',
-            'view-permission',
-        ];
-
-        foreach ($permissions as $permission) {
-            Permission::firstOrCreate(['name' => $permission, 'guard_name' => 'web']);
         }
     }
 }

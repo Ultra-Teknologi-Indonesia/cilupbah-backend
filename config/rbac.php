@@ -155,6 +155,7 @@ return [
     ],
 
     'defaults' => [
+        'owner' => ['*'],
         'admin' => ['*'],
 
         'kepala gudang' => [
@@ -164,22 +165,37 @@ return [
         ],
 
         'leader outbound' => [
-            'barang-keluar:*', 'picking:*', 'packing:*', 'pengiriman:*',
+            'group:gudang:*',
             'pesanan:view', 'posisi-stok:view', 'dashboard:view',
             'laporan-gudang:*',
         ],
 
         'leader inbound' => [
-            'barang-masuk:*', 'penempatan:*', 'manajemen-rak:*', 'permintaan-restock:*',
+            'group:gudang:*',
             'produk:view', 'posisi-stok:view', 'dashboard:view',
             'laporan-persediaan:*',
         ],
 
-        'picker' => ['picking:view', 'picking:edit', 'pesanan:view', 'posisi-stok:view', 'dashboard:view'],
-        'checker' => ['packing:view', 'packing:edit', 'pesanan:view', 'posisi-stok:view', 'dashboard:view'],
-        'handover' => ['pengiriman:view', 'pengiriman:edit', 'pesanan:view', 'dashboard:view'],
-        'shipper' => ['pengiriman:view', 'pengiriman:create', 'pengiriman:edit', 'pesanan:view', 'dashboard:view'],
-        'putaway' => ['penempatan:*', 'barang-masuk:view', 'manajemen-rak:view', 'posisi-stok:view', 'dashboard:view'],
+        'picker' => [
+            'group:gudang:*',
+            'pesanan:view', 'posisi-stok:view', 'dashboard:view',
+        ],
+        'checker' => [
+            'group:gudang:*',
+            'pesanan:view', 'posisi-stok:view', 'dashboard:view',
+        ],
+        'handover' => [
+            'group:gudang:*',
+            'pesanan:view', 'dashboard:view',
+        ],
+        'shipper' => [
+            'group:gudang:*',
+            'pesanan:view', 'dashboard:view',
+        ],
+        'putaway' => [
+            'group:gudang:*',
+            'posisi-stok:view', 'dashboard:view',
+        ],
 
         'purchasing' => [
             'group:pembelian:*',
@@ -188,13 +204,16 @@ return [
         ],
 
         'warehouse' => [
-            'group:persediaan:*', 'barang-masuk:*', 'penempatan:*', 'manajemen-rak:*',
+            'group:gudang:*', 'group:persediaan:*',
             'produk:view', 'dashboard:view',
         ],
 
         'cs marketplace' => [
             'pesanan:view', 'pesanan:edit',
             'retur-penjualan:*', 'kontak-pelanggan:*',
+            'garansi:view', 'garansi:edit',
+            'faktur-penjualan:view',
+            'pembayaran-penjualan:view',
             'integrasi-channel:view', 'dashboard:view',
         ],
     ],

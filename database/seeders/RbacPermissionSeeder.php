@@ -23,9 +23,7 @@ class RbacPermissionSeeder extends Seeder
             }
 
             $permissionNames = PermissionCatalog::resolveGrants($tokens);
-            if ($permissionNames !== []) {
-                $role->givePermissionTo($permissionNames);
-            }
+            $role->syncPermissions($permissionNames);
         }
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
