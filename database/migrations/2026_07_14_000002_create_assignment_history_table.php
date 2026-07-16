@@ -9,12 +9,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('assignment_history', function (Blueprint $table) {
-            $table->char('id', 26)->primary();
+            $table->uuid('id')->primary();
             $table->string('subject_type');
-            $table->char('subject_id', 26);
-            $table->char('from_user_id', 26)->nullable();
-            $table->char('to_user_id', 26)->nullable();
-            $table->char('actor_id', 26)->nullable();
+            $table->uuid('subject_id');
+            $table->uuid('from_user_id')->nullable();
+            $table->uuid('to_user_id')->nullable();
+            $table->uuid('actor_id')->nullable();
             $table->string('action', 32);
             $table->string('channel', 16)->nullable();
             $table->string('reason_code', 32)->nullable();
