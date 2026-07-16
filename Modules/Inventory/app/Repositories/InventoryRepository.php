@@ -550,10 +550,12 @@ class InventoryRepository
     public function getStockedItems(string $locationId, string $search, int $perPage)
     {
         $sub = DB::table('inventories')
-            ->select('item_id', DB::raw('SUM(on_hand) as total_on_hand'))
-            ->where('location_id', $locationId)
-            ->groupBy('item_id')
-            ->havingRaw('SUM(on_hand) > 0');
+            ->join('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
+            ->select('inventories.item_id', DB::raw('SUM(inventories.on_hand) as total_on_hand'))
+            ->where('inventories.location_id', $locationId)
+            ->where('location_bins.bin_final_code', '!=', 'DEFAULT')
+            ->groupBy('inventories.item_id')
+            ->havingRaw('SUM(inventories.on_hand) > 0');
 
         $query = ProductVariant::query()
             ->joinSub($sub, 'stock_summary', function ($join) {
