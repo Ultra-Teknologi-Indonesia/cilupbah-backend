@@ -578,35 +578,10 @@ class InboundService
                 }
             }
 
-            // Fase 2: selama masih ada participant ACTIVE, status maksimal PARTIAL —
-            // walau sum(received_qty) == expected. Status naik ke RECEIVED hanya di
-            // markParticipantDone saat semua participant DONE.
-            $inbound->load('items');
-            $hasActive = InboundParticipant::where('inbound_id', $inbound->id)
-                ->where('status', InboundParticipant::STATUS_ACTIVE)
-                ->exists();
-
-            if ($hasActive) {
-                $this->inboundRepository->updateStatus($inbound, Inbound::STATUS_PARTIAL);
-            } else {
-                // Tidak ada participant ACTIVE (kasus: web-created receive lama, atau semua sudah DONE).
-                $allReceived = $inbound->items->every(fn ($item) => $item->isFullyReceived());
-                $newStatus = $allReceived ? Inbound::STATUS_RECEIVED : Inbound::STATUS_PARTIAL;
-                $this->inboundRepository->updateStatus($inbound, $newStatus);
-
-                if ($allReceived) {
-                    foreach ($inbound->items as $item) {
-                        $disc = $item->expected_qty - $item->received_qty - ($item->rejected_qty ?? 0);
-                        if ($disc !== 0) {
-                            $this->inboundRepository->updateItemDiscrepancy(
-                                $item->id,
-                                $disc,
-                                "Expected {$item->expected_qty}, received {$item->received_qty}"
-                            );
-                        }
-                    }
-                }
-            }
+            // Fase E (16 Jul): admin-only finalize. Receive event tidak pernah
+            // menaikkan status ke RECEIVED otomatis. Status max PARTIAL selama
+            // belum di-close oleh admin via closeReceiving().
+            $this->inboundRepository->updateStatus($inbound, Inbound::STATUS_PARTIAL);
 
             // F9: bump updated_version_at supaya optimistic lock web tetap valid pasca mobile mutate.
             $inbound->forceFill(['updated_version_at' => now()])->save();
@@ -614,25 +589,12 @@ class InboundService
             return $this->getById($inboundId);
         });
 
-        if ($result && $result->status === Inbound::STATUS_RECEIVED) {
-            $this->notifications->toPermission(self::NOTIF_PENEMPATAN, [
-                'type' => 'inbound_received',
-                'title' => 'Penerimaan selesai, siap penempatan',
-                'message' => "Dokumen {$result->transaction_number} sudah diterima penuh dan siap di-putaway.",
-                'data' => [
-                    'inbound_id' => $result->id,
-                    'transaction_number' => $result->transaction_number,
-                    'link' => $this->inboundLink($result->id),
-                ],
-            ], excludeUserIds: array_filter([$data['received_by'] ?? null]));
-        }
-
         return $result;
     }
 
     public function closeReceiving(string $inboundId, string $closedBy): Inbound
     {
-        return DB::transaction(function () use ($inboundId, $closedBy) {
+        $result = DB::transaction(function () use ($inboundId, $closedBy) {
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
 
             if (! $inbound) {
@@ -660,10 +622,37 @@ class InboundService
                 }
             }
 
+            // Fase E: admin close = force-withdraw semua participant ACTIVE.
+            // Session mobile ditutup otomatis; lock web dilepas.
+            InboundParticipant::where('inbound_id', $inbound->id)
+                ->where('status', InboundParticipant::STATUS_ACTIVE)
+                ->update([
+                    'status' => InboundParticipant::STATUS_WITHDRAWN,
+                    'withdrawn_by' => $closedBy,
+                    'withdraw_reason' => 'admin_finalize',
+                    'withdrawn_at' => now(),
+                ]);
+
             $this->inboundRepository->updateStatus($inbound, Inbound::STATUS_RECEIVED);
+            $inbound->forceFill(['updated_version_at' => now()])->save();
 
             return $this->getById($inboundId);
         });
+
+        if ($result && $result->status === Inbound::STATUS_RECEIVED) {
+            $this->notifications->toPermission(self::NOTIF_PENEMPATAN, [
+                'type' => 'inbound_received',
+                'title' => 'Penerimaan selesai, siap penempatan',
+                'message' => "Dokumen {$result->transaction_number} sudah diselesaikan dan siap di-putaway.",
+                'data' => [
+                    'inbound_id' => $result->id,
+                    'transaction_number' => $result->transaction_number,
+                    'link' => $this->inboundLink($result->id),
+                ],
+            ], excludeUserIds: array_filter([$closedBy]));
+        }
+
+        return $result;
     }
 
     public function processPutaway(string $inboundId, array $data): Inbound
@@ -982,92 +971,6 @@ class InboundService
     }
 
     /**
-     * DEPRECATED alias — panggil markParticipantDone($inboundId, $actorId).
-     * Dipertahankan untuk kompat mobile client versi lama.
-     */
-    public function markReceived(string $inboundId, string $actorId): Inbound
-    {
-        return $this->markParticipantDone($inboundId, $actorId);
-    }
-
-    /**
-     * Mobile "Tandai Selesai" per user (fase 2).
-     * Set participant DONE. Status inbound naik ke RECEIVED hanya kalau semua participant DONE.
-     * Set once_received_at pertama kali capai kondisi tersebut → unlock web edit.
-     */
-    public function markParticipantDone(string $inboundId, string $actorId): Inbound
-    {
-        return DB::transaction(function () use ($inboundId, $actorId) {
-            $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
-            if (! $inbound) {
-                throw new \Exception('Dokumen Inbound tidak ditemukan.');
-            }
-
-            if ($this->isCancelled($inbound) || $this->isFinalCompletion($inbound)) {
-                throw new UserFacingException(
-                    title: 'Sesi sudah berakhir',
-                    message: "Inbound berstatus {$inbound->status}, tidak bisa tandai Selesai lagi.",
-                    status: 409,
-                    errors: ['code' => 'INBOUND_LOCKED_FINAL'],
-                );
-            }
-
-            $participant = InboundParticipant::where('inbound_id', $inboundId)
-                ->where('user_id', $actorId)
-                ->lockForUpdate()
-                ->first();
-
-            if (! $participant) {
-                throw new UserFacingException(
-                    title: 'Belum bergabung dalam sesi',
-                    message: 'Anda belum mulai penerimaan untuk dokumen ini. Scan barang pertama untuk gabung.',
-                    status: 409,
-                    errors: ['code' => 'NOT_PARTICIPANT'],
-                );
-            }
-
-            if ($participant->status === InboundParticipant::STATUS_WITHDRAWN) {
-                throw new UserFacingException(
-                    title: 'Anda ditarik dari sesi',
-                    message: 'Anda tidak bisa menandai Selesai karena sudah ditarik dari sesi ini.',
-                    status: 403,
-                    errors: ['code' => 'PARTICIPANT_WITHDRAWN'],
-                );
-            }
-
-            if ($participant->status === InboundParticipant::STATUS_DONE) {
-                // Idempoten.
-                return $inbound->fresh();
-            }
-
-            $participant->update([
-                'status' => InboundParticipant::STATUS_DONE,
-                'completed_at' => now(),
-            ]);
-
-            // Cek: masih ada participant ACTIVE?
-            $stillActive = InboundParticipant::where('inbound_id', $inboundId)
-                ->where('status', InboundParticipant::STATUS_ACTIVE)
-                ->exists();
-
-            if (! $stillActive) {
-                // Semua participant DONE (atau WITHDRAWN) → sesi ditutup.
-                $inbound->forceFill([
-                    'once_received_at' => $inbound->once_received_at ?? now(),
-                    'updated_version_at' => now(),
-                ])->save();
-
-                $this->recomputeStatus($inbound->fresh('items'));
-            } else {
-                // Masih ada rekan aktif → tetap PARTIAL, tapi bump version supaya web tahu ada perubahan.
-                $inbound->forceFill(['updated_version_at' => now()])->save();
-            }
-
-            return $inbound->fresh();
-        });
-    }
-
-    /**
      * Explicit join tanpa scan — mobile buka layar tapi belum scan apa-apa.
      */
     public function joinSession(string $inboundId, string $userId): Inbound
@@ -1081,69 +984,6 @@ class InboundService
             $this->assertMobileCanMutate($inbound, $userId);
 
             return $inbound->fresh('participants');
-        });
-    }
-
-    /**
-     * Self-leave (mobile): hanya kalau participant belum sempat input receipt apa pun.
-     */
-    public function leaveSession(string $inboundId, string $userId): Inbound
-    {
-        return DB::transaction(function () use ($inboundId, $userId) {
-            $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
-            if (! $inbound) {
-                throw new \Exception('Dokumen Inbound tidak ditemukan.');
-            }
-
-            $participant = InboundParticipant::where('inbound_id', $inboundId)
-                ->where('user_id', $userId)
-                ->lockForUpdate()
-                ->first();
-
-            if (! $participant) {
-                return $inbound->fresh();
-            }
-
-            if ($participant->status !== InboundParticipant::STATUS_ACTIVE) {
-                throw new UserFacingException(
-                    title: 'Tidak bisa keluar',
-                    message: 'Sesi Anda sudah tidak aktif.',
-                    status: 409,
-                    errors: ['code' => 'PARTICIPANT_NOT_ACTIVE'],
-                );
-            }
-
-            $receiptCount = DB::table('inbound_receipts as r')
-                ->join('inbound_items as i', 'r.inbound_item_id', '=', 'i.id')
-                ->where('i.inbound_id', $inboundId)
-                ->where('r.received_by_user_id', $userId)
-                ->count();
-
-            if ($receiptCount > 0) {
-                throw new UserFacingException(
-                    title: 'Sudah ada input',
-                    message: 'Anda sudah menginput receipt. Tekan Tandai Selesai untuk mengakhiri sesi.',
-                    status: 409,
-                    errors: ['code' => 'PARTICIPANT_HAS_RECEIPTS'],
-                );
-            }
-
-            $participant->update([
-                'status' => InboundParticipant::STATUS_WITHDRAWN,
-                'withdrawn_by' => $userId,
-                'withdraw_reason' => 'self_leave',
-                'withdrawn_at' => now(),
-            ]);
-
-            $stillActive = InboundParticipant::where('inbound_id', $inboundId)
-                ->where('status', InboundParticipant::STATUS_ACTIVE)
-                ->exists();
-
-            if (! $stillActive && $inbound->receiving_started_at !== null) {
-                $this->recomputeStatus($inbound->fresh('items'));
-            }
-
-            return $inbound->fresh();
         });
     }
 
@@ -1192,17 +1032,10 @@ class InboundService
                 'withdrawn_at' => now(),
             ]);
 
-            $stillActive = InboundParticipant::where('inbound_id', $inboundId)
-                ->where('status', InboundParticipant::STATUS_ACTIVE)
-                ->exists();
-
-            if (! $stillActive && $inbound->receiving_started_at !== null) {
-                $inbound->forceFill([
-                    'once_received_at' => $inbound->once_received_at ?? now(),
-                    'updated_version_at' => now(),
-                ])->save();
-                $this->recomputeStatus($inbound->fresh('items'));
-            }
+            // Fase E: withdraw hanya melepas 1 participant. Status inbound TIDAK naik
+            // ke RECEIVED otomatis — hanya admin closeReceiving yang bisa. Tapi bump
+            // updated_version_at supaya FE tahu ada perubahan participant.
+            $inbound->forceFill(['updated_version_at' => now()])->save();
 
             return $inbound->fresh();
         });

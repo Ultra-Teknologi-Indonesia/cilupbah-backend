@@ -145,22 +145,31 @@ class MultiParticipantReceiveTest extends TestCase
         );
     }
 
-    public function test_all_participants_done_unlocks_web_and_status_received(): void
+    public function test_admin_close_receiving_finalizes_and_withdraws_active_participants(): void
     {
         $inbound = $this->makeInbound(100);
         $this->receive($inbound, $this->staff['s1']->id, 50);
         $this->receive($inbound, $this->staff['s2']->id, 50);
 
-        app(InboundService::class)->markParticipantDone($inbound->id, $this->staff['s1']->id);
         $mid = $inbound->fresh();
-        $this->assertEquals(Inbound::STATUS_PARTIAL, $mid->status, '1/2 selesai — masih PARTIAL');
+        $this->assertEquals(Inbound::STATUS_PARTIAL, $mid->status, 'Sebelum admin close: PARTIAL');
 
-        app(InboundService::class)->markParticipantDone($inbound->id, $this->staff['s2']->id);
+        $admin = User::factory()->create(['name' => 'ADMIN']);
+        app(InboundService::class)->closeReceiving($inbound->id, $admin->id);
+
         $done = $inbound->fresh();
         $this->assertEquals(Inbound::STATUS_RECEIVED, $done->status);
-        $this->assertNotNull($done->once_received_at);
 
-        // Web edit sekarang boleh.
+        // Semua participant ACTIVE jadi WITHDRAWN dengan reason admin_finalize.
+        $participants = InboundParticipant::where('inbound_id', $inbound->id)->get();
+        $this->assertCount(2, $participants);
+        foreach ($participants as $p) {
+            $this->assertEquals(InboundParticipant::STATUS_WITHDRAWN, $p->status);
+            $this->assertEquals('admin_finalize', $p->withdraw_reason);
+            $this->assertEquals($admin->id, $p->withdrawn_by);
+        }
+
+        // Web edit sekarang boleh (session lock lepas).
         request()->attributes->set('client_channel', ClientChannelEnum::WEB);
         app(InboundService::class)->setReceivedQty(
             $inbound->id,
@@ -171,16 +180,25 @@ class MultiParticipantReceiveTest extends TestCase
         $this->assertEquals(90, $inbound->fresh('items')->items->first()->received_qty);
     }
 
-    public function test_late_join_blocked_after_session_closed_F2(): void
+    public function test_receive_stays_partial_even_when_expected_reached(): void
+    {
+        // Fase E: receive() TIDAK PERNAH auto-transition ke RECEIVED, walau qty penuh.
+        $inbound = $this->makeInbound(100);
+        $this->receive($inbound, $this->staff['s1']->id, 100);
+
+        $this->assertEquals(Inbound::STATUS_PARTIAL, $inbound->fresh()->status);
+    }
+
+    public function test_late_join_blocked_after_admin_closed_session(): void
     {
         $inbound = $this->makeInbound(100);
         $this->receive($inbound, $this->staff['s1']->id, 100);
-        app(InboundService::class)->markParticipantDone($inbound->id, $this->staff['s1']->id);
 
-        $this->assertNotNull($inbound->fresh()->once_received_at);
+        $admin = User::factory()->create(['name' => 'ADMIN']);
+        app(InboundService::class)->closeReceiving($inbound->id, $admin->id);
 
-        $this->expectException(InboundSessionClosedException::class);
-        $this->receive($inbound->fresh('items'), $this->staff['s5' ?? 's2']->id ?? $this->staff['s2']->id, 5);
+        $this->expectExceptionMessageMatches('/berstatus RECEIVED/');
+        $this->receive($inbound->fresh('items'), $this->staff['s2']->id, 5);
     }
 
     public function test_withdrawn_participant_cannot_rejoin_F3(): void
@@ -209,8 +227,11 @@ class MultiParticipantReceiveTest extends TestCase
         app(InboundService::class)->cancel($inbound->id, $this->staff['s1']->id);
     }
 
-    public function test_admin_withdraw_unlocks_session(): void
+    public function test_admin_withdraw_participant_only_flips_status(): void
     {
+        // Fase E: withdraw seorang staff hanya melepas 1 participant. Status inbound
+        // tetap PARTIAL (bukan naik ke RECEIVED walau semua withdraw) — hanya admin
+        // closeReceiving yang bisa RECEIVED.
         $inbound = $this->makeInbound(100);
         $this->receive($inbound, $this->staff['s1']->id, 30);
 
@@ -223,30 +244,22 @@ class MultiParticipantReceiveTest extends TestCase
 
         $refreshed = $inbound->fresh();
         $this->assertFalse($refreshed->hasActiveParticipant());
-        $this->assertNotNull($refreshed->once_received_at, 'once_received_at set saat withdraw menutup sesi');
+        $this->assertEquals(Inbound::STATUS_PARTIAL, $refreshed->status, 'withdraw tidak boleh naikkan status');
+        $this->assertNull($refreshed->once_received_at, 'once_received_at hanya set oleh closeReceiving');
     }
 
-    public function test_mark_done_idempotent(): void
+    public function test_admin_close_from_draft_without_receive_still_works(): void
     {
+        // Admin bisa close inbound DRAFT (tanpa ada scan mobile sama sekali).
         $inbound = $this->makeInbound(100);
-        $this->receive($inbound, $this->staff['s1']->id, 100);
-        app(InboundService::class)->markParticipantDone($inbound->id, $this->staff['s1']->id);
 
-        // Panggil lagi — tidak throw, tidak double-toggle.
-        $result = app(InboundService::class)->markParticipantDone($inbound->id, $this->staff['s1']->id);
-        $this->assertNotNull($result);
+        $admin = User::factory()->create(['name' => 'ADMIN']);
+        app(InboundService::class)->closeReceiving($inbound->id, $admin->id);
+
+        $this->assertEquals(Inbound::STATUS_RECEIVED, $inbound->fresh()->status);
     }
 
-    public function test_leave_blocked_when_has_receipts(): void
-    {
-        $inbound = $this->makeInbound(100);
-        $this->receive($inbound, $this->staff['s1']->id, 10);
-
-        $this->expectException(UserFacingException::class);
-        app(InboundService::class)->leaveSession($inbound->id, $this->staff['s1']->id);
-    }
-
-    public function test_join_session_then_leave_before_scan(): void
+    public function test_join_session_registers_participant(): void
     {
         $inbound = $this->makeInbound(100);
         app(InboundService::class)->joinSession($inbound->id, $this->staff['s1']->id);
@@ -255,14 +268,6 @@ class MultiParticipantReceiveTest extends TestCase
             InboundParticipant::where('inbound_id', $inbound->id)
                 ->where('user_id', $this->staff['s1']->id)
                 ->where('status', InboundParticipant::STATUS_ACTIVE)
-                ->exists()
-        );
-
-        app(InboundService::class)->leaveSession($inbound->id, $this->staff['s1']->id);
-        $this->assertTrue(
-            InboundParticipant::where('inbound_id', $inbound->id)
-                ->where('user_id', $this->staff['s1']->id)
-                ->where('status', InboundParticipant::STATUS_WITHDRAWN)
                 ->exists()
         );
     }

@@ -568,31 +568,24 @@ class InboundController extends Controller
 
     #[OA\Post(
         path: '/api/v1/inbounds/{id}/close-receiving',
-        summary: 'Close receiving (mark discrepancy and move to putaway)',
+        summary: 'Admin selesaikan penerimaan (finalize) — status naik ke RECEIVED, session mobile ditutup',
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
             new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
         ],
-        requestBody: new OA\RequestBody(
-            required: true,
-            content: new OA\JsonContent(
-                required: ['closed_by'],
-                properties: [new OA\Property(property: 'closed_by', type: 'string', example: 'admin')]
-            )
-        ),
         responses: [
-            new OA\Response(response: 200, description: 'Receiving ditutup'),
+            new OA\Response(response: 200, description: 'Penerimaan diselesaikan'),
             new OA\Response(response: 500, description: 'Server Error')
         ]
     )]
     public function closeReceiving(string $id, Request $request): JsonResponse
     {
-        $request->validate(['closed_by' => 'required|string|max:100']);
+        $closedBy = (string) ($request->user()?->id ?? 'system');
 
         try {
-            $inbound = $this->inboundService->closeReceiving($id, $request->closed_by);
-            return $this->successResponse($inbound, 'Receiving ditutup, discrepancy tercatat');
+            $inbound = $this->inboundService->closeReceiving($id, $closedBy);
+            return $this->successResponse($inbound, 'Penerimaan diselesaikan.');
         } catch (\Exception $e) {
             throw $e;
         }
@@ -775,31 +768,6 @@ class InboundController extends Controller
     }
 
     /**
-     * DEPRECATED — alias untuk markParticipantDone (backward-compat mobile lama).
-     */
-    public function markReceived(string $id): JsonResponse
-    {
-        return $this->markParticipantDone($id);
-    }
-
-    /**
-     * Mobile per-user "Tandai Selesai" (fase 2).
-     * POST /api/v1/inbounds/{id}/mark-done
-     */
-    public function markParticipantDone(string $id): JsonResponse
-    {
-        $inbound = $this->inboundService->markParticipantDone(
-            $id,
-            (string) request()->user()->id,
-        );
-
-        return $this->successResponse(
-            $inbound,
-            'Anda ditandai Selesai. Sesi ditutup penuh setelah semua staff Selesai.',
-        );
-    }
-
-    /**
      * Mobile eksplisit join sesi (tanpa scan) — fase 2.
      * POST /api/v1/inbounds/{id}/join
      */
@@ -811,20 +779,6 @@ class InboundController extends Controller
         );
 
         return $this->successResponse($inbound, 'Anda bergabung dalam sesi penerimaan.');
-    }
-
-    /**
-     * Mobile self-leave (belum sempat input) — fase 2.
-     * POST /api/v1/inbounds/{id}/leave
-     */
-    public function leaveSession(string $id): JsonResponse
-    {
-        $inbound = $this->inboundService->leaveSession(
-            $id,
-            (string) request()->user()->id,
-        );
-
-        return $this->successResponse($inbound, 'Anda keluar dari sesi penerimaan.');
     }
 
     /**

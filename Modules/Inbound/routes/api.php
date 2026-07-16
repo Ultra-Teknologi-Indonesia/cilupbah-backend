@@ -46,12 +46,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::middleware('role_or_permission:owner|edit-barang-masuk')->group(function () {
         Route::post('inbounds/{id}/receive', [InboundController::class, 'receive'])->name('inbounds.receive');
-        // Fase 2 multi-staff:
+        // Fase 2 multi-staff: mobile hanya bisa join + scan; finalize hanya admin via closeReceiving.
         Route::post('inbounds/{id}/join', [InboundController::class, 'joinSession'])->name('inbounds.join');
-        Route::post('inbounds/{id}/leave', [InboundController::class, 'leaveSession'])->name('inbounds.leave');
-        Route::post('inbounds/{id}/mark-done', [InboundController::class, 'markParticipantDone'])->name('inbounds.markDone');
-        // Backward-compat alias mobile lama:
-        Route::post('inbounds/{id}/mark-received', [InboundController::class, 'markReceived'])->name('inbounds.markReceived');
         Route::patch('inbounds/{id}/items/{itemId}/received-qty', [InboundController::class, 'setReceivedQty'])->name('inbounds.setReceivedQty');
     });
 
