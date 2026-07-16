@@ -62,28 +62,63 @@ class AppServiceProvider extends ServiceProvider
                 }
             }
 
+            // Postgres FTS memecah string ke lexemes utuh (mis. "INB-4D3FYHMB"
+            // jadi ["inb", "4d3fyhmb"]). Ini bagus untuk text natural tapi
+            // buruk untuk kode identifier — user cari "4D" tidak ketemu.
+            // Fallback: gabung FTS dengan ILIKE '%value%' via OR, supaya
+            // substring identifier tetap match. Ranking tetap pakai FTS
+            // (kalau hanya ILIKE hit, rank = 0 → jatuh ke bawah).
+            $ilikePattern = '%' . str_replace(['%', '_'], ['\%', '\_'], $search) . '%';
+
             if (empty($relationColumns)) {
                 $columnsStr = collect($localColumns)
                     ->map(fn ($column) => "COALESCE({$column}::text, '')")
                     ->implode(" || ' ' || ");
 
-                $this->whereRaw("to_tsvector('indonesian', {$columnsStr}) @@ websearch_to_tsquery('indonesian', ?)", [$search])
-                     ->orderByRaw("ts_rank_cd(to_tsvector('indonesian', {$columnsStr}), websearch_to_tsquery('indonesian', ?)) DESC", [$search]);
+                $ilikeConds = collect($localColumns)
+                    ->map(fn ($col) => "COALESCE({$col}::text, '') ILIKE ?")
+                    ->implode(' OR ');
+                $ilikeBindings = array_fill(0, count($localColumns), $ilikePattern);
+
+                $this->whereRaw(
+                    "(to_tsvector('indonesian', {$columnsStr}) @@ websearch_to_tsquery('indonesian', ?)"
+                    . " OR ({$ilikeConds}))",
+                    array_merge([$search], $ilikeBindings)
+                )
+                ->orderByRaw("ts_rank_cd(to_tsvector('indonesian', {$columnsStr}), websearch_to_tsquery('indonesian', ?)) DESC", [$search]);
             } else {
-                $this->where(function ($query) use ($localColumns, $relationColumns, $search) {
+                $this->where(function ($query) use ($localColumns, $relationColumns, $search, $ilikePattern) {
                     if (!empty($localColumns)) {
                         $columnsStr = collect($localColumns)
                             ->map(fn ($col) => "COALESCE({$col}::text, '')")
                             ->implode(" || ' ' || ");
-                        $query->whereRaw("to_tsvector('indonesian', {$columnsStr}) @@ websearch_to_tsquery('indonesian', ?)", [$search]);
+                        $ilikeConds = collect($localColumns)
+                            ->map(fn ($col) => "COALESCE({$col}::text, '') ILIKE ?")
+                            ->implode(' OR ');
+                        $ilikeBindings = array_fill(0, count($localColumns), $ilikePattern);
+
+                        $query->whereRaw(
+                            "(to_tsvector('indonesian', {$columnsStr}) @@ websearch_to_tsquery('indonesian', ?)"
+                            . " OR ({$ilikeConds}))",
+                            array_merge([$search], $ilikeBindings)
+                        );
                     }
 
                     foreach ($relationColumns as $relation => $cols) {
                         $colsStr = collect($cols)
                             ->map(fn ($col) => "COALESCE({$col}::text, '')")
                             ->implode(" || ' ' || ");
-                        $query->orWhereHas($relation, function ($sub) use ($colsStr, $search) {
-                            $sub->whereRaw("to_tsvector('indonesian', {$colsStr}) @@ websearch_to_tsquery('indonesian', ?)", [$search]);
+                        $query->orWhereHas($relation, function ($sub) use ($cols, $colsStr, $search, $ilikePattern) {
+                            $ilikeConds = collect($cols)
+                                ->map(fn ($col) => "COALESCE({$col}::text, '') ILIKE ?")
+                                ->implode(' OR ');
+                            $ilikeBindings = array_fill(0, count($cols), $ilikePattern);
+
+                            $sub->whereRaw(
+                                "(to_tsvector('indonesian', {$colsStr}) @@ websearch_to_tsquery('indonesian', ?)"
+                                . " OR ({$ilikeConds}))",
+                                array_merge([$search], $ilikeBindings)
+                            );
                         });
                     }
                 });
