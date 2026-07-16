@@ -1698,16 +1698,20 @@ class InboundService
 
     public function downloadBarcodes(string $id)
     {
-        $inbound = Inbound::with(['items.variant'])->findOrFail($id);
+        $inbound = Inbound::with(['items.variant.product'])->findOrFail($id);
 
         $pages = [];
         foreach ($inbound->items as $item) {
             $qty = $item->expected_qty > 0 ? $item->expected_qty : ($item->received_qty > 0 ? $item->received_qty : 1);
 
+            $name = $item->variant?->product?->name
+                ?? $item->variant?->name
+                ?? 'Produk tidak dikenal';
+
             for ($i = 0; $i < $qty; $i++) {
                 $pages[] = [
-                    'sku' => $item->variant->sku ?? 'UNKNOWN',
-                    'name' => $item->variant->name ?? 'Unknown Product',
+                    'sku' => $item->variant?->sku ?? 'UNKNOWN',
+                    'name' => $name,
                 ];
             }
         }
