@@ -1240,7 +1240,7 @@ class InboundService
      * pemanggil lain. Untuk mobile dengan disambiguation multi-inbound, pakai
      * lookupCandidatesByQr() (F7).
      */
-    public function lookupByQr(string $code): InboundItem
+    public function lookupByQr(string $code, ?string $inboundId = null): InboundItem
     {
         $code = trim($code);
         $item = null;
@@ -1250,16 +1250,28 @@ class InboundService
         // id bertype uuid (SQLSTATE 22P02).
         if (Str::isUuid($code)) {
             $item = $this->inboundRepository->findItemByUuid($code);
+            // Kalau ditemukan tapi bukan milik inbound yang di-scope, tolak.
+            if ($item && $inboundId && $item->inbound_id !== $inboundId) {
+                $item = null;
+            }
         }
 
         if (! $item) {
-            $item = InboundItem::whereHas('variant', fn ($q) => $q->where('sku', $code)->orWhere('barcode', $code))
-                ->whereHas('inbound', fn ($q) => $q->whereIn('status', [
+            $query = InboundItem::whereHas('variant', fn ($q) => $q->where('sku', $code)->orWhere('barcode', $code));
+
+            if ($inboundId) {
+                // Scope ke inbound yang user buka — SKU sama di banyak inbound
+                // tidak akan salah pilih.
+                $query->where('inbound_id', $inboundId);
+            } else {
+                // Tanpa scope: fallback ke inbound aktif, ambil yang paling baru.
+                $query->whereHas('inbound', fn ($q) => $q->whereIn('status', [
                     Inbound::STATUS_DRAFT,
                     Inbound::STATUS_PARTIAL,
-                ]))
-                ->latest()
-                ->first();
+                ]))->latest();
+            }
+
+            $item = $query->first();
         }
 
         if (! $item) {
