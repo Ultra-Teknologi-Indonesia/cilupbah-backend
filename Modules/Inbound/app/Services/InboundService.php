@@ -176,6 +176,51 @@ class InboundService
         return $this->inboundRepository->getAllPaginated($limit);
     }
 
+    /**
+     * Return jumlah inbound per status untuk dipakai badge angka di
+     * filter tabs mobile. Semua nilai enum status dijamin ada di
+     * response (default 0 kalau belum ada record).
+     */
+    public function getStatusCounts(?string $type = null, ?string $locationId = null): array
+    {
+        $query = Inbound::query();
+        if ($type !== null && $type !== '') {
+            $query->where('type', $type);
+        }
+        if ($locationId !== null && $locationId !== '') {
+            $query->where('location_id', $locationId);
+        }
+
+        $rows = $query
+            ->selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status')
+            ->toArray();
+
+        // Sertakan semua enum status supaya FE tidak perlu handle key null.
+        $statuses = [
+            Inbound::STATUS_DRAFT,
+            Inbound::STATUS_PARTIAL,
+            Inbound::STATUS_RECEIVED,
+            Inbound::STATUS_PUTAWAY_IN_PROGRESS,
+            Inbound::STATUS_COMPLETED,
+            Inbound::STATUS_CANCELLED,
+        ];
+
+        $counts = [];
+        foreach ($statuses as $s) {
+            $counts[$s] = (int) ($rows[$s] ?? 0);
+        }
+        // Kalau ada status di DB yang tidak masuk enum default, tetap sertakan.
+        foreach ($rows as $s => $n) {
+            if (! array_key_exists($s, $counts)) {
+                $counts[$s] = (int) $n;
+            }
+        }
+
+        return $counts;
+    }
+
     public function getPaginatedItems(string $inboundId, int $perPage = 10)
     {
         return $this->inboundRepository->getPaginatedItems($inboundId, $perPage);
