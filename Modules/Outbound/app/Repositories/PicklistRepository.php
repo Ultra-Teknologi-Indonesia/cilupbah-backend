@@ -110,7 +110,9 @@ class PicklistRepository
             'items.product.media:id,variant_id,product_id,url,is_primary,sort_order,media_type',
             'items.product.product.media:id,product_id,variant_id,url,is_primary,sort_order,media_type',
             'items.bin:id,bin_final_code',
-            'items.order:id,salesorder_no,customer_name',
+            'items.order:id,salesorder_no,customer_name,tracking_number',
+            'items.order.shipmentOrders:id,order_id,shipment_id',
+            'items.order.shipmentOrders.shipment:id,shipment_no',
             'location:id,location_name,location_code',
             'picker:id,name,email',
             'creator:id,name',
@@ -157,7 +159,9 @@ class PicklistRepository
                 'product.media:id,variant_id,product_id,url,is_primary,sort_order,media_type',
                 'product.product.media:id,product_id,variant_id,url,is_primary,sort_order,media_type',
                 'bin:id,bin_final_code',
-                'order:id,salesorder_no,customer_name',
+                'order:id,salesorder_no,customer_name,tracking_number',
+                'order.shipmentOrders:id,order_id,shipment_id',
+                'order.shipmentOrders.shipment:id,shipment_no',
             ]);
 
         return QueryBuilder::for($query)
