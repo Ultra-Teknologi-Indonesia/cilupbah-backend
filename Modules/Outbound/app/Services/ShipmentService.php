@@ -10,6 +10,7 @@ use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\ShipmentOrder;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Outbound\Support\InstantOrderClassifier;
@@ -319,6 +320,11 @@ class ShipmentService
             'packlist_id'     => $packlist?->id,
             'tracking_number' => $order->tracking_number,
         ]);
+
+        if ($shipment->shipper_id === null && Auth::id() !== null) {
+            $shipment->shipper_id = Auth::id();
+            $shipment->save();
+        }
 
         ProcessShipmentPickupJob::dispatch($shipmentId, [$order->id]);
 
