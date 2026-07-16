@@ -17,6 +17,7 @@ use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundAssignment;
 use Modules\Inbound\Models\InboundItem;
 use Modules\Inbound\Models\InboundParticipant;
+use Modules\Inbound\Models\InboundReceipt;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\Putaway;
@@ -1366,10 +1367,22 @@ class InboundService
                 $this->putawayService->reduceOpenTargetForInboundItem($item->id, -$delta);
             }
 
+            InboundReceipt::create([
+                'inbound_item_id'     => $item->id,
+                'qty'                 => $delta,
+                'bin_id'              => $defaultBin->id,
+                'condition'           => 'ADJUSTMENT',
+                'received_by_user_id' => $userId,
+                'received_by'         => "user:{$userId}",
+                'received_date'       => now(),
+            ]);
+
             // Bump updated_version_at supaya optimistic lock berikutnya kena update.
             $inbound->forceFill(['updated_version_at' => now()])->save();
 
-            $this->recomputeStatus($inbound->fresh('items'));
+            // Sengaja TIDAK panggil recomputeStatus — edit qty adalah koreksi
+            // admin, bukan finalize. Advance status hanya lewat closeReceiving /
+            // finalize eksplisit.
 
             return $this->getById($inboundId);
         });
