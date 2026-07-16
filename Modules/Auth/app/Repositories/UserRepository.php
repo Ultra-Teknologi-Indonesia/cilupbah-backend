@@ -53,6 +53,10 @@ class UserRepository
                     $query->whereHas('roles', fn (Builder $q) => $q->whereIn('name', (array) $value));
                 }),
                 AllowedFilter::exact('warehouse_id'),
+                AllowedFilter::callback('warehouse_id_or_global', function (Builder $query, $value) {
+                    $query->where(fn (Builder $q) => $q->where('warehouse_id', $value)
+                        ->orWhereNull('warehouse_id'));
+                }),
             )
             ->allowedSorts('name', 'created_at')
             ->defaultSort('-created_at');
