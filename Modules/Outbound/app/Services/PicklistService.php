@@ -148,11 +148,16 @@ class PicklistService
      * Jumlah picklist per status untuk badge angka di filter tabs mobile.
      * 1 request untuk semua tab, tidak perlu 3x paginated call ke list.
      */
-    public function getStatusCounts(?string $locationId = null): array
-    {
+    public function getStatusCounts(
+        ?string $locationId = null,
+        ?string $pickerId = null,
+    ): array {
         $query = Picklist::query();
         if ($locationId !== null && $locationId !== '') {
             $query->where('location_id', $locationId);
+        }
+        if ($pickerId !== null && $pickerId !== '') {
+            $query->where('picker_id', $pickerId);
         }
 
         $rows = $query

@@ -78,11 +78,16 @@ class PutawayService
      * Jumlah putaway per status untuk badge angka di filter tabs mobile.
      * 1 request untuk semua tab, tidak perlu 3x paginated call ke list.
      */
-    public function getStatusCounts(?string $locationId = null): array
-    {
+    public function getStatusCounts(
+        ?string $locationId = null,
+        ?string $assignedTo = null,
+    ): array {
         $query = Putaway::query();
         if ($locationId !== null && $locationId !== '') {
             $query->where('location_id', $locationId);
+        }
+        if ($assignedTo !== null && $assignedTo !== '') {
+            $query->where('assigned_to', $assignedTo);
         }
 
         $rows = $query

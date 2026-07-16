@@ -186,6 +186,7 @@ class PutawayController extends Controller
         tags: ['Putaway'],
         parameters: [
             new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[assigned_to]', in: 'query', required: false, description: 'Scope hitungan ke putaway yang di-assign ke user tertentu (biasanya diri sendiri di mobile).', schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(
@@ -208,6 +209,7 @@ class PutawayController extends Controller
         $filter = (array) $request->query('filter', []);
         $counts = $this->putawayService->getStatusCounts(
             locationId: $filter['location_id'] ?? null,
+            assignedTo: $filter['assigned_to'] ?? null,
         );
 
         return $this->successResponse($counts, 'Jumlah putaway per status');
