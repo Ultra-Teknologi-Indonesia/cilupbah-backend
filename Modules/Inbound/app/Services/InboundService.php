@@ -227,6 +227,16 @@ class InboundService
 
             $po->loadMissing('items');
 
+            if ($po->items->isEmpty()) {
+                throw new UserFacingException(
+                    title: 'PO belum punya item',
+                    message: "Auto-create Inbound dari PO {$po->po_number} dibatalkan karena PO belum punya item. "
+                        . 'Pastikan items sudah persist (DB::afterCommit) sebelum panggil createDraftFromPO().',
+                    status: 500,
+                    errors: ['code' => 'PO_ITEMS_EMPTY'],
+                );
+            }
+
             do {
                 $candidate = 'INB-' . Str::upper(Str::random(8));
             } while (Inbound::where('transaction_number', $candidate)->exists());

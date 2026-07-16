@@ -2,6 +2,7 @@
 
 namespace Modules\Purchase\Observers;
 
+use Illuminate\Support\Facades\DB;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Services\InboundService;
 use Modules\Purchase\Models\PurchaseOrder;
@@ -29,21 +30,7 @@ class PurchaseOrderObserver
             return;
         }
 
-        // Skip kalau sudah ada Inbound aktif.
-        $exists = Inbound::where('source_type', 'purchase_order')
-            ->where('source_id', $po->id)
-            ->where('status', '!=', Inbound::STATUS_CANCELLED)
-            ->exists();
-
-        if ($exists) {
-            return;
-        }
-
-        $this->inboundService->createDraftFromPO(
-            po: $po,
-            createdBy: $po->updated_by ?? $po->created_by ?? 'system',
-            isAdditional: false,
-        );
+        $this->dispatchDraftCreation($po, $po->updated_by ?? $po->created_by ?? 'system');
     }
 
     /**
@@ -55,19 +42,39 @@ class PurchaseOrderObserver
             return;
         }
 
-        $exists = Inbound::where('source_type', 'purchase_order')
-            ->where('source_id', $po->id)
-            ->where('status', '!=', Inbound::STATUS_CANCELLED)
-            ->exists();
+        $this->dispatchDraftCreation($po, $po->created_by ?? 'system');
+    }
 
-        if ($exists) {
-            return;
-        }
+    /**
+     * Tunda pembuatan Inbound sampai transaction commit — supaya PO items
+     * yang dibuat setelah PO row save (di dalam transaction yang sama)
+     * sudah persistent saat createDraftFromPO() jalan.
+     */
+    protected function dispatchDraftCreation(PurchaseOrder $po, string $createdBy): void
+    {
+        $poId = $po->id;
+        $inboundService = $this->inboundService;
 
-        $this->inboundService->createDraftFromPO(
-            po: $po,
-            createdBy: $po->created_by ?? 'system',
-            isAdditional: false,
-        );
+        DB::afterCommit(function () use ($poId, $createdBy, $inboundService) {
+            $exists = Inbound::where('source_type', 'purchase_order')
+                ->where('source_id', $poId)
+                ->where('status', '!=', Inbound::STATUS_CANCELLED)
+                ->exists();
+
+            if ($exists) {
+                return;
+            }
+
+            $freshPo = PurchaseOrder::with('items')->find($poId);
+            if (! $freshPo || $freshPo->status !== PurchaseOrder::STATUS_OPEN) {
+                return;
+            }
+
+            $inboundService->createDraftFromPO(
+                po: $freshPo,
+                createdBy: $createdBy,
+                isAdditional: false,
+            );
+        });
     }
 }
