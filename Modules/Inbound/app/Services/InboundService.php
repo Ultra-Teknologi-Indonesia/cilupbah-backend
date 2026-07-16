@@ -180,6 +180,11 @@ class InboundService
         return $this->inboundRepository->getPaginatedItems($inboundId, $perPage);
     }
 
+    public function getReceiptsPaginated(string $inboundId, int $perPage = 50)
+    {
+        return $this->inboundRepository->getReceiptsPaginated($inboundId, $perPage);
+    }
+
     public function getById(string $id): ?Inbound
     {
         return $this->inboundRepository->findById($id);
@@ -490,6 +495,16 @@ class InboundService
 
             $landedCostMap = $this->resolveLandedCostMap($inbound);
 
+            // Resolve received_by_user_id sekali di luar loop.
+            // Prioritas: auth()->id() > string received_by kalau UUID valid > null.
+            $receivedByUserId = auth()->id();
+            if (! $receivedByUserId) {
+                $candidate = (string) ($data['received_by'] ?? '');
+                if (\Illuminate\Support\Str::isUuid($candidate)) {
+                    $receivedByUserId = $candidate;
+                }
+            }
+
             foreach ($data['items'] as $receiptData) {
                 $inboundItem = $itemsDict->get($receiptData['inbound_item_id']);
                 if (! $inboundItem) {
@@ -504,14 +519,14 @@ class InboundService
                 // (positif atau negatif) normal, admin koreksi via edit web setelah semua Selesai.
 
                 $this->inboundRepository->createReceipt([
-                    'inbound_item_id' => $inboundItem->id,
-                    'qty'             => $receiptData['qty'],
-                    'bin_id'          => $defaultBin->id,
-                    'batch_no'        => $receiptData['batch_no'] ?? null,
-                    'serial_no'       => $receiptData['serial_no'] ?? null,
-                    'condition'       => $condition,
-                    'received_by'     => $data['received_by'],
-                    'received_date'   => now(),
+                    'inbound_item_id'     => $inboundItem->id,
+                    'qty'                 => $receiptData['qty'],
+                    'bin_id'              => $defaultBin->id,
+                    'batch_no'            => $receiptData['batch_no'] ?? null,
+                    'serial_no'           => $receiptData['serial_no'] ?? null,
+                    'condition'           => $condition,
+                    'received_by_user_id' => $receivedByUserId,
+                    'received_date'       => now(),
                 ]);
 
                 if ($isDamage) {
@@ -1101,7 +1116,7 @@ class InboundService
             $receiptCount = DB::table('inbound_receipts as r')
                 ->join('inbound_items as i', 'r.inbound_item_id', '=', 'i.id')
                 ->where('i.inbound_id', $inboundId)
-                ->where('r.received_by', $userId)
+                ->where('r.received_by_user_id', $userId)
                 ->count();
 
             if ($receiptCount > 0) {

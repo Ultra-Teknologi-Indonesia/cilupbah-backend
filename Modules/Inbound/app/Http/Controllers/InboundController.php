@@ -252,13 +252,13 @@ class InboundController extends Controller
             $receiptCount = \Modules\Inbound\Models\InboundReceipt::query()
                 ->join('inbound_items as i', 'inbound_receipts.inbound_item_id', '=', 'i.id')
                 ->where('i.inbound_id', $inbound->id)
-                ->where('inbound_receipts.received_by', $p->user_id)
+                ->where('inbound_receipts.received_by_user_id', $p->user_id)
                 ->count();
 
             $receiptQtySum = \Modules\Inbound\Models\InboundReceipt::query()
                 ->join('inbound_items as i', 'inbound_receipts.inbound_item_id', '=', 'i.id')
                 ->where('i.inbound_id', $inbound->id)
-                ->where('inbound_receipts.received_by', $p->user_id)
+                ->where('inbound_receipts.received_by_user_id', $p->user_id)
                 ->sum('inbound_receipts.qty');
 
             return [
@@ -360,6 +360,31 @@ class InboundController extends Controller
         $perPage = (int) $request->query('per_page', 20);
         $items = $this->inboundService->getPaginatedItems($id, $perPage);
         return $this->successPaginatedResponse($items, 'Daftar item Inbound berhasil diambil');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/inbounds/{id}/receipts',
+        summary: 'Kronologi receive events untuk 1 inbound (audit trail per staff × SKU × waktu)',
+        security: [['bearerAuth' => []]],
+        tags: ['Inbounds'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 50)),
+            new OA\Parameter(name: 'filter[received_by_user_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[inbound_item_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[date_from]', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date-time')),
+            new OA\Parameter(name: 'filter[date_to]', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date-time')),
+            new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'received_date|-received_date|qty|-qty|sku|-sku', schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Successful operation'),
+        ]
+    )]
+    public function receipts(string $id, Request $request): JsonResponse
+    {
+        $perPage = (int) $request->query('per_page', 50);
+        $receipts = $this->inboundService->getReceiptsPaginated($id, $perPage);
+        return $this->successPaginatedResponse($receipts, 'Kronologi penerimaan berhasil diambil');
     }
 
     #[OA\Post(

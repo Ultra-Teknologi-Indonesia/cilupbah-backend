@@ -2,6 +2,7 @@
 
 namespace Modules\Inbound\Models;
 
+use App\Models\User;
 use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,7 +19,7 @@ class InboundReceipt extends Model
         'batch_no',
         'serial_no',
         'condition',
-        'received_by',
+        'received_by_user_id',
         'received_date',
     ];
 
@@ -34,5 +35,10 @@ class InboundReceipt extends Model
     public function bin(): BelongsTo
     {
         return $this->belongsTo(LocationBin::class, 'bin_id');
+    }
+
+    public function receivedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'received_by_user_id');
     }
 }

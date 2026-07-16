@@ -25,6 +25,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::middleware('role_or_permission:owner|view-barang-masuk')->group(function () {
         Route::get('inbounds/{id}', [InboundController::class, 'show'])->name('inbounds.show');
         Route::get('inbounds/{id}/items', [InboundController::class, 'items'])->name('inbounds.items');
+        Route::get('inbounds/{id}/receipts', [InboundController::class, 'receipts'])->name('inbounds.receipts');
     });
     Route::middleware('role_or_permission:owner|export-barang-masuk')->group(function () {
         Route::get('inbounds/{id}/barcodes', [InboundController::class, 'downloadBarcodes'])->name('inbounds.downloadBarcodes');

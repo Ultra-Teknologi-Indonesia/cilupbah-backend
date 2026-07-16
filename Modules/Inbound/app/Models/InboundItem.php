@@ -3,9 +3,11 @@
 namespace Modules\Inbound\Models;
 
 use App\Traits\HasUuid7;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 use Modules\Product\Models\ProductVariant;
 
 class InboundItem extends Model
@@ -54,5 +56,33 @@ class InboundItem extends Model
     public function pendingPutawayQty(): int
     {
         return max(0, $this->received_qty - $this->putaway_qty);
+    }
+
+    /**
+     * Tambah kolom agregat receipt: received_total (semua staff) & received_by_me (auth user).
+     * received_total = SUM(inbound_receipts.qty) — sinonim eksplisit dari received_qty
+     * received_by_me = SUM(inbound_receipts.qty) FILTER received_by_user_id = :userId
+     */
+    public function scopeWithReceiptStats(Builder $q, ?string $userId = null): Builder
+    {
+        $userId ??= auth()->id();
+
+        $totalSub = DB::table('inbound_receipts')
+            ->selectRaw('COALESCE(SUM(qty), 0)')
+            ->whereColumn('inbound_receipts.inbound_item_id', 'inbound_items.id');
+
+        $q->addSelect(['received_total' => $totalSub]);
+
+        if ($userId) {
+            $meSub = DB::table('inbound_receipts')
+                ->selectRaw('COALESCE(SUM(qty), 0)')
+                ->whereColumn('inbound_receipts.inbound_item_id', 'inbound_items.id')
+                ->where('inbound_receipts.received_by_user_id', $userId);
+            $q->addSelect(['received_by_me' => $meSub]);
+        } else {
+            $q->selectRaw('0 as received_by_me');
+        }
+
+        return $q;
     }
 }

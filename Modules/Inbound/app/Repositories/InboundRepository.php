@@ -59,6 +59,7 @@ class InboundRepository
     {
         $inbound = Inbound::with([
             'location',
+            'items' => fn ($q) => $q->select('inbound_items.*')->withReceiptStats(),
             'items.receipts.bin',
             'items.variant:id,sku,product_id',
             'items.variant.product:id,name',
@@ -67,6 +68,11 @@ class InboundRepository
             'assignee:id,name',
             'assignedByUser:id,name',
         ])->find($id);
+
+        if ($inbound) {
+            $inbound->received_total = (int) $inbound->items->sum('received_total');
+            $inbound->received_by_me = (int) $inbound->items->sum('received_by_me');
+        }
 
         if ($inbound && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $inbound->created_by)) {
             $user = \App\Models\User::find($inbound->created_by);
@@ -153,6 +159,7 @@ class InboundRepository
     {
         $base = InboundItem::query()
             ->select('inbound_items.*')
+            ->withReceiptStats()
             ->where('inbound_id', $inboundId)
             ->leftJoin('product_variants', 'inbound_items.item_id', '=', 'product_variants.id')
             ->leftJoin('products', 'products.id', '=', 'product_variants.product_id')
@@ -175,6 +182,39 @@ class InboundRepository
                 AllowedSort::field('created_at', 'inbound_items.created_at'),
             )
             ->defaultSort('-created_at')
+            ->paginate($perPage)
+            ->appends(request()->query());
+    }
+
+    public function getReceiptsPaginated(string $inboundId, int $perPage = 50)
+    {
+        $base = InboundReceipt::query()
+            ->select('inbound_receipts.*')
+            ->join('inbound_items', 'inbound_items.id', '=', 'inbound_receipts.inbound_item_id')
+            ->leftJoin('product_variants', 'inbound_items.item_id', '=', 'product_variants.id')
+            ->where('inbound_items.inbound_id', $inboundId)
+            ->with([
+                'receivedByUser:id,name',
+                'inboundItem:id,inbound_id,item_id',
+                'inboundItem.variant:id,sku,product_id',
+                'inboundItem.variant.product:id,name',
+                'bin:id,bin_final_code',
+            ]);
+
+        return QueryBuilder::for($base)
+            ->allowedFilters(
+                AllowedFilter::exact('received_by_user_id', 'inbound_receipts.received_by_user_id'),
+                AllowedFilter::exact('inbound_item_id', 'inbound_receipts.inbound_item_id'),
+                AllowedFilter::exact('condition', 'inbound_receipts.condition'),
+                AllowedFilter::callback('date_from', fn ($q, $v) => $q->where('inbound_receipts.received_date', '>=', $v)),
+                AllowedFilter::callback('date_to', fn ($q, $v) => $q->where('inbound_receipts.received_date', '<=', $v)),
+            )
+            ->allowedSorts(
+                AllowedSort::field('received_date', 'inbound_receipts.received_date'),
+                AllowedSort::field('qty', 'inbound_receipts.qty'),
+                AllowedSort::field('sku', 'product_variants.sku'),
+            )
+            ->defaultSort('-received_date')
             ->paginate($perPage)
             ->appends(request()->query());
     }
