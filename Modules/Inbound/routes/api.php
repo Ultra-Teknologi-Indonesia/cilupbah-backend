@@ -17,6 +17,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     });
 
     Route::middleware('role_or_permission:owner|view-barang-masuk')->group(function () {
+        Route::get('inbounds/counts', [InboundController::class, 'counts'])->name('inbounds.counts');
         Route::get('inbounds', [InboundController::class, 'index'])->name('inbounds.index');
     });
     Route::middleware('role_or_permission:owner|create-barang-masuk')->group(function () {

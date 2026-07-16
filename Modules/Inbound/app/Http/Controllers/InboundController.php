@@ -225,6 +225,46 @@ class InboundController extends Controller
     }
 
     #[OA\Get(
+        path: '/api/v1/inbounds/counts',
+        summary: 'Get count of inbounds grouped by status',
+        description: 'Dedicated endpoint untuk menghitung jumlah inbound per status. Dipakai mobile untuk badge angka di filter tabs — supaya tidak perlu 3 request paginated hanya untuk baca meta.total. Semua status di enum akan muncul di response (kalau tidak ada record, value = 0).',
+        security: [['bearerAuth' => []]],
+        tags: ['Inbounds'],
+        parameters: [
+            new OA\Parameter(name: 'filter[type]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Jumlah inbound per status',
+                content: new OA\JsonContent(properties: [
+                    new OA\Property(property: 'status', type: 'string', example: 'success'),
+                    new OA\Property(property: 'message', type: 'string', example: 'Jumlah inbound per status'),
+                    new OA\Property(property: 'data', type: 'object', example: [
+                        'DRAFT' => 4,
+                        'PARTIAL' => 1,
+                        'RECEIVED' => 0,
+                        'PUTAWAY_IN_PROGRESS' => 0,
+                        'COMPLETED' => 2,
+                        'CANCELLED' => 0,
+                    ]),
+                ])
+            ),
+        ]
+    )]
+    public function counts(Request $request): JsonResponse
+    {
+        $filter = (array) $request->query('filter', []);
+        $counts = $this->inboundService->getStatusCounts(
+            type: $filter['type'] ?? null,
+            locationId: $filter['location_id'] ?? null,
+        );
+
+        return $this->successResponse($counts, 'Jumlah inbound per status');
+    }
+
+    #[OA\Get(
         path: '/api/v1/inbounds/{id}',
         summary: 'Get inbound details',
         security: [['bearerAuth' => []]],
