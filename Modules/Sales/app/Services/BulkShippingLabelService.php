@@ -218,6 +218,45 @@ class BulkShippingLabelService
     }
 
     /**
+     * PDF dari marketplace (Shopee/TikTok/Lazada) sering pakai cross-reference stream
+     * PDF 1.5+ yg tidak didukung free parser FPDI. Kita downgrade ke PDF 1.4 via
+     * Ghostscript dulu supaya bisa di-import. Kalau gs gagal, return bytes asli
+     * (FPDI akan lempar CrossReferenceException — caller catch).
+     */
+    public function preprocessPdfForFpdi(string $srcPdfBytes): string
+    {
+        $gs = trim((string) @shell_exec('command -v gs 2>/dev/null'));
+        if ($gs === '') {
+            return $srcPdfBytes;
+        }
+
+        $inTmp = tempnam(sys_get_temp_dir(), 'lbl_in_');
+        $outTmp = tempnam(sys_get_temp_dir(), 'lbl_out_');
+        try {
+            file_put_contents($inTmp, $srcPdfBytes);
+            $cmd = sprintf(
+                '%s -q -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -sOutputFile=%s %s 2>&1',
+                escapeshellcmd($gs),
+                escapeshellarg($outTmp),
+                escapeshellarg($inTmp),
+            );
+            @shell_exec($cmd);
+            if (is_file($outTmp) && filesize($outTmp) > 0) {
+                $result = file_get_contents($outTmp);
+                if ($result !== false && $result !== '') {
+                    return $result;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('preprocessPdfForFpdi: gs gagal, pakai bytes asli', ['error' => $e->getMessage()]);
+        } finally {
+            @unlink($inTmp);
+            @unlink($outTmp);
+        }
+        return $srcPdfBytes;
+    }
+
+    /**
      * Normalisasi PDF bytes: setiap page discale (contain-fit) & auto-rotate ke target portrait.
      * Return: PDF bytes baru dengan semua page = $targetW × $targetH mm portrait.
      */
@@ -225,8 +264,9 @@ class BulkShippingLabelService
     {
         [$targetW, $targetH] = self::SIZE_DIMENSIONS_MM[$sizeKey] ?? self::SIZE_DIMENSIONS_MM[self::DEFAULT_SIZE];
 
+        $prepared = $this->preprocessPdfForFpdi($srcPdfBytes);
         $out = new Fpdi();
-        $pageCount = $out->setSourceFile(StreamReader::createByString($srcPdfBytes));
+        $pageCount = $out->setSourceFile(StreamReader::createByString($prepared));
         for ($p = 1; $p <= $pageCount; $p++) {
             $tpl = $out->importPage($p);
             $src = $out->getTemplateSize($tpl);
@@ -633,7 +673,8 @@ class BulkShippingLabelService
         $pdf = new Fpdi();
         foreach ($items as $item) {
             try {
-                $pageCount = $pdf->setSourceFile(StreamReader::createByString($item->pdf_bytes));
+                $preparedBytes = $this->preprocessPdfForFpdi($item->pdf_bytes);
+                $pageCount = $pdf->setSourceFile(StreamReader::createByString($preparedBytes));
                 for ($p = 1; $p <= $pageCount; $p++) {
                     $tpl = $pdf->importPage($p);
                     $src = $pdf->getTemplateSize($tpl);
