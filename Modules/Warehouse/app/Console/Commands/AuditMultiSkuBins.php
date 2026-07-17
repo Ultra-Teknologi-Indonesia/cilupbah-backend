@@ -28,7 +28,7 @@ class AuditMultiSkuBins extends Command
                     }
                 })
                 ->where(function ($w) {
-                    $w->where('on_hand', '>', 0)->orWhere('reserved', '>', 0);
+                    $w->where('on_hand', '>', 0)->orWhere('on_order', '>', 0);
                 })
                 ->get();
 
@@ -60,11 +60,11 @@ class AuditMultiSkuBins extends Command
                     $first = $itemGroup->first();
                     $variant = $first->product;
                     $this->line(sprintf(
-                        '      - %s (%s)  on_hand=%d  reserved=%d',
+                        '      - %s (%s)  on_hand=%d  on_order=%d',
                         $variant?->sku ?? $first->item_id,
                         $variant?->product?->name ?? '-',
                         (int) $itemGroup->sum('on_hand'),
-                        (int) $itemGroup->sum('reserved')
+                        (int) $itemGroup->sum('on_order')
                     ));
                 }
             }

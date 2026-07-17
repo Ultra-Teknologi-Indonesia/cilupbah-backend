@@ -48,7 +48,7 @@ class WarehouseBusinessFlowTest extends TestCase
             'location_id' => $loc->id,
             'bin_id' => $bin->id,
             'on_hand' => $onHand,
-            'reserved' => 0,
+            'on_order' => 0,
             'available' => $onHand,
         ]);
     }

@@ -41,11 +41,11 @@ class BinTransferTest extends TestCase
 
         Inventory::create([
             'item_id' => $variant1->id, 'location_id' => $location->id, 'bin_id' => $binA->id,
-            'on_hand' => 10, 'reserved' => 0, 'available' => 10, 'avg_cost' => 2500,
+            'on_hand' => 10, 'on_order' => 0, 'available' => 10, 'avg_cost' => 2500,
         ]);
         Inventory::create([
             'item_id' => $variant2->id, 'location_id' => $location->id, 'bin_id' => $binC->id,
-            'on_hand' => 3, 'reserved' => 0, 'available' => 3, 'avg_cost' => 1000,
+            'on_hand' => 3, 'on_order' => 0, 'available' => 3, 'avg_cost' => 1000,
         ]);
 
         $svc = app(InventoryService::class);
@@ -115,7 +115,7 @@ class BinTransferTest extends TestCase
         $variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V-PR']);
         Inventory::create([
             'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $src->id,
-            'on_hand' => 7, 'reserved' => 0, 'available' => 7, 'avg_cost' => 100,
+            'on_hand' => 7, 'on_order' => 0, 'available' => 7, 'avg_cost' => 100,
         ]);
 
         $svc = app(InventoryService::class);
@@ -168,7 +168,7 @@ class BinTransferTest extends TestCase
 
         Inventory::create([
             'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $binA->id,
-            'on_hand' => 2, 'reserved' => 0, 'available' => 2, 'avg_cost' => 100,
+            'on_hand' => 2, 'on_order' => 0, 'available' => 2, 'avg_cost' => 100,
         ]);
 
         $this->expectException(\Exception::class);
@@ -203,7 +203,7 @@ class BinTransferTest extends TestCase
         $variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V']);
         Inventory::create([
             'item_id' => $variant->id, 'location_id' => $wh1->id, 'bin_id' => $binA1->id,
-            'on_hand' => 5, 'reserved' => 0, 'available' => 5, 'avg_cost' => 100,
+            'on_hand' => 5, 'on_order' => 0, 'available' => 5, 'avg_cost' => 100,
         ]);
 
         $user = \App\Models\User::factory()->create();
@@ -286,15 +286,15 @@ class BinTransferTest extends TestCase
 
         Inventory::create([
             'item_id' => $withStock->id, 'location_id' => $whA->id, 'bin_id' => $binA->id,
-            'on_hand' => 5, 'reserved' => 0, 'available' => 5, 'avg_cost' => 100,
+            'on_hand' => 5, 'on_order' => 0, 'available' => 5, 'avg_cost' => 100,
         ]);
         Inventory::create([
             'item_id' => $atOtherWh->id, 'location_id' => $whB->id, 'bin_id' => $binB->id,
-            'on_hand' => 5, 'reserved' => 0, 'available' => 5, 'avg_cost' => 100,
+            'on_hand' => 5, 'on_order' => 0, 'available' => 5, 'avg_cost' => 100,
         ]);
         Inventory::create([
             'item_id' => $zeroStock->id, 'location_id' => $whA->id, 'bin_id' => $binA->id,
-            'on_hand' => 0, 'reserved' => 0, 'available' => 0, 'avg_cost' => 100,
+            'on_hand' => 0, 'on_order' => 0, 'available' => 0, 'avg_cost' => 100,
         ]);
 
         $user = \App\Models\User::factory()->create();
@@ -340,7 +340,7 @@ class BinTransferTest extends TestCase
 
         Inventory::create([
             'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $binA->id,
-            'on_hand' => 100, 'reserved' => 0, 'available' => 100, 'avg_cost' => 500,
+            'on_hand' => 100, 'on_order' => 0, 'available' => 100, 'avg_cost' => 500,
         ]);
 
         $svc = app(InventoryService::class);

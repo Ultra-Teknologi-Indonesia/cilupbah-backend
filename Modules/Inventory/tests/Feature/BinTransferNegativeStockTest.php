@@ -44,7 +44,7 @@ class BinTransferNegativeStockTest extends TestCase
         if ($sourceOnHand > 0) {
             Inventory::create([
                 'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $binA->id,
-                'on_hand' => $sourceOnHand, 'reserved' => 0, 'available' => $sourceOnHand, 'avg_cost' => 500,
+                'on_hand' => $sourceOnHand, 'on_order' => 0, 'available' => $sourceOnHand, 'avg_cost' => 500,
             ]);
         }
 

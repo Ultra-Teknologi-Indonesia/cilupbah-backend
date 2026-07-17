@@ -155,7 +155,7 @@ class LocationBinRepository
     {
         return Inventory::where('bin_id', $binId)
             ->where(function ($q) {
-                $q->where('on_hand', '>', 0)->orWhere('reserved', '>', 0);
+                $q->where('on_hand', '>', 0)->orWhere('on_order', '>', 0);
             })
             ->exists();
     }
@@ -164,7 +164,7 @@ class LocationBinRepository
     {
         return Inventory::whereIn('bin_id', LocationBin::where('zone_id', $zoneId)->select('id'))
             ->where(function ($q) {
-                $q->where('on_hand', '>', 0)->orWhere('reserved', '>', 0);
+                $q->where('on_hand', '>', 0)->orWhere('on_order', '>', 0);
             })
             ->exists();
     }

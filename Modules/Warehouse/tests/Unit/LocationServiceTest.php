@@ -117,7 +117,6 @@ class LocationServiceTest extends TestCase
             'serial_no' => 'S001',
             'on_hand' => 10,
             'on_order' => 0,
-            'reserved' => 0,
             'available' => 10,
             'created_at' => now(),
             'updated_at' => now(),

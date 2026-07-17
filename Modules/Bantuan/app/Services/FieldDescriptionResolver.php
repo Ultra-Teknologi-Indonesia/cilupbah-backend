@@ -70,10 +70,10 @@ class FieldDescriptionResolver
         'quantity'          => 'Kuantitas.',
         'stock'             => 'Jumlah stok fisik.',
         'on_hand'           => 'Stok fisik yang ditempatkan di rak.',
-        'available'         => 'Stok yang bisa dialokasi (on_hand - reserved).',
+        'available'         => 'Stok yang bisa dialokasi (on_hand - on_order).',
         'sellable'          => 'Stok yang boleh dipush ke channel.',
         'pickable'          => 'Stok yang boleh dipilih di picking.',
-        'reserved'          => 'Stok yang sudah dialokasi ke pesanan aktif.',
+        'on_order'          => 'Stok yang sudah dialokasi ke pesanan aktif.',
         'transit'           => 'Stok yang sedang dalam perjalanan antar gudang.',
 
         'status'            => 'Status resource. Nilai valid tergantung modul — lihat enum di kolom rules.',
