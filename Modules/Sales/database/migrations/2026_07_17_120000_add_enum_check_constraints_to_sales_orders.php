@@ -12,12 +12,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        DB::statement(<<<'SQL'
-            ALTER TABLE sales_orders
-            ADD CONSTRAINT sales_orders_status_check
-            CHECK (status IN ('pending','reserved','picked','packed','shipped','cancelled'))
-            NOT VALID
-        SQL);
+        // Sengaja TIDAK menambah constraint pada `status`: audit menemukan campuran
+        // lowercase (pending/reserved/picked/…) dari SalesOrderService dan UPPERCASE
+        // (UNPAID/READY/AWAITING_BUYER_CONFIRMATION/…) dari
+        // Shopee/TikTok/Lazada/WooCommerce mapper + ProcessPicklistCompleteJob.
+        // Perlu konsolidasi konvensi kode dulu sebelum enum + constraint aman.
 
         DB::statement(<<<'SQL'
             ALTER TABLE sales_orders
@@ -62,7 +61,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        DB::statement('ALTER TABLE sales_orders DROP CONSTRAINT IF EXISTS sales_orders_status_check');
         DB::statement('ALTER TABLE sales_orders DROP CONSTRAINT IF EXISTS sales_orders_wms_status_check');
         DB::statement('ALTER TABLE sales_orders DROP CONSTRAINT IF EXISTS sales_orders_source_check');
         DB::statement('ALTER TABLE sales_orders DROP CONSTRAINT IF EXISTS sales_orders_contact_channel_check');
