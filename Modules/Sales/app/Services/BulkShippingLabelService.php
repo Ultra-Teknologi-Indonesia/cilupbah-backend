@@ -257,32 +257,45 @@ class BulkShippingLabelService
     }
 
     /**
-     * Hitung penempatan template sumber pada halaman thermal target: FILL lebar
-     * halaman (label memenuhi kertas seperti thermal printer/Jubelio), jaga rasio.
+     * Hitung penempatan template sumber pada halaman thermal target (jaga rasio).
      *
-     * - Sumber lebih PANJANG dari target (mis. label Shopee + tabel produk di bawah):
-     *   anchor top, bagian bawah yang melebihi halaman ter-clip natural oleh page boundary.
-     * - Sumber lebih PENDEK dari target: center vertikal.
+     * - Lembar A4 Shopee (NORMAL_AIR_WAYBILL): label A6 ada di kuadran kiri-atas
+     *   dengan garis potong — crop ke kuadran itu, sisa lembar ter-clip page boundary.
+     * - Sumber memanjang (label + lampiran menyatu, aspect > 1.6): fill lebar,
+     *   anchor top, kelebihan bawah ter-clip.
+     * - Sumber berproporsi label: contain-fit + center supaya tidak ada yang terpotong
+     *   (mis. label 100×150 dicetak di kertas 10×12 → diskalakan penuh, bukan dipenggal).
      *
      * PENTING: pemanggil WAJIB pakai useTemplate(..., adjustPageSize: false) — kalau
      * true, FPDI menimpa ukuran halaman kita dengan ukuran template sumber.
      */
-    private function placementOnTarget(float $srcW, float $srcH, float $targetW, float $targetH): array
+    private function placementOnTarget(float $srcW, float $srcH, float $targetW, float $targetH, ?string $channel = null): array
     {
-        $scale = $targetW / $srcW;
-        $drawW = $targetW;
+        $isShopeeA4Sheet = $channel === self::CHANNEL_SHOPEE
+            && $srcW >= 200 && $srcW <= 220
+            && $srcH >= 285 && $srcH <= 302;
+
+        $effW = $isShopeeA4Sheet ? $srcW / 2 : $srcW;
+        $effH = $isShopeeA4Sheet ? $srcH / 2 : $srcH;
+
+        $aspect = $effH / $effW;
+        $scale = $aspect > 1.6
+            ? $targetW / $effW
+            : min($targetW / $effW, $targetH / $effH);
+
+        $drawW = $srcW * $scale;
         $drawH = $srcH * $scale;
-        $x = 0.0;
-        $y = $drawH >= $targetH ? 0.0 : ($targetH - $drawH) / 2;
+        $x = $isShopeeA4Sheet ? 0.0 : ($targetW - $drawW) / 2;
+        $y = ($isShopeeA4Sheet || $drawH >= $targetH) ? 0.0 : ($targetH - $drawH) / 2;
 
         return [$x, $y, $drawW, $drawH];
     }
 
     /**
-     * Normalisasi PDF bytes: setiap page sumber di-fill ke halaman thermal tetap
+     * Normalisasi PDF bytes: setiap page sumber ditempatkan ke halaman thermal tetap
      * $targetW × $targetH mm portrait (lihat placementOnTarget).
      */
-    public function normalizeToTarget(string $srcPdfBytes, string $sizeKey = self::DEFAULT_SIZE): string
+    public function normalizeToTarget(string $srcPdfBytes, string $sizeKey = self::DEFAULT_SIZE, ?string $channel = null): string
     {
         [$targetW, $targetH] = self::SIZE_DIMENSIONS_MM[$sizeKey] ?? self::SIZE_DIMENSIONS_MM[self::DEFAULT_SIZE];
 
@@ -297,6 +310,7 @@ class BulkShippingLabelService
                 (float) $src['height'],
                 $targetW,
                 $targetH,
+                $channel,
             );
 
             $out->AddPage('P', [$targetW, $targetH]);
@@ -700,6 +714,7 @@ class BulkShippingLabelService
                         (float) $src['height'],
                         $targetW,
                         $targetH,
+                        $item->channel,
                     );
 
                     $pdf->AddPage('P', [$targetW, $targetH]);

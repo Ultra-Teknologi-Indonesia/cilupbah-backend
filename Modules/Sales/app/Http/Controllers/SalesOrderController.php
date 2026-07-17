@@ -848,7 +848,7 @@ class SalesOrderController extends Controller
                 return $this->successResponse($result, 'Shipping label berhasil diambil');
             }
 
-            $normalized = $bulkService->normalizeToTarget($rawBytes, $sizeKey);
+            $normalized = $bulkService->normalizeToTarget($rawBytes, $sizeKey, $source);
             return $this->successResponse([
                 'type' => 'base64',
                 'content_type' => 'application/pdf',
