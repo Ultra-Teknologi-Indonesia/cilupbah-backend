@@ -90,14 +90,8 @@ class PutawayController extends Controller
                 if (in_array($inbound->status, [\Modules\Inbound\Models\Inbound::STATUS_COMPLETED, \Modules\Inbound\Models\Inbound::STATUS_CANCELLED], true)) {
                     return $this->errorResponse("Penerimaan {$inbound->transaction_number} sudah {$inbound->status}, tidak bisa dibuat penempatan.", 422);
                 }
-
-                $hasActive = $inbound->putaways->contains(
-                    fn ($p) => ! in_array($p->status, [Putaway::STATUS_COMPLETED, Putaway::STATUS_CANCELLED], true)
-                );
-                if ($hasActive) {
-                    return $this->errorResponse("Penerimaan {$inbound->transaction_number} sudah memiliki penempatan aktif.", 422);
-                }
             }
+
 
             $locationId = $inbounds->first()->location_id;
             $defaultBin = app(\Modules\Warehouse\Services\LocationBinService::class)->getDefaultBin($locationId);

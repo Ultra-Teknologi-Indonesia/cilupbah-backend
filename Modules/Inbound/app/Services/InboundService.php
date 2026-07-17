@@ -1780,34 +1780,6 @@ class InboundService
         return $pdf->stream("barcodes-inbound-{$inbound->transaction_number}.pdf");
     }
 
-    private function createPutawayFromInbound(Inbound $inbound, $defaultBin, string $receivedBy): void
-    {
-        $items = $inbound->items
-            ->filter(fn ($item) => $item->received_qty > 0)
-            ->map(fn ($item) => [
-                'item_id'            => $item->item_id,
-                'source_bin_id'      => $defaultBin->id,
-                'destination_bin_id' => null,
-                'qty'                => $item->received_qty,
-                'batch_no'           => null,
-                'serial_no'          => null,
-            ])
-            ->values()
-            ->toArray();
-
-        if (empty($items)) {
-            return;
-        }
-
-        $this->putawayService->create([
-            'location_id' => $inbound->location_id,
-            'source_type' => 'INBOUND',
-            'source_id'   => $inbound->id,
-            'notes'       => "Auto-generated from Inbound {$inbound->transaction_number}",
-            'created_by'  => $receivedBy,
-            'items'       => $items,
-        ]);
-    }
 
     private function resolveLandedCostMap(Inbound $inbound): array
     {
