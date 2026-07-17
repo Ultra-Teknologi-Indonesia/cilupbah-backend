@@ -257,33 +257,34 @@ class BulkShippingLabelService
     }
 
     /**
-     * Normalisasi PDF bytes: setiap page discale (contain-fit) & auto-rotate ke target portrait.
-     * Return: PDF bytes baru dengan semua page = $targetW × $targetH mm portrait.
+     * Normalisasi PDF bytes: setiap page sumber di-contain-fit (jaga rasio, tanpa
+     * distorsi/crop) ke halaman thermal tetap $targetW × $targetH mm portrait.
+     *
+     * PENTING: adjustPageSize HARUS false — kalau true, FPDI menimpa ukuran halaman
+     * kita dengan ukuran template sumber (label Shopee yang panjang karena ada tabel
+     * produk), sehingga output jadi panjang & banyak ruang putih (bukan 10×15 / 10×12).
      */
     public function normalizeToTarget(string $srcPdfBytes, string $sizeKey = self::DEFAULT_SIZE): string
     {
         [$targetW, $targetH] = self::SIZE_DIMENSIONS_MM[$sizeKey] ?? self::SIZE_DIMENSIONS_MM[self::DEFAULT_SIZE];
 
         $prepared = $this->preprocessPdfForFpdi($srcPdfBytes);
-        $out = new Fpdi();
+        $out = new Fpdi('P', 'mm', [$targetW, $targetH]);
         $pageCount = $out->setSourceFile(StreamReader::createByString($prepared));
         for ($p = 1; $p <= $pageCount; $p++) {
             $tpl = $out->importPage($p);
             $src = $out->getTemplateSize($tpl);
-            $srcW = $src['width'];
-            $srcH = $src['height'];
-            $isLandscape = $srcW > $srcH;
+            $srcW = (float) $src['width'];
+            $srcH = (float) $src['height'];
 
-            $normW = $isLandscape ? $srcH : $srcW;
-            $normH = $isLandscape ? $srcW : $srcH;
-            $scale = min($targetW / $normW, $targetH / $normH);
-            $drawW = $normW * $scale;
-            $drawH = $normH * $scale;
+            $scale = min($targetW / $srcW, $targetH / $srcH);
+            $drawW = $srcW * $scale;
+            $drawH = $srcH * $scale;
             $x = ($targetW - $drawW) / 2;
             $y = ($targetH - $drawH) / 2;
 
             $out->AddPage('P', [$targetW, $targetH]);
-            $out->useTemplate($tpl, $x, $y, $drawW, $drawH, true);
+            $out->useTemplate($tpl, $x, $y, $drawW, $drawH, false);
         }
 
         return $out->Output('S');
@@ -670,7 +671,7 @@ class BulkShippingLabelService
 
         [$targetW, $targetH] = $this->resolveTargetSize($batch);
 
-        $pdf = new Fpdi();
+        $pdf = new Fpdi('P', 'mm', [$targetW, $targetH]);
         foreach ($items as $item) {
             try {
                 $preparedBytes = $this->preprocessPdfForFpdi($item->pdf_bytes);
@@ -678,20 +679,17 @@ class BulkShippingLabelService
                 for ($p = 1; $p <= $pageCount; $p++) {
                     $tpl = $pdf->importPage($p);
                     $src = $pdf->getTemplateSize($tpl);
-                    $srcW = $src['width'];
-                    $srcH = $src['height'];
-                    $isLandscape = $srcW > $srcH;
+                    $srcW = (float) $src['width'];
+                    $srcH = (float) $src['height'];
 
-                    $normW = $isLandscape ? $srcH : $srcW;
-                    $normH = $isLandscape ? $srcW : $srcH;
-                    $scale = min($targetW / $normW, $targetH / $normH);
-                    $drawW = $normW * $scale;
-                    $drawH = $normH * $scale;
+                    $scale = min($targetW / $srcW, $targetH / $srcH);
+                    $drawW = $srcW * $scale;
+                    $drawH = $srcH * $scale;
                     $x = ($targetW - $drawW) / 2;
                     $y = ($targetH - $drawH) / 2;
 
                     $pdf->AddPage('P', [$targetW, $targetH]);
-                    $pdf->useTemplate($tpl, $x, $y, $drawW, $drawH, true);
+                    $pdf->useTemplate($tpl, $x, $y, $drawW, $drawH, false);
                 }
             } catch (Throwable $e) {
                 Log::warning('FPDI merge failed for item', [
