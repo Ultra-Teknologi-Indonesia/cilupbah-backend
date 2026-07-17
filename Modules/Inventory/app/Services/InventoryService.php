@@ -152,9 +152,9 @@ class InventoryService
             ->toArray();
     }
 
-    public function getStockedItems(string $locationId, string $search, int $perPage)
+    public function getStockedItems(string $locationId, string $search, int $perPage, bool $includeZero = false)
     {
-        $paginated = $this->inventoryRepository->getStockedItems($locationId, $search, $perPage);
+        $paginated = $this->inventoryRepository->getStockedItems($locationId, $search, $perPage, $includeZero);
 
         $paginated->getCollection()->transform(function ($variant) {
             $variationValues = ($variant->options ?? collect())

@@ -135,7 +135,7 @@ class SalesOrderManualService
                     locationId: (string) $payload['location_id'],
                     qty: $qty,
                     transactionNumber: $order->salesorder_no,
-                    enforce: true,
+                    enforce: false,
                 );
             }
 

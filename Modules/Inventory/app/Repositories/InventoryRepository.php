@@ -539,21 +539,32 @@ class InventoryRepository
             ->get();
     }
 
-    public function getStockedItems(string $locationId, string $search, int $perPage)
+    public function getStockedItems(string $locationId, string $search, int $perPage, bool $includeZero = false)
     {
         $sub = DB::table('inventories')
             ->join('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
             ->select('inventories.item_id', DB::raw('SUM(inventories.on_hand) as total_on_hand'))
             ->where('inventories.location_id', $locationId)
             ->where('location_bins.bin_final_code', '!=', 'DEFAULT')
-            ->groupBy('inventories.item_id')
-            ->havingRaw('SUM(inventories.on_hand) > 0');
+            ->groupBy('inventories.item_id');
+
+        if (! $includeZero) {
+            $sub->havingRaw('SUM(inventories.on_hand) > 0');
+        }
+
+        $joinType = $includeZero ? 'leftJoinSub' : 'joinSub';
 
         $query = ProductVariant::query()
-            ->joinSub($sub, 'stock_summary', function ($join) {
+            ->{$joinType}($sub, 'stock_summary', function ($join) {
                 $join->on('stock_summary.item_id', '=', 'product_variants.id');
             })
-            ->select('product_variants.*', 'stock_summary.total_on_hand')
+            ->select('product_variants.*', DB::raw('COALESCE(stock_summary.total_on_hand, 0) as total_on_hand'));
+
+        if ($includeZero) {
+            $query->where('product_variants.is_active', true);
+        }
+
+        $query
             ->with([
                 'product:id,name',
                 'options.attribute:id,name',
