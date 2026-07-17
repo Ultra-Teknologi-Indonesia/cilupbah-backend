@@ -257,12 +257,30 @@ class BulkShippingLabelService
     }
 
     /**
-     * Normalisasi PDF bytes: setiap page sumber di-contain-fit (jaga rasio, tanpa
-     * distorsi/crop) ke halaman thermal tetap $targetW × $targetH mm portrait.
+     * Hitung penempatan template sumber pada halaman thermal target: FILL lebar
+     * halaman (label memenuhi kertas seperti thermal printer/Jubelio), jaga rasio.
      *
-     * PENTING: adjustPageSize HARUS false — kalau true, FPDI menimpa ukuran halaman
-     * kita dengan ukuran template sumber (label Shopee yang panjang karena ada tabel
-     * produk), sehingga output jadi panjang & banyak ruang putih (bukan 10×15 / 10×12).
+     * - Sumber lebih PANJANG dari target (mis. label Shopee + tabel produk di bawah):
+     *   anchor top, bagian bawah yang melebihi halaman ter-clip natural oleh page boundary.
+     * - Sumber lebih PENDEK dari target: center vertikal.
+     *
+     * PENTING: pemanggil WAJIB pakai useTemplate(..., adjustPageSize: false) — kalau
+     * true, FPDI menimpa ukuran halaman kita dengan ukuran template sumber.
+     */
+    private function placementOnTarget(float $srcW, float $srcH, float $targetW, float $targetH): array
+    {
+        $scale = $targetW / $srcW;
+        $drawW = $targetW;
+        $drawH = $srcH * $scale;
+        $x = 0.0;
+        $y = $drawH >= $targetH ? 0.0 : ($targetH - $drawH) / 2;
+
+        return [$x, $y, $drawW, $drawH];
+    }
+
+    /**
+     * Normalisasi PDF bytes: setiap page sumber di-fill ke halaman thermal tetap
+     * $targetW × $targetH mm portrait (lihat placementOnTarget).
      */
     public function normalizeToTarget(string $srcPdfBytes, string $sizeKey = self::DEFAULT_SIZE): string
     {
@@ -274,14 +292,12 @@ class BulkShippingLabelService
         for ($p = 1; $p <= $pageCount; $p++) {
             $tpl = $out->importPage($p);
             $src = $out->getTemplateSize($tpl);
-            $srcW = (float) $src['width'];
-            $srcH = (float) $src['height'];
-
-            $scale = min($targetW / $srcW, $targetH / $srcH);
-            $drawW = $srcW * $scale;
-            $drawH = $srcH * $scale;
-            $x = ($targetW - $drawW) / 2;
-            $y = ($targetH - $drawH) / 2;
+            [$x, $y, $drawW, $drawH] = $this->placementOnTarget(
+                (float) $src['width'],
+                (float) $src['height'],
+                $targetW,
+                $targetH,
+            );
 
             $out->AddPage('P', [$targetW, $targetH]);
             $out->useTemplate($tpl, $x, $y, $drawW, $drawH, false);
@@ -679,14 +695,12 @@ class BulkShippingLabelService
                 for ($p = 1; $p <= $pageCount; $p++) {
                     $tpl = $pdf->importPage($p);
                     $src = $pdf->getTemplateSize($tpl);
-                    $srcW = (float) $src['width'];
-                    $srcH = (float) $src['height'];
-
-                    $scale = min($targetW / $srcW, $targetH / $srcH);
-                    $drawW = $srcW * $scale;
-                    $drawH = $srcH * $scale;
-                    $x = ($targetW - $drawW) / 2;
-                    $y = ($targetH - $drawH) / 2;
+                    [$x, $y, $drawW, $drawH] = $this->placementOnTarget(
+                        (float) $src['width'],
+                        (float) $src['height'],
+                        $targetW,
+                        $targetH,
+                    );
 
                     $pdf->AddPage('P', [$targetW, $targetH]);
                     $pdf->useTemplate($tpl, $x, $y, $drawW, $drawH, false);
