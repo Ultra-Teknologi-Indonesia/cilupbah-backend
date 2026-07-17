@@ -12,7 +12,7 @@ class SkuHomeBinGuard
     public function assertSkuFitsBin(string $locationId, string $itemId, string $targetBinId): void
     {
         $location = Location::find($locationId);
-        if (! $location || ! $location->enforcesOneBinPerSku()) {
+        if (! $location || ! $location->enforcesStrictBinSku()) {
             return;
         }
 
@@ -38,7 +38,7 @@ class SkuHomeBinGuard
     public function isTargetBinAllowed(string $locationId, string $itemId, string $targetBinId): bool
     {
         $location = Location::find($locationId);
-        if (! $location || ! $location->enforcesOneBinPerSku()) {
+        if (! $location || ! $location->enforcesStrictBinSku()) {
             return true;
         }
 
