@@ -179,6 +179,7 @@ class InventoryService
                 'variation_values' => $variationValues,
                 'thumbnail_url'    => $this->resolveVariantThumbnail($variant),
                 'total_on_hand'    => (int) ($variant->total_on_hand ?? 0),
+                'sell_price'       => (float) ($variant->sell_price ?? 0),
             ];
         });
 
