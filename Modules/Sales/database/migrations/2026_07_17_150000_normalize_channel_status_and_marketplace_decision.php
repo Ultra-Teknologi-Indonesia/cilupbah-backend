@@ -4,6 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use Modules\Sales\Support\ChannelStatusNormalizer;
 use Modules\Sales\Support\DisputeOutcomeNormalizer;
+use Modules\Sales\Support\WmsStatusNormalizer;
 
 /**
  * Normalisasi data legacy sales_orders.channel_status + sales_returns.marketplace_decision
@@ -16,6 +17,7 @@ return new class extends Migration
     public function up(): void
     {
         $this->normalizeChannelStatus();
+        $this->normalizeWmsStatus();
         $this->normalizeMarketplaceDecision();
     }
 
@@ -52,6 +54,31 @@ return new class extends Migration
             }
 
             $query->update(['channel_status' => $normalized->value]);
+        }
+    }
+
+    private function normalizeWmsStatus(): void
+    {
+        $distincts = DB::table('sales_orders')
+            ->select('source', 'wms_status')
+            ->whereNotNull('wms_status')
+            ->where('wms_status', '<>', '')
+            ->distinct()
+            ->get();
+
+        foreach ($distincts as $row) {
+            $normalized = WmsStatusNormalizer::normalize($row->source, $row->wms_status);
+            if ($normalized === null || $normalized->value === $row->wms_status) {
+                continue;
+            }
+
+            $query = DB::table('sales_orders')->where('wms_status', $row->wms_status);
+            if ($row->source === null) {
+                $query->whereNull('source');
+            } else {
+                $query->where('source', $row->source);
+            }
+            $query->update(['wms_status' => $normalized->value]);
         }
     }
 

@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 use App\Traits\HasUuid7;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Modules\Sales\Support\ChannelStatusNormalizer;
 use Modules\Outbound\Support\InstantOrderClassifier;
 use Spatie\MediaLibrary\HasMedia;
@@ -17,7 +18,12 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class SalesOrder extends Model implements HasMedia
 {
-    use HasUuid7, InteractsWithMedia;
+    use HasUuid7, InteractsWithMedia, HasFactory;
+
+    protected static function newFactory(): \Modules\Sales\Database\Factories\SalesOrderFactory
+    {
+        return \Modules\Sales\Database\Factories\SalesOrderFactory::new();
+    }
 
     protected $table = 'sales_orders';
 
@@ -197,6 +203,20 @@ class SalesOrder extends Model implements HasMedia
         );
     }
 
+    protected function wmsStatus(): Attribute
+    {
+        return Attribute::make(
+            set: function ($value, array $attributes) {
+                if ($value === null || $value === '') {
+                    return null;
+                }
+                $channel = $attributes['source'] ?? $this->attributes['source'] ?? null;
+                $normalized = \Modules\Sales\Support\WmsStatusNormalizer::normalize($channel, (string) $value);
+                return $normalized?->value ?? \Modules\Sales\Enums\WmsStatus::OTHER->value;
+            },
+        );
+    }
+
     public function statusEnum(): ?\Modules\Sales\Enums\SalesOrderStatus
     {
         return $this->status ? \Modules\Sales\Enums\SalesOrderStatus::tryFrom($this->status) : null;
@@ -228,6 +248,34 @@ class SalesOrder extends Model implements HasMedia
     public function cancelReasonEnum(): ?\Modules\Sales\Enums\SalesCancelReason
     {
         return $this->cancel_reason ? \Modules\Sales\Enums\SalesCancelReason::tryFrom($this->cancel_reason) : null;
+    }
+
+    public function shippingLabelStatusEnum(): ?\Modules\Sales\Enums\ShippingLabelStatus
+    {
+        return $this->shipping_label_status
+            ? \Modules\Sales\Enums\ShippingLabelStatus::tryFrom($this->shipping_label_status)
+            : null;
+    }
+
+    public function shippingLabelDocTypeEnum(): ?\Modules\Sales\Enums\ShippingLabelDocType
+    {
+        return $this->shipping_label_doc_type
+            ? \Modules\Sales\Enums\ShippingLabelDocType::tryFrom($this->shipping_label_doc_type)
+            : null;
+    }
+
+    public function driverCallStatusEnum(): ?\Modules\Sales\Enums\DriverCallStatus
+    {
+        return $this->driver_call_status
+            ? \Modules\Sales\Enums\DriverCallStatus::tryFrom($this->driver_call_status)
+            : null;
+    }
+
+    public function cancelChannelEnum(): ?\Modules\Sales\Enums\CancelChannel
+    {
+        return $this->cancel_channel
+            ? \Modules\Sales\Enums\CancelChannel::tryFrom($this->cancel_channel)
+            : null;
     }
 
     public function scopeManual($query)
