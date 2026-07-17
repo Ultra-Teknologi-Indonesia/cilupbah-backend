@@ -2,12 +2,14 @@
 
 namespace Modules\Sales\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 use App\Traits\HasUuid7;
+use Modules\Sales\Support\ChannelStatusNormalizer;
 use Modules\Outbound\Support\InstantOrderClassifier;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
@@ -65,6 +67,7 @@ class SalesOrder extends Model implements HasMedia
         'dropshipper_phone',
         'courier_name',
         'courier_phone',
+        'courier_id',
         'pickup_code',
         'courier_pickup_recorded_at',
         'courier_pickup_recorded_by',
@@ -106,6 +109,7 @@ class SalesOrder extends Model implements HasMedia
         'days_to_ship',
         'payment_method',
         'payment_method_name',
+        'payment_method_id',
         'tracking_number',
         'shipping_provider',
         'shipping_label_status',
@@ -171,11 +175,60 @@ class SalesOrder extends Model implements HasMedia
         'is_manual'                     => 'boolean',
         'is_jubelio_shipment'           => 'boolean',
         'price_includes_tax'            => 'boolean',
+        'contact_channel'   => \Modules\Sales\Enums\ContactChannel::class,
+        'customer_decision' => \Modules\Sales\Enums\CustomerDecision::class,
     ];
 
     public const DELIVERY_COURIER          = 'COURIER';
     public const DELIVERY_SELF_PICKUP      = 'SELF_PICKUP';
     public const DELIVERY_JUBELIO_SHIPMENT = 'JUBELIO_SHIPMENT';
+
+    protected function channelStatus(): Attribute
+    {
+        return Attribute::make(
+            set: function ($value, array $attributes) {
+                if ($value === null || $value === '') {
+                    return null;
+                }
+                $channel = $attributes['source'] ?? $this->attributes['source'] ?? null;
+                $normalized = ChannelStatusNormalizer::normalize($channel, (string) $value);
+                return $normalized?->value ?? \Modules\Sales\Enums\ChannelStatus::UNKNOWN->value;
+            },
+        );
+    }
+
+    public function statusEnum(): ?\Modules\Sales\Enums\SalesOrderStatus
+    {
+        return $this->status ? \Modules\Sales\Enums\SalesOrderStatus::tryFrom($this->status) : null;
+    }
+
+    public function wmsStatusEnum(): ?\Modules\Sales\Enums\WmsStatus
+    {
+        return $this->wms_status ? \Modules\Sales\Enums\WmsStatus::tryFrom($this->wms_status) : null;
+    }
+
+    public function channelStatusEnum(): ?\Modules\Sales\Enums\ChannelStatus
+    {
+        return $this->channel_status
+            ? (\Modules\Sales\Enums\ChannelStatus::tryFrom($this->channel_status)
+                ?? \Modules\Sales\Enums\ChannelStatus::UNKNOWN)
+            : null;
+    }
+
+    public function channelEnum(): ?\Modules\Sales\Enums\SalesOrderChannel
+    {
+        return $this->source ? \Modules\Sales\Enums\SalesOrderChannel::tryFrom($this->source) : null;
+    }
+
+    public function disputeOutcomeEnum(): ?\Modules\Sales\Enums\DisputeOutcome
+    {
+        return $this->dispute_outcome ? \Modules\Sales\Enums\DisputeOutcome::tryFrom($this->dispute_outcome) : null;
+    }
+
+    public function cancelReasonEnum(): ?\Modules\Sales\Enums\SalesCancelReason
+    {
+        return $this->cancel_reason ? \Modules\Sales\Enums\SalesCancelReason::tryFrom($this->cancel_reason) : null;
+    }
 
     public function scopeManual($query)
     {
@@ -211,6 +264,16 @@ class SalesOrder extends Model implements HasMedia
     {
 
         return $this->hasMany(SalesOrderItem::class, 'order_id');
+    }
+
+    public function courier(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Outbound\Models\Courier::class, 'courier_id');
+    }
+
+    public function paymentMethod(): BelongsTo
+    {
+        return $this->belongsTo(PaymentMethod::class, 'payment_method_id');
     }
 
     public static function shortfallItemWhereRaw(): string

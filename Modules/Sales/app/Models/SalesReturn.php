@@ -2,11 +2,13 @@
 
 namespace Modules\Sales\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Support\DisputeOutcomeNormalizer;
 use Modules\Warehouse\Models\Location;
 use App\Traits\HasUuid7;
 
@@ -56,6 +58,26 @@ class SalesReturn extends Model
         'shipping_fee_original' => 'decimal:2',
         'shipping_fee_return' => 'decimal:2',
     ];
+
+    protected function marketplaceDecision(): Attribute
+    {
+        return Attribute::make(
+            set: function ($value) {
+                if ($value === null || $value === '') {
+                    return null;
+                }
+                $canonical = \Modules\Sales\Enums\DisputeOutcome::tryFrom((string) $value);
+                if ($canonical !== null) {
+                    return $canonical->value;
+                }
+                $channel = $this->relationLoaded('order')
+                    ? $this->order?->source
+                    : ($this->attributes['source'] ?? null);
+                $normalized = DisputeOutcomeNormalizer::normalize($channel, (string) $value);
+                return $normalized?->value;
+            },
+        );
+    }
 
     const SOURCE_MANUAL      = 'manual';
     const SOURCE_MARKETPLACE = 'marketplace';

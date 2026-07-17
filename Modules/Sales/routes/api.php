@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\Sales\Http\Controllers\InternalStoreController;
 use Modules\Sales\Http\Controllers\SalesOrderManualController;
 use Modules\Sales\Http\Controllers\SalesReturnController;
+use Modules\Sales\Http\Controllers\SalesOrderActivityController;
 use Modules\Sales\Http\Controllers\SalesOrderController;
 use Modules\Sales\Http\Controllers\SalesOrderImportController;
 use Modules\Sales\Http\Controllers\SalesInvoiceController;
@@ -232,6 +233,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     });
 
     Route::middleware('role_or_permission:owner|view-pesanan')->group(function () {
+        Route::get('sales/{id}/activities', [SalesOrderActivityController::class, 'index'])->whereUuid('id')->name('sales.orders.activities');
         Route::get('sales/{id}/invoice', [SalesOrderController::class, 'invoice'])->whereUuid('id')->name('sales.orders.invoice');
         Route::post('sales/invoices/bulk-pdf', [\Modules\Sales\Http\Controllers\BulkInvoiceController::class, 'bulkPdf'])->name('sales.invoices.bulk-pdf');
         Route::get('sales/{id}/breakdown', [SalesOrderController::class, 'breakdown'])->whereUuid('id')->name('sales.orders.breakdown');

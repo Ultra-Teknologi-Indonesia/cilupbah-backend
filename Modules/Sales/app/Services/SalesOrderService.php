@@ -49,27 +49,7 @@ class SalesOrderService
         'cancelled' => 'CANCELLED',
     ];
 
-    private const STATUS_HISTORY_ACTION_IDS = [
-        'CREATED'           => '100',
-        'PAID'              => '120',
-        'PROCESS'           => '200',
-        'PICK_STARTED'      => '500',
-        'PICK_FAILED'       => '510',
-        'FINISH_PICK'       => '600',
-        'PACK_STARTED'      => '700',
-        'LABEL_PRINTED'     => '750',
-        'FINISH_PACK'       => '800',
-        'READY_TO_SHIP'     => '850',
-        'DRIVER_CALLED'     => '870',
-        'TRACKING_UPDATED'  => '900',
-        'CHANNEL_STATUS'    => '910',
-        'RECEIVED_BY_BUYER' => '913',
-        'RETURN_DECISION'   => '920',
-        'FIELD_CHANGED'     => '990',
-        'SHIPPED'           => '999',
-        'COMPLETED'         => '912',
-        'CANCELLED'         => '000',
-    ];
+    // action codes moved to Modules\Sales\Enums\OrderActivityAction::code()
 
     private const AUDITED_CHANNEL_FIELDS = [
         'channel_status',
@@ -78,11 +58,22 @@ class SalesOrderService
         'shipping_provider',
         'shipping_address',
         'shipping_full_name',
+        'shipping_subdistrict',
         'customer_name',
         'shipping_phone',
         'payment_method',
         'mp_completed_date',
         'is_escrow_updated',
+        'zone_name',
+        'district_cd',
+        'due_date',
+    ];
+
+    private const AUDIT_IGNORED = [
+        'last_modified',
+        'updated_at',
+        'mp_timestamp',
+        'synced_at',
     ];
 
     private const IDEMPOTENCY_TTL = 172800;
@@ -862,8 +853,24 @@ class SalesOrderService
         return $order->fresh('items');
     }
 
-    public function logStatusHistory(SalesOrder $order, string $action, ?array $metadata = null, $actor = null): void
-    {
+    public function logStatusHistory(
+        SalesOrder $order,
+        \Modules\Sales\Enums\OrderActivityAction|string $action,
+        ?array $metadata = null,
+        $actor = null,
+        \Modules\Sales\Enums\OrderActivityEntity|string $entityType = \Modules\Sales\Enums\OrderActivityEntity::ORDER,
+        ?string $entityId = null,
+    ): void {
+        $actionEnum = $action instanceof \Modules\Sales\Enums\OrderActivityAction
+            ? $action
+            : (\Modules\Sales\Enums\OrderActivityAction::tryFrom($action)
+                ?? \Modules\Sales\Enums\OrderActivityAction::FIELD_CHANGED);
+
+        $entityEnum = $entityType instanceof \Modules\Sales\Enums\OrderActivityEntity
+            ? $entityType
+            : (\Modules\Sales\Enums\OrderActivityEntity::tryFrom($entityType)
+                ?? \Modules\Sales\Enums\OrderActivityEntity::ORDER);
+
         if ($actor instanceof \App\Models\User) {
             $email = $actor->email;
             $name  = $actor->name;
@@ -889,8 +896,10 @@ class SalesOrderService
 
         SalesOrderStatusHistory::create([
             'salesorder_id' => $order->id,
-            'action_id'     => self::STATUS_HISTORY_ACTION_IDS[$action] ?? '000',
-            'action'        => $action,
+            'entity_type'   => $entityEnum,
+            'entity_id'     => $entityId,
+            'action_id'     => $actionEnum->code(),
+            'action'        => $actionEnum,
             'actor_email'   => $email ?? 'system',
             'actor_id'      => $id,
             'actor_name'    => $name ?? 'System',
@@ -901,13 +910,17 @@ class SalesOrderService
 
     public function logFieldChange(
         SalesOrder $order,
-        string $action,
+        \Modules\Sales\Enums\OrderActivityAction|string $action,
         array $prev,
         array $new,
         ?string $entityNo = null,
         ?string $note = null,
         $actor = null,
+        ?SalesOrderItem $item = null,
     ): void {
+        $prev = collect($prev)->except(self::AUDIT_IGNORED)->all();
+        $new  = collect($new)->except(self::AUDIT_IGNORED)->all();
+
         $changedKeys = [];
         foreach ($new as $key => $value) {
             $prevValue = $prev[$key] ?? null;
@@ -927,18 +940,28 @@ class SalesOrderService
             $newValues[$key]  = $new[$key] ?? null;
         }
 
+        $resolvedEntityNo = $entityNo
+            ?? ($item ? ($item->description ?? $item->item_name ?? $order->salesorder_no) : $order->salesorder_no);
+
         $metadata = [
             'prev_values' => $prevValues,
             'new_values'  => $newValues,
+            'entity_no'   => $resolvedEntityNo,
         ];
-        if ($entityNo !== null) {
-            $metadata['entity_no'] = $entityNo;
-        }
         if ($note !== null) {
             $metadata['note'] = $note;
         }
 
-        $this->logStatusHistory($order, $action, $metadata, $actor);
+        $this->logStatusHistory(
+            $order,
+            $action,
+            $metadata,
+            $actor,
+            $item
+                ? \Modules\Sales\Enums\OrderActivityEntity::ITEM
+                : \Modules\Sales\Enums\OrderActivityEntity::ORDER,
+            $item?->id,
+        );
     }
 
     public function auditedChannelFields(): array
@@ -1835,7 +1858,23 @@ class SalesOrderService
                 $discAmount = (float) ($updates['disc_amount'] ?? $item->disc_amount);
                 $taxAmount = (float) ($updates['tax_amount'] ?? $item->tax_amount);
                 $updates['amount'] = ($price * $qty) - $discAmount + $taxAmount;
+
+                $prevSnapshot = collect(array_keys($updates))
+                    ->mapWithKeys(fn ($k) => [$k => $item->{$k}])
+                    ->all();
+
                 $item->update($updates);
+
+                $this->logFieldChange(
+                    $order,
+                    'FIELD_CHANGED',
+                    $prevSnapshot,
+                    $updates,
+                    null,
+                    null,
+                    null,
+                    $item->refresh(),
+                );
             }
 
             if ($reservesStock) {
