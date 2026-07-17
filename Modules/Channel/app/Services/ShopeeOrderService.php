@@ -672,9 +672,6 @@ class ShopeeOrderService
                 }
             }
 
-            // Hormati tipe yang diminta (mis. THERMAL = 1 label/lembar) selama
-            // order ini mendukungnya — suggestion Shopee sering NORMAL (lembar A4
-            // 2-up) yang bukan format thermal kita.
             if ($selectable && in_array($fallback, $selectable, true)) {
                 return $fallback;
             }

@@ -5,12 +5,6 @@ namespace Modules\Sales\Support;
 use Illuminate\Support\Facades\Log;
 use Modules\Sales\Enums\WmsStatus;
 
-/**
- * Petakan kode `wms_status` mentah per marketplace ke enum kanonik.
- * Meniru pola ChannelStatusNormalizer.
- *
- * Kode tak dikenal → WmsStatus::OTHER + log warning (tidak throw).
- */
 final class WmsStatusNormalizer
 {
     private const SHOPEE = [

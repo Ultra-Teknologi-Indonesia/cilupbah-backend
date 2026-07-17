@@ -2,11 +2,6 @@
 
 namespace Modules\Sales\Enums;
 
-/**
- * Set kanonik lintas-channel setelah normalisasi.
- * Adapter Shopee/TikTok/Lazada/WooCommerce mengonversi kode marketplace
- * ke salah satu case di bawah sebelum simpan ke sales_orders.channel_status.
- */
 enum ChannelStatus: string
 {
     case UNPAID             = 'UNPAID';

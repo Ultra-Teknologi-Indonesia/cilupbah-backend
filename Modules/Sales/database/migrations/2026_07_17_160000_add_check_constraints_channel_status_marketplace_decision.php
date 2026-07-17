@@ -3,11 +3,6 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 
-/**
- * NOT VALID: hanya berlaku untuk insert/update baru; row lama tidak di-scan.
- * Setelah verifikasi manual di staging (SELECT DISTINCT channel_status + marketplace_decision
- * hanya berisi nilai kanonik), jalankan VALIDATE CONSTRAINT untuk kunci penuh.
- */
 return new class extends Migration
 {
     public function up(): void

@@ -2,13 +2,6 @@
 
 namespace Modules\Inventory\Enums;
 
-/**
- * BinTransfer TIDAK punya kolom `status` di DB — lifecycle dilacak lewat
- * `bin_transfer_receipts` (satu receipt per fase). Enum ini adalah pandangan
- * gabungan yang di-derive dari relasi receipts, bukan cast kolom.
- *
- * Gunakan `$transfer->derivedStatus(): BinTransferStatus` di model.
- */
 enum BinTransferStatus: string
 {
     case DRAFT      = 'DRAFT';

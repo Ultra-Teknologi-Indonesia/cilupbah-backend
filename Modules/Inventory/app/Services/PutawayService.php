@@ -74,10 +74,6 @@ class PutawayService
         return $this->putawayRepository->getByStatus($status, $limit);
     }
 
-    /**
-     * Jumlah putaway per status untuk badge angka di filter tabs mobile.
-     * 1 request untuk semua tab, tidak perlu 3x paginated call ke list.
-     */
     public function getStatusCounts(?string $locationId = null): array
     {
         $query = Putaway::query();
@@ -158,9 +154,7 @@ class PutawayService
     public function create(array $data): Putaway
     {
         return DB::transaction(function () use ($data) {
-            // Fix C2: WAJIB row-lock semua inbound_items sumber SEBELUM baca pending.
-            // Cegah race 2 admin bareng POST /putaway untuk 30 pending yang sama
-            // → dobel target (60) padahal fisik cuma 30 → putaway_qty > received_qty.
+
             $inboundItemIds = collect($data['items'] ?? [])
                 ->flatMap(fn ($item) => collect($item['sources'] ?? [])->pluck('inbound_item_id'))
                 ->filter()
@@ -174,7 +168,6 @@ class PutawayService
                     ->get()
                     ->keyBy('id');
 
-                // Revalidate: qty putaway baru <= pending (received - putaway) per item.
                 $requestedPerItem = collect($data['items'] ?? [])
                     ->flatMap(fn ($item) => $item['sources'] ?? [])
                     ->groupBy('inbound_item_id')
@@ -240,9 +233,6 @@ class PutawayService
         });
     }
 
-    /**
-     * Tombol A "Alihkan Tugas" — TAHAN placement.
-     */
     public function unassign(
         string $putawayId,
         string $actorId,
@@ -279,9 +269,6 @@ class PutawayService
         });
     }
 
-    /**
-     * Tombol B "Reset & Alihkan" — reverse semua placement via resetAllPlacements + audit.
-     */
     public function resetAssignmentDestructive(
         string $putawayId,
         string $actorId,
@@ -292,7 +279,6 @@ class PutawayService
             $putaway = Putaway::lockForUpdate()->findOrFail($putawayId);
             $previousAssignee = $putaway->assigned_to;
 
-            // Reverse semua placement — reuse existing method (yang sudah reverse stok atomic).
             $this->resetAllPlacements($putawayId, $actorId);
 
             $putaway->refresh()->forceFill([
@@ -403,8 +389,6 @@ class PutawayService
             throw new \Exception('Putaway tidak ditemukan.');
         }
 
-        // Channel lock guard: web boleh proses hanya kalau belum di-assign;
-        // mobile hanya oleh assignee (STRICT H1).
         $actorId = (string) ($data['actor_id'] ?? request()?->user()?->id ?? '');
         $channel = $this->currentChannel();
         if ($channel === \App\Enums\ClientChannelEnum::MOBILE) {
@@ -664,10 +648,6 @@ class PutawayService
         });
     }
 
-    /**
-     * Reverse & hard-delete semua Putaway yang berasal dari Inbound tertentu.
-     * Dipakai saat Inbound COMPLETED dihapus di Penerimaan (cascade).
-     */
     public function reverseAndDeleteForInbound(string $inboundId, string $userId): void
     {
         $putawayIds = PutawaySource::where('inbound_id', $inboundId)
@@ -898,7 +878,6 @@ class PutawayService
             $updates['status'] = $newStatus;
         }
 
-        // Fix C1 (idempoten): set once_received_at pertama kali capai RECEIVED+.
         if ($inbound->once_received_at === null
             && in_array($newStatus, [
                 Inbound::STATUS_RECEIVED,

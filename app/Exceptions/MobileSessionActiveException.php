@@ -6,9 +6,7 @@ use Throwable;
 
 class MobileSessionActiveException extends UserFacingException
 {
-    /**
-     * @param array<int, array{user_id: string, name: string}> $activeParticipants
-     */
+
     public function __construct(
         array $activeParticipants,
         ?Throwable $previous = null,

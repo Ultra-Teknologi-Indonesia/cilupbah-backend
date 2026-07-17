@@ -7,12 +7,6 @@ use Modules\Sales\Support\ChannelStatusNormalizer;
 use Modules\Sales\Support\DisputeOutcomeNormalizer;
 use Modules\Sales\Support\WmsStatusNormalizer;
 
-/**
- * Normalisasi data legacy sales_orders.channel_status + sales_returns.marketplace_decision
- * ke set kanonik enum. Idempotent — nilai yang sudah kanonik dilewati.
- *
- * up() aman dijalankan berkali-kali. down() no-op (tidak mengembalikan raw code — data lost by design).
- */
 return new class extends Migration
 {
     public function up(): void
@@ -24,7 +18,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        // no-op: normalisasi terminal.
+
     }
 
     private function normalizeChannelStatus(): void
@@ -97,7 +91,6 @@ return new class extends Migration
             return;
         }
 
-        // Lampir source via join ke sales_orders karena SalesReturn tidak selalu punya source jelas per row.
         $rows = DB::table('sales_returns as sr')
             ->leftJoin('sales_orders as so', 'so.id', '=', 'sr.order_id')
             ->select('sr.marketplace_decision', 'so.source', DB::raw('COUNT(*) as tally'))

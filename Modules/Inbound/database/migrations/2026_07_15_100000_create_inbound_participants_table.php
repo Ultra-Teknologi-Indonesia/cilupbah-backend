@@ -32,7 +32,6 @@ return new class extends Migration
             $table->timestamp('receiving_started_at')->nullable()->after('once_received_at');
         });
 
-        // Backfill: inbound aktif dengan assigned_to → 1 participant ACTIVE.
         DB::table('inbounds')
             ->whereNotNull('assigned_to')
             ->whereIn('status', ['DRAFT', 'PARTIAL'])
@@ -57,7 +56,6 @@ return new class extends Migration
                 }
             });
 
-        // Backfill: inbound sudah RECEIVED+ dengan assigned_to → 1 participant DONE.
         DB::table('inbounds')
             ->whereNotNull('assigned_to')
             ->whereIn('status', ['RECEIVED', 'PUTAWAY_IN_PROGRESS', 'COMPLETED'])
@@ -83,7 +81,6 @@ return new class extends Migration
                 }
             });
 
-        // Backfill receiving_started_at dari joined_at earliest per inbound (kalau ada participant).
         DB::statement("
             UPDATE inbounds
             SET receiving_started_at = sub.first_join

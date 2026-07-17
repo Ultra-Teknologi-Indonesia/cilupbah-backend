@@ -5,14 +5,6 @@ namespace Modules\Sales\Support;
 use Illuminate\Support\Facades\Log;
 use Modules\Sales\Enums\ChannelStatus;
 
-/**
- * Petakan kode `channel_status` mentah per marketplace ke enum kanonik `ChannelStatus`.
- *
- * Prinsip:
- * - Fungsi ini TIDAK PERNAH melempar. Kode tak dikenal → ChannelStatus::UNKNOWN + log warning.
- * - Petakan berdasarkan (channel, rawCode). Kalau channel tak dikenal, pakai UNKNOWN.
- * - Kode yang sudah kanonik (mis. adapter sudah normalisasi sendiri) dilewati langsung.
- */
 final class ChannelStatusNormalizer
 {
     private const SHOPEE = [
@@ -78,7 +70,6 @@ final class ChannelStatusNormalizer
             return null;
         }
 
-        // Sudah kanonik? Skip lookup.
         $canonical = ChannelStatus::tryFrom($rawCode);
         if ($canonical !== null && $canonical !== ChannelStatus::UNKNOWN) {
             return $canonical;
@@ -96,7 +87,6 @@ final class ChannelStatusNormalizer
             return $map[$rawCode];
         }
 
-        // Fallback insensitive lookup (webhook kadang berubah case).
         $upper = strtoupper($rawCode);
         foreach ($map as $key => $value) {
             if (strtoupper((string) $key) === $upper) {

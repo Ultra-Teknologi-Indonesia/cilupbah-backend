@@ -9,11 +9,6 @@ use App\Exceptions\StaleWriteException;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 
-/**
- * Kontrak: model yang pakai trait ini harus menyediakan properti untuk kolom
- * assignment. Default: `assigned_to`, `assigned_at`. Override method di bawah
- * kalau nama kolom beda (Picklist pakai `picker_id`, misalnya).
- */
 trait EnforcesAssignmentChannel
 {
     protected function assignedToColumn(Model $doc): string
@@ -26,15 +21,8 @@ trait EnforcesAssignmentChannel
         return 'assigned_at';
     }
 
-    /**
-     * Boolean flag "sudah pernah selesai" — sekali true, guard web unlock.
-     * Untuk inbound: `once_received_at`. Untuk putaway/picklist: `completed_at`.
-     */
     abstract protected function unlockedOnceColumn(Model $doc): string;
 
-    /**
-     * Guard web mutate — throw kalau dokumen sedang di-lock ke MOBILE.
-     */
     protected function assertWebCanMutate(Model $doc): void
     {
         $doc->refresh();
@@ -63,9 +51,6 @@ trait EnforcesAssignmentChannel
         );
     }
 
-    /**
-     * Guard mobile mutate — STRICT: actor wajib sama dengan assignee.
-     */
     protected function assertMobileCanMutate(Model $doc, string $actorId): void
     {
         $doc->refresh();
@@ -103,9 +88,6 @@ trait EnforcesAssignmentChannel
         }
     }
 
-    /**
-     * Optimistic concurrency check untuk mutasi web multi-admin.
-     */
     protected function assertVersionMatches(Model $doc, ?string $expectedUpdatedAt): void
     {
         if ($expectedUpdatedAt === null) {
@@ -127,9 +109,6 @@ trait EnforcesAssignmentChannel
         }
     }
 
-    /**
-     * Row-level lock helper. Return model yang di-refresh dengan FOR UPDATE lock.
-     */
     protected function lockForMutation(Model $doc): Model
     {
         return $doc->newQueryWithoutScopes()

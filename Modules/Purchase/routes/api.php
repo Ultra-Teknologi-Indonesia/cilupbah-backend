@@ -30,23 +30,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::delete('purchase/return-settlements', [PurchaseReturnSettlementController::class, 'destroy'])->name('purchase.return-settlements.destroy');
     });
 
-    // Fitur Retur Pembelian ke Supplier dihapus per requirement klien (manual, tidak dipakai).
-    // Route::middleware('role_or_permission:owner|view-retur-pembelian')->group(function () {
-    //     Route::get('purchase/purchase-returns/unpaid', [PurchaseReturnController::class, 'unpaid'])->name('purchase.returns.unpaid');
-    //     Route::get('purchase/purchase-returns', [PurchaseReturnController::class, 'index'])->name('purchase.returns.index');
-    //     Route::get('purchase/purchase-returns/{id}', [PurchaseReturnController::class, 'show'])->name('purchase.returns.show');
-    //     Route::get('purchase/purchase-returns/{id}/pdf', [PurchaseReturnController::class, 'pdf'])->name('purchase.returns.pdf');
-    // });
-    // Route::middleware('role_or_permission:owner|create-retur-pembelian')->group(function () {
-    //     Route::post('purchase/purchase-returns', [PurchaseReturnController::class, 'store'])->name('purchase.returns.store');
-    // });
-    // Route::middleware('role_or_permission:owner|edit-retur-pembelian')->group(function () {
-    //     Route::post('purchase/purchase-returns/{id}/process', [PurchaseReturnController::class, 'process'])->name('purchase.returns.process');
-    // });
-    // Route::middleware('role_or_permission:owner|delete-retur-pembelian')->group(function () {
-    //     Route::delete('purchase', [PurchaseReturnController::class, 'destroy'])->name('purchase.returns.destroy');
-    // });
-
     Route::middleware('role_or_permission:owner|view-pembayaran-pembelian')->group(function () {
         Route::get('purchase/payments', [PurchasePaymentController::class, 'index'])->name('purchase.payments.index');
         Route::get('purchase/payments/{id}', [PurchasePaymentController::class, 'show'])->name('purchase.payments.show');

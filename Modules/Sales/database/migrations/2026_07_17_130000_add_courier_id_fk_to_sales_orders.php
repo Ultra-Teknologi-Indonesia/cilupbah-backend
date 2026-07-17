@@ -5,11 +5,6 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-/**
- * Additive: kolom courier_name text tetap ada sebagai display cache
- * dan sumber untuk backfill. Adapter channel disunting bertahap
- * untuk mengisi courier_id secara langsung.
- */
 return new class extends Migration
 {
     public function up(): void
@@ -22,8 +17,6 @@ return new class extends Migration
             $table->index('courier_id');
         });
 
-        // Best-effort backfill via exact name match.
-        // Baris tanpa match tetap NULL — direkonsiliasi manual di staging.
         DB::statement(<<<'SQL'
             UPDATE sales_orders so
             SET    courier_id = c.id

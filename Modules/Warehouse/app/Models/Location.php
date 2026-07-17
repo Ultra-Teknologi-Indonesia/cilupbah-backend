@@ -83,11 +83,6 @@ class Location extends Model
         return $this->hasMany(\Modules\Inventory\Models\Inventory::class);
     }
 
-    /**
-     * True kalau lokasi ini enforce bijection strict antara SKU dan bin:
-     * 1 bin cuma 1 SKU, dan 1 SKU cuma di 1 bin.
-     * Sekarang aktif untuk WH-KECIL only; WH-PUSAT dan lokasi lain bebas.
-     */
     public function enforcesStrictBinSku(): bool
     {
         return $this->location_code === self::SYSTEM_KECIL_CODE;

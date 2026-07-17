@@ -5,10 +5,6 @@ namespace Modules\Sales\Support;
 use Illuminate\Support\Facades\Log;
 use Modules\Sales\Enums\DisputeOutcome;
 
-/**
- * Petakan kode `dispute_outcome` mentah per marketplace ke enum kanonik `DisputeOutcome`.
- * Tidak pernah melempar. Kode tak dikenal → DisputeOutcome::PENDING + log warning.
- */
 final class DisputeOutcomeNormalizer
 {
     private const SHOPEE = [

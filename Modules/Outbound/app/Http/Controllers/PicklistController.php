@@ -548,7 +548,6 @@ class PicklistController extends Controller
         }
     }
 
-
     #[OA\Post(
         path: '/api/v1/outbound/picklists/{id}/scan',
         summary: 'Resolve SKU→bin: auto-suggest bin from inventory kalau bin_code kosong; strict validate kalau diberi (no stock mutation)',
@@ -750,10 +749,6 @@ class PicklistController extends Controller
         }
     }
 
-    /**
-     * Tombol A "Alihkan Tugas" — TAHAN alokasi pick.
-     * DELETE /api/v1/picklists/{id}/assignment
-     */
     public function unassign(string $id, \Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
     {
         $validated = $request->validate([
@@ -778,10 +773,6 @@ class PicklistController extends Controller
         );
     }
 
-    /**
-     * Tombol B "Reset & Alihkan" — reverse alokasi pick + audit.
-     * POST /api/v1/picklists/{id}/assignment/reset
-     */
     public function resetAssignment(string $id, \Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
     {
         $validated = $request->validate([

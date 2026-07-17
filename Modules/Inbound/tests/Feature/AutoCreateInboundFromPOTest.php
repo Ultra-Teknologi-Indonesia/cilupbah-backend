@@ -98,7 +98,7 @@ class AutoCreateInboundFromPOTest extends TestCase
     public function test_receive_additional_creates_new_inbound_for_remaining_qty(): void
     {
         $po = $this->makePO(PurchaseOrder::STATUS_OPEN);
-        // Simulate 60 already received via PO items denorm.
+
         PurchaseOrderItem::where('purchase_order_id', $po->id)->update(['received_qty' => 60]);
 
         $inbound = app(\Modules\Inbound\Services\InboundService::class)

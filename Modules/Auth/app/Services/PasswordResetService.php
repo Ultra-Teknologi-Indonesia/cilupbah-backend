@@ -58,9 +58,6 @@ class PasswordResetService
         ));
     }
 
-    /**
-     * @return array{reset_token:string, expires_at:Carbon}
-     */
     public function verifyOtp(string $email, string $otp): array
     {
         $email = strtolower(trim($email));

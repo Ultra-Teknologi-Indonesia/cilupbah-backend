@@ -2,11 +2,6 @@
 
 namespace Modules\Inbound\Enums;
 
-/**
- * Nilai default DB `inbounds.status` = 'DRAFT' (migrasi create_inbounds_table).
- * Kolom tanpa DB constraint di schema asal — enum + check constraint di
- * migrasi turunan menegakkan set ini.
- */
 enum InboundStatus: string
 {
     case DRAFT       = 'DRAFT';

@@ -12,20 +12,11 @@ use Modules\Sales\Models\SalesOrder;
 
 abstract class AbstractLogisticsService implements MarketPlaceLogisticsInterface
 {
-    /**
-     * Untuk penulisan driver_call_method ke Shipment (mis. SHOPEE_INSTANT).
-     */
+
     abstract protected function driverCallMethod(): string;
 
-    /**
-     * Panggil API channel untuk 1 order dan kembalikan array {status,message?,tracking_number?}.
-     */
     abstract protected function callSingle(SalesOrder $order, int $shipperId): array;
 
-    /**
-     * Retry — default idempotent re-invoke callSingle; adapter yang punya endpoint retry (Shopee)
-     * override method ini.
-     */
     protected function retrySingle(SalesOrder $order, int $shipperId): array
     {
         return $this->callSingle($order, $shipperId);
@@ -57,9 +48,6 @@ abstract class AbstractLogisticsService implements MarketPlaceLogisticsInterface
         ];
     }
 
-    /**
-     * @param  callable(SalesOrder):array  $handler
-     */
     protected function invoke(array $orderIds, int $shipperId, callable $handler): DriverCallResult
     {
         $orders = SalesOrder::query()->whereIn('id', $orderIds)->get()->keyBy('id');

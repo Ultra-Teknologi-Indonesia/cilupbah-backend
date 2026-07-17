@@ -27,7 +27,7 @@ class CleanupBulkLabelBatchesCommandTest extends TestCase
             'merged_pdf_path' => 'bulk-labels/old.pdf',
         ]);
         Storage::disk('documents')->put('bulk-labels/old.pdf', '%PDF-');
-        // backdate 25h — well past default 24h retention
+
         $oldBatch->update(['created_at' => now()->subHours(25)]);
 
         $freshBatch = BulkShippingLabelBatch::create([

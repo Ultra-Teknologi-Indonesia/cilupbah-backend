@@ -41,11 +41,6 @@ class BinOccupancyGuardTest extends TestCase
         ]);
     }
 
-    /**
-     * Ambil / bikin lokasi dengan code tertentu. WH-KECIL sudah di-seed
-     * lewat migration; WH-PUSAT hanya via WarehouseDatabaseSeeder yang
-     * tidak jalan otomatis di test.
-     */
     private function makeLocation(string $code): Location
     {
         $existing = Location::where('location_code', $code)->first();
@@ -57,8 +52,7 @@ class BinOccupancyGuardTest extends TestCase
 
     private function placeStock(Location $loc, LocationBin $bin, ProductVariant $variant, int $onHand, int $reserved = 0): void
     {
-        // Kolom aslinya `on_order` (reservasi ke pesanan);
-        // parameter dinamai $reserved supaya semantik test tetap jelas.
+
         Inventory::create([
             'item_id' => $variant->id,
             'location_id' => $loc->id,
@@ -180,8 +174,7 @@ class BinOccupancyGuardTest extends TestCase
 
     public function test_pusat_allows_multi_sku_per_bin(): void
     {
-        // Rule "1 rak 1 SKU" HANYA untuk WH-KECIL.
-        // WH-PUSAT boleh multi-SKU per rak (gudang volume besar).
+
         $loc = $this->makeLocation(Location::SYSTEM_PUSAT_CODE);
         $bin = LocationBin::factory()->create([
             'location_id' => $loc->id,
@@ -200,7 +193,7 @@ class BinOccupancyGuardTest extends TestCase
 
     public function test_random_non_kecil_location_allows_multi_sku_per_bin(): void
     {
-        // Lokasi baru (bukan WH-KECIL) juga bebas.
+
         $loc = Location::factory()->create([
             'location_code' => 'WH-CUSTOM-' . Str::random(4),
         ]);

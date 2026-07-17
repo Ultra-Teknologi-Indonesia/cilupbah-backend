@@ -880,10 +880,6 @@ class SalesOrderController extends Controller
         }
     }
 
-    /**
-     * Ekstrak raw PDF bytes dari berbagai bentuk return getShippingLabel().
-     * Return null bila belum bisa diekstrak (mis. Shopee status=preparing → biarkan payload asli mengalir).
-     */
     private function extractLabelBytes(array $result): ?string
     {
         if (! empty($result['document_base64'])) {

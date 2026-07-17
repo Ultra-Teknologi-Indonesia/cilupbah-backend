@@ -49,8 +49,6 @@ class SalesOrderService
         'cancelled' => 'CANCELLED',
     ];
 
-    // action codes moved to Modules\Sales\Enums\OrderActivityAction::code()
-
     private const AUDITED_CHANNEL_FIELDS = [
         'channel_status',
         'tracking_number',

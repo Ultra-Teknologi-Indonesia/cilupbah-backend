@@ -2,10 +2,6 @@
 
 namespace Modules\Inventory\Enums;
 
-/**
- * Kategori pergerakan stok pada `inventory_movements.transaction_type`.
- * Termasuk varian *_REVERSAL untuk koreksi/scan-salah.
- */
 enum InventoryMovementType: string
 {
     case PURCHASE          = 'PURCHASE';

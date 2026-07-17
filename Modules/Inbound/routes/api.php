@@ -35,7 +35,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::middleware('role_or_permission:owner|edit-barang-masuk')->group(function () {
         Route::post('inbounds/{id}/assign', [InboundController::class, 'assign'])->name('inbounds.assign');
-        // Channel lock: unassign (tombol A, TAHAN) + reset (tombol B, destruktif)
+
         Route::delete('inbounds/{id}/assignment', [InboundController::class, 'unassign'])->name('inbounds.unassign');
         Route::post('inbounds/{id}/assignment/reset', [InboundController::class, 'resetAssignment'])->name('inbounds.resetAssignment');
     });
@@ -47,17 +47,15 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::middleware('role_or_permission:owner|edit-barang-masuk')->group(function () {
         Route::post('inbounds/{id}/receive', [InboundController::class, 'receive'])->name('inbounds.receive');
-        // Fase 2 multi-staff: mobile hanya bisa join + scan; finalize hanya admin via closeReceiving.
+
         Route::post('inbounds/{id}/join', [InboundController::class, 'joinSession'])->name('inbounds.join');
         Route::patch('inbounds/{id}/items/{itemId}/received-qty', [InboundController::class, 'setReceivedQty'])->name('inbounds.setReceivedQty');
     });
 
-    // Admin withdraw participant (fase 2)
     Route::middleware('role_or_permission:owner|edit-barang-masuk')->group(function () {
         Route::post('inbounds/{id}/participants/{userId}/withdraw', [InboundController::class, 'withdrawParticipant'])->name('inbounds.participants.withdraw');
     });
 
-    // F5: Terima Susulan dari PO
     Route::middleware('role_or_permission:owner|create-barang-masuk')->group(function () {
         Route::post('purchase-orders/{poId}/receive-additional', [InboundController::class, 'receiveAdditional'])->name('inbounds.receiveAdditional');
     });

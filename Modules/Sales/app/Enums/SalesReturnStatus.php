@@ -2,9 +2,6 @@
 
 namespace Modules\Sales\Enums;
 
-/**
- * Nilai selaras dengan SalesReturn::STATUS_* consts di model existing.
- */
 enum SalesReturnStatus: string
 {
     case PENDING   = 'PENDING';

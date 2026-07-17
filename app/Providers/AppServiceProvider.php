@@ -62,12 +62,6 @@ class AppServiceProvider extends ServiceProvider
                 }
             }
 
-            // Postgres FTS memecah string ke lexemes utuh (mis. "INB-4D3FYHMB"
-            // jadi ["inb", "4d3fyhmb"]). Ini bagus untuk text natural tapi
-            // buruk untuk kode identifier — user cari "4D" tidak ketemu.
-            // Fallback: gabung FTS dengan ILIKE '%value%' via OR, supaya
-            // substring identifier tetap match. Ranking tetap pakai FTS
-            // (kalau hanya ILIKE hit, rank = 0 → jatuh ke bawah).
             $ilikePattern = '%' . str_replace(['%', '_'], ['\%', '\_'], $search) . '%';
 
             if (empty($relationColumns)) {

@@ -2,13 +2,6 @@
 
 namespace Modules\Sales\Enums;
 
-/**
- * Kode alasan pembatalan INTERNAL (seller-side).
- *
- * Untuk kode marketplace-side (raw dari webhook Shopee/TikTok/Lazada),
- * gunakan kolom terpisah `sales_orders.mp_cancel_reason` yang tetap string bebas.
- * Adapter channel yang bertanggung jawab memetakan (bila mau) ke enum ini.
- */
 enum SalesCancelReason: string
 {
     case OUT_OF_STOCK           = 'seller_cancel_reason_out_of_stock';

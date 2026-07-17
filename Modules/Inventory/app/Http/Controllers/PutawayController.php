@@ -336,6 +336,8 @@ class PutawayController extends Controller
             $items = $this->putawayService->getItems($id, $limit);
 
             return $this->successPaginatedResponse($items, 'Daftar item putaway berhasil diambil.');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal memproses aksi.',
@@ -374,6 +376,8 @@ class PutawayController extends Controller
             $results = $this->putawayService->assignStaff($request->validated());
 
             return $this->successResponse($results, 'Staff berhasil di-assign ke putaway.');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal menetapkan.',
@@ -403,6 +407,8 @@ class PutawayController extends Controller
             $putaway = $this->putawayService->start($id);
 
             return $this->successResponse($putaway, 'Putaway berhasil dimulai.');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal memulai.',
@@ -440,6 +446,8 @@ class PutawayController extends Controller
             $this->putawayService->processItem($id, $itemId, $request->validated());
 
             return $this->successResponse(null, 'Proses putaway item sedang dijalankan.', 202);
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal memproses aksi.',
@@ -487,6 +495,8 @@ class PutawayController extends Controller
             );
 
             return $this->successResponse($putaway, 'Penempatan berhasil dikoreksi.');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal menghapus.',
@@ -537,6 +547,8 @@ class PutawayController extends Controller
             $putaway = $this->putawayService->deletePlacements($id, $validated['items'], $userId);
 
             return $this->successResponse($putaway, 'Penempatan berhasil dikoreksi.');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal menghapus.',
@@ -566,6 +578,8 @@ class PutawayController extends Controller
             $putaway = $this->putawayService->complete($id);
 
             return $this->successResponse($putaway, 'Putaway berhasil diselesaikan.');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal menyelesaikan.',
@@ -596,6 +610,8 @@ class PutawayController extends Controller
             $result = $this->putawayService->completeWithDiscrepancy($id, $userId);
 
             return $this->successResponse($result, 'Putaway berhasil diselesaikan. Selisih dialokasikan ke rak default.');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal menyelesaikan.',
@@ -796,6 +812,8 @@ class PutawayController extends Controller
             };
 
             return $this->successResponse($result, $message);
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal menghapus.',
@@ -834,6 +852,8 @@ class PutawayController extends Controller
             $results = $this->putawayService->bulkDeletePutaway($validated['ids'], $userId);
 
             return $this->successResponse($results, 'Penempatan terpilih berhasil diproses.');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal menghapus.',
@@ -981,10 +1001,6 @@ class PutawayController extends Controller
         }
     }
 
-    /**
-     * Tombol A "Alihkan Tugas" — TAHAN placement.
-     * DELETE /api/v1/putaway/{id}/assignment
-     */
     public function unassign(string $id, Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -1009,10 +1025,6 @@ class PutawayController extends Controller
         );
     }
 
-    /**
-     * Tombol B "Reset & Alihkan" — reverse semua placement.
-     * POST /api/v1/putaway/{id}/assignment/reset
-     */
     public function resetAssignment(string $id, Request $request): JsonResponse
     {
         $validated = $request->validate([

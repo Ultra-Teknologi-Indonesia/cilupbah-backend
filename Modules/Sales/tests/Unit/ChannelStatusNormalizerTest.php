@@ -90,7 +90,7 @@ class ChannelStatusNormalizerTest extends TestCase
 
     public function test_case_insensitive_fallback(): void
     {
-        // Kode Shopee kadang datang lowercase dari webhook lain
+
         $this->assertSame(ChannelStatus::SHIPPED, ChannelStatusNormalizer::normalize('shopee', 'shipped'));
         $this->assertSame(ChannelStatus::CANCELLED, ChannelStatusNormalizer::normalize('shopee', 'cancelled'));
     }

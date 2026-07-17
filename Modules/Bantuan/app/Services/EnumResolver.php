@@ -5,13 +5,9 @@ namespace Modules\Bantuan\Services;
 use ReflectionClass;
 use Throwable;
 
-/**
- * Resolve nilai valid untuk filter/kolom yang enum-like.
- * Sumber: config/filter-enums.php + konstanta Model (mis. SalesOrder::STATUS_*).
- */
 class EnumResolver
 {
-    /** @var array<string,array<int,string>> */
+
     private array $config;
 
     public function __construct()
@@ -20,17 +16,12 @@ class EnumResolver
         $this->config = is_file($path) ? (array) require $path : [];
     }
 
-    /**
-     * Lookup by (module, filterName). Cek "module.filter" dulu, lalu "filter" saja.
-     * @return array<int,string>|null
-     */
     public function forFilter(string $moduleSlug, string $filterName): ?array
     {
         $keyed = "{$moduleSlug}.{$filterName}";
         if (isset($this->config[$keyed])) return $this->config[$keyed];
         if (isset($this->config[$filterName])) return $this->config[$filterName];
 
-        // Coba lookup constant di model modul (mis. Modules\Sales\Models\SalesOrder::STATUS_*)
         $model = $this->guessModelForModule($moduleSlug);
         if ($model && class_exists($model)) {
             $consts = $this->extractPrefixedConstants($model, strtoupper($filterName));
@@ -54,10 +45,6 @@ class EnumResolver
         return $map[strtolower($slug)] ?? null;
     }
 
-    /**
-     * Ambil konstanta model yang diawali prefix (mis. STATUS_) sebagai nilai enum.
-     * @return array<int,string>
-     */
     private function extractPrefixedConstants(string $class, string $prefix): array
     {
         try {

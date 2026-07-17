@@ -6,13 +6,6 @@ use ReflectionClass;
 use ReflectionMethod;
 use Throwable;
 
-/**
- * Ekstrak query parameter non-Spatie dari body controller method:
- *   request('name'), request()->query('name'), $request->query/input/get('name'),
- *   $request->boolean/integer/string('name'), request()->filled('name').
- * Nama parameter yang termasuk internal Spatie (filter, sort, search, include, fields)
- * diabaikan.
- */
 class QueryParamExtractor
 {
     private const IGNORE_NAMES = [
@@ -22,14 +15,10 @@ class QueryParamExtractor
 
     public function __construct(private FieldDescriptionResolver $descriptions = new FieldDescriptionResolver()) {}
 
-    /**
-     * @return array<int,array{name:string,type:string,description:string,required:bool}>
-     */
     public function extract(?ReflectionMethod $method): array
     {
         if (! $method) return [];
 
-        // Kumpulkan body method + method service/repository yang di-invoke (2 level)
         $visited = [];
         $bodies  = $this->collectBodies($method, 0, $visited);
         if (! $bodies) return [];
@@ -37,12 +26,6 @@ class QueryParamExtractor
 
         $found = [];
 
-        // Patterns:
-        //  request('name')  request('name', 'default')
-        //  request()->query('name')  request()->input('name')  request()->get('name')  request()->boolean('name')
-        //  $request->query('name') $request->input('name') $request->get('name')
-        //  $request->boolean/integer/string/date/float('name')
-        //  request('name.subkey')
         $patterns = [
             "/request\s*\(\s*['\"]([\w\.-]+)['\"]/",
             "/request\s*\(\s*\)\s*->\s*(?:query|input|get|boolean|integer|string|date|float|filled)\s*\(\s*['\"]([\w\.-]+)['\"]/",
@@ -83,9 +66,6 @@ class QueryParamExtractor
         return implode('', array_slice($lines, $start - 1, $end - $start + 1));
     }
 
-    /**
-     * @return array<int,string>
-     */
     private function collectBodies(ReflectionMethod $method, int $depth, array &$visited): array
     {
         if ($depth > 3) return [];
@@ -116,7 +96,6 @@ class QueryParamExtractor
         return $bodies;
     }
 
-    /** @return array<string,string> */
     private function collectPropertyTypes(ReflectionClass $class): array
     {
         $out = [];

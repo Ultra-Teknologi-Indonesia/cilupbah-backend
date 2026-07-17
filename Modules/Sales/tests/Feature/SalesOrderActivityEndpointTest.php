@@ -70,7 +70,7 @@ class SalesOrderActivityEndpointTest extends TestCase
             ]);
 
         $labels = collect($response->json('data'))->pluck('action_label')->all();
-        // PAID lebih baru dari CREATED → muncul lebih dulu (desc)
+
         $this->assertSame(['PAID', 'CREATED'], $labels);
     }
 

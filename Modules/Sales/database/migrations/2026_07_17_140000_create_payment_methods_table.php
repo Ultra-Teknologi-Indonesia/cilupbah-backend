@@ -5,20 +5,15 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-/**
- * Additive: kolom sales_orders.payment_method text tetap ada
- * sebagai raw dari webhook + display cache. payment_method_id FK
- * dipopulate best-effort backfill; adapter channel disunting bertahap.
- */
 return new class extends Migration
 {
     public function up(): void
     {
         Schema::create('payment_methods', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->string('code');           // ex: 'SPayLater', 'COD', 'BankTransfer'
+            $table->string('code');           
             $table->string('name');
-            $table->string('source_channel', 32)->nullable(); // shopee/tiktok/lazada/wc; null = universal
+            $table->string('source_channel', 32)->nullable(); 
             $table->boolean('is_active')->default(true);
             $table->timestamps();
 
@@ -34,7 +29,6 @@ return new class extends Migration
             $table->index('payment_method_id');
         });
 
-        // Seed dari DISTINCT payment_method yang sudah ada di sales_orders.
         DB::statement(<<<'SQL'
             INSERT INTO payment_methods (id, code, name, source_channel, is_active, created_at, updated_at)
             SELECT
@@ -52,7 +46,6 @@ return new class extends Migration
             ON CONFLICT (code, source_channel) DO NOTHING
         SQL);
 
-        // Best-effort backfill FK
         DB::statement(<<<'SQL'
             UPDATE sales_orders so
             SET    payment_method_id = pm.id

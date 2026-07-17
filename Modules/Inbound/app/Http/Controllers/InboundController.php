@@ -285,7 +285,6 @@ class InboundController extends Controller
             return $this->errorResponse('Dokumen Inbound tidak ditemukan', 404);
         }
 
-        // Fase 2: sertakan participants + edit_lock untuk panel Sesi Aktif FE web.
         $inbound->load(['participants.user:id,name']);
 
         $participantsData = $inbound->participants->map(function ($p) use ($inbound) {
@@ -766,10 +765,6 @@ class InboundController extends Controller
         }
     }
 
-    /**
-     * Tombol A "Alihkan Tugas" — TAHAN progress.
-     * DELETE /api/v1/inbounds/{id}/assignment
-     */
     public function unassign(string $id, UnassignInboundRequest $request): JsonResponse
     {
         $inbound = $this->inboundService->unassignWorker(
@@ -788,10 +783,6 @@ class InboundController extends Controller
         );
     }
 
-    /**
-     * Tombol B "Reset & Alihkan" — reverse received_qty + audit.
-     * POST /api/v1/inbounds/{id}/assignment/reset
-     */
     public function resetAssignment(string $id, ResetInboundAssignmentRequest $request): JsonResponse
     {
         $inbound = $this->inboundService->resetAssignment(
@@ -807,10 +798,6 @@ class InboundController extends Controller
         );
     }
 
-    /**
-     * Mobile eksplisit join sesi (tanpa scan) — fase 2.
-     * POST /api/v1/inbounds/{id}/join
-     */
     public function joinSession(string $id): JsonResponse
     {
         $inbound = $this->inboundService->joinSession(
@@ -821,10 +808,6 @@ class InboundController extends Controller
         return $this->successResponse($inbound, 'Anda bergabung dalam sesi penerimaan.');
     }
 
-    /**
-     * Admin tarik participant dari web (fase 2).
-     * POST /api/v1/inbounds/{id}/participants/{userId}/withdraw
-     */
     public function withdrawParticipant(string $id, string $userId, Request $request): JsonResponse
     {
         $inbound = $this->inboundService->withdrawParticipant(
@@ -837,10 +820,6 @@ class InboundController extends Controller
         return $this->successResponse($inbound, 'Peserta berhasil ditarik dari sesi.');
     }
 
-    /**
-     * F5: Buat Inbound susulan dari PO (delivery bertahap).
-     * POST /api/v1/purchase-orders/{poId}/receive-additional
-     */
     public function receiveAdditional(string $poId): JsonResponse
     {
         $po = \Modules\Purchase\Models\PurchaseOrder::find($poId);

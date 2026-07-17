@@ -68,8 +68,6 @@ class BinOccupancyGuard
             return false;
         }
 
-        // Rule "1 rak 1 SKU" hanya di lokasi strict (WH-KECIL).
-        // WH-PUSAT & lokasi lain bebas — bin bisa multi-SKU.
         $location = $bin->location;
         if (! $location || ! $location->enforcesStrictBinSku()) {
             return false;

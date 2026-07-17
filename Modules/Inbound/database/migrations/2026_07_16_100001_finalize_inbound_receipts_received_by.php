@@ -10,9 +10,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // 1. Inline backfill untuk row yang belum di-populate:
-        //    a. received_by berupa UUID valid → langsung copy.
-        //    b. received_by berupa nama → match users.name (case-insensitive, trim).
+
         DB::transaction(function () {
             $userIds = DB::table('users')->pluck('id')->all();
             $userIdSet = array_flip($userIds);
@@ -49,8 +47,6 @@ return new class extends Migration
                 });
         });
 
-        // 2. Fail loud kalau masih ada NULL — jangan bikin data invalid dengan
-        //    memaksa NOT NULL di kolom yang belum siap.
         $remaining = DB::table('inbound_receipts')->whereNull('received_by_user_id')->count();
         if ($remaining > 0) {
             throw new \RuntimeException(
@@ -60,7 +56,6 @@ return new class extends Migration
             );
         }
 
-        // 3. NOT NULL + drop kolom string legacy.
         Schema::table('inbound_receipts', function (Blueprint $table) {
             $table->uuid('received_by_user_id')->nullable(false)->change();
             $table->dropColumn('received_by');
@@ -74,7 +69,6 @@ return new class extends Migration
             $table->uuid('received_by_user_id')->nullable()->change();
         });
 
-        // Repopulate received_by dari users.name untuk rollback graceful.
         DB::statement(<<<'SQL'
             UPDATE inbound_receipts r
             SET received_by = u.name

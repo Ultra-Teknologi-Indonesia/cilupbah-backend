@@ -38,13 +38,7 @@ class ProcessBulkShippingLabelJob implements ShouldQueue
         $batch->update(['started_at' => now()]);
 
         try {
-            // Proses semua item pending:
-            // - Shopee ready → download langsung; Shopee preparing → dispatch PrepareShopeeShippingLabelJob (async)
-            // - TikTok → parallel download
-            // - Instant courier → skipped_instant
-            // Setelah selesai processPendingItems memanggil tryFinalize.
-            // Bila masih ada item WAITING_SHOPEE_PREP, finalisasi ditunda hingga callback
-            // onOrderLabelReady dari prep job.
+
             $svc->processPendingItems($batch, $batch->per_channel_opts);
         } catch (Throwable $e) {
             Log::error('ProcessBulkShippingLabelJob crashed', [

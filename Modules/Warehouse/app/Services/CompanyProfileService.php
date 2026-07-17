@@ -36,11 +36,6 @@ class CompanyProfileService
         return $this->uploads->findByUuid($uuid)?->getUrl();
     }
 
-    /**
-     * Data siap-pakai untuk header/footer cetakan (dikonsumsi View Composer PDF).
-     * Dimemo per-instance agar pemanggilan berulang dalam satu render PDF tidak
-     * mengulang query.
-     */
     public function forPdf(): array
     {
         if ($this->pdfMemo !== null) {

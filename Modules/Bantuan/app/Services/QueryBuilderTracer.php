@@ -6,31 +6,9 @@ use ReflectionClass;
 use ReflectionMethod;
 use Throwable;
 
-/**
- * Trace panggilan Spatie QueryBuilder di controller + method service/repository
- * yang dipanggil (1 level dalam) untuk mengekstrak:
- *   - allowedFilters
- *   - allowedSorts
- *   - allowedSearch
- *   - allowedIncludes
- *   - allowedFields
- *   - defaultSort
- *
- * Pendekatan: regex + resolusi const/property ringan. Best-effort; jika ada
- * konstruksi dinamis yang tidak bisa di-resolve, dilewati.
- */
 class QueryBuilderTracer
 {
-    /**
-     * @return array{
-     *   allowed_filters:array<int,array{name:string,type:string,column:?string,scope:?string}>,
-     *   allowed_sorts:array<int,string>,
-     *   allowed_search:array<int,string>,
-     *   allowed_includes:array<int,string>,
-     *   allowed_fields:array<int,string>,
-     *   default_sort:?string
-     * }
-     */
+
     public function trace(ReflectionMethod $method): array
     {
         $out = [
@@ -44,7 +22,7 @@ class QueryBuilderTracer
 
         $visited = [];
         $bodies = $this->collectBodies($method, 0, $visited);
-        // Kumpulkan juga daftar kelas yang bodinya kita masuki, untuk resolve self::CONST
+
         $classes = [];
         foreach (array_keys($visited) as $sig) {
             $cls = explode('::', $sig)[0] ?? '';
@@ -55,17 +33,15 @@ class QueryBuilderTracer
             $this->extractFromBody($body, $out);
         }
 
-        // Resolve @CONST placeholder di allowed_sorts (dan sejenisnya) via reflection kelas.
         $out['allowed_sorts']    = $this->resolveConstPlaceholders($out['allowed_sorts'], array_keys($classes));
         $out['allowed_search']   = $this->resolveConstPlaceholders($out['allowed_search'], array_keys($classes));
         $out['allowed_includes'] = $this->resolveConstPlaceholders($out['allowed_includes'], array_keys($classes));
         $out['allowed_fields']   = $this->resolveConstPlaceholders($out['allowed_fields'], array_keys($classes));
 
-        // dedup
         foreach (['allowed_sorts', 'allowed_search', 'allowed_includes', 'allowed_fields'] as $k) {
             $out[$k] = array_values(array_unique($out[$k]));
         }
-        // dedup filters by name
+
         $seen = [];
         $dedup = [];
         foreach ($out['allowed_filters'] as $f) {
@@ -78,12 +54,6 @@ class QueryBuilderTracer
         return $out;
     }
 
-    /**
-     * Kumpulkan body method dan method service/repository/dsb. yang di-invoke —
-     * recursif dengan cycle detection & depth cap.
-     *
-     * @return array<int,string>
-     */
     private function collectBodies(ReflectionMethod $method, int $depth = 0, array &$visited = []): array
     {
         $bodies = [];
@@ -117,7 +87,6 @@ class QueryBuilderTracer
             }
         }
 
-        // Panggilan $this->methodName( — method lain di kelas yang sama
         if (preg_match_all('/\$this->(\w+)\s*\(/', $main, $m2, PREG_SET_ORDER)) {
             foreach ($m2 as $row) {
                 $methodName = $row[1];
@@ -135,7 +104,6 @@ class QueryBuilderTracer
         return $bodies;
     }
 
-    /** @return array<string,string> propName => className */
     private function collectPropertyTypes(ReflectionClass $class): array
     {
         $out = [];
@@ -157,7 +125,7 @@ class QueryBuilderTracer
                 }
             }
         } catch (Throwable $e) {
-            // ignore
+
         }
         return $out;
     }
@@ -174,13 +142,11 @@ class QueryBuilderTracer
         return implode('', array_slice($lines, $start - 1, $end - $start + 1));
     }
 
-    /** @param array{allowed_filters:array,allowed_sorts:array,allowed_search:array,allowed_includes:array,allowed_fields:array,default_sort:?string} $out */
     private function extractFromBody(string $body, array &$out): void
     {
-        // Normalisasi whitespace (agar regex multi-baris lebih mudah)
+
         $flat = preg_replace('/\s+/', ' ', $body);
 
-        // allowedFilters(...) — ambil isi kurung sampai match penutup seimbang
         foreach ($this->matchCallArgs($flat, 'allowedFilters') as $args) {
             foreach ($this->splitAllowedFilterEntries($args) as $entry) {
                 $filter = $this->parseAllowedFilterEntry($entry);
@@ -190,51 +156,42 @@ class QueryBuilderTracer
             }
         }
 
-        // allowedSorts(...)
         foreach ($this->matchCallArgs($flat, 'allowedSorts') as $args) {
             foreach ($this->extractStringArgs($args) as $s) {
                 $out['allowed_sorts'][] = $s;
             }
-            // spread: ...self::ORDER_SORTS
+
             if (preg_match_all('/\.\.\.(self|static)::(\w+)/', $args, $m)) {
                 foreach ($m[2] as $const) {
-                    // Kita catat sebagai referensi — nilai konkret sulit di-resolve tanpa reflection kelas asal
+
                     $out['allowed_sorts'][] = "@{$const}";
                 }
             }
         }
 
-        // allowedSearch(...)
         foreach ($this->matchCallArgs($flat, 'allowedSearch') as $args) {
             foreach ($this->extractStringArgs($args) as $s) {
                 $out['allowed_search'][] = $s;
             }
         }
 
-        // allowedIncludes(...)
         foreach ($this->matchCallArgs($flat, 'allowedIncludes') as $args) {
             foreach ($this->extractStringArgs($args) as $s) {
                 $out['allowed_includes'][] = $s;
             }
         }
 
-        // allowedFields(...)
         foreach ($this->matchCallArgs($flat, 'allowedFields') as $args) {
             foreach ($this->extractStringArgs($args) as $s) {
                 $out['allowed_fields'][] = $s;
             }
         }
 
-        // defaultSort('-created_at')
         if (preg_match('/defaultSort\s*\(\s*[\'"]([^\'"]+)[\'"]/', $flat, $m)) {
             $out['default_sort'] = $out['default_sort'] ?? $m[1];
         }
     }
 
-    /**
-     * Balance-parens matcher: kembalikan array isi kurung untuk setiap `$name(...)`.
-     * @return array<int,string>
-     */
     private function matchCallArgs(string $source, string $name): array
     {
         $out = [];
@@ -277,11 +234,6 @@ class QueryBuilderTracer
         return $out;
     }
 
-    /**
-     * Pecah argumen allowedFilters menjadi entri per-AllowedFilter, memperhatikan
-     * kedalaman kurung & callback fn.
-     * @return array<int,string>
-     */
     private function splitAllowedFilterEntries(string $args): array
     {
         $out = [];
@@ -323,12 +275,9 @@ class QueryBuilderTracer
         return $out;
     }
 
-    /**
-     * @return array{name:string,type:string,column:?string,scope:?string}|null
-     */
     private function parseAllowedFilterEntry(string $entry): ?array
     {
-        // AllowedFilter::exact('name'[, 'column']) | ::partial | ::scope | ::callback | ::beginsWithStrict | ::trashed
+
         if (preg_match('/AllowedFilter::(\w+)\s*\((.*)\)$/s', $entry, $m)) {
             $type = strtolower($m[1]);
             $inside = $m[2];
@@ -343,7 +292,7 @@ class QueryBuilderTracer
                 'scope'  => $scope,
             ];
         }
-        // Plain string: 'name'
+
         $s = $this->unquoteFirst($entry);
         if ($s !== '') {
             return ['name' => $s, 'type' => 'exact', 'column' => null, 'scope' => null];
@@ -358,11 +307,6 @@ class QueryBuilderTracer
         return '';
     }
 
-    /**
-     * @param array<int,string> $list list yang mungkin berisi placeholder "@CONST_NAME"
-     * @param array<int,string> $classes daftar FQCN untuk dicari konstannya
-     * @return array<int,string>
-     */
     private function resolveConstPlaceholders(array $list, array $classes): array
     {
         $out = [];
@@ -395,13 +339,12 @@ class QueryBuilderTracer
             } elseif (is_string($resolved)) {
                 $out[] = $resolved;
             } else {
-                $out[] = $item; // biarkan placeholder jika tidak resolvable
+                $out[] = $item; 
             }
         }
         return $out;
     }
 
-    /** @return array<int,string> */
     private function extractStringArgs(string $args): array
     {
         $out = [];

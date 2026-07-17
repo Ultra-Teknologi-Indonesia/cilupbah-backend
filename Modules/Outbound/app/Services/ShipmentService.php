@@ -337,10 +337,6 @@ class ShipmentService
         'DELIVERED', 'COMPLETED',
     ];
 
-    /**
-     * Mapping channel_status marketplace ke status internal shipment.
-     * Nilai selain di daftar ini tidak memicu perubahan status.
-     */
     private const CHANNEL_TO_SHIPMENT_STATUS = [
         'IN_TRANSIT'         => Shipment::STATUS_IN_TRANSIT,
         'SHIPPED'            => Shipment::STATUS_IN_TRANSIT,
@@ -350,10 +346,6 @@ class ShipmentService
         'COMPLETED'          => Shipment::STATUS_DELIVERED,
     ];
 
-    /**
-     * Rank state machine — forward-only.
-     * Sync tidak akan menurunkan status shipment.
-     */
     private const SHIPMENT_STATUS_RANK = [
         Shipment::STATUS_SCHEDULED   => 1,
         Shipment::STATUS_HANDED_OVER => 2,
@@ -427,15 +419,6 @@ class ShipmentService
         return $shipment;
     }
 
-    /**
-     * Sinkronkan status shipment berdasar channel_status marketplace.
-     * Dipanggil observer setiap kali channel_status sales_order berubah.
-     *
-     * - Kalau shipment belum ada, coba auto-create dulu (kalau eligible).
-     * - Kalau shipment sudah ada, advance status hanya maju (SCHEDULED → IN_TRANSIT → DELIVERED).
-     * - Set handed_over_at saat pertama kali maju dari SCHEDULED.
-     * - Idempotent: kalau target sama atau lebih rendah dari state sekarang, no-op.
-     */
     public function syncFromChannelStatus(Order $order): ?Shipment
     {
         $targetStatus = self::CHANNEL_TO_SHIPMENT_STATUS[$order->channel_status] ?? null;
