@@ -2,7 +2,8 @@ FROM php:8.4-cli
 
 RUN apt-get update && apt-get install -y \
     git curl libpng-dev libonig-dev libxml2-dev \
-    zip unzip sqlite3 libsqlite3-dev libpq-dev libzip-dev
+    zip unzip sqlite3 libsqlite3-dev libpq-dev libzip-dev \
+    ghostscript
 
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs
