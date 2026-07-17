@@ -198,13 +198,98 @@ class CombinedPutawayTest extends TestCase
             ->assertStatus(422);
     }
 
-    public function test_reject_inbound_with_active_putaway(): void
+    public function test_second_putaway_rejected_when_first_reserves_everything(): void
     {
         $a = $this->createReceivedInbound($this->wh, [[$this->vA, 4]]);
 
         $this->postJson('/api/v1/putaway', ['inbound_ids' => [$a->id]])->assertStatus(201);
 
-        $this->postJson('/api/v1/putaway', ['inbound_ids' => [$a->id]])->assertStatus(422);
+        $item = \DB::table('inbound_items')->where('inbound_id', $a->id)->first();
+        $this->assertEquals(4, $item->reserved_qty, 'putaway #1 reserved semua 4');
+
+        $this->postJson('/api/v1/putaway', ['inbound_ids' => [$a->id]])->assertStatus(400);
+    }
+
+    public function test_two_active_putaways_when_receive_grows_between(): void
+    {
+        $a = $this->createReceivedInbound($this->wh, [[$this->vA, 6]]);
+
+        $this->postJson('/api/v1/putaway', ['inbound_ids' => [$a->id]])->assertStatus(201);
+
+        $item = \DB::table('inbound_items')->where('inbound_id', $a->id)->first();
+        $this->postJson("/api/v1/inbounds/{$a->id}/receive", [
+            'received_by' => 'staff',
+            'items' => [['inbound_item_id' => $item->id, 'qty' => 4]],
+        ])->assertOk();
+
+        $resp = $this->postJson('/api/v1/putaway', ['inbound_ids' => [$a->id]])->assertStatus(201);
+        $put2Id = $resp->json('data.id');
+
+        $put2Item = \DB::table('putaway_items')->where('putaway_id', $put2Id)->first();
+        $this->assertEquals(4, $put2Item->qty, 'Putaway #2 hanya dapat sisa 4 (bukan 10)');
+
+        $itemAfter = \DB::table('inbound_items')->where('inbound_id', $a->id)->first();
+        $this->assertEquals(10, $itemAfter->reserved_qty, 'reserved_qty gabungan = 6 + 4');
+    }
+
+    public function test_cancel_putaway_before_start_releases_reservation(): void
+    {
+        $a = $this->createReceivedInbound($this->wh, [[$this->vA, 6]]);
+
+        $resp = $this->postJson('/api/v1/putaway', ['inbound_ids' => [$a->id]])->assertStatus(201);
+        $putawayId = $resp->json('data.id');
+
+        $this->assertEquals(6, \DB::table('inbound_items')->where('inbound_id', $a->id)->value('reserved_qty'));
+
+        $this->deleteJson("/api/v1/putaway/{$putawayId}")->assertOk();
+
+        $this->assertEquals(0, \DB::table('inbound_items')->where('inbound_id', $a->id)->value('reserved_qty'),
+            'reserved_qty release setelah cancel putaway sebelum start');
+
+        $this->postJson('/api/v1/putaway', ['inbound_ids' => [$a->id]])->assertStatus(201);
+    }
+
+    public function test_scan_swaps_reserved_to_putaway(): void
+    {
+        $a = $this->createReceivedInbound($this->wh, [[$this->vA, 6]]);
+
+        $putawayId = $this->postJson('/api/v1/putaway', ['inbound_ids' => [$a->id]])
+            ->assertStatus(201)->json('data.id');
+
+        $this->postJson("/api/v1/putaway/{$putawayId}/start")->assertOk();
+
+        $pi = \DB::table('putaway_items')->where('putaway_id', $putawayId)->first();
+        $this->postJson("/api/v1/putaway/{$putawayId}/items/{$pi->id}/process", [
+            'destination_bin_id' => $this->storageBin->id,
+            'qty' => 4,
+        ])->assertStatus(202);
+
+        $ii = \DB::table('inbound_items')->where('inbound_id', $a->id)->first();
+        $this->assertEquals(4, $ii->putaway_qty, 'putaway_qty +4 dari scan');
+        $this->assertEquals(2, $ii->reserved_qty, 'reserved_qty -4 (dari 6 ke 2)');
+    }
+
+    public function test_reverse_scan_swaps_putaway_back_to_reserved(): void
+    {
+        $a = $this->createReceivedInbound($this->wh, [[$this->vA, 6]]);
+
+        $putawayId = $this->postJson('/api/v1/putaway', ['inbound_ids' => [$a->id]])
+            ->assertStatus(201)->json('data.id');
+        $this->postJson("/api/v1/putaway/{$putawayId}/start")->assertOk();
+
+        $pi = \DB::table('putaway_items')->where('putaway_id', $putawayId)->first();
+        $this->postJson("/api/v1/putaway/{$putawayId}/items/{$pi->id}/process", [
+            'destination_bin_id' => $this->storageBin->id,
+            'qty' => 4,
+        ])->assertStatus(202);
+
+        $placement = \DB::table('putaway_placements')->where('putaway_item_id', $pi->id)->first();
+        $this->deleteJson("/api/v1/putaway/{$putawayId}/items/{$pi->id}/placements/{$placement->id}")
+            ->assertOk();
+
+        $ii = \DB::table('inbound_items')->where('inbound_id', $a->id)->first();
+        $this->assertEquals(0, $ii->putaway_qty, 'putaway_qty balik ke 0');
+        $this->assertEquals(6, $ii->reserved_qty, 'reserved_qty naik balik ke 6');
     }
 
     public function test_backward_compatible_single_inbound_id(): void
