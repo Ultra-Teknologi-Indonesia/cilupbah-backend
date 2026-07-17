@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Modules\Sales\Support\ChannelStatusNormalizer;
 use Modules\Sales\Support\DisputeOutcomeNormalizer;
 use Modules\Sales\Support\WmsStatusNormalizer;
@@ -28,6 +29,10 @@ return new class extends Migration
 
     private function normalizeChannelStatus(): void
     {
+        if (! Schema::hasColumn('sales_orders', 'channel_status') || ! Schema::hasColumn('sales_orders', 'source')) {
+            return;
+        }
+
         $distincts = DB::table('sales_orders')
             ->select('source', 'channel_status')
             ->whereNotNull('channel_status')
@@ -59,6 +64,10 @@ return new class extends Migration
 
     private function normalizeWmsStatus(): void
     {
+        if (! Schema::hasColumn('sales_orders', 'wms_status') || ! Schema::hasColumn('sales_orders', 'source')) {
+            return;
+        }
+
         $distincts = DB::table('sales_orders')
             ->select('source', 'wms_status')
             ->whereNotNull('wms_status')
@@ -84,6 +93,10 @@ return new class extends Migration
 
     private function normalizeMarketplaceDecision(): void
     {
+        if (! Schema::hasTable('sales_returns') || ! Schema::hasColumn('sales_returns', 'marketplace_decision')) {
+            return;
+        }
+
         // Lampir source via join ke sales_orders karena SalesReturn tidak selalu punya source jelas per row.
         $rows = DB::table('sales_returns as sr')
             ->leftJoin('sales_orders as so', 'so.id', '=', 'sr.order_id')
