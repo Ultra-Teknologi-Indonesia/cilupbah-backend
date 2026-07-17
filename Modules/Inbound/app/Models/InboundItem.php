@@ -22,6 +22,7 @@ class InboundItem extends Model
         'rejected_qty',
         'rejection_note',
         'putaway_qty',
+        'reserved_qty',
         'discrepancy_qty',
         'discrepancy_note',
         'condition',
@@ -55,7 +56,7 @@ class InboundItem extends Model
 
     public function pendingPutawayQty(): int
     {
-        return max(0, $this->received_qty - $this->putaway_qty);
+        return max(0, $this->received_qty - $this->putaway_qty - ($this->reserved_qty ?? 0));
     }
 
     /**
