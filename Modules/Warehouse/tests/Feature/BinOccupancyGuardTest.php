@@ -43,12 +43,13 @@ class BinOccupancyGuardTest extends TestCase
 
     private function placeStock(Location $loc, LocationBin $bin, ProductVariant $variant, int $onHand, int $reserved = 0): void
     {
+
         Inventory::create([
             'item_id' => $variant->id,
             'location_id' => $loc->id,
             'bin_id' => $bin->id,
             'on_hand' => $onHand,
-            'reserved' => $reserved,
+            'on_order' => $reserved,
             'available' => max(0, $onHand - $reserved),
         ]);
     }
@@ -144,9 +145,8 @@ class BinOccupancyGuardTest extends TestCase
         $this->assertTrue(true);
     }
 
-    public function test_guard_disabled_via_config(): void
+    public function test_guard_is_always_on_and_cannot_be_disabled(): void
     {
-        config()->set('warehouse.enforce_single_sku_per_bin', false);
 
         $loc = Location::factory()->create();
         $bin = LocationBin::factory()->create([
@@ -160,8 +160,8 @@ class BinOccupancyGuardTest extends TestCase
 
         $this->placeStock($loc, $bin, $existing, 5);
 
+        $this->expectException(DomainException::class);
         app(BinOccupancyGuard::class)->assertBinFitsSku($bin->id, $newcomer->id);
-        $this->assertTrue(true);
     }
 
     public function test_reserved_only_counts_as_occupied(): void

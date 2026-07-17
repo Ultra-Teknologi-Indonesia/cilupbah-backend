@@ -13,6 +13,7 @@ use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Warehouse\Services\BinOccupancyGuard;
+use Modules\Warehouse\Services\SkuHomeBinGuard;
 use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -51,6 +52,7 @@ class ProcessStockAdjustmentJob implements ShouldQueue
                 DB::transaction(function () use ($item, $adjustment, $inventoryRepository, $movementRepository, &$totalSignedValue) {
                     if (! empty($item->bin_id) && (float) $item->difference_qty > 0) {
                         app(BinOccupancyGuard::class)->assertBinFitsSku($item->bin_id, $item->item_id);
+                        app(SkuHomeBinGuard::class)->assertSkuFitsBin($adjustment->location_id, $item->item_id, $item->bin_id);
                     }
 
                     $inventory = $inventoryRepository->findOrCreateForUpdate(
