@@ -491,7 +491,10 @@ class SalesOrderRepository
             'shipping_country'    => $orderData['shipping_country'] ?? null,
             'dropshipper_name'    => $orderData['dropshipper_name'] ?? null,
             'dropshipper_phone'   => $orderData['dropshipper_phone'] ?? null,
-            'channel_status'      => $orderData['channel_status'],
+            'channel_status'      => \Modules\Sales\Support\ChannelStatusNormalizer::normalize(
+                $orderData['source'] ?? null,
+                $orderData['channel_status'] ?? null,
+            )?->value,
             'channel_fulfillment_status' => $orderData['channel_fulfillment_status'] ?? ($existing->channel_fulfillment_status ?? null),
             'fulfillment_flag'    => $orderData['fulfillment_flag'] ?? ($existing->fulfillment_flag ?? null),
             'fulfillment_type'    => $orderData['fulfillment_type'] ?? ($existing->fulfillment_type ?? null),
