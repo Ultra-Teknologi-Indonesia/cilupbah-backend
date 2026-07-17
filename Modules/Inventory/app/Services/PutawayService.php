@@ -709,12 +709,47 @@ class PutawayService
     {
         $itemIds = PutawayItem::where('putaway_id', $putaway->id)->pluck('id');
 
+        if ($putaway->source_type === 'INBOUND') {
+            $this->releaseReservationsForItems($putaway, $itemIds);
+        }
+
         PutawayItemSource::whereIn('putaway_item_id', $itemIds)->delete();
         PutawayPlacement::whereIn('putaway_item_id', $itemIds)->delete();
         PutawayItem::where('putaway_id', $putaway->id)->delete();
         PutawaySource::where('putaway_id', $putaway->id)->delete();
 
         $putaway->delete();
+    }
+
+    private function releaseReservationsForItems(Putaway $putaway, $itemIds): void
+    {
+        $pivotSources = PutawayItemSource::whereIn('putaway_item_id', $itemIds)
+            ->get(['inbound_item_id', 'qty', 'putaway_qty']);
+
+        if ($pivotSources->isNotEmpty()) {
+            foreach ($pivotSources as $src) {
+                $release = max(0, (int) $src->qty - (int) $src->putaway_qty);
+                if ($release <= 0) {
+                    continue;
+                }
+                InboundItem::where('id', $src->inbound_item_id)
+                    ->update(['reserved_qty' => DB::raw('GREATEST(reserved_qty - ' . (int) $release . ', 0)')]);
+            }
+            return;
+        }
+
+        if ($putaway->source_id) {
+            $legacyItems = PutawayItem::whereIn('id', $itemIds)->get(['item_id', 'qty', 'putaway_qty']);
+            foreach ($legacyItems as $pi) {
+                $release = max(0, (int) $pi->qty - (int) $pi->putaway_qty);
+                if ($release <= 0) {
+                    continue;
+                }
+                InboundItem::where('inbound_id', $putaway->source_id)
+                    ->where('item_id', $pi->item_id)
+                    ->update(['reserved_qty' => DB::raw('GREATEST(reserved_qty - ' . (int) $release . ', 0)')]);
+            }
+        }
     }
 
     public function getManyForPdf(array $ids)
@@ -804,7 +839,10 @@ class PutawayService
                         continue;
                     }
                     $src->decrement('putaway_qty', $take);
-                    InboundItem::where('id', $src->inbound_item_id)->decrement('putaway_qty', $take);
+                    InboundItem::where('id', $src->inbound_item_id)->update([
+                        'putaway_qty' => DB::raw('GREATEST(putaway_qty - ' . (int) $take . ', 0)'),
+                        'reserved_qty' => DB::raw('reserved_qty + ' . (int) $take),
+                    ]);
                     $remaining -= $take;
                 }
             } elseif ($putaway->source_id) {
@@ -814,7 +852,11 @@ class PutawayService
                     ->first();
 
                 if ($inboundItem) {
-                    $inboundItem->decrement('putaway_qty', min($qtyRev, (int) $inboundItem->putaway_qty));
+                    $take = min($qtyRev, (int) $inboundItem->putaway_qty);
+                    InboundItem::where('id', $inboundItem->id)->update([
+                        'putaway_qty' => DB::raw('GREATEST(putaway_qty - ' . (int) $take . ', 0)'),
+                        'reserved_qty' => DB::raw('reserved_qty + ' . (int) $take),
+                    ]);
                 }
             }
         }

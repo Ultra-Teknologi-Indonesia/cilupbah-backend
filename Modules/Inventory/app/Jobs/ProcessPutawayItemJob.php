@@ -188,7 +188,10 @@ class ProcessPutawayItemJob implements ShouldQueue
                             }
                             $take = min($capacity, $remaining);
                             $src->increment('putaway_qty', $take);
-                            InboundItem::where('id', $src->inbound_item_id)->increment('putaway_qty', $take);
+                            InboundItem::where('id', $src->inbound_item_id)->update([
+                                'putaway_qty' => DB::raw('putaway_qty + ' . (int) $take),
+                                'reserved_qty' => DB::raw('GREATEST(reserved_qty - ' . (int) $take . ', 0)'),
+                            ]);
                             $affectedInboundIds[$src->inbound_id] = true;
                             $remaining -= $take;
                         }
@@ -196,7 +199,10 @@ class ProcessPutawayItemJob implements ShouldQueue
 
                         InboundItem::where('inbound_id', $putaway->source_id)
                             ->where('item_id', $putawayItem->item_id)
-                            ->increment('putaway_qty', $qty);
+                            ->update([
+                                'putaway_qty' => DB::raw('putaway_qty + ' . (int) $qty),
+                                'reserved_qty' => DB::raw('GREATEST(reserved_qty - ' . (int) $qty . ', 0)'),
+                            ]);
                         $affectedInboundIds[$putaway->source_id] = true;
                     }
 
