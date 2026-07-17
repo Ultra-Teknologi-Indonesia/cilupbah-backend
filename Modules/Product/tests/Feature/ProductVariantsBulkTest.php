@@ -52,7 +52,7 @@ class ProductVariantsBulkTest extends TestCase
         ]);
         DB::table('inventories')->insert([
             'id' => Uuid::uuid7()->toString(), 'item_id' => ProductVariant::where('sku', $sku)->value('id'),
-            'location_id' => $loc, 'on_hand' => $available, 'on_order' => 0, 'reserved' => 0, 'available' => $available,
+            'location_id' => $loc, 'on_hand' => $available, 'on_order' => 0, 'available' => $available,
             'created_at' => now(), 'updated_at' => now(),
         ]);
     }

@@ -73,7 +73,7 @@ class ChannelStockTest extends TestCase
         );
         Inventory::create([
             'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $bin->id,
-            'on_hand' => $available + 2, 'on_order' => 0, 'reserved' => 2, 'available' => $available,
+            'on_hand' => $available + 2, 'on_order' => 2, 'available' => $available,
         ]);
 
         return $product->fresh(['variants']);
@@ -133,7 +133,7 @@ class ChannelStockTest extends TestCase
             );
             Inventory::create([
                 'item_id' => $compVariant->id, 'location_id' => $location->id, 'bin_id' => $compBin->id,
-                'on_hand' => $spec['available'] + 2, 'on_order' => 0, 'reserved' => 2, 'available' => $spec['available'],
+                'on_hand' => $spec['available'] + 2, 'on_order' => 2, 'available' => $spec['available'],
             ]);
             $bundleProduct->bundleItems()->create([
                 'component_variant_id' => $compVariant->id, 'qty' => $spec['qty'],

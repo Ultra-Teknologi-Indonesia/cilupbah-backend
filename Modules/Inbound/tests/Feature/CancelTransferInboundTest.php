@@ -59,10 +59,6 @@ class CancelTransferInboundTest extends TestCase
         $this->variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V-XFER']);
     }
 
-    /**
-     * Bangun state pasca-receive: transfer RECEIVED + Inbound RECEIVED + stok di destination bin.
-     * Return [transfer, inbound].
-     */
     private function buildReceivedState(int $qty): array
     {
         $transfer = InventoryTransfer::create([
@@ -111,7 +107,7 @@ class CancelTransferInboundTest extends TestCase
             'location_id' => $this->destination->id,
             'bin_id'      => $this->destBin->id,
             'on_hand'     => $qty,
-            'reserved'    => 0,
+            'on_order'    => 0,
             'available'   => $qty,
             'avg_cost'    => 100,
         ]);
@@ -169,9 +165,7 @@ class CancelTransferInboundTest extends TestCase
 
     public function test_cancel_proceeds_when_putaway_qty_positive_but_no_placements(): void
     {
-        // Perubahan behavior 15 Jul: guard hasPutaway diganti dengan cascade reverse.
-        // Kalau inbound punya putaway_qty > 0 TAPI tidak ada PutawaySource nyata
-        // (edge case data orphan), cancel tetap proceed karena tidak ada shortfall.
+
         [, $inbound] = $this->buildReceivedState(qty: 5);
         $inbound->items()->first()->update(['putaway_qty' => 2]);
 
@@ -215,7 +209,7 @@ class CancelTransferInboundTest extends TestCase
 
         Inventory::create([
             'item_id' => $this->variant->id, 'location_id' => $this->source->id,
-            'bin_id' => $this->sourceBin->id, 'on_hand' => 0, 'reserved' => 0,
+            'bin_id' => $this->sourceBin->id, 'on_hand' => 0, 'on_order' => 0,
             'available' => 0, 'avg_cost' => 100,
         ]);
 

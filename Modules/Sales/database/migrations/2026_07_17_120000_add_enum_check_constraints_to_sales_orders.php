@@ -4,26 +4,10 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-/**
- * Semua constraint pakai NOT VALID → hanya berlaku untuk baris baru,
- * tidak memindai baris legacy. Cleanup + VALIDATE CONSTRAINT bertahap
- * dilakukan setelah audit DISTINCT value di staging.
- *
- * Guard Schema::hasColumn dipasang supaya migration tidak fatal di
- * environment yang belum punya kolom target (mis. staging lama tanpa
- * migration wms_status). Kolom yang belum ada di-skip; kalau nanti
- * kolom di-add via migration lain, constraint bisa dipasang ulang
- * dengan migration follow-up.
- */
 return new class extends Migration
 {
     public function up(): void
     {
-        // Sengaja TIDAK menambah constraint pada `status`: audit menemukan campuran
-        // lowercase (pending/reserved/picked/…) dari SalesOrderService dan UPPERCASE
-        // (UNPAID/READY/AWAITING_BUYER_CONFIRMATION/…) dari
-        // Shopee/TikTok/Lazada/WooCommerce mapper + ProcessPicklistCompleteJob.
-        // Perlu konsolidasi konvensi kode dulu sebelum enum + constraint aman.
 
         if (Schema::hasColumn('sales_orders', 'wms_status')) {
             DB::statement(<<<'SQL'

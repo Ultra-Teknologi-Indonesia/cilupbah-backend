@@ -190,7 +190,7 @@ class ScanCorrectionTest extends TestCase
 
         $inv = Inventory::where('bin_id', $bin->id)->where('item_id', $variant->id)->first();
         $this->assertSame(5, (int) $inv->on_hand);
-        $this->assertSame(2, (int) $inv->reserved);
+        $this->assertSame(2, (int) $inv->on_order);
         $this->assertSame(3, (int) $inv->available);
         $this->assertDatabaseHas('inventory_movements', [
             'bin_id' => $bin->id, 'source' => 'PICKING_REVERSAL', 'qty' => 2,

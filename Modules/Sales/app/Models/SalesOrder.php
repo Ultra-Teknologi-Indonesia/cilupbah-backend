@@ -327,7 +327,7 @@ class SalesOrder extends Model implements HasMedia
     public static function shortfallItemWhereRaw(): string
     {
         return "sales_order_items.qty_in_base > COALESCE((
-                    SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(reserved),0))
+                    SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(on_order),0))
                     FROM inventories
                     WHERE inventories.item_id = sales_order_items.item_id
                       AND inventories.location_id = sales_orders.location_id

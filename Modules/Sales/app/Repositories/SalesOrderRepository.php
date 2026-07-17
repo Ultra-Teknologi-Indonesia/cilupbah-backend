@@ -235,6 +235,7 @@ class SalesOrderRepository
         'ready-to-process', 'empty-stock', 'failed-pick',
         'picking-belum', 'picking-diproses', 'picking-selesai',
         'packing-diproses', 'ready-to-ship', 'waiting-shipment',
+        'open',
     ];
 
     protected function applyStatusFilterScope($query, array $statuses)
@@ -258,6 +259,7 @@ class SalesOrderRepository
 
         return match ($key) {
             'cancelled'        => $query->where('status', 'cancelled'),
+            'open'             => $query->whereIn('status', ['pending', 'reserved', 'picked', 'packed']),
             'unpaid'           => $query->where('status', 'pending')->where('is_paid', false),
             'cancel-requested' => $query->whereNotNull('cancel_requested_at')->where('status', '!=', 'cancelled'),
             'completed'        => $query->where('status', 'shipped')->whereNotNull('received_date'),

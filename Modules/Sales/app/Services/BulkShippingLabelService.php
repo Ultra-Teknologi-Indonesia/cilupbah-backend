@@ -46,10 +46,6 @@ class BulkShippingLabelService
     public const SPLIT_SUB_BATCH_THRESHOLD = 500;
     public const SUB_BATCH_SIZE = 100;
 
-    /**
-     * Kata kunci nama kurir yang tidak menerbitkan AWB via marketplace API
-     * (driver dipanggil manual dari tab Shipping).
-     */
     private const INSTANT_COURIER_KEYWORDS = [
         'INSTANT',
         'SAMEDAY_INSTANT',
@@ -141,8 +137,7 @@ class BulkShippingLabelService
         }
         foreach (self::INSTANT_COURIER_KEYWORDS as $needle) {
             if (Str::contains($haystack, $needle)) {
-                // Exclusi: "SPX Instant Prioritas" & "SPX Instant" tetap punya AWB Shopee — bukan instant courier eksternal.
-                // Kata "INSTANT" pada nama kurir Shopee-native tetap generate AWB. Cek berdasar channel.
+
                 if ($needle === 'INSTANT' && strtolower((string) $order->source) === self::CHANNEL_SHOPEE
                     && Str::startsWith($haystack, 'SPX')) {
                     continue;
@@ -182,11 +177,6 @@ class BulkShippingLabelService
         $this->tryFinalize($batch);
     }
 
-    /**
-     * Options canonical yang dikirim ke API kanal supaya native PDF = 1 label per lembar (thermal).
-     * User-supplied opts (`document_type`/`document_size`) DIABAIKAN — kita paksa thermal 1-in-1.
-     * Ukuran akhir output (10×15 vs 10×12) diatur di normalizeToTarget() saat merge FPDI.
-     */
     public function resolveChannelOptions(string $channel): array
     {
         return match ($channel) {
@@ -206,9 +196,6 @@ class BulkShippingLabelService
         };
     }
 
-    /**
-     * Ambil ukuran target dari batch (top-level per_channel_opts['document_size']).
-     */
     private function resolveTargetSize(BulkShippingLabelBatch $batch): array
     {
         $opts = $batch->per_channel_opts ?? [];
@@ -217,12 +204,6 @@ class BulkShippingLabelService
         return self::SIZE_DIMENSIONS_MM[$sizeKey] ?? self::SIZE_DIMENSIONS_MM[self::DEFAULT_SIZE];
     }
 
-    /**
-     * PDF dari marketplace (Shopee/TikTok/Lazada) sering pakai cross-reference stream
-     * PDF 1.5+ yg tidak didukung free parser FPDI. Kita downgrade ke PDF 1.4 via
-     * Ghostscript dulu supaya bisa di-import. Kalau gs gagal, return bytes asli
-     * (FPDI akan lempar CrossReferenceException — caller catch).
-     */
     public function preprocessPdfForFpdi(string $srcPdfBytes): string
     {
         $gs = trim((string) @shell_exec('command -v gs 2>/dev/null'));
@@ -256,19 +237,6 @@ class BulkShippingLabelService
         return $srcPdfBytes;
     }
 
-    /**
-     * Hitung penempatan template sumber pada halaman thermal target (jaga rasio).
-     *
-     * - Lembar A4 Shopee (NORMAL_AIR_WAYBILL): label A6 ada di kuadran kiri-atas
-     *   dengan garis potong — crop ke kuadran itu, sisa lembar ter-clip page boundary.
-     * - Sumber memanjang (label + lampiran menyatu, aspect > 1.6): fill lebar,
-     *   anchor top, kelebihan bawah ter-clip.
-     * - Sumber berproporsi label: contain-fit + center supaya tidak ada yang terpotong
-     *   (mis. label 100×150 dicetak di kertas 10×12 → diskalakan penuh, bukan dipenggal).
-     *
-     * PENTING: pemanggil WAJIB pakai useTemplate(..., adjustPageSize: false) — kalau
-     * true, FPDI menimpa ukuran halaman kita dengan ukuran template sumber.
-     */
     private function placementOnTarget(float $srcW, float $srcH, float $targetW, float $targetH, ?string $channel = null): array
     {
         $isShopeeA4Sheet = $channel === self::CHANNEL_SHOPEE
@@ -291,10 +259,6 @@ class BulkShippingLabelService
         return [$x, $y, $drawW, $drawH];
     }
 
-    /**
-     * Normalisasi PDF bytes: setiap page sumber ditempatkan ke halaman thermal tetap
-     * $targetW × $targetH mm portrait (lihat placementOnTarget).
-     */
     public function normalizeToTarget(string $srcPdfBytes, string $sizeKey = self::DEFAULT_SIZE, ?string $channel = null): string
     {
         [$targetW, $targetH] = self::SIZE_DIMENSIONS_MM[$sizeKey] ?? self::SIZE_DIMENSIONS_MM[self::DEFAULT_SIZE];
@@ -570,10 +534,6 @@ class BulkShippingLabelService
         ]);
     }
 
-    /**
-     * Callback dari PrepareShopeeShippingLabelJob setelah shipping_label_status ditetapkan.
-     * Transition semua item WAITING untuk order ini, lalu coba finalize batch yang terdampak.
-     */
     public function onOrderLabelReady(string $orderId): void
     {
         $items = BulkShippingLabelItem::where('order_id', $orderId)
@@ -605,7 +565,7 @@ class BulkShippingLabelService
                 } elseif ($labelStatus === 'failed') {
                     $this->fail($item, BulkShippingLabelItem::REASON_SHOPEE_PREP_FAILED);
                 }
-                // Kalau masih 'preparing' → biarkan tetap WAITING; prep job berikutnya akan callback lagi.
+
             } catch (Throwable $e) {
                 Log::warning('onOrderLabelReady: transition failed', [
                     'item_id' => $item->id,
@@ -630,11 +590,6 @@ class BulkShippingLabelService
         }
     }
 
-    /**
-     * Race-safe finalizer. Dipicu setiap kali status item berubah.
-     * Kalau semua item terminal → merge PDF & set batch READY/FAILED.
-     * Kalau masih ada transient → no-op, callback berikutnya yang akan finalize.
-     */
     public function tryFinalize(BulkShippingLabelBatch $batch): void
     {
         Cache::lock("bulk-label-finalize:{$batch->id}", 15)->block(5, function () use ($batch) {
@@ -658,9 +613,6 @@ class BulkShippingLabelService
         });
     }
 
-    /**
-     * Force-terminate semua item transient dengan reason tertentu. Dipakai reaper.
-     */
     public function forceFinalize(BulkShippingLabelBatch $batch, string $reason): void
     {
         Cache::lock("bulk-label-finalize:{$batch->id}", 15)->block(5, function () use ($batch, $reason) {

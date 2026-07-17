@@ -112,7 +112,6 @@ class InventoryRepository
                 'serial_no'   => $serialNo,
                 'on_hand'     => 0,
                 'on_order'    => 0,
-                'reserved'    => 0,
                 'available'   => 0,
             ], $extra));
         } catch (\Illuminate\Database\UniqueConstraintViolationException) {
@@ -137,9 +136,9 @@ class InventoryRepository
         $placedOnHand = (int) Inventory::where('item_id', $itemId)
             ->placed()
             ->sum('on_hand');
-        $reserved = (int) Inventory::where('item_id', $itemId)->sum('reserved');
+        $onOrder = (int) Inventory::where('item_id', $itemId)->sum('on_order');
 
-        return max(0, $placedOnHand - $reserved);
+        return max(0, $placedOnHand - $onOrder);
     }
 
     public function sumOnHandAtLocation(string $itemId, string $locationId): int
@@ -149,13 +148,6 @@ class InventoryRepository
             ->where('location_id', $locationId)
             ->placed()
             ->sum('on_hand');
-    }
-
-    public function sumReservedAtLocation(string $itemId, string $locationId): int
-    {
-        return (int) Inventory::where('item_id', $itemId)
-            ->where('location_id', $locationId)
-            ->sum('reserved');
     }
 
     public function sumOnOrderAtLocation(string $itemId, string $locationId): int
@@ -194,7 +186,7 @@ class InventoryRepository
     {
         return Inventory::whereIn('item_id', $itemIds)
             ->with(['product:id,sku,product_id', 'location:id,location_name', 'bin:id,bin_final_code'])
-            ->select('id', 'item_id', 'location_id', 'bin_id', 'batch_no', 'serial_no', 'on_hand', 'on_order', 'reserved', 'available')
+            ->select('id', 'item_id', 'location_id', 'bin_id', 'batch_no', 'serial_no', 'on_hand', 'on_order', 'available')
             ->get();
     }
 
@@ -296,7 +288,7 @@ class InventoryRepository
         return Inventory::where('location_id', $locationId)
             ->where('available', '>', 0)
             ->with(['product:id,sku,product_id', 'product.product:id,name', 'bin:id,bin_final_code'])
-            ->select('id', 'item_id', 'location_id', 'bin_id', 'batch_no', 'serial_no', 'on_hand', 'reserved', 'available')
+            ->select('id', 'item_id', 'location_id', 'bin_id', 'batch_no', 'serial_no', 'on_hand', 'on_order', 'available')
             ->orderBy('item_id')
             ->paginate(request('per_page', $limit))
             ->appends(request()->query());
@@ -351,7 +343,7 @@ class InventoryRepository
             ->select('inventories.item_id')
             ->selectRaw('COALESCE(SUM(CASE WHEN location_bins.id IS NOT NULL AND location_bins.is_inbound = false THEN inventories.on_hand ELSE 0 END),0) as total_on_hand')
             ->selectRaw('COALESCE(SUM(CASE WHEN location_bins.id IS NULL OR location_bins.is_inbound = true THEN inventories.on_hand ELSE 0 END),0) as total_pending_placement')
-            ->selectRaw('COALESCE(SUM(inventories.reserved),0) as total_reserved')
+            ->selectRaw('COALESCE(SUM(inventories.on_order),0) as total_on_order')
             ->selectRaw('COALESCE(SUM(inventories.available),0) as total_available')
             ->groupBy('inventories.item_id')
             ->with(['product:id,sku,product_id'])
@@ -451,7 +443,7 @@ class InventoryRepository
     {
         return Inventory::select('item_id', 'location_id',
                 DB::raw('SUM(on_hand) as total_on_hand'),
-                DB::raw('SUM(reserved) as total_reserved'),
+                DB::raw('SUM(on_order) as total_on_order'),
                 DB::raw('SUM(available) as total_available'))
             ->whereIn('item_id', $ids)
             ->groupBy('item_id', 'location_id')

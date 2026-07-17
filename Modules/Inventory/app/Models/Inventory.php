@@ -20,7 +20,6 @@ class Inventory extends Model
         'expired_date',
         'on_hand',
         'on_order',
-        'reserved',
         'available',
         'avg_cost',
     ];
@@ -89,9 +88,8 @@ class Inventory extends Model
 
     public function recalculateAvailable(): void
     {
-
         $this->available = $this->isPlaced()
-            ? (int) $this->on_hand - (int) $this->reserved
+            ? (int) $this->on_hand - (int) $this->on_order
             : 0;
     }
 }

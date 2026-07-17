@@ -63,7 +63,7 @@ class SalesPhase3Test extends TestCase
             'location_id' => $this->locationId,
             'bin_id' => null,
             'on_hand' => 100,
-            'reserved' => 0,
+            'on_order' => 0,
             'available' => 100,
             'created_at' => now(),
             'updated_at' => now(),
@@ -132,7 +132,7 @@ class SalesPhase3Test extends TestCase
 
         $service->updateOrder($order->fresh(), ['status' => 'picked']);
         $this->assertSame(95, $this->inventory()->on_hand);
-        $this->assertSame(0, $this->inventory()->reserved);
+        $this->assertSame(0, $this->inventory()->on_order);
 
         $service->updateOrder($order->fresh(), ['status' => 'packed']);
 

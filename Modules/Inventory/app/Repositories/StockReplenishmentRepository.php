@@ -98,7 +98,7 @@ class StockReplenishmentRepository
             ->whereIn('item_id', $itemIds)
             ->where('location_id', $kecilId)
             ->groupBy('item_id')
-            ->select('item_id', DB::raw('COALESCE(SUM(on_hand),0) as oh'), DB::raw('COALESCE(SUM(reserved),0) as rv'))
+            ->select('item_id', DB::raw('COALESCE(SUM(on_hand),0) as oh'), DB::raw('COALESCE(SUM(on_order),0) as rv'))
             ->get()
             ->keyBy('item_id');
     }

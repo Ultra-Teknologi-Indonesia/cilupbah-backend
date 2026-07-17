@@ -2,20 +2,6 @@
 
 namespace Modules\Sales\Enums;
 
-/**
- * `sales_orders.status` di DB punya dua konvensi tumpang tindih:
- *
- * (1) Lowercase FSM murni yang dipakai SalesOrderService::ALLOWED_TRANSITIONS
- *     (pending → reserved → picked → packed → shipped, dengan cabang ke cancelled)
- *
- * (2) UPPERCASE state yang ditulis oleh mapper channel + beberapa Job:
- *     - UNPAID: default DB, dipakai mapper Shopee/TikTok/Lazada/WC saat order baru
- *     - AWAITING_BUYER_CONFIRMATION: ProcessPicklistCompleteJob saat item shortage
- *     - READY: ShopeeOrderService saat proses siap-kirim
- *
- * Enum ini merangkum keduanya. Method canonical() memberi projeksi
- * ke lowercase FSM untuk kode yang butuh state machine.
- */
 enum SalesOrderStatus: string
 {
     case PENDING   = 'pending';

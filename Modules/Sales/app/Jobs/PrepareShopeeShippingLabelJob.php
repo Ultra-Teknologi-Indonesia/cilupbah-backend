@@ -207,10 +207,6 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
         $this->notifyBulkListeners();
     }
 
-    /**
-     * Beritahu BulkShippingLabelService bahwa status label untuk order ini sudah final —
-     * service akan transition item WAITING_SHOPEE_PREP dan finalize batch bila komplit.
-     */
     private function notifyBulkListeners(): void
     {
         try {

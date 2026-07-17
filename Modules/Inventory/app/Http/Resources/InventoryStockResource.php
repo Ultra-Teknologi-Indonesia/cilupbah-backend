@@ -27,7 +27,6 @@ class InventoryStockResource extends JsonResource
             'expired_date' => $this->expired_date,
             'on_hand' => (int) $this->on_hand,
             'on_order' => (int) $this->on_order,
-            'reserved' => (int) $this->reserved,
             'available' => (int) $this->available,
             'avg_cost' => (float) $this->avg_cost,
         ];

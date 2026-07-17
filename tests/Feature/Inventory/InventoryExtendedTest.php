@@ -69,7 +69,7 @@ class InventoryExtendedTest extends TestCase
             'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
             'on_hand' => 50,
-            'reserved' => 5,
+            'on_order' => 5,
             'available' => 45,
         ]);
     }

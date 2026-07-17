@@ -160,7 +160,6 @@ class PutawaySeeder extends Seeder
                         [
                             'on_hand' => 0,
                             'on_order' => 0,
-                            'reserved' => 0,
                             'available' => 0,
                         ]
                     );

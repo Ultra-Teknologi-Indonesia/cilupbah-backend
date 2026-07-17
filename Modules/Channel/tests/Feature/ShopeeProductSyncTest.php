@@ -147,7 +147,7 @@ class ShopeeProductSyncTest extends TestCase
         ]);
         Inventory::create([
             'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => null,
-            'on_hand' => 9, 'on_order' => 0, 'reserved' => 2, 'available' => 7,
+            'on_hand' => 9, 'on_order' => 2, 'available' => 7,
         ]);
 
         Http::fake([

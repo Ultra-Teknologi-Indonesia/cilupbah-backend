@@ -109,7 +109,7 @@ class ProductVariantsEndpointTest extends TestCase
             DB::table('inventories')->insert([
                 'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
                 'item_id' => $vid, 'location_id' => $loc,
-                'on_hand' => $avail, 'on_order' => 0, 'reserved' => 0, 'available' => $avail,
+                'on_hand' => $avail, 'on_order' => 0, 'available' => $avail,
                 'created_at' => now(), 'updated_at' => now(),
             ]);
         }

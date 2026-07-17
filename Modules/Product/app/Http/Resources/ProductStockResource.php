@@ -25,9 +25,8 @@ class ProductStockResource extends JsonResource
             'sku' => $this->sku,
             'on_hand' => $summary['on_hand'],
             'pending_placement' => $summary['pending_placement'],
-            'reserved' => $summary['reserved'],
             'on_order' => $summary['on_order'],
-            'available' => (int) $inventories->sum('available'),
+            'available' => $summary['available'],
         ];
     }
 }

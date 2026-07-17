@@ -117,7 +117,6 @@ class InventoryTest extends TestCase
             'serial_no'   => '',
             'on_hand'     => 100,
             'on_order'    => 0,
-            'reserved'    => 0,
             'available'   => 100,
         ]);
     }
@@ -156,8 +155,7 @@ class InventoryTest extends TestCase
             'batch_no'    => '',
             'serial_no'   => '',
             'on_hand'     => 40,
-            'on_order'    => 0,
-            'reserved'    => 5,
+            'on_order'    => 5,
             'available'   => 35,
         ]);
 
@@ -181,9 +179,8 @@ class InventoryTest extends TestCase
             'batch_no'    => '',
             'serial_no'   => '',
             'on_hand'     => 7,
-            'on_order'    => 3,
-            'reserved'    => 2,
-            'available'   => 5,
+            'on_order'    => 5,
+            'available'   => 2,
         ]);
 
         $response = $this->getJson('/api/v1/inventory?filter[product_id]=' . $this->product->id);
@@ -197,8 +194,7 @@ class InventoryTest extends TestCase
         $this->assertNotContains($transit->id, $locationIds);
 
         $this->assertEquals(40, $item['total_stocks']['on_hand']);
-        $this->assertEquals(0, $item['total_stocks']['on_order']);
-        $this->assertEquals(5, $item['total_stocks']['reserved']);
+        $this->assertEquals(5, $item['total_stocks']['on_order']);
         $this->assertEquals(35, $item['total_stocks']['available']);
 
         $metaLocationIds = collect($response->json('meta.locations'))->pluck('location_id')->all();
@@ -331,7 +327,7 @@ class InventoryTest extends TestCase
 
     public function test_adjust_recalculates_available(): void
     {
-        $this->inventory->update(['reserved' => 20, 'available' => 80]);
+        $this->inventory->update(['on_order' => 20, 'available' => 80]);
 
         $this->postJson('/api/v1/inventory/adjustments', [
             'item_id'     => $this->variant->id,
@@ -342,7 +338,7 @@ class InventoryTest extends TestCase
 
         $this->inventory->refresh();
         $this->assertEquals(110, $this->inventory->on_hand);
-        $this->assertEquals(20, $this->inventory->reserved);
+        $this->assertEquals(20, $this->inventory->on_order);
         $this->assertEquals(90, $this->inventory->available);
     }
 
@@ -546,7 +542,6 @@ class InventoryTest extends TestCase
             'serial_no'   => '',
             'on_hand'     => 50,
             'on_order'    => 0,
-            'reserved'    => 0,
             'available'   => 50,
         ]);
 
@@ -595,7 +590,6 @@ class InventoryTest extends TestCase
             'serial_no'   => '',
             'on_hand'     => 5,
             'on_order'    => 0,
-            'reserved'    => 0,
             'available'   => 5,
         ]);
 
@@ -1064,7 +1058,6 @@ class InventoryTest extends TestCase
             'serial_no'   => '',
             'on_hand'     => 50,
             'on_order'    => 0,
-            'reserved'    => 0,
             'available'   => 50,
         ]);
 
@@ -1086,7 +1079,6 @@ class InventoryTest extends TestCase
             'serial_no'   => '',
             'on_hand'     => 50,
             'on_order'    => 0,
-            'reserved'    => 0,
             'available'   => 50,
         ]);
 
@@ -1112,7 +1104,6 @@ class InventoryTest extends TestCase
             'serial_no'   => '',
             'on_hand'     => 50,
             'on_order'    => 0,
-            'reserved'    => 0,
             'available'   => 50,
         ]);
 
@@ -1136,7 +1127,6 @@ class InventoryTest extends TestCase
             'serial_no'   => '',
             'on_hand'     => 50,
             'on_order'    => 0,
-            'reserved'    => 0,
             'available'   => 50,
         ]);
 
@@ -1162,7 +1152,6 @@ class InventoryTest extends TestCase
             'serial_no'   => '',
             'on_hand'     => 50,
             'on_order'    => 0,
-            'reserved'    => 0,
             'available'   => 50,
         ]);
 
@@ -1196,7 +1185,6 @@ class InventoryTest extends TestCase
             'serial_no'   => '',
             'on_hand'     => 50,
             'on_order'    => 0,
-            'reserved'    => 0,
             'available'   => 50,
         ]);
 
@@ -1221,7 +1209,6 @@ class InventoryTest extends TestCase
             'serial_no'   => '',
             'on_hand'     => 50,
             'on_order'    => 0,
-            'reserved'    => 0,
             'available'   => 50,
         ]);
 
@@ -1252,7 +1239,6 @@ class InventoryTest extends TestCase
             'serial_no'   => '',
             'on_hand'     => 50,
             'on_order'    => 0,
-            'reserved'    => 0,
             'available'   => 50,
         ]);
 
@@ -1275,7 +1261,6 @@ class InventoryTest extends TestCase
             'serial_no'   => '',
             'on_hand'     => 50,
             'on_order'    => 0,
-            'reserved'    => 0,
             'available'   => 50,
         ]);
 
@@ -1299,7 +1284,6 @@ class InventoryTest extends TestCase
             'serial_no'   => '',
             'on_hand'     => 50,
             'on_order'    => 0,
-            'reserved'    => 0,
             'available'   => 50,
         ]);
 
@@ -1357,7 +1341,6 @@ class InventoryTest extends TestCase
             'serial_no'   => '',
             'on_hand'     => 20,
             'on_order'    => 0,
-            'reserved'    => 0,
             'available'   => 20,
         ]);
 
@@ -1384,11 +1367,10 @@ class InventoryTest extends TestCase
         $inv = new Inventory();
         $inv->on_hand = 100;
         $inv->on_order = 10;
-        $inv->reserved = 20;
 
         $inv->recalculateAvailable();
 
-        $this->assertEquals(80, $inv->available);
+        $this->assertEquals(90, $inv->available);
     }
 
     public function test_recalculate_available_with_negative_result(): void
@@ -1396,11 +1378,10 @@ class InventoryTest extends TestCase
         $inv = new Inventory();
         $inv->on_hand = 10;
         $inv->on_order = 20;
-        $inv->reserved = 30;
 
         $inv->recalculateAvailable();
 
-        $this->assertEquals(-20, $inv->available);
+        $this->assertEquals(-10, $inv->available);
     }
 
     public function test_unauthenticated_request_returns_401(): void

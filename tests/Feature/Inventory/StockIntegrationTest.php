@@ -100,7 +100,6 @@ class StockIntegrationTest extends TestCase
             'serial_no'   => '',
             'on_hand'     => 100,
             'on_order'    => 0,
-            'reserved'    => 0,
             'available'   => 100,
         ]);
 
@@ -155,7 +154,7 @@ class StockIntegrationTest extends TestCase
 
         $this->inventory->refresh();
         $this->assertEquals(100, $this->inventory->on_hand);
-        $this->assertEquals(10, $this->inventory->reserved);
+        $this->assertEquals(10, $this->inventory->on_order);
         $this->assertEquals(90, $this->inventory->available);
 
         $this->assertDatabaseHas('inventory_movements', [
@@ -170,13 +169,13 @@ class StockIntegrationTest extends TestCase
         $orderId = $result['response']->json('data.id');
 
         $this->inventory->refresh();
-        $this->assertEquals(15, $this->inventory->reserved);
+        $this->assertEquals(15, $this->inventory->on_order);
 
         $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'cancelled'])
             ->assertOk();
 
         $this->inventory->refresh();
-        $this->assertEquals(0, $this->inventory->reserved);
+        $this->assertEquals(0, $this->inventory->on_order);
         $this->assertEquals(100, $this->inventory->on_hand);
         $this->assertEquals(100, $this->inventory->available);
 
@@ -196,7 +195,7 @@ class StockIntegrationTest extends TestCase
 
         $this->inventory->refresh();
         $this->assertEquals(92, $this->inventory->on_hand);
-        $this->assertEquals(0, $this->inventory->reserved);
+        $this->assertEquals(0, $this->inventory->on_order);
         $this->assertEquals(92, $this->inventory->available);
 
         $this->assertDatabaseHas('inventory_movements', [
@@ -243,7 +242,7 @@ class StockIntegrationTest extends TestCase
 
         $this->inventory->refresh();
         $this->assertEquals(100, $this->inventory->on_hand);
-        $this->assertEquals(0, $this->inventory->reserved);
+        $this->assertEquals(0, $this->inventory->on_order);
         $this->assertEquals(100, $this->inventory->available);
 
         $this->assertDatabaseHas('inventory_movements', [
@@ -259,7 +258,7 @@ class StockIntegrationTest extends TestCase
         $this->createSalesOrder(5);
 
         $this->inventory->refresh();
-        $this->assertEquals(35, $this->inventory->reserved);
+        $this->assertEquals(35, $this->inventory->on_order);
         $this->assertEquals(100, $this->inventory->on_hand);
         $this->assertEquals(65, $this->inventory->available);
     }
@@ -271,13 +270,13 @@ class StockIntegrationTest extends TestCase
 
         $this->inventory->refresh();
         $this->assertEquals(100, $this->inventory->on_hand);
-        $this->assertEquals(10, $this->inventory->reserved);
+        $this->assertEquals(10, $this->inventory->on_order);
         $this->assertEquals(90, $this->inventory->available);
 
         $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'picked']);
         $this->inventory->refresh();
         $this->assertEquals(90, $this->inventory->on_hand);
-        $this->assertEquals(0, $this->inventory->reserved);
+        $this->assertEquals(0, $this->inventory->on_order);
         $this->assertEquals(90, $this->inventory->available);
 
         $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'packed']);
@@ -287,7 +286,7 @@ class StockIntegrationTest extends TestCase
         $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'shipped']);
         $this->inventory->refresh();
         $this->assertEquals(90, $this->inventory->on_hand);
-        $this->assertEquals(0, $this->inventory->reserved);
+        $this->assertEquals(0, $this->inventory->on_order);
         $this->assertEquals(90, $this->inventory->available);
     }
 
@@ -732,8 +731,7 @@ class StockIntegrationTest extends TestCase
 
         $this->inventory->refresh();
         $this->assertEquals(100, $this->inventory->on_hand);
-        $this->assertEquals(30, $this->inventory->on_order);
-        $this->assertEquals(20, $this->inventory->reserved);
+        $this->assertEquals(20, $this->inventory->on_order);
 
         $this->assertEquals(80, $this->inventory->available);
     }
@@ -744,12 +742,12 @@ class StockIntegrationTest extends TestCase
         $orderId = $result['response']->json('data.id');
 
         $this->inventory->refresh();
-        $this->assertEquals(12, $this->inventory->reserved);
+        $this->assertEquals(12, $this->inventory->on_order);
 
         $this->deleteJson("/api/v1/sales/{$orderId}")->assertOk();
 
         $this->inventory->refresh();
-        $this->assertEquals(0, $this->inventory->reserved);
+        $this->assertEquals(0, $this->inventory->on_order);
         $this->assertEquals(100, $this->inventory->available);
     }
 
@@ -778,7 +776,7 @@ class StockIntegrationTest extends TestCase
         ]);
 
         $this->inventory->refresh();
-        $expected = $this->inventory->on_hand - $this->inventory->reserved;
+        $expected = $this->inventory->on_hand - $this->inventory->on_order;
         $this->assertEquals($expected, $this->inventory->available);
     }
 }

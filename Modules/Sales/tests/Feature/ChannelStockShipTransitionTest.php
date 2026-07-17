@@ -61,7 +61,7 @@ class ChannelStockShipTransitionTest extends TestCase
             'location_id' => $this->locationId,
             'bin_id' => null,
             'on_hand' => 10,
-            'reserved' => 0,
+            'on_order' => 0,
             'available' => 10,
             'created_at' => now(),
             'updated_at' => now(),
@@ -128,13 +128,13 @@ class ChannelStockShipTransitionTest extends TestCase
         $this->service->upsertFromChannel($this->orderData('LZ-SHIP-1', 'AWAITING_SHIPMENT'));
 
         $inv = $this->inventory();
-        $this->assertSame(2, $inv->reserved);
+        $this->assertSame(2, $inv->on_order);
         $this->assertSame(10, $inv->on_hand);
 
         $this->service->upsertFromChannel($this->orderData('LZ-SHIP-1', 'DELIVERED'));
 
         $inv = $this->inventory();
-        $this->assertSame(0, $inv->reserved, 'reserved harus dilepas saat shipped tanpa picklist WMS');
+        $this->assertSame(0, $inv->on_order, 'reserved harus dilepas saat shipped tanpa picklist WMS');
         $this->assertSame(8, $inv->on_hand, 'on_hand harus berkurang sesuai qty order');
         $this->assertSame(8, $inv->available);
         $this->assertSame(1, $this->movements('ORDER_PICK'));
@@ -153,13 +153,13 @@ class ChannelStockShipTransitionTest extends TestCase
         DB::table('sales_orders')->where('salesorder_no', 'LZ-SHIP-2')->update(['status' => 'packed']);
         DB::table('inventories')
             ->where('item_id', $this->variantId)
-            ->update(['on_hand' => 8, 'reserved' => 0, 'available' => 8]);
+            ->update(['on_hand' => 8, 'on_order' => 0, 'available' => 8]);
 
         $this->service->upsertFromChannel($this->orderData('LZ-SHIP-2', 'DELIVERED'));
 
         $inv = $this->inventory();
         $this->assertSame(8, $inv->on_hand, 'on_hand tidak boleh dikurangi dua kali');
-        $this->assertSame(0, $inv->reserved);
+        $this->assertSame(0, $inv->on_order);
         $this->assertSame(0, $this->movements('ORDER_PICK'), 'tidak boleh ada PICK kedua dari jalur channel');
         $this->assertSame(1, $this->movements('ORDER_SHIP'));
     }
@@ -170,7 +170,7 @@ class ChannelStockShipTransitionTest extends TestCase
 
         $inv = $this->inventory();
         $this->assertSame(10, $inv->on_hand);
-        $this->assertSame(0, $inv->reserved);
+        $this->assertSame(0, $inv->on_order);
         $this->assertSame(0, $this->movements('ORDER_PICK'));
         $this->assertSame(0, $this->movements('ORDER_SHIP'));
     }
@@ -178,12 +178,12 @@ class ChannelStockShipTransitionTest extends TestCase
     public function test_reserved_to_cancelled_still_releases_reserved(): void
     {
         $this->service->upsertFromChannel($this->orderData('LZ-SHIP-4', 'AWAITING_SHIPMENT'));
-        $this->assertSame(2, $this->inventory()->reserved);
+        $this->assertSame(2, $this->inventory()->on_order);
 
         $this->service->upsertFromChannel($this->orderData('LZ-SHIP-4', 'CANCELLED'));
 
         $inv = $this->inventory();
-        $this->assertSame(0, $inv->reserved);
+        $this->assertSame(0, $inv->on_order);
         $this->assertSame(10, $inv->on_hand);
         $this->assertSame(1, $this->movements('ORDER_CANCEL'));
     }
@@ -196,7 +196,7 @@ class ChannelStockShipTransitionTest extends TestCase
 
         $inv = $this->inventory();
         $this->assertSame(8, $inv->on_hand, 'webhook shipped berulang tidak boleh mengurangi stok lagi');
-        $this->assertSame(0, $inv->reserved);
+        $this->assertSame(0, $inv->on_order);
         $this->assertSame(1, $this->movements('ORDER_PICK'));
         $this->assertSame(1, $this->movements('ORDER_SHIP'));
     }

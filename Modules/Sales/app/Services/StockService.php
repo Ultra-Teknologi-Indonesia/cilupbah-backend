@@ -64,8 +64,8 @@ class StockService
             DB::transaction(function () use ($sku, $itemId, $locationId, $qty, $transactionNumber, $enforce) {
 
                 $onHand   = $this->inventoryRepository->sumOnHandAtLocation($itemId, $locationId);
-                $reserved = $this->inventoryRepository->sumReservedAtLocation($itemId, $locationId);
-                $available = $onHand - $reserved;
+                $onOrder  = $this->inventoryRepository->sumOnOrderAtLocation($itemId, $locationId);
+                $available = $onHand - $onOrder;
 
                 if ($available < $qty) {
                     if ($enforce) {
@@ -83,7 +83,7 @@ class StockService
                 }
 
                 $aggregate = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
-                $aggregate->reserved = ((int) $aggregate->reserved) + $qty;
+                $aggregate->on_order = ((int) $aggregate->on_order) + $qty;
                 $this->inventoryRepository->updateStock($aggregate);
             });
         });
@@ -106,7 +106,7 @@ class StockService
         $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty) {
             DB::transaction(function () use ($itemId, $locationId, $qty) {
                 $aggregate = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
-                $aggregate->reserved = max(0, ((int) $aggregate->reserved) - $qty);
+                $aggregate->on_order = max(0, ((int) $aggregate->on_order) - $qty);
                 $this->inventoryRepository->updateStock($aggregate);
             });
         });
@@ -225,7 +225,7 @@ class StockService
             DB::transaction(function () use ($itemId, $locationId, $qty) {
 
                 $aggregate = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
-                $aggregate->reserved = max(0, ((int) $aggregate->reserved) - $qty);
+                $aggregate->on_order = max(0, ((int) $aggregate->on_order) - $qty);
                 $this->inventoryRepository->updateStock($aggregate);
             });
         });

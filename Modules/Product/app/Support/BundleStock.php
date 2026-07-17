@@ -15,7 +15,7 @@ class BundleStock
         $items = $product->bundleItems;
 
         if ($items->isEmpty()) {
-            return ['on_hand' => 0, 'reserved' => 0, 'on_order' => 0, 'available' => 0];
+            return ['on_hand' => 0, 'on_order' => 0, 'available' => 0];
         }
 
         $available = null;
@@ -41,7 +41,6 @@ class BundleStock
 
         return [
             'on_hand' => $onHand ?? 0,
-            'reserved' => 0,
             'on_order' => 0,
             'available' => $available ?? 0,
         ];

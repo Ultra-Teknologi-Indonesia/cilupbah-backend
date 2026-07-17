@@ -146,7 +146,7 @@ class InventoryService
                 'product_name' => $inv->product?->product?->name,
                 'bin_code' => $inv->bin?->bin_final_code ?? $binCode,
                 'on_hand' => (int) $inv->on_hand,
-                'reserved' => (int) $inv->reserved,
+                'on_order' => (int) $inv->on_order,
                 'available' => (int) $inv->available,
             ])
             ->toArray();
@@ -467,7 +467,7 @@ class InventoryService
             );
 
             $inventory->on_hand += $qty;
-            $inventory->reserved += $qty;
+            $inventory->on_order += $qty;
             $inventory->recalculateAvailable();
             $this->inventoryRepository->updateStock($inventory);
 
@@ -1356,7 +1356,7 @@ class InventoryService
                 ]);
             }
 
-            $row->reserved += $take;
+            $row->on_order += $take;
             $this->inventoryRepository->updateStock($row);
 
             $this->movementRepository->create([
@@ -1425,8 +1425,8 @@ class InventoryService
                 );
 
                 if ($sourceInventory) {
-                    $releaseQty = min((int) $item->qty, (int) $sourceInventory->reserved);
-                    $sourceInventory->reserved -= $releaseQty;
+                    $releaseQty = min((int) $item->qty, (int) $sourceInventory->on_order);
+                    $sourceInventory->on_order -= $releaseQty;
                     $this->inventoryRepository->updateStock($sourceInventory);
 
                     $this->movementRepository->create([
@@ -1533,7 +1533,7 @@ class InventoryService
                     if ($sourceInventory) {
 
                         $sourceInventory->on_hand += (int) $item->qty;
-                        $sourceInventory->reserved += (int) $item->qty;
+                        $sourceInventory->on_order += (int) $item->qty;
                         $this->inventoryRepository->updateStock($sourceInventory);
 
                         $this->movementRepository->create([
@@ -1604,7 +1604,7 @@ class InventoryService
                     throw new \Exception("Stok tidak ditemukan untuk item {$item->item_id}.");
                 }
 
-                $sourceInventory->reserved -= $item->qty;
+                $sourceInventory->on_order -= $item->qty;
                 $sourceInventory->on_hand -= $item->qty;
                 $this->inventoryRepository->updateStock($sourceInventory);
 
@@ -1869,8 +1869,8 @@ class InventoryService
                     $item->serial_no,
                 );
                 if ($sourceInventory) {
-                    $releaseQty = min((int) $item->qty, (int) $sourceInventory->reserved);
-                    $sourceInventory->reserved -= $releaseQty;
+                    $releaseQty = min((int) $item->qty, (int) $sourceInventory->on_order);
+                    $sourceInventory->on_order -= $releaseQty;
                     $this->inventoryRepository->updateStock($sourceInventory);
 
                     $this->movementRepository->create([
@@ -2111,7 +2111,7 @@ class InventoryService
                     throw new \Exception("Stok tidak ditemukan untuk item {$item->item_id}.");
                 }
 
-                $sourceInventory->reserved -= $item->qty;
+                $sourceInventory->on_order -= $item->qty;
                 $sourceInventory->on_hand -= $item->qty;
                 $this->inventoryRepository->updateStock($sourceInventory);
 

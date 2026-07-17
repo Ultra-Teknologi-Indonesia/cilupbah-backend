@@ -68,7 +68,6 @@ class SalesNegativeStockRegressionTest extends TestCase
             'bin_id' => $bin->id,
             'on_hand' => $onHand,
             'on_order' => 0,
-            'reserved' => 0,
             'available' => $onHand,
             'created_at' => now(),
             'updated_at' => now(),
