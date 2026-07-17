@@ -22,6 +22,7 @@ class SalesOrderRepository
         $query = QueryBuilder::for(SalesOrder::class)
             ->with(['items.product.media', 'items.product.product.media', 'location:id,location_name', 'shop:shop_id,shop_name,channel_id', 'shop.channel:id,code,name'])
             ->allowedFilters(
+                AllowedFilter::callback('item_id', fn ($q, $value) => $q->whereHas('items', fn ($q2) => $q2->whereIn('item_id', (array) $value))),
                 AllowedFilter::exact('channel', 'source'),
                 AllowedFilter::exact('store_id', 'channel_shop_id'),
                 AllowedFilter::exact('location_id'),
