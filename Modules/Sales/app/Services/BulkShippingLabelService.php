@@ -28,6 +28,16 @@ class BulkShippingLabelService
     public const SUPPORTED_CHANNELS = [
         self::CHANNEL_SHOPEE,
         self::CHANNEL_TIKTOK,
+        self::CHANNEL_LAZADA,
+    ];
+
+    public const SIZE_100X150 = 'thermal_100x150';
+    public const SIZE_100X120 = 'thermal_100x120';
+    public const DEFAULT_SIZE = self::SIZE_100X150;
+
+    private const SIZE_DIMENSIONS_MM = [
+        self::SIZE_100X150 => [100.0, 150.0],
+        self::SIZE_100X120 => [100.0, 120.0],
     ];
 
     public const TIKTOK_DOWNLOAD_TIMEOUT = 20;
@@ -151,9 +161,13 @@ class BulkShippingLabelService
 
         $shopeeItems = $pending->where('channel', self::CHANNEL_SHOPEE);
         $tikTokItems = $pending->where('channel', self::CHANNEL_TIKTOK);
+        $lazadaItems = $pending->where('channel', self::CHANNEL_LAZADA);
         $otherItems = $pending->whereNotIn('channel', self::SUPPORTED_CHANNELS);
 
         foreach ($shopeeItems as $item) {
+            $this->processItem($item, $perChannelOpts);
+        }
+        foreach ($lazadaItems as $item) {
             $this->processItem($item, $perChannelOpts);
         }
         foreach ($otherItems as $item) {
@@ -168,12 +182,76 @@ class BulkShippingLabelService
         $this->tryFinalize($batch);
     }
 
+    /**
+     * Options canonical yang dikirim ke API kanal supaya native PDF = 1 label per lembar (thermal).
+     * User-supplied opts (`document_type`/`document_size`) DIABAIKAN — kita paksa thermal 1-in-1.
+     * Ukuran akhir output (10×15 vs 10×12) diatur di normalizeToTarget() saat merge FPDI.
+     */
+    public function resolveChannelOptions(string $channel): array
+    {
+        return match ($channel) {
+            self::CHANNEL_SHOPEE => [
+                'document_type' => 'THERMAL_AIR_WAYBILL',
+                'document_size' => null,
+            ],
+            self::CHANNEL_TIKTOK => [
+                'document_type' => 'SHIPPING_LABEL',
+                'document_size' => 'A6',
+            ],
+            self::CHANNEL_LAZADA => [
+                'document_type' => 'shippingLabel',
+                'document_size' => null,
+            ],
+            default => [],
+        };
+    }
+
+    /**
+     * Ambil ukuran target dari batch (top-level per_channel_opts['document_size']).
+     */
+    private function resolveTargetSize(BulkShippingLabelBatch $batch): array
+    {
+        $opts = $batch->per_channel_opts ?? [];
+        $sizeKey = $opts['document_size'] ?? self::DEFAULT_SIZE;
+
+        return self::SIZE_DIMENSIONS_MM[$sizeKey] ?? self::SIZE_DIMENSIONS_MM[self::DEFAULT_SIZE];
+    }
+
+    /**
+     * Normalisasi PDF bytes: setiap page discale (contain-fit) & auto-rotate ke target portrait.
+     * Return: PDF bytes baru dengan semua page = $targetW × $targetH mm portrait.
+     */
+    public function normalizeToTarget(string $srcPdfBytes, string $sizeKey = self::DEFAULT_SIZE): string
+    {
+        [$targetW, $targetH] = self::SIZE_DIMENSIONS_MM[$sizeKey] ?? self::SIZE_DIMENSIONS_MM[self::DEFAULT_SIZE];
+
+        $out = new Fpdi();
+        $pageCount = $out->setSourceFile(StreamReader::createByString($srcPdfBytes));
+        for ($p = 1; $p <= $pageCount; $p++) {
+            $tpl = $out->importPage($p);
+            $src = $out->getTemplateSize($tpl);
+            $srcW = $src['width'];
+            $srcH = $src['height'];
+            $isLandscape = $srcW > $srcH;
+
+            $normW = $isLandscape ? $srcH : $srcW;
+            $normH = $isLandscape ? $srcW : $srcH;
+            $scale = min($targetW / $normW, $targetH / $normH);
+            $drawW = $normW * $scale;
+            $drawH = $normH * $scale;
+            $x = ($targetW - $drawW) / 2;
+            $y = ($targetH - $drawH) / 2;
+
+            $out->AddPage('P', [$targetW, $targetH]);
+            $out->useTemplate($tpl, $x, $y, $drawW, $drawH, true);
+        }
+
+        return $out->Output('S');
+    }
+
     private function processTikTokBatch($items, ?array $perChannelOpts): void
     {
-        $options = ($perChannelOpts[self::CHANNEL_TIKTOK] ?? [
-            'document_type' => 'SHIPPING_LABEL',
-            'document_size' => 'A6',
-        ]);
+        $options = $this->resolveChannelOptions(self::CHANNEL_TIKTOK);
 
         $urlMap = [];
         foreach ($items as $item) {
@@ -255,14 +333,12 @@ class BulkShippingLabelService
                 return;
             }
 
-            $options = $perChannelOpts[$item->channel] ?? [
-                'document_type' => $item->channel === self::CHANNEL_SHOPEE ? 'AWB' : 'SHIPPING_LABEL',
-                'document_size' => 'A6',
-            ];
+            $options = $this->resolveChannelOptions($item->channel);
 
             match ($item->channel) {
                 self::CHANNEL_SHOPEE => $this->processShopee($item, $order, $options),
                 self::CHANNEL_TIKTOK => $this->processTikTok($item, $order, $options),
+                self::CHANNEL_LAZADA => $this->processLazada($item, $order, $options),
                 default => $this->fail($item, BulkShippingLabelItem::REASON_CHANNEL_UNSUPPORTED),
             };
         } catch (Throwable $e) {
@@ -334,6 +410,44 @@ class BulkShippingLabelService
         }
 
         $this->fail($item, 'tiktok_no_label');
+    }
+
+    private function processLazada(BulkShippingLabelItem $item, SalesOrder $order, array $options): void
+    {
+        $result = $this->salesOrderService->getShippingLabel($order, $options);
+        $type = $result['type'] ?? null;
+
+        if ($type === 'url' && ! empty($result['url'])) {
+            $bytes = $this->downloadUrl($result['url']);
+            if ($bytes === null) {
+                $this->fail($item, 'lazada_download_failed');
+                return;
+            }
+            $this->succeed($item, $bytes);
+            return;
+        }
+
+        if ($type === 'base64' && ! empty($result['document_base64'])) {
+            $bytes = base64_decode($result['document_base64'], true);
+            if ($bytes === false) {
+                $this->fail($item, 'lazada_decode_failed');
+                return;
+            }
+            $this->succeed($item, $bytes);
+            return;
+        }
+
+        if (! empty($result['data'])) {
+            $bytes = $this->decodeLabelPayload($result);
+            if ($bytes === null) {
+                $this->fail($item, 'lazada_decode_failed');
+                return;
+            }
+            $this->succeed($item, $bytes);
+            return;
+        }
+
+        $this->fail($item, 'lazada_no_label');
     }
 
     private function decodeLabelPayload(array $result): ?string
@@ -413,11 +527,7 @@ class BulkShippingLabelService
         foreach ($items as $item) {
             try {
                 if ($labelStatus === 'ready') {
-                    $batch = $item->batch;
-                    $options = ($batch?->per_channel_opts[self::CHANNEL_SHOPEE] ?? [
-                        'document_type' => 'AWB',
-                        'document_size' => 'A6',
-                    ]);
+                    $options = $this->resolveChannelOptions(self::CHANNEL_SHOPEE);
                     $this->processShopee($item, $order, $options);
                 } elseif ($labelStatus === 'self_design_required') {
                     $this->fail($item, BulkShippingLabelItem::REASON_SELF_DESIGN);
@@ -518,15 +628,29 @@ class BulkShippingLabelService
             return;
         }
 
+        [$targetW, $targetH] = $this->resolveTargetSize($batch);
+
         $pdf = new Fpdi();
         foreach ($items as $item) {
             try {
                 $pageCount = $pdf->setSourceFile(StreamReader::createByString($item->pdf_bytes));
                 for ($p = 1; $p <= $pageCount; $p++) {
                     $tpl = $pdf->importPage($p);
-                    $size = $pdf->getTemplateSize($tpl);
-                    $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
-                    $pdf->useTemplate($tpl);
+                    $src = $pdf->getTemplateSize($tpl);
+                    $srcW = $src['width'];
+                    $srcH = $src['height'];
+                    $isLandscape = $srcW > $srcH;
+
+                    $normW = $isLandscape ? $srcH : $srcW;
+                    $normH = $isLandscape ? $srcW : $srcH;
+                    $scale = min($targetW / $normW, $targetH / $normH);
+                    $drawW = $normW * $scale;
+                    $drawH = $normH * $scale;
+                    $x = ($targetW - $drawW) / 2;
+                    $y = ($targetH - $drawH) / 2;
+
+                    $pdf->AddPage('P', [$targetW, $targetH]);
+                    $pdf->useTemplate($tpl, $x, $y, $drawW, $drawH, true);
                 }
             } catch (Throwable $e) {
                 Log::warning('FPDI merge failed for item', [

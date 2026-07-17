@@ -652,6 +652,33 @@ class SalesOrderService
             ];
         }
 
+        if ($source === 'lazada') {
+            $lazadaService = app(\Modules\Channel\Services\LazadaOrderService::class);
+            $docType = $options['document_type'] ?? 'shippingLabel';
+            $document = $lazadaService->getDocument($shopId, $channelOrderNo, $docType);
+
+            $fileUrl = $document['url'] ?? ($document['file_url'] ?? null);
+            if ($fileUrl) {
+                return [
+                    'type' => 'url',
+                    'url' => $fileUrl,
+                    'source' => 'lazada',
+                ];
+            }
+
+            $file = $document['file'] ?? null;
+            if (! empty($file)) {
+                return [
+                    'type' => 'base64',
+                    'content_type' => 'application/pdf',
+                    'document_base64' => $file,
+                    'source' => 'lazada',
+                ];
+            }
+
+            throw new \RuntimeException('Lazada tidak mengembalikan dokumen label.');
+        }
+
         throw new \InvalidArgumentException("Channel '{$source}' belum mendukung cetak resi otomatis.");
     }
 
