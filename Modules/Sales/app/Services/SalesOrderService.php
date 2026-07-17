@@ -608,6 +608,54 @@ class SalesOrderService
             }
 
             if ($order->shipping_label_status === 'preparing') {
+                $liveStatus = null;
+                $liveDocType = $order->shipping_label_doc_type ?: 'THERMAL_AIR_WAYBILL';
+                try {
+                    $liveResult = $shopeeService->getShippingDocumentResult($shopId, $channelOrderNo, $liveDocType);
+                    $liveRow = $liveResult['response']['result_list'][0] ?? [];
+                    $liveStatus = strtoupper((string) ($liveRow['status'] ?? ''));
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('getShippingLabel: live get_shipping_document_result gagal, pakai cache', [
+                        'order_id' => $order->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+
+                if ($liveStatus === 'READY') {
+                    $download = $shopeeService->downloadShippingDocument($shopId, $channelOrderNo, $liveDocType);
+                    if (! empty($download['binary']) || ! empty($download['content'])) {
+                        $order->update([
+                            'shipping_label_status'      => 'ready',
+                            'shipping_label_doc_type'    => $liveDocType,
+                            'shipping_label_prepared_at' => now(),
+                        ]);
+                        return [
+                            'type'            => 'base64',
+                            'content_type'    => $download['content_type'] ?? 'application/pdf',
+                            'document_base64' => base64_encode((string) ($download['content'] ?? '')),
+                            'source'          => 'shopee',
+                        ];
+                    }
+                }
+
+                if ($liveStatus === 'FAILED') {
+                    $failMsg = $liveRow['fail_message'] ?? $liveRow['fail_error'] ?? 'Shopee menolak pembuatan label.';
+                    $order->update(['shipping_label_status' => 'failed']);
+                    throw new \RuntimeException("Shopee gagal membuat label: {$failMsg}");
+                }
+
+                $isStale = $order->shipping_label_prepared_at
+                    ? $order->shipping_label_prepared_at->lt(now()->subMinutes(5))
+                    : true;
+
+                if ($isStale) {
+                    PrepareShopeeShippingLabelJob::dispatch($order->id)
+                        ->onQueue(config('queue.names.channel_sync'));
+                    throw new ShippingLabelPreparingException(
+                        'Label belum siap. Kemungkinan status pesanan di Shopee belum siap dikirim (RETRY_SHIP) — cek Seller Center. Sistem mencoba ulang, tunggu 1-2 menit.'
+                    );
+                }
+
                 throw new ShippingLabelPreparingException(
                     'Label sedang disiapkan oleh Shopee. Coba lagi dalam 1-2 menit.'
                 );
