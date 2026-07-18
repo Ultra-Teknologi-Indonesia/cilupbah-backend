@@ -8,12 +8,68 @@
     $fmtPrice = fn ($p) => $p !== null ? 'Rp' . number_format($p, 0, ',', '.') : '-';
     $perPage = in_array($paper, ['thermal_50x40', 'thermal_80x40', 'thermal_40x30', 'thermal_30x20', 'a4_single'], true);
 
+    // Mode online menumpuk 4 blok (toko + SKU + nama + harga) di label yang
+    // tingginya tetap. height pada td HANYA memusatkan, tidak membatasi:
+    // konten yang lebih tinggi memuaikan barisnya sampai melewati kertas dan
+    // memicu halaman kosong. Jadi saat blok lebih banyak, semuanya dikecilkan.
+    $dense = $showStore;
+
     // SKU pendek dicetak besar (kebaca dari jarak jauh), SKU panjang mengecil
     // bertahap supaya tetap muat di label tanpa terpotong.
-    $skuClass = function (string $sku): string {
+    $tiers = ['sku-lg', 'sku-md', 'sku-sm', 'sku-xs'];
+    $skuClass = function (string $sku) use ($tiers, $dense): string {
         $len = mb_strlen($sku);
+        $i = $len <= 14 ? 0 : ($len <= 22 ? 1 : ($len <= 32 ? 2 : 3));
 
-        return $len <= 14 ? 'sku-lg' : ($len <= 22 ? 'sku-md' : 'sku-sm');
+        return $tiers[min($i + ($dense ? 1 : 0), count($tiers) - 1)];
+    };
+
+    // Pengaman SKU tidak wajar panjang, disesuaikan ukuran kertas: label kecil
+    // jelas tidak sanggup menampung batas yang sama dengan label besar. Nilai
+    // penuh tetap utuh di dalam QR, yang dipangkas hanya teks cetaknya.
+    $skuCaps = [
+        'thermal_80x40' => 48,
+        'thermal_50x40' => 40,
+        'thermal_40x30' => 30,
+        'thermal_30x20' => 24,
+        'a4_single'     => 0,
+        'a4_multi'      => 44,
+    ];
+    $skuCap = $skuCaps[$paper] ?? 44;
+
+    if ($dense && $skuCap > 0) {
+        $skuCap = (int) round($skuCap * 0.75);
+    }
+
+    // Pemotongan teks WAJIB di sini, bukan lewat CSS. dompdf tidak memotong
+    // konten saat menghitung layout: dengan max-height + overflow hidden
+    // teksnya hanya tersembunyi secara visual tapi tingginya tetap dihitung
+    // penuh, sehingga label melar melewati kertas dan dompdf melempar seluruh
+    // baris ke halaman berikutnya — inilah asal halaman kosong berselang-seling.
+    $limits = [
+        'thermal_80x40' => ['name' => 52, 'store' => 24],
+        'thermal_50x40' => ['name' => 32, 'store' => 14],
+        'thermal_40x30' => ['name' => 28, 'store' => 12],
+        'thermal_30x20' => ['name' => 0,  'store' => 9],
+        'a4_single'     => ['name' => 0,  'store' => 0],
+        'a4_multi'      => ['name' => 54, 'store' => 22],
+    ];
+    $limit = $limits[$paper] ?? $limits['a4_multi'];
+
+    // Mode padat menyisakan ruang lebih sedikit untuk nama.
+    if ($dense && $limit['name'] > 0) {
+        $limit['name'] = (int) round($limit['name'] * 0.6);
+    }
+
+    // $max = 0 berarti tanpa batas.
+    $clip = function (?string $text, int $max): string {
+        $text = trim((string) $text);
+
+        if ($max <= 0 || mb_strlen($text) <= $max) {
+            return $text;
+        }
+
+        return rtrim(mb_substr($text, 0, $max - 1)) . '…';
     };
 @endphp
 <!DOCTYPE html>
@@ -76,6 +132,7 @@
         .sku-lg { font-size: 13pt; }
         .sku-md { font-size: 11pt; }
         .sku-sm { font-size: 9pt; }
+        .sku-xs { font-size: 7.5pt; }
         .name { font-size: 6.5pt; max-height: 6.2mm; }
         .price { font-size: 9pt; }
         @endif
@@ -91,6 +148,7 @@
         .sku-lg { font-size: 17pt; }
         .sku-md { font-size: 14pt; }
         .sku-sm { font-size: 11pt; }
+        .sku-xs { font-size: 9pt; }
         .name { font-size: 8pt; max-height: 7.6mm; }
         .price { font-size: 11pt; }
         @endif
@@ -107,6 +165,7 @@
         .sku-lg { font-size: 10pt; }
         .sku-md { font-size: 8.5pt; }
         .sku-sm { font-size: 7pt; }
+        .sku-xs { font-size: 6pt; }
         .name { font-size: 5.5pt; max-height: 5.2mm; }
         .price { font-size: 7.5pt; }
         @endif
@@ -123,6 +182,7 @@
         .sku-lg { font-size: 8pt; }
         .sku-md { font-size: 7pt; }
         .sku-sm { font-size: 5.5pt; }
+        .sku-xs { font-size: 4.5pt; }
         /* 30x20mm hanya muat QR + SKU (+ harga). Nama produk disembunyikan:
            pada ukuran ini tingginya ~1.6mm alias tidak terbaca, tapi tetap
            memakan ruang sehingga konten meluber ke label berikutnya. */
@@ -189,10 +249,10 @@
                             </td>
                             <td class="text-cell">
                                 @if($showStore)
-                                    <div class="store">{{ $cell['store_name'] ?: '—' }}</div>
+                                    <div class="store">{{ $clip($cell['store_name'], $limit['store']) ?: '—' }}</div>
                                 @endif
-                                <div class="sku {{ $skuClass($cell['sku']) }}">{{ $cell['sku'] }}</div>
-                                <div class="name">{{ $cell['name'] }}</div>
+                                <div class="sku {{ $skuClass($cell['sku']) }}">{{ $clip($cell['sku'], $skuCap) }}</div>
+                                <div class="name">{{ $clip($cell['name'], $limit['name']) }}</div>
                                 @if($showPrice)
                                     <div class="price">{{ $fmtPrice($cell['price']) }}</div>
                                 @endif
@@ -218,10 +278,10 @@
                                         </td>
                                         <td class="text-cell">
                                             @if($showStore)
-                                                <div class="store">{{ $cell['store_name'] ?: '—' }}</div>
+                                                <div class="store">{{ $clip($cell['store_name'], $limit['store']) ?: '—' }}</div>
                                             @endif
-                                            <div class="sku {{ $skuClass($cell['sku']) }}">{{ $cell['sku'] }}</div>
-                                            <div class="name">{{ $cell['name'] }}</div>
+                                            <div class="sku {{ $skuClass($cell['sku']) }}">{{ $clip($cell['sku'], $skuCap) }}</div>
+                                            <div class="name">{{ $clip($cell['name'], $limit['name']) }}</div>
                                             @if($showPrice)
                                                 <div class="price">{{ $fmtPrice($cell['price']) }}</div>
                                             @endif
