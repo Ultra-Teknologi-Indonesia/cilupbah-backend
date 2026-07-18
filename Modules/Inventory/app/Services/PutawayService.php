@@ -157,7 +157,47 @@ class PutawayService
             throw new \Exception('Putaway tidak ditemukan.');
         }
 
-        return $this->putawayRepository->getItemsPaginated($putawayId, $limit);
+        $paginated = $this->putawayRepository->getItemsPaginated($putawayId, $limit);
+
+        $this->attachStrictRecommendedBins($putaway, $paginated->getCollection());
+
+        return $paginated;
+    }
+
+    protected function attachStrictRecommendedBins(Putaway $putaway, $items): void
+    {
+        $location = \Modules\Warehouse\Models\Location::find($putaway->location_id);
+        $strict = $location && $location->enforcesStrictBinSku();
+
+        if (!$strict) {
+            foreach ($items as $item) {
+                $item->recommended_bin = null;
+                $item->recommended_bin_locked = false;
+            }
+
+            return;
+        }
+
+        $guard = app(\Modules\Warehouse\Services\SkuHomeBinGuard::class);
+
+        $homeByItem = [];
+        foreach ($items as $item) {
+            $homeByItem[$item->id] = $guard->currentHomeBinId($putaway->location_id, $item->item_id);
+        }
+
+        $binIds = collect($homeByItem)->filter()->unique()->values()->all();
+        $bins = \Modules\Warehouse\Models\LocationBin::whereIn('id', $binIds)
+            ->get(['id', 'bin_final_code'])
+            ->keyBy('id');
+
+        foreach ($items as $item) {
+            $homeBinId = $homeByItem[$item->id] ?? null;
+            $bin = $homeBinId ? $bins->get($homeBinId) : null;
+            $item->recommended_bin = $bin
+                ? ['id' => $bin->id, 'bin_final_code' => $bin->bin_final_code]
+                : null;
+            $item->recommended_bin_locked = $bin !== null;
+        }
     }
 
     public function create(array $data): Putaway

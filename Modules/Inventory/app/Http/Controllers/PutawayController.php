@@ -461,6 +461,14 @@ class PutawayController extends Controller
             return $this->successResponse(null, 'Proses putaway item sedang dijalankan.', 202);
         } catch (\App\Exceptions\UserFacingException $e) {
             throw $e;
+        } catch (\DomainException $e) {
+
+            return $this->errorResponse(
+                $e->getMessage(),
+                422,
+                null,
+                'Penempatan ditolak',
+            );
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal memproses aksi.',
