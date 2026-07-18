@@ -148,6 +148,19 @@ class PicklistRepository
     {
         $query = PicklistItem::query()
             ->select('picklist_items.*')
+            ->addSelect([
+                'last_picked_by_name' => DB::table('picklist_item_allocations')
+                    ->join('users', 'picklist_item_allocations.picked_by', '=', 'users.id')
+                    ->whereColumn('picklist_item_allocations.picklist_item_id', 'picklist_items.id')
+                    ->orderByDesc('picklist_item_allocations.picked_at')
+                    ->limit(1)
+                    ->select('users.name'),
+                'last_picked_at' => DB::table('picklist_item_allocations')
+                    ->whereColumn('picklist_item_allocations.picklist_item_id', 'picklist_items.id')
+                    ->orderByDesc('picked_at')
+                    ->limit(1)
+                    ->select('picked_at'),
+            ])
             ->leftJoin('location_bins', 'picklist_items.bin_id', '=', 'location_bins.id')
             ->leftJoin('sales_orders', 'picklist_items.order_id', '=', 'sales_orders.id')
             ->leftJoin('product_variants', 'picklist_items.item_id', '=', 'product_variants.id')

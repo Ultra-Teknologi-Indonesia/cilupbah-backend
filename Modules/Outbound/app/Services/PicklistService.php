@@ -5,7 +5,9 @@ namespace Modules\Outbound\Services;
 use App\Enums\AssignmentActionEnum;
 use App\Enums\ClientChannelEnum;
 use App\Enums\UnassignReasonEnum;
+use App\Exceptions\UserFacingException;
 use App\Models\AssignmentHistory;
+use App\Models\User;
 use App\Traits\EnforcesAssignmentChannel;
 use Illuminate\Database\Eloquent\Model;
 use Modules\Outbound\Repositories\PicklistRepository;
@@ -132,20 +134,11 @@ class PicklistService
         return $this->picklistRepository->getAllPaginated($limit);
     }
 
-    /**
-     * Jumlah picklist per status untuk badge angka di filter tabs mobile.
-     * 1 request untuk semua tab, tidak perlu 3x paginated call ke list.
-     */
-    public function getStatusCounts(
-        ?string $locationId = null,
-        ?string $pickerId = null,
-    ): array {
+    public function getStatusCounts(?string $locationId = null): array
+    {
         $query = Picklist::query();
         if ($locationId !== null && $locationId !== '') {
             $query->where('location_id', $locationId);
-        }
-        if ($pickerId !== null && $pickerId !== '') {
-            $query->where('picker_id', $pickerId);
         }
 
         $rows = $query
@@ -309,65 +302,113 @@ class PicklistService
 
     public function pickItem(string $picklistId, string $itemId, array $data): void
     {
-        $picklist = $this->picklistRepository->findById($picklistId);
+        DB::transaction(function () use ($picklistId, $itemId, $data) {
+            $picklist = $this->picklistRepository->findById($picklistId);
 
-        if (!$picklist) {
-            throw new \Exception('Picklist tidak ditemukan.');
-        }
+            if (!$picklist) {
+                throw new OutboundValidationException('Picklist tidak ditemukan.');
+            }
 
-        if (!in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS])) {
-            throw new \Exception("Picklist tidak bisa di-pick (status saat ini: {$picklist->status}).");
-        }
+            if (!in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS], true)) {
+                throw new OutboundValidationException("Picklist tidak bisa di-pick (status saat ini: {$picklist->status}).");
+            }
 
-        $item = $picklist->items->firstWhere('id', $itemId);
-        if (!$item) {
-            throw new \Exception('Item picklist tidak ditemukan.');
-        }
+            $item = PicklistItem::where('picklist_id', $picklistId)
+                ->where('id', $itemId)
+                ->lockForUpdate()
+                ->first();
 
-        if ($data['qty_picked'] > $item->qty_ordered) {
-            throw new \Exception("Qty picked ({$data['qty_picked']}) melebihi qty ordered ({$item->qty_ordered}).");
-        }
+            if (!$item) {
+                throw new OutboundValidationException('Item picklist tidak ditemukan.');
+            }
 
-        $bin = $this->resolveBin($picklist, $data['bin_code']);
+            $current = (int) $item->qty_picked;
+            $ordered = (int) $item->qty_ordered;
 
-        $delta = $data['qty_picked'] - $item->qty_picked;
+            $target = array_key_exists('qty_delta', $data) && $data['qty_delta'] !== null
+                ? $current + (int) $data['qty_delta']
+                : (int) $data['qty_picked'];
 
-        if ($delta > 0) {
-            DB::transaction(function () use ($item, $bin, $picklist, $data, $delta, $itemId) {
-                $userId = (string) (Auth::id() ?? $picklist->picker_id ?? 'system');
+            if ($target > $ordered) {
+                throw $this->itemAlreadyFullException($item, $current, $ordered);
+            }
 
+            if ($target < 0) {
+                throw new OutboundValidationException('Qty hasil koreksi tidak boleh negatif.');
+            }
+
+            $bin = $this->resolveBin($picklist, $data['bin_code']);
+            $delta = $target - $current;
+            $userId = (string) (Auth::id() ?? $picklist->picker_id ?? 'system');
+
+            if ($delta > 0) {
                 $this->commitPickAllocation($picklist, $item, $bin, $delta, $userId);
 
                 $this->picklistRepository->updateItem($itemId, [
-                    'qty_picked' => $data['qty_picked'],
+                    'qty_picked' => $target,
                     'bin_id' => $bin->id,
                 ]);
-            });
-        } elseif ($delta < 0) {
+            } elseif ($delta < 0) {
+                $this->inventoryService->reversePick([
+                    'item_id'            => $item->item_id,
+                    'location_id'        => $picklist->location_id,
+                    'bin_id'             => $item->bin_id ?? $bin->id,
+                    'qty'                => -$delta,
+                    'transaction_number' => $picklist->picklist_no . '-KOREKSI',
+                    'created_by'         => $userId,
+                ]);
 
-            $returnQty = -$delta;
-            $returnBinId = $item->bin_id ?? $bin->id;
+                $this->picklistRepository->updateItem($itemId, [
+                    'qty_picked' => $target,
+                ]);
 
-            $this->inventoryService->reversePick([
-                'item_id'            => $item->item_id,
-                'location_id'        => $picklist->location_id,
-                'bin_id'             => $returnBinId,
-                'qty'                => $returnQty,
-                'transaction_number' => $picklist->picklist_no . '-KOREKSI',
-                'created_by'         => (string) (Auth::id() ?? $picklist->picker_id ?? 'system'),
-            ]);
+                $this->revertPicklistCompletion($picklistId);
+            } else {
 
-            $this->picklistRepository->updateItem($itemId, [
-                'qty_picked' => $data['qty_picked'],
-            ]);
+                $this->picklistRepository->updateItem($itemId, [
+                    'bin_id' => $bin->id,
+                ]);
+            }
 
-            $this->revertPicklistCompletion($picklistId);
-        } else {
+            // Lepas pesanan ini ke tahap berikutnya begitu seluruh itemnya
+            // tuntas, tanpa menunggu picklist selesai semua. Satu picklist bisa
+            // memuat banyak pesanan; tanpa ini pesanan yang sudah lengkap ikut
+            // tertahan oleh pesanan lain yang masih digarap.
+            //
+            // Di-resolve lazy (bukan lewat konstruktor) supaya PicklistService
+            // tidak terikat ke SalesOrderService saat container membangunnya.
+            if ($item->order_id) {
+                app(OrderReleaseService::class)
+                    ->releaseIfComplete($picklist, (string) $item->order_id);
+            }
+        });
+    }
 
-            $this->picklistRepository->updateItem($itemId, [
-                'bin_id' => $bin->id,
-            ]);
-        }
+    private function itemAlreadyFullException(PicklistItem $item, int $current, int $ordered): UserFacingException
+    {
+        $lastAllocation = PicklistItemAllocation::where('picklist_item_id', $item->id)
+            ->orderByDesc('picked_at')
+            ->first();
+
+        $pickerName = $lastAllocation?->picked_by
+            ? User::find($lastAllocation->picked_by)?->name
+            : null;
+
+        $message = $pickerName
+            ? "{$item->sku} sudah diambil {$current} dari {$ordered} oleh {$pickerName}."
+            : "{$item->sku} sudah diambil {$current} dari {$ordered}.";
+
+        return new UserFacingException(
+            title: 'Barang sudah lengkap',
+            message: $message,
+            status: 409,
+            errors: [
+                'code'        => 'ITEM_ALREADY_FULL',
+                'item_id'     => (string) $item->id,
+                'qty_picked'  => $current,
+                'qty_ordered' => $ordered,
+            ],
+        );
     }
 
     public function unpickItem(string $picklistId, string $itemId, ?int $qty, string $userId): Picklist

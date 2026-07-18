@@ -3,7 +3,6 @@
 namespace Modules\Outbound\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Traits\AutoScopeMobileToAuth;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -42,8 +41,6 @@ use Throwable;
 )]
 class PicklistController extends Controller
 {
-    use AutoScopeMobileToAuth;
-
     public function __construct(
         protected PicklistService $picklistService,
         protected ReportService $reportService,
@@ -69,9 +66,6 @@ class PicklistController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        // Auto-scope mobile ke picker login (X-Client-Channel: MOBILE).
-        $this->forceMobileScopeToAuth($request, 'picker_id');
-
         $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->picklistService->getAllPaginated($limit);
 
@@ -86,7 +80,6 @@ class PicklistController extends Controller
         tags: ['Outbound - Picklist'],
         parameters: [
             new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
-            new OA\Parameter(name: 'filter[picker_id]', in: 'query', required: false, description: 'Scope hitungan ke picklist milik picker tertentu (biasanya diri sendiri di mobile).', schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(
@@ -107,13 +100,9 @@ class PicklistController extends Controller
     )]
     public function counts(Request $request): JsonResponse
     {
-        // Auto-scope mobile ke picker login (X-Client-Channel: MOBILE).
-        $this->forceMobileScopeToAuth($request, 'picker_id');
-
         $filter = (array) $request->query('filter', []);
         $counts = $this->picklistService->getStatusCounts(
             locationId: $filter['location_id'] ?? null,
-            pickerId: $filter['picker_id'] ?? null,
         );
 
         return $this->successResponse($counts, 'Jumlah picklist per status');
@@ -374,21 +363,26 @@ class PicklistController extends Controller
         requestBody: new OA\RequestBody(
             required: true,
             content: new OA\JsonContent(
-                required: ['qty_picked', 'bin_code'],
+                required: ['bin_code'],
                 properties: [
-                    new OA\Property(property: 'qty_picked', type: 'integer', minimum: 0),
+                    new OA\Property(property: 'qty_delta', type: 'integer', minimum: 1, nullable: true, description: 'Penambahan relatif; dipakai alur scan. Aman konkuren. Wajib salah satu dengan qty_picked.'),
+                    new OA\Property(property: 'qty_picked', type: 'integer', minimum: 0, nullable: true, description: 'Nilai absolut; khusus koreksi manual. Wajib salah satu dengan qty_delta.'),
                     new OA\Property(property: 'bin_code', type: 'string'),
                 ]
             )
         ),
         responses: [
             new OA\Response(response: 200, description: 'Success'),
+            new OA\Response(response: 409, description: 'ITEM_ALREADY_FULL - item sudah dituntaskan picker lain'),
         ]
     )]
     public function pickItem(string $id, string $itemId, PickItemRequest $request): JsonResponse
     {
         try {
             $this->picklistService->pickItem($id, $itemId, $request->validated());
+        } catch (\App\Exceptions\UserFacingException $e) {
+
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal memproses picking.',
