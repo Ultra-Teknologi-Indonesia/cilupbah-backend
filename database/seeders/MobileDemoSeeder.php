@@ -5,83 +5,88 @@ namespace Database\Seeders;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 class MobileDemoSeeder extends Seeder
 {
+    /**
+     * Seed akun demo untuk testing mobile lokal.
+     *
+     * Akun (semua password: password):
+     *   - mobile@cilupbah.id     → Mobile Tester (owner)
+     *   - putaway1@cilupbah.test → Putaway Satu  (role: putaway)
+     *   - receiving1@cilupbah.test → Receiver Satu (role: warehouse)
+     *   - picker1@cilupbah.test  → Picker Satu   (role: picker)
+     *
+     * Lengkap dengan 1 lokasi gudang + 1 rak default supaya bisa dipakai
+     * seeder Inbound/Putaway/Picklist lain.
+     */
     public function run(): void
     {
-
-        $user = User::firstOrCreate(
-            ['email' => 'mobile@cilupbah.id'],
+        $accounts = [
             [
-                'name' => 'Mobile Tester',
-                'password' => Hash::make('password123'),
-            ]
-        );
+                'email' => 'mobile@cilupbah.id',
+                'name'  => 'Mobile Tester',
+                'role'  => 'owner',
+            ],
+            [
+                'email' => 'putaway1@cilupbah.test',
+                'name'  => 'Putaway Satu',
+                'role'  => 'putaway',
+            ],
+            [
+                'email' => 'receiving1@cilupbah.test',
+                'name'  => 'Receiver Satu',
+                'role'  => 'warehouse',
+            ],
+            [
+                'email' => 'picker1@cilupbah.test',
+                'name'  => 'Picker Satu',
+                'role'  => 'picker',
+            ],
+        ];
 
-        try {
-            $user->assignRole('owner');
-        } catch (\Exception $e) {}
+        foreach ($accounts as $acc) {
+            $user = User::firstOrCreate(
+                ['email' => $acc['email']],
+                [
+                    'name'     => $acc['name'],
+                    'password' => Hash::make('password'),
+                ]
+            );
 
+            try {
+                $user->syncRoles([$acc['role']]);
+            } catch (\Throwable $e) {
+                $this->command->warn("Role '{$acc['role']}' belum ada untuk {$acc['email']}: {$e->getMessage()}");
+            }
+        }
+
+        // Lokasi gudang demo — kolomnya location_code (bukan code) & is_warehouse boolean.
         $location = \Modules\Warehouse\Models\Location::firstOrCreate(
-            ['code' => 'WH-MOB'],
+            ['location_code' => 'WH-MOB'],
             [
                 'location_name' => 'Gudang Mobile',
-                'type' => 'WAREHOUSE',
-                'is_active' => true,
+                'is_warehouse'  => true,
+                'is_active'     => true,
             ]
         );
 
-        $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
+        // Rak default — hanya bin_final_code + location_id yang wajib.
+        \Modules\Warehouse\Models\LocationBin::firstOrCreate(
             ['bin_final_code' => 'WH-MOB-A1'],
             [
-                'location_id' => $location->id,
-                'bin_code' => 'A1',
-                'is_inbound' => false,
-                'is_outbound' => false,
-            ]
-        );
-
-        $product = \Modules\Product\Models\Product::firstOrCreate(
-            ['name' => 'Baju Testing Mobile'],
-            [
-                'archetype' => 'SIMPLE',
-                'is_active' => true,
-            ]
-        );
-
-        $variant = \Modules\Product\Models\ProductVariant::firstOrCreate(
-            ['sku' => 'SKU-MOB-01'],
-            [
-                'product_id' => $product->id,
-                'barcode' => '888000111222',
-                'name' => 'Baju Testing Mobile (All Size)',
-                'is_active' => true,
-            ]
-        );
-
-        $inbound = \Modules\Inbound\Models\Inbound::firstOrCreate(
-            ['transaction_number' => 'INB-MOB-001'],
-            [
-                'type' => 'PURCHASE_ORDER',
-                'status' => 'IN_PROGRESS',
-                'location_id' => $location->id,
-                'total_items' => 1,
-                'total_expected_qty' => 50,
-                'created_by' => $user->id,
-            ]
-        );
-
-        \Modules\Inbound\Models\InboundItem::firstOrCreate(
-            ['inbound_id' => $inbound->id, 'item_id' => $variant->id],
-            [
-                'expected_qty' => 50,
-                'received_qty' => 0,
+                'location_id'           => $location->id,
+                'bin_code'              => 'A1',
+                'is_inbound'            => false,
+                'is_stock_acknowledged' => true,
             ]
         );
 
         $this->command->info('Mobile Demo Seeder completed successfully!');
+        $this->command->line('  Accounts (password: password):');
+        foreach ($accounts as $acc) {
+            $this->command->line("    - {$acc['email']}  ({$acc['role']})");
+        }
+        $this->command->line("  Location: {$location->location_code} — {$location->location_name}");
     }
 }
