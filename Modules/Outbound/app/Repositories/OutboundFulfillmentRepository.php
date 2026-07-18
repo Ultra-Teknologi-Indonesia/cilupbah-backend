@@ -136,7 +136,7 @@ class OutboundFulfillmentRepository
                     }
                 }),
             )
-            ->allowedSearch('salesorder_no', 'channel_order_no', 'tracking_number')
+            ->allowedSearch('salesorder_no', 'channel_order_no', 'tracking_number', 'shipping_provider', 'shipping_type', 'completedPicklists.picklist_no')
             ->allowedSorts('transaction_date', 'created_at', 'grand_total', 'salesorder_no', 'status')
             ->defaultSort('-created_at')
             ->paginate($limit)

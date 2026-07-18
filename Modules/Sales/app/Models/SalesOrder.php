@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -353,6 +354,12 @@ class SalesOrder extends Model implements HasMedia
     public function picklistItems(): HasMany
     {
         return $this->hasMany(\Modules\Outbound\Models\PicklistItem::class, 'order_id');
+    }
+
+    public function completedPicklists(): BelongsToMany
+    {
+        return $this->belongsToMany(\Modules\Outbound\Models\Picklist::class, 'picklist_items', 'order_id', 'picklist_id')
+            ->where('picklists.status', \Modules\Outbound\Models\Picklist::STATUS_COMPLETED);
     }
 
     public function packlist(): HasOne
