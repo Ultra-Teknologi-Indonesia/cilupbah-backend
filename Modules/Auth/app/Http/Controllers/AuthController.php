@@ -75,12 +75,53 @@ class AuthController extends Controller
         }
 
         $responseData = [
-            'access_token' => $data['access_token'],
-            'token_type'   => $data['token_type'],
-            'user'         => new ProfileResource($this->userService->attachProfileContext($data['user'])),
+            'access_token'  => $data['access_token'],
+            'refresh_token' => $data['refresh_token'],
+            'expires_in'    => $data['expires_in'],
+            'token_type'    => $data['token_type'],
+            'user'          => new ProfileResource($this->userService->attachProfileContext($data['user'])),
         ];
 
         return $this->successResponse($responseData, 'Berhasil masuk. Selamat datang kembali!');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/auth/refresh',
+        summary: 'Tukar refresh token dengan pasangan access + refresh baru',
+        description: 'Kirim Authorization: Bearer <refresh_token>. Access token lama untuk device yang sama otomatis dicabut. Refresh token yg dipakai juga dirotasi (dicabut & diganti baru). Kalau refresh token tidak valid / expired / bukan token refresh, balas 401 — mobile harus paksa login ulang.',
+        security: [['bearerAuth' => []]],
+        tags: ['Auth'],
+        responses: [
+            new OA\Response(response: 200, description: 'Token baru diterbitkan'),
+            new OA\Response(response: 401, description: 'Refresh token invalid / bukan refresh token'),
+        ]
+    )]
+    public function refresh(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $token = $user?->currentAccessToken();
+
+        // Endpoint ini hanya boleh dipanggil pakai refresh token —
+        // access token biasa dgn ability '*' juga akan lolos `->can()`
+        // (wildcard), jadi cek abilities secara ketat: harus HANYA
+        // berisi 'refresh' dan tidak boleh punya '*'.
+        $abilities = $token?->abilities ?? [];
+        $isRefreshToken = ! in_array('*', $abilities, true)
+            && in_array(AuthService::ABILITY_REFRESH, $abilities, true);
+
+        if (! $token || ! $isRefreshToken) {
+            return $this->errorResponse('Refresh token tidak valid.', 401);
+        }
+
+        $data = $this->authService->refresh($user, $token);
+
+        return $this->successResponse([
+            'access_token'  => $data['access_token'],
+            'refresh_token' => $data['refresh_token'],
+            'expires_in'    => $data['expires_in'],
+            'token_type'    => $data['token_type'],
+            'user'          => new ProfileResource($this->userService->attachProfileContext($data['user'])),
+        ], 'Token diperbarui.');
     }
 
     #[OA\Get(
