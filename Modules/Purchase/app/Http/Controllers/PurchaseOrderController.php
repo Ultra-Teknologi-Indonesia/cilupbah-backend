@@ -84,7 +84,7 @@ class PurchaseOrderController extends Controller
             $po = $this->poService->cancel($id);
             return $this->successResponse($po, 'PO berhasil dibatalkan');
         } catch (\Exception $e) {
-            throw $e;
+            return $this->errorResponse($e->getMessage(), 422);
         }
     }
 
@@ -94,7 +94,7 @@ class PurchaseOrderController extends Controller
             $this->poService->delete($id);
             return $this->successResponse(null, 'PO berhasil dihapus');
         } catch (\Exception $e) {
-            throw $e;
+            return $this->errorResponse($e->getMessage(), 422);
         }
     }
 
