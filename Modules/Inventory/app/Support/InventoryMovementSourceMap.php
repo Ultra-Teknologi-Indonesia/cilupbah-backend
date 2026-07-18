@@ -45,11 +45,6 @@ class InventoryMovementSourceMap
 
     public const INVOICE_SOURCES = ['INVOICE', 'ORDER_PICK'];
 
-    /**
-     * Sumber ledger untuk alokasi pesanan (reserved qty), BUKAN on_hand.
-     * Baris ini dipisah dari running-balance on_hand di getHistoryPaginated
-     * dan menjadi target drill-down "On Order" di Posisi Stok.
-     */
     public const RESERVED_SOURCES = ['ORDER_RESERVE', 'ORDER_RELEASE'];
 
     public const CLEAN_HIDDEN_SOURCES = ['INVOICE', 'ORDER_PICK'];

@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Sales\Enums\SalesOrderStatus;
 use Modules\Sales\Exceptions\CannotDeleteActiveOrderException;
 use Modules\Sales\Exceptions\DuplicateOrderException;
 use Modules\Sales\Exceptions\InsufficientStockException;
@@ -1463,8 +1464,8 @@ class SalesOrderService
             return 'cancelled';
         }
 
-        $currentRank = self::STATUS_RANK[$currentStatus] ?? -1;
-        $newRank = self::STATUS_RANK[$newStatus] ?? -1;
+        $currentRank = $this->statusRank($currentStatus);
+        $newRank = $this->statusRank($newStatus);
 
         return $newRank > $currentRank ? $newStatus : $currentStatus;
     }
@@ -1479,7 +1480,7 @@ class SalesOrderService
 
             $this->reserveStockForOrder($order, false);
 
-            $toRank = self::STATUS_RANK[$finalStatus] ?? 0;
+            $toRank = $this->statusRank($finalStatus, 0);
             for ($rank = 2; $rank <= $toRank; $rank++) {
                 match ($rank) {
                     2       => $this->pickStockForOrder($order),
@@ -1495,12 +1496,12 @@ class SalesOrderService
             return false;
         }
 
-        $fromRank = self::STATUS_RANK[$previousStatus] ?? 0;
+        $fromRank = $this->statusRank($previousStatus, 0);
         if ($previousStatus === 'pending') {
             $fromRank = 1;
         }
 
-        $toRank = self::STATUS_RANK[$finalStatus] ?? -1;
+        $toRank = $this->statusRank($finalStatus);
 
         if ($toRank <= $fromRank) {
             return false;
@@ -1524,13 +1525,40 @@ class SalesOrderService
         return $mutated;
     }
 
+    /**
+     * Transisi divalidasi lewat enum SalesOrderStatus supaya status non-kanonik
+     * (mis. AWAITING_BUYER_CONFIRMATION -> RESERVED) ikut dikenali. Sebelumnya
+     * memakai array hardcoded, sehingga status seperti itu punya daftar transisi
+     * KOSONG dan pesanannya beku total (tak bisa pick/pack/batal).
+     * Tabel transisi enum identik dengan ALLOWED_TRANSITIONS untuk status kanonik.
+     */
     private function validateTransition(string $from, string $to): void
     {
-        $allowed = self::ALLOWED_TRANSITIONS[$from] ?? [];
+        $fromStatus = SalesOrderStatus::tryFrom($from);
+        $toStatus = SalesOrderStatus::tryFrom($to);
 
-        if (! in_array($to, $allowed)) {
+        if ($fromStatus === null || $toStatus === null) {
+            Log::warning('Transisi status pesanan memakai nilai tak dikenal', [
+                'from' => $from,
+                'to'   => $to,
+            ]);
+
             throw new InvalidStatusTransitionException($from, $to);
         }
+
+        if (! $fromStatus->canTransitionTo($toStatus)) {
+            throw new InvalidStatusTransitionException($from, $to);
+        }
+    }
+
+    /** Rank tahap fulfillment, dinormalkan dulu lewat canonical(). */
+    private function statusRank(?string $status, int $default = -1): int
+    {
+        $canonical = SalesOrderStatus::tryFrom((string) $status)?->canonical();
+
+        return $canonical === null
+            ? $default
+            : (self::STATUS_RANK[$canonical->value] ?? $default);
     }
 
     protected function applyStockTransition(SalesOrder $order, string $newStatus): void
@@ -1614,35 +1642,41 @@ class SalesOrderService
         $this->releaseStockForStatus($order, $order->status);
     }
 
+    /**
+     * Melepas stok saat pesanan dibatalkan.
+     *
+     * Default DIBALIK: dulu "hanya lepas bila status termasuk 4 status yang
+     * dikenal", sehingga status di luar daftar (ready-to-ship,
+     * AWAITING_BUYER_CONFIRMATION, status baru dari marketplace) TIDAK PERNAH
+     * melepas kunci dan on_order bocor permanen. Sekarang: SELALU lepas sisa
+     * kunci, dan kembalikan on_hand ke bin asal hanya bila barang memang sudah
+     * diambil fisik (picked/packed).
+     *
+     * Jumlah yang dilepas diambil dari ledger alokasi per salesorder_no, bukan
+     * ditebak dari qty pesanan, sehingga tidak bisa melepas kunci pesanan lain.
+     */
     private function releaseStockForStatus(SalesOrder $order, ?string $status): bool
     {
-        if (! in_array($status, ['pending', 'reserved', 'picked', 'packed'], true)) {
-            return false;
-        }
-
         $order->loadMissing('items');
 
-        if (in_array($status, ['picked', 'packed'], true)) {
-            return $this->restoreStockToOriginBins($order);
+        $canonical = SalesOrderStatus::tryFrom((string) $status)?->canonical();
+
+        if ($canonical === null) {
+            Log::warning('Status pesanan tak dikenal saat melepas stok; sisa kunci tetap dilepas via ledger', [
+                'salesorder_no' => $order->salesorder_no,
+                'status'        => $status,
+            ]);
         }
 
-        foreach ($order->items as $item) {
-            if (! $item->item_id) {
-                continue;
-            }
+        $restored = false;
 
-            $locationId = $this->resolveLocationId($order);
-
-            $this->stockService->cancel(
-                $item->sku ?? "item:{$item->item_id}",
-                $item->item_id,
-                $locationId,
-                $item->qty_in_base,
-                $order->salesorder_no,
-            );
+        if (in_array($canonical, [SalesOrderStatus::PICKED, SalesOrderStatus::PACKED], true)) {
+            $restored = $this->restoreStockToOriginBins($order);
         }
 
-        return true;
+        $released = $this->stockService->releaseReservationByTransaction($order->salesorder_no);
+
+        return $restored || $released > 0;
     }
 
     private function restoreStockToOriginBins(SalesOrder $order): bool

@@ -8,6 +8,7 @@ use Modules\Channel\Jobs\SyncStockToChannelsJob;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
+use Modules\Inventory\Support\InventoryMovementSourceMap;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Sales\Exceptions\InsufficientStockException;
 use App\Traits\StockLockable;
@@ -246,17 +247,57 @@ class StockService
     }
 
     /**
-     * Catat baris ledger alokasi pesanan (reserved) ke inventory_movements.
-     * qty POSITIF saat reserve (on_order naik), NEGATIF saat release (pick/cancel).
-     * `balance` = nilai on_order setelah perubahan. Baris ini dipisahkan dari
-     * running-balance on_hand via partisi CASE di InventoryMovementRepository.
+     * Lepas SISA kunci milik satu pesanan, dihitung dari ledger alokasi:
+     *   sisa = Σ ORDER_RESERVE + Σ ORDER_RELEASE  (release bernilai negatif)
+     * per (item, lokasi) untuk transaction_number tersebut.
+     *
+     * Menggantikan penebakan lama "kurangi sebanyak qty pesanan", yang bocor saat
+     * status tidak dikenal dan bisa salah melepas kunci milik pesanan LAIN atas
+     * item yang sama. Di sini pelepasan di-scope ke satu pesanan, jadi:
+     *  - kebal kosakata status (tak peduli statusnya apa),
+     *  - idempoten (dipanggil dua kali, sisa sudah 0 -> tidak melepas lagi),
+     *  - bundle otomatis ikut karena ledger sudah per komponen.
+     *
+     * @return int total unit yang dilepas
      */
-    /**
-     * BACKFILL: catat baris ledger ORDER_RESERVE untuk reservasi yang SUDAH ada
-     * (on_order sudah terhitung) tanpa mengubah on_order lagi. Meng-expand bundle
-     * ke komponen persis seperti reserve(). Return jumlah baris yang dibuat.
-     * Idempotent per (transaction_number, item_id, location) via cek existing.
-     */
+    public function releaseReservationByTransaction(string $transactionNumber): int
+    {
+        $outstanding = DB::table('inventory_movements')
+            ->where('transaction_number', $transactionNumber)
+            ->whereIn('source', InventoryMovementSourceMap::RESERVED_SOURCES)
+            ->select('item_id', 'location_id', DB::raw('SUM(qty) as sisa'))
+            ->groupBy('item_id', 'location_id')
+            ->havingRaw('SUM(qty) > 0')
+            ->get();
+
+        $released = 0;
+
+        foreach ($outstanding as $row) {
+            $qty = (int) $row->sisa;
+
+            $this->withStockLock($row->item_id, $row->location_id, function () use ($row, $qty, $transactionNumber, &$released) {
+                DB::transaction(function () use ($row, $qty, $transactionNumber, &$released) {
+                    $aggregate = $this->inventoryRepository->findOrCreateForUpdate($row->item_id, $row->location_id, null);
+                    $aggregate->on_order = max(0, ((int) $aggregate->on_order) - $qty);
+                    $this->inventoryRepository->updateStock($aggregate);
+
+                    $this->recordAllocation(
+                        $row->item_id,
+                        $row->location_id,
+                        -$qty,
+                        $transactionNumber,
+                        'ORDER_RELEASE',
+                        (int) $aggregate->on_order,
+                    );
+
+                    $released += $qty;
+                });
+            });
+        }
+
+        return $released;
+    }
+
     public function recordExistingReservation(string $sku, string $itemId, string $locationId, int $qty, string $transactionNumber): int
     {
         $components = $this->productRepository->bundleComponentsForVariant($itemId);

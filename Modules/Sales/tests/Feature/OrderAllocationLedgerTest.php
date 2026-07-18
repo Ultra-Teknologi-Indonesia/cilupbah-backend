@@ -12,10 +12,6 @@ use Modules\Product\Models\ProductVariant;
 use Modules\Sales\Services\StockService;
 use Tests\TestCase;
 
-/**
- * On Order = stok yang dialokasikan untuk pesanan (saat pesanan masuk/dibuat).
- * Alokasi itu dicatat sebagai ledger ORDER_RESERVE, dilepas via ORDER_RELEASE.
- */
 class OrderAllocationLedgerTest extends TestCase
 {
     use RefreshDatabase;
@@ -187,10 +183,8 @@ class OrderAllocationLedgerTest extends TestCase
         $this->assertNotNull($picking);
         $this->assertNotNull($reserve);
 
-        // on_hand stream: 100 - 10 = 90. Alokasi (+7) TIDAK boleh ikut terhitung.
         $this->assertSame(90, (int) $picking->total_balance);
 
-        // reserved stream punya running balance sendiri = on_order.
         $this->assertSame(7, (int) $reserve->total_balance);
     }
 }

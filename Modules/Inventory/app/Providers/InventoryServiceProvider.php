@@ -38,5 +38,12 @@ class InventoryServiceProvider extends ModuleServiceProvider
             ->everyFiveMinutes()
             ->withoutOverlapping()
             ->runInBackground();
+
+        // Alarm dini kebocoran on_order. LAPORAN SAJA (tanpa --fix) supaya tidak
+        // pernah menulis stok tanpa ditinjau; selisih muncul di log scheduler.
+        $schedule->command('inventory:reconcile-on-order')
+            ->dailyAt('02:00')
+            ->withoutOverlapping()
+            ->runInBackground();
     }
 }
