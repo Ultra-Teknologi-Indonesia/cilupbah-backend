@@ -11,18 +11,6 @@ use Modules\Product\Repositories\ProductRepository;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Warehouse\Models\Location;
 
-/**
- * Rekonsiliasi `inventories.on_order` terhadap sumber yang sah:
- *   expected = pesanan status 'reserved' (bundle di-expand) + transfer DRAFT/APPROVED
- *
- * Drift muncul karena release tidak jalan saat order berpindah ke status di luar
- * state machine (mis. 'ready-to-ship', 'AWAITING_BUYER_CONFIRMATION') atau saat
- * dibatalkan dari status tersebut — `SalesOrderService::releaseStockForStatus()`
- * hanya melepas untuk pending/reserved/picked/packed.
- *
- * Default = laporan saja. `--fix` baru menulis, dan setiap koreksi ikut dicatat
- * sebagai ledger ORDER_RELEASE supaya tidak jadi perubahan diam-diam.
- */
 class ReconcileOnOrder extends Command
 {
     use StockLockable;
@@ -89,28 +77,73 @@ class ReconcileOnOrder extends Command
                     $after = max(0, $before - $delta);
                     $realDelta = $before - $after;
 
-                    if ($realDelta === 0) {
-                        // Drift ada di baris bin, bukan baris agregat — tidak bisa dikoreksi di sini.
-                        $residual += $delta;
-                        return;
+                    if ($realDelta !== 0) {
+                        $aggregate->on_order = $after;
+                        $inventoryRepository->updateStock($aggregate);
+
+                        $movementRepository->create([
+                            'item_id'            => $itemId,
+                            'location_id'        => $locationId,
+                            'bin_id'             => null,
+                            'transaction_number' => 'RECONCILE-ON-ORDER',
+                            'source'             => 'ORDER_RELEASE',
+                            'qty'                => -$realDelta,
+                            'balance'            => $after,
+                            'transaction_date'   => now(),
+                            'created_by'         => 'system',
+                        ]);
+
+                        $applied++;
                     }
 
-                    $aggregate->on_order = $after;
-                    $inventoryRepository->updateStock($aggregate);
+                    $remaining = $delta - $realDelta;
 
-                    $movementRepository->create([
-                        'item_id'            => $itemId,
-                        'location_id'        => $locationId,
-                        'bin_id'             => null,
-                        'transaction_number' => 'RECONCILE-ON-ORDER',
-                        'source'             => 'ORDER_RELEASE',
-                        'qty'                => -$realDelta,
-                        'balance'            => $after,
-                        'transaction_date'   => now(),
-                        'created_by'         => 'system',
-                    ]);
+                    // Kelebihan yang tidak tertampung baris agregat biasanya tersimpan di
+                    // baris bin (mis. reservasi transfer draft). Kuras dari sana.
+                    if ($remaining > 0) {
+                        $binRows = DB::table('inventories')
+                            ->where('item_id', $itemId)
+                            ->where('location_id', $locationId)
+                            ->whereNotNull('bin_id')
+                            ->where('on_order', '>', 0)
+                            ->orderByDesc('on_order')
+                            ->get();
 
-                    $applied++;
+                        foreach ($binRows as $binRow) {
+                            if ($remaining <= 0) {
+                                break;
+                            }
+
+                            $binInv = $inventoryRepository->findOrCreateForUpdate($itemId, $locationId, $binRow->bin_id);
+                            $take = min($remaining, (int) $binInv->on_order);
+
+                            if ($take <= 0) {
+                                continue;
+                            }
+
+                            $binInv->on_order = (int) $binInv->on_order - $take;
+                            $inventoryRepository->updateStock($binInv);
+
+                            $movementRepository->create([
+                                'item_id'            => $itemId,
+                                'location_id'        => $locationId,
+                                'bin_id'             => $binRow->bin_id,
+                                'transaction_number' => 'RECONCILE-ON-ORDER',
+                                'source'             => 'ORDER_RELEASE',
+                                'qty'                => -$take,
+                                'balance'            => (int) $binInv->on_order,
+                                'transaction_date'   => now(),
+                                'created_by'         => 'system',
+                            ]);
+
+                            $remaining -= $take;
+                            $applied++;
+                        }
+                    }
+
+                    if ($remaining !== 0) {
+                        $residual += $remaining;
+                    }
                 });
             });
         }
@@ -124,7 +157,6 @@ class ReconcileOnOrder extends Command
         return self::SUCCESS;
     }
 
-    /** @return array<string,int> key "itemId|locationId" => qty */
     private function buildExpected(ProductRepository $productRepository): array
     {
         $expected = [];
@@ -182,7 +214,6 @@ class ReconcileOnOrder extends Command
         $expected[$key] = ($expected[$key] ?? 0) + $qty;
     }
 
-    /** @return array<string,int> key "itemId|locationId" => qty */
     private function buildActual(): array
     {
         $actual = [];

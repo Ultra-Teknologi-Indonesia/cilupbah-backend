@@ -9,10 +9,6 @@ use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Tests\TestCase;
 
-/**
- * on_order yang sah = pesanan status 'reserved' + transfer DRAFT/APPROVED.
- * Sisanya adalah drift (release yang tidak pernah jalan) dan harus terdeteksi.
- */
 class ReconcileOnOrderTest extends TestCase
 {
     use RefreshDatabase;
@@ -109,7 +105,6 @@ class ReconcileOnOrderTest extends TestCase
             ->expectsOutputToContain('total drift')
             ->assertSuccessful();
 
-        // Tanpa --fix data tidak boleh berubah.
         $this->assertDatabaseHas('inventories', ['item_id' => $v->id, 'on_order' => 5]);
         $this->assertDatabaseMissing('inventory_movements', ['item_id' => $v->id]);
     }
@@ -123,7 +118,6 @@ class ReconcileOnOrderTest extends TestCase
 
         $this->assertDatabaseHas('inventories', ['item_id' => $v->id, 'on_order' => 0]);
 
-        // Koreksi wajib terekam, bukan perubahan diam-diam.
         $this->assertDatabaseHas('inventory_movements', [
             'item_id' => $v->id,
             'transaction_number' => 'RECONCILE-ON-ORDER',
@@ -143,6 +137,46 @@ class ReconcileOnOrderTest extends TestCase
 
         $this->assertDatabaseHas('inventories', ['item_id' => $v->id, 'on_order' => 3]);
         $this->assertDatabaseMissing('inventory_movements', ['item_id' => $v->id]);
+    }
+
+    private function setBinOnOrder(string $variantId, int $onOrder, int $onHand = 50): void
+    {
+        $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
+            ['location_id' => $this->locationId, 'bin_final_code' => 'RECON-BIN-1'],
+            ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false]
+        );
+
+        DB::table('inventories')->insert([
+            'id' => Str::uuid()->toString(),
+            'item_id' => $variantId,
+            'location_id' => $this->locationId,
+            'bin_id' => $bin->id,
+            'on_hand' => $onHand,
+            'on_order' => $onOrder,
+            'available' => $onHand - $onOrder,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    public function test_fix_drains_excess_that_sits_on_bin_rows(): void
+    {
+        $v = $this->variant('RECON-5');
+        // Agregat kosong, kelebihan justru tersimpan di baris bin.
+        $this->setAggregateOnOrder($v->id, 0);
+        $this->setBinOnOrder($v->id, 3);
+
+        $this->artisan('inventory:reconcile-on-order', ['--fix' => true])->assertSuccessful();
+
+        $total = (int) DB::table('inventories')->where('item_id', $v->id)->sum('on_order');
+        $this->assertSame(0, $total, 'Kelebihan di baris bin harus ikut dibersihkan.');
+
+        $this->assertDatabaseHas('inventory_movements', [
+            'item_id' => $v->id,
+            'transaction_number' => 'RECONCILE-ON-ORDER',
+            'source' => 'ORDER_RELEASE',
+            'qty' => -3,
+        ]);
     }
 
     public function test_partial_drift_only_removes_the_excess(): void
