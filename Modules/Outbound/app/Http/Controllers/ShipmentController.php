@@ -178,9 +178,6 @@ class ShipmentController extends Controller
         ]);
     }
 
-    /**
-     * Map ShipmentOrder → shape flat per-pesanan (ala Jubelio, disederhanakan).
-     */
     private function mapCompletedOrderRow($shipmentOrder): array
     {
         $order = $shipmentOrder->order;

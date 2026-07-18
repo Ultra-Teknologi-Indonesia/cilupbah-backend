@@ -199,7 +199,7 @@ class MultiRackPicklistSeeder extends Seeder
     {
         Inventory::updateOrCreate(
             ['item_id' => $itemId, 'location_id' => $locationId, 'bin_id' => $binId],
-            ['on_hand' => $qty, 'reserved' => 0, 'available' => $qty]
+            ['on_hand' => $qty, 'on_order' => 0, 'available' => $qty]
         );
     }
 }

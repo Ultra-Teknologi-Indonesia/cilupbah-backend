@@ -26,6 +26,7 @@ class BulkShippingLabelController extends Controller
         $data = $req->validate([
             'order_ids' => 'required|array|min:1',
             'order_ids.*' => 'string|uuid',
+            'document_size' => 'nullable|string|in:thermal_100x150,thermal_100x120',
             'per_channel' => 'nullable|array',
         ]);
 
@@ -39,10 +40,13 @@ class BulkShippingLabelController extends Controller
         }
         RateLimiter::hit($key, 60);
 
+        $perChannelOpts = (array) ($data['per_channel'] ?? []);
+        $perChannelOpts['document_size'] = $data['document_size'] ?? BulkShippingLabelService::DEFAULT_SIZE;
+
         $batch = $this->svc->createBatch(
             $req->user(),
             $data['order_ids'],
-            $data['per_channel'] ?? [],
+            $perChannelOpts,
         );
 
         ProcessBulkShippingLabelJob::dispatch($batch->id);

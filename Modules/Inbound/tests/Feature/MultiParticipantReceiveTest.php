@@ -122,7 +122,6 @@ class MultiParticipantReceiveTest extends TestCase
     {
         $inbound = $this->makeInbound(100);
 
-        // Staff scan 150 padahal expected 100.
         $this->receive($inbound, $this->staff['s1']->id, 150);
 
         $item = $inbound->fresh('items')->items->first();
@@ -160,7 +159,6 @@ class MultiParticipantReceiveTest extends TestCase
         $done = $inbound->fresh();
         $this->assertEquals(Inbound::STATUS_RECEIVED, $done->status);
 
-        // Semua participant ACTIVE jadi WITHDRAWN dengan reason admin_finalize.
         $participants = InboundParticipant::where('inbound_id', $inbound->id)->get();
         $this->assertCount(2, $participants);
         foreach ($participants as $p) {
@@ -169,7 +167,6 @@ class MultiParticipantReceiveTest extends TestCase
             $this->assertEquals($admin->id, $p->withdrawn_by);
         }
 
-        // Web edit sekarang boleh (session lock lepas).
         request()->attributes->set('client_channel', ClientChannelEnum::WEB);
         app(InboundService::class)->setReceivedQty(
             $inbound->id,
@@ -182,7 +179,7 @@ class MultiParticipantReceiveTest extends TestCase
 
     public function test_receive_stays_partial_even_when_expected_reached(): void
     {
-        // Fase E: receive() TIDAK PERNAH auto-transition ke RECEIVED, walau qty penuh.
+
         $inbound = $this->makeInbound(100);
         $this->receive($inbound, $this->staff['s1']->id, 100);
 
@@ -229,9 +226,7 @@ class MultiParticipantReceiveTest extends TestCase
 
     public function test_admin_withdraw_participant_only_flips_status(): void
     {
-        // Fase E: withdraw seorang staff hanya melepas 1 participant. Status inbound
-        // tetap PARTIAL (bukan naik ke RECEIVED walau semua withdraw) — hanya admin
-        // closeReceiving yang bisa RECEIVED.
+
         $inbound = $this->makeInbound(100);
         $this->receive($inbound, $this->staff['s1']->id, 30);
 
@@ -250,7 +245,7 @@ class MultiParticipantReceiveTest extends TestCase
 
     public function test_admin_close_from_draft_without_receive_still_works(): void
     {
-        // Admin bisa close inbound DRAFT (tanpa ada scan mobile sama sekali).
+
         $inbound = $this->makeInbound(100);
 
         $admin = User::factory()->create(['name' => 'ADMIN']);

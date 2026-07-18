@@ -61,7 +61,7 @@ class ChannelStockReconcileTest extends TestCase
             'location_id' => $this->locationId,
             'bin_id' => null,
             'on_hand' => 10,
-            'reserved' => 0,
+            'on_order' => 0,
             'available' => 10,
             'created_at' => now(),
             'updated_at' => now(),
@@ -126,19 +126,19 @@ class ChannelStockReconcileTest extends TestCase
     public function test_reserved_then_packed_then_shipped_decrements_once(): void
     {
         $this->service->upsertFromChannel($this->orderData('LZ-RC-1', 'AWAITING_SHIPMENT'));
-        $this->assertSame(2, $this->inventory()->reserved);
+        $this->assertSame(2, $this->inventory()->on_order);
         $this->assertSame(10, $this->inventory()->on_hand);
 
         $this->service->upsertFromChannel($this->orderData('LZ-RC-1', 'AWAITING_COLLECTION'));
 
         $inv = $this->inventory();
-        $this->assertSame(0, $inv->reserved, 'reserved harus dilepas saat melewati packed');
+        $this->assertSame(0, $inv->on_order, 'reserved harus dilepas saat melewati packed');
         $this->assertSame(8, $inv->on_hand, 'on_hand harus berkurang saat pick terjadi di langkah reserved->packed');
 
         $this->service->upsertFromChannel($this->orderData('LZ-RC-1', 'COMPLETED'));
 
         $inv = $this->inventory();
-        $this->assertSame(0, $inv->reserved);
+        $this->assertSame(0, $inv->on_order);
         $this->assertSame(8, $inv->on_hand, 'on_hand tidak boleh berkurang lagi saat shipped');
         $this->assertSame(8, $inv->available);
         $this->assertSame(1, $this->movements('ORDER_PICK'), 'pick tepat sekali');
@@ -149,13 +149,13 @@ class ChannelStockReconcileTest extends TestCase
     {
         $this->service->upsertFromChannel($this->orderData('LZ-RC-2', 'UNPAID'));
         $this->assertSame(10, $this->inventory()->on_hand);
-        $this->assertSame(0, $this->inventory()->reserved);
+        $this->assertSame(0, $this->inventory()->on_order);
 
         $this->service->upsertFromChannel($this->orderData('LZ-RC-2', 'AWAITING_COLLECTION'));
 
         $inv = $this->inventory();
         $this->assertSame(8, $inv->on_hand);
-        $this->assertSame(0, $inv->reserved);
+        $this->assertSame(0, $inv->on_order);
         $this->assertSame(1, $this->movements('ORDER_RESERVE'));
         $this->assertSame(1, $this->movements('ORDER_PICK'));
     }
@@ -164,12 +164,12 @@ class ChannelStockReconcileTest extends TestCase
     {
         DB::table('inventories')
             ->where('item_id', $this->variantId)
-            ->update(['on_hand' => 1, 'reserved' => 0, 'available' => 1]);
+            ->update(['on_hand' => 1, 'on_order' => 0, 'available' => 1]);
 
         $this->service->upsertFromChannel($this->orderData('LZ-RC-3', 'AWAITING_SHIPMENT'));
 
         $inv = $this->inventory();
-        $this->assertSame(2, $inv->reserved, 'order channel tetap di-reserve walau stok kurang');
+        $this->assertSame(2, $inv->on_order, 'order channel tetap di-reserve walau stok kurang');
         $this->assertSame(-1, $inv->available, 'available boleh minus untuk order yang sudah committed di marketplace');
     }
 }

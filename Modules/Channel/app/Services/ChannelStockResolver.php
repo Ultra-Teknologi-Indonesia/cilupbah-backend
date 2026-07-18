@@ -57,7 +57,7 @@ class ChannelStockResolver
             ->groupBy('i.item_id')
             ->selectRaw('i.item_id as item_id')
             ->selectRaw('COALESCE(SUM(CASE WHEN b.id IS NOT NULL AND b.is_inbound = false THEN i.on_hand ELSE 0 END),0) as oh')
-            ->selectRaw('COALESCE(SUM(i.reserved),0) as r')
+            ->selectRaw('COALESCE(SUM(i.on_order),0) as r')
             ->get();
 
         foreach ($stocks as $row) {

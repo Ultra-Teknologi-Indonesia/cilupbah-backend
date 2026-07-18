@@ -67,9 +67,6 @@ class AuthService
         ];
     }
 
-    /**
-     * @return array{clientType:string, ip:string, userAgent:string, deviceModel:?string, deviceManufacturer:?string}
-     */
     private function resolveClientMeta(Request $request): array
     {
         $clientTypeRaw = strtolower((string) $request->header('X-Client-Type', ''));

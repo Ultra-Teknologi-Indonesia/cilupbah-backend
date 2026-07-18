@@ -47,7 +47,7 @@ class ProcessReservedStockJob implements ShouldQueue
                         throw new \RuntimeException("Inventory tidak ditemukan untuk item {$item->item_id}.");
                     }
 
-                    $inventory->reserved += $item->qty;
+                    $inventory->on_order += $item->qty;
                     $inventoryRepository->updateStock($inventory);
 
                     $movementRepository->create([

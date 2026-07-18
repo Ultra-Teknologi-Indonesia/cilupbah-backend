@@ -131,7 +131,7 @@ class WebhookObserverTest extends TestCase
         $variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V1', 'sell_price' => 100, 'is_active' => true]);
         $inventory = Inventory::create([
             'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => null,
-            'on_hand' => 0, 'on_order' => 0, 'reserved' => 0, 'available' => 0,
+            'on_hand' => 0, 'on_order' => 0, 'available' => 0,
         ]);
 
         $this->subscribe(WebhookEvent::STOCK);

@@ -660,16 +660,28 @@ class ShopeeOrderService
             $params = $this->getShippingDocumentParameter($shopId, $orderSn);
             $row = $params['response']['result_list'][0] ?? [];
 
+            $selectable = [];
+            foreach ((array) ($row['selectable_shipping_document_type'] ?? []) as $type) {
+                if (is_string($type) && $type !== '') {
+                    $selectable[] = $type;
+                }
+            }
+            foreach ((array) ($row['shipping_document_info'] ?? []) as $info) {
+                if (! empty($info['shipping_document_type'])) {
+                    $selectable[] = $info['shipping_document_type'];
+                }
+            }
+
+            if ($selectable && in_array($fallback, $selectable, true)) {
+                return $fallback;
+            }
+
             $suggested = $row['suggest_shipping_document_type'] ?? null;
             if ($suggested) {
                 return $suggested;
             }
-
-            $infos = $row['shipping_document_info'] ?? [];
-            foreach ($infos as $info) {
-                if (! empty($info['shipping_document_type'])) {
-                    return $info['shipping_document_type'];
-                }
+            if ($selectable) {
+                return $selectable[0];
             }
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning("Shopee: gagal get_shipping_document_parameter {$orderSn}: " . $e->getMessage());

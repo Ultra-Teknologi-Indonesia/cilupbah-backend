@@ -6,9 +6,7 @@ use Modules\Outbound\Contracts\MarketPlaceLogisticsInterface;
 
 class LogisticsGateway
 {
-    /**
-     * @param  array<string,class-string<MarketPlaceLogisticsInterface>>  $adapters
-     */
+
     public function __construct(private array $adapters = []) {}
 
     public function for(?string $source): MarketPlaceLogisticsInterface

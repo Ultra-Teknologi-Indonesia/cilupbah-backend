@@ -82,4 +82,9 @@ class Location extends Model
     {
         return $this->hasMany(\Modules\Inventory\Models\Inventory::class);
     }
+
+    public function enforcesStrictBinSku(): bool
+    {
+        return $this->location_code === self::SYSTEM_KECIL_CODE;
+    }
 }

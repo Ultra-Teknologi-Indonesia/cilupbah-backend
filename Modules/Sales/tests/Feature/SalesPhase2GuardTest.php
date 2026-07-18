@@ -63,7 +63,7 @@ class SalesPhase2GuardTest extends TestCase
             'location_id' => $this->locationId,
             'bin_id' => null,
             'on_hand' => 100,
-            'reserved' => 0,
+            'on_order' => 0,
             'available' => 100,
             'created_at' => now(),
             'updated_at' => now(),

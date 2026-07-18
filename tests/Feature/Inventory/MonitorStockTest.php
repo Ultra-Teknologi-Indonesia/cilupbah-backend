@@ -63,7 +63,6 @@ class MonitorStockTest extends TestCase
                 'serial_no'   => '',
                 'on_hand'     => 0,
                 'on_order'    => 0,
-                'reserved'    => 0,
                 'available'   => 0,
             ], $stock));
         }

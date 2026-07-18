@@ -70,7 +70,6 @@ class InventoryChannelStockSyncTest extends TestCase
             'bin_id' => null,
             'on_hand' => $onHand,
             'on_order' => 0,
-            'reserved' => 0,
             'available' => $onHand,
             'created_at' => now(),
             'updated_at' => now(),

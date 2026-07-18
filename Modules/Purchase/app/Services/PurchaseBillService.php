@@ -176,17 +176,6 @@ class PurchaseBillService
 
     private function adjustOnOrder(string $itemId, string $locationId, int $qty): void
     {
-        $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty) {
-            DB::transaction(function () use ($itemId, $locationId, $qty) {
-                $inventory = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
 
-                if ($qty <= 0 && $inventory->on_order === 0) {
-                    return;
-                }
-
-                $inventory->on_order = max(0, $inventory->on_order + $qty);
-                $this->inventoryRepository->updateStock($inventory);
-            });
-        });
     }
 }

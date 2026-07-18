@@ -4,6 +4,7 @@ namespace Modules\Inventory\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Modules\Inventory\Support\StockSummary;
 
 class StockItemResource extends JsonResource
 {
@@ -73,8 +74,7 @@ class StockItemResource extends JsonResource
             ->groupBy('location_id')
             ->map(function ($rows, $locationId) {
                 $placedOnHand = (int) $rows->filter(fn ($inv) => $this->isPlaced($inv))->sum('on_hand');
-                $pending = (int) $rows->reject(fn ($inv) => $this->isPlaced($inv))->sum('on_hand');
-                $reserved = (int) $rows->sum('reserved');
+                $onOrder = (int) $rows->sum('on_order');
                 $first = $rows->first();
 
                 return [
@@ -82,10 +82,8 @@ class StockItemResource extends JsonResource
                     'location_id' => $locationId,
                     'location_name' => $first && $first->relationLoaded('location') ? $first->location?->location_name : null,
                     'on_hand' => $placedOnHand,
-                    'pending_placement' => $pending,
-                    'on_order' => (int) $rows->sum('on_order'),
-                    'reserved' => $reserved,
-                    'available' => max(0, $placedOnHand - $reserved),
+                    'on_order' => $onOrder,
+                    'available' => $placedOnHand - $onOrder,
                 ];
             })
             ->values()
@@ -97,14 +95,14 @@ class StockItemResource extends JsonResource
         $onHand = (int) $inventories->filter(fn ($inv) => $this->isPlaced($inv))->sum('on_hand');
         $pending = (int) $inventories->reject(fn ($inv) => $this->isPlaced($inv))->sum('on_hand');
         $onOrder = (int) $inventories->sum('on_order');
-        $reserved = (int) $inventories->sum('reserved');
+        $summary = StockSummary::forItem($this->id);
 
         return [
             'on_hand' => $onHand,
             'pending_placement' => $pending,
             'on_order' => $onOrder,
-            'reserved' => $reserved,
-            'available' => max(0, $onHand - $reserved),
+            'transit' => (int) ($summary['transit'] ?? 0),
+            'available' => $onHand - $onOrder,
         ];
     }
 

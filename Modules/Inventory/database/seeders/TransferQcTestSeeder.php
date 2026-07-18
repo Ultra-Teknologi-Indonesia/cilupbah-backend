@@ -43,7 +43,7 @@ class TransferQcTestSeeder extends Seeder
                     'location_id' => $gudangUtama,
                     'bin_id'      => $binSource,
                     'on_hand'     => 100,
-                    'reserved'    => 0,
+                    'on_order'    => 0,
                     'available'   => 100,
                 ]);
             } elseif ($inv->available < $itemData['qty']) {
@@ -74,7 +74,6 @@ class TransferQcTestSeeder extends Seeder
 
             $inv->update([
                 'on_hand'   => $inv->on_hand - $itemData['qty'],
-                'reserved'  => $inv->reserved,
                 'available' => $inv->available - $itemData['qty'],
             ]);
 

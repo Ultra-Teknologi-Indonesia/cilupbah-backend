@@ -80,7 +80,7 @@ class PutawayController extends Controller
         ]);
 
         try {
-            $inbounds = \Modules\Inbound\Models\Inbound::with(['items', 'putaways:id,status'])
+            $inbounds = \Modules\Inbound\Models\Inbound::with(['items'])
                 ->whereIn('id', $request->inbound_ids)
                 ->get();
 
@@ -92,81 +92,95 @@ class PutawayController extends Controller
                 if (in_array($inbound->status, [\Modules\Inbound\Models\Inbound::STATUS_COMPLETED, \Modules\Inbound\Models\Inbound::STATUS_CANCELLED], true)) {
                     return $this->errorResponse("Penerimaan {$inbound->transaction_number} sudah {$inbound->status}, tidak bisa dibuat penempatan.", 422);
                 }
-
-                $hasActive = $inbound->putaways->contains(
-                    fn ($p) => ! in_array($p->status, [Putaway::STATUS_COMPLETED, Putaway::STATUS_CANCELLED], true)
-                );
-                if ($hasActive) {
-                    return $this->errorResponse("Penerimaan {$inbound->transaction_number} sudah memiliki penempatan aktif.", 422);
-                }
             }
 
             $locationId = $inbounds->first()->location_id;
             $defaultBin = app(\Modules\Warehouse\Services\LocationBinService::class)->getDefaultBin($locationId);
             $userId = $request->user()->id ?? 'system';
 
-            $merged = [];
-            foreach ($inbounds as $inbound) {
-                foreach ($inbound->items as $item) {
-                    $pending = max(0, (int) $item->received_qty - (int) $item->putaway_qty);
-                    if ($pending <= 0) {
-                        continue;
-                    }
+            $result = \Illuminate\Support\Facades\DB::transaction(function () use ($inbounds, $defaultBin, $locationId, $userId, $request) {
+                $lockedItems = \Modules\Inbound\Models\InboundItem::whereIn('inbound_id', $inbounds->pluck('id'))
+                    ->lockForUpdate()
+                    ->get()
+                    ->keyBy('id');
 
-                    if (! isset($merged[$item->item_id])) {
-                        $merged[$item->item_id] = [
-                            'item_id'            => $item->item_id,
-                            'source_bin_id'      => $defaultBin ? $defaultBin->id : null,
-                            'destination_bin_id' => null,
-                            'qty'                => 0,
-                            'batch_no'           => null,
-                            'serial_no'          => null,
-                            'sources'            => [],
+                $merged = [];
+                $reservationDeltas = [];
+                foreach ($inbounds as $inbound) {
+                    foreach ($inbound->items as $item) {
+                        $locked = $lockedItems->get($item->id);
+                        if (! $locked) {
+                            continue;
+                        }
+                        $pending = max(0, (int) $locked->received_qty - (int) $locked->putaway_qty - (int) ($locked->reserved_qty ?? 0));
+                        if ($pending <= 0) {
+                            continue;
+                        }
+
+                        if (! isset($merged[$locked->item_id])) {
+                            $merged[$locked->item_id] = [
+                                'item_id'            => $locked->item_id,
+                                'source_bin_id'      => $defaultBin ? $defaultBin->id : null,
+                                'destination_bin_id' => null,
+                                'qty'                => 0,
+                                'batch_no'           => null,
+                                'serial_no'          => null,
+                                'sources'            => [],
+                            ];
+                        }
+
+                        $merged[$locked->item_id]['qty'] += $pending;
+                        $merged[$locked->item_id]['sources'][] = [
+                            'inbound_item_id' => $locked->id,
+                            'qty'             => $pending,
                         ];
+                        $reservationDeltas[$locked->id] = ($reservationDeltas[$locked->id] ?? 0) + $pending;
                     }
-
-                    $merged[$item->item_id]['qty'] += $pending;
-                    $merged[$item->item_id]['sources'][] = [
-                        'inbound_item_id' => $item->id,
-                        'qty'             => $pending,
-                    ];
                 }
-            }
 
-            $items = array_values($merged);
+                $items = array_values($merged);
 
-            if (empty($items)) {
-                return $this->errorResponse('Tidak ada item untuk di-putaway.', 400);
-            }
+                if (empty($items)) {
+                    throw new \RuntimeException('Tidak ada item pending untuk di-putaway (semua qty sudah masuk penempatan aktif atau sudah selesai).');
+                }
 
-            $notes = $inbounds->count() === 1
-                ? "Manual Putaway from Inbound {$inbounds->first()->transaction_number}"
-                : 'Manual Putaway gabungan dari ' . $inbounds->count() . ' penerimaan: ' . $inbounds->pluck('transaction_number')->implode(', ');
+                $notes = $inbounds->count() === 1
+                    ? "Manual Putaway from Inbound {$inbounds->first()->transaction_number}"
+                    : 'Manual Putaway gabungan dari ' . $inbounds->count() . ' penerimaan: ' . $inbounds->pluck('transaction_number')->implode(', ');
 
-            $putaway = $this->putawayService->create([
-                'location_id' => $locationId,
-                'source_type' => 'INBOUND',
-
-                'source_id'   => $inbounds->count() === 1 ? $inbounds->first()->id : null,
-                'sources'     => $inbounds->pluck('id')->all(),
-                'notes'       => $notes,
-                'created_by'  => $userId,
-                'items'       => $items,
-            ]);
-
-            if ($request->assigned_to) {
-                app(\Modules\Inventory\Services\PutawayService::class)->assignStaff([
-                    'performed_by' => $userId,
-                    'data' => [
-                        [
-                            'putaway_id' => $putaway->id,
-                            'assigned_to' => $request->assigned_to,
-                        ]
-                    ]
+                $putaway = $this->putawayService->create([
+                    'location_id' => $locationId,
+                    'source_type' => 'INBOUND',
+                    'source_id'   => $inbounds->count() === 1 ? $inbounds->first()->id : null,
+                    'sources'     => $inbounds->pluck('id')->all(),
+                    'notes'       => $notes,
+                    'created_by'  => $userId,
+                    'items'       => $items,
                 ]);
-            }
 
-            return $this->successResponse($putaway, 'Penempatan barang berhasil dibuat.', 201);
+                foreach ($reservationDeltas as $inboundItemId => $delta) {
+                    \Modules\Inbound\Models\InboundItem::where('id', $inboundItemId)
+                        ->increment('reserved_qty', $delta);
+                }
+
+                if ($request->assigned_to) {
+                    app(\Modules\Inventory\Services\PutawayService::class)->assignStaff([
+                        'performed_by' => $userId,
+                        'data' => [
+                            [
+                                'putaway_id' => $putaway->id,
+                                'assigned_to' => $request->assigned_to,
+                            ]
+                        ]
+                    ]);
+                }
+
+                return $putaway;
+            });
+
+            return $this->successResponse($result, 'Penempatan barang berhasil dibuat.', 201);
+        } catch (\RuntimeException $e) {
+            return $this->errorResponse($e->getMessage(), 400);
         } catch (\Exception $e) {
             throw $e;
         }
@@ -335,6 +349,8 @@ class PutawayController extends Controller
             $items = $this->putawayService->getItems($id, $limit);
 
             return $this->successPaginatedResponse($items, 'Daftar item putaway berhasil diambil.');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal memproses aksi.',
@@ -373,6 +389,8 @@ class PutawayController extends Controller
             $results = $this->putawayService->assignStaff($request->validated());
 
             return $this->successResponse($results, 'Staff berhasil di-assign ke putaway.');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal menetapkan.',
@@ -402,6 +420,8 @@ class PutawayController extends Controller
             $putaway = $this->putawayService->start($id);
 
             return $this->successResponse($putaway, 'Putaway berhasil dimulai.');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal memulai.',
@@ -439,6 +459,8 @@ class PutawayController extends Controller
             $this->putawayService->processItem($id, $itemId, $request->validated());
 
             return $this->successResponse(null, 'Proses putaway item sedang dijalankan.', 202);
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal memproses aksi.',
@@ -486,6 +508,8 @@ class PutawayController extends Controller
             );
 
             return $this->successResponse($putaway, 'Penempatan berhasil dikoreksi.');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal menghapus.',
@@ -536,6 +560,8 @@ class PutawayController extends Controller
             $putaway = $this->putawayService->deletePlacements($id, $validated['items'], $userId);
 
             return $this->successResponse($putaway, 'Penempatan berhasil dikoreksi.');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal menghapus.',
@@ -565,6 +591,8 @@ class PutawayController extends Controller
             $putaway = $this->putawayService->complete($id);
 
             return $this->successResponse($putaway, 'Putaway berhasil diselesaikan.');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal menyelesaikan.',
@@ -595,6 +623,8 @@ class PutawayController extends Controller
             $result = $this->putawayService->completeWithDiscrepancy($id, $userId);
 
             return $this->successResponse($result, 'Putaway berhasil diselesaikan. Selisih dialokasikan ke rak default.');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal menyelesaikan.',
@@ -795,6 +825,8 @@ class PutawayController extends Controller
             };
 
             return $this->successResponse($result, $message);
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal menghapus.',
@@ -833,6 +865,8 @@ class PutawayController extends Controller
             $results = $this->putawayService->bulkDeletePutaway($validated['ids'], $userId);
 
             return $this->successResponse($results, 'Penempatan terpilih berhasil diproses.');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal menghapus.',
@@ -980,10 +1014,6 @@ class PutawayController extends Controller
         }
     }
 
-    /**
-     * Tombol A "Alihkan Tugas" — TAHAN placement.
-     * DELETE /api/v1/putaway/{id}/assignment
-     */
     public function unassign(string $id, Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -1008,10 +1038,6 @@ class PutawayController extends Controller
         );
     }
 
-    /**
-     * Tombol B "Reset & Alihkan" — reverse semua placement.
-     * POST /api/v1/putaway/{id}/assignment/reset
-     */
     public function resetAssignment(string $id, Request $request): JsonResponse
     {
         $validated = $request->validate([

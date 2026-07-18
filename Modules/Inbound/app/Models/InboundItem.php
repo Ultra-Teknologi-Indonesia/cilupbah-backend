@@ -22,6 +22,7 @@ class InboundItem extends Model
         'rejected_qty',
         'rejection_note',
         'putaway_qty',
+        'reserved_qty',
         'discrepancy_qty',
         'discrepancy_note',
         'condition',
@@ -55,14 +56,9 @@ class InboundItem extends Model
 
     public function pendingPutawayQty(): int
     {
-        return max(0, $this->received_qty - $this->putaway_qty);
+        return max(0, $this->received_qty - $this->putaway_qty - ($this->reserved_qty ?? 0));
     }
 
-    /**
-     * Tambah kolom agregat receipt: received_total (semua staff) & received_by_me (auth user).
-     * received_total = SUM(inbound_receipts.qty) — sinonim eksplisit dari received_qty
-     * received_by_me = SUM(inbound_receipts.qty) FILTER received_by_user_id = :userId
-     */
     public function scopeWithReceiptStats(Builder $q, ?string $userId = null): Builder
     {
         $userId ??= auth()->id();

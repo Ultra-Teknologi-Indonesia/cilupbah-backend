@@ -14,7 +14,6 @@ class EventServiceProvider extends ServiceProvider
     {
         parent::boot();
 
-        // F5: auto-create Inbound DRAFT saat PO transisi ke OPEN.
         PurchaseOrder::observe(PurchaseOrderObserver::class);
     }
 }

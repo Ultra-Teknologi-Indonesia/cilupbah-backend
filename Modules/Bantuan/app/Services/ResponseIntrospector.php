@@ -8,30 +8,22 @@ use ReflectionClass;
 use ReflectionMethod;
 use Throwable;
 
-/**
- * Best-effort introspeksi response controller:
- *  1) Cari referensi ApiResource di body (`new XyzResource(...)`, `XyzResource::collection`).
- *  2) Parse toArray() dari Resource → daftar key.
- *  3) Parse #[OA\Schema] / #[OA\Property] attributes di controller class untuk contoh nilai.
- *  4) Bila tidak ada, kembalikan default wrapper ApiResponse trait.
- */
 class ResponseIntrospector
 {
-    /** @return array{schema:array,example:array,resource_class:?string} */
+
     public function forMethod(ReflectionMethod $method, string $httpMethod, ?string $actionName = null): array
     {
         $body = $this->methodSource($method);
 
         $resourceClass = $body === null ? null : $this->findResourceClass($method, $body);
         if (! $resourceClass) {
-            // Fallback: action-based example bila ada, else default
+
             $actionEx = $this->actionExample($actionName, $body);
             if ($actionEx) return $actionEx + ['resource_class' => null];
             $default = $this->defaultWrapper($httpMethod);
             return $default + ['resource_class' => null];
         }
 
-        // Ambil OA schema dari controller class (jika ada) untuk contoh nilai
         $oaByProperty = $this->collectOaProperties($method->getDeclaringClass());
 
         [$schema, $example] = $this->extractFromResource($resourceClass, $oaByProperty);
@@ -81,16 +73,9 @@ class ResponseIntrospector
         ];
     }
 
-    /**
-     * Bila action-name mengarah ke aksi domain (cancel/approve/dsb) atau
-     * body memakai successResponse dengan pesan spesifik, buat contoh
-     * yang lebih meaningful.
-     *
-     * @return array{schema:array,example:array}|null
-     */
     private function actionExample(?string $action, ?string $body): ?array
     {
-        // Coba ekstrak pesan sukses dari body
+
         $message = null;
         if ($body && preg_match('/successResponse\s*\([^,]*,\s*[\'"]([^\'"]+)[\'"]/i', $body, $m)) {
             $message = $m[1];
@@ -130,7 +115,6 @@ class ResponseIntrospector
         }
         $finalMessage = $message ?? $matched;
 
-        // Kembalikan example bila ada matched atau message
         if ($finalMessage) {
             return [
                 'schema' => [
@@ -148,7 +132,6 @@ class ResponseIntrospector
         return null;
     }
 
-    /** @return array{0:array,1:array} [schema, example] */
     private function defaultWrapper(string $httpMethod): array
     {
         $isEmpty = $httpMethod === 'DELETE';
@@ -186,26 +169,25 @@ class ResponseIntrospector
 
     private function findResourceClass(ReflectionMethod $method, string $body): ?string
     {
-        // Cari "XxxResource" (kelas berakhir "Resource")
+
         $shortNames = [];
         if (preg_match_all('/(?:new\s+|\b)([A-Z]\w*Resource)\b/', $body, $m)) {
             foreach ($m[1] as $n) $shortNames[$n] = true;
         }
         if (! $shortNames) return null;
 
-        // Resolve via use-statements dari file kelas
         $useMap = $this->parseUseStatements($method->getFileName() ?? '');
         foreach (array_keys($shortNames) as $short) {
             if (isset($useMap[$short]) && class_exists($useMap[$short])) {
                 return $useMap[$short];
             }
         }
-        // Fallback: coba namespace yang sama dengan kelas
+
         $ns = $method->getDeclaringClass()->getNamespaceName();
         foreach (array_keys($shortNames) as $short) {
             $candidates = [
                 $ns . '\\' . $short,
-                // Namespaced ke Resources sub-namespace
+
                 str_replace('\\Controllers', '\\Resources', $ns) . '\\' . $short,
             ];
             foreach ($candidates as $c) {
@@ -215,7 +197,6 @@ class ResponseIntrospector
         return null;
     }
 
-    /** @return array<string,string> shortName => FQCN */
     private function parseUseStatements(string $file): array
     {
         if (! $file || ! is_readable($file)) return [];
@@ -233,10 +214,6 @@ class ResponseIntrospector
         return $out;
     }
 
-    /**
-     * @param array<string,array{type:string,example:mixed,nullable:bool}> $oaByProperty
-     * @return array{0:array<string,string>,1:array<string,mixed>}
-     */
     private function extractFromResource(string $resourceClass, array $oaByProperty): array
     {
         $schema  = [];
@@ -248,7 +225,6 @@ class ResponseIntrospector
             $src    = $this->methodSource($method);
             if (! $src) return [[], []];
 
-            // Ekstrak kunci pada return array: 'key' =>
             if (preg_match_all('/[\'"]([a-zA-Z_][\w]*)[\'"]\s*=>/', $src, $m)) {
                 foreach ($m[1] as $key) {
                     if (isset($schema[$key])) continue;
@@ -281,7 +257,6 @@ class ResponseIntrospector
         };
     }
 
-    /** @return array<string,array{type:string,example:mixed,nullable:bool}> */
     private function collectOaProperties(ReflectionClass $class): array
     {
         $out = [];
@@ -296,12 +271,11 @@ class ResponseIntrospector
                 }
             }
         } catch (Throwable $e) {
-            // ignore
+
         }
         return $out;
     }
 
-    /** @return array{name:string,type:string,example:mixed,nullable:bool}|null */
     private function readOaProperty(mixed $prop): ?array
     {
         try {

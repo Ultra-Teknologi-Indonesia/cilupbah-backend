@@ -131,7 +131,6 @@ class ReceiptAuditTest extends TestCase
         $this->receiveAs($this->staffA, $inbound, 8);
         $this->receiveAs($this->staffB, $inbound, 12);
 
-        // Panggil sebagai user web biasa.
         request()->attributes->set('client_channel', ClientChannelEnum::WEB);
         $admin = User::factory()->create();
         $admin->assignRole('owner');
@@ -175,7 +174,6 @@ class ReceiptAuditTest extends TestCase
         $this->receiveAs($this->staffA, $inbound, 15);
         $this->receiveAs($this->staffB, $inbound, 25);
 
-        // A membuka detail → received_by_me = 15, received_total = 40.
         request()->attributes->set('client_channel', ClientChannelEnum::WEB);
         $this->staffA->assignRole('owner');
 

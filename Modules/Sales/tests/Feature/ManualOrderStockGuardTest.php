@@ -82,7 +82,7 @@ class ManualOrderStockGuardTest extends TestCase
             'location_id' => $locationId,
             'bin_id' => null,
             'on_hand' => 1,
-            'reserved' => 0,
+            'on_order' => 0,
             'available' => 1,
             'created_at' => now(),
             'updated_at' => now(),

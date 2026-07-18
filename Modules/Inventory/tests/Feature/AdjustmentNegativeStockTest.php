@@ -40,7 +40,7 @@ class AdjustmentNegativeStockTest extends TestCase
 
         Inventory::create([
             'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $bin->id,
-            'on_hand' => $onHand, 'reserved' => 0, 'available' => $onHand, 'avg_cost' => 100,
+            'on_hand' => $onHand, 'on_order' => 0, 'available' => $onHand, 'avg_cost' => 100,
         ]);
 
         return compact('location', 'bin', 'variant');

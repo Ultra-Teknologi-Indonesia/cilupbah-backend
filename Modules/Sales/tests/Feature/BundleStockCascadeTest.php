@@ -78,7 +78,6 @@ class BundleStockCascadeTest extends TestCase
             'bin_id' => $bin->id,
             'on_hand' => $onHand,
             'on_order' => 0,
-            'reserved' => 0,
             'available' => $onHand,
             'created_at' => now(),
             'updated_at' => now(),
@@ -105,8 +104,8 @@ class BundleStockCascadeTest extends TestCase
 
         $this->stock()->reserve('BUNDLE-1', $bundleVar->id, $this->locationId, 5, 'SO-1');
 
-        $this->assertDatabaseHas('inventories', ['item_id' => $a->id, 'reserved' => 10]);
-        $this->assertDatabaseHas('inventories', ['item_id' => $b->id, 'reserved' => 15]);
+        $this->assertDatabaseHas('inventories', ['item_id' => $a->id, 'on_order' =>10]);
+        $this->assertDatabaseHas('inventories', ['item_id' => $b->id, 'on_order' =>15]);
 
         $this->assertDatabaseMissing('inventories', ['item_id' => $bundleVar->id]);
         $this->assertDatabaseMissing('inventory_movements', ['item_id' => $bundleVar->id]);
@@ -119,8 +118,8 @@ class BundleStockCascadeTest extends TestCase
         $this->stock()->reserve('BUNDLE-1', $bundleVar->id, $this->locationId, 5, 'SO-1');
         $this->stock()->cancel('BUNDLE-1', $bundleVar->id, $this->locationId, 5, 'SO-1');
 
-        $this->assertDatabaseHas('inventories', ['item_id' => $a->id, 'reserved' => 0]);
-        $this->assertDatabaseHas('inventories', ['item_id' => $b->id, 'reserved' => 0]);
+        $this->assertDatabaseHas('inventories', ['item_id' => $a->id, 'on_order' =>0]);
+        $this->assertDatabaseHas('inventories', ['item_id' => $b->id, 'on_order' =>0]);
     }
 
     public function test_pick_drains_component_reservation_without_cutting_on_hand(): void
@@ -130,8 +129,8 @@ class BundleStockCascadeTest extends TestCase
         $this->stock()->reserve('BUNDLE-1', $bundleVar->id, $this->locationId, 4, 'SO-1');
         $this->stock()->pick('BUNDLE-1', $bundleVar->id, $this->locationId, 4, 'SO-1');
 
-        $this->assertDatabaseHas('inventories', ['item_id' => $a->id, 'on_hand' => 100, 'reserved' => 0]);
-        $this->assertDatabaseHas('inventories', ['item_id' => $b->id, 'on_hand' => 100, 'reserved' => 0]);
+        $this->assertDatabaseHas('inventories', ['item_id' => $a->id, 'on_hand' => 100, 'on_order' =>0]);
+        $this->assertDatabaseHas('inventories', ['item_id' => $b->id, 'on_hand' => 100, 'on_order' =>0]);
     }
 
     public function test_insufficient_component_stock_is_atomic(): void
@@ -146,8 +145,8 @@ class BundleStockCascadeTest extends TestCase
 
         }
 
-        $this->assertDatabaseHas('inventories', ['item_id' => $a->id, 'reserved' => 0]);
-        $this->assertDatabaseHas('inventories', ['item_id' => $b->id, 'reserved' => 0]);
+        $this->assertDatabaseHas('inventories', ['item_id' => $a->id, 'on_order' =>0]);
+        $this->assertDatabaseHas('inventories', ['item_id' => $b->id, 'on_order' =>0]);
     }
 
     public function test_bundle_sale_dispatches_stock_sync_for_components(): void
@@ -179,6 +178,6 @@ class BundleStockCascadeTest extends TestCase
 
         $this->stock()->reserve('SINGLE-1', $single->id, $this->locationId, 7, 'SO-2');
 
-        $this->assertDatabaseHas('inventories', ['item_id' => $single->id, 'reserved' => 7]);
+        $this->assertDatabaseHas('inventories', ['item_id' => $single->id, 'on_order' =>7]);
     }
 }

@@ -81,7 +81,6 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
             'serial_no' => '',
             'on_hand' => 10,
             'on_order' => 0,
-            'reserved' => 0,
             'available' => 10,
             'created_at' => now(), 'updated_at' => now(),
         ]);

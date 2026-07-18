@@ -48,9 +48,6 @@ class PicklistService
         return 'completed_at';
     }
 
-    /**
-     * Tombol A "Alihkan Tugas" — TAHAN alokasi pick, swap picker.
-     */
     public function unassign(
         string $picklistId,
         string $actorId,
@@ -87,11 +84,6 @@ class PicklistService
         });
     }
 
-    /**
-     * Tombol B "Reset & Alihkan" — reverse alokasi via unpickItems + reset picker.
-     * Picking bisa direset kepala gudang (bukan hanya owner+admin) karena reversible
-     * dan tidak menyentuh fisik permanent.
-     */
     public function resetAssignmentDestructive(
         string $picklistId,
         string $actorId,
@@ -102,10 +94,6 @@ class PicklistService
             $picklist = Picklist::lockForUpdate()->with('items')->findOrFail($picklistId);
             $previousPicker = $picklist->picker_id;
 
-            // Reverse alokasi: iterate items, hapus allocation + reset picked_qty.
-            // TODO: kalau ada helper reverseBinMove/unpickItem private, gunakan supaya
-            // stok fisik ikut kembali. Sementara clear allocation + reset counter saja
-            // supaya assignee baru mulai bersih.
             foreach ($picklist->items as $item) {
                 if ((int) $item->picked_qty > 0) {
                     PicklistItemAllocation::where('picklist_item_id', $item->id)->delete();
@@ -779,7 +767,6 @@ class PicklistService
         });
     }
 
-
     private function commitPickAllocation(Picklist $picklist, PicklistItem $item, LocationBin $bin, int $qty, string $userId): void
     {
         if ($qty <= 0) {
@@ -801,7 +788,7 @@ class PicklistService
         }
 
         $inventory->on_hand -= $qty;
-        $inventory->reserved = max(0, $inventory->reserved - $qty);
+        $inventory->on_order = max(0, $inventory->on_order - $qty);
         $inventory->recalculateAvailable();
         $inventory->save();
 

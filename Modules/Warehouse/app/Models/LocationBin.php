@@ -59,7 +59,7 @@ class LocationBin extends Model
     {
         return $this->hasMany(Inventory::class, 'bin_id')
             ->where(function ($q) {
-                $q->where('on_hand', '>', 0)->orWhere('reserved', '>', 0);
+                $q->where('on_hand', '>', 0)->orWhere('on_order', '>', 0);
             });
     }
 
@@ -74,7 +74,7 @@ class LocationBin extends Model
             'item_id'
         )->where(function ($q) {
             $q->where('inventories.on_hand', '>', 0)
-                ->orWhere('inventories.reserved', '>', 0);
+                ->orWhere('inventories.on_order', '>', 0);
         });
     }
 }

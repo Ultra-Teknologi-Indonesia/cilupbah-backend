@@ -5,6 +5,8 @@ namespace Modules\Sales\Models;
 use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\Sales\Enums\OrderActivityAction;
+use Modules\Sales\Enums\OrderActivityEntity;
 
 class SalesOrderStatusHistory extends Model
 {
@@ -16,6 +18,8 @@ class SalesOrderStatusHistory extends Model
 
     protected $fillable = [
         'salesorder_id',
+        'entity_type',
+        'entity_id',
         'action_id',
         'action',
         'actor_email',
@@ -26,8 +30,10 @@ class SalesOrderStatusHistory extends Model
     ];
 
     protected $casts = [
-        'metadata'   => 'array',
-        'created_at' => 'datetime',
+        'entity_type' => OrderActivityEntity::class,
+        'action'      => OrderActivityAction::class,
+        'metadata'    => 'array',
+        'created_at'  => 'datetime',
     ];
 
     public function order(): BelongsTo

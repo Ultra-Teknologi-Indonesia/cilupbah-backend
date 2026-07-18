@@ -149,7 +149,7 @@ class LazadaOrderPullTest extends TestCase
         );
         Inventory::create([
             'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $bin->id,
-            'on_hand' => 10, 'on_order' => 0, 'reserved' => 0, 'available' => 10,
+            'on_hand' => 10, 'on_order' => 0, 'available' => 10,
         ]);
 
         $this->fakeOrdersApi('pending');
@@ -162,10 +162,10 @@ class LazadaOrderPullTest extends TestCase
         $order = SalesOrder::where('salesorder_no', 'LZ-900123')->first();
         $this->assertEquals('reserved', $order->status);
 
-        $reserved = (int) Inventory::where('item_id', $variant->id)
-            ->where('location_id', $location->id)->sum('reserved');
+        $onOrder = (int) Inventory::where('item_id', $variant->id)
+            ->where('location_id', $location->id)->sum('on_order');
         $summary = \Modules\Inventory\Support\StockSummary::forItem($variant->id, $location->id);
-        $this->assertEquals(2, $reserved);
+        $this->assertEquals(2, $onOrder);
         $this->assertEquals(8, $summary['available']);
     }
 

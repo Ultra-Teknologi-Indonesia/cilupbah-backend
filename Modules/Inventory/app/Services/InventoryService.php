@@ -146,15 +146,15 @@ class InventoryService
                 'product_name' => $inv->product?->product?->name,
                 'bin_code' => $inv->bin?->bin_final_code ?? $binCode,
                 'on_hand' => (int) $inv->on_hand,
-                'reserved' => (int) $inv->reserved,
+                'on_order' => (int) $inv->on_order,
                 'available' => (int) $inv->available,
             ])
             ->toArray();
     }
 
-    public function getStockedItems(string $locationId, string $search, int $perPage)
+    public function getStockedItems(string $locationId, string $search, int $perPage, bool $includeZero = false)
     {
-        $paginated = $this->inventoryRepository->getStockedItems($locationId, $search, $perPage);
+        $paginated = $this->inventoryRepository->getStockedItems($locationId, $search, $perPage, $includeZero);
 
         $paginated->getCollection()->transform(function ($variant) {
             $variationValues = ($variant->options ?? collect())
@@ -179,6 +179,7 @@ class InventoryService
                 'variation_values' => $variationValues,
                 'thumbnail_url'    => $this->resolveVariantThumbnail($variant),
                 'total_on_hand'    => (int) ($variant->total_on_hand ?? 0),
+                'sell_price'       => (float) ($variant->sell_price ?? 0),
             ];
         });
 
@@ -244,6 +245,8 @@ class InventoryService
             if (! empty($data['bin_id']) && (int) $data['qty'] > 0) {
                 app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
                     ->assertBinFitsSku($data['bin_id'], $data['item_id']);
+                app(\Modules\Warehouse\Services\SkuHomeBinGuard::class)
+                    ->assertSkuFitsBin($data['location_id'], $data['item_id'], $data['bin_id']);
             }
 
             $inventory = $this->inventoryRepository->findOrCreateForUpdate(
@@ -290,6 +293,8 @@ class InventoryService
 
             app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
                 ->assertBinFitsSku($data['destination_bin_id'], $data['item_id']);
+            app(\Modules\Warehouse\Services\SkuHomeBinGuard::class)
+                ->assertSkuFitsBin($data['location_id'], $data['item_id'], $data['destination_bin_id']);
 
             $inboundInventory = $this->inventoryRepository->findExactForUpdate(
                 $data['item_id'],
@@ -402,6 +407,8 @@ class InventoryService
 
             app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
                 ->assertBinFitsSku($data['to_bin_id'], $data['item_id']);
+            app(\Modules\Warehouse\Services\SkuHomeBinGuard::class)
+                ->assertSkuFitsBin($data['location_id'], $data['item_id'], $data['to_bin_id']);
 
             $to = $this->inventoryRepository->findOrCreateForUpdate(
                 $data['item_id'],
@@ -460,7 +467,7 @@ class InventoryService
             );
 
             $inventory->on_hand += $qty;
-            $inventory->reserved += $qty;
+            $inventory->on_order += $qty;
             $inventory->recalculateAvailable();
             $this->inventoryRepository->updateStock($inventory);
 
@@ -879,6 +886,8 @@ class InventoryService
 
                 app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
                     ->assertBinFitsSku($destBinId, $item->item_id);
+                app(\Modules\Warehouse\Services\SkuHomeBinGuard::class)
+                    ->assertSkuFitsBin($header->location_id, $item->item_id, $destBinId);
 
                 $dest = $this->inventoryRepository->findOrCreateForUpdate(
                     $item->item_id,
@@ -1347,7 +1356,7 @@ class InventoryService
                 ]);
             }
 
-            $row->reserved += $take;
+            $row->on_order += $take;
             $this->inventoryRepository->updateStock($row);
 
             $this->movementRepository->create([
@@ -1416,8 +1425,8 @@ class InventoryService
                 );
 
                 if ($sourceInventory) {
-                    $releaseQty = min((int) $item->qty, (int) $sourceInventory->reserved);
-                    $sourceInventory->reserved -= $releaseQty;
+                    $releaseQty = min((int) $item->qty, (int) $sourceInventory->on_order);
+                    $sourceInventory->on_order -= $releaseQty;
                     $this->inventoryRepository->updateStock($sourceInventory);
 
                     $this->movementRepository->create([
@@ -1524,7 +1533,7 @@ class InventoryService
                     if ($sourceInventory) {
 
                         $sourceInventory->on_hand += (int) $item->qty;
-                        $sourceInventory->reserved += (int) $item->qty;
+                        $sourceInventory->on_order += (int) $item->qty;
                         $this->inventoryRepository->updateStock($sourceInventory);
 
                         $this->movementRepository->create([
@@ -1595,7 +1604,7 @@ class InventoryService
                     throw new \Exception("Stok tidak ditemukan untuk item {$item->item_id}.");
                 }
 
-                $sourceInventory->reserved -= $item->qty;
+                $sourceInventory->on_order -= $item->qty;
                 $sourceInventory->on_hand -= $item->qty;
                 $this->inventoryRepository->updateStock($sourceInventory);
 
@@ -1691,6 +1700,8 @@ class InventoryService
                     if (! empty($item->destination_bin_id)) {
                         app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
                             ->assertBinFitsSku($item->destination_bin_id, $item->item_id);
+                        app(\Modules\Warehouse\Services\SkuHomeBinGuard::class)
+                            ->assertSkuFitsBin($transfer->destination_location_id, $item->item_id, $item->destination_bin_id);
                     }
 
                     $destInventory = $this->inventoryRepository->findOrCreateForUpdate(
@@ -1858,8 +1869,8 @@ class InventoryService
                     $item->serial_no,
                 );
                 if ($sourceInventory) {
-                    $releaseQty = min((int) $item->qty, (int) $sourceInventory->reserved);
-                    $sourceInventory->reserved -= $releaseQty;
+                    $releaseQty = min((int) $item->qty, (int) $sourceInventory->on_order);
+                    $sourceInventory->on_order -= $releaseQty;
                     $this->inventoryRepository->updateStock($sourceInventory);
 
                     $this->movementRepository->create([
@@ -2100,7 +2111,7 @@ class InventoryService
                     throw new \Exception("Stok tidak ditemukan untuk item {$item->item_id}.");
                 }
 
-                $sourceInventory->reserved -= $item->qty;
+                $sourceInventory->on_order -= $item->qty;
                 $sourceInventory->on_hand -= $item->qty;
                 $this->inventoryRepository->updateStock($sourceInventory);
 

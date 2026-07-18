@@ -13,16 +13,6 @@ use ReflectionMethod;
 use ReflectionNamedType;
 use Throwable;
 
-/**
- * Generator dokumentasi API — dipanggil oleh command bantuan:export-docs.
- *
- * Sumber data:
- *  - Route::getRoutes() untuk enumerasi endpoint api.*
- *  - Reflection ke controller action untuk mengambil FormRequest & PHPDoc
- *  - FormRequest::rules() untuk body_schema + validation + body_example
- *  - Middleware permission:* / role_or_permission:* untuk roles
- *  - Grep controller body untuk side_effects (Event/Job/Notification dispatch)
- */
 class ApiDocsGenerator
 {
     public function __construct(
@@ -34,13 +24,10 @@ class ApiDocsGenerator
         private QueryParamExtractor $queryParamExtractor = new QueryParamExtractor(),
     ) {}
 
-    /** Prefix path yang di-export (Route uri diawali `api/`). */
     private const API_PREFIX = 'api/';
 
-    /** Nama modul yang di-skip dari output (internal only). */
     private const SKIPPED_MODULES = ['Bantuan', 'AI'];
 
-    /** Statik daftar error yang default disertakan untuk endpoint auth. */
     private const DEFAULT_AUTH_ERRORS = [
         [
             'status'         => 401,
@@ -56,15 +43,6 @@ class ApiDocsGenerator
         ],
     ];
 
-    /**
-     * Bangun struktur dokumentasi penuh.
-     *
-     * @return array{
-     *   generated_at:string, version:string,
-     *   totals:array{modules:int,endpoints:int,undocumented:int},
-     *   modules:array<int,array>
-     * }
-     */
     public function build(): array
     {
         $endpoints = $this->collectEndpoints();
@@ -115,11 +93,6 @@ class ApiDocsGenerator
         ];
     }
 
-    /**
-     * Bangun 1 file JSON kecil per modul (untuk lazy-load di FE).
-     *
-     * @return array<string,array>
-     */
     public function buildPerModule(): array
     {
         $full = $this->build();
@@ -147,14 +120,13 @@ class ApiDocsGenerator
         return $files;
     }
 
-    /** @return array<int,array> */
     private function collectEndpoints(): array
     {
         $routes = RouteFacade::getRoutes();
         $out    = [];
 
         foreach ($routes as $route) {
-            /** @var Route $route */
+
             $uri = $route->uri();
             if (! Str::startsWith($uri, self::API_PREFIX)) {
                 continue;
@@ -197,7 +169,6 @@ class ApiDocsGenerator
 
         $phpDoc = $reflection ? $this->parsePhpDoc($reflection->getDocComment() ?: '') : ['summary' => '', 'description' => '', 'purpose' => '', 'deprecated' => false, 'since' => null];
 
-        // Fallback narasi via RouteNarrator bila PHPDoc kosong
         $middlewareForNarrator = $reflection ? $route->gatherMiddleware() : [];
         $rolesForNarrator      = $this->extractRoles($middlewareForNarrator);
         $formRequestForNarrator = $reflection ? $this->firstFormRequestParam($reflection) : null;
@@ -215,7 +186,6 @@ class ApiDocsGenerator
 
         $pathParams  = $this->enrichPathParamDescriptions($this->extractPathParams($route));
 
-        // Query params: gabung dari PHPDoc @queryParam + auto-extract dari body
         $queryParams = $this->extractQueryParams($reflection);
         $autoQuery   = $this->queryParamExtractor->extract($reflection);
         $existing    = array_column($queryParams, 'name');
@@ -230,7 +200,6 @@ class ApiDocsGenerator
         $roles       = $this->extractRoles($middleware);
         $rateLimit   = $this->extractRateLimit($middleware);
 
-        // Spatie QueryBuilder allowed* (hanya relevan untuk GET/list-style)
         $qb = ($method === 'GET' && $reflection) ? $this->tracer->trace($reflection) : [
             'allowed_filters'  => [],
             'allowed_sorts'    => [],
@@ -250,7 +219,6 @@ class ApiDocsGenerator
         $sideEffects  = $this->inferSideEffects($reflection);
         $relatedPage  = $this->guessRelatedPage($route->getName());
 
-        // needs_doc: hanya true bila PHPDoc kosong DAN narrator gagal
         $needsDoc = $narration === null && $phpDoc['summary'] === '' && $phpDoc['description'] === '';
 
         return [
@@ -293,10 +261,6 @@ class ApiDocsGenerator
             'needs_doc'                => $needsDoc,
         ];
     }
-
-    // ============================================================
-    // Module detection
-    // ============================================================
 
     private function moduleFromRoute(Route $route): ?string
     {
@@ -344,11 +308,6 @@ class ApiDocsGenerator
         };
     }
 
-    // ============================================================
-    // PHPDoc parser
-    // ============================================================
-
-    /** @return array{summary:string, description:string, purpose:string, deprecated:bool, since:?string} */
     private function parsePhpDoc(string $doc): array
     {
         $out = ['summary' => '', 'description' => '', 'purpose' => '', 'deprecated' => false, 'since' => null];
@@ -437,10 +396,6 @@ class ApiDocsGenerator
         };
     }
 
-    // ============================================================
-    // FormRequest / rules extraction
-    // ============================================================
-
     private function firstFormRequestParam(ReflectionMethod $method): ?string
     {
         foreach ($method->getParameters() as $param) {
@@ -456,7 +411,6 @@ class ApiDocsGenerator
         return null;
     }
 
-    /** @return array<string, array<int,string>> */
     private function extractRules(string $formRequestClass): array
     {
         try {
@@ -493,14 +447,13 @@ class ApiDocsGenerator
             try {
                 return (string) $rule;
             } catch (Throwable $e) {
-                // fall through
+
             }
         }
         $class = (new ReflectionClass($rule))->getShortName();
         return "rule:{$class}";
     }
 
-    /** @param array<string,array<int,string>> $rules */
     private function rulesToSchema(array $rules): array
     {
         if ($rules === []) {
@@ -533,7 +486,6 @@ class ApiDocsGenerator
         return $schema;
     }
 
-    /** @param array<int,string> $ruleList */
     private function inferTypeFromRules(array $ruleList): string
     {
         foreach ($ruleList as $r) {
@@ -551,7 +503,6 @@ class ApiDocsGenerator
         return 'string';
     }
 
-    /** @param array<int,string> $ruleList @return array<int,string>|null */
     private function inferEnumFromRules(array $ruleList): ?array
     {
         foreach ($ruleList as $r) {
@@ -560,13 +511,12 @@ class ApiDocsGenerator
                 return explode(',', substr($r, 3));
             }
             if (str_starts_with($r, 'Rule::in:') || str_starts_with($r, 'rule:In')) {
-                return null; // Rule::in object — nilai tidak tersedia dari __toString di semua versi
+                return null; 
             }
         }
         return null;
     }
 
-    /** @param array<int,string> $ruleList */
     private function inferExistsFromRules(array $ruleList): ?string
     {
         foreach ($ruleList as $r) {
@@ -578,7 +528,6 @@ class ApiDocsGenerator
         return null;
     }
 
-    /** @param array<int,string> $ruleList */
     private function inferConstraintsFromRules(array $ruleList): array
     {
         $out = [];
@@ -593,7 +542,6 @@ class ApiDocsGenerator
         return $out;
     }
 
-    /** @param array<string,array<int,string>> $rules */
     private function rulesToExample(array $rules): array
     {
         if ($rules === []) {
@@ -609,7 +557,6 @@ class ApiDocsGenerator
         return $example;
     }
 
-    /** @param array<int,string>|null $enum @param array<int,string> $ruleList */
     private function exampleValueFor(string $field, string $type, ?array $enum, array $ruleList): mixed
     {
         if ($enum) {
@@ -660,7 +607,6 @@ class ApiDocsGenerator
         }
     }
 
-    /** @param array<string,array<int,string>> $rules @return array<int,string> */
     private function rulesToFlatList(array $rules): array
     {
         $out = [];
@@ -669,10 +615,6 @@ class ApiDocsGenerator
         }
         return $out;
     }
-
-    // ============================================================
-    // Params
-    // ============================================================
 
     private function extractPathParams(Route $route): array
     {
@@ -706,11 +648,6 @@ class ApiDocsGenerator
         return $out;
     }
 
-    // ============================================================
-    // Middleware -> auth / roles / rate limit
-    // ============================================================
-
-    /** @param array<int,string> $middleware */
     private function extractAuth(array $middleware): string
     {
         foreach ($middleware as $m) {
@@ -722,7 +659,6 @@ class ApiDocsGenerator
         return 'none';
     }
 
-    /** @param array<int,string> $middleware @return array<int,string> */
     private function extractRoles(array $middleware): array
     {
         $roles = [];
@@ -739,7 +675,6 @@ class ApiDocsGenerator
         return array_values(array_unique($roles));
     }
 
-    /** @param array<int,string> $middleware */
     private function extractRateLimit(array $middleware): ?string
     {
         foreach ($middleware as $m) {
@@ -749,10 +684,6 @@ class ApiDocsGenerator
         }
         return null;
     }
-
-    // ============================================================
-    // Responses (best-effort)
-    // ============================================================
 
     private function inferSuccessResponse(?ReflectionMethod $method, string $httpMethod): array
     {
@@ -782,7 +713,6 @@ class ApiDocsGenerator
         return $default;
     }
 
-    /** @return array<int,array{status:int,reason:string,body:array}> */
     private function inferErrorResponses(?ReflectionMethod $method, string $auth): array
     {
         $errors = [];
@@ -839,7 +769,6 @@ class ApiDocsGenerator
         return $out;
     }
 
-    /** @param array<int,array> $errors @return array<int,int> */
     private function inferStatusCodes(string $method, array $errors): array
     {
         $success = match ($method) {
@@ -854,11 +783,6 @@ class ApiDocsGenerator
         return array_values(array_unique($codes));
     }
 
-    // ============================================================
-    // Side effects
-    // ============================================================
-
-    /** @return array<int,string> */
     private function inferSideEffects(?ReflectionMethod $method): array
     {
         if (! $method) return [];
@@ -900,18 +824,9 @@ class ApiDocsGenerator
         return implode('', array_slice($lines, $start - 1, $end - $start + 1));
     }
 
-    // ============================================================
-    // Related page (heuristik dari nama route)
-    // ============================================================
-
-    // ============================================================
-    // Related endpoints (same-controller grouping)
-    // ============================================================
-
-    /** @param array<int,array> $endpoints */
     private function attachRelatedEndpoints(array &$endpoints): void
     {
-        // Index endpoint id by controller
+
         $byController = [];
         foreach ($endpoints as $i => $e) {
             $ctrl = $e['controller'];
@@ -936,11 +851,6 @@ class ApiDocsGenerator
         }
     }
 
-    // ============================================================
-    // Field description enrichment
-    // ============================================================
-
-    /** @param array<string,array> $schema */
     private function enrichSchemaDescriptions(array $schema): array
     {
         foreach ($schema as $field => &$spec) {
@@ -949,7 +859,6 @@ class ApiDocsGenerator
         return $schema;
     }
 
-    /** @param array<int,array> $params */
     private function enrichPathParamDescriptions(array $params): array
     {
         foreach ($params as &$p) {
@@ -958,7 +867,6 @@ class ApiDocsGenerator
         return $params;
     }
 
-    /** @param array<int,array{name:string,type:string,column:?string,scope:?string}> $filters */
     private function enrichFilterDescriptions(array $filters, string $moduleSlug = ''): array
     {
         foreach ($filters as &$f) {

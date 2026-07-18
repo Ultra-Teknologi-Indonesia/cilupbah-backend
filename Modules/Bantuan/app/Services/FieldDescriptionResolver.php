@@ -4,14 +4,10 @@ namespace Modules\Bantuan\Services;
 
 use Illuminate\Support\Str;
 
-/**
- * Kamus deskripsi field umum (Indonesia) + humanizer fallback.
- * Dipakai untuk memberi konteks ke setiap field body_schema.
- */
 class FieldDescriptionResolver
 {
     private const DICTIONARY = [
-        // Identitas & referensi
+
         'id'                => 'Primary key resource ini (UUID string).',
         'sku'               => 'Stock Keeping Unit — kode unik varian produk.',
         'no_ref'            => 'Nomor referensi eksternal (opsional).',
@@ -20,7 +16,6 @@ class FieldDescriptionResolver
         'updated_at'        => 'Timestamp perubahan terakhir (ISO 8601).',
         'deleted_at'        => 'Timestamp soft-delete (null bila aktif).',
 
-        // Foreign key umum
         'customer_id'       => 'ID pelanggan (kontak) — referensi ke tabel contacts.',
         'contact_id'        => 'ID kontak (pelanggan atau pemasok) — referensi ke tabel contacts.',
         'supplier_id'       => 'ID pemasok — referensi ke tabel contacts.',
@@ -40,7 +35,6 @@ class FieldDescriptionResolver
         'tax_id'            => 'ID pajak (PPN/PPh).',
         'courier_id'        => 'ID kurir (master).',
 
-        // Pelanggan / alamat
         'customer_name'     => 'Nama pelanggan (bebas teks).',
         'shipping_full_name'=> 'Nama lengkap penerima paket.',
         'shipping_phone'    => 'Telepon penerima. Standar E.164 (mis. +6281234567890) — dikecualikan untuk webhook.',
@@ -52,7 +46,6 @@ class FieldDescriptionResolver
         'shipping_country'  => 'Negara (default Indonesia).',
         'shipping_coordinate' => 'Koordinat lat,lng untuk pin lokasi pengiriman.',
 
-        // Nominal
         'sub_total'         => 'Subtotal item sebelum diskon & ongkir.',
         'total_disc'        => 'Total diskon di level pesanan.',
         'other_discount'    => 'Diskon lain (voucher, promo tambahan).',
@@ -72,19 +65,17 @@ class FieldDescriptionResolver
         'tax_amount'        => 'Nilai pajak per item.',
         'balance'           => 'Saldo tersisa.',
 
-        // Kuantitas / stok
         'qty'               => 'Kuantitas (satuan default).',
         'qty_in_base'       => 'Kuantitas dalam satuan dasar (base unit).',
         'quantity'          => 'Kuantitas.',
         'stock'             => 'Jumlah stok fisik.',
         'on_hand'           => 'Stok fisik yang ditempatkan di rak.',
-        'available'         => 'Stok yang bisa dialokasi (on_hand - reserved).',
+        'available'         => 'Stok yang bisa dialokasi (on_hand - on_order).',
         'sellable'          => 'Stok yang boleh dipush ke channel.',
         'pickable'          => 'Stok yang boleh dipilih di picking.',
-        'reserved'          => 'Stok yang sudah dialokasi ke pesanan aktif.',
+        'on_order'          => 'Stok yang sudah dialokasi ke pesanan aktif.',
         'transit'           => 'Stok yang sedang dalam perjalanan antar gudang.',
 
-        // Status & flag
         'status'            => 'Status resource. Nilai valid tergantung modul — lihat enum di kolom rules.',
         'is_paid'           => 'True bila sudah dibayar.',
         'is_cod'            => 'True bila metode COD (bayar di tempat).',
@@ -92,13 +83,11 @@ class FieldDescriptionResolver
         'is_active'         => 'True bila aktif; false = archived/deactivated.',
         'is_canceled'       => 'True bila sudah dibatalkan.',
 
-        // Pengiriman
         'delivery_method'   => 'Metode pengiriman: COURIER (kurir), SELF_PICKUP (ambil sendiri), atau JUBELIO_SHIPMENT.',
         'shipping_provider' => 'Nama kurir (mis. JNE, JNT, SiCepat). Wajib bila delivery_method = COURIER.',
         'tracking_number'   => 'Nomor resi/tracking dari kurir.',
         'order_weight_gram' => 'Berat total pesanan (gram).',
 
-        // Meta
         'salesorder_no'     => 'Nomor pesanan penjualan (unik).',
         'purchase_no'       => 'Nomor pesanan pembelian (PO).',
         'transfer_no'       => 'Nomor dokumen transfer.',
@@ -112,17 +101,13 @@ class FieldDescriptionResolver
         'phone'             => 'Nomor telepon (E.164).',
         'password'          => 'Password login (min 8 karakter).',
 
-        // Item array
         'items'             => 'Daftar item dalam dokumen (minimal 1 baris).',
         'item_id'           => 'ID/kode item dari sumber (channel atau internal).',
     ];
 
-    /**
-     * Ambil deskripsi field. Fallback: humanisasi nama field.
-     */
     public function describe(string $field, string $type = 'string'): string
     {
-        // hilangkan dot-path (mis. items.*.sku → sku)
+
         $key = $field;
         if (str_contains($key, '.')) {
             $parts = explode('.', $key);
@@ -137,7 +122,6 @@ class FieldDescriptionResolver
             return self::DICTIONARY[$field];
         }
 
-        // Auto-humanize
         $words = Str::of($key)->snake()->replace('_', ' ');
 
         if (str_ends_with($key, '_id')) {

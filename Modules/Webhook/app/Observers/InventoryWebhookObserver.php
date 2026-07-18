@@ -18,7 +18,7 @@ class InventoryWebhookObserver extends AbstractWebhookObserver
             'item_id' => $inventory->item_id,
             'location_id' => $inventory->location_id,
             'on_hand' => (int) $inventory->on_hand,
-            'reserved' => (int) $inventory->reserved,
+            'on_order' => (int) $inventory->on_order,
             'available' => (int) $inventory->available,
         ]);
     }

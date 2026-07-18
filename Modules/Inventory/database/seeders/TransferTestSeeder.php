@@ -47,7 +47,7 @@ class TransferTestSeeder extends Seeder
                     'location_id' => $gudangUtama,
                     'bin_id'      => $itemData['source_bin'],
                     'on_hand'     => 50,
-                    'reserved'    => 0,
+                    'on_order'    => 0,
                     'available'   => 50,
                 ]);
                 $this->command->info("Created stock for item {$itemData['item_id']}");
@@ -78,7 +78,7 @@ class TransferTestSeeder extends Seeder
                 ->first();
 
             $inv->update([
-                'reserved'  => $inv->reserved + $itemData['qty'],
+                'on_order'  => $inv->on_order + $itemData['qty'],
                 'available' => $inv->available - $itemData['qty'],
             ]);
 

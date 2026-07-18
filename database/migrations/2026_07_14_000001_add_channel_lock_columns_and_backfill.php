@@ -31,8 +31,6 @@ return new class extends Migration
             $table->index('picker_id');
         });
 
-        // Backfill 1: sync active InboundAssignment → inbounds.assigned_to (denormalize).
-        // Dokumen ongoing yang punya assignment aktif langsung dapat channel lock benar.
         DB::statement(<<<SQL
             UPDATE inbounds i
             SET assigned_to = ia.assigned_to,
@@ -47,8 +45,6 @@ return new class extends Migration
             WHERE i.id = ia.inbound_id AND i.assigned_to IS NULL
         SQL);
 
-        // Backfill 2: once_received_at untuk dokumen sudah RECEIVED+ supaya guard web
-        // langsung unlock (fix C1).
         DB::statement(<<<SQL
             UPDATE inbounds
             SET once_received_at = COALESCE(updated_at, created_at)

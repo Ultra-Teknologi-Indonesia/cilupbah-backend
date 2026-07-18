@@ -28,6 +28,16 @@ class BulkShippingLabelService
     public const SUPPORTED_CHANNELS = [
         self::CHANNEL_SHOPEE,
         self::CHANNEL_TIKTOK,
+        self::CHANNEL_LAZADA,
+    ];
+
+    public const SIZE_100X150 = 'thermal_100x150';
+    public const SIZE_100X120 = 'thermal_100x120';
+    public const DEFAULT_SIZE = self::SIZE_100X150;
+
+    private const SIZE_DIMENSIONS_MM = [
+        self::SIZE_100X150 => [100.0, 150.0],
+        self::SIZE_100X120 => [100.0, 120.0],
     ];
 
     public const TIKTOK_DOWNLOAD_TIMEOUT = 20;
@@ -36,10 +46,6 @@ class BulkShippingLabelService
     public const SPLIT_SUB_BATCH_THRESHOLD = 500;
     public const SUB_BATCH_SIZE = 100;
 
-    /**
-     * Kata kunci nama kurir yang tidak menerbitkan AWB via marketplace API
-     * (driver dipanggil manual dari tab Shipping).
-     */
     private const INSTANT_COURIER_KEYWORDS = [
         'INSTANT',
         'SAMEDAY_INSTANT',
@@ -131,8 +137,7 @@ class BulkShippingLabelService
         }
         foreach (self::INSTANT_COURIER_KEYWORDS as $needle) {
             if (Str::contains($haystack, $needle)) {
-                // Exclusi: "SPX Instant Prioritas" & "SPX Instant" tetap punya AWB Shopee — bukan instant courier eksternal.
-                // Kata "INSTANT" pada nama kurir Shopee-native tetap generate AWB. Cek berdasar channel.
+
                 if ($needle === 'INSTANT' && strtolower((string) $order->source) === self::CHANNEL_SHOPEE
                     && Str::startsWith($haystack, 'SPX')) {
                     continue;
@@ -151,9 +156,13 @@ class BulkShippingLabelService
 
         $shopeeItems = $pending->where('channel', self::CHANNEL_SHOPEE);
         $tikTokItems = $pending->where('channel', self::CHANNEL_TIKTOK);
+        $lazadaItems = $pending->where('channel', self::CHANNEL_LAZADA);
         $otherItems = $pending->whereNotIn('channel', self::SUPPORTED_CHANNELS);
 
         foreach ($shopeeItems as $item) {
+            $this->processItem($item, $perChannelOpts);
+        }
+        foreach ($lazadaItems as $item) {
             $this->processItem($item, $perChannelOpts);
         }
         foreach ($otherItems as $item) {
@@ -168,12 +177,116 @@ class BulkShippingLabelService
         $this->tryFinalize($batch);
     }
 
+    public function resolveChannelOptions(string $channel): array
+    {
+        return match ($channel) {
+            self::CHANNEL_SHOPEE => [
+                'document_type' => 'THERMAL_AIR_WAYBILL',
+                'document_size' => null,
+            ],
+            self::CHANNEL_TIKTOK => [
+                'document_type' => 'SHIPPING_LABEL',
+                'document_size' => 'A6',
+            ],
+            self::CHANNEL_LAZADA => [
+                'document_type' => 'shippingLabel',
+                'document_size' => null,
+            ],
+            default => [],
+        };
+    }
+
+    private function resolveTargetSize(BulkShippingLabelBatch $batch): array
+    {
+        $opts = $batch->per_channel_opts ?? [];
+        $sizeKey = $opts['document_size'] ?? self::DEFAULT_SIZE;
+
+        return self::SIZE_DIMENSIONS_MM[$sizeKey] ?? self::SIZE_DIMENSIONS_MM[self::DEFAULT_SIZE];
+    }
+
+    public function preprocessPdfForFpdi(string $srcPdfBytes): string
+    {
+        $gs = trim((string) @shell_exec('command -v gs 2>/dev/null'));
+        if ($gs === '') {
+            return $srcPdfBytes;
+        }
+
+        $inTmp = tempnam(sys_get_temp_dir(), 'lbl_in_');
+        $outTmp = tempnam(sys_get_temp_dir(), 'lbl_out_');
+        try {
+            file_put_contents($inTmp, $srcPdfBytes);
+            $cmd = sprintf(
+                '%s -q -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -sOutputFile=%s %s 2>&1',
+                escapeshellcmd($gs),
+                escapeshellarg($outTmp),
+                escapeshellarg($inTmp),
+            );
+            @shell_exec($cmd);
+            if (is_file($outTmp) && filesize($outTmp) > 0) {
+                $result = file_get_contents($outTmp);
+                if ($result !== false && $result !== '') {
+                    return $result;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('preprocessPdfForFpdi: gs gagal, pakai bytes asli', ['error' => $e->getMessage()]);
+        } finally {
+            @unlink($inTmp);
+            @unlink($outTmp);
+        }
+        return $srcPdfBytes;
+    }
+
+    private function placementOnTarget(float $srcW, float $srcH, float $targetW, float $targetH, ?string $channel = null): array
+    {
+        $isShopeeA4Sheet = $channel === self::CHANNEL_SHOPEE
+            && $srcW >= 200 && $srcW <= 220
+            && $srcH >= 285 && $srcH <= 302;
+
+        $effW = $isShopeeA4Sheet ? $srcW / 2 : $srcW;
+        $effH = $isShopeeA4Sheet ? $srcH / 2 : $srcH;
+
+        $aspect = $effH / $effW;
+        $scale = $aspect > 1.6
+            ? $targetW / $effW
+            : min($targetW / $effW, $targetH / $effH);
+
+        $drawW = $srcW * $scale;
+        $drawH = $srcH * $scale;
+        $x = $isShopeeA4Sheet ? 0.0 : ($targetW - $drawW) / 2;
+        $y = ($isShopeeA4Sheet || $drawH >= $targetH) ? 0.0 : ($targetH - $drawH) / 2;
+
+        return [$x, $y, $drawW, $drawH];
+    }
+
+    public function normalizeToTarget(string $srcPdfBytes, string $sizeKey = self::DEFAULT_SIZE, ?string $channel = null): string
+    {
+        [$targetW, $targetH] = self::SIZE_DIMENSIONS_MM[$sizeKey] ?? self::SIZE_DIMENSIONS_MM[self::DEFAULT_SIZE];
+
+        $prepared = $this->preprocessPdfForFpdi($srcPdfBytes);
+        $out = new Fpdi('P', 'mm', [$targetW, $targetH]);
+        $pageCount = $out->setSourceFile(StreamReader::createByString($prepared));
+        for ($p = 1; $p <= $pageCount; $p++) {
+            $tpl = $out->importPage($p);
+            $src = $out->getTemplateSize($tpl);
+            [$x, $y, $drawW, $drawH] = $this->placementOnTarget(
+                (float) $src['width'],
+                (float) $src['height'],
+                $targetW,
+                $targetH,
+                $channel,
+            );
+
+            $out->AddPage('P', [$targetW, $targetH]);
+            $out->useTemplate($tpl, $x, $y, $drawW, $drawH, false);
+        }
+
+        return $out->Output('S');
+    }
+
     private function processTikTokBatch($items, ?array $perChannelOpts): void
     {
-        $options = ($perChannelOpts[self::CHANNEL_TIKTOK] ?? [
-            'document_type' => 'SHIPPING_LABEL',
-            'document_size' => 'A6',
-        ]);
+        $options = $this->resolveChannelOptions(self::CHANNEL_TIKTOK);
 
         $urlMap = [];
         foreach ($items as $item) {
@@ -255,14 +368,12 @@ class BulkShippingLabelService
                 return;
             }
 
-            $options = $perChannelOpts[$item->channel] ?? [
-                'document_type' => $item->channel === self::CHANNEL_SHOPEE ? 'AWB' : 'SHIPPING_LABEL',
-                'document_size' => 'A6',
-            ];
+            $options = $this->resolveChannelOptions($item->channel);
 
             match ($item->channel) {
                 self::CHANNEL_SHOPEE => $this->processShopee($item, $order, $options),
                 self::CHANNEL_TIKTOK => $this->processTikTok($item, $order, $options),
+                self::CHANNEL_LAZADA => $this->processLazada($item, $order, $options),
                 default => $this->fail($item, BulkShippingLabelItem::REASON_CHANNEL_UNSUPPORTED),
             };
         } catch (Throwable $e) {
@@ -336,6 +447,44 @@ class BulkShippingLabelService
         $this->fail($item, 'tiktok_no_label');
     }
 
+    private function processLazada(BulkShippingLabelItem $item, SalesOrder $order, array $options): void
+    {
+        $result = $this->salesOrderService->getShippingLabel($order, $options);
+        $type = $result['type'] ?? null;
+
+        if ($type === 'url' && ! empty($result['url'])) {
+            $bytes = $this->downloadUrl($result['url']);
+            if ($bytes === null) {
+                $this->fail($item, 'lazada_download_failed');
+                return;
+            }
+            $this->succeed($item, $bytes);
+            return;
+        }
+
+        if ($type === 'base64' && ! empty($result['document_base64'])) {
+            $bytes = base64_decode($result['document_base64'], true);
+            if ($bytes === false) {
+                $this->fail($item, 'lazada_decode_failed');
+                return;
+            }
+            $this->succeed($item, $bytes);
+            return;
+        }
+
+        if (! empty($result['data'])) {
+            $bytes = $this->decodeLabelPayload($result);
+            if ($bytes === null) {
+                $this->fail($item, 'lazada_decode_failed');
+                return;
+            }
+            $this->succeed($item, $bytes);
+            return;
+        }
+
+        $this->fail($item, 'lazada_no_label');
+    }
+
     private function decodeLabelPayload(array $result): ?string
     {
         if (isset($result['bytes'])) {
@@ -385,10 +534,6 @@ class BulkShippingLabelService
         ]);
     }
 
-    /**
-     * Callback dari PrepareShopeeShippingLabelJob setelah shipping_label_status ditetapkan.
-     * Transition semua item WAITING untuk order ini, lalu coba finalize batch yang terdampak.
-     */
     public function onOrderLabelReady(string $orderId): void
     {
         $items = BulkShippingLabelItem::where('order_id', $orderId)
@@ -413,18 +558,14 @@ class BulkShippingLabelService
         foreach ($items as $item) {
             try {
                 if ($labelStatus === 'ready') {
-                    $batch = $item->batch;
-                    $options = ($batch?->per_channel_opts[self::CHANNEL_SHOPEE] ?? [
-                        'document_type' => 'AWB',
-                        'document_size' => 'A6',
-                    ]);
+                    $options = $this->resolveChannelOptions(self::CHANNEL_SHOPEE);
                     $this->processShopee($item, $order, $options);
                 } elseif ($labelStatus === 'self_design_required') {
                     $this->fail($item, BulkShippingLabelItem::REASON_SELF_DESIGN);
                 } elseif ($labelStatus === 'failed') {
                     $this->fail($item, BulkShippingLabelItem::REASON_SHOPEE_PREP_FAILED);
                 }
-                // Kalau masih 'preparing' → biarkan tetap WAITING; prep job berikutnya akan callback lagi.
+
             } catch (Throwable $e) {
                 Log::warning('onOrderLabelReady: transition failed', [
                     'item_id' => $item->id,
@@ -449,11 +590,6 @@ class BulkShippingLabelService
         }
     }
 
-    /**
-     * Race-safe finalizer. Dipicu setiap kali status item berubah.
-     * Kalau semua item terminal → merge PDF & set batch READY/FAILED.
-     * Kalau masih ada transient → no-op, callback berikutnya yang akan finalize.
-     */
     public function tryFinalize(BulkShippingLabelBatch $batch): void
     {
         Cache::lock("bulk-label-finalize:{$batch->id}", 15)->block(5, function () use ($batch) {
@@ -477,9 +613,6 @@ class BulkShippingLabelService
         });
     }
 
-    /**
-     * Force-terminate semua item transient dengan reason tertentu. Dipakai reaper.
-     */
     public function forceFinalize(BulkShippingLabelBatch $batch, string $reason): void
     {
         Cache::lock("bulk-label-finalize:{$batch->id}", 15)->block(5, function () use ($batch, $reason) {
@@ -518,15 +651,26 @@ class BulkShippingLabelService
             return;
         }
 
-        $pdf = new Fpdi();
+        [$targetW, $targetH] = $this->resolveTargetSize($batch);
+
+        $pdf = new Fpdi('P', 'mm', [$targetW, $targetH]);
         foreach ($items as $item) {
             try {
-                $pageCount = $pdf->setSourceFile(StreamReader::createByString($item->pdf_bytes));
+                $preparedBytes = $this->preprocessPdfForFpdi($item->pdf_bytes);
+                $pageCount = $pdf->setSourceFile(StreamReader::createByString($preparedBytes));
                 for ($p = 1; $p <= $pageCount; $p++) {
                     $tpl = $pdf->importPage($p);
-                    $size = $pdf->getTemplateSize($tpl);
-                    $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
-                    $pdf->useTemplate($tpl);
+                    $src = $pdf->getTemplateSize($tpl);
+                    [$x, $y, $drawW, $drawH] = $this->placementOnTarget(
+                        (float) $src['width'],
+                        (float) $src['height'],
+                        $targetW,
+                        $targetH,
+                        $item->channel,
+                    );
+
+                    $pdf->AddPage('P', [$targetW, $targetH]);
+                    $pdf->useTemplate($tpl, $x, $y, $drawW, $drawH, false);
                 }
             } catch (Throwable $e) {
                 Log::warning('FPDI merge failed for item', [

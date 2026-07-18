@@ -12,7 +12,7 @@ class MobileDemoSeeder extends Seeder
 {
     public function run(): void
     {
-        // 1. Create User
+
         $user = User::firstOrCreate(
             ['email' => 'mobile@cilupbah.id'],
             [
@@ -20,12 +20,11 @@ class MobileDemoSeeder extends Seeder
                 'password' => Hash::make('password123'),
             ]
         );
-        
+
         try {
             $user->assignRole('owner');
         } catch (\Exception $e) {}
 
-        // 2. Create Location
         $location = \Modules\Warehouse\Models\Location::firstOrCreate(
             ['code' => 'WH-MOB'],
             [
@@ -35,7 +34,6 @@ class MobileDemoSeeder extends Seeder
             ]
         );
 
-        // 3. Create Bin
         $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
             ['bin_final_code' => 'WH-MOB-A1'],
             [
@@ -46,7 +44,6 @@ class MobileDemoSeeder extends Seeder
             ]
         );
 
-        // 4. Create Product & Variant
         $product = \Modules\Product\Models\Product::firstOrCreate(
             ['name' => 'Baju Testing Mobile'],
             [
@@ -65,7 +62,6 @@ class MobileDemoSeeder extends Seeder
             ]
         );
 
-        // 5. Create Inbound Assignment
         $inbound = \Modules\Inbound\Models\Inbound::firstOrCreate(
             ['transaction_number' => 'INB-MOB-001'],
             [
@@ -85,7 +81,7 @@ class MobileDemoSeeder extends Seeder
                 'received_qty' => 0,
             ]
         );
-        
+
         $this->command->info('Mobile Demo Seeder completed successfully!');
     }
 }

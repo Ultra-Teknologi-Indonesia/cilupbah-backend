@@ -136,7 +136,7 @@ class InboundE2ETest extends TestCase
             Inventory::create([
                 'item_id' => $v->id, 'location_id' => $this->warehouse2->id,
                 'bin_id' => null, 'batch_no' => '', 'serial_no' => '',
-                'on_hand' => 100, 'on_order' => 0, 'reserved' => 0, 'available' => 100,
+                'on_hand' => 100, 'on_order' => 0, 'available' => 100,
             ]);
         }
     }

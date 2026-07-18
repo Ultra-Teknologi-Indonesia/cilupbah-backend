@@ -9,9 +9,6 @@ class DriverCallResult
     public const STATUS_NOT_SUPPORTED = 'not_supported';
     public const STATUS_SKIPPED = 'skipped';
 
-    /**
-     * @param  array<int,array{order_id:string,status:string,message?:string,tracking_number?:string|null}>  $results
-     */
     public function __construct(
         public readonly array $results = [],
     ) {}

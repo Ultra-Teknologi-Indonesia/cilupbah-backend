@@ -87,7 +87,7 @@ class BundleCompositionTest extends TestCase
             'location_id' => $locationId,
             'bin_id' => $bin->id,
             'on_hand' => $available,
-            'reserved' => 0,
+            'on_order' => 0,
             'available' => $available,
             'created_at' => now(),
             'updated_at' => now(),
@@ -117,7 +117,7 @@ class BundleCompositionTest extends TestCase
             'location_id' => $locationId,
             'bin_id' => null,
             'on_hand' => 7,
-            'reserved' => 0,
+            'on_order' => 0,
             'available' => 7,
             'created_at' => now(),
             'updated_at' => now(),
@@ -301,8 +301,7 @@ class BundleCompositionTest extends TestCase
         $this->getJson("/api/v1/products/{$bundleId}")
             ->assertStatus(200)
             ->assertJsonPath('data.bundle_stock.available', 3)
-            ->assertJsonPath('data.bundle_stock.on_hand', 3)
-            ->assertJsonPath('data.bundle_stock.reserved', 0);
+            ->assertJsonPath('data.bundle_stock.on_hand', 3);
     }
 
     public function test_bundle_stock_respects_component_qty(): void

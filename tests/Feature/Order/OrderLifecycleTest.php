@@ -68,7 +68,6 @@ class OrderLifecycleTest extends TestCase
             'serial_no'   => '',
             'on_hand'     => $available,
             'on_order'    => 0,
-            'reserved'    => 0,
             'available'   => $available,
         ]);
     }
@@ -139,7 +138,7 @@ class OrderLifecycleTest extends TestCase
 
         $this->inventory->refresh();
         $this->assertEquals(97, $this->inventory->available);
-        $this->assertEquals(3, $this->inventory->reserved);
+        $this->assertEquals(3, $this->inventory->on_order);
     }
 
     public function test_create_order_records_inventory_movement(): void
@@ -182,7 +181,7 @@ class OrderLifecycleTest extends TestCase
             ->assertJsonPath('data.status', 'reserved');
 
         $this->inventory->refresh();
-        $this->assertEquals(999, $this->inventory->reserved);
+        $this->assertEquals(999, $this->inventory->on_order);
         $this->assertEquals(-899, $this->inventory->available); 
     }
 
@@ -242,7 +241,7 @@ class OrderLifecycleTest extends TestCase
             ->assertJsonPath('data.status', 'shipped');
 
         $this->inventory->refresh();
-        $this->assertEquals(0, $this->inventory->reserved);
+        $this->assertEquals(0, $this->inventory->on_order);
         $this->assertEquals(98, $this->inventory->on_hand);
     }
 
@@ -257,12 +256,12 @@ class OrderLifecycleTest extends TestCase
         $orderId = $create->json('data.id');
 
         $this->inventory->refresh();
-        $this->assertEquals(5, $this->inventory->reserved);
+        $this->assertEquals(5, $this->inventory->on_order);
 
         $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'picked']);
 
         $this->inventory->refresh();
-        $this->assertEquals(0, $this->inventory->reserved);
+        $this->assertEquals(0, $this->inventory->on_order);
     }
 
     public function test_ship_decrements_on_hand(): void
@@ -337,7 +336,7 @@ class OrderLifecycleTest extends TestCase
 
         $this->inventory->refresh();
         $this->assertEquals(90, $this->inventory->available);
-        $this->assertEquals(10, $this->inventory->reserved);
+        $this->assertEquals(10, $this->inventory->on_order);
 
         $this->putJson("/api/v1/sales/{$orderId}", ['status' => 'cancelled'])
             ->assertOk()
@@ -345,7 +344,7 @@ class OrderLifecycleTest extends TestCase
 
         $this->inventory->refresh();
         $this->assertEquals(100, $this->inventory->available);
-        $this->assertEquals(0, $this->inventory->reserved);
+        $this->assertEquals(0, $this->inventory->on_order);
 
         $this->assertDatabaseHas('sales_orders', [
             'id'          => $orderId,
@@ -525,7 +524,6 @@ class OrderLifecycleTest extends TestCase
             'serial_no'   => '',
             'on_hand'     => 50,
             'on_order'    => 0,
-            'reserved'    => 0,
             'available'   => 50,
         ]);
 
@@ -546,11 +544,11 @@ class OrderLifecycleTest extends TestCase
 
         $this->inventory->refresh();
         $this->assertEquals(97, $this->inventory->available);
-        $this->assertEquals(3, $this->inventory->reserved);
+        $this->assertEquals(3, $this->inventory->on_order);
 
         $inventory2->refresh();
         $this->assertEquals(48, $inventory2->available);
-        $this->assertEquals(2, $inventory2->reserved);
+        $this->assertEquals(2, $inventory2->on_order);
     }
 
     public function test_stock_can_go_negative_across_orders(): void
@@ -558,7 +556,6 @@ class OrderLifecycleTest extends TestCase
         $this->inventory->update([
             'on_hand'   => 5,
             'on_order'  => 0,
-            'reserved'  => 0,
             'available' => 5,
         ]);
 
@@ -582,7 +579,7 @@ class OrderLifecycleTest extends TestCase
         $this->postJson('/api/v1/sales', $payload2)->assertStatus(201);
 
         $this->inventory->refresh();
-        $this->assertEquals(8, $this->inventory->reserved);
+        $this->assertEquals(8, $this->inventory->on_order);
         $this->assertEquals(-3, $this->inventory->available); 
     }
 

@@ -38,8 +38,8 @@ class DownloadReviewFeedTest extends TestCase
             'is_active' => true,
         ]);
 
-        Inventory::create(['item_id' => $this->variant->id, 'location_id' => $location->id, 'on_hand' => 10, 'on_order' => 3, 'reserved' => 1, 'available' => 6]);
-        Inventory::create(['item_id' => $this->variant->id, 'location_id' => $location->id, 'on_hand' => 5, 'on_order' => 2, 'reserved' => 0, 'available' => 3]);
+        Inventory::create(['item_id' => $this->variant->id, 'location_id' => $location->id, 'on_hand' => 10, 'on_order' => 3, 'available' => 7]);
+        Inventory::create(['item_id' => $this->variant->id, 'location_id' => $location->id, 'on_hand' => 5, 'on_order' => 2, 'available' => 3]);
     }
 
     public function test_list_returns_review_items_with_master_structure_and_qty(): void
@@ -82,7 +82,7 @@ class DownloadReviewFeedTest extends TestCase
 
         $this->assertSame(15, $variant['end_qty']);
         $this->assertSame(5, $variant['order_qty']);
-        $this->assertSame(9, $variant['available_qty']);
+        $this->assertSame(10, $variant['available_qty']);
     }
 
     public function test_includes_download_but_excludes_master_and_archived(): void

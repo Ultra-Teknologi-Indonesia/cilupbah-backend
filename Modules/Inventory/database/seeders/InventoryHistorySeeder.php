@@ -408,7 +408,7 @@ class InventoryHistorySeeder extends Seeder
     {
         $inv = Inventory::firstOrCreate(
             ['item_id' => $variantId, 'location_id' => $locId, 'bin_id' => $binId, 'batch_no' => '', 'serial_no' => ''],
-            ['on_hand' => 0, 'on_order' => 0, 'reserved' => 0, 'available' => 0, 'avg_cost' => 0]
+            ['on_hand' => 0, 'on_order' => 0, 'available' => 0, 'avg_cost' => 0]
         );
         if ($inv->wasRecentlyCreated) {
             $this->touchDates($inv, $date);
@@ -426,7 +426,7 @@ class InventoryHistorySeeder extends Seeder
         }
 
         $inv->on_hand = $newOnHand;
-        $inv->available = $newOnHand - $inv->reserved;
+        $inv->available = $newOnHand - $inv->on_order;
         $inv->save();
 
         $key = $variantId . '@' . $locId;
@@ -454,7 +454,7 @@ class InventoryHistorySeeder extends Seeder
     {
         $inv = Inventory::firstOrCreate(
             ['item_id' => $variantId, 'location_id' => $locId, 'bin_id' => $binId, 'batch_no' => '', 'serial_no' => ''],
-            ['on_hand' => 0, 'on_order' => 0, 'reserved' => 0, 'available' => 0, 'avg_cost' => 0]
+            ['on_hand' => 0, 'on_order' => 0, 'available' => 0, 'avg_cost' => 0]
         );
         $inv->on_order = $inv->on_order + $qty;
         $inv->save();

@@ -44,7 +44,7 @@ class LocationBinResource extends JsonResource
                     'sku' => $variant?->sku,
                     'name' => $variant?->product?->name,
                     'on_hand' => (int) $group->sum('on_hand'),
-                    'reserved' => (int) $group->sum('reserved'),
+                    'on_order' => (int) $group->sum('on_order'),
                 ];
             })
             ->values()

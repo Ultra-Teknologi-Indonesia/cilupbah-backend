@@ -123,6 +123,52 @@ class SalesOrderAuditObserver
                 $order->salesorder_no,
             );
         }
+
+        $zoneFields = ['zone_name', 'district_cd'];
+        $zoneDirty = collect($zoneFields)->filter(fn ($f) => $order->wasChanged($f))->values()->all();
+        if (! empty($zoneDirty) && ! $this->recentlyLogged($order, 'ZONE_ASSIGNED')) {
+            $prev = [];
+            $new  = [];
+            foreach ($zoneDirty as $field) {
+                $prev[$field] = $order->getOriginal($field);
+                $new[$field]  = $order->{$field};
+            }
+            $service->logFieldChange(
+                $order,
+                'ZONE_ASSIGNED',
+                $prev,
+                $new,
+                $order->salesorder_no,
+            );
+        }
+
+        $identityFields = [
+            'customer_name',
+            'shipping_full_name',
+            'shipping_address',
+            'shipping_subdistrict',
+            'shipping_phone',
+            'due_date',
+            'mp_completed_date',
+            'is_escrow_updated',
+            'payment_method',
+        ];
+        $identityDirty = collect($identityFields)->filter(fn ($f) => $order->wasChanged($f))->values()->all();
+        if (! empty($identityDirty)) {
+            $prev = [];
+            $new  = [];
+            foreach ($identityDirty as $field) {
+                $prev[$field] = $order->getOriginal($field);
+                $new[$field]  = $order->{$field};
+            }
+            $service->logFieldChange(
+                $order,
+                'FIELD_CHANGED',
+                $prev,
+                $new,
+                $order->salesorder_no,
+            );
+        }
     }
 
     private function recentlyLogged(SalesOrder $order, string $action): bool

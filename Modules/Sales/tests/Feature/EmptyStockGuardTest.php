@@ -93,7 +93,6 @@ class EmptyStockGuardTest extends TestCase
             'serial_no'   => '',
             'on_hand'     => $onHand,
             'on_order'    => 0,
-            'reserved'    => 0,
             'available'   => $onHand,
         ]);
     }
@@ -102,7 +101,7 @@ class EmptyStockGuardTest extends TestCase
     {
         return (int) Inventory::where('item_id', $itemId)
             ->where('location_id', $this->location->id)
-            ->sum('reserved');
+            ->sum('on_order');
     }
 
     private function drainOnHand(string $itemId): void

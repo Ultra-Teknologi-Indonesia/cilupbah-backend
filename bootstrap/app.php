@@ -30,7 +30,6 @@ return Application::configure(basePath: dirname(__DIR__))
             'client.channel' => \App\Http\Middleware\ResolveClientChannel::class,
         ]);
 
-        // Auto-apply channel resolver to all API routes.
         $middleware->api(prepend: [
             \App\Http\Middleware\ResolveClientChannel::class,
         ]);

@@ -29,9 +29,9 @@ class SalesOrderManualService
             return null;
         }
 
-        $onHand   = $this->inventory->sumOnHandAtLocation($variant->id, $locationId);
-        $reserved = $this->inventory->sumReservedAtLocation($variant->id, $locationId);
-        $available = max(0, ((int) $onHand) - ((int) $reserved));
+        $onHand  = $this->inventory->sumOnHandAtLocation($variant->id, $locationId);
+        $onOrder = $this->inventory->sumOnOrderAtLocation($variant->id, $locationId);
+        $available = ((int) $onHand) - ((int) $onOrder);
 
         return [
             'item_id'     => $variant->id,
@@ -41,7 +41,7 @@ class SalesOrderManualService
             'sell_price'  => (float) $variant->sell_price,
             'weight_gram' => (int) round(((float) $variant->weight) * 1000),
             'on_hand'     => (int) $onHand,
-            'reserved'    => (int) $reserved,
+            'on_order'    => (int) $onOrder,
             'available'   => $available,
         ];
     }
@@ -135,7 +135,7 @@ class SalesOrderManualService
                     locationId: (string) $payload['location_id'],
                     qty: $qty,
                     transactionNumber: $order->salesorder_no,
-                    enforce: true,
+                    enforce: false,
                 );
             }
 

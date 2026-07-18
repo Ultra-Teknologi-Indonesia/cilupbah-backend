@@ -10,10 +10,6 @@ class BinOccupancyGuard
 {
     public function assertBinFitsSku(string $binId, string $itemId): void
     {
-        if (! config('warehouse.enforce_single_sku_per_bin', true)) {
-            return;
-        }
-
         $bin = LocationBin::find($binId);
 
         if (! $this->isGuardedBin($bin)) {
@@ -40,10 +36,6 @@ class BinOccupancyGuard
 
     public function isBinFreeFor(string $binId, string $itemId): bool
     {
-        if (! config('warehouse.enforce_single_sku_per_bin', true)) {
-            return true;
-        }
-
         $bin = LocationBin::find($binId);
 
         if (! $this->isGuardedBin($bin)) {
@@ -57,7 +49,7 @@ class BinOccupancyGuard
     {
         return Inventory::where('bin_id', $binId)
             ->where(function ($w) {
-                $w->where('on_hand', '>', 0)->orWhere('reserved', '>', 0);
+                $w->where('on_hand', '>', 0)->orWhere('on_order', '>', 0);
             })
             ->value('item_id');
     }
@@ -76,6 +68,11 @@ class BinOccupancyGuard
             return false;
         }
 
+        $location = $bin->location;
+        if (! $location || ! $location->enforcesStrictBinSku()) {
+            return false;
+        }
+
         return true;
     }
 
@@ -85,7 +82,7 @@ class BinOccupancyGuard
             ->where('bin_id', $binId)
             ->where('item_id', '!=', $itemId)
             ->where(function ($w) {
-                $w->where('on_hand', '>', 0)->orWhere('reserved', '>', 0);
+                $w->where('on_hand', '>', 0)->orWhere('on_order', '>', 0);
             })
             ->first();
     }

@@ -152,7 +152,6 @@ class InboundDatabaseSeeder extends Seeder
             ], [
                 'on_hand'   => 200,
                 'on_order'  => 0,
-                'reserved'  => 0,
                 'available' => 200,
             ]);
         }

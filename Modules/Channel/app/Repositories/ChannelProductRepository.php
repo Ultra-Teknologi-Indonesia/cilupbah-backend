@@ -185,7 +185,7 @@ class ChannelProductRepository
             ->where('i.item_id', $variantId)
             ->where('i.location_id', $locationId)
             ->selectRaw('COALESCE(SUM(CASE WHEN b.id IS NOT NULL AND b.is_inbound = false THEN i.on_hand ELSE 0 END),0) as oh')
-            ->selectRaw('COALESCE(SUM(i.reserved),0) as r')
+            ->selectRaw('COALESCE(SUM(i.on_order),0) as r')
             ->first();
 
         return max(0, (int) ($row->oh ?? 0) - (int) ($row->r ?? 0));

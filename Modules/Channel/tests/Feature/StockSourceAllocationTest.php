@@ -55,7 +55,7 @@ class StockSourceAllocationTest extends TestCase
         ]);
     }
 
-    private function stockAt(ProductVariant $variant, string $locationId, int $onHand, int $reserved = 0): void
+    private function stockAt(ProductVariant $variant, string $locationId, int $onHand, int $onOrder = 0): void
     {
 
         $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
@@ -65,7 +65,7 @@ class StockSourceAllocationTest extends TestCase
 
         Inventory::create([
             'item_id' => $variant->id, 'location_id' => $locationId, 'bin_id' => $bin->id,
-            'on_hand' => $onHand, 'on_order' => 0, 'reserved' => $reserved, 'available' => $onHand - $reserved,
+            'on_hand' => $onHand, 'on_order' => $onOrder, 'available' => $onHand - $onOrder,
         ]);
     }
 

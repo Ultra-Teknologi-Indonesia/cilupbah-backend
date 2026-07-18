@@ -828,34 +828,34 @@ class SalesOrderController extends Controller
             );
         }
 
-        $options = array_filter([
-            'doc_type'      => $request->query('doc_type'),
-            'document_type' => $request->query('document_type'),
-            'document_size' => $request->query('document_size'),
-        ], fn ($v) => $v !== null && $v !== '');
-
         $source = strtolower((string) ($order->source ?? ''));
-        $capabilities = (array) config("channel_print_capabilities.$source", []);
-        $validTypes = array_column($capabilities['document_types'] ?? [], 'value');
-        $validSizes = array_column($capabilities['document_sizes'] ?? [], 'value');
+        $bulkService = app(\Modules\Sales\Services\BulkShippingLabelService::class);
 
-        if (isset($options['document_type']) && $validTypes && ! in_array($options['document_type'], $validTypes, true)) {
-            return $this->errorResponse(
-                'Jenis dokumen tidak didukung channel. Pilih salah satu: ' . implode(', ', $validTypes),
-                422
-            );
-        }
-        if (isset($options['document_size']) && $validSizes && ! in_array($options['document_size'], $validSizes, true)) {
-            return $this->errorResponse(
-                'Ukuran dokumen tidak didukung channel. Pilih salah satu: ' . implode(', ', $validSizes),
-                422
-            );
-        }
+        $canonical = $bulkService->resolveChannelOptions($source);
+        $options = array_filter($canonical, fn ($v) => $v !== null && $v !== '');
+
+        $requestedSize = (string) $request->query('document_size', \Modules\Sales\Services\BulkShippingLabelService::DEFAULT_SIZE);
+        $sizeKey = in_array($requestedSize, [
+            \Modules\Sales\Services\BulkShippingLabelService::SIZE_100X150,
+            \Modules\Sales\Services\BulkShippingLabelService::SIZE_100X120,
+        ], true) ? $requestedSize : \Modules\Sales\Services\BulkShippingLabelService::DEFAULT_SIZE;
 
         try {
             $result = $this->orderService->getShippingLabel($order, $options);
 
-            return $this->successResponse($result, 'Shipping label berhasil diambil');
+            $rawBytes = $this->extractLabelBytes($result);
+            if ($rawBytes === null) {
+                return $this->successResponse($result, 'Shipping label berhasil diambil');
+            }
+
+            $normalized = $bulkService->normalizeToTarget($rawBytes, $sizeKey, $source);
+            return $this->successResponse([
+                'type' => 'base64',
+                'content_type' => 'application/pdf',
+                'document_base64' => base64_encode($normalized),
+                'source' => $source,
+                'document_size' => $sizeKey,
+            ], 'Shipping label berhasil diambil');
         } catch (\Modules\Sales\Exceptions\ShippingLabelPreparingException $e) {
             return $this->errorResponse(
                 'Gagal memproses pengiriman.',
@@ -878,6 +878,32 @@ class SalesOrderController extends Controller
                 'Aksi tidak dapat diproses',
             );
         }
+    }
+
+    private function extractLabelBytes(array $result): ?string
+    {
+        if (! empty($result['document_base64'])) {
+            $decoded = base64_decode((string) $result['document_base64'], true);
+            return $decoded === false ? null : $decoded;
+        }
+        if (! empty($result['bytes'])) {
+            return (string) $result['bytes'];
+        }
+        $url = $result['url'] ?? ($result['doc_url'] ?? null);
+        if (! empty($url)) {
+            try {
+                $response = \Illuminate\Support\Facades\Http::timeout(20)->retry(2, 500)->get($url);
+                return $response->successful() ? $response->body() : null;
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('extractLabelBytes: url fetch failed', ['error' => $e->getMessage()]);
+                return null;
+            }
+        }
+        if (! empty($result['data']) && is_string($result['data'])) {
+            $decoded = base64_decode((string) $result['data'], true);
+            return $decoded === false ? null : $decoded;
+        }
+        return null;
     }
 
     public function retryShippingLabel(string $id)

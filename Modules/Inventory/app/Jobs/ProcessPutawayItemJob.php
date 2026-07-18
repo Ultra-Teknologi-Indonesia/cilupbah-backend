@@ -17,6 +17,7 @@ use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundItem;
 use Modules\Inventory\Models\PutawayItemSource;
 use Modules\Warehouse\Services\BinOccupancyGuard;
+use Modules\Warehouse\Services\SkuHomeBinGuard;
 use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
 
@@ -66,6 +67,7 @@ class ProcessPutawayItemJob implements ShouldQueue
                 $transactionNumber = $putaway->putaway_no;
 
                 app(BinOccupancyGuard::class)->assertBinFitsSku($destinationBinId, $putawayItem->item_id);
+                app(SkuHomeBinGuard::class)->assertSkuFitsBin($putaway->location_id, $putawayItem->item_id, $destinationBinId);
 
                 $sourceInventory = $inventoryRepository->findExactForUpdate(
                     $putawayItem->item_id,
@@ -188,7 +190,10 @@ class ProcessPutawayItemJob implements ShouldQueue
                             }
                             $take = min($capacity, $remaining);
                             $src->increment('putaway_qty', $take);
-                            InboundItem::where('id', $src->inbound_item_id)->increment('putaway_qty', $take);
+                            InboundItem::where('id', $src->inbound_item_id)->update([
+                                'putaway_qty' => DB::raw('putaway_qty + ' . (int) $take),
+                                'reserved_qty' => DB::raw('GREATEST(reserved_qty - ' . (int) $take . ', 0)'),
+                            ]);
                             $affectedInboundIds[$src->inbound_id] = true;
                             $remaining -= $take;
                         }
@@ -196,7 +201,10 @@ class ProcessPutawayItemJob implements ShouldQueue
 
                         InboundItem::where('inbound_id', $putaway->source_id)
                             ->where('item_id', $putawayItem->item_id)
-                            ->increment('putaway_qty', $qty);
+                            ->update([
+                                'putaway_qty' => DB::raw('putaway_qty + ' . (int) $qty),
+                                'reserved_qty' => DB::raw('GREATEST(reserved_qty - ' . (int) $qty . ', 0)'),
+                            ]);
                         $affectedInboundIds[$putaway->source_id] = true;
                     }
 

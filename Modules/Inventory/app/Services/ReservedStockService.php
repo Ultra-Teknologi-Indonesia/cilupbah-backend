@@ -81,9 +81,9 @@ class ReservedStockService
                 );
 
                 if ($inventory) {
-                    $inventory->reserved -= $item->qty;
-                    if ($inventory->reserved < 0) {
-                        $inventory->reserved = 0;
+                    $inventory->on_order -= $item->qty;
+                    if ($inventory->on_order < 0) {
+                        $inventory->on_order = 0;
                     }
                     $this->inventoryRepository->updateStock($inventory);
 
@@ -125,9 +125,9 @@ class ReservedStockService
                     );
 
                     if ($inventory) {
-                        $inventory->reserved -= $item->qty;
-                        if ($inventory->reserved < 0) {
-                            $inventory->reserved = 0;
+                        $inventory->on_order -= $item->qty;
+                        if ($inventory->on_order < 0) {
+                            $inventory->on_order = 0;
                         }
                         $this->inventoryRepository->updateStock($inventory);
 

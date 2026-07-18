@@ -62,28 +62,57 @@ class AppServiceProvider extends ServiceProvider
                 }
             }
 
+            $ilikePattern = '%' . str_replace(['%', '_'], ['\%', '\_'], $search) . '%';
+
             if (empty($relationColumns)) {
                 $columnsStr = collect($localColumns)
                     ->map(fn ($column) => "COALESCE({$column}::text, '')")
                     ->implode(" || ' ' || ");
 
-                $this->whereRaw("to_tsvector('indonesian', {$columnsStr}) @@ websearch_to_tsquery('indonesian', ?)", [$search])
-                     ->orderByRaw("ts_rank_cd(to_tsvector('indonesian', {$columnsStr}), websearch_to_tsquery('indonesian', ?)) DESC", [$search]);
+                $ilikeConds = collect($localColumns)
+                    ->map(fn ($col) => "COALESCE({$col}::text, '') ILIKE ?")
+                    ->implode(' OR ');
+                $ilikeBindings = array_fill(0, count($localColumns), $ilikePattern);
+
+                $this->whereRaw(
+                    "(to_tsvector('indonesian', {$columnsStr}) @@ websearch_to_tsquery('indonesian', ?)"
+                    . " OR ({$ilikeConds}))",
+                    array_merge([$search], $ilikeBindings)
+                )
+                ->orderByRaw("ts_rank_cd(to_tsvector('indonesian', {$columnsStr}), websearch_to_tsquery('indonesian', ?)) DESC", [$search]);
             } else {
-                $this->where(function ($query) use ($localColumns, $relationColumns, $search) {
+                $this->where(function ($query) use ($localColumns, $relationColumns, $search, $ilikePattern) {
                     if (!empty($localColumns)) {
                         $columnsStr = collect($localColumns)
                             ->map(fn ($col) => "COALESCE({$col}::text, '')")
                             ->implode(" || ' ' || ");
-                        $query->whereRaw("to_tsvector('indonesian', {$columnsStr}) @@ websearch_to_tsquery('indonesian', ?)", [$search]);
+                        $ilikeConds = collect($localColumns)
+                            ->map(fn ($col) => "COALESCE({$col}::text, '') ILIKE ?")
+                            ->implode(' OR ');
+                        $ilikeBindings = array_fill(0, count($localColumns), $ilikePattern);
+
+                        $query->whereRaw(
+                            "(to_tsvector('indonesian', {$columnsStr}) @@ websearch_to_tsquery('indonesian', ?)"
+                            . " OR ({$ilikeConds}))",
+                            array_merge([$search], $ilikeBindings)
+                        );
                     }
 
                     foreach ($relationColumns as $relation => $cols) {
                         $colsStr = collect($cols)
                             ->map(fn ($col) => "COALESCE({$col}::text, '')")
                             ->implode(" || ' ' || ");
-                        $query->orWhereHas($relation, function ($sub) use ($colsStr, $search) {
-                            $sub->whereRaw("to_tsvector('indonesian', {$colsStr}) @@ websearch_to_tsquery('indonesian', ?)", [$search]);
+                        $query->orWhereHas($relation, function ($sub) use ($cols, $colsStr, $search, $ilikePattern) {
+                            $ilikeConds = collect($cols)
+                                ->map(fn ($col) => "COALESCE({$col}::text, '') ILIKE ?")
+                                ->implode(' OR ');
+                            $ilikeBindings = array_fill(0, count($cols), $ilikePattern);
+
+                            $sub->whereRaw(
+                                "(to_tsvector('indonesian', {$colsStr}) @@ websearch_to_tsquery('indonesian', ?)"
+                                . " OR ({$ilikeConds}))",
+                                array_merge([$search], $ilikeBindings)
+                            );
                         });
                     }
                 });

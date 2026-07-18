@@ -46,7 +46,7 @@ class ScanCorrectionTest extends TestCase
 
         Inventory::create([
             'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $sourceBin->id,
-            'on_hand' => 10, 'reserved' => 0, 'available' => 10, 'avg_cost' => 2000,
+            'on_hand' => 10, 'on_order' => 0, 'available' => 10, 'avg_cost' => 2000,
         ]);
 
         $user = \App\Models\User::factory()->create();
@@ -102,7 +102,7 @@ class ScanCorrectionTest extends TestCase
 
         Inventory::create([
             'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $sourceBin->id,
-            'on_hand' => 8, 'reserved' => 0, 'available' => 8, 'avg_cost' => 1000,
+            'on_hand' => 8, 'on_order' => 0, 'available' => 8, 'avg_cost' => 1000,
         ]);
 
         $user = \App\Models\User::factory()->create();
@@ -140,7 +140,7 @@ class ScanCorrectionTest extends TestCase
 
         Inventory::create([
             'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $binA->id,
-            'on_hand' => 10, 'reserved' => 0, 'available' => 10, 'avg_cost' => 2500,
+            'on_hand' => 10, 'on_order' => 0, 'available' => 10, 'avg_cost' => 2500,
         ]);
 
         $svc = app(InventoryService::class);
@@ -180,7 +180,7 @@ class ScanCorrectionTest extends TestCase
 
         Inventory::create([
             'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $bin->id,
-            'on_hand' => 3, 'reserved' => 0, 'available' => 3, 'avg_cost' => 1000,
+            'on_hand' => 3, 'on_order' => 0, 'available' => 3, 'avg_cost' => 1000,
         ]);
 
         app(InventoryService::class)->reversePick([
@@ -190,7 +190,7 @@ class ScanCorrectionTest extends TestCase
 
         $inv = Inventory::where('bin_id', $bin->id)->where('item_id', $variant->id)->first();
         $this->assertSame(5, (int) $inv->on_hand);
-        $this->assertSame(2, (int) $inv->reserved);
+        $this->assertSame(2, (int) $inv->on_order);
         $this->assertSame(3, (int) $inv->available);
         $this->assertDatabaseHas('inventory_movements', [
             'bin_id' => $bin->id, 'source' => 'PICKING_REVERSAL', 'qty' => 2,
@@ -214,7 +214,7 @@ class ScanCorrectionTest extends TestCase
         foreach ([$v1, $v2] as $v) {
             Inventory::create([
                 'item_id' => $v->id, 'location_id' => $location->id, 'bin_id' => $sourceBin->id,
-                'on_hand' => 10, 'reserved' => 0, 'available' => 10, 'avg_cost' => 1000,
+                'on_hand' => 10, 'on_order' => 0, 'available' => 10, 'avg_cost' => 1000,
             ]);
         }
 
@@ -264,7 +264,7 @@ class ScanCorrectionTest extends TestCase
 
         Inventory::create([
             'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $binB->id,
-            'on_hand' => 1, 'reserved' => 0, 'available' => 1, 'avg_cost' => 100,
+            'on_hand' => 1, 'on_order' => 0, 'available' => 1, 'avg_cost' => 100,
         ]);
 
         $this->expectException(\Exception::class);

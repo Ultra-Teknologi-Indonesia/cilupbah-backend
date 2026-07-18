@@ -5,16 +5,11 @@ namespace Modules\Bantuan\Services;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Str;
 
-/**
- * Menghasilkan narasi Indonesia (summary, purpose, description) untuk sebuah
- * endpoint berdasar route name, HTTP method, FormRequest, roles, dsb.
- * Tujuan: menghapus flag needs_doc walau controller tidak punya PHPDoc.
- */
 class RouteNarrator
 {
-    /** Nama resource → nama Indonesia + gender/tag. */
+
     private const RESOURCE_MAP = [
-        // Sales
+
         'orders'                 => 'pesanan penjualan',
         'sales'                  => 'pesanan penjualan',
         'manual'                 => 'pesanan manual',
@@ -32,7 +27,6 @@ class RouteNarrator
         'courier-pickup'         => 'bukti pickup kurir',
         'driver-call'            => 'panggilan driver',
 
-        // Inventory
         'inventories'            => 'inventori',
         'bin-transfers'          => 'transfer bin',
         'transfers'              => 'transfer stok',
@@ -49,7 +43,6 @@ class RouteNarrator
         'stock-positions'        => 'posisi stok',
         'monitor'                => 'monitor stok',
 
-        // Product
         'products'               => 'produk',
         'variants'               => 'varian produk',
         'bundles'                => 'bundle produk',
@@ -62,14 +55,12 @@ class RouteNarrator
         'download-histories'     => 'riwayat download',
         'channel-monitor'        => 'monitor channel produk',
 
-        // Warehouse / Location
         'locations'              => 'lokasi',
         'location-bins'          => 'rak (bin)',
         'bins'                   => 'rak',
         'zones'                  => 'zona lokasi',
         'warehouse-settings'     => 'pengaturan gudang',
 
-        // Inbound / Outbound
         'inbounds'               => 'penerimaan barang',
         'picklists'              => 'picklist',
         'packlists'              => 'packlist',
@@ -79,18 +70,15 @@ class RouteNarrator
         'shipping-labels'        => 'label resi',
         'fulfillments'           => 'fulfillment',
 
-        // Purchase
         'purchase-orders'        => 'pesanan pembelian (PO)',
         'purchase-bills'         => 'tagihan pembelian',
         'bills'                  => 'tagihan',
         'purchase-payments'      => 'pembayaran pembelian',
 
-        // Supplier
         'suppliers'              => 'pemasok',
         'contacts'               => 'kontak',
         'customers'              => 'pelanggan',
 
-        // Auth
         'users'                  => 'pengguna',
         'roles'                  => 'peran',
         'permissions'            => 'permission',
@@ -101,7 +89,6 @@ class RouteNarrator
         'user-histories'         => 'riwayat aktivitas pengguna',
         'histories'              => 'riwayat',
 
-        // Channel
         'channels'               => 'channel marketplace',
         'shops'                  => 'toko marketplace',
         'shopee'                 => 'Shopee',
@@ -110,7 +97,6 @@ class RouteNarrator
         'woocommerce'            => 'WooCommerce',
         'attributes'             => 'atribut kategori',
 
-        // Report / Finance / Tax / Notification / Region / Warranty
         'reports'                => 'laporan',
         'cashbank'               => 'kas & bank',
         'journals'               => 'jurnal',
@@ -128,7 +114,6 @@ class RouteNarrator
         'webhook-subscriptions'  => 'subscription webhook',
         'webhook-deliveries'     => 'delivery webhook',
 
-        // Misc
         'issues'                 => 'isu (issue tracker)',
         'settings'               => 'pengaturan',
         'systemsetting'          => 'pengaturan sistem',
@@ -138,7 +123,6 @@ class RouteNarrator
         'imports'                => 'impor',
     ];
 
-    /** Sinonim kata kerja standar Laravel. */
     private const VERB_MAP = [
         'index'   => 'Ambil daftar',
         'all'     => 'Ambil semua (tanpa paginasi)',
@@ -151,7 +135,6 @@ class RouteNarrator
         'edit'    => 'Persiapkan form edit',
     ];
 
-    /** Kata kerja custom (action) → narasi. */
     private const ACTION_MAP = [
         'cancel'          => 'Batalkan',
         'restore'         => 'Kembalikan',
@@ -200,9 +183,6 @@ class RouteNarrator
         'retry'           => 'Coba ulang',
     ];
 
-    /**
-     * @return array{summary:string,purpose:string,description:string,needs_doc:bool}
-     */
     public function narrate(Route $route, string $httpMethod, ?string $action, ?string $formRequestClass, array $roles): array
     {
         $name = (string) $route->getName();
@@ -250,24 +230,22 @@ class RouteNarrator
             'summary'    => $summary,
             'purpose'    => $purpose,
             'description'=> $description,
-            'needs_doc'  => false, // narrator sudah menghasilkan narasi meaningful
+            'needs_doc'  => false, 
         ];
     }
 
     private function extractResourceSlug(string $uri, string $name): string
     {
-        // Prefer segment terakhir sebelum param, dari URI
+
         $segments = array_values(array_filter(explode('/', $uri), fn ($s) => $s !== '' && ! str_starts_with($s, '{') && $s !== 'api' && $s !== 'v1'));
 
-        // Skip modul prefix
         if (count($segments) >= 2) {
-            // Gunakan segment yang cocok RESOURCE_MAP kalau ada
+
             foreach (array_reverse($segments) as $s) {
                 if (isset(self::RESOURCE_MAP[$s])) return $s;
             }
         }
 
-        // Fallback dari route name segment terakhir sebelum verb
         $parts = explode('.', $name);
         if (count($parts) >= 2) {
             for ($i = count($parts) - 2; $i >= 0; $i--) {
@@ -275,13 +253,12 @@ class RouteNarrator
             }
         }
 
-        // Ambil segment paling deskriptif
         return $segments[count($segments) - 1] ?? ($parts[count($parts) - 2] ?? 'resource');
     }
 
     private function verbFor(string $httpMethod, ?string $action, string $name, string $uri): string
     {
-        // Prioritas: action name persis di ACTION_MAP
+
         if ($action) {
             $kebab = Str::of($action)->snake()->replace('_', '-');
             if (isset(self::ACTION_MAP[(string) $kebab])) {
@@ -290,13 +267,12 @@ class RouteNarrator
             if (isset(self::VERB_MAP[$action])) {
                 return self::VERB_MAP[$action];
             }
-            // Method dengan prefix (mis. downloadInvoice, bulkPrint) → cari kata kunci
+
             foreach (self::ACTION_MAP as $key => $verb) {
                 if (str_contains(strtolower($action), $key)) return $verb;
             }
         }
 
-        // Dari uri segment terakhir (mis. /orders/{id}/cancel)
         $last = null;
         foreach (array_reverse(explode('/', $uri)) as $seg) {
             if ($seg === '' || str_starts_with($seg, '{')) continue;
@@ -305,7 +281,6 @@ class RouteNarrator
         }
         if ($last && isset(self::ACTION_MAP[$last])) return self::ACTION_MAP[$last];
 
-        // Fallback ke HTTP method
         return match ($httpMethod) {
             'GET'    => str_contains($uri, '{') ? 'Ambil detail' : 'Ambil daftar',
             'POST'   => 'Buat',

@@ -86,7 +86,7 @@ class PickingNegativeStockTest extends TestCase
             'location_id' => $locationId,
             'bin_id' => $binId,
             'on_hand' => $onHand,
-            'reserved' => 0,
+            'on_order' => 0,
             'available' => $onHand,
             'created_at' => now(), 'updated_at' => now(),
         ]);

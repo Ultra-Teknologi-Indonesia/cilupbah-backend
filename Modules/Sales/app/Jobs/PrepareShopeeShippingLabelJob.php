@@ -96,9 +96,9 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
         }
 
         try {
-            $docType = $shopee->resolveSupportedDocType($shopId, $orderSn, 'NORMAL_AIR_WAYBILL');
+            $docType = $shopee->resolveSupportedDocType($shopId, $orderSn, 'THERMAL_AIR_WAYBILL');
         } catch (\Throwable $e) {
-            $docType = 'NORMAL_AIR_WAYBILL';
+            $docType = 'THERMAL_AIR_WAYBILL';
             Log::warning('PrepareShopeeShippingLabelJob: resolveSupportedDocType gagal, pakai default', [
                 'order_id'  => $order->id,
                 'exception' => $e->getMessage(),
@@ -207,10 +207,6 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
         $this->notifyBulkListeners();
     }
 
-    /**
-     * Beritahu BulkShippingLabelService bahwa status label untuk order ini sudah final —
-     * service akan transition item WAITING_SHOPEE_PREP dan finalize batch bila komplit.
-     */
     private function notifyBulkListeners(): void
     {
         try {

@@ -22,6 +22,7 @@ class SalesOrderRepository
         $query = QueryBuilder::for(SalesOrder::class)
             ->with(['items.product.media', 'items.product.product.media', 'location:id,location_name', 'shop:shop_id,shop_name,channel_id', 'shop.channel:id,code,name'])
             ->allowedFilters(
+                AllowedFilter::callback('item_id', fn ($q, $value) => $q->whereHas('items', fn ($q2) => $q2->whereIn('item_id', (array) $value))),
                 AllowedFilter::exact('channel', 'source'),
                 AllowedFilter::exact('store_id', 'channel_shop_id'),
                 AllowedFilter::exact('location_id'),
@@ -235,6 +236,7 @@ class SalesOrderRepository
         'ready-to-process', 'empty-stock', 'failed-pick',
         'picking-belum', 'picking-diproses', 'picking-selesai',
         'packing-diproses', 'ready-to-ship', 'waiting-shipment',
+        'open',
     ];
 
     protected function applyStatusFilterScope($query, array $statuses)
@@ -258,6 +260,7 @@ class SalesOrderRepository
 
         return match ($key) {
             'cancelled'        => $query->where('status', 'cancelled'),
+            'open'             => $query->whereIn('status', ['pending', 'reserved', 'picked', 'packed']),
             'unpaid'           => $query->where('status', 'pending')->where('is_paid', false),
             'cancel-requested' => $query->whereNotNull('cancel_requested_at')->where('status', '!=', 'cancelled'),
             'completed'        => $query->where('status', 'shipped')->whereNotNull('received_date'),
@@ -491,7 +494,10 @@ class SalesOrderRepository
             'shipping_country'    => $orderData['shipping_country'] ?? null,
             'dropshipper_name'    => $orderData['dropshipper_name'] ?? null,
             'dropshipper_phone'   => $orderData['dropshipper_phone'] ?? null,
-            'channel_status'      => $orderData['channel_status'],
+            'channel_status'      => \Modules\Sales\Support\ChannelStatusNormalizer::normalize(
+                $orderData['source'] ?? null,
+                $orderData['channel_status'] ?? null,
+            )?->value,
             'channel_fulfillment_status' => $orderData['channel_fulfillment_status'] ?? ($existing->channel_fulfillment_status ?? null),
             'fulfillment_flag'    => $orderData['fulfillment_flag'] ?? ($existing->fulfillment_flag ?? null),
             'fulfillment_type'    => $orderData['fulfillment_type'] ?? ($existing->fulfillment_type ?? null),

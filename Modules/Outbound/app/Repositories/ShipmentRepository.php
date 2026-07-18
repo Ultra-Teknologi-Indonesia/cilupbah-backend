@@ -70,11 +70,6 @@ class ShipmentRepository
             ->appends(request()->query());
     }
 
-    /**
-     * Return paginator ShipmentOrder-per-row untuk tampilan "Sudah Dikirim" (per pesanan, bukan per manifest).
-     * Filter: shipment.status ∈ {HANDED_OVER, IN_TRANSIT, DELIVERED}.
-     * Type/courier 'all' = tidak filter.
-     */
     public function getCompleted(string $type, array $courierCodes = [], int $limit = 10)
     {
         $normalizedType = strtolower($type);

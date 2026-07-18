@@ -655,7 +655,9 @@ class InventoryController extends Controller
             $perPage = 20;
         }
 
-        $paginated = $this->inventoryService->getStockedItems($locationId, $search, $perPage);
+        $includeZero = $request->boolean('include_zero');
+
+        $paginated = $this->inventoryService->getStockedItems($locationId, $search, $perPage, $includeZero);
 
         return $this->successPaginatedResponse($paginated, 'Daftar produk berstok diambil.');
     }

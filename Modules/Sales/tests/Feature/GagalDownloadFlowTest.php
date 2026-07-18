@@ -70,7 +70,7 @@ class GagalDownloadFlowTest extends TestCase
             'location_id' => $this->locationId,
             'bin_id' => null,
             'on_hand' => $onHand,
-            'reserved' => 0,
+            'on_order' => 0,
             'available' => $onHand,
             'created_at' => now(),
             'updated_at' => now(),
@@ -217,7 +217,7 @@ class GagalDownloadFlowTest extends TestCase
         $this->assertSame($variantId, $item->item_id, 'item harus terpetakan ke variant master');
 
         $inv = DB::table('inventories')->where('item_id', $variantId)->where('location_id', $this->locationId)->first();
-        $this->assertSame(2, $inv->reserved, 'stok harus ter-reserve setelah download');
+        $this->assertSame(2, $inv->on_order, 'stok harus ter-reserve setelah download');
 
         $counts = $this->repository->getTabCounts();
         $this->assertSame(0, $counts['failed']);
@@ -285,7 +285,7 @@ class GagalDownloadFlowTest extends TestCase
         $this->service->downloadOrderItem($this->freshOrder($orderId), $itemId);
 
         $inv = DB::table('inventories')->where('item_id', $variantId)->first();
-        $this->assertSame(2, $inv->reserved, 'reserve tidak boleh terjadi dua kali');
+        $this->assertSame(2, $inv->on_order, 'reserve tidak boleh terjadi dua kali');
         $this->assertSame(1, DB::table('inventory_movements')->where('source', 'ORDER_RESERVE')->count());
     }
 

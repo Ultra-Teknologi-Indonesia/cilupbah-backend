@@ -11,10 +11,6 @@ class PurchaseOrderObserver
 {
     public function __construct(protected InboundService $inboundService) {}
 
-    /**
-     * F5: Auto-create Inbound DRAFT saat PO transisi ke OPEN (siap-terima).
-     * Idempoten: skip kalau sudah ada Inbound aktif untuk PO ini.
-     */
     public function updated(PurchaseOrder $po): void
     {
         if (! $po->wasChanged('status')) {
@@ -33,9 +29,6 @@ class PurchaseOrderObserver
         $this->dispatchDraftCreation($po, $po->updated_by ?? $po->created_by ?? 'system');
     }
 
-    /**
-     * Same trigger untuk PO yang langsung dibuat OPEN (skip DRAFT).
-     */
     public function created(PurchaseOrder $po): void
     {
         if ($po->status !== PurchaseOrder::STATUS_OPEN) {
@@ -45,11 +38,6 @@ class PurchaseOrderObserver
         $this->dispatchDraftCreation($po, $po->created_by ?? 'system');
     }
 
-    /**
-     * Tunda pembuatan Inbound sampai transaction commit — supaya PO items
-     * yang dibuat setelah PO row save (di dalam transaction yang sama)
-     * sudah persistent saat createDraftFromPO() jalan.
-     */
     protected function dispatchDraftCreation(PurchaseOrder $po, string $createdBy): void
     {
         $poId = $po->id;
