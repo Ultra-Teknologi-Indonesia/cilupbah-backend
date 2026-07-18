@@ -23,6 +23,8 @@ class InventoryMovementResource extends JsonResource
             'bin_id' => $this->bin_id,
             'bin_code' => $this->whenLoaded('bin', fn () => $this->bin?->bin_final_code),
             'transaction_number' => $this->transaction_number,
+            'order_no' => $this->pick_order_no,
+            'order_count' => $this->pick_order_count !== null ? (int) $this->pick_order_count : null,
             'reference_number' => $this->ref_no,
             'note' => $this->ref_note,
             'source' => $this->source,
