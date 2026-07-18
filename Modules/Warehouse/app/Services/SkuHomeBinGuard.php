@@ -26,12 +26,16 @@ class SkuHomeBinGuard
         $sku = $variant?->sku ?? '';
         $productName = $variant?->product?->name ?? '';
 
+        $homeCode = $homeBin?->bin_final_code ?? '-';
+        $targetCode = LocationBin::find($targetBinId)?->bin_final_code ?? '-';
+
         throw new DomainException(sprintf(
-            'SKU %s (%s) sudah menempati rak %s di gudang ini. Pindahkan ke rak %s atau kosongkan rak lama dulu.',
+            'SKU %s (%s) sudah menempati rak %s, jadi tidak bisa ditempatkan ke rak %s. Tempatkan ke rak %s.',
             $sku,
             $productName,
-            $homeBin?->bin_final_code ?? '-',
-            $homeBin?->bin_final_code ?? '-'
+            $homeCode,
+            $targetCode,
+            $homeCode
         ));
     }
 

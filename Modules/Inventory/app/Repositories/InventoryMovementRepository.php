@@ -18,6 +18,15 @@ class InventoryMovementRepository
             ->get();
     }
 
+    public function reservationLedgerExists(string $transactionNumber, string $itemId, string $locationId): bool
+    {
+        return InventoryMovement::where('transaction_number', $transactionNumber)
+            ->where('item_id', $itemId)
+            ->where('location_id', $locationId)
+            ->whereIn('source', InventoryMovementSourceMap::RESERVED_SOURCES)
+            ->exists();
+    }
+
     public function getByTransactionNumber(string $transactionNumber): Collection
     {
         return InventoryMovement::where('transaction_number', $transactionNumber)
@@ -75,9 +84,28 @@ class InventoryMovementRepository
                 ->leftJoin('products', 'products.id', '=', 'product_variants.product_id');
         }
 
+        $reservedList = "'" . implode("','", InventoryMovementSourceMap::RESERVED_SOURCES) . "'";
+
+        // Mutasi picking menyimpan no. picklist di transaction_number, bukan no.
+        // pesanan. Resolusi pesanannya lewat picklist_items: 1 baris mutasi =
+        // 1 SKU pada 1 picklist, dan picklist_items menyimpan order_id-nya.
+        // Suffix -KOREKSI/-HAPUS (reversal) dipangkas dulu agar tetap ketemu.
+        $pickOrderScope = "FROM picklist_items pi"
+            . " JOIN picklists p ON p.id = pi.picklist_id"
+            . " JOIN sales_orders so ON so.id = pi.order_id"
+            . " WHERE p.picklist_no = regexp_replace(inventory_movements.transaction_number, '-(KOREKSI|HAPUS)$', '')"
+            . " AND pi.item_id = inventory_movements.item_id";
+        $isPick = "inventory_movements.source IN ('PICKING', 'PICKING_REVERSAL')";
+        $pickOrder = fn (string $column) =>
+            "(CASE WHEN {$isPick} THEN (SELECT {$column} {$pickOrderScope} ORDER BY so.salesorder_no LIMIT 1) END)";
+
         $qb = \Spatie\QueryBuilder\QueryBuilder::for($baseQuery)
             ->select('inventory_movements.*')
-            ->selectRaw('SUM(qty) OVER (PARTITION BY item_id, location_id ORDER BY transaction_date, inventory_movements.id) AS total_balance')
+            ->selectRaw("SUM(qty) OVER (PARTITION BY item_id, location_id, (CASE WHEN source IN ($reservedList) THEN 1 ELSE 0 END) ORDER BY transaction_date, inventory_movements.id) AS total_balance")
+            ->selectRaw($pickOrder('so.salesorder_no') . ' AS pick_order_no')
+            ->selectRaw("(CASE WHEN {$isPick} THEN (SELECT COUNT(DISTINCT pi.order_id) {$pickOrderScope}) END) AS pick_order_count")
+            ->selectRaw('COALESCE((SELECT COALESCE(so.channel_order_no, so.no_ref) FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), ' . $pickOrder('COALESCE(so.channel_order_no, so.no_ref)') . ') AS ref_no')
+            ->selectRaw('COALESCE((SELECT so.customer_name FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), ' . $pickOrder('so.customer_name') . ') AS ref_note')
             ->with(['product:id,sku,product_id', 'location:id,location_name', 'bin:id,bin_final_code'])
             ->allowedSearch('product_variants.sku', 'products.name')
             ->allowedFilters(

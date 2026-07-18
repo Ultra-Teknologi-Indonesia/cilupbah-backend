@@ -470,8 +470,7 @@ class InboundController extends Controller
     {
         try {
             $data = $request->validated();
-            // Mobile: paksa received_by dari auth() supaya tidak bisa
-            // spoof user lain via body. Web tetap pakai yang dikirim.
+
             $data['received_by'] = $this->overrideForMobile($request, $data['received_by'] ?? null)
                 ?? $data['received_by']
                 ?? (string) (auth()->id() ?? 'system');

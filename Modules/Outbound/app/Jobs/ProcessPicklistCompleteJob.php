@@ -9,9 +9,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Modules\Outbound\Models\Picklist;
-use Modules\Outbound\Models\PicklistItem;
-use Modules\Sales\Events\OrderNeedsBuyerConfirmation;
-use Modules\Sales\Services\SalesOrderService as OrderService;
+use Modules\Outbound\Services\OrderReleaseService;
 
 class ProcessPicklistCompleteJob implements ShouldQueue
 {
@@ -26,7 +24,14 @@ class ProcessPicklistCompleteJob implements ShouldQueue
         $this->onQueue(config('queue.names.stock_critical'));
     }
 
-    public function handle(OrderService $orderService): void
+    /**
+     * Jaring pengaman. Sejak rilis per-pesanan dijalankan inkremental tiap pick
+     * (lihat PicklistService::pickItem), umumnya semua pesanan di sini sudah
+     * lepas dan OrderReleaseService akan melewatinya. Job tetap dipertahankan
+     * untuk menangkap pesanan yang baru tuntas lewat jalur lain, mis. item
+     * ditandai SHORT/REJECTED.
+     */
+    public function handle(OrderReleaseService $orderReleaseService): void
     {
         $picklist = Picklist::with('items.order', 'items.orderItem', 'picker')->find($this->picklistId);
 
@@ -34,78 +39,11 @@ class ProcessPicklistCompleteJob implements ShouldQueue
             return;
         }
 
-        $itemsByOrder = $picklist->items->groupBy('order_id');
+        $orderIds = $picklist->items->pluck('order_id')->filter()->unique();
 
-        DB::transaction(function () use ($picklist, $itemsByOrder, $orderService) {
-            foreach ($itemsByOrder as $orderId => $items) {
-                $order = $items->first()->order;
-                if (!$order) {
-                    continue;
-                }
-
-                $shortItems = $items->filter(fn ($it) => in_array(
-                    $it->item_status,
-                    [PicklistItem::STATUS_SHORT, PicklistItem::STATUS_REJECTED],
-                    true,
-                ));
-
-                $itemsByOrderItem = $items->groupBy('order_item_id');
-                foreach ($itemsByOrderItem as $orderItemId => $parts) {
-                    $anyShort = $parts->contains(fn ($it) => in_array(
-                        $it->item_status,
-                        [PicklistItem::STATUS_SHORT, PicklistItem::STATUS_REJECTED],
-                        true,
-                    ));
-
-                    if ($anyShort) {
-                        $shortPart = $parts->first(fn ($it) => in_array(
-                            $it->item_status,
-                            [PicklistItem::STATUS_SHORT, PicklistItem::STATUS_REJECTED],
-                            true,
-                        ));
-                        DB::table('sales_order_items')
-                            ->where('id', $orderItemId)
-                            ->update([
-                                'fulfillment_status' => $shortPart->item_status,
-                                'short_qty'          => $parts->sum(fn ($it) => (int) ($it->failed_qty ?? 0)),
-                                'updated_at'         => now(),
-                            ]);
-                    } elseif ($parts->every(fn ($it) => (int) $it->qty_picked >= (int) $it->qty_ordered)) {
-                        DB::table('sales_order_items')
-                            ->where('id', $orderItemId)
-                            ->update([
-                                'fulfillment_status' => 'PICKED',
-                                'updated_at'         => now(),
-                            ]);
-                    }
-                }
-
-                if ($shortItems->isNotEmpty()) {
-
-                    DB::table('sales_orders')
-                        ->where('id', $order->id)
-                        ->update([
-                            'status'                   => 'AWAITING_BUYER_CONFIRMATION',
-                            'awaiting_confirmation_at' => now(),
-                            'updated_at'               => now(),
-                        ]);
-
-                    OrderNeedsBuyerConfirmation::dispatch(
-                        (string) $order->id,
-                        (string) $picklist->id,
-                        $shortItems->map(fn ($it) => [
-                            'item_id'     => (string) $it->id,
-                            'sku'         => $it->sku,
-                            'failed_qty'  => (int) ($it->failed_qty ?? 0),
-                            'item_status' => (string) $it->item_status,
-                        ])->values()->all(),
-                    );
-                    continue;
-                }
-
-                if ($order->status === 'reserved') {
-                    $orderService->updateOrder($order, ['status' => 'picked'], $picklist->picker);
-                }
+        DB::transaction(function () use ($picklist, $orderIds, $orderReleaseService) {
+            foreach ($orderIds as $orderId) {
+                $orderReleaseService->releaseIfComplete($picklist, (string) $orderId);
             }
         });
     }
