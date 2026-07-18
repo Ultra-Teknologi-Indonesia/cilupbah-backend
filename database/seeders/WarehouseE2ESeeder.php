@@ -95,13 +95,21 @@ class WarehouseE2ESeeder extends Seeder
         $binsPusat = $this->ensureBins($pusat, ['A-01', 'A-02', 'A-03', 'B-01']);
         $binsKecil = $this->ensureBins($kecil, ['K-01', 'K-02', 'K-03']);
 
-        // 5. Stok awal di default bin untuk source transfer.
-        $pusatDefaultBin = $pusat->default_bin_id ?: $binsPusat['A-01']->id;
-        $kecilDefaultBin = $kecil->default_bin_id ?: $binsKecil['K-01']->id;
+        // 5. Stok awal untuk source transfer.
+        // WAJIB ditaruh di bin is_inbound=true (staging) supaya guard
+        // "1 rak = 1 SKU" tidak block — kalau ditaruh di rak stok biasa,
+        // rak itu jadi "terkunci" untuk 1 SKU dan test putaway ke rak
+        // yang sama akan ditolak (bukan tujuan seed).
+        $pusatSrcBin = $this->findStagingBin($pusat) ?? $binsPusat['A-01']->id;
+        $kecilSrcBin = $this->findStagingBin($kecil) ?? $binsKecil['K-01']->id;
 
-        $this->ensureStock($pusat->id, $pusatDefaultBin, $variants['E2E-SKU-A']->id, 100);
-        $this->ensureStock($pusat->id, $pusatDefaultBin, $variants['E2E-SKU-B']->id, 50);
-        $this->ensureStock($kecil->id, $kecilDefaultBin, $variants['E2E-SKU-K']->id, 30);
+        $this->ensureStock($pusat->id, $pusatSrcBin, $variants['E2E-SKU-A']->id, 100);
+        $this->ensureStock($pusat->id, $pusatSrcBin, $variants['E2E-SKU-B']->id, 50);
+        $this->ensureStock($kecil->id, $kecilSrcBin, $variants['E2E-SKU-K']->id, 30);
+
+        // Alias untuk bagian lain seeder yang butuh reference bin sumber.
+        $pusatDefaultBin = $pusatSrcBin;
+        $kecilDefaultBin = $kecilSrcBin;
 
         // 6. Skenario 1 — Purchase Order → auto-Inbound (via observer).
         // Wrap dgn transaction supaya observer PurchaseOrderObserver::created
@@ -202,6 +210,19 @@ class WarehouseE2ESeeder extends Seeder
         $this->command->line('Bin tambahan:');
         $this->command->line('  WH-PUSAT: A-01, A-02, A-03, B-01 (1 rak = 1 SKU, SKU boleh di M rak)');
         $this->command->line('  WH-KECIL: K-01, K-02, K-03 (strict 1 rak 1 SKU + 1 SKU 1 rak)');
+    }
+
+    /**
+     * Cari bin staging (is_inbound=true) untuk taruh stok sumber
+     * tanpa memicu guard 1-rak-1-SKU. Bin ini biasanya dibuat core
+     * seeder Warehouse & di-mark sebagai default location.
+     */
+    private function findStagingBin(Location $location): ?string
+    {
+        $bin = LocationBin::where('location_id', $location->id)
+            ->where('is_inbound', true)
+            ->first();
+        return $bin?->id;
     }
 
     /**
