@@ -3,6 +3,7 @@
 namespace Modules\Outbound\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Traits\AutoScopeMobileToAuth;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -41,6 +42,8 @@ use Throwable;
 )]
 class PicklistController extends Controller
 {
+    use AutoScopeMobileToAuth;
+
     public function __construct(
         protected PicklistService $picklistService,
         protected ReportService $reportService,
@@ -66,6 +69,9 @@ class PicklistController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
+        // Auto-scope mobile ke picker login (X-Client-Channel: MOBILE).
+        $this->forceMobileScopeToAuth($request, 'picker_id');
+
         $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->picklistService->getAllPaginated($limit);
 
@@ -80,6 +86,7 @@ class PicklistController extends Controller
         tags: ['Outbound - Picklist'],
         parameters: [
             new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[picker_id]', in: 'query', required: false, description: 'Scope hitungan ke picklist milik picker tertentu (biasanya diri sendiri di mobile).', schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(
@@ -100,9 +107,13 @@ class PicklistController extends Controller
     )]
     public function counts(Request $request): JsonResponse
     {
+        // Auto-scope mobile ke picker login (X-Client-Channel: MOBILE).
+        $this->forceMobileScopeToAuth($request, 'picker_id');
+
         $filter = (array) $request->query('filter', []);
         $counts = $this->picklistService->getStatusCounts(
             locationId: $filter['location_id'] ?? null,
+            pickerId: $filter['picker_id'] ?? null,
         );
 
         return $this->successResponse($counts, 'Jumlah picklist per status');
