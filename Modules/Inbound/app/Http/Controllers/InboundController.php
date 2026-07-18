@@ -3,6 +3,7 @@
 namespace Modules\Inbound\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Traits\AutoScopeMobileToAuth;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -196,6 +197,8 @@ use OpenApi\Attributes as OA;
 )]
 class InboundController extends Controller
 {
+    use AutoScopeMobileToAuth;
+
     public function __construct(
         protected InboundService $inboundService
     ) {}
@@ -467,7 +470,14 @@ class InboundController extends Controller
     public function receive(string $id, ReceiveInboundRequest $request): JsonResponse
     {
         try {
-            $inbound = $this->inboundService->receive($id, $request->validated());
+            $data = $request->validated();
+            // Mobile: paksa received_by dari auth() supaya tidak bisa
+            // spoof user lain via body. Web tetap pakai yang dikirim.
+            $data['received_by'] = $this->overrideForMobile($request, $data['received_by'] ?? null)
+                ?? $data['received_by']
+                ?? (string) (auth()->id() ?? 'system');
+
+            $inbound = $this->inboundService->receive($id, $data);
             return $this->successResponse($inbound, 'Penerimaan Inbound berhasil diproses');
         } catch (\Exception $e) {
             throw $e;

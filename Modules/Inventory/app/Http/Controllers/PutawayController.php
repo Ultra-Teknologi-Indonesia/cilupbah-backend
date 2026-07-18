@@ -4,6 +4,7 @@ namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
+use App\Traits\AutoScopeMobileToAuth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Inventory\Services\PutawayService;
@@ -21,6 +22,7 @@ use OpenApi\Attributes as OA;
 class PutawayController extends Controller
 {
     use ApiResponse;
+    use AutoScopeMobileToAuth;
 
     public function __construct(
         protected PutawayService $putawayService
@@ -172,6 +174,9 @@ class PutawayController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        // Auto-scope mobile ke assignee login (X-Client-Channel: MOBILE).
+        $this->forceMobileScopeToAuth($request, 'assigned_to');
+
         $limit = $request->query('limit', 10);
         $putaways = $this->putawayService->getAllPaginated($limit);
 
@@ -206,6 +211,9 @@ class PutawayController extends Controller
     )]
     public function counts(Request $request): JsonResponse
     {
+        // Auto-scope mobile ke assignee login (X-Client-Channel: MOBILE).
+        $this->forceMobileScopeToAuth($request, 'assigned_to');
+
         $filter = (array) $request->query('filter', []);
         $counts = $this->putawayService->getStatusCounts(
             locationId: $filter['location_id'] ?? null,
@@ -229,6 +237,7 @@ class PutawayController extends Controller
     )]
     public function notStarted(Request $request): JsonResponse
     {
+        $this->forceMobileScopeToAuth($request, 'assigned_to');
         $limit = $request->query('limit', 10);
         $putaways = $this->putawayService->getByStatus(Putaway::STATUS_NOT_STARTED, $limit);
 
@@ -249,6 +258,7 @@ class PutawayController extends Controller
     )]
     public function inProgress(Request $request): JsonResponse
     {
+        $this->forceMobileScopeToAuth($request, 'assigned_to');
         $limit = $request->query('limit', 10);
         $putaways = $this->putawayService->getByStatus(Putaway::STATUS_IN_PROGRESS, $limit);
 
@@ -269,6 +279,7 @@ class PutawayController extends Controller
     )]
     public function completed(Request $request): JsonResponse
     {
+        $this->forceMobileScopeToAuth($request, 'assigned_to');
         $limit = $request->query('limit', 10);
         $putaways = $this->putawayService->getByStatus(Putaway::STATUS_COMPLETED, $limit);
 
