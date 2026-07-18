@@ -7,6 +7,14 @@
     $showStore = $mode === 'online';
     $fmtPrice = fn ($p) => $p !== null ? 'Rp' . number_format($p, 0, ',', '.') : '-';
     $perPage = in_array($paper, ['thermal_50x40', 'thermal_80x40', 'thermal_40x30', 'thermal_30x20', 'a4_single'], true);
+
+    // SKU pendek dicetak besar (kebaca dari jarak jauh), SKU panjang mengecil
+    // bertahap supaya tetap muat di label tanpa terpotong.
+    $skuClass = function (string $sku): string {
+        $len = mb_strlen($sku);
+
+        return $len <= 14 ? 'sku-lg' : ($len <= 22 ? 'sku-md' : 'sku-sm');
+    };
 @endphp
 <!DOCTYPE html>
 <html lang="id">
@@ -30,8 +38,12 @@
         }
         .page:last-child { page-break-after: auto; }
 
-        .label { width: 100%; }
-        table.label-row { width: 100%; border-collapse: collapse; }
+        /* Jangan set width:100% di .label — dompdf tidak mendukung box-sizing,
+           jadi width + padding akan menjumlah dan meluber keluar kertas.
+           Div block sudah mengisi lebar kertas dengan sendirinya. */
+        /* table-layout: fixed wajib — dengan auto layout dompdf melebarkan kolom
+           teks mengikuti SKU terpanjang sehingga label meluber keluar kertas. */
+        table.label-row { width: 100%; border-collapse: collapse; table-layout: fixed; }
         table.label-row td { vertical-align: middle; padding: 0; }
         td.qr-cell img { display: block; }
         td.text-cell { padding-left: 3mm; }
@@ -53,54 +65,69 @@
         @endif
 
         @if($paper === 'thermal_50x40')
-        @page { margin: 2mm; }
+        @page { margin: 0; }
+        .label { padding: 2mm; }
         body { font-size: 7pt; }
-        table.label-row td { height: 36mm; }
-        td.qr-cell { width: 24mm; }
-        td.qr-cell img { width: 23mm; height: 23mm; }
+        table.label-row td { height: 35mm; }
+        td.qr-cell { width: 22mm; }
+        td.qr-cell img { width: 21mm; height: 21mm; }
         td.text-cell { padding-left: 2mm; }
         .store { font-size: 6pt; }
-        .sku { font-size: 9pt; }
-        .name { font-size: 6pt; max-height: 9mm; }
-        .price { font-size: 8pt; }
-        @endif
-
-        @if($paper === 'thermal_80x40')
-        @page { margin: 2mm; }
-        body { font-size: 8pt; }
-        table.label-row td { height: 36mm; }
-        td.qr-cell { width: 30mm; }
-        td.qr-cell img { width: 29mm; height: 29mm; }
-        .store { font-size: 7pt; }
-        .sku { font-size: 11pt; }
-        .name { font-size: 7pt; max-height: 10mm; }
+        .sku-lg { font-size: 13pt; }
+        .sku-md { font-size: 11pt; }
+        .sku-sm { font-size: 9pt; }
+        .name { font-size: 6.5pt; max-height: 6.2mm; }
         .price { font-size: 9pt; }
         @endif
 
+        @if($paper === 'thermal_80x40')
+        @page { margin: 0; }
+        .label { padding: 2mm; }
+        body { font-size: 8pt; }
+        table.label-row td { height: 35mm; }
+        td.qr-cell { width: 30mm; }
+        td.qr-cell img { width: 29mm; height: 29mm; }
+        .store { font-size: 7pt; }
+        .sku-lg { font-size: 17pt; }
+        .sku-md { font-size: 14pt; }
+        .sku-sm { font-size: 11pt; }
+        .name { font-size: 8pt; max-height: 7.6mm; }
+        .price { font-size: 11pt; }
+        @endif
+
         @if($paper === 'thermal_40x30')
-        @page { margin: 1.5mm; }
+        @page { margin: 0; }
+        .label { padding: 1.5mm; }
         body { font-size: 6pt; }
-        table.label-row td { height: 27mm; }
+        table.label-row td { height: 26mm; }
         td.qr-cell { width: 18mm; }
         td.qr-cell img { width: 17mm; height: 17mm; }
         td.text-cell { padding-left: 1.5mm; }
         .store { font-size: 5pt; }
-        .sku { font-size: 7.5pt; }
-        .name { font-size: 5pt; max-height: 7mm; }
-        .price { font-size: 7pt; }
+        .sku-lg { font-size: 10pt; }
+        .sku-md { font-size: 8.5pt; }
+        .sku-sm { font-size: 7pt; }
+        .name { font-size: 5.5pt; max-height: 5.2mm; }
+        .price { font-size: 7.5pt; }
         @endif
 
         @if($paper === 'thermal_30x20')
-        @page { margin: 1mm; }
+        @page { margin: 0; }
+        .label { padding: 1mm; }
         body { font-size: 5pt; }
-        table.label-row td { height: 18mm; }
+        table.label-row td { height: 17mm; }
         td.qr-cell { width: 12mm; }
         td.qr-cell img { width: 11.5mm; height: 11.5mm; }
         td.text-cell { padding-left: 1.2mm; }
         .store { font-size: 4pt; margin-bottom: 0.3mm; }
-        .sku { font-size: 6pt; }
-        .name { font-size: 4pt; max-height: 5mm; margin-top: 0.3mm; }
-        .price { font-size: 5.5pt; margin-top: 0.3mm; }
+        .sku-lg { font-size: 8pt; }
+        .sku-md { font-size: 7pt; }
+        .sku-sm { font-size: 5.5pt; }
+        /* 30x20mm hanya muat QR + SKU (+ harga). Nama produk disembunyikan:
+           pada ukuran ini tingginya ~1.6mm alias tidak terbaca, tapi tetap
+           memakan ruang sehingga konten meluber ke label berikutnya. */
+        .name { display: none; }
+        .price { font-size: 6pt; margin-top: 0.5mm; }
         @endif
 
         @if($paper === 'a4_single')
@@ -164,7 +191,7 @@
                                 @if($showStore)
                                     <div class="store">{{ $cell['store_name'] ?: '—' }}</div>
                                 @endif
-                                <div class="sku">{{ $cell['sku'] }}</div>
+                                <div class="sku {{ $skuClass($cell['sku']) }}">{{ $cell['sku'] }}</div>
                                 <div class="name">{{ $cell['name'] }}</div>
                                 @if($showPrice)
                                     <div class="price">{{ $fmtPrice($cell['price']) }}</div>
@@ -193,7 +220,7 @@
                                             @if($showStore)
                                                 <div class="store">{{ $cell['store_name'] ?: '—' }}</div>
                                             @endif
-                                            <div class="sku">{{ $cell['sku'] }}</div>
+                                            <div class="sku {{ $skuClass($cell['sku']) }}">{{ $cell['sku'] }}</div>
                                             <div class="name">{{ $cell['name'] }}</div>
                                             @if($showPrice)
                                                 <div class="price">{{ $fmtPrice($cell['price']) }}</div>
