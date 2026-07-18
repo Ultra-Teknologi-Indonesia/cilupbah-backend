@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Repositories;
 
 use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Models\ProductVariant;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -206,15 +207,16 @@ class InventoryRepository
         return DB::table('product_variants')
             ->whereIn('product_variants.id', $orderItemIds)
             ->leftJoin('inventories', 'inventories.item_id', '=', 'product_variants.id')
+            ->leftJoin('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
             ->join('products', 'products.id', '=', 'product_variants.product_id')
             ->groupBy('product_variants.id', 'product_variants.sku', 'products.name')
-            ->havingRaw('COALESCE(SUM(inventories.available), 0) <= 0')
+            ->havingRaw(StockSummary::availableSql() . ' <= 0')
             ->select(
                 'product_variants.id as item_id',
                 'product_variants.sku',
                 'products.name as product_name',
-                DB::raw('COALESCE(SUM(inventories.on_hand), 0) as total_on_hand'),
-                DB::raw('COALESCE(SUM(inventories.available), 0) as total_available'),
+                DB::raw(StockSummary::placedOnHandSql() . ' as total_on_hand'),
+                DB::raw(StockSummary::availableSql() . ' as total_available'),
             )
             ->paginate(request('per_page', $limit))
             ->appends(request()->query());
@@ -285,8 +287,17 @@ class InventoryRepository
 
     public function getAvailableToSell(string $locationId, int $limit = 10)
     {
+        $sellableItemIds = DB::table('inventories')
+            ->leftJoin('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
+            ->where('inventories.location_id', $locationId)
+            ->groupBy('inventories.item_id')
+            ->havingRaw(StockSummary::availableSql() . ' > 0')
+            ->select('inventories.item_id');
+
         return Inventory::where('location_id', $locationId)
-            ->where('available', '>', 0)
+            ->placed()
+            ->where('on_hand', '>', 0)
+            ->whereIn('item_id', $sellableItemIds)
             ->with(['product:id,sku,product_id', 'product.product:id,name', 'bin:id,bin_final_code'])
             ->select('id', 'item_id', 'location_id', 'bin_id', 'batch_no', 'serial_no', 'on_hand', 'on_order', 'available')
             ->orderBy('item_id')

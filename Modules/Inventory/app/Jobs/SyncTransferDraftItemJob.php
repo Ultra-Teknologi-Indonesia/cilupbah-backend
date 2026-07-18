@@ -108,7 +108,6 @@ class SyncTransferDraftItemJob implements ShouldQueue
         }
 
         $sourceInventory->on_order += $this->qty;
-        $sourceInventory->available -= $this->qty;
         $inventoryRepository->updateStock($sourceInventory);
 
         $movementRepository->create([
@@ -186,7 +185,6 @@ class SyncTransferDraftItemJob implements ShouldQueue
 
         if ($sourceInventory) {
             $sourceInventory->on_order += $delta;
-            $sourceInventory->available -= $delta;
             $inventoryRepository->updateStock($sourceInventory);
 
             $movementRepository->create([
@@ -262,7 +260,6 @@ class SyncTransferDraftItemJob implements ShouldQueue
                 if ($sourceInventory) {
                     $releaseQty = min($this->qty, $sourceInventory->on_order);
                     $sourceInventory->on_order -= $releaseQty;
-                    $sourceInventory->available += $releaseQty;
                     $inventoryRepository->updateStock($sourceInventory);
 
                     $movementRepository->create([

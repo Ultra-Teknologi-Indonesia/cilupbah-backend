@@ -7,6 +7,21 @@ use Illuminate\Support\Facades\DB;
 class StockSummary
 {
 
+    public static function placedOnHandSql(string $inv = 'inventories', string $bin = 'location_bins'): string
+    {
+        return "COALESCE(SUM(CASE WHEN {$bin}.id IS NOT NULL AND {$bin}.is_inbound = false THEN {$inv}.on_hand ELSE 0 END),0)";
+    }
+
+    public static function onOrderSql(string $inv = 'inventories'): string
+    {
+        return "COALESCE(SUM({$inv}.on_order),0)";
+    }
+
+    public static function availableSql(string $inv = 'inventories', string $bin = 'location_bins'): string
+    {
+        return 'GREATEST(0, ' . self::placedOnHandSql($inv, $bin) . ' - ' . self::onOrderSql($inv) . ')';
+    }
+
     public static function forItems(array $itemIds, ?array $locationIds = null): array
     {
         $itemIds = array_values(array_filter(array_unique($itemIds)));

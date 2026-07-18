@@ -6,6 +6,7 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Support\AppliesStockMonitorFilters;
+use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
 use Spatie\QueryBuilder\AllowedFilter;
@@ -26,9 +27,9 @@ class MonitorStockRepository
         $inv = DB::table('inventories')
             ->leftJoin('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
             ->select('inventories.item_id as item_id')
-            ->selectRaw('COALESCE(SUM(CASE WHEN location_bins.id IS NOT NULL AND location_bins.is_inbound = false THEN inventories.on_hand ELSE 0 END),0) as on_hand')
-            ->selectRaw('COALESCE(SUM(inventories.available),0) as available')
-            ->selectRaw('COALESCE(SUM(inventories.on_order),0) as on_order')
+            ->selectRaw(StockSummary::placedOnHandSql() . ' as on_hand')
+            ->selectRaw(StockSummary::availableSql() . ' as available')
+            ->selectRaw(StockSummary::onOrderSql() . ' as on_order')
             ->when($locationId, fn ($q) => $q->where('inventories.location_id', $locationId))
             ->groupBy('inventories.item_id');
 
