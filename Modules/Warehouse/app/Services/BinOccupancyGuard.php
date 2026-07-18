@@ -60,19 +60,19 @@ class BinOccupancyGuard
             return false;
         }
 
+        // Rak inbound staging boleh multi-SKU (buffer sementara sebelum putaway).
         if ($bin->is_inbound) {
             return false;
         }
 
+        // Rak yang belum "diakui" sebagai rak stok — biasanya WIP / setup.
         if (! $bin->is_stock_acknowledged) {
             return false;
         }
 
-        $location = $bin->location;
-        if (! $location || ! $location->enforcesStrictBinSku()) {
-            return false;
-        }
-
+        // "1 rak = 1 SKU" berlaku di SEMUA gudang. Tidak lagi scope ke
+        // WH-KECIL — WH-PUSAT juga strict per-rak. Yang khusus WH-KECIL
+        // adalah aturan "1 SKU = 1 rak" (lihat SkuHomeBinGuard).
         return true;
     }
 

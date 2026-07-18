@@ -15,11 +15,17 @@ use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 
 /**
- * Seed data end-to-end untuk 3 skenario testing mobile:
+ * Seed data end-to-end untuk 3 skenario testing mobile.
  *
- *  1. Pembelian → Penerimaan → Putaway ke WH-PUSAT (SKU 1:M rak, guard off)
- *  2. Transfer  → Penerimaan → Putaway ke WH-KECIL (strict 1 SKU 1 rak, guard on)
- *  3. Transfer  → Penerimaan → Putaway ke WH-PUSAT (SKU 1:M rak, guard off)
+ * Aturan bisnis (ditegakkan Guard di BE):
+ *   - WH-PUSAT: 1 rak = 1 SKU (BinOccupancyGuard),
+ *               1 SKU boleh di banyak rak (SkuHomeBinGuard OFF).
+ *   - WH-KECIL: 1 rak = 1 SKU + 1 SKU = 1 rak (kedua guard ON).
+ *
+ * Skenario yang di-seed:
+ *   1. Pembelian → Penerimaan → Putaway ke WH-PUSAT
+ *   2. Transfer  → Penerimaan → Putaway ke WH-KECIL
+ *   3. Transfer  → Penerimaan → Putaway ke WH-PUSAT
  *
  * Idempotent — bisa di-rerun. Skip data yang sudah ada.
  */
@@ -194,8 +200,8 @@ class WarehouseE2ESeeder extends Seeder
         $this->command->line('  E2E-SKU-A, E2E-SKU-B, E2E-SKU-C, E2E-SKU-K');
         $this->command->line('');
         $this->command->line('Bin tambahan:');
-        $this->command->line('  WH-PUSAT: A-01, A-02, A-03, B-01 (allow multi-SKU per bin)');
-        $this->command->line('  WH-KECIL: K-01, K-02, K-03 (strict 1 SKU 1 rak)');
+        $this->command->line('  WH-PUSAT: A-01, A-02, A-03, B-01 (1 rak = 1 SKU, SKU boleh di M rak)');
+        $this->command->line('  WH-KECIL: K-01, K-02, K-03 (strict 1 rak 1 SKU + 1 SKU 1 rak)');
     }
 
     /**
