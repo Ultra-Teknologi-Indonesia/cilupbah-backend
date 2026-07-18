@@ -78,6 +78,7 @@ class AuthController extends Controller
             'access_token'  => $data['access_token'],
             'refresh_token' => $data['refresh_token'],
             'expires_in'    => $data['expires_in'],
+            'refresh_expires_in' => $data['refresh_expires_in'],
             'token_type'    => $data['token_type'],
             'user'          => new ProfileResource($this->userService->attachProfileContext($data['user'])),
         ];
@@ -119,9 +120,34 @@ class AuthController extends Controller
             'access_token'  => $data['access_token'],
             'refresh_token' => $data['refresh_token'],
             'expires_in'    => $data['expires_in'],
+            'refresh_expires_in' => $data['refresh_expires_in'],
             'token_type'    => $data['token_type'],
             'user'          => new ProfileResource($this->userService->attachProfileContext($data['user'])),
         ], 'Token diperbarui.');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/auth/unlock',
+        summary: 'Verifikasi ulang password untuk membuka idle lock',
+        description: 'Dipakai saat layar terkunci karena tidak ada aktivitas. Hanya memverifikasi password user yang sedang login — tidak menerbitkan token baru dan tidak mencatat login history baru, supaya daftar sesi & riwayat login tidak penuh oleh aksi unlock.',
+        security: [['bearerAuth' => []]],
+        tags: ['Auth'],
+        responses: [
+            new OA\Response(response: 200, description: 'Password cocok, layar boleh dibuka'),
+            new OA\Response(response: 422, description: 'Password tidak sesuai'),
+        ]
+    )]
+    public function unlock(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'password' => ['required', 'string'],
+        ]);
+
+        if (! $this->authService->verifyPassword($request->user(), $validated['password'])) {
+            return $this->errorResponse('Kata sandi tidak sesuai.', 422);
+        }
+
+        return $this->successResponse(null, 'Selamat datang kembali.');
     }
 
     #[OA\Get(

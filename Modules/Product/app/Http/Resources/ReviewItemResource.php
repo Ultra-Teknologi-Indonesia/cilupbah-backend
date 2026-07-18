@@ -15,10 +15,12 @@ class ReviewItemResource extends MasterItemResource
         $qtyByVariant = $this->variants->mapWithKeys(function ($variant) {
             $inventories = $variant->relationLoaded('inventories') ? $variant->inventories : collect();
 
+            $summary = \Modules\Inventory\Support\StockSummary::partitionLoaded($inventories);
+
             return [$variant->id => [
-                'end_qty' => (int) $inventories->sum('on_hand'),
-                'order_qty' => (int) $inventories->sum('on_order'),
-                'available_qty' => (int) $inventories->sum('available'),
+                'end_qty' => (int) $summary['on_hand'],
+                'order_qty' => (int) $summary['on_order'],
+                'available_qty' => max(0, (int) $summary['available']),
             ]];
         });
 

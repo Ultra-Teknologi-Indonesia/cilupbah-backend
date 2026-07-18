@@ -2,6 +2,7 @@
 
 namespace Modules\Product\Repositories;
 
+use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\ProductWholesalePrice;
@@ -183,7 +184,11 @@ class ProductRepository
         return QueryBuilder::for(ProductVariant::class)
             ->where('product_id', $productId)
             ->with(['options', 'media'])
-            ->withSum('inventories', 'available')
+            ->select('product_variants.*')
+            ->addSelect(['inventories_sum_available' => DB::table('inventories')
+                ->leftJoin('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
+                ->whereColumn('inventories.item_id', 'product_variants.id')
+                ->selectRaw(StockSummary::availableSql())])
             ->allowedSearch('sku')
             ->allowedFilters(
                 AllowedFilter::callback('option', fn ($q, $v) => $q->whereHas('options', fn ($o) => $o->where('value', 'ilike', "%{$v}%")))

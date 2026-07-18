@@ -76,6 +76,7 @@ class AuthService
             'access_token'  => $pair['access_token'],
             'refresh_token' => $pair['refresh_token'],
             'expires_in'    => self::ACCESS_TOKEN_TTL_MINUTES * 60,
+            'refresh_expires_in' => self::REFRESH_TOKEN_TTL_DAYS * 86400,
             'token_type'    => 'Bearer',
             'user'          => $user,
         ];
@@ -112,6 +113,7 @@ class AuthService
             'access_token'  => $pair['access_token'],
             'refresh_token' => $pair['refresh_token'],
             'expires_in'    => self::ACCESS_TOKEN_TTL_MINUTES * 60,
+            'refresh_expires_in' => self::REFRESH_TOKEN_TTL_DAYS * 86400,
             'token_type'    => 'Bearer',
             'user'          => $user,
         ];
@@ -156,6 +158,40 @@ class AuthService
         return $tokenName;
     }
 
+    /** Suffix penanda refresh token pada kolom name. */
+    public const REFRESH_NAME_SUFFIX = ':refresh';
+
+    /**
+     * Akses & refresh token selalu terbit berpasangan dengan nama
+     * "N" dan "N:refresh". Semua pencabutan sesi harus mengenai keduanya —
+     * kalau hanya access token yang dicabut, refresh token yang tertinggal
+     * akan mencetak access token baru dan sesi itu hidup lagi.
+     *
+     * @return array<int,string> id baris yang menjadi satu pasangan
+     */
+    protected function pairTokenIds(User $user, string $tokenId): array
+    {
+        $row = DB::table('personal_access_tokens')
+            ->where('tokenable_type', $user->getMorphClass())
+            ->where('tokenable_id', $user->id)
+            ->where('id', $tokenId)
+            ->first(['id', 'name']);
+
+        if (! $row) {
+            return [$tokenId];
+        }
+
+        $base = $this->deriveNameForRotation($row->name);
+
+        return DB::table('personal_access_tokens')
+            ->where('tokenable_type', $user->getMorphClass())
+            ->where('tokenable_id', $user->id)
+            ->whereIn('name', [$base, $base.self::REFRESH_NAME_SUFFIX])
+            ->pluck('id')
+            ->map(fn ($id) => (string) $id)
+            ->all();
+    }
+
     private function resolveClientMeta(Request $request): array
     {
         $clientTypeRaw = strtolower((string) $request->header('X-Client-Type', ''));
@@ -196,9 +232,29 @@ class AuthService
         return $clientType.':'.$label;
     }
 
+    /**
+     * Logout harus mencabut access DAN refresh token. Kalau hanya access
+     * token yang dihapus, refresh token tetap hidup sampai 30 hari dan
+     * masih bisa dipakai mencetak access token baru — sesi tidak
+     * benar-benar berakhir.
+     */
     public function logout(User $user): void
     {
-        $this->userRepository->deleteCurrentToken($user);
+        $current = $user->currentAccessToken();
+
+        if (! $current) {
+            return;
+        }
+
+        DB::table('personal_access_tokens')
+            ->whereIn('id', $this->pairTokenIds($user, (string) $current->getKey()))
+            ->delete();
+    }
+
+    /** Verifikasi password user untuk membuka idle lock. */
+    public function verifyPassword(User $user, string $password): bool
+    {
+        return Hash::check($password, $user->password);
     }
 
     public function getProfile(User $user): User
@@ -233,22 +289,46 @@ class AuthService
         return $user->refresh()->load('roles', 'permissions');
     }
 
+    /**
+     * Satu sesi = satu pasang token, jadi baris ":refresh" tidak ditampilkan
+     * sebagai sesi tersendiri. Tapi `expires_at` diambil dari baris refresh,
+     * karena itulah yang menentukan kapan sesi benar-benar berakhir —
+     * access token cuma berumur 60 menit dan terus diperbarui.
+     */
     public function listSessions(User $user, ?string $currentTokenId): Collection
     {
-        return DB::table('personal_access_tokens')
+        $rows = DB::table('personal_access_tokens')
             ->where('tokenable_type', $user->getMorphClass())
             ->where('tokenable_id', $user->id)
             ->orderByDesc('last_used_at')
             ->orderByDesc('created_at')
-            ->get(['id', 'name', 'last_used_at', 'created_at', 'expires_at'])
-            ->map(function ($row) use ($currentTokenId) {
+            ->get(['id', 'name', 'last_used_at', 'created_at', 'expires_at']);
+
+        $refreshByBase = $rows
+            ->filter(fn ($row) => str_ends_with($row->name, self::REFRESH_NAME_SUFFIX))
+            ->keyBy(fn ($row) => $this->deriveNameForRotation($row->name));
+
+        $currentBase = null;
+        if ($currentTokenId !== null) {
+            $currentRow = $rows->first(fn ($row) => (string) $row->id === $currentTokenId);
+            if ($currentRow) {
+                $currentBase = $this->deriveNameForRotation($currentRow->name);
+            }
+        }
+
+        return $rows
+            ->reject(fn ($row) => str_ends_with($row->name, self::REFRESH_NAME_SUFFIX))
+            ->values()
+            ->map(function ($row) use ($refreshByBase, $currentBase) {
+                $refresh = $refreshByBase->get($row->name);
+
                 return [
                     'id' => (string) $row->id,
                     'name' => $row->name,
                     'last_used_at' => $row->last_used_at,
                     'created_at' => $row->created_at,
-                    'expires_at' => $row->expires_at,
-                    'is_current' => $currentTokenId !== null && (string) $row->id === $currentTokenId,
+                    'expires_at' => $refresh->expires_at ?? $row->expires_at,
+                    'is_current' => $currentBase !== null && $row->name === $currentBase,
                 ];
             });
     }
@@ -262,13 +342,19 @@ class AuthService
             );
         }
 
+        // Cabut sepasang — kalau refresh token pasangannya tertinggal,
+        // sesi yang "sudah dicabut" akan hidup lagi lewat /auth/refresh.
         DB::table('personal_access_tokens')
-            ->where('tokenable_type', $user->getMorphClass())
-            ->where('tokenable_id', $user->id)
-            ->where('id', $tokenId)
+            ->whereIn('id', $this->pairTokenIds($user, $tokenId))
             ->delete();
     }
 
+    /**
+     * Kecualikan SEPASANG token milik sesi berjalan, bukan hanya access
+     * token-nya. Kalau refresh token sendiri ikut terhapus, user yang
+     * menekan "cabut sesi lain" akan ter-logout paksa begitu access
+     * token-nya kedaluwarsa.
+     */
     public function revokeOtherSessions(User $user, ?string $currentTokenId): int
     {
         $query = DB::table('personal_access_tokens')
@@ -276,9 +362,13 @@ class AuthService
             ->where('tokenable_id', $user->id);
 
         if ($currentTokenId !== null) {
-            $query->where('id', '!=', $currentTokenId);
+            $query->whereNotIn('id', $this->pairTokenIds($user, $currentTokenId));
         }
 
-        return $query->delete();
+        $deleted = $query->delete();
+
+        // Hitung per sesi (pasangan), bukan per baris token, supaya angka
+        // yang muncul di UI cocok dengan jumlah sesi yang ditampilkan.
+        return (int) ceil($deleted / 2);
     }
 }

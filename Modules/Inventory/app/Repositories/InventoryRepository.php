@@ -352,10 +352,10 @@ class InventoryRepository
         return QueryBuilder::for(Inventory::class)
             ->leftJoin('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
             ->select('inventories.item_id')
-            ->selectRaw('COALESCE(SUM(CASE WHEN location_bins.id IS NOT NULL AND location_bins.is_inbound = false THEN inventories.on_hand ELSE 0 END),0) as total_on_hand')
+            ->selectRaw(StockSummary::placedOnHandSql() . ' as total_on_hand')
             ->selectRaw('COALESCE(SUM(CASE WHEN location_bins.id IS NULL OR location_bins.is_inbound = true THEN inventories.on_hand ELSE 0 END),0) as total_pending_placement')
-            ->selectRaw('COALESCE(SUM(inventories.on_order),0) as total_on_order')
-            ->selectRaw('COALESCE(SUM(inventories.available),0) as total_available')
+            ->selectRaw(StockSummary::onOrderSql() . ' as total_on_order')
+            ->selectRaw(StockSummary::availableSql() . ' as total_available')
             ->groupBy('inventories.item_id')
             ->with(['product:id,sku,product_id'])
             ->allowedFilters(
@@ -452,12 +452,13 @@ class InventoryRepository
 
     public function getAggregatedStocksByIds(array $ids): Collection
     {
-        return Inventory::select('item_id', 'location_id',
-                DB::raw('SUM(on_hand) as total_on_hand'),
-                DB::raw('SUM(on_order) as total_on_order'),
-                DB::raw('SUM(available) as total_available'))
-            ->whereIn('item_id', $ids)
-            ->groupBy('item_id', 'location_id')
+        return Inventory::leftJoin('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
+            ->select('inventories.item_id', 'inventories.location_id',
+                DB::raw(StockSummary::placedOnHandSql() . ' as total_on_hand'),
+                DB::raw(StockSummary::onOrderSql() . ' as total_on_order'),
+                DB::raw(StockSummary::availableSql() . ' as total_available'))
+            ->whereIn('inventories.item_id', $ids)
+            ->groupBy('inventories.item_id', 'inventories.location_id')
             ->with(['product:id,sku,product_id', 'location:id,location_name,location_code'])
             ->get();
     }

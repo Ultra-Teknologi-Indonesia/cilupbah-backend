@@ -32,6 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->api(prepend: [
             \App\Http\Middleware\ResolveClientChannel::class,
+            \App\Http\Middleware\RejectNonAccessToken::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

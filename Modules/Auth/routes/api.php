@@ -29,6 +29,10 @@ Route::prefix('v1/auth')->group(function () {
         Route::post('/refresh', [AuthController::class, 'refresh'])
             ->middleware('throttle:20,1')
             ->name('auth.refresh');
+        // Buka idle lock — verifikasi password tanpa menerbitkan token baru.
+        Route::post('/unlock', [AuthController::class, 'unlock'])
+            ->middleware('throttle:5,1')
+            ->name('auth.unlock');
     });
 });
 
