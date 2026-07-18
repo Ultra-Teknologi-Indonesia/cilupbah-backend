@@ -23,6 +23,8 @@ class InventoryMovementResource extends JsonResource
             'bin_id' => $this->bin_id,
             'bin_code' => $this->whenLoaded('bin', fn () => $this->bin?->bin_final_code),
             'transaction_number' => $this->transaction_number,
+            'reference_number' => $this->ref_no,
+            'note' => $this->ref_note,
             'source' => $this->source,
             'source_category' => $meta['category'],
             'source_label' => $meta['label'],
@@ -33,6 +35,7 @@ class InventoryMovementResource extends JsonResource
             'transaction_date' => $this->transaction_date,
             'created_by' => $this->created_by,
             'created_at' => $this->created_at,
+            'updated_at' => $this->updated_at,
         ];
     }
 }

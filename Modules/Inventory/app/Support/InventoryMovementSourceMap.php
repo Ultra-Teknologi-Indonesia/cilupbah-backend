@@ -12,6 +12,8 @@ class InventoryMovementSourceMap
         'SALES_RETURN'     => ['category' => 'SALES_RETURN', 'label' => 'Retur Penjualan'],
         'PICKING'          => ['category' => 'PICKING', 'label' => 'Barang di-pick'],
         'PICKING_REVERSAL' => ['category' => 'PICKING', 'label' => 'Koreksi Pick'],
+        'ORDER_RESERVE'       => ['category' => 'ALOKASI', 'label' => 'Alokasi Pesanan'],
+        'ORDER_RELEASE'       => ['category' => 'ALOKASI', 'label' => 'Alokasi Dilepas'],
         'ORDER_SHIP'          => ['category' => 'PESANAN', 'label' => 'Pesanan Dikirim'],
         'ORDER_RESTORE'       => ['category' => 'PESANAN', 'label' => 'Pesanan Dibatalkan'],
         'ORDER_RESTORE_CANCEL' => ['category' => 'PESANAN', 'label' => 'Pesanan Dibatalkan'],
@@ -34,6 +36,7 @@ class InventoryMovementSourceMap
         'PURCHASE_RETURN',
         'SALES_RETURN',
         'PICKING',
+        'ALOKASI',
         'PESANAN',
         'INVOICE',
         'TRANSFER',
@@ -41,6 +44,13 @@ class InventoryMovementSourceMap
     ];
 
     public const INVOICE_SOURCES = ['INVOICE', 'ORDER_PICK'];
+
+    /**
+     * Sumber ledger untuk alokasi pesanan (reserved qty), BUKAN on_hand.
+     * Baris ini dipisah dari running-balance on_hand di getHistoryPaginated
+     * dan menjadi target drill-down "On Order" di Posisi Stok.
+     */
+    public const RESERVED_SOURCES = ['ORDER_RESERVE', 'ORDER_RELEASE'];
 
     public const CLEAN_HIDDEN_SOURCES = ['INVOICE', 'ORDER_PICK'];
 

@@ -18,6 +18,15 @@ class InventoryMovementRepository
             ->get();
     }
 
+    public function reservationLedgerExists(string $transactionNumber, string $itemId, string $locationId): bool
+    {
+        return InventoryMovement::where('transaction_number', $transactionNumber)
+            ->where('item_id', $itemId)
+            ->where('location_id', $locationId)
+            ->whereIn('source', InventoryMovementSourceMap::RESERVED_SOURCES)
+            ->exists();
+    }
+
     public function getByTransactionNumber(string $transactionNumber): Collection
     {
         return InventoryMovement::where('transaction_number', $transactionNumber)
@@ -75,9 +84,13 @@ class InventoryMovementRepository
                 ->leftJoin('products', 'products.id', '=', 'product_variants.product_id');
         }
 
+        $reservedList = "'" . implode("','", InventoryMovementSourceMap::RESERVED_SOURCES) . "'";
+
         $qb = \Spatie\QueryBuilder\QueryBuilder::for($baseQuery)
             ->select('inventory_movements.*')
-            ->selectRaw('SUM(qty) OVER (PARTITION BY item_id, location_id ORDER BY transaction_date, inventory_movements.id) AS total_balance')
+            ->selectRaw("SUM(qty) OVER (PARTITION BY item_id, location_id, (CASE WHEN source IN ($reservedList) THEN 1 ELSE 0 END) ORDER BY transaction_date, inventory_movements.id) AS total_balance")
+            ->selectRaw('(SELECT COALESCE(so.channel_order_no, so.no_ref) FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1) AS ref_no')
+            ->selectRaw('(SELECT so.customer_name FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1) AS ref_note')
             ->with(['product:id,sku,product_id', 'location:id,location_name', 'bin:id,bin_final_code'])
             ->allowedSearch('product_variants.sku', 'products.name')
             ->allowedFilters(
