@@ -221,18 +221,21 @@ class ReportService
             'paper' => $paper,
         ]);
 
+        // Array [x0, y0, w, h] sudah dalam orientasi final (lebar x tinggi).
+        // Jangan pakai 'landscape' di sini: dompdf menukar w/h saat orientasi
+        // landscape (CPDF::__construct), sehingga label thermal jadi tegak.
         switch ($paper) {
             case 'thermal_50x40':
-                $pdf->setPaper([0, 0, 141.7, 113.4], 'landscape');
+                $pdf->setPaper([0, 0, 141.7, 113.4], 'portrait');
                 break;
             case 'thermal_80x40':
-                $pdf->setPaper([0, 0, 226.8, 113.4], 'landscape');
+                $pdf->setPaper([0, 0, 226.8, 113.4], 'portrait');
                 break;
             case 'thermal_40x30':
-                $pdf->setPaper([0, 0, 113.4, 85.0], 'landscape');
+                $pdf->setPaper([0, 0, 113.4, 85.0], 'portrait');
                 break;
             case 'thermal_30x20':
-                $pdf->setPaper([0, 0, 85.0, 56.7], 'landscape');
+                $pdf->setPaper([0, 0, 85.0, 56.7], 'portrait');
                 break;
             default:
                 $pdf->setPaper('a4', 'portrait');

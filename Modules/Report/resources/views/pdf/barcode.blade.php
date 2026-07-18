@@ -30,8 +30,8 @@
         }
         .page:last-child { page-break-after: auto; }
 
-        .label { width: 100%; height: 100%; }
-        table.label-row { width: 100%; height: 100%; border-collapse: collapse; }
+        .label { width: 100%; }
+        table.label-row { width: 100%; border-collapse: collapse; }
         table.label-row td { vertical-align: middle; padding: 0; }
         td.qr-cell img { display: block; }
         td.text-cell { padding-left: 3mm; }
@@ -46,7 +46,7 @@
         .sku {
             font-weight: 700;
             line-height: 1.15;
-            word-break: break-all;
+            overflow-wrap: anywhere;
         }
         .name { line-height: 1.15; margin-top: 1mm; overflow: hidden; }
         .price { font-weight: 700; margin-top: 1mm; }
@@ -55,21 +55,24 @@
         @if($paper === 'thermal_50x40')
         @page { margin: 2mm; }
         body { font-size: 7pt; }
-        td.qr-cell { width: 30mm; }
-        td.qr-cell img { width: 28mm; height: 28mm; }
+        table.label-row td { height: 36mm; }
+        td.qr-cell { width: 24mm; }
+        td.qr-cell img { width: 23mm; height: 23mm; }
+        td.text-cell { padding-left: 2mm; }
         .store { font-size: 6pt; }
-        .sku { font-size: 8pt; }
-        .name { font-size: 6pt; max-height: 10mm; }
+        .sku { font-size: 9pt; }
+        .name { font-size: 6pt; max-height: 9mm; }
         .price { font-size: 8pt; }
         @endif
 
         @if($paper === 'thermal_80x40')
         @page { margin: 2mm; }
         body { font-size: 8pt; }
-        td.qr-cell { width: 32mm; }
-        td.qr-cell img { width: 30mm; height: 30mm; }
+        table.label-row td { height: 36mm; }
+        td.qr-cell { width: 30mm; }
+        td.qr-cell img { width: 29mm; height: 29mm; }
         .store { font-size: 7pt; }
-        .sku { font-size: 10pt; }
+        .sku { font-size: 11pt; }
         .name { font-size: 7pt; max-height: 10mm; }
         .price { font-size: 9pt; }
         @endif
@@ -77,21 +80,23 @@
         @if($paper === 'thermal_40x30')
         @page { margin: 1.5mm; }
         body { font-size: 6pt; }
-        td.qr-cell { width: 22mm; }
-        td.qr-cell img { width: 20mm; height: 20mm; }
-        td.text-cell { padding-left: 2mm; }
+        table.label-row td { height: 27mm; }
+        td.qr-cell { width: 18mm; }
+        td.qr-cell img { width: 17mm; height: 17mm; }
+        td.text-cell { padding-left: 1.5mm; }
         .store { font-size: 5pt; }
-        .sku { font-size: 7pt; }
-        .name { font-size: 5pt; max-height: 8mm; }
+        .sku { font-size: 7.5pt; }
+        .name { font-size: 5pt; max-height: 7mm; }
         .price { font-size: 7pt; }
         @endif
 
         @if($paper === 'thermal_30x20')
         @page { margin: 1mm; }
         body { font-size: 5pt; }
-        td.qr-cell { width: 14mm; }
-        td.qr-cell img { width: 13mm; height: 13mm; }
-        td.text-cell { padding-left: 1.5mm; }
+        table.label-row td { height: 18mm; }
+        td.qr-cell { width: 12mm; }
+        td.qr-cell img { width: 11.5mm; height: 11.5mm; }
+        td.text-cell { padding-left: 1.2mm; }
         .store { font-size: 4pt; margin-bottom: 0.3mm; }
         .sku { font-size: 6pt; }
         .name { font-size: 4pt; max-height: 5mm; margin-top: 0.3mm; }
