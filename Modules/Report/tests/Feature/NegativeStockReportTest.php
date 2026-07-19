@@ -2,6 +2,8 @@
 
 namespace Modules\Report\Tests\Feature;
 
+use App\Models\Permission;
+use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Inventory\Models\InventoryMovement;
@@ -9,8 +11,6 @@ use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
-use Spatie\Permission\Models\Permission;
-use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class NegativeStockReportTest extends TestCase

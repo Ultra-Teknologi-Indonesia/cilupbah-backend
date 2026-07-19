@@ -347,6 +347,42 @@ class ReportService
         ];
     }
 
+    public function transferReportRows(array $filters): array
+    {
+        $isMasuk = ($filters['jenis'] ?? 'keluar') === 'masuk';
+
+        return $this->repository
+            ->transferQuery($filters)
+            ->get()
+            ->map(fn ($row) => $this->formatTransferRow($row, $isMasuk))
+            ->all();
+    }
+
+    private function formatTransferRow(object $row, bool $isMasuk): array
+    {
+        $catatan = $row->item_notes ?: ($row->transfer_notes ?: null);
+
+        $common = [
+            'tanggal' => $row->tanggal,
+            'lokasi_asal' => $row->location_source,
+            'lokasi_tujuan' => $row->location_destination,
+            'sku' => $row->sku,
+            'nama_barang' => $row->product_name,
+            'qty' => (float) $row->qty,
+            'catatan' => $catatan,
+        ];
+
+        if (! $isMasuk) {
+            return ['no_transfer' => $row->transfer_number] + $common;
+        }
+
+        return [
+            'no_terima' => $row->receive_number,
+            'tanggal_terima' => $row->received_at,
+            'no_transfer_asal' => $row->transfer_number,
+        ] + $common;
+    }
+
     public function negativeStockRows(array $filters): array
     {
         return $this->repository

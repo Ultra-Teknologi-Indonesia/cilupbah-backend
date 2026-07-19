@@ -21,6 +21,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::middleware('role_or_permission:owner|view-laporan-gudang')->group(function () {
         Route::get('reports/wms/pick-list', [ReportController::class, 'pickList'])->name('reports.wms.pick-list');
         Route::get('reports/wms/shipping-manifest', [ReportController::class, 'shippingManifest'])->name('reports.wms.shipping-manifest');
+        Route::get('reports/wms/transfer/export', [ReportController::class, 'transferExport'])->name('reports.wms.transfer.export');
     });
     Route::middleware('role_or_permission:owner|view-laporan-hpp')->group(function () {
         Route::get('reports/hpp', [ReportController::class, 'hpp'])->name('reports.hpp');

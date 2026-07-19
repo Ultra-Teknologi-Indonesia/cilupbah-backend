@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Report\Exports\NegativeStockReportExport;
+use Modules\Report\Exports\TransferReportExport;
 use Modules\Report\Http\Requests\BarcodeReportRequest;
 use Modules\Report\Http\Requests\HppReportRequest;
 use Modules\Report\Http\Requests\PenyesuaianStokPdfRequest;
@@ -403,6 +404,35 @@ class ReportController extends Controller
             'riwayat-stok-minus_%s_%s.xlsx',
             $validated['from'] ?? 'semua',
             $validated['to'] ?? now()->format('Y-m-d'),
+        );
+
+        return Excel::download($export, $filename);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/wms/transfer/export',
+        summary: 'Export Laporan Gudang - Transfer (masuk/keluar) ke XLSX',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
+    )]
+    public function transferExport(Request $request)
+    {
+        $validated = $request->validate([
+            'jenis' => 'required|in:masuk,keluar',
+            'from' => 'required|date',
+            'to' => 'required|date|after_or_equal:from',
+            'item_ids' => 'nullable|array',
+            'item_ids.*' => 'uuid',
+        ]);
+
+        $export = new TransferReportExport($this->reportService, $validated);
+
+        $filename = sprintf(
+            'laporan-transfer-%s_%s_%s.xlsx',
+            $validated['jenis'],
+            $validated['from'],
+            $validated['to'],
         );
 
         return Excel::download($export, $filename);

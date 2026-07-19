@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
+use Modules\Inventory\Models\InventoryTransfer;
 use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Models\StockOpname;
@@ -216,6 +217,57 @@ class ReportRepository
         }
 
         return $this->paginate($query);
+    }
+
+    public function transferQuery(array $filters): \Illuminate\Database\Query\Builder
+    {
+        $isMasuk = ($filters['jenis'] ?? 'keluar') === 'masuk';
+        $from = $filters['from'] ?? null;
+        $to = $filters['to'] ?? null;
+        $itemIds = $filters['item_ids'] ?? [];
+
+        $dateColumn = $isMasuk ? 't.received_at' : 't.shipped_at';
+        $qtyColumn = $isMasuk ? 'i.received_qty' : 'i.qty';
+
+        $query = DB::table('inventory_transfer_items as i')
+            ->join('inventory_transfers as t', 't.id', '=', 'i.inventory_transfer_id')
+            ->join('product_variants as v', 'v.id', '=', 'i.item_id')
+            ->leftJoin('products as p', 'p.id', '=', 'v.product_id')
+            ->leftJoin('locations as ls', 'ls.id', '=', 't.source_location_id')
+            ->leftJoin('locations as ld', 'ld.id', '=', 't.destination_location_id')
+            ->select([
+                't.transfer_number',
+                't.receive_number',
+                't.received_at',
+                't.notes as transfer_notes',
+                'i.item_notes',
+                'ls.location_name as location_source',
+                'ld.location_name as location_destination',
+                'v.sku',
+                'p.name as product_name',
+            ])
+            ->selectRaw('COALESCE(t.shipped_at, t.created_at) AS tanggal')
+            ->selectRaw($qtyColumn . ' AS qty');
+
+        if ($isMasuk) {
+            $query->where('t.status', InventoryTransfer::STATUS_RECEIVED)
+                ->whereNotNull('t.receive_number');
+        } else {
+            $query->whereIn('t.status', [
+                InventoryTransfer::STATUS_IN_TRANSIT,
+                InventoryTransfer::STATUS_CHECKING,
+                InventoryTransfer::STATUS_RECEIVED,
+            ]);
+        }
+
+        $query->when($from, fn ($q, $v) => $q->where($dateColumn, '>=', $v . ' 00:00:00'))
+            ->when($to, fn ($q, $v) => $q->where($dateColumn, '<=', $v . ' 23:59:59'));
+
+        if (! empty($itemIds)) {
+            $query->whereIn('i.item_id', $itemIds);
+        }
+
+        return $query->orderBy('v.sku')->orderBy('tanggal');
     }
 
     public function hppAggregates(string $dateFrom, string $dateTo, ?string $locationId = null): array
