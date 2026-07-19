@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Report\Exports\NegativeStockReportExport;
+use Modules\Report\Exports\PickListReportExport;
 use Modules\Report\Exports\TransferReportExport;
 use Modules\Report\Http\Requests\BarcodeReportRequest;
 use Modules\Report\Http\Requests\HppReportRequest;
@@ -436,6 +437,83 @@ class ReportController extends Controller
         );
 
         return Excel::download($export, $filename);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/wms/pick-list/export',
+        summary: 'Export Daftar Picklist ke XLSX',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
+    )]
+    public function pickListExport(Request $request)
+    {
+        $validated = $request->validate([
+            'from' => 'required|date',
+            'to' => 'required|date|after_or_equal:from',
+        ]);
+
+        $export = new PickListReportExport($this->reportService, $validated);
+
+        $filename = sprintf(
+            'daftar-picklist_%s_%s.xlsx',
+            $validated['from'],
+            $validated['to'],
+        );
+
+        return Excel::download($export, $filename);
+    }
+
+    #[OA\Post(
+        path: '/api/v1/reports/wms/pick-list/pdf',
+        summary: 'Cetak Detail Picklist ke PDF',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        responses: [new OA\Response(response: 200, description: 'PDF stream')]
+    )]
+    public function pickListDetailPdf(Request $request): Response
+    {
+        $validated = $request->validate([
+            'picklist_id' => 'required|uuid',
+            'order_ids' => 'nullable|array',
+            'order_ids.*' => 'uuid',
+            'download' => 'nullable|boolean',
+        ]);
+
+        $pdf = $this->reportService->pickListDetailBuild(
+            $validated['picklist_id'],
+            $validated['order_ids'] ?? null,
+        );
+
+        $filename = sprintf('Detail-Picklist_%s.pdf', substr($validated['picklist_id'], 0, 8));
+        $disposition = ($validated['download'] ?? false) ? 'attachment' : 'inline';
+
+        return response($pdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => "{$disposition}; filename=\"{$filename}\"",
+        ]);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/wms/pick-list/lookup',
+        summary: 'Cari picklist untuk combobox laporan',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        responses: [new OA\Response(response: 200, description: 'Daftar picklist')]
+    )]
+    public function pickListLookup(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'search' => 'nullable|string|max:100',
+            'per_page' => 'nullable|integer|min:1|max:50',
+        ]);
+
+        return response()->json([
+            'data' => $this->reportService->pickListLookup(
+                $validated['search'] ?? null,
+                (int) ($validated['per_page'] ?? 20),
+            ),
+        ]);
     }
 
     public function lazadaGetDocument(Request $request): JsonResponse

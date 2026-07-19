@@ -347,6 +347,72 @@ class ReportService
         ];
     }
 
+    public function pickListRowsQuery(array $filters): \Illuminate\Database\Query\Builder
+    {
+        return $this->repository->pickListRowsQuery($filters);
+    }
+
+    /**
+     * @return array<int, array{value: string, label: string, orders: array}>
+     */
+    public function pickListLookup(?string $search, int $perPage = 20): array
+    {
+        return $this->repository->pickListLookup($search, $perPage)
+            ->map(fn ($p) => [
+                'value' => $p->id,
+                'label' => $p->picklist_no,
+                'orders' => $p->items
+                    ->map(fn ($i) => [
+                        'value' => $i->order_id,
+                        'label' => $i->order?->salesorder_no ?? '-',
+                    ])
+                    ->unique('value')
+                    ->values()
+                    ->all(),
+            ])
+            ->all();
+    }
+
+    public function pickListDetailBuild(string $picklistId, ?array $orderIds = null)
+    {
+        ini_set('memory_limit', '1024M');
+        set_time_limit(180);
+
+        $picklist = $this->repository->pickList([
+            'picklist_id' => $picklistId,
+            'order_ids' => $this->normalizeOrderIds($orderIds),
+        ]);
+
+        $items = collect($picklist->items);
+        if (! empty($orderIds)) {
+            $items = $items->filter(fn ($i) => in_array($i->order_id, $orderIds, true));
+        }
+
+        $groups = $items
+            ->groupBy('order_id')
+            ->map(fn ($rows) => [
+                'order_no' => $rows->first()->order?->salesorder_no ?? '-',
+                'rows' => $rows->map(fn ($i) => [
+                    'image_url' => $i->image_url,
+                    'sku' => $i->sku,
+                    'product_name' => $i->product?->product?->name,
+                    'qty_ordered' => (int) $i->qty_ordered,
+                    'qty_picked' => (int) $i->qty_picked,
+                    'location_name' => $picklist->location?->location_name,
+                    'bin_code' => $i->bin?->bin_final_code,
+                ])->values()->all(),
+            ])
+            ->values();
+
+        $pdf = Pdf::loadView('report::pdf.detail-picklist', [
+            'picklist' => $picklist,
+            'groups' => $groups,
+        ]);
+        $pdf->setPaper('a4', 'portrait');
+
+        return $pdf;
+    }
+
     public function transferReportRows(array $filters): array
     {
         $isMasuk = ($filters['jenis'] ?? 'keluar') === 'masuk';

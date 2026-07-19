@@ -219,6 +219,57 @@ class ReportRepository
         return $this->paginate($query);
     }
 
+    public function pickListLookup(?string $search, int $perPage = 20): Collection
+    {
+        return Picklist::query()
+            ->select('id', 'picklist_no')
+            ->with(['items:id,picklist_id,order_id', 'items.order:id,salesorder_no'])
+            ->whereNotIn('status', [Picklist::STATUS_DRAFT, Picklist::STATUS_CANCELLED])
+            ->when($search, fn ($q, $v) => $q->where('picklist_no', 'ilike', "%{$v}%"))
+            ->orderByDesc('created_at')
+            ->limit($perPage)
+            ->get();
+    }
+
+    /**
+     * Query datar untuk export xlsx Daftar Picklist. Sengaja query builder, bukan
+     * Eloquent with(), supaya bisa di-chunk FromQuery — satu bulan bisa puluhan ribu baris.
+     */
+    public function pickListRowsQuery(array $filters): \Illuminate\Database\Query\Builder
+    {
+        $from = $filters['from'] ?? null;
+        $to = $filters['to'] ?? null;
+
+        return DB::table('picklist_items as pi')
+            ->join('picklists as p', 'p.id', '=', 'pi.picklist_id')
+            ->leftJoin('sales_orders as so', 'so.id', '=', 'pi.order_id')
+            ->leftJoin('users as u', 'u.id', '=', 'p.picker_id')
+            ->leftJoin('product_variants as v', 'v.id', '=', 'pi.item_id')
+            ->leftJoin('products as pr', 'pr.id', '=', 'v.product_id')
+            ->leftJoin('locations as l', 'l.id', '=', 'p.location_id')
+            ->leftJoin('channel_shops as cs', 'cs.shop_id', '=', 'so.channel_shop_id')
+            ->leftJoin('channels as ch', 'ch.id', '=', 'cs.channel_id')
+            ->whereNotIn('p.status', [Picklist::STATUS_DRAFT, Picklist::STATUS_CANCELLED])
+            ->when($from, fn ($q, $v) => $q->where('p.created_at', '>=', $v . ' 00:00:00'))
+            ->when($to, fn ($q, $v) => $q->where('p.created_at', '<=', $v . ' 23:59:59'))
+            ->select([
+                'so.salesorder_no',
+                'p.picklist_no',
+                'p.created_at as picklist_date',
+                'u.name as picker_name',
+                'pi.sku',
+                'pr.name as product_name',
+                'l.location_name',
+                'pi.qty_ordered',
+                'pi.qty_picked',
+                'ch.name as marketplace',
+                'cs.shop_name',
+            ])
+            ->orderBy('p.created_at')
+            ->orderBy('p.picklist_no')
+            ->orderBy('pi.sku');
+    }
+
     public function transferQuery(array $filters): \Illuminate\Database\Query\Builder
     {
         $isMasuk = ($filters['jenis'] ?? 'keluar') === 'masuk';
