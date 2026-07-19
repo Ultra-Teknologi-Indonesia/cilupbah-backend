@@ -828,8 +828,13 @@ class PicklistService
             throw new OutboundValidationException("Stok tidak cukup di rak {$bin->bin_final_code}. Tersedia: {$inventory->on_hand}, dibutuhkan: {$qty}. Silahkan pilih rak lain.");
         }
 
+        // Hanya on_hand. Pelepasan `on_order` adalah tanggung jawab StockService,
+        // yang melakukannya di baris agregat (bin_id = NULL) sekaligus menulis
+        // ledger ORDER_RELEASE. Dulu di sini ada `on_order -= qty` pada baris BIN:
+        // diam-diam no-op saat bin belum punya alokasi (max(0, ...)), tapi memakan
+        // alokasi Reserved Stock saat bin memang memegangnya -- tanpa jejak ledger,
+        // jadi drift-nya tak pernah terdeteksi inventory:reconcile-on-order.
         $inventory->on_hand -= $qty;
-        $inventory->on_order = max(0, $inventory->on_order - $qty);
         $inventory->recalculateAvailable();
         $inventory->save();
 
