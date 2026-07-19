@@ -26,11 +26,11 @@ class InventoryMovementSourceMap
         'SALES_RETURN'     => ['category' => 'SALES_RETURN', 'label' => 'Retur Penjualan'],
         'PICKING'          => ['category' => 'PICKING', 'label' => 'Barang di-pick'],
         'PICKING_REVERSAL' => ['category' => 'PICKING', 'label' => 'Koreksi Pick'],
-        'ORDER_RESERVE'       => ['category' => 'ALOKASI', 'label' => 'Alokasi Pesanan'],
-        'ORDER_RELEASE'       => ['category' => 'ALOKASI', 'label' => 'Alokasi Dilepas'],
-        'RESERVE'             => ['category' => 'ALOKASI', 'label' => 'Stok Ditahan'],
-        'RESERVE_CANCEL'      => ['category' => 'ALOKASI', 'label' => 'Tahanan Dibatalkan'],
-        'RESERVE_EXPIRED'     => ['category' => 'ALOKASI', 'label' => 'Tahanan Kedaluwarsa'],
+        'ORDER_RESERVE'       => ['category' => 'ORDER', 'label' => 'Alokasi Pesanan'],
+        'ORDER_RELEASE'       => ['category' => 'ORDER', 'label' => 'Alokasi Dilepas'],
+        'RESERVE'             => ['category' => 'ORDER', 'label' => 'Stok Ditahan'],
+        'RESERVE_CANCEL'      => ['category' => 'ORDER', 'label' => 'Tahanan Dibatalkan'],
+        'RESERVE_EXPIRED'     => ['category' => 'ORDER', 'label' => 'Tahanan Kedaluwarsa'],
         'ORDER_SHIP'          => ['category' => 'PESANAN', 'label' => 'Pesanan Dikirim'], // LEGACY
         'ORDER_RESTORE'       => ['category' => 'PESANAN', 'label' => 'Pesanan Dibatalkan'],
         'ORDER_RESTORE_CANCEL' => ['category' => 'PESANAN', 'label' => 'Pesanan Dibatalkan'],
@@ -62,7 +62,7 @@ class InventoryMovementSourceMap
         'ADJUSTMENT'      => 'Penyesuaian',
         'SALES_RETURN'    => 'Retur Penjualan',
         'PICKING'         => 'Barang di-pick',
-        'ALOKASI'         => 'Alokasi Pesanan',
+        'ORDER'           => 'Order',
         'PESANAN'         => 'Pesanan Batal',
         'INVOICE'         => 'Faktur',
         'TRANSFER'        => 'Transfer & Penempatan',
@@ -74,7 +74,7 @@ class InventoryMovementSourceMap
         'ADJUSTMENT',
         'SALES_RETURN',
         'PICKING',
-        'ALOKASI',
+        'ORDER',
         'PESANAN',
         'INVOICE',
         'TRANSFER',
@@ -158,6 +158,38 @@ class InventoryMovementSourceMap
         'transit'    => self::TRANSIT_SOURCES,
         'allocation' => self::ALLOCATION_PARTITION_SOURCES,
     ];
+
+    /**
+     * Perluas token filter jadi daftar source konkret.
+     *
+     * Menerima nama source (`ORDER_RESERVE`) MAUPUN nama kategori (`ORDER`),
+     * sehingga `?filter[source]=ORDER` bekerja seperti di Jubelio -- acuan yang
+     * dipakai klien saat membandingkan kedua sistem.
+     */
+    public static function expandFilterTokens(array $tokens): array
+    {
+        $sources = [];
+
+        foreach ($tokens as $token) {
+            $token = trim((string) $token);
+            if ($token === '') {
+                continue;
+            }
+
+            if (array_key_exists($token, self::SOURCES)) {
+                $sources[] = $token;
+                continue;
+            }
+
+            foreach (self::SOURCES as $source => $meta) {
+                if ($meta['category'] === $token) {
+                    $sources[] = $source;
+                }
+            }
+        }
+
+        return array_values(array_unique($sources));
+    }
 
     public static function meta(string $source): array
     {

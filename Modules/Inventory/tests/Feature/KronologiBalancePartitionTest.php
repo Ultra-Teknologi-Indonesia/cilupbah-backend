@@ -129,6 +129,54 @@ class KronologiBalancePartitionTest extends TestCase
         $this->assertSame(['ORDER_RESERVE'], $sources, 'drill=allocation hanya boleh mengembalikan baris alokasi');
     }
 
+    /**
+     * Drill-down On Order memakai nama kategori, sejajar dengan Jubelio
+     * (?source=ORDER). Filter source menerima nama kategori maupun nama source.
+     */
+    public function test_filter_source_menerima_nama_kategori(): void
+    {
+        $this->movement('PUTAWAY_IN', 10, 10, 1);
+        $this->movement('ORDER_RESERVE', 6, 6, 2);
+        $this->movement('RESERVE', -2, 4, 3);
+        $this->movement('PICKING', -2, 8, 4);
+
+        request()->merge([
+            'filter' => ['item_id' => $this->itemId, 'source' => 'ORDER'],
+            'per_page' => 50,
+        ]);
+
+        $sources = collect(app(InventoryMovementRepository::class)->getHistoryPaginated(50)->items())
+            ->pluck('source')
+            ->sort()
+            ->values()
+            ->all();
+
+        $this->assertSame(
+            ['ORDER_RESERVE', 'RESERVE'],
+            $sources,
+            'source=ORDER harus memuat SELURUH source penggerak on_order, termasuk Reserved Stock -- '
+            . 'kalau tidak, jumlah baris tak akan pernah cocok dengan angka di kolom ON ORDER'
+        );
+    }
+
+    public function test_filter_source_nama_source_tetap_bekerja(): void
+    {
+        $this->movement('PUTAWAY_IN', 10, 10, 1);
+        $this->movement('ORDER_RESERVE', 6, 6, 2);
+        $this->movement('RESERVE', -2, 4, 3);
+
+        request()->merge([
+            'filter' => ['item_id' => $this->itemId, 'source' => 'ORDER_RESERVE'],
+            'per_page' => 50,
+        ]);
+
+        $sources = collect(app(InventoryMovementRepository::class)->getHistoryPaginated(50)->items())
+            ->pluck('source')
+            ->all();
+
+        $this->assertSame(['ORDER_RESERVE'], $sources, 'filter per-source tidak boleh ikut melebar jadi kategori');
+    }
+
     public function test_filter_drill_transit_hanya_leg_transit(): void
     {
         $this->movement('PUTAWAY_IN', 10, 10, 1);

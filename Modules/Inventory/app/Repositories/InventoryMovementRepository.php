@@ -131,8 +131,10 @@ class InventoryMovementRepository
                 \Spatie\QueryBuilder\AllowedFilter::exact('item_id'),
                 \Spatie\QueryBuilder\AllowedFilter::exact('location_id'),
                 \Spatie\QueryBuilder\AllowedFilter::callback('source', function ($query, $value) {
-                    $sources = is_array($value) ? $value : explode(',', (string) $value);
-                    $sources = array_values(array_filter(array_map('trim', $sources)));
+                    $tokens = is_array($value) ? $value : explode(',', (string) $value);
+                    // Menerima nama source maupun nama kategori, jadi ?source=ORDER
+                    // bekerja sama seperti di Jubelio.
+                    $sources = InventoryMovementSourceMap::expandFilterTokens($tokens);
                     if (count($sources) > 0) {
                         $query->whereIn('source', $sources);
                     }
