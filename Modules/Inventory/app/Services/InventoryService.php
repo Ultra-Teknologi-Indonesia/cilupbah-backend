@@ -1548,6 +1548,39 @@ class InventoryService
                             'created_by'         => $actor,
                         ]);
                     }
+
+                    // Transit kini diisi saat pengiriman, jadi membatalkan
+                    // pengiriman WAJIB menariknya kembali. Sebelum perubahan ini
+                    // transit diisi sejak DRAFT sehingga revert memang tidak
+                    // boleh menyentuhnya -- kalau blok ini tidak ada, stok akan
+                    // tertinggal menggantung di transit selamanya.
+                    [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
+
+                    $transitInventory = $this->inventoryRepository->findExactForUpdate(
+                        $item->item_id,
+                        $transitLocationId,
+                        $transitBinId,
+                        $item->batch_no ?? '',
+                        $item->serial_no ?? '',
+                    );
+
+                    if ($transitInventory) {
+                        $deductQty = min((int) $item->qty, (int) $transitInventory->on_hand);
+                        $transitInventory->on_hand -= $deductQty;
+                        $this->inventoryRepository->updateStock($transitInventory);
+
+                        $this->movementRepository->create([
+                            'item_id'            => $item->item_id,
+                            'location_id'        => $transitLocationId,
+                            'bin_id'             => $transitBinId,
+                            'transaction_number' => $transfer->transfer_number,
+                            'source'             => 'TRANSIT_OUT',
+                            'qty'                => -$deductQty,
+                            'balance'            => $transitInventory->on_hand,
+                            'transaction_date'   => now(),
+                            'created_by'         => $actor,
+                        ]);
+                    }
                 }
             }
 
@@ -1616,6 +1649,34 @@ class InventoryService
                     'source'             => 'TRANSFER_OUT',
                     'qty'                => -$item->qty,
                     'balance'            => $sourceInventory->on_hand,
+                    'transaction_date'   => now(),
+                    'created_by'         => $data['shipped_by'] ?? $transfer->assigned_to,
+                ]);
+
+                // Barang baru masuk transit DI SINI -- saat surat jalan dicetak.
+                // Sebelumnya ini terjadi sejak item ditambahkan ke DRAFT, sehingga
+                // transfer yang belum berjalan sudah terhitung di kolom Transit.
+                [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
+
+                $transitInventory = $this->inventoryRepository->findOrCreateForUpdate(
+                    $item->item_id,
+                    $transitLocationId,
+                    $transitBinId,
+                    $item->batch_no ?? '',
+                    $item->serial_no ?? '',
+                );
+
+                $transitInventory->on_hand += $item->qty;
+                $this->inventoryRepository->updateStock($transitInventory);
+
+                $this->movementRepository->create([
+                    'item_id'            => $item->item_id,
+                    'location_id'        => $transitLocationId,
+                    'bin_id'             => $transitBinId,
+                    'transaction_number' => $transfer->transfer_number,
+                    'source'             => 'TRANSIT_IN',
+                    'qty'                => $item->qty,
+                    'balance'            => $transitInventory->on_hand,
                     'transaction_date'   => now(),
                     'created_by'         => $data['shipped_by'] ?? $transfer->assigned_to,
                 ]);
@@ -2123,6 +2184,34 @@ class InventoryService
                     'source'             => 'TRANSFER_OUT',
                     'qty'                => -$item->qty,
                     'balance'            => $sourceInventory->on_hand,
+                    'transaction_date'   => now(),
+                    'created_by'         => $transfer->created_by,
+                ]);
+
+                // Sama seperti shipTransfer: transit diisi saat pengiriman, bukan
+                // saat draft dibuat. submitDraft adalah jalur kirim langsung dari
+                // mobile, jadi perlakuannya harus identik.
+                [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
+
+                $transitInventory = $this->inventoryRepository->findOrCreateForUpdate(
+                    $item->item_id,
+                    $transitLocationId,
+                    $transitBinId,
+                    $item->batch_no ?? '',
+                    $item->serial_no ?? '',
+                );
+
+                $transitInventory->on_hand += $item->qty;
+                $this->inventoryRepository->updateStock($transitInventory);
+
+                $this->movementRepository->create([
+                    'item_id'            => $item->item_id,
+                    'location_id'        => $transitLocationId,
+                    'bin_id'             => $transitBinId,
+                    'transaction_number' => $transfer->transfer_number,
+                    'source'             => 'TRANSIT_IN',
+                    'qty'                => $item->qty,
+                    'balance'            => $transitInventory->on_hand,
                     'transaction_date'   => now(),
                     'created_by'         => $transfer->created_by,
                 ]);

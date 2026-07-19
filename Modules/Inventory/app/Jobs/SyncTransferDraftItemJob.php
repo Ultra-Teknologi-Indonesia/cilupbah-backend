@@ -107,45 +107,16 @@ class SyncTransferDraftItemJob implements ShouldQueue
             return;
         }
 
+        // DRAFT hanya MENGUNCI stok, tidak memindahkannya. Barang tetap fisik di
+        // rak asal sampai surat jalan dicetak (InventoryService::shipTransfer) --
+        // itu batas "sedang di jalan" menurut klien.
+        //
+        // Dulu di sini stok ikut ditambahkan ke lokasi transit PADAHAL on_hand
+        // sumber tidak pernah dikurangi, jadi qty yang sama terhitung dua kali
+        // dan transfer yang masih DRAFT sudah muncul di kolom Transit.
+        // Movement TRANSFER_OUT-nya pun menulis balance yang tidak berubah.
         $sourceInventory->on_order += $this->qty;
         $inventoryRepository->updateStock($sourceInventory);
-
-        $movementRepository->create([
-            'item_id' => $item->item_id,
-            'location_id' => $transfer->source_location_id,
-            'bin_id' => $item->source_bin_id,
-            'transaction_number' => $this->transferNumber,
-            'source' => 'TRANSFER_OUT',
-            'qty' => -$this->qty,
-            'balance' => $sourceInventory->on_hand,
-            'transaction_date' => now(),
-            'created_by' => $this->createdBy,
-        ]);
-
-        [$transitLocationId, $transitBinId] = app(InventoryService::class)->resolveTransitLocation();
-
-        $transitInventory = $inventoryRepository->findOrCreateForUpdate(
-            $item->item_id,
-            $transitLocationId,
-            $transitBinId,
-            $item->batch_no ?? '',
-            $item->serial_no ?? '',
-        );
-
-        $transitInventory->on_hand += $this->qty;
-        $inventoryRepository->updateStock($transitInventory);
-
-        $movementRepository->create([
-            'item_id' => $item->item_id,
-            'location_id' => $transitLocationId,
-            'bin_id' => $transitBinId,
-            'transaction_number' => $this->transferNumber,
-            'source' => 'TRANSIT_IN',
-            'qty' => $this->qty,
-            'balance' => $transitInventory->on_hand,
-            'transaction_date' => now(),
-            'created_by' => $this->createdBy,
-        ]);
 
         $item->update(['sync_status' => 'SYNCED', 'sync_error' => null]);
     }
@@ -183,47 +154,12 @@ class SyncTransferDraftItemJob implements ShouldQueue
             return;
         }
 
+        // Ubah qty item DRAFT: cukup geser kuncian. Stok belum berpindah ke mana
+        // pun sampai surat jalan dicetak.
         if ($sourceInventory) {
             $sourceInventory->on_order += $delta;
             $inventoryRepository->updateStock($sourceInventory);
-
-            $movementRepository->create([
-                'item_id' => $item->item_id,
-                'location_id' => $transfer->source_location_id,
-                'bin_id' => $item->source_bin_id,
-                'transaction_number' => $this->transferNumber,
-                'source' => 'TRANSFER_OUT',
-                'qty' => -$delta,
-                'balance' => $sourceInventory->on_hand,
-                'transaction_date' => now(),
-                'created_by' => $this->createdBy,
-            ]);
         }
-
-        [$transitLocationId, $transitBinId] = app(InventoryService::class)->resolveTransitLocation();
-
-        $transitInventory = $inventoryRepository->findOrCreateForUpdate(
-            $item->item_id,
-            $transitLocationId,
-            $transitBinId,
-            $item->batch_no ?? '',
-            $item->serial_no ?? '',
-        );
-
-        $transitInventory->on_hand += $delta;
-        $inventoryRepository->updateStock($transitInventory);
-
-        $movementRepository->create([
-            'item_id' => $item->item_id,
-            'location_id' => $transitLocationId,
-            'bin_id' => $transitBinId,
-            'transaction_number' => $this->transferNumber,
-            'source' => 'TRANSIT_IN',
-            'qty' => $delta,
-            'balance' => $transitInventory->on_hand,
-            'transaction_date' => now(),
-            'created_by' => $this->createdBy,
-        ]);
 
         $item->update(['sync_status' => 'SYNCED', 'sync_error' => null]);
     }
@@ -257,50 +193,13 @@ class SyncTransferDraftItemJob implements ShouldQueue
                     $item->serial_no ?? '',
                 );
 
+                // Hapus item DRAFT: lepaskan kuncian saja. Tidak ada stok yang
+                // perlu ditarik balik dari transit, karena DRAFT memang tidak
+                // pernah memindahkannya ke sana.
                 if ($sourceInventory) {
                     $releaseQty = min($this->qty, $sourceInventory->on_order);
                     $sourceInventory->on_order -= $releaseQty;
                     $inventoryRepository->updateStock($sourceInventory);
-
-                    $movementRepository->create([
-                        'item_id' => $item->item_id,
-                        'location_id' => $transfer->source_location_id,
-                        'bin_id' => $item->source_bin_id,
-                        'transaction_number' => $this->transferNumber,
-                        'source' => 'TRANSFER_OUT',
-                        'qty' => $releaseQty,
-                        'balance' => $sourceInventory->on_hand,
-                        'transaction_date' => now(),
-                        'created_by' => $this->createdBy,
-                    ]);
-                }
-
-                [$transitLocationId, $transitBinId] = app(InventoryService::class)->resolveTransitLocation();
-
-                $transitInventory = $inventoryRepository->findExactForUpdate(
-                    $item->item_id,
-                    $transitLocationId,
-                    $transitBinId,
-                    $item->batch_no ?? '',
-                    $item->serial_no ?? '',
-                );
-
-                if ($transitInventory) {
-                    $deductQty = min($this->qty, $transitInventory->on_hand);
-                    $transitInventory->on_hand -= $deductQty;
-                    $inventoryRepository->updateStock($transitInventory);
-
-                    $movementRepository->create([
-                        'item_id' => $item->item_id,
-                        'location_id' => $transitLocationId,
-                        'bin_id' => $transitBinId,
-                        'transaction_number' => $this->transferNumber,
-                        'source' => 'TRANSIT_OUT',
-                        'qty' => -$deductQty,
-                        'balance' => $transitInventory->on_hand,
-                        'transaction_date' => now(),
-                        'created_by' => $this->createdBy,
-                    ]);
                 }
 
                 $item->delete();
