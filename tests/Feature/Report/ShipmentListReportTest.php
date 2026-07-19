@@ -181,41 +181,81 @@ class ShipmentListReportTest extends TestCase
         $this->assertSame('SP-KURIR-JNT', $hanyaJnt[0]->salesorder_no);
     }
 
-    public function test_filter_status_channel_membatasi_hasil(): void
+    public function test_filter_status_mp_membedakan_channel_meski_status_mentahnya_mirip(): void
     {
         $this->makeOrder([
-            'salesorder_no' => 'SP-STATUS-SHIPPED',
+            'salesorder_no' => 'SP-CANCEL-SHOPEE',
+            'transaction_date' => '2026-07-18 08:00:00',
+            'source' => 'shopee',
+            'channel_fulfillment_status' => 'Cancelled',
+            'channel_status' => ChannelStatus::CANCELLED->value,
+        ]);
+        $this->makeOrder([
+            'salesorder_no' => 'LZ-CANCEL-LAZADA',
+            'transaction_date' => '2026-07-18 09:00:00',
+            'source' => 'lazada',
+            'channel_fulfillment_status' => 'Canceled',
+            'channel_status' => ChannelStatus::CANCELLED->value,
+        ]);
+
+        $shopee = $this->rows([
+            'from' => '2026-07-18', 'to' => '2026-07-18',
+            'status_mp' => 'shopee::Cancelled',
+        ]);
+        $lazada = $this->rows([
+            'from' => '2026-07-18', 'to' => '2026-07-18',
+            'status_mp' => 'lazada::Canceled',
+        ]);
+
+        $this->assertCount(1, $shopee);
+        $this->assertSame('SP-CANCEL-SHOPEE', $shopee[0]->salesorder_no);
+        $this->assertCount(1, $lazada);
+        $this->assertSame('LZ-CANCEL-LAZADA', $lazada[0]->salesorder_no);
+    }
+
+    public function test_opsi_status_mp_diturunkan_dari_data_dan_berlabel_gaya_jubelio(): void
+    {
+        $this->makeOrder([
+            'salesorder_no' => 'SP-OPT-1',
+            'transaction_date' => '2026-07-18 08:00:00',
+            'source' => 'shopee',
+            'channel_fulfillment_status' => 'Ready To Ship',
+        ]);
+        $this->makeOrder([
+            'salesorder_no' => 'SP-OPT-2',
+            'transaction_date' => '2026-07-18 09:00:00',
+            'source' => 'shopee',
+            'channel_fulfillment_status' => 'Ready To Ship',
+        ]);
+        $this->makeOrder([
+            'salesorder_no' => 'LZ-OPT-3',
+            'transaction_date' => '2026-07-18 10:00:00',
+            'source' => 'lazada',
+            'channel_fulfillment_status' => 'Packed',
+        ]);
+
+        $statuses = $this->service->shipmentFilterOptions()['statuses'];
+
+        $this->assertCount(2, $statuses, 'Nilai kembar harus dedup lewat DISTINCT');
+        $this->assertSame(
+            ['Packed - LAZADA', 'Ready To Ship - SHOPEE'],
+            array_column($statuses, 'label'),
+        );
+        $this->assertSame(
+            ['lazada::Packed', 'shopee::Ready To Ship'],
+            array_column($statuses, 'value'),
+        );
+    }
+
+    public function test_opsi_status_mp_kosong_saat_belum_ada_pesanan_berstatus_channel(): void
+    {
+        $this->makeOrder([
+            'salesorder_no' => 'SP-NO-RAW',
             'transaction_date' => '2026-07-18 08:00:00',
             'channel_status' => ChannelStatus::SHIPPED->value,
         ]);
-        $this->makeOrder([
-            'salesorder_no' => 'SP-STATUS-CANCEL',
-            'transaction_date' => '2026-07-18 09:00:00',
-            'channel_status' => ChannelStatus::CANCELLED->value,
-        ]);
 
-        $rows = $this->rows([
-            'from' => '2026-07-18', 'to' => '2026-07-18',
-            'channel_status' => ChannelStatus::CANCELLED->value,
-        ]);
-
-        $this->assertCount(1, $rows);
-        $this->assertSame('SP-STATUS-CANCEL', $rows[0]->salesorder_no);
-    }
-
-    public function test_opsi_status_persis_mengikuti_enum_channel_status(): void
-    {
-        $options = $this->service->shipmentFilterOptions();
-
-        $this->assertSame(
-            array_map(fn (ChannelStatus $c) => $c->value, ChannelStatus::cases()),
-            array_column($options['statuses'], 'value'),
-        );
-
-        $labels = array_column($options['statuses'], 'label');
-        $this->assertContains('Siap Kirim', $labels);
-        $this->assertContains('Menunggu Konfirmasi Terima', $labels);
-        $this->assertNotContains('', $labels, 'Setiap status wajib punya label Indonesia');
+        $this->assertSame([], $this->service->shipmentFilterOptions()['statuses']);
     }
 
     public function test_opsi_kurir_hanya_yang_aktif_dan_terurut(): void
@@ -266,6 +306,50 @@ class ShipmentListReportTest extends TestCase
         @unlink($path);
     }
 
+    public function test_kolom_status_pesanan_memakai_label_bukan_nilai_mentah(): void
+    {
+        foreach ([
+            ['SP-LBL-1', '08:00:00', 'pending'],
+            ['SP-LBL-2', '09:00:00', 'cancelled'],
+            ['SP-LBL-3', '10:00:00', 'ready-to-ship'],
+            ['SP-LBL-4', '11:00:00', 'AWAITING_BUYER_CONFIRMATION'],
+            ['SP-LBL-5', '12:00:00', 'packed'],
+        ] as [$no, $jam, $status]) {
+            $this->makeOrder([
+                'salesorder_no' => $no,
+                'transaction_date' => "2026-07-18 {$jam}",
+                'status' => $status,
+            ]);
+        }
+
+        $export = new ShipmentListReportExport($this->service, [
+            'from' => '2026-07-18', 'to' => '2026-07-18',
+        ]);
+
+        \Maatwebsite\Excel\Facades\Excel::store($export, 'test-pengiriman-label.xlsx', 'local');
+        $path = \Illuminate\Support\Facades\Storage::disk('local')->path('test-pengiriman-label.xlsx');
+        $sheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path)->getActiveSheet();
+
+        $this->assertSame('Menunggu', $sheet->getCell('H2')->getValue());
+        $this->assertSame('Dibatalkan', $sheet->getCell('H3')->getValue());
+        $this->assertSame('Siap Kirim', $sheet->getCell('H4')->getValue(), 'Tanda hubung harus dinormalkan');
+        $this->assertSame(
+            'Menunggu Konfirmasi Pembeli',
+            $sheet->getCell('H5')->getValue(),
+            'Garis bawah dan huruf besar harus dinormalkan',
+        );
+        $this->assertSame('Dikemas - Siap Dikirim', $sheet->getCell('H6')->getValue());
+
+        @unlink($path);
+    }
+
+    public function test_status_pesanan_tak_dikenal_ditampilkan_apa_adanya(): void
+    {
+        $this->assertSame('STATUS_BARU_DARI_CHANNEL', ReportService::orderStatusLabel('STATUS_BARU_DARI_CHANNEL'));
+        $this->assertNull(ReportService::orderStatusLabel(null));
+        $this->assertNull(ReportService::orderStatusLabel(''));
+    }
+
     public function test_endpoint_export_dan_validasinya(): void
     {
         $this->get('/api/v1/reports/wms/shipment/export?from=2026-07-01&to=2026-07-31')
@@ -274,15 +358,25 @@ class ShipmentListReportTest extends TestCase
         $this->getJson('/api/v1/reports/wms/shipment/export?from=2026-07-31&to=2026-07-01')
             ->assertStatus(422);
 
-        $this->getJson('/api/v1/reports/wms/shipment/export?from=2026-07-01&to=2026-07-31&channel_status=NGARANG')
+        $this->getJson('/api/v1/reports/wms/shipment/export')
             ->assertStatus(422);
     }
 
     public function test_endpoint_options_mengembalikan_kurir_dan_status(): void
     {
+        $this->makeOrder([
+            'salesorder_no' => 'SP-OPT-EP',
+            'transaction_date' => '2026-07-18 08:00:00',
+            'source' => 'shopee',
+            'channel_fulfillment_status' => 'Shipped',
+        ]);
+
         $response = $this->getJson('/api/v1/reports/wms/shipment/options')->assertOk();
 
-        $this->assertCount(count(ChannelStatus::cases()), $response->json('data.statuses'));
+        $this->assertSame(
+            [['value' => 'shopee::Shipped', 'label' => 'Shipped - SHOPEE']],
+            $response->json('data.statuses'),
+        );
         $this->assertCount(2, $response->json('data.couriers'));
     }
 }

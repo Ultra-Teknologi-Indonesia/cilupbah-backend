@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Report\Exports\NegativeStockReportExport;
 use Modules\Report\Exports\PickListReportExport;
@@ -532,7 +531,7 @@ class ReportController extends Controller
             'to' => 'required|date|after_or_equal:from',
             'courier_ids' => 'nullable|array',
             'courier_ids.*' => 'uuid',
-            'channel_status' => ['nullable', Rule::in(array_keys(ReportService::CHANNEL_STATUS_LABELS))],
+            'status_mp' => 'nullable|string|max:255',
         ]);
 
         $export = new ShipmentListReportExport($this->reportService, $validated);

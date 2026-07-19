@@ -231,7 +231,7 @@ class ReportRepository
         $from = $filters['from'] ?? null;
         $to = $filters['to'] ?? null;
         $courierIds = $filters['courier_ids'] ?? [];
-        $channelStatus = $filters['channel_status'] ?? null;
+        $statusMp = $filters['status_mp'] ?? null;
 
         return DB::table('sales_orders as so')
             ->leftJoin('shipment_orders as sho', 'sho.order_id', '=', 'so.id')
@@ -239,7 +239,11 @@ class ReportRepository
             ->when($from, fn ($q, $v) => $q->where('so.transaction_date', '>=', $v . ' 00:00:00'))
             ->when($to, fn ($q, $v) => $q->where('so.transaction_date', '<=', $v . ' 23:59:59'))
             ->when(! empty($courierIds), fn ($q) => $q->whereIn('so.courier_id', $courierIds))
-            ->when($channelStatus, fn ($q, $v) => $q->where('so.channel_status', $v))
+            ->when($statusMp, function ($q, $v) {
+                [$source, $raw] = self::splitStatusMp($v);
+                $q->where('so.channel_fulfillment_status', $raw);
+                $source === '' ? $q->whereNull('so.source') : $q->where('so.source', $source);
+            })
             ->select([
                 'so.salesorder_no',
                 'sh.shipment_no',
@@ -247,11 +251,43 @@ class ReportRepository
                 'so.tracking_number',
                 'so.status',
                 'so.channel_status',
+                'so.channel_fulfillment_status',
+                'so.source',
             ])
             ->selectRaw('COALESCE(so.shipping_provider, so.courier_name) AS courier')
             ->selectRaw("COALESCE(NULLIF(so.note, ''), so.seller_note) AS note")
             ->orderBy('so.transaction_date')
             ->orderBy('so.salesorder_no');
+    }
+
+    /**
+     * status_mp dikodekan "<source>::<status mentah>" supaya satu nilai dropdown
+     * membawa channel sekaligus statusnya — "Cancelled" milik Shopee bukan hal yang
+     * sama dengan "Canceled" milik Lazada.
+     *
+     * @return array{0: string, 1: string} [source, raw]
+     */
+    public static function splitStatusMp(string $value): array
+    {
+        $parts = explode('::', $value, 2);
+
+        return count($parts) === 2 ? [$parts[0], $parts[1]] : ['', $parts[0]];
+    }
+
+    /**
+     * Opsi diturunkan dari data nyata (DISTINCT), bukan daftar statis — sama seperti
+     * cara Jubelio menyusun daftarnya, jadi otomatis ikut kalau channel menambah status.
+     */
+    public function shipmentStatusMpOptions(): \Illuminate\Support\Collection
+    {
+        return DB::table('sales_orders')
+            ->select('source', 'channel_fulfillment_status')
+            ->whereNotNull('channel_fulfillment_status')
+            ->where('channel_fulfillment_status', '<>', '')
+            ->distinct()
+            ->orderBy('channel_fulfillment_status')
+            ->orderBy('source')
+            ->get();
     }
 
     public function courierOptions(): \Illuminate\Support\Collection

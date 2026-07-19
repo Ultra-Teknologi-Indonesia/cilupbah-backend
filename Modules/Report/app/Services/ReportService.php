@@ -12,6 +12,31 @@ use Modules\Sales\Models\SalesOrder;
 class ReportService
 {
     /** Label Indonesia untuk setiap nilai ChannelStatus. */
+    /**
+     * Label Indonesia untuk status pesanan internal. Kuncinya dinormalkan
+     * (huruf kecil, "-"/"_" disamakan) karena data lapangan bercampur bentuk:
+     * "cancelled", "CANCELED", "ready-to-ship", "AWAITING_BUYER_CONFIRMATION".
+     * Selaras dengan registry "sales-order" di FE lib/status.ts.
+     */
+    public const ORDER_STATUS_LABELS = [
+        'pending'                    => 'Menunggu',
+        'unpaid'                     => 'Belum Dibayar',
+        'paid'                       => 'Dibayar',
+        'reserved'                   => 'Siap Proses',
+        'processing'                 => 'Diproses',
+        'picked'                     => 'Dipick',
+        'packed'                     => 'Dikemas - Siap Dikirim',
+        'ready'                      => 'Siap Kirim',
+        'ready to ship'              => 'Siap Kirim',
+        'awaiting buyer confirmation' => 'Menunggu Konfirmasi Pembeli',
+        'shipped'                    => 'Dikirim',
+        'completed'                  => 'Selesai',
+        'cancelled'                  => 'Dibatalkan',
+        'canceled'                   => 'Dibatalkan',
+        'request cancel'             => 'Permintaan Batal',
+        'returned'                   => 'Diretur',
+    ];
+
     public const CHANNEL_STATUS_LABELS = [
         'UNPAID'             => 'Belum Dibayar',
         'READY_TO_SHIP'      => 'Siap Kirim',
@@ -374,9 +399,9 @@ class ReportService
     }
 
     /**
-     * Opsi filter dialog Daftar Pengiriman. Status diambil dari enum ChannelStatus —
-     * vokabuler yang sama persis dengan CHECK constraint di kolom sales_orders.channel_status,
-     * jadi tidak mungkin menawarkan status yang tak pernah tersimpan.
+     * Opsi filter dialog Daftar Pengiriman. Status memakai status_mp mentah per channel
+     * ("Cancelled - SHOPEE"), bukan 11 nilai kanonik ChannelStatus, karena normalisasi
+     * menggabungkan varian yang secara operasional berbeda.
      */
     public function shipmentFilterOptions(): array
     {
@@ -384,11 +409,33 @@ class ReportService
             'couriers' => $this->repository->courierOptions()
                 ->map(fn ($c) => ['value' => $c->id, 'label' => $c->name])
                 ->all(),
-            'statuses' => array_map(
-                fn (ChannelStatus $s) => ['value' => $s->value, 'label' => self::CHANNEL_STATUS_LABELS[$s->value]],
-                ChannelStatus::cases(),
-            ),
+            'statuses' => $this->repository->shipmentStatusMpOptions()
+                ->map(fn ($r) => [
+                    'value' => ($r->source ?? '') . '::' . $r->channel_fulfillment_status,
+                    'label' => self::statusMpLabel($r->source, $r->channel_fulfillment_status),
+                ])
+                ->all(),
         ];
+    }
+
+    public static function statusMpLabel(?string $source, string $raw): string
+    {
+        return $source ? $raw . ' - ' . strtoupper($source) : $raw;
+    }
+
+    /**
+     * Nilai yang tak dikenal dikembalikan apa adanya, bukan dijadikan "-",
+     * supaya status baru dari channel tetap terbaca di laporan.
+     */
+    public static function orderStatusLabel(?string $status): ?string
+    {
+        if ($status === null || $status === '') {
+            return null;
+        }
+
+        $key = str_replace(['-', '_'], ' ', strtolower(trim($status)));
+
+        return self::ORDER_STATUS_LABELS[$key] ?? $status;
     }
 
     /**

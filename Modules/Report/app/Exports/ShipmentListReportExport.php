@@ -56,10 +56,13 @@ class ShipmentListReportExport implements FromQuery, WithHeadings, WithMapping, 
             $row->courier,
             $row->tracking_number,
             $row->note,
-            $row->status,
-            $row->channel_status
-                ? (ReportService::CHANNEL_STATUS_LABELS[$row->channel_status] ?? $row->channel_status)
-                : null,
+            ReportService::orderStatusLabel($row->status),
+            // Status mentah dari channel, menyamai kolom "Status Channel" file Jubelio.
+            // Jatuh ke label kanonik hanya untuk pesanan tanpa status mentah (mis. manual/POS).
+            $row->channel_fulfillment_status
+                ?: ($row->channel_status
+                    ? (ReportService::CHANNEL_STATUS_LABELS[$row->channel_status] ?? $row->channel_status)
+                    : null),
         ];
     }
 
