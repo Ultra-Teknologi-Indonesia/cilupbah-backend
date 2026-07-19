@@ -121,38 +121,11 @@ class StockService
         });
     }
 
-    public function ship(string $sku, string $itemId, string $locationId, int $qty, string $transactionNumber): void
-    {
-        $handled = $this->cascadeBundle($itemId, $qty, fn ($compSku, $compId, $compQty) => $this->shipSingle($compSku, $compId, $locationId, $compQty, $transactionNumber));
-
-        if ($handled) {
-            return;
-        }
-
-        $this->shipSingle($sku, $itemId, $locationId, $qty, $transactionNumber);
-    }
-
-    private function shipSingle(string $sku, string $itemId, string $locationId, int $qty, string $transactionNumber): void
-    {
-        $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
-            DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
-
-                $balance = $this->inventoryRepository->sumOnHandAtLocation($itemId, $locationId);
-
-                $this->movementRepository->create([
-                    'item_id'            => $itemId,
-                    'location_id'        => $locationId,
-                    'bin_id'             => null,
-                    'transaction_number' => $transactionNumber,
-                    'source'             => 'ORDER_SHIP',
-                    'qty'                => 0,
-                    'balance'            => $balance,
-                    'transaction_date'   => now(),
-                    'created_by'         => 'system',
-                ]);
-            });
-        });
-    }
+    // ship()/shipSingle() dihapus: dulu menulis movement ORDER_SHIP dengan qty = 0,
+    // yang tak pernah tampil di kronologi (base query memfilter qty != 0) sekaligus
+    // bukan gerakan stok. Jejak pengiriman hidup di sales_order_status_histories --
+    // itu tempatnya peristiwa non-stok. Baris ORDER_SHIP lama tetap punya label di
+    // InventoryMovementSourceMap agar riwayat legacy tidak kehilangan artinya.
 
     public function restore(string $sku, string $itemId, string $locationId, int $qty, string $transactionNumber): void
     {
@@ -264,7 +237,7 @@ class StockService
     {
         $outstanding = DB::table('inventory_movements')
             ->where('transaction_number', $transactionNumber)
-            ->whereIn('source', InventoryMovementSourceMap::RESERVED_SOURCES)
+            ->whereIn('source', InventoryMovementSourceMap::ORDER_LEDGER_SOURCES)
             ->select('item_id', 'location_id', DB::raw('SUM(qty) as sisa'))
             ->groupBy('item_id', 'location_id')
             ->havingRaw('SUM(qty) > 0')

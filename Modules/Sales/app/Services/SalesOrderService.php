@@ -1484,7 +1484,6 @@ class SalesOrderService
             for ($rank = 2; $rank <= $toRank; $rank++) {
                 match ($rank) {
                     2       => $this->pickStockForOrder($order),
-                    4       => $this->shipStockForOrder($order),
                     default => null,
                 };
             }
@@ -1513,7 +1512,6 @@ class SalesOrderService
             match ($rank) {
                 1       => $this->reserveStockForOrder($order, false),
                 2       => $this->pickStockForOrder($order),
-                4       => $this->shipStockForOrder($order),
                 default => null,
             };
 
@@ -1568,7 +1566,8 @@ class SalesOrderService
         match ($newStatus) {
             'reserved'  => $this->reserveStockForOrder($order),
             'picked'    => $this->pickStockForOrder($order),
-            'shipped'   => $this->shipStockForOrder($order),
+            // 'shipped' tidak lagi menyentuh stok: pengiriman bukan gerakan stok,
+            // jejaknya di sales_order_status_histories.
             'cancelled' => $this->releaseStockForOrder($order),
             default     => null,
         };
@@ -1609,25 +1608,6 @@ class SalesOrderService
             $locationId = $this->resolveLocationId($order);
 
             $this->stockService->pick(
-                $item->sku ?? "item:{$item->item_id}",
-                $item->item_id,
-                $locationId,
-                $item->qty_in_base,
-                $order->salesorder_no,
-            );
-        }
-    }
-
-    private function shipStockForOrder(SalesOrder $order): void
-    {
-        foreach ($order->items as $item) {
-            if (! $item->item_id) {
-                continue;
-            }
-
-            $locationId = $this->resolveLocationId($order);
-
-            $this->stockService->ship(
                 $item->sku ?? "item:{$item->item_id}",
                 $item->item_id,
                 $locationId,

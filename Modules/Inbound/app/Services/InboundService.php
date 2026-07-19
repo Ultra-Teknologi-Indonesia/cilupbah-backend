@@ -214,9 +214,21 @@ class InboundService
         return $this->inboundRepository->findById($id);
     }
 
+    /**
+     * Ternary lama meruntuhkan PURCHASE_ORDER, TRANSIT_IN, dan CONSIGNMENT jadi
+     * 'ADJUSTMENT' -- penerimaan barang tampil sebagai "Penyesuaian" di kronologi,
+     * tercampur dengan penyesuaian stok betulan. Map per-tipe supaya tiap
+     * penerimaan terbaca sesuai asal dokumennya.
+     */
     private function movementSourceFor(Inbound $inbound): string
     {
-        return $inbound->type === Inbound::TYPE_SALES_RETURN ? 'SALES_RETURN' : 'ADJUSTMENT';
+        return match ($inbound->type) {
+            Inbound::TYPE_PURCHASE_ORDER => 'PURCHASE',
+            Inbound::TYPE_SALES_RETURN   => 'SALES_RETURN',
+            Inbound::TYPE_TRANSIT_IN     => 'TRANSFER_IN',
+            Inbound::TYPE_CONSIGNMENT    => 'CONSIGNMENT',
+            default                      => 'ADJUSTMENT',
+        };
     }
 
     public function createDraft(array $data): Inbound

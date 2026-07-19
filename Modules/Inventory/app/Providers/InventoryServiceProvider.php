@@ -5,6 +5,7 @@ namespace Modules\Inventory\Providers;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Inventory\Console\Commands\AutoDetectStockReplenishment;
+use Modules\Inventory\Console\Commands\BackfillInboundMovementSource;
 use Modules\Inventory\Console\Commands\BackfillOrderAllocations;
 use Modules\Inventory\Console\Commands\BackfillTransitInbounds;
 use Modules\Inventory\Console\Commands\RebuildAverageCost;
@@ -23,6 +24,7 @@ class InventoryServiceProvider extends ModuleServiceProvider
         BackfillTransitInbounds::class,
         BackfillOrderAllocations::class,
         ReconcileOnOrder::class,
+        BackfillInboundMovementSource::class,
     ];
 
     protected array $providers = [
