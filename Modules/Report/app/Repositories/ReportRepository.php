@@ -219,6 +219,50 @@ class ReportRepository
         return $this->paginate($query);
     }
 
+    /**
+     * Query datar untuk export xlsx Daftar Pengiriman (laporan manifest).
+     * FromQuery — contoh dari klien berisi 11 ribu baris untuk rentang 2 hari saja.
+     *
+     * No Manifest sengaja LEFT JOIN: pesanan yang batal atau belum dimanifes tetap
+     * muncul dengan kolom manifest kosong (39% baris pada contoh klien).
+     */
+    public function shipmentListQuery(array $filters): \Illuminate\Database\Query\Builder
+    {
+        $from = $filters['from'] ?? null;
+        $to = $filters['to'] ?? null;
+        $courierIds = $filters['courier_ids'] ?? [];
+        $channelStatus = $filters['channel_status'] ?? null;
+
+        return DB::table('sales_orders as so')
+            ->leftJoin('shipment_orders as sho', 'sho.order_id', '=', 'so.id')
+            ->leftJoin('shipments as sh', 'sh.id', '=', 'sho.shipment_id')
+            ->when($from, fn ($q, $v) => $q->where('so.transaction_date', '>=', $v . ' 00:00:00'))
+            ->when($to, fn ($q, $v) => $q->where('so.transaction_date', '<=', $v . ' 23:59:59'))
+            ->when(! empty($courierIds), fn ($q) => $q->whereIn('so.courier_id', $courierIds))
+            ->when($channelStatus, fn ($q, $v) => $q->where('so.channel_status', $v))
+            ->select([
+                'so.salesorder_no',
+                'sh.shipment_no',
+                'so.transaction_date',
+                'so.tracking_number',
+                'so.status',
+                'so.channel_status',
+            ])
+            ->selectRaw('COALESCE(so.shipping_provider, so.courier_name) AS courier')
+            ->selectRaw("COALESCE(NULLIF(so.note, ''), so.seller_note) AS note")
+            ->orderBy('so.transaction_date')
+            ->orderBy('so.salesorder_no');
+    }
+
+    public function courierOptions(): \Illuminate\Support\Collection
+    {
+        return DB::table('couriers')
+            ->select('id', 'name')
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
+    }
+
     public function pickListLookup(?string $search, int $perPage = 20): Collection
     {
         return Picklist::query()

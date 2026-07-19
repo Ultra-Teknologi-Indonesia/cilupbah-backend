@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Report\Exports\NegativeStockReportExport;
 use Modules\Report\Exports\PickListReportExport;
+use Modules\Report\Exports\ShipmentListReportExport;
 use Modules\Report\Exports\TransferReportExport;
 use Modules\Report\Http\Requests\BarcodeReportRequest;
 use Modules\Report\Http\Requests\HppReportRequest;
@@ -514,6 +516,46 @@ class ReportController extends Controller
                 (int) ($validated['per_page'] ?? 20),
             ),
         ]);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/wms/shipment/export',
+        summary: 'Export Daftar Pengiriman (manifest) ke XLSX',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
+    )]
+    public function shipmentListExport(Request $request)
+    {
+        $validated = $request->validate([
+            'from' => 'required|date',
+            'to' => 'required|date|after_or_equal:from',
+            'courier_ids' => 'nullable|array',
+            'courier_ids.*' => 'uuid',
+            'channel_status' => ['nullable', Rule::in(array_keys(ReportService::CHANNEL_STATUS_LABELS))],
+        ]);
+
+        $export = new ShipmentListReportExport($this->reportService, $validated);
+
+        $filename = sprintf(
+            'daftar-pengiriman_%s_%s.xlsx',
+            $validated['from'],
+            $validated['to'],
+        );
+
+        return Excel::download($export, $filename);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/wms/shipment/options',
+        summary: 'Opsi filter Daftar Pengiriman (kurir & status channel)',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        responses: [new OA\Response(response: 200, description: 'Opsi filter')]
+    )]
+    public function shipmentFilterOptions(): JsonResponse
+    {
+        return response()->json(['data' => $this->reportService->shipmentFilterOptions()]);
     }
 
     public function lazadaGetDocument(Request $request): JsonResponse

@@ -6,10 +6,26 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Modules\Report\Repositories\ReportRepository;
+use Modules\Sales\Enums\ChannelStatus;
 use Modules\Sales\Models\SalesOrder;
 
 class ReportService
 {
+    /** Label Indonesia untuk setiap nilai ChannelStatus. */
+    public const CHANNEL_STATUS_LABELS = [
+        'UNPAID'             => 'Belum Dibayar',
+        'READY_TO_SHIP'      => 'Siap Kirim',
+        'PROCESSED'          => 'Diproses',
+        'SHIPPED'            => 'Dikirim',
+        'TO_CONFIRM_RECEIVE' => 'Menunggu Konfirmasi Terima',
+        'COMPLETED'          => 'Selesai',
+        'CANCELLED'          => 'Dibatalkan',
+        'RETURN_REQUESTED'   => 'Pengajuan Retur',
+        'RETURNED'           => 'Diretur',
+        'IN_CANCEL'          => 'Proses Pembatalan',
+        'UNKNOWN'            => 'Tidak Diketahui',
+    ];
+
     public function __construct(
         protected ReportRepository $repository
     ) {}
@@ -350,6 +366,29 @@ class ReportService
     public function pickListRowsQuery(array $filters): \Illuminate\Database\Query\Builder
     {
         return $this->repository->pickListRowsQuery($filters);
+    }
+
+    public function shipmentListQuery(array $filters): \Illuminate\Database\Query\Builder
+    {
+        return $this->repository->shipmentListQuery($filters);
+    }
+
+    /**
+     * Opsi filter dialog Daftar Pengiriman. Status diambil dari enum ChannelStatus —
+     * vokabuler yang sama persis dengan CHECK constraint di kolom sales_orders.channel_status,
+     * jadi tidak mungkin menawarkan status yang tak pernah tersimpan.
+     */
+    public function shipmentFilterOptions(): array
+    {
+        return [
+            'couriers' => $this->repository->courierOptions()
+                ->map(fn ($c) => ['value' => $c->id, 'label' => $c->name])
+                ->all(),
+            'statuses' => array_map(
+                fn (ChannelStatus $s) => ['value' => $s->value, 'label' => self::CHANNEL_STATUS_LABELS[$s->value]],
+                ChannelStatus::cases(),
+            ),
+        ];
     }
 
     /**
