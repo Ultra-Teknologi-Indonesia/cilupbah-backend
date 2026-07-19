@@ -16,6 +16,7 @@ class InventoryMovementSourceMap
      */
     public const SOURCES = [
         'PURCHASE'         => ['category' => 'PURCHASE', 'label' => 'Pembelian'],
+        'PURCHASE_REVERSAL' => ['category' => 'PURCHASE', 'label' => 'Koreksi Pembelian'],
         'BILL'             => ['category' => 'PURCHASE', 'label' => 'Pembelian'], // LEGACY
         // Digabung ke kategori PURCHASE agar tidak muncul sebagai pilihan filter
         // tersendiri. Labelnya tetap "Konsinyasi" supaya baris yang sudah terlanjur

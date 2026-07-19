@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\Purchase\Http\Controllers\PurchaseOrderController;
+use Modules\Purchase\Http\Controllers\PurchaseOrderActivityController;
 use Modules\Purchase\Http\Controllers\PurchaseBillController;
 use Modules\Purchase\Http\Controllers\PurchasePaymentController;
 use Modules\Purchase\Http\Controllers\PurchaseSerialNumberController;
@@ -37,6 +38,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('purchase/orders/{id}', [PurchaseOrderController::class, 'show'])->name('purchase.orders.show');
         Route::get('purchase/orders/{id}/items', [PurchaseOrderController::class, 'items'])->name('purchase.orders.items');
         Route::get('purchase/orders/{id}/pdf', [PurchaseOrderController::class, 'downloadPdf'])->name('purchase.orders.pdf');
+        Route::get('purchase/orders/{id}/activities', [PurchaseOrderActivityController::class, 'index'])->name('purchase.orders.activities');
     });
     Route::middleware('role_or_permission:owner|create-transaksi-pembelian')->group(function () {
         Route::post('purchase/orders', [PurchaseOrderController::class, 'store'])->name('purchase.orders.store');

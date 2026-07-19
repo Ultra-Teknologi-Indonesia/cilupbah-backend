@@ -28,12 +28,14 @@ class StorePurchaseOrderRequest extends FormRequest
             'is_tax_included'        => ['nullable', 'boolean'],
             'notes'                  => ['nullable', 'string'],
             'items'                  => ['required', 'array', 'min:1'],
-            'items.*.item_id'        => ['required', 'string', 'exists:product_variants,id'],
+            'items.*.id'             => ['nullable', 'string', 'exists:purchase_order_items,id'],
+            'items.*.item_id'        => ['required', 'string', 'distinct', 'exists:product_variants,id'],
             'items.*.description'    => ['nullable', 'string'],
             'items.*.unit'           => ['nullable', 'string', 'max:30'],
             'items.*.qty'            => ['required', 'integer', 'min:1'],
             'items.*.unit_price'     => ['required', 'numeric', 'min:0'],
             'items.*.disc'           => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'items.*.shipping_cost'  => ['nullable', 'numeric', 'min:0'],
             'items.*.tax_id'         => ['nullable', 'string', 'exists:taxes,id'],
         ];
     }
@@ -57,6 +59,7 @@ class StorePurchaseOrderRequest extends FormRequest
                 }
 
                 $messages["items.{$index}.item_id.exists"]   = "Produk ({$identifier}) tidak valid atau tidak ditemukan di database.";
+                $messages["items.{$index}.item_id.distinct"] = "Produk ({$identifier}) dimasukkan lebih dari sekali. Gabungkan menjadi satu baris.";
                 $messages["items.{$index}.item_id.required"] = "Produk ({$identifier}) wajib diisi.";
                 $messages["items.{$index}.qty.required"]     = "Kuantitas untuk produk ({$identifier}) wajib diisi.";
                 $messages["items.{$index}.qty.min"]          = "Kuantitas untuk produk ({$identifier}) minimal :min.";

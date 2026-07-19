@@ -82,6 +82,29 @@ class PurchaseOrder extends Model
         return in_array($this->status, [self::STATUS_OPEN, self::STATUS_PARTIAL_RECEIVED]);
     }
 
+    public function recomputeStatus(): string
+    {
+        if ($this->status === self::STATUS_CANCELLED) {
+            return self::STATUS_CANCELLED;
+        }
+
+        $items = $this->items()->get(['id', 'qty', 'received_qty']);
+
+        if ($items->isEmpty() || $items->sum('received_qty') <= 0) {
+            return $this->status === self::STATUS_DRAFT
+                ? self::STATUS_DRAFT
+                : self::STATUS_OPEN;
+        }
+
+        $allReceived = $items->every(
+            fn ($item) => (int) $item->received_qty >= (int) $item->qty
+        );
+
+        return $allReceived
+            ? self::STATUS_FULLY_RECEIVED
+            : self::STATUS_PARTIAL_RECEIVED;
+    }
+
     public function scopeByStatus($query, string $status)
     {
         return $query->where('status', $status);

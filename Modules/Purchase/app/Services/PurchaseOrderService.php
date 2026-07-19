@@ -3,12 +3,14 @@
 namespace Modules\Purchase\Services;
 
 use Modules\Purchase\Repositories\PurchaseOrderRepository;
+use Modules\Purchase\Enums\PurchaseActivityAction;
 use Modules\Purchase\Models\PurchaseOrder;
 use Modules\Inbound\Services\InboundService;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Warehouse\Services\CompanyProfileService;
 use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Barryvdh\DomPDF\Facade\Pdf;
 
 class PurchaseOrderService
@@ -20,6 +22,7 @@ class PurchaseOrderService
         protected InboundService $inboundService,
         protected InventoryRepository $inventoryRepository,
         protected CompanyProfileService $companyProfile,
+        protected PurchaseOrderActivityLogger $activityLogger,
     ) {}
 
     public function downloadPdf(string $id)
@@ -77,6 +80,14 @@ class PurchaseOrderService
                 $this->adjustOnOrder($itemData['item_id'], $po->location_id, $itemData['qty']);
             }
 
+            $this->activityLogger->log($po, PurchaseActivityAction::CREATED, [
+                'new_values' => [
+                    'po_number'    => $po->po_number,
+                    'total_amount' => (float) $po->total_amount,
+                    'item_count'   => count($data['items']),
+                ],
+            ]);
+
             return $po->fresh()->load('items.variant.product:id,name');
         });
     }
@@ -90,35 +101,177 @@ class PurchaseOrderService
                 throw new \Exception('PO tidak ditemukan.');
             }
 
-            if ($po->status !== PurchaseOrder::STATUS_OPEN) {
-                throw new \Exception('Hanya PO berstatus OPEN yang bisa diedit.');
+            if ($po->status === PurchaseOrder::STATUS_CANCELLED) {
+                throw new \Exception('PO yang sudah dibatalkan tidak bisa diedit.');
             }
 
-            $totals = $this->calculateTotals($data['items'] ?? [], $data['is_tax_included'] ?? false);
-            $data = array_merge($data, $totals);
+            $this->inboundService->assertPurchaseOrderEditable($po);
+
+            unset($data['status']);
+
+            $headerBefore = $po->only(array_keys($data));
+            $statusBefore = $po->status;
+            $itemsBefore = $this->snapshotItems($po);
 
             if (isset($data['items'])) {
+                $this->reverseReceiptsForShrunkLines($po, $data['items']);
+
+                foreach ($data['items'] as &$itemData) {
+                    $this->calculateItemAmounts($itemData);
+                }
+                unset($itemData);
+
+                $this->poRepository->syncItems($po, $data['items']);
                 $po->load('items');
 
-                foreach ($po->items as $item) {
-                    $this->adjustOnOrder($item->item_id, $po->location_id, -$item->qty);
-                }
+                $this->logItemDiff($po, $itemsBefore);
 
-                $po->items()->delete();
-
-                foreach ($data['items'] as $itemData) {
-                    $itemData['purchase_order_id'] = $po->id;
-                    $this->calculateItemAmounts($itemData);
-                    $this->poRepository->createItem($itemData);
-
-                    $this->adjustOnOrder($itemData['item_id'], $data['location_id'] ?? $po->location_id, $itemData['qty']);
-                }
+                $data = array_merge($data, $this->calculateTotals(
+                    $po->items->map(fn ($item) => [
+                        'unit_price' => (float) $item->unit_price,
+                        'qty'        => (int) $item->qty,
+                        'disc'       => (float) $item->disc,
+                        'tax_amount' => (float) $item->tax_amount,
+                    ])->all(),
+                    $data['is_tax_included'] ?? (bool) $po->is_tax_included,
+                ));
             }
 
             $po->update($data);
 
+            $this->activityLogger->logHeaderChanges($po, $headerBefore, $data);
+
+            $newStatus = $po->recomputeStatus();
+            if ($newStatus !== $po->status) {
+                $this->poRepository->updateStatus($po, $newStatus);
+            }
+
+            $this->activityLogger->logStatusChanged($po, $statusBefore, $po->fresh()->status);
+
+            $this->inboundService->resyncDraftFromPO($po->fresh()->load('items'));
+
             return $this->getById($id);
         });
+    }
+
+    /**
+     * Potret baris item sebelum sync, dipakai untuk mendiff riwayat. SKU ikut
+     * disalin karena baris yang dihapus tidak bisa lagi di-join ke variant
+     * setelah sync selesai.
+     *
+     * @return array<string,array>
+     */
+    private function snapshotItems(PurchaseOrder $po): array
+    {
+        $po->load('items.variant:id,sku');
+
+        return $po->items->mapWithKeys(fn ($item) => [$item->id => [
+            'sku'           => $item->variant?->sku,
+            'qty'           => (int) $item->qty,
+            'received_qty'  => (int) $item->received_qty,
+            'unit_price'    => (float) $item->unit_price,
+            'disc'          => (float) $item->disc,
+            'disc_amount'   => (float) $item->disc_amount,
+            'shipping_cost' => (float) $item->shipping_cost,
+            'description'   => $item->description,
+            'unit'          => $item->unit,
+        ]])->all();
+    }
+
+    /**
+     * @param array<string,array> $before
+     */
+    private function logItemDiff(PurchaseOrder $po, array $before): void
+    {
+        $after = $this->snapshotItems($po);
+
+        foreach ($after as $itemId => $row) {
+            if (! isset($before[$itemId])) {
+                $this->activityLogger->logItemAdded(
+                    $po,
+                    ['id' => $itemId, 'qty' => $row['qty'], 'unit_price' => $row['unit_price']],
+                    $row['sku'],
+                );
+                continue;
+            }
+
+            $this->activityLogger->logItemChanged($po, $itemId, $row['sku'], $before[$itemId], $row);
+        }
+
+        foreach ($before as $itemId => $row) {
+            if (isset($after[$itemId])) {
+                continue;
+            }
+
+            $this->activityLogger->logItemRemoved(
+                $po,
+                $itemId,
+                $row['sku'],
+                $row['qty'],
+                $row['received_qty'],
+            );
+        }
+    }
+
+    /**
+     * Baris yang qty-nya diturunkan di bawah jumlah yang sudah diterima -- atau
+     * dihapus sama sekali -- harus menarik balik penerimaannya sampai ke stok di
+     * rak. Dijalankan SEBELUM syncItems supaya received_qty sudah turun saat
+     * baris hendak dihapus, dan seluruh kekurangan stok dilaporkan sekaligus di
+     * muka alih-alih gagal di tengah cascade.
+     */
+    private function reverseReceiptsForShrunkLines(PurchaseOrder $po, array $items): void
+    {
+        $po->load('items');
+
+        $targetQtyByItemId = collect($items)
+            ->filter(fn ($row) => ! empty($row['id']))
+            ->mapWithKeys(fn ($row) => [$row['id'] => (int) ($row['qty'] ?? 0)]);
+
+        $reversalByVariant = [];
+
+        foreach ($po->items as $poItem) {
+            $received = (int) $poItem->received_qty;
+
+            if ($received <= 0) {
+                continue;
+            }
+
+            $targetQty = $targetQtyByItemId->has($poItem->id)
+                ? $targetQtyByItemId->get($poItem->id)
+                : 0;
+
+            if ($targetQty >= $received) {
+                continue;
+            }
+
+            $reversalByVariant[$poItem->item_id] =
+                ($reversalByVariant[$poItem->item_id] ?? 0) + ($received - $targetQty);
+        }
+
+        if (empty($reversalByVariant)) {
+            return;
+        }
+
+        $this->inboundService->assertPurchaseReversalPossible($po, $reversalByVariant);
+
+        $actorId = auth()->id();
+        $skuByVariant = \Modules\Product\Models\ProductVariant::whereIn('id', array_keys($reversalByVariant))
+            ->pluck('sku', 'id');
+
+        foreach ($reversalByVariant as $variantId => $qty) {
+            $this->inboundService->reversePurchaseReceiptForVariant($po, $variantId, $qty, $actorId);
+
+            $this->activityLogger->logReceiptReversed(
+                $po,
+                $skuByVariant[$variantId] ?? null,
+                $qty,
+                'Kuantitas pesanan diturunkan di bawah jumlah yang sudah diterima',
+            );
+        }
+
+        $this->inboundService->recomputePurchaseOrderReceived($po);
+        $po->load('items');
     }
 
     public function receive(string $poId, array $data): array
@@ -164,11 +317,16 @@ class PurchaseOrderService
                 ];
             }
 
-            $allReceived = $po->items->fresh()->every(fn ($item) => $item->isFullyReceived());
-            $newStatus = $allReceived
-                ? PurchaseOrder::STATUS_FULLY_RECEIVED
-                : PurchaseOrder::STATUS_PARTIAL_RECEIVED;
-            $this->poRepository->updateStatus($po, $newStatus);
+            $statusBefore = $po->status;
+            $this->poRepository->updateStatus($po, $po->recomputeStatus());
+
+            $this->activityLogger->log($po, PurchaseActivityAction::RECEIVED, [
+                'new_values' => [
+                    'total_qty'  => array_sum(array_column($inboundItems, 'expected_qty')),
+                    'item_count' => count($inboundItems),
+                ],
+            ]);
+            $this->activityLogger->logStatusChanged($po, $statusBefore, $po->fresh()->status);
 
             $inbound = $this->inboundService->receiveFromPO([
                 'location_id'      => $data['location_id'] ?? $po->location_id,
@@ -214,7 +372,12 @@ class PurchaseOrderService
                 }
             }
 
+            $statusBefore = $po->status;
             $this->poRepository->updateStatus($po, PurchaseOrder::STATUS_CANCELLED);
+
+            $this->activityLogger->log($po, PurchaseActivityAction::CANCELLED, [
+                'prev_values' => ['status' => $statusBefore],
+            ]);
 
             return $this->getById($id);
         });

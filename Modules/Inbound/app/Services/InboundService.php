@@ -23,6 +23,7 @@ use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Models\PutawayItem;
 use Modules\Inventory\Models\PutawayPlacement;
+use Modules\Inventory\Models\PutawayItemSource;
 use Modules\Inventory\Models\PutawaySource;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\PutawayService;
@@ -34,7 +35,9 @@ use Modules\Purchase\Models\PurchaseOrder;
 use Modules\Purchase\Models\PurchaseOrderItem;
 use Modules\Warehouse\Services\LocationBinService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class InboundService
 {
@@ -312,6 +315,291 @@ class InboundService
 
             return $inbound->load('items');
         });
+    }
+
+    public function findDraftByPO(string $poId): ?Inbound
+    {
+        return Inbound::where('source_type', 'purchase_order')
+            ->where('source_id', $poId)
+            ->where('status', '!=', Inbound::STATUS_CANCELLED)
+            ->first();
+    }
+
+    public function assertPurchaseOrderEditable(PurchaseOrder $po): void
+    {
+        $inbound = $this->findDraftByPO($po->id);
+
+        if ($inbound) {
+            $this->assertWebCanMutate($inbound);
+        }
+    }
+
+    public function resyncDraftFromPO(PurchaseOrder $po): void
+    {
+        $inbound = $this->findDraftByPO($po->id);
+
+        if (! $inbound) {
+            return;
+        }
+
+        DB::transaction(function () use ($po, $inbound) {
+            $po->loadMissing('items');
+
+            $poQtyByItem = $po->items
+                ->groupBy('item_id')
+                ->map(fn ($rows) => (int) $rows->sum('qty'));
+
+            $existing = InboundItem::where('inbound_id', $inbound->id)
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('item_id');
+
+            foreach ($poQtyByItem as $itemId => $qty) {
+                $row = $existing->get($itemId);
+
+                if ($row) {
+                    if ((int) $row->expected_qty !== $qty) {
+                        $row->update(['expected_qty' => $qty]);
+                    }
+                    continue;
+                }
+
+                $this->inboundRepository->createItem([
+                    'inbound_id'   => $inbound->id,
+                    'item_id'      => $itemId,
+                    'expected_qty' => $qty,
+                    'received_qty' => 0,
+                ]);
+            }
+
+            $orphanIds = $existing->keys()
+                ->diff($poQtyByItem->keys())
+                ->map(fn ($itemId) => $existing->get($itemId)->id);
+
+            $this->deleteUntouchedInboundItems($inbound, $orphanIds);
+
+            $inbound->forceFill(['updated_version_at' => now()])->save();
+        });
+    }
+
+    protected function deleteUntouchedInboundItems(Inbound $inbound, $orphanIds): void
+    {
+        $orphanIds = collect($orphanIds);
+
+        if ($orphanIds->isEmpty()) {
+            return;
+        }
+
+        $deletableIds = InboundItem::whereIn('id', $orphanIds)
+            ->where('received_qty', 0)
+            ->where('rejected_qty', 0)
+            ->where('putaway_qty', 0)
+            ->where('reserved_qty', 0)
+            ->pluck('id')
+            ->diff(
+                DB::table('inbound_receipts')
+                    ->whereIn('inbound_item_id', $orphanIds)
+                    ->pluck('inbound_item_id')
+                    ->merge(
+                        DB::table('putaway_item_sources')
+                            ->whereIn('inbound_item_id', $orphanIds)
+                            ->pluck('inbound_item_id')
+                    )
+            );
+
+        if ($deletableIds->isNotEmpty()) {
+            InboundItem::whereIn('id', $deletableIds)->delete();
+        }
+
+        $keptIds = $orphanIds->diff($deletableIds);
+
+        if ($keptIds->isNotEmpty()) {
+            Log::warning('resyncDraftFromPO: baris inbound dipertahankan karena sudah tersentuh penerimaan/putaway', [
+                'inbound_id'       => $inbound->id,
+                'inbound_item_ids' => $keptIds->values()->all(),
+            ]);
+        }
+    }
+
+    /**
+     * Baris inbound milik PO untuk satu varian, terbaru dulu (LIFO).
+     * Penerimaan terakhir yang dibatalkan duluan -- sejalan dengan urutan
+     * reverseOnePlacement() yang juga LIFO lewat putaway_item_sources.
+     */
+    private function purchaseInboundItemsForVariant(PurchaseOrder $po, string $variantId)
+    {
+        return InboundItem::query()
+            ->join('inbounds', 'inbounds.id', '=', 'inbound_items.inbound_id')
+            ->where('inbounds.source_type', 'purchase_order')
+            ->where('inbounds.source_id', $po->id)
+            ->where('inbounds.status', '!=', Inbound::STATUS_CANCELLED)
+            ->where('inbound_items.item_id', $variantId)
+            ->where('inbound_items.received_qty', '>', 0)
+            ->orderByDesc('inbounds.created_at')
+            ->select('inbound_items.*')
+            ->lockForUpdate()
+            ->get();
+    }
+
+    /**
+     * Penempatan fisik yang menopang satu baris inbound, terbaru dulu.
+     */
+    private function placementsForInboundItem(InboundItem $item)
+    {
+        return PutawayItemSource::query()
+            ->join('putaway_items', 'putaway_items.id', '=', 'putaway_item_sources.putaway_item_id')
+            ->join('putaway_placements', 'putaway_placements.putaway_item_id', '=', 'putaway_items.id')
+            ->where('putaway_item_sources.inbound_item_id', $item->id)
+            ->where('putaway_placements.qty', '>', 0)
+            ->orderByDesc('putaway_placements.created_at')
+            ->select(
+                'putaway_placements.id as placement_id',
+                'putaway_placements.qty as placement_qty',
+                'putaway_placements.bin_id as bin_id',
+                'putaway_items.id as putaway_item_id',
+                'putaway_items.putaway_id as putaway_id',
+            )
+            ->get();
+    }
+
+    /**
+     * Pastikan seluruh stok yang hendak ditarik balik masih ada di raknya.
+     * Dipanggil SEBELUM mutasi apa pun supaya penolakan bisa merinci per
+     * SKU/rak, bukan gagal di tengah cascade dengan pesan generik.
+     *
+     * @param array<string,int> $qtyByVariant
+     */
+    public function assertPurchaseReversalPossible(PurchaseOrder $po, array $qtyByVariant): void
+    {
+        $needed = [];
+
+        foreach ($qtyByVariant as $variantId => $qtyToReverse) {
+            $remaining = (int) $qtyToReverse;
+
+            foreach ($this->purchaseInboundItemsForVariant($po, $variantId) as $item) {
+                if ($remaining <= 0) {
+                    break;
+                }
+
+                $fromThisItem = min($remaining, (int) $item->received_qty);
+                $remaining -= $fromThisItem;
+                $fromPutaway = min($fromThisItem, (int) $item->putaway_qty);
+
+                foreach ($this->placementsForInboundItem($item) as $placement) {
+                    if ($fromPutaway <= 0) {
+                        break;
+                    }
+                    $take = min($fromPutaway, (int) $placement->placement_qty);
+                    $fromPutaway -= $take;
+
+                    $key = $variantId . '|' . $placement->bin_id;
+                    $needed[$key] = ($needed[$key] ?? 0) + $take;
+                }
+            }
+        }
+
+        $shortfalls = [];
+        foreach ($needed as $key => $need) {
+            [$variantId, $binId] = explode('|', $key);
+            $onHand = (int) Inventory::where('item_id', $variantId)
+                ->where('bin_id', $binId)
+                ->value('on_hand');
+
+            if ($onHand < $need) {
+                $sku = ProductVariant::where('id', $variantId)->value('sku') ?? $variantId;
+                $binCode = LocationBin::where('id', $binId)->value('bin_final_code') ?? $binId;
+                $shortfalls[] = "- {$sku} @ {$binCode}: butuh {$need}, tersedia {$onHand} (kurang " . ($need - $onHand) . ')';
+            }
+        }
+
+        if (empty($shortfalls)) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'items' => [
+                "Perubahan ini perlu menarik balik stok yang sudah tidak ada di rak:\n"
+                . implode("\n", $shortfalls)
+                . "\n\nBarangnya sudah dipicking/dipindah/terjual. Batalkan pesanan atau transfer terkait dulu.",
+            ],
+        ]);
+    }
+
+    /**
+     * Tarik balik penerimaan pembelian sebanyak $qtyToReverse untuk satu varian:
+     * balikkan penempatan di rak (LIFO) -> balikkan sisa yang belum ditempatkan
+     * -> turunkan received_qty baris inbound. received_qty di PO diselaraskan
+     * terpisah oleh pemanggil lewat recomputePurchaseOrderReceived().
+     */
+    public function reversePurchaseReceiptForVariant(
+        PurchaseOrder $po,
+        string $variantId,
+        int $qtyToReverse,
+        ?string $userId = null,
+    ): void {
+        if ($qtyToReverse <= 0) {
+            return;
+        }
+
+        $createdBy = $userId ? "user:{$userId}" : 'system';
+        $remaining = $qtyToReverse;
+
+        foreach ($this->purchaseInboundItemsForVariant($po, $variantId) as $item) {
+            if ($remaining <= 0) {
+                break;
+            }
+
+            $fromThisItem = min($remaining, (int) $item->received_qty);
+            $remaining -= $fromThisItem;
+
+            $fromPutaway = min($fromThisItem, (int) $item->putaway_qty);
+
+            foreach ($this->placementsForInboundItem($item) as $placement) {
+                if ($fromPutaway <= 0) {
+                    break;
+                }
+
+                $take = min($fromPutaway, (int) $placement->placement_qty);
+                $fromPutaway -= $take;
+
+                $this->putawayService->deletePlacements(
+                    $placement->putaway_id,
+                    [[
+                        'item_id'      => $placement->putaway_item_id,
+                        'placement_id' => $placement->placement_id,
+                        'qty'          => $take,
+                    ]],
+                    $userId ?? 'system',
+                );
+            }
+
+            $item->refresh();
+
+            $notPutAway = $fromThisItem - min($fromThisItem, (int) $item->putaway_qty);
+            $inbound = Inbound::find($item->inbound_id);
+            $defaultBin = $inbound ? $this->binService->getDefaultBin($inbound->location_id) : null;
+
+            if ($notPutAway > 0 && $defaultBin && $inbound) {
+                $this->inventoryService->adjust([
+                    'item_id'            => $item->item_id,
+                    'location_id'        => $inbound->location_id,
+                    'bin_id'             => $defaultBin->id,
+                    'qty'                => -$notPutAway,
+                    'transaction_number' => $inbound->transaction_number . '-KOREKSI-PO',
+                    'source'             => 'PURCHASE_REVERSAL',
+                    'created_by'         => $createdBy,
+                ]);
+            }
+
+            $item->update([
+                'received_qty' => max(0, (int) $item->received_qty - $fromThisItem),
+                'expected_qty' => max(0, (int) $item->expected_qty - $fromThisItem),
+            ]);
+
+            if ($inbound) {
+                $inbound->forceFill(['updated_version_at' => now()])->save();
+            }
+        }
     }
 
     public function receiveFromPO(array $data): Inbound
@@ -1464,7 +1752,7 @@ class InboundService
         $needed = [];
         foreach ($placements as $p) {
             $variantId = $p->putawayItem->item_id ?? null;
-            $binId = $p->destination_bin_id ?? null;
+            $binId = $p->bin_id ?? null;
             if (! $variantId || ! $binId) {
                 continue;
             }
@@ -1516,16 +1804,27 @@ class InboundService
             ->lockForUpdate()
             ->first();
 
-        if (! $po) {
-            return;
+        if ($po) {
+            $this->recomputePurchaseOrderReceived($po, $inbound->id);
         }
+    }
 
+    /**
+     * Selaraskan purchase_order_items.received_qty dengan jumlah yang benar-benar
+     * tercatat di inbound aktif. Satu-satunya sumber kebenaran untuk received_qty
+     * di sisi PO -- dipanggil dari pembatalan inbound maupun dari edit PO, supaya
+     * kedua jalur tidak bisa saling berbeda.
+     */
+    public function recomputePurchaseOrderReceived(PurchaseOrder $po, ?string $excludeInboundId = null): void
+    {
         $otherActiveInbounds = Inbound::where('source_type', 'purchase_order')
             ->where('source_id', $po->id)
             ->where('status', '!=', Inbound::STATUS_CANCELLED)
-            ->where('id', '!=', $inbound->id)
+            ->when($excludeInboundId, fn ($q) => $q->where('id', '!=', $excludeInboundId))
             ->with('items')
             ->get();
+
+        $po->load('items');
 
         $totalReceivedByVariant = [];
         foreach ($otherActiveInbounds as $inb) {
@@ -1546,13 +1845,7 @@ class InboundService
             }
         }
 
-        $po->load('items');
-        $anyReceived = $po->items->contains(fn ($i) => (int) $i->received_qty > 0);
-        $allReceived = $po->items->every(fn ($i) => (int) $i->received_qty >= (int) $i->qty);
-
-        $newStatus = $allReceived
-            ? PurchaseOrder::STATUS_FULLY_RECEIVED
-            : ($anyReceived ? PurchaseOrder::STATUS_PARTIAL_RECEIVED : PurchaseOrder::STATUS_OPEN);
+        $newStatus = $po->recomputeStatus();
 
         if ($po->status !== $newStatus) {
             $po->update(['status' => $newStatus]);

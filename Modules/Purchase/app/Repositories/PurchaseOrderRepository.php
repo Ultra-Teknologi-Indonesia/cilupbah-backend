@@ -6,6 +6,9 @@ use Modules\Purchase\Models\PurchaseOrder;
 use Modules\Purchase\Models\PurchaseOrderItem;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundItem;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\AllowedSort;
@@ -151,6 +154,68 @@ class PurchaseOrderRepository
     public function createItem(array $data): PurchaseOrderItem
     {
         return PurchaseOrderItem::create($data);
+    }
+
+    public function lockItems(string $poId): Collection
+    {
+        return PurchaseOrderItem::where('purchase_order_id', $poId)
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('id');
+    }
+
+    public function syncItems(PurchaseOrder $po, array $items): void
+    {
+        $existing = $this->lockItems($po->id);
+        $keptIds = [];
+
+        foreach ($items as $data) {
+            unset($data['received_qty']);
+
+            $id = $data['id'] ?? null;
+            unset($data['id']);
+
+            if ($id !== null && $existing->has($id)) {
+                $existing->get($id)->update($data);
+                $keptIds[] = $id;
+                continue;
+            }
+
+            $data['purchase_order_id'] = $po->id;
+            $keptIds[] = $this->createItem($data)->id;
+        }
+
+        $this->deleteUnreferencedItems($po, $existing->keys()->diff($keptIds));
+    }
+
+    protected function deleteUnreferencedItems(PurchaseOrder $po, Collection $leftoverIds): void
+    {
+        if ($leftoverIds->isEmpty()) {
+            return;
+        }
+
+        $protectedIds = PurchaseOrderItem::whereIn('id', $leftoverIds)
+            ->where('received_qty', '>', 0)
+            ->pluck('id')
+            ->merge(
+                DB::table('purchase_bill_items')
+                    ->whereIn('purchase_order_item_id', $leftoverIds)
+                    ->pluck('purchase_order_item_id')
+            )
+            ->unique();
+
+        $deletableIds = $leftoverIds->diff($protectedIds);
+
+        if ($deletableIds->isNotEmpty()) {
+            PurchaseOrderItem::whereIn('id', $deletableIds)->delete();
+        }
+
+        if ($protectedIds->isNotEmpty()) {
+            Log::warning('syncItems: item PO dipertahankan karena sudah diterima atau direferensikan tagihan', [
+                'purchase_order_id'       => $po->id,
+                'purchase_order_item_ids' => $protectedIds->values()->all(),
+            ]);
+        }
     }
 
     public function update(PurchaseOrder $po, array $data): PurchaseOrder
