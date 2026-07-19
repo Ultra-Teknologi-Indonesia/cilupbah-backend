@@ -12,7 +12,8 @@
     // tingginya tetap. height pada td HANYA memusatkan, tidak membatasi:
     // konten yang lebih tinggi memuaikan barisnya sampai melewati kertas dan
     // memicu halaman kosong. Jadi saat blok lebih banyak, semuanya dikecilkan.
-    $dense = $showStore;
+    // Begitu harga ikut tampil, blok bertambah dan semuanya harus mengecil.
+    $dense = $showPrice;
 
     // SKU pendek dicetak besar (kebaca dari jarak jauh), SKU panjang mengecil
     // bertahap supaya tetap muat di label tanpa terpotong.
@@ -28,17 +29,17 @@
     // jelas tidak sanggup menampung batas yang sama dengan label besar. Nilai
     // penuh tetap utuh di dalam QR, yang dipangkas hanya teks cetaknya.
     $skuCaps = [
-        'thermal_80x40' => 48,
-        'thermal_50x40' => 40,
-        'thermal_40x30' => 30,
-        'thermal_30x20' => 24,
+        'thermal_80x40' => 64,
+        'thermal_50x40' => 52,
+        'thermal_40x30' => 42,
+        'thermal_30x20' => 44,
         'a4_single'     => 0,
         'a4_multi'      => 44,
     ];
     $skuCap = $skuCaps[$paper] ?? 44;
 
     if ($dense && $skuCap > 0) {
-        $skuCap = (int) round($skuCap * 0.75);
+        $skuCap = (int) round($skuCap * 0.85);
     }
 
     // Pemotongan teks WAJIB di sini, bukan lewat CSS. dompdf tidak memotong
@@ -47,18 +48,21 @@
     // penuh, sehingga label melar melewati kertas dan dompdf melempar seluruh
     // baris ke halaman berikutnya — inilah asal halaman kosong berselang-seling.
     $limits = [
-        'thermal_80x40' => ['name' => 52, 'store' => 24],
-        'thermal_50x40' => ['name' => 32, 'store' => 14],
-        'thermal_40x30' => ['name' => 28, 'store' => 12],
-        'thermal_30x20' => ['name' => 0,  'store' => 9],
-        'a4_single'     => ['name' => 0,  'store' => 0],
-        'a4_multi'      => ['name' => 54, 'store' => 22],
+        // Angka hasil kalibrasi: dirender lalu dicek benar-benar muat,
+        // bukan diperkirakan dari lebar karakter. Nama produk nyata ~62
+        // karakter, jadi semua ukuran menyisakan margin yang cukup.
+        'thermal_80x40' => ['name' => 120, 'store' => 40],
+        'thermal_50x40' => ['name' => 100, 'store' => 26],
+        'thermal_40x30' => ['name' => 85,  'store' => 22],
+        'thermal_30x20' => ['name' => 0,   'store' => 24],
+        'a4_single'     => ['name' => 0,   'store' => 0],
+        'a4_multi'      => ['name' => 60,  'store' => 22],
     ];
     $limit = $limits[$paper] ?? $limits['a4_multi'];
 
     // Mode padat menyisakan ruang lebih sedikit untuk nama.
     if ($dense && $limit['name'] > 0) {
-        $limit['name'] = (int) round($limit['name'] * 0.6);
+        $limit['name'] = (int) round($limit['name'] * 0.8);
     }
 
     // $max = 0 berarti tanpa batas.
@@ -128,13 +132,13 @@
         td.qr-cell { width: 22mm; }
         td.qr-cell img { width: 21mm; height: 21mm; }
         td.text-cell { padding-left: 2mm; }
-        .store { font-size: 6pt; }
-        .sku-lg { font-size: 13pt; }
-        .sku-md { font-size: 11pt; }
-        .sku-sm { font-size: 9pt; }
-        .sku-xs { font-size: 7.5pt; }
-        .name { font-size: 6.5pt; max-height: 6.2mm; }
-        .price { font-size: 9pt; }
+        .store { font-size: 4.5pt; }
+        .sku-lg { font-size: 12pt; }
+        .sku-md { font-size: 10pt; }
+        .sku-sm { font-size: 8pt; }
+        .sku-xs { font-size: 6.5pt; }
+        .name { font-size: 5pt; }
+        .price { font-size: 8pt; }
         @endif
 
         @if($paper === 'thermal_80x40')
@@ -144,13 +148,13 @@
         table.label-row td { height: 35mm; }
         td.qr-cell { width: 30mm; }
         td.qr-cell img { width: 29mm; height: 29mm; }
-        .store { font-size: 7pt; }
-        .sku-lg { font-size: 17pt; }
-        .sku-md { font-size: 14pt; }
-        .sku-sm { font-size: 11pt; }
-        .sku-xs { font-size: 9pt; }
-        .name { font-size: 8pt; max-height: 7.6mm; }
-        .price { font-size: 11pt; }
+        .store { font-size: 5.5pt; }
+        .sku-lg { font-size: 13pt; }
+        .sku-md { font-size: 11pt; }
+        .sku-sm { font-size: 9pt; }
+        .sku-xs { font-size: 7.5pt; }
+        .name { font-size: 6pt; }
+        .price { font-size: 9pt; }
         @endif
 
         @if($paper === 'thermal_40x30')
@@ -161,13 +165,13 @@
         td.qr-cell { width: 18mm; }
         td.qr-cell img { width: 17mm; height: 17mm; }
         td.text-cell { padding-left: 1.5mm; }
-        .store { font-size: 5pt; }
-        .sku-lg { font-size: 10pt; }
-        .sku-md { font-size: 8.5pt; }
-        .sku-sm { font-size: 7pt; }
-        .sku-xs { font-size: 6pt; }
-        .name { font-size: 5.5pt; max-height: 5.2mm; }
-        .price { font-size: 7.5pt; }
+        .store { font-size: 4pt; }
+        .sku-lg { font-size: 8pt; }
+        .sku-md { font-size: 7pt; }
+        .sku-sm { font-size: 5.8pt; }
+        .sku-xs { font-size: 5pt; }
+        .name { font-size: 4.2pt; }
+        .price { font-size: 6pt; }
         @endif
 
         @if($paper === 'thermal_30x20')
@@ -178,16 +182,16 @@
         td.qr-cell { width: 12mm; }
         td.qr-cell img { width: 11.5mm; height: 11.5mm; }
         td.text-cell { padding-left: 1.2mm; }
-        .store { font-size: 4pt; margin-bottom: 0.3mm; }
-        .sku-lg { font-size: 8pt; }
-        .sku-md { font-size: 7pt; }
-        .sku-sm { font-size: 5.5pt; }
-        .sku-xs { font-size: 4.5pt; }
+        .store { font-size: 3.5pt; margin-bottom: 0.3mm; }
+        .sku-lg { font-size: 7pt; }
+        .sku-md { font-size: 6pt; }
+        .sku-sm { font-size: 5pt; }
+        .sku-xs { font-size: 4.2pt; }
         /* 30x20mm hanya muat QR + SKU (+ harga). Nama produk disembunyikan:
            pada ukuran ini tingginya ~1.6mm alias tidak terbaca, tapi tetap
            memakan ruang sehingga konten meluber ke label berikutnya. */
         .name { display: none; }
-        .price { font-size: 6pt; margin-top: 0.5mm; }
+        .price { font-size: 5pt; margin-top: 0.5mm; }
         @endif
 
         @if($paper === 'a4_single')
