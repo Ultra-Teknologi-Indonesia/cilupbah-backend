@@ -19,7 +19,6 @@ use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\ProductVariantChannelMapping;
 use Modules\Purchase\Models\PurchaseOrder;
 use Modules\Purchase\Models\PurchaseOrderItem;
-use Modules\Purchase\Models\PurchaseReturn;
 use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesInvoiceItem;
 use Modules\Sales\Models\SalesOrder;
@@ -250,13 +249,10 @@ class ReportRepository
         $ongkosAngkut = (float) (clone $poItemsQuery)->sum('shipping_cost');
         $potonganPembelian = (float) (clone $poItemsQuery)->sum('disc_amount');
 
-        $returQuery = PurchaseReturn::whereDate('return_date', '>=', $dateFrom)
-            ->whereDate('return_date', '<=', $dateTo)
-            ->whereNotIn('status', [PurchaseReturn::STATUS_DRAFT, PurchaseReturn::STATUS_CANCELLED]);
-        if ($locationId) {
-            $returQuery->where('location_id', $locationId);
-        }
-        $returPembelian = (float) $returQuery->sum('total_amount');
+        // Fitur Retur Pembelian dicabut. Komponen ini dipertahankan agar bentuk
+        // laporan HPP dan konsumennya di FE tidak berubah; nilainya memang 0
+        // selama tidak ada retur ke supplier.
+        $returPembelian = 0.0;
 
         $cogsQuery = SalesInvoiceItem::whereHas('invoice', function ($q) use ($dateFrom, $dateTo) {
             $q->whereDate('invoice_date', '>=', $dateFrom)

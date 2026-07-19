@@ -4,8 +4,6 @@ use Illuminate\Support\Facades\Route;
 use Modules\Purchase\Http\Controllers\PurchaseOrderController;
 use Modules\Purchase\Http\Controllers\PurchaseBillController;
 use Modules\Purchase\Http\Controllers\PurchasePaymentController;
-use Modules\Purchase\Http\Controllers\PurchaseReturnController;
-use Modules\Purchase\Http\Controllers\PurchaseReturnSettlementController;
 use Modules\Purchase\Http\Controllers\PurchaseSerialNumberController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
@@ -15,20 +13,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('purchase/serial-number/mark-printed', [PurchaseSerialNumberController::class, 'markPrinted'])->name('purchase.serial-number.mark-printed');
     });
 
-    Route::middleware('role_or_permission:owner|view-pembayaran-pembelian')->group(function () {
-        Route::get('purchase/return-settlements/bills', [PurchaseReturnSettlementController::class, 'billIndex'])->name('purchase.return-settlements.bills.index');
-        Route::get('purchase/return-settlements/bills/{id}', [PurchaseReturnSettlementController::class, 'billShow'])->name('purchase.return-settlements.bills.show');
-        Route::get('purchase/return-settlements/refunds', [PurchaseReturnSettlementController::class, 'refundIndex'])->name('purchase.return-settlements.refunds.index');
-        Route::get('purchase/return-settlements/refunds/{id}', [PurchaseReturnSettlementController::class, 'refundShow'])->name('purchase.return-settlements.refunds.show');
-        Route::get('purchase/return-settlements', [PurchaseReturnSettlementController::class, 'index'])->name('purchase.return-settlements.index');
-    });
-    Route::middleware('role_or_permission:owner|create-pembayaran-pembelian')->group(function () {
-        Route::post('purchase/return-settlements/bills', [PurchaseReturnSettlementController::class, 'billStore'])->name('purchase.return-settlements.bills.store');
-        Route::post('purchase/return-settlements/refunds', [PurchaseReturnSettlementController::class, 'refundStore'])->name('purchase.return-settlements.refunds.store');
-    });
-    Route::middleware('role_or_permission:owner|delete-pembayaran-pembelian')->group(function () {
-        Route::delete('purchase/return-settlements', [PurchaseReturnSettlementController::class, 'destroy'])->name('purchase.return-settlements.destroy');
-    });
 
     Route::middleware('role_or_permission:owner|view-pembayaran-pembelian')->group(function () {
         Route::get('purchase/payments', [PurchasePaymentController::class, 'index'])->name('purchase.payments.index');
@@ -44,7 +28,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::middleware('role_or_permission:owner|view-pembayaran-pembelian')->group(function () {
         Route::get('purchase/bills/unpaid', [PurchaseBillController::class, 'unpaid'])->name('purchase.bills.unpaid');
         Route::get('purchase/bills/overdue', [PurchaseBillController::class, 'overdue'])->name('purchase.bills.overdue');
-        Route::get('purchase/bills/for-return', [PurchaseBillController::class, 'forReturn'])->name('purchase.bills.for-return');
     });
 
     Route::middleware('role_or_permission:owner|view-transaksi-pembelian')->group(function () {

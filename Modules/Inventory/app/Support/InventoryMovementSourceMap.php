@@ -23,8 +23,6 @@ class InventoryMovementSourceMap
         'CONSIGNMENT'      => ['category' => 'PURCHASE', 'label' => 'Konsinyasi'],
         'ADJUSTMENT'       => ['category' => 'ADJUSTMENT', 'label' => 'Penyesuaian'],
         'STOCK_OPNAME'     => ['category' => 'ADJUSTMENT', 'label' => 'Penyesuaian'],
-        'PURCHASE_RETURN'  => ['category' => 'PURCHASE_RETURN', 'label' => 'Retur Pembelian'],
-        'PURCHASE_RETURN_OUT' => ['category' => 'PURCHASE_RETURN', 'label' => 'Retur Pembelian'],
         'SALES_RETURN'     => ['category' => 'SALES_RETURN', 'label' => 'Retur Penjualan'],
         'PICKING'          => ['category' => 'PICKING', 'label' => 'Barang di-pick'],
         'PICKING_REVERSAL' => ['category' => 'PICKING', 'label' => 'Koreksi Pick'],
@@ -62,7 +60,6 @@ class InventoryMovementSourceMap
     private const CATEGORY_LABELS = [
         'PURCHASE'        => 'Pembelian',
         'ADJUSTMENT'      => 'Penyesuaian',
-        'PURCHASE_RETURN' => 'Retur Pembelian',
         'SALES_RETURN'    => 'Retur Penjualan',
         'PICKING'         => 'Barang di-pick',
         'ALOKASI'         => 'Alokasi Pesanan',
@@ -75,7 +72,6 @@ class InventoryMovementSourceMap
     private const CATEGORY_ORDER = [
         'PURCHASE',
         'ADJUSTMENT',
-        'PURCHASE_RETURN',
         'SALES_RETURN',
         'PICKING',
         'ALOKASI',
