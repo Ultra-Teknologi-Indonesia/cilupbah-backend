@@ -347,7 +347,7 @@ class BundleCompositionTest extends TestCase
             ],
         ])->assertStatus(201)->json('data.product_id');
 
-        $res = $this->postJson('/api/v1/inventory/items/all-stocks', [
+        $res = $this->postJson('/api/v1/inventory/items/variant-stocks', [
             'item_ids' => [$bundleId],
         ])->assertStatus(200);
 

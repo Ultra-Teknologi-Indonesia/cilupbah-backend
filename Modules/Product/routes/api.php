@@ -325,7 +325,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::get('inventory/items/by-sku/{sku}', [ProductController::class, 'showBySku']);
     Route::get('inventory/item-bundles', [ProductController::class, 'bundles']);
-    Route::post('inventory/items/all-stocks', [ProductController::class, 'allStocks']);
+    // Path lama 'inventory/items/all-stocks' bentrok dengan route bernama sama di
+    // Modules/Inventory. Keduanya beda kontrak (item_ids vs ids) dan beda bentuk
+    // balikan, jadi yang kalah urutan registrasi selalu 422. Endpoint ini dipindah
+    // ke namespace produk; path kanonik diserahkan ke modul Inventory.
+    Route::post('inventory/items/variant-stocks', [ProductController::class, 'allStocks']);
     Route::post('inventory/items/prices', [ProductController::class, 'prices']);
     Route::post('inventory/items', [ProductController::class, 'storeBundle']);
 
