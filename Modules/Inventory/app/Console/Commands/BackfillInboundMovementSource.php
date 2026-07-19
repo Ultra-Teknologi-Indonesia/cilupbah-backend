@@ -33,14 +33,19 @@ class BackfillInboundMovementSource extends Command
     ];
 
     /**
-     * Koreksi & edit qty menulis movement dengan nomor bersufiks
-     * (InboundService: `-KOREKSI`, `-EDIT-QTY`), jadi kecocokan persis ke
-     * `inbounds.transaction_number` akan meleset. Baris itu tetap milik
-     * penerimaan yang sama dan harus ikut dilabeli ulang.
+     * Koreksi, pembatalan, dan edit qty menulis movement dengan nomor bersufiks,
+     * jadi kecocokan persis ke `inbounds.transaction_number` akan meleset. Baris
+     * itu tetap milik penerimaan yang sama dan harus ikut dilabeli ulang.
      *
-     * Konvensi yang sama sudah dipakai query kronologi untuk meresolusi picklist.
+     * Daftar ini hasil enumerasi menyeluruh atas seluruh penulisan
+     * `transaction_number` di kode produksi -- BUKAN tebakan. Dua kali sebelumnya
+     * daftar yang dikira lengkap ternyata kurang (mula-mula 3, lalu ketahuan 6),
+     * dan tiap kekurangan menyembunyikan puluhan baris dari backfill.
+     *
+     * Kalau menambah sufiks baru di kode, tambahkan di sini juga.
+     * `MovementSourceVocabularyTest` tidak menjaga ini -- ia menjaga `source`.
      */
-    private const STRIP_SUFFIX = 'regexp_replace(%s, \'-(KOREKSI|EDIT-QTY|HAPUS)$\', \'\')';
+    private const STRIP_SUFFIX = 'regexp_replace(%s, \'-(CANCEL|EDIT-QTY|HAPUS|KOREKSI|RESET|REVERT)$\', \'\')';
 
     private static function stripped(string $column): string
     {

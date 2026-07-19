@@ -95,25 +95,61 @@ class BackfillInboundMovementSourceTest extends TestCase
         return DB::table('inventory_movements')->where('transaction_number', $trxNo)->value('source');
     }
 
-    public function test_backfill_ikut_membawa_baris_koreksi_dan_edit_qty(): void
+    /** Seluruh sufiks yang dipakai kode produksi saat menulis transaction_number. */
+    public static function sufiks(): array
+    {
+        return [
+            'koreksi'  => ['-KOREKSI'],
+            'edit qty' => ['-EDIT-QTY'],
+            'hapus'    => ['-HAPUS'],
+            'cancel'   => ['-CANCEL'],
+            'reset'    => ['-RESET'],
+            'revert'   => ['-REVERT'],
+        ];
+    }
+
+    /**
+     * @dataProvider sufiks
+     *
+     * Tiap sufiks yang luput menyembunyikan baris dari backfill secara senyap:
+     * ia tidak error, hanya meninggalkan penerimaan berlabel ADJUSTMENT selamanya.
+     */
+    public function test_setiap_sufiks_ikut_terbawa(string $sufiks): void
+    {
+        $this->inbound('PO-SUF', 'PURCHASE_ORDER');
+        $this->movement('PO-SUF');
+        $this->movement('PO-SUF' . $sufiks);
+
+        $this->artisan('inventory:backfill-inbound-source --apply')->assertSuccessful();
+
+        $this->assertSame('PURCHASE', $this->sourceOf('PO-SUF'));
+        $this->assertSame(
+            'PURCHASE',
+            $this->sourceOf('PO-SUF' . $sufiks),
+            "baris bersufiks {$sufiks} harus ikut dilabeli ulang"
+        );
+    }
+
+    public function test_backfill_membawa_semua_tipe_inbound(): void
     {
         $this->inbound('PO-BF-1', 'PURCHASE_ORDER');
         $this->movement('PO-BF-1');
         $this->movement('PO-BF-1-KOREKSI');
-        $this->movement('PO-BF-1-EDIT-QTY');
 
         $this->inbound('TRFI-BF-1', 'TRANSIT_IN');
         $this->movement('TRFI-BF-1');
-        $this->movement('TRFI-BF-1-KOREKSI');
+        $this->movement('TRFI-BF-1-CANCEL');
+
+        $this->inbound('KONS-BF-1', 'CONSIGNMENT');
+        $this->movement('KONS-BF-1');
 
         $this->artisan('inventory:backfill-inbound-source --apply')->assertSuccessful();
 
         $this->assertSame('PURCHASE', $this->sourceOf('PO-BF-1'));
-        $this->assertSame('PURCHASE', $this->sourceOf('PO-BF-1-KOREKSI'), 'baris koreksi harus ikut dilabeli ulang');
-        $this->assertSame('PURCHASE', $this->sourceOf('PO-BF-1-EDIT-QTY'), 'baris edit qty harus ikut dilabeli ulang');
-
+        $this->assertSame('PURCHASE', $this->sourceOf('PO-BF-1-KOREKSI'));
         $this->assertSame('TRANSFER_IN', $this->sourceOf('TRFI-BF-1'));
-        $this->assertSame('TRANSFER_IN', $this->sourceOf('TRFI-BF-1-KOREKSI'));
+        $this->assertSame('TRANSFER_IN', $this->sourceOf('TRFI-BF-1-CANCEL'));
+        $this->assertSame('CONSIGNMENT', $this->sourceOf('KONS-BF-1'));
     }
 
     public function test_penyesuaian_stok_asli_tidak_tersentuh(): void
