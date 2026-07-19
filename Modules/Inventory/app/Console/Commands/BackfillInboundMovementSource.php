@@ -32,6 +32,21 @@ class BackfillInboundMovementSource extends Command
         'CONSIGNMENT'    => 'CONSIGNMENT',
     ];
 
+    /**
+     * Koreksi & edit qty menulis movement dengan nomor bersufiks
+     * (InboundService: `-KOREKSI`, `-EDIT-QTY`), jadi kecocokan persis ke
+     * `inbounds.transaction_number` akan meleset. Baris itu tetap milik
+     * penerimaan yang sama dan harus ikut dilabeli ulang.
+     *
+     * Konvensi yang sama sudah dipakai query kronologi untuk meresolusi picklist.
+     */
+    private const STRIP_SUFFIX = 'regexp_replace(%s, \'-(KOREKSI|EDIT-QTY|HAPUS)$\', \'\')';
+
+    private static function stripped(string $column): string
+    {
+        return sprintf(self::STRIP_SUFFIX, $column);
+    }
+
     public function handle(): int
     {
         $collisions = DB::table('inbounds as i')
@@ -46,7 +61,13 @@ class BackfillInboundMovementSource extends Command
         }
 
         $rencana = DB::table('inventory_movements as m')
-            ->join('inbounds as i', 'i.transaction_number', '=', 'm.transaction_number')
+            ->join('inbounds as i', function ($join) {
+                $join->on(
+                    DB::raw(self::stripped('m.transaction_number')),
+                    '=',
+                    'i.transaction_number'
+                );
+            })
             ->where('m.source', 'ADJUSTMENT')
             ->whereIn('i.type', array_keys(self::TYPE_TO_SOURCE))
             ->select('i.type', DB::raw('COUNT(*) as jml'))
@@ -78,10 +99,12 @@ class BackfillInboundMovementSource extends Command
         DB::transaction(function () use (&$diubah) {
             foreach (self::TYPE_TO_SOURCE as $type => $source) {
                 $diubah += DB::table('inventory_movements')
-                    ->whereIn('transaction_number', function ($q) use ($type) {
-                        $q->select('transaction_number')->from('inbounds')->where('type', $type);
-                    })
                     ->where('source', 'ADJUSTMENT')
+                    ->whereRaw(
+                        self::stripped('transaction_number')
+                        . ' IN (SELECT transaction_number FROM inbounds WHERE type = ?)',
+                        [$type]
+                    )
                     ->update(['source' => $source]);
             }
         });
