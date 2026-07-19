@@ -6,6 +6,7 @@ use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Inventory\Console\Commands\AutoDetectStockReplenishment;
 use Modules\Inventory\Console\Commands\BackfillInboundMovementSource;
+use Modules\Inventory\Console\Commands\CleanupDraftTransitStock;
 use Modules\Inventory\Console\Commands\BackfillOrderAllocations;
 use Modules\Inventory\Console\Commands\BackfillTransitInbounds;
 use Modules\Inventory\Console\Commands\RebuildAverageCost;
@@ -25,6 +26,7 @@ class InventoryServiceProvider extends ModuleServiceProvider
         BackfillOrderAllocations::class,
         ReconcileOnOrder::class,
         BackfillInboundMovementSource::class,
+        CleanupDraftTransitStock::class,
     ];
 
     protected array $providers = [
