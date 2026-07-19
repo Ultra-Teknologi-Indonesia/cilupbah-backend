@@ -21,7 +21,13 @@ class SalesPhase3Test extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Endpoint /api/v1/sales/{id} dijaga role_or_permission; tanpa role,
+        // request balik 403 sebelum sempat menguji perilaku apa pun.
+        $this->seed(\Database\Seeders\RoleSeeder::class);
+        $this->seed(\Database\Seeders\RbacPermissionSeeder::class);
+
         $this->user = User::factory()->create();
+        $this->user->assignRole('owner');
 
         $categoryId = DB::table('categories')->insertGetId([
             'name' => 'Kategori P3',
@@ -47,12 +53,37 @@ class SalesPhase3Test extends TestCase
             'updated_at' => now(),
         ]);
 
-        $this->locationId = Str::uuid()->toString();
-        DB::table('locations')->insert([
-            'id' => $this->locationId,
-            'location_code' => 'LOC-P3',
-            'location_name' => 'Gudang P3',
-            'location_type' => 'WAREHOUSE',
+        // Alokasi order diarahkan ke WH-KECIL oleh resolveLocationId. Kalau stok
+        // di-seed di lokasi lain, reserve() melihat 0 dan melempar
+        // InsufficientStockException -- bukan bug produksi, fixture-nya yang meleset.
+        $kecilCode = \Modules\Warehouse\Models\Location::SYSTEM_KECIL_CODE;
+        $existing = DB::table('locations')->where('location_code', $kecilCode)->value('id');
+
+        if ($existing) {
+            $this->locationId = $existing;
+        } else {
+            $this->locationId = Str::uuid()->toString();
+            DB::table('locations')->insert([
+                'id' => $this->locationId,
+                'location_code' => $kecilCode,
+                'location_name' => 'Gudang Kecil',
+                'location_type' => 'WAREHOUSE',
+                'is_warehouse' => true,
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        // Stok WAJIB ditaruh di rak: sumOnHandAtLocation() memakai scope placed(),
+        // jadi baris agregat (bin_id NULL) tidak dihitung sebagai on_hand dan
+        // reserve() akan melihat 0 lalu melempar InsufficientStockException.
+        $binId = Str::uuid()->toString();
+        DB::table('location_bins')->insert([
+            'id' => $binId,
+            'location_id' => $this->locationId,
+            'bin_final_code' => 'P3-RACK-1',
+            'is_inbound' => false,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -61,7 +92,7 @@ class SalesPhase3Test extends TestCase
             'id' => Str::uuid()->toString(),
             'item_id' => $this->variantId,
             'location_id' => $this->locationId,
-            'bin_id' => null,
+            'bin_id' => $binId,
             'on_hand' => 100,
             'on_order' => 0,
             'available' => 100,
@@ -131,7 +162,9 @@ class SalesPhase3Test extends TestCase
         ]);
 
         $service->updateOrder($order->fresh(), ['status' => 'picked']);
-        $this->assertSame(95, $this->inventory()->on_hand);
+        // Transisi status TIDAK memotong fisik. Sejak 647876d1 on_hand hanya turun
+        // saat picker men-scan rak; di sini yang terjadi cuma pelepasan alokasi.
+        $this->assertSame(100, $this->inventory()->on_hand);
         $this->assertSame(0, $this->inventory()->on_order);
 
         $service->updateOrder($order->fresh(), ['status' => 'packed']);
@@ -139,9 +172,10 @@ class SalesPhase3Test extends TestCase
         $count = $service->markAsComplete([$order->id]);
 
         $this->assertSame(1, $count);
-        $this->assertSame(95, $this->inventory()->on_hand, 'ship tidak boleh mengurangi on_hand lagi');
-        $this->assertSame(1, $this->movements('ORDER_PICK'));
-        $this->assertSame(1, $this->movements('ORDER_SHIP'));
+        $this->assertSame(100, $this->inventory()->on_hand, 'ship tidak boleh menyentuh on_hand');
+        $this->assertSame(1, $this->movements('ORDER_RELEASE'));
+        $this->assertSame(0, $this->movements('ORDER_PICK'));
+        $this->assertSame(0, $this->movements('ORDER_SHIP'));
         $this->assertDatabaseHas('sales_orders', ['id' => $order->id, 'status' => 'shipped']);
     }
 

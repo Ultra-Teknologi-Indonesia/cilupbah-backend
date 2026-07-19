@@ -45,15 +45,27 @@ class ChannelStockShipTransitionTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $this->locationId = Str::uuid()->toString();
-        DB::table('locations')->insert([
-            'id' => $this->locationId,
-            'location_code' => 'LOC-SHIP',
-            'location_name' => 'Gudang Ship',
-            'location_type' => 'WAREHOUSE',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        // Order channel SELALU dialokasikan ke WH-KECIL (resolveLocationId),
+        // jadi fixture harus memakai lokasi itu -- kalau bikin sendiri, alokasinya
+        // mendarat di baris lain dan assertion di sini tak melihat perubahan.
+        $kecilCode = \Modules\Warehouse\Models\Location::SYSTEM_KECIL_CODE;
+        $existing = DB::table('locations')->where('location_code', $kecilCode)->value('id');
+
+        if ($existing) {
+            $this->locationId = $existing;
+        } else {
+            $this->locationId = Str::uuid()->toString();
+            DB::table('locations')->insert([
+                'id' => $this->locationId,
+                'location_code' => $kecilCode,
+                'location_name' => 'Gudang Kecil',
+                'location_type' => 'WAREHOUSE',
+                'is_warehouse' => true,
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
 
         DB::table('inventories')->insert([
             'id' => Str::uuid()->toString(),
@@ -123,7 +135,7 @@ class ChannelStockShipTransitionTest extends TestCase
             ->count();
     }
 
-    public function test_reserved_to_shipped_releases_reserved_and_decrements_on_hand(): void
+    public function test_reserved_to_shipped_releases_allocation_without_touching_on_hand(): void
     {
         $this->service->upsertFromChannel($this->orderData('LZ-SHIP-1', 'AWAITING_SHIPMENT'));
 
@@ -134,11 +146,16 @@ class ChannelStockShipTransitionTest extends TestCase
         $this->service->upsertFromChannel($this->orderData('LZ-SHIP-1', 'DELIVERED'));
 
         $inv = $this->inventory();
-        $this->assertSame(0, $inv->on_order, 'reserved harus dilepas saat shipped tanpa picklist WMS');
-        $this->assertSame(8, $inv->on_hand, 'on_hand harus berkurang sesuai qty order');
-        $this->assertSame(8, $inv->available);
-        $this->assertSame(1, $this->movements('ORDER_PICK'));
-        $this->assertSame(1, $this->movements('ORDER_SHIP'));
+        $this->assertSame(0, $inv->on_order, 'alokasi harus dilepas saat shipped tanpa picklist WMS');
+        $this->assertSame(
+            10,
+            $inv->on_hand,
+            'jalur channel TIDAK memotong fisik: sejak 647876d1 hanya PicklistService::pickItem '
+            . 'yang menurunkan on_hand, di rak yang benar-benar di-scan'
+        );
+        $this->assertSame(1, $this->movements('ORDER_RELEASE'));
+        $this->assertSame(0, $this->movements('ORDER_PICK'));
+        $this->assertSame(0, $this->movements('ORDER_SHIP'));
 
         $this->assertDatabaseHas('sales_orders', [
             'salesorder_no' => 'LZ-SHIP-1',
@@ -161,7 +178,7 @@ class ChannelStockShipTransitionTest extends TestCase
         $this->assertSame(8, $inv->on_hand, 'on_hand tidak boleh dikurangi dua kali');
         $this->assertSame(0, $inv->on_order);
         $this->assertSame(0, $this->movements('ORDER_PICK'), 'tidak boleh ada PICK kedua dari jalur channel');
-        $this->assertSame(1, $this->movements('ORDER_SHIP'));
+        $this->assertSame(0, $this->movements('ORDER_SHIP'));
     }
 
     public function test_first_pull_already_delivered_leaves_stock_untouched(): void
@@ -185,7 +202,9 @@ class ChannelStockShipTransitionTest extends TestCase
         $inv = $this->inventory();
         $this->assertSame(0, $inv->on_order);
         $this->assertSame(10, $inv->on_hand);
-        $this->assertSame(1, $this->movements('ORDER_CANCEL'));
+        // Pembatalan melepas alokasi lewat ledger ORDER_RELEASE. Source ORDER_CANCEL
+        // sudah dihapus di commit 1b11b08c bersama ORDER_BOOK.
+        $this->assertSame(1, $this->movements('ORDER_RELEASE'));
     }
 
     public function test_shipped_order_is_not_reprocessed_on_repeat_webhook(): void
@@ -195,9 +214,14 @@ class ChannelStockShipTransitionTest extends TestCase
         $this->service->upsertFromChannel($this->orderData('LZ-SHIP-5', 'COMPLETED'));
 
         $inv = $this->inventory();
-        $this->assertSame(8, $inv->on_hand, 'webhook shipped berulang tidak boleh mengurangi stok lagi');
+        $this->assertSame(10, $inv->on_hand, 'webhook berulang tidak boleh menyentuh stok fisik');
         $this->assertSame(0, $inv->on_order);
-        $this->assertSame(1, $this->movements('ORDER_PICK'));
-        $this->assertSame(1, $this->movements('ORDER_SHIP'));
+        $this->assertSame(
+            1,
+            $this->movements('ORDER_RELEASE'),
+            'alokasi dilepas tepat sekali walau webhook datang berkali-kali'
+        );
+        $this->assertSame(0, $this->movements('ORDER_PICK'));
+        $this->assertSame(0, $this->movements('ORDER_SHIP'));
     }
 }
