@@ -17,7 +17,10 @@ class InventoryMovementSourceMap
     public const SOURCES = [
         'PURCHASE'         => ['category' => 'PURCHASE', 'label' => 'Pembelian'],
         'BILL'             => ['category' => 'PURCHASE', 'label' => 'Pembelian'], // LEGACY
-        'CONSIGNMENT'      => ['category' => 'CONSIGNMENT', 'label' => 'Konsinyasi'],
+        // Digabung ke kategori PURCHASE agar tidak muncul sebagai pilihan filter
+        // tersendiri. Labelnya tetap "Konsinyasi" supaya baris yang sudah terlanjur
+        // tercatat tidak kehilangan artinya.
+        'CONSIGNMENT'      => ['category' => 'PURCHASE', 'label' => 'Konsinyasi'],
         'ADJUSTMENT'       => ['category' => 'ADJUSTMENT', 'label' => 'Penyesuaian'],
         'STOCK_OPNAME'     => ['category' => 'ADJUSTMENT', 'label' => 'Penyesuaian'],
         'PURCHASE_RETURN'  => ['category' => 'PURCHASE_RETURN', 'label' => 'Retur Pembelian'],
@@ -51,9 +54,26 @@ class InventoryMovementSourceMap
         'REVALUATION'      => ['category' => 'REVALUATION', 'label' => 'Ubah Nilai Stok'],
     ];
 
+    /**
+     * Label grup di dropdown filter. Ditulis eksplisit karena mengambil label
+     * source pertama menyesatkan: kategori PESANAN jadi bernama "Pesanan Dikirim"
+     * padahal isinya didominasi pembatalan (ORDER_SHIP sudah LEGACY).
+     */
+    private const CATEGORY_LABELS = [
+        'PURCHASE'        => 'Pembelian',
+        'ADJUSTMENT'      => 'Penyesuaian',
+        'PURCHASE_RETURN' => 'Retur Pembelian',
+        'SALES_RETURN'    => 'Retur Penjualan',
+        'PICKING'         => 'Barang di-pick',
+        'ALOKASI'         => 'Alokasi Pesanan',
+        'PESANAN'         => 'Pesanan Batal',
+        'INVOICE'         => 'Faktur',
+        'TRANSFER'        => 'Transfer & Penempatan',
+        'REVALUATION'     => 'Ubah Nilai Stok',
+    ];
+
     private const CATEGORY_ORDER = [
         'PURCHASE',
-        'CONSIGNMENT',
         'ADJUSTMENT',
         'PURCHASE_RETURN',
         'SALES_RETURN',
@@ -169,7 +189,7 @@ class InventoryMovementSourceMap
             }
             $sources[] = [
                 'value' => implode(',', $groups[$cat]['sources']),
-                'label' => $groups[$cat]['label'],
+                'label' => self::CATEGORY_LABELS[$cat] ?? $groups[$cat]['label'],
                 'category' => $cat,
             ];
         }

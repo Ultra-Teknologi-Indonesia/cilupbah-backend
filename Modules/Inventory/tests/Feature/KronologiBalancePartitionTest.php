@@ -107,6 +107,54 @@ class KronologiBalancePartitionTest extends TestCase
     }
 
     /**
+     * Drill-down Posisi Stok mengirim maksud (`filter[drill]`), bukan daftar
+     * source. Definisinya dimiliki BE lewat DRILL_SCOPES.
+     */
+    public function test_filter_drill_allocation_hanya_baris_alokasi(): void
+    {
+        $this->movement('PUTAWAY_IN', 10, 10, 1);
+        $this->movement('ORDER_RESERVE', 6, 6, 2);
+        $this->movement('PICKING', -2, 8, 3);
+        $this->movement('TRANSIT_IN', 5, 5, 4);
+
+        request()->merge([
+            'filter' => ['item_id' => $this->itemId, 'drill' => 'allocation'],
+            'per_page' => 50,
+        ]);
+
+        $sources = collect(app(InventoryMovementRepository::class)->getHistoryPaginated(50)->items())
+            ->pluck('source')
+            ->all();
+
+        $this->assertSame(['ORDER_RESERVE'], $sources, 'drill=allocation hanya boleh mengembalikan baris alokasi');
+    }
+
+    public function test_filter_drill_transit_hanya_leg_transit(): void
+    {
+        $this->movement('PUTAWAY_IN', 10, 10, 1);
+        $this->movement('TRANSFER_OUT', -3, 7, 2);
+        $this->movement('TRANSIT_IN', 3, 3, 3);
+        $this->movement('TRANSIT_OUT', -3, 0, 4);
+
+        request()->merge([
+            'filter' => ['item_id' => $this->itemId, 'drill' => 'transit'],
+            'per_page' => 50,
+        ]);
+
+        $sources = collect(app(InventoryMovementRepository::class)->getHistoryPaginated(50)->items())
+            ->pluck('source')
+            ->sort()
+            ->values()
+            ->all();
+
+        $this->assertSame(
+            ['TRANSIT_IN', 'TRANSIT_OUT'],
+            $sources,
+            'drill=transit tidak boleh memuat TRANSFER_OUT -- itu leg gudang-ke-gudang, bukan stok in-transit'
+        );
+    }
+
+    /**
      * Skenario persis yang dikeluhkan klien atas sistem lama: fisik di rak 69,
      * masuk pesanan 6. Sistem lama menampilkan 62 di kronologi padahal barang
      * masih utuh. Di sini angka WAJIB tetap 69, dan pesanan yang belum diproses
