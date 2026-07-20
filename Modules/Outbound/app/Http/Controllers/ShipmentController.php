@@ -424,7 +424,16 @@ class ShipmentController extends Controller
     )]
     public function handOver(string $id): JsonResponse
     {
-        $shipment = $this->shipmentService->handOver($id);
+        try {
+            $shipment = $this->shipmentService->handOver($id);
+        } catch (\Exception $e) {
+            return $this->errorResponse(
+                $e->getMessage(),
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
+        }
 
         return $this->successResponse($shipment);
     }

@@ -1376,19 +1376,6 @@ class SalesOrderService
                 }
             }
 
-            if ($finalStatus === 'packed' && ! empty($orderData['tracking_number'])) {
-                try {
-                    app(\Modules\Outbound\Services\ShipmentService::class)
-                        ->autoCreateForChannelOrder($order->fresh());
-                } catch (\Throwable $e) {
-                    Log::warning('Auto-create shipment for channel order gagal', [
-                        'order_id'       => $order->id,
-                        'channel_status' => $channelStatus,
-                        'error'          => $e->getMessage(),
-                    ]);
-                }
-            }
-
             return $order->id;
         } catch (\Exception $e) {
             DB::rollBack();

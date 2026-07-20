@@ -331,12 +331,6 @@ class ShipmentService
         return $this->shipmentRepository->findById($shipmentId);
     }
 
-    private const CHANNEL_SHIPPED_STATUSES = [
-        'AWAITING_COLLECTION', 'PROCESSED', 'PARTIALLY_SHIPPING',
-        'IN_TRANSIT', 'SHIPPED', 'TO_CONFIRM_RECEIVE',
-        'DELIVERED', 'COMPLETED',
-    ];
-
     private const CHANNEL_TO_SHIPMENT_STATUS = [
         'IN_TRANSIT'         => Shipment::STATUS_IN_TRANSIT,
         'SHIPPED'            => Shipment::STATUS_IN_TRANSIT,
@@ -353,72 +347,6 @@ class ShipmentService
         Shipment::STATUS_DELIVERED   => 4,
     ];
 
-    public function autoCreateForChannelOrder(Order $order): ?Shipment
-    {
-        if ($order->status !== 'packed') {
-            return null;
-        }
-
-        if ($order->cancel_requested_at !== null || $order->is_canceled) {
-            return null;
-        }
-
-        if (! in_array($order->channel_status, self::CHANNEL_SHIPPED_STATUSES, true)) {
-            return null;
-        }
-
-        if (empty($order->tracking_number) || empty($order->location_id)) {
-            return null;
-        }
-
-        if (ShipmentOrder::where('order_id', $order->id)->exists()) {
-            return null;
-        }
-
-        $order->loadMissing('items');
-        foreach ($order->items as $item) {
-            if (empty($item->item_id)) {
-                Log::info('Auto-create shipment ditolak: order masih memiliki item belum di-download', [
-                    'order_id'       => $order->id,
-                    'salesorder_no'  => $order->salesorder_no,
-                    'channel_status' => $order->channel_status,
-                ]);
-                return null;
-            }
-        }
-
-        $shipment = $this->create([
-            'location_id'   => $order->location_id,
-            'courier_name'  => $order->shipping_provider ?? 'Marketplace',
-            'courier_code'  => $order->shipping_provider
-                ? strtolower(preg_replace('/\s+/', '-', $order->shipping_provider))
-                : null,
-            'shipment_type' => 'REGULAR',
-            'shipment_date' => now()->toDateString(),
-            'notes'         => 'Auto: channel ' . $order->channel_status,
-            'created_by'    => 'SYSTEM',
-        ]);
-
-        $packlist = Packlist::where('order_id', $order->id)
-            ->where('status', Packlist::STATUS_COMPLETED)
-            ->first();
-
-        $this->shipmentRepository->createOrder([
-            'shipment_id'     => $shipment->id,
-            'order_id'        => $order->id,
-            'packlist_id'     => $packlist?->id,
-            'tracking_number' => $order->tracking_number,
-        ]);
-
-        Log::info('Auto-created shipment for channel order', [
-            'order_id'       => $order->id,
-            'shipment_id'    => $shipment->id,
-            'channel_status' => $order->channel_status,
-        ]);
-
-        return $shipment;
-    }
-
     public function syncFromChannelStatus(Order $order): ?Shipment
     {
         $targetStatus = self::CHANNEL_TO_SHIPMENT_STATUS[$order->channel_status] ?? null;
@@ -427,16 +355,23 @@ class ShipmentService
         }
 
         $shipmentOrder = ShipmentOrder::where('order_id', $order->id)->first();
-        $shipment = $shipmentOrder
-            ? $this->shipmentRepository->findById($shipmentOrder->shipment_id)
-            : $this->autoCreateForChannelOrder($order);
+        if (! $shipmentOrder) {
+            return null;
+        }
 
+        $shipment = $this->shipmentRepository->findById($shipmentOrder->shipment_id);
         if (! $shipment) {
             return null;
         }
 
         $currentRank = self::SHIPMENT_STATUS_RANK[$shipment->status] ?? 0;
         $targetRank = self::SHIPMENT_STATUS_RANK[$targetStatus] ?? 0;
+
+        // Manifest SCHEDULED masih terbuka dan milik operator: hanya handOver() manual
+        // yang boleh menutupnya, supaya resi lost-scan tetap bisa digabungkan.
+        if ($currentRank < self::SHIPMENT_STATUS_RANK[Shipment::STATUS_HANDED_OVER]) {
+            return $shipment;
+        }
 
         if ($targetRank <= $currentRank) {
             return $shipment;
