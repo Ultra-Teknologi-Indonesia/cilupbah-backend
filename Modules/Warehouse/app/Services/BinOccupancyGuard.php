@@ -5,6 +5,7 @@ namespace Modules\Warehouse\Services;
 use DomainException;
 use Modules\Inventory\Models\Inventory;
 use Modules\Warehouse\Models\LocationBin;
+use Modules\Warehouse\Models\Location;
 
 class BinOccupancyGuard
 {
@@ -70,10 +71,13 @@ class BinOccupancyGuard
             return false;
         }
 
-        // "1 rak = 1 SKU" berlaku di SEMUA gudang. Tidak lagi scope ke
-        // WH-KECIL — WH-PUSAT juga strict per-rak. Yang khusus WH-KECIL
-        // adalah aturan "1 SKU = 1 rak" (lihat SkuHomeBinGuard).
-        return true;
+        // "1 rak = 1 SKU" hanya berlaku di gudang strict (WH-KECIL). Di
+        // WH-PUSAT satu rak boleh menampung banyak SKU — rak besar dipakai
+        // sebagai penyimpanan bulk, bukan lokasi pick. Scope-nya memakai
+        // predikat yang sama dengan SkuHomeBinGuard ("1 SKU = 1 rak").
+        $location = Location::find($bin->location_id);
+
+        return $location !== null && $location->enforcesStrictBinSku();
     }
 
     protected function firstConflictingInventory(string $binId, string $itemId): ?Inventory

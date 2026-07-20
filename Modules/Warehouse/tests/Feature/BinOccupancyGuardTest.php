@@ -172,11 +172,10 @@ class BinOccupancyGuardTest extends TestCase
         app(BinOccupancyGuard::class)->assertBinFitsSku($bin->id, $newcomer->id);
     }
 
-    public function test_pusat_rejects_multi_sku_per_bin(): void
+    public function test_pusat_allows_multi_sku_per_bin(): void
     {
-        // Rule baru: "1 rak = 1 SKU" berlaku SEMUA gudang (termasuk PUSAT).
-        // Yang beda WH-PUSAT vs WH-KECIL adalah aturan "1 SKU = 1 rak"
-        // (SkuHomeBinGuard) — di PUSAT off, di KECIL on.
+        // "1 rak = 1 SKU" hanya berlaku di WH-KECIL. Di WH-PUSAT satu rak
+        // boleh menampung banyak SKU sekaligus.
 
         $loc = $this->makeLocation(Location::SYSTEM_PUSAT_CODE);
         $bin = LocationBin::factory()->create([
@@ -191,16 +190,34 @@ class BinOccupancyGuardTest extends TestCase
 
         $this->placeStock($loc, $bin, $existing, 5);
 
-        $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('Rak PUSAT-RAK-1 sudah berisi SKU');
-
         app(BinOccupancyGuard::class)->assertBinFitsSku($bin->id, $newcomer->id);
+        $this->assertTrue(app(BinOccupancyGuard::class)->isBinFreeFor($bin->id, $newcomer->id));
     }
 
-    public function test_random_location_rejects_multi_sku_per_bin(): void
+    public function test_pusat_reserved_only_bin_still_allows_other_sku(): void
     {
-        // Guard tidak lagi scope ke WH-KECIL — semua non-inbound, acknowledged
-        // bin di lokasi apapun harus 1 SKU per rak.
+        // Baris on_order (belum putaway) juga tidak lagi mengunci rak PUSAT.
+
+        $loc = $this->makeLocation(Location::SYSTEM_PUSAT_CODE);
+        $bin = LocationBin::factory()->create([
+            'location_id' => $loc->id,
+            'is_inbound' => false,
+            'is_stock_acknowledged' => true,
+        ]);
+
+        $existing = $this->makeVariant();
+        $newcomer = $this->makeVariant();
+
+        $this->placeStock($loc, $bin, $existing, 0, 2);
+
+        app(BinOccupancyGuard::class)->assertBinFitsSku($bin->id, $newcomer->id);
+        $this->assertTrue(true);
+    }
+
+    public function test_random_location_allows_multi_sku_per_bin(): void
+    {
+        // Guard kembali di-scope lewat Location::enforcesStrictBinSku(), jadi
+        // lokasi non-KECIL apapun bebas multi-SKU per rak.
 
         $loc = Location::factory()->create([
             'location_code' => 'WH-CUSTOM-' . Str::random(4),
@@ -216,8 +233,8 @@ class BinOccupancyGuardTest extends TestCase
 
         $this->placeStock($loc, $bin, $existing, 5);
 
-        $this->expectException(DomainException::class);
         app(BinOccupancyGuard::class)->assertBinFitsSku($bin->id, $newcomer->id);
+        $this->assertTrue(true);
     }
 
     public function test_pusat_allows_same_sku_in_bin(): void
