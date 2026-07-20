@@ -46,6 +46,12 @@ class BulkShippingLabelService
     /** Ink already covering this share of the sheet leaves nothing worth trimming. */
     private const BBOX_FULL_SHEET_RATIO = 0.95;
 
+    /**
+     * Trimming scales ink to fill the label exactly, which would sit it flush against
+     * the edge. Thermal heads have an unprintable border, so hold this much back.
+     */
+    private const BBOX_SAFE_MARGIN_MM = 2.0;
+
     public const TIKTOK_DOWNLOAD_TIMEOUT = 20;
     public const TIKTOK_DOWNLOAD_RETRIES = 2;
     public const TIKTOK_PARALLEL_LANES = 8;
@@ -326,7 +332,9 @@ class BulkShippingLabelService
             return null;
         }
 
-        $scale = min($targetW / $boxW, $targetH / $boxH);
+        $usableW = max(1.0, $targetW - 2 * self::BBOX_SAFE_MARGIN_MM);
+        $usableH = max(1.0, $targetH - 2 * self::BBOX_SAFE_MARGIN_MM);
+        $scale = min($usableW / $boxW, $usableH / $boxH);
 
         // Ghostscript measures from the bottom, FPDI draws from the top.
         $topOffset = $srcH - $y1;
