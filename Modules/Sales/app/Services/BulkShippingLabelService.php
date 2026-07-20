@@ -239,12 +239,26 @@ class BulkShippingLabelService
 
     private function placementOnTarget(float $srcW, float $srcH, float $targetW, float $targetH, ?string $channel = null): array
     {
-        $isShopeeA4Sheet = $channel === self::CHANNEL_SHOPEE
+        $isShopeeA4Portrait = $channel === self::CHANNEL_SHOPEE
             && $srcW >= 200 && $srcW <= 220
             && $srcH >= 285 && $srcH <= 302;
 
-        $effW = $isShopeeA4Sheet ? $srcW / 2 : $srcW;
-        $effH = $isShopeeA4Sheet ? $srcH / 2 : $srcH;
+        $isShopeeA4Landscape = $channel === self::CHANNEL_SHOPEE
+            && $srcW >= 285 && $srcW <= 302
+            && $srcH >= 200 && $srcH <= 220;
+
+        $isShopeeA4 = $isShopeeA4Portrait || $isShopeeA4Landscape;
+
+        if ($isShopeeA4Landscape) {
+            $effW = $srcW / 2;
+            $effH = $srcH;
+        } elseif ($isShopeeA4Portrait) {
+            $effW = $srcW / 2;
+            $effH = $srcH / 2;
+        } else {
+            $effW = $srcW;
+            $effH = $srcH;
+        }
 
         $aspect = $effH / $effW;
         $scale = $aspect > 1.6
@@ -253,8 +267,8 @@ class BulkShippingLabelService
 
         $drawW = $srcW * $scale;
         $drawH = $srcH * $scale;
-        $x = $isShopeeA4Sheet ? 0.0 : ($targetW - $drawW) / 2;
-        $y = ($isShopeeA4Sheet || $drawH >= $targetH) ? 0.0 : ($targetH - $drawH) / 2;
+        $x = $isShopeeA4 ? 0.0 : ($targetW - $drawW) / 2;
+        $y = ($isShopeeA4 || $drawH >= $targetH) ? 0.0 : ($targetH - $drawH) / 2;
 
         return [$x, $y, $drawW, $drawH];
     }
