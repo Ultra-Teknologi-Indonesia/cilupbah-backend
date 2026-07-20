@@ -496,6 +496,56 @@ class ShipmentListReportTest extends TestCase
         @unlink($path);
     }
 
+    public function test_kolom_status_channel_selalu_label_bukan_kode_logistik(): void
+    {
+        $order = $this->makeOrder([
+            'salesorder_no' => 'SP-LOGISTIK',
+            'transaction_date' => '2026-07-18 08:00:00',
+            'source' => 'shopee',
+            'channel_status' => ChannelStatus::SHIPPED->value,
+            'channel_fulfillment_status' => 'LOGISTICS_PICKUP_FAILED',
+        ]);
+
+        DB::table('sales_order_items')->insert([
+            'id' => (string) Str::uuid7(), 'order_id' => $order->id,
+            'item_id' => $this->ripple->id, 'sku' => $this->ripple->sku,
+            'qty_in_base' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $export = new ShipmentListReportExport($this->service, [
+            'from' => '2026-07-18', 'to' => '2026-07-18',
+        ]);
+
+        \Maatwebsite\Excel\Facades\Excel::store($export, 'test-status-channel.xlsx', 'local');
+        $path = \Illuminate\Support\Facades\Storage::disk('local')->path('test-status-channel.xlsx');
+        $sheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path)->getActiveSheet();
+
+        $this->assertSame(
+            'Dikirim',
+            $sheet->getCell('I2')->getValue(),
+            'Status Channel harus label, bukan kode logistik mentah',
+        );
+
+        @unlink($path);
+    }
+
+    public function test_semua_nilai_channel_status_punya_label(): void
+    {
+        foreach (ChannelStatus::cases() as $case) {
+            $label = ReportService::channelStatusLabel($case->value);
+
+            $this->assertNotSame(
+                $case->value,
+                $label,
+                "ChannelStatus {$case->value} belum punya label Indonesia",
+            );
+            $this->assertDoesNotMatchRegularExpression('/[A-Z_]{2,}/', $label);
+        }
+
+        $this->assertNull(ReportService::channelStatusLabel(null));
+        $this->assertNull(ReportService::channelStatusLabel(''));
+    }
+
     public function test_status_pesanan_tak_dikenal_ditampilkan_apa_adanya(): void
     {
         $this->assertSame('STATUS_BARU_DARI_CHANNEL', ReportService::orderStatusLabel('STATUS_BARU_DARI_CHANNEL'));

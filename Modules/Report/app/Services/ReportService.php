@@ -482,6 +482,19 @@ class ReportService
     }
 
     /**
+     * Label status channel untuk dibaca pengguna. Kode kanonik yang belum punya
+     * label dikembalikan apa adanya agar status baru tetap terbaca, bukan hilang.
+     */
+    public static function channelStatusLabel(?string $channelStatus): ?string
+    {
+        if ($channelStatus === null || $channelStatus === '') {
+            return null;
+        }
+
+        return self::CHANNEL_STATUS_LABELS[$channelStatus] ?? $channelStatus;
+    }
+
+    /**
      * Nilai yang tak dikenal dikembalikan apa adanya, bukan dijadikan "-",
      * supaya status baru dari channel tetap terbaca di laporan.
      */
