@@ -29,6 +29,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('reports/wms/shipment/options', [ReportController::class, 'shipmentFilterOptions'])->name('reports.wms.shipment.options');
         Route::post('reports/wms/order-performance/pdf', [ReportController::class, 'orderPerformancePdf'])->name('reports.wms.order-performance.pdf');
         Route::post('reports/wms/putaway-performance/pdf', [ReportController::class, 'putawayPerformancePdf'])->name('reports.wms.putaway-performance.pdf');
+        Route::get('reports/wms/putaway-list/lookup', [ReportController::class, 'putawayListLookup'])->name('reports.wms.putaway-list.lookup');
+        Route::post('reports/wms/putaway-list/pdf', [ReportController::class, 'putawayListPdf'])->name('reports.wms.putaway-list.pdf');
     });
     Route::middleware('role_or_permission:owner|view-laporan-hpp')->group(function () {
         Route::get('reports/hpp', [ReportController::class, 'hpp'])->name('reports.hpp');

@@ -517,6 +517,65 @@ class ReportRepository
             ->all();
     }
 
+    /**
+     * Baris Daftar Penempatan Barang: satu baris per penempatan ke rak.
+     *
+     * Satu putaway_item bisa terpecah ke beberapa rak (putaway_placements) dan
+     * bisa berasal dari beberapa penerimaan (putaway_item_sources). Dokumen yang
+     * belum punya baris placement tetap muncul lewat destination_bin_id di item.
+     *
+     * @return array<int, object>
+     */
+    public function putawayItemRows(string $date, string $locationId, array $putawayIds = []): array
+    {
+        $sumber = DB::table('putaway_item_sources as pis')
+            ->join('inbound_items as ii', 'ii.id', '=', 'pis.inbound_item_id')
+            ->join('inbounds as inb', 'inb.id', '=', 'ii.inbound_id')
+            ->select('pis.putaway_item_id')
+            ->selectRaw("STRING_AGG(DISTINCT inb.transaction_number, ', ') AS sumber")
+            ->groupBy('pis.putaway_item_id');
+
+        return DB::table('putaway_items as pit')
+            ->join('putaways as p', 'p.id', '=', 'pit.putaway_id')
+            ->leftJoin('users as u', 'u.id', '=', 'p.assigned_to')
+            ->leftJoin('product_variants as v', 'v.id', '=', 'pit.item_id')
+            ->leftJoin('products as pr', 'pr.id', '=', 'v.product_id')
+            ->leftJoinSub($sumber, 'src', 'src.putaway_item_id', '=', 'pit.id')
+            ->leftJoin('putaway_placements as pp', 'pp.putaway_item_id', '=', 'pit.id')
+            ->leftJoin('location_bins as lb', 'lb.id', '=', DB::raw('COALESCE(pp.bin_id, pit.destination_bin_id)'))
+            ->where('p.location_id', $locationId)
+            ->whereRaw('DATE(COALESCE(p.started_at, p.created_at)) = ?', [$date])
+            ->when(! empty($putawayIds), fn ($q) => $q->whereIn('p.id', $putawayIds))
+            ->select([
+                'p.id as putaway_id',
+                'p.putaway_no',
+                'v.sku',
+                'pr.name as deskripsi',
+                'pit.serial_no',
+                'pit.batch_no',
+                'src.sumber',
+                'lb.bin_final_code as kode_rak',
+            ])
+            ->selectRaw('COALESCE(p.started_at, p.created_at) AS tanggal')
+            ->selectRaw('COALESCE(u.name, ?) AS runner_name', ['-'])
+            ->selectRaw('u.email AS runner_email')
+            ->selectRaw('COALESCE(pp.qty, pit.putaway_qty, 0) AS qty')
+            ->orderBy('p.putaway_no')
+            ->orderBy('v.sku')
+            ->get()
+            ->all();
+    }
+
+    /** Nomor penempatan pada tanggal dan lokasi terpilih, untuk isi combobox. */
+    public function putawayLookup(string $date, string $locationId): \Illuminate\Support\Collection
+    {
+        return DB::table('putaways')
+            ->where('location_id', $locationId)
+            ->whereRaw('DATE(COALESCE(started_at, created_at)) = ?', [$date])
+            ->orderBy('putaway_no')
+            ->get(['id', 'putaway_no']);
+    }
+
     public function courierOptions(): \Illuminate\Support\Collection
     {
         return DB::table('couriers')

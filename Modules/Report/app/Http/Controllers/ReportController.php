@@ -17,6 +17,7 @@ use Modules\Report\Http\Requests\HppReportRequest;
 use Modules\Report\Http\Requests\PenyesuaianStokPdfRequest;
 use Modules\Report\Http\Resources\LazadaDocumentResource;
 use Modules\Report\Services\OrderPerformanceReportService;
+use Modules\Report\Services\PutawayListReportService;
 use Modules\Report\Services\PutawayPerformanceReportService;
 use Modules\Report\Services\ReportService;
 use Modules\Report\Support\OrderPerformanceSpec;
@@ -638,6 +639,60 @@ class ReportController extends Controller
             $validated['to'],
         );
 
+        $disposition = ($validated['download'] ?? false) ? 'attachment' : 'inline';
+
+        return response($pdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => "{$disposition}; filename=\"{$filename}\"",
+        ]);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/wms/putaway-list/lookup',
+        summary: 'Nomor penempatan pada tanggal & lokasi tertentu',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        responses: [new OA\Response(response: 200, description: 'Daftar nomor penempatan')]
+    )]
+    public function putawayListLookup(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'date' => 'required|date',
+            'location_id' => 'required|uuid',
+        ]);
+
+        return response()->json([
+            'data' => app(PutawayListReportService::class)->lookup(
+                $validated['date'],
+                $validated['location_id'],
+            ),
+        ]);
+    }
+
+    #[OA\Post(
+        path: '/api/v1/reports/wms/putaway-list/pdf',
+        summary: 'Cetak Daftar Penempatan Barang (PDF)',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        responses: [new OA\Response(response: 200, description: 'PDF stream')]
+    )]
+    public function putawayListPdf(Request $request): Response
+    {
+        $validated = $request->validate([
+            'date' => 'required|date',
+            'location_id' => 'required|uuid',
+            'putaway_ids' => 'nullable|array',
+            'putaway_ids.*' => 'uuid',
+            'download' => 'nullable|boolean',
+        ]);
+
+        $pdf = app(PutawayListReportService::class)->build(
+            $validated['date'],
+            $validated['location_id'],
+            $validated['putaway_ids'] ?? [],
+        );
+
+        $filename = sprintf('Daftar-Penempatan-Barang_%s.pdf', $validated['date']);
         $disposition = ($validated['download'] ?? false) ? 'attachment' : 'inline';
 
         return response($pdf->output(), 200, [
