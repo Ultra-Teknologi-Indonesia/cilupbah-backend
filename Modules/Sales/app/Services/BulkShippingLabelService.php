@@ -349,8 +349,6 @@ class BulkShippingLabelService
             && $srcW >= 285 && $srcW <= 302
             && $srcH >= 200 && $srcH <= 220;
 
-        $isShopeeA4 = $isShopeeA4Portrait || $isShopeeA4Landscape;
-
         if ($isShopeeA4Landscape) {
             $effW = $srcW / 2;
             $effH = $srcH;
@@ -367,12 +365,15 @@ class BulkShippingLabelService
             ? $targetW / $effW
             : min($targetW / $effW, $targetH / $effH);
 
-        $drawW = $srcW * $scale;
-        $drawH = $srcH * $scale;
-        $x = $isShopeeA4 ? 0.0 : ($targetW - $drawW) / 2;
-        $y = ($isShopeeA4 || $drawH >= $targetH) ? 0.0 : ($targetH - $drawH) / 2;
+        // Centre the region we actually show, not the whole sheet: an A4 crop starts
+        // at the source origin, so centring on the full sheet would push it off-label.
+        $renderW = $effW * $scale;
+        $renderH = $effH * $scale;
 
-        return [$x, $y, $drawW, $drawH];
+        $x = ($targetW - $renderW) / 2;
+        $y = $renderH >= $targetH ? 0.0 : ($targetH - $renderH) / 2;
+
+        return [$x, $y, $srcW * $scale, $srcH * $scale];
     }
 
     public function normalizeToTarget(string $srcPdfBytes, string $sizeKey = self::DEFAULT_SIZE, ?string $channel = null): string
