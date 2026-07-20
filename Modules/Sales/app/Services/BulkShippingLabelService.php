@@ -263,25 +263,35 @@ class BulkShippingLabelService
     {
         [$targetW, $targetH] = self::SIZE_DIMENSIONS_MM[$sizeKey] ?? self::SIZE_DIMENSIONS_MM[self::DEFAULT_SIZE];
 
-        $prepared = $this->preprocessPdfForFpdi($srcPdfBytes);
-        $out = new Fpdi('P', 'mm', [$targetW, $targetH]);
-        $pageCount = $out->setSourceFile(StreamReader::createByString($prepared));
-        for ($p = 1; $p <= $pageCount; $p++) {
-            $tpl = $out->importPage($p);
-            $src = $out->getTemplateSize($tpl);
-            [$x, $y, $drawW, $drawH] = $this->placementOnTarget(
-                (float) $src['width'],
-                (float) $src['height'],
-                $targetW,
-                $targetH,
-                $channel,
-            );
+        try {
+            $prepared = $this->preprocessPdfForFpdi($srcPdfBytes);
+            $out = new Fpdi('P', 'mm', [$targetW, $targetH]);
+            $pageCount = $out->setSourceFile(StreamReader::createByString($prepared));
+            for ($p = 1; $p <= $pageCount; $p++) {
+                $tpl = $out->importPage($p);
+                $src = $out->getTemplateSize($tpl);
+                [$x, $y, $drawW, $drawH] = $this->placementOnTarget(
+                    (float) $src['width'],
+                    (float) $src['height'],
+                    $targetW,
+                    $targetH,
+                    $channel,
+                );
 
-            $out->AddPage('P', [$targetW, $targetH]);
-            $out->useTemplate($tpl, $x, $y, $drawW, $drawH, false);
+                $out->AddPage('P', [$targetW, $targetH]);
+                $out->useTemplate($tpl, $x, $y, $drawW, $drawH, false);
+            }
+
+            return $out->Output('S');
+        } catch (\Throwable $e) {
+            Log::warning('normalizeToTarget: FPDI gagal, return PDF asli', [
+                'error' => $e->getMessage(),
+                'channel' => $channel,
+                'size_key' => $sizeKey,
+            ]);
+
+            return $srcPdfBytes;
         }
-
-        return $out->Output('S');
     }
 
     private function processTikTokBatch($items, ?array $perChannelOpts): void
