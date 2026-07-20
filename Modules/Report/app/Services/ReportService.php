@@ -414,36 +414,71 @@ class ReportService
         ];
     }
 
+    /** Nama channel sebagaimana dibaca pengguna, bukan kode internal. */
+    private const CHANNEL_LABELS = [
+        'shopee'      => 'Shopee',
+        'tiktok'      => 'TikTok',
+        'lazada'      => 'Lazada',
+        'woocommerce' => 'WooCommerce',
+    ];
+
+    /** Urutan tahapan pesanan, dipakai untuk mengurutkan dropdown. */
+    private const STATUS_LIFECYCLE = [
+        'UNPAID',
+        'READY_TO_SHIP',
+        'PROCESSED',
+        'SHIPPED',
+        'TO_CONFIRM_RECEIVE',
+        'COMPLETED',
+        'IN_CANCEL',
+        'CANCELLED',
+        'RETURN_REQUESTED',
+        'RETURNED',
+        'UNKNOWN',
+    ];
+
     /**
-     * Katalog statis semua status mentah per channel, bukan DISTINCT dari data,
-     * supaya seluruh kemungkinan tetap terpilih meski belum ada pesanannya.
+     * Opsi dropdown dibentuk dari kombinasi channel x status kanonik, bukan dari
+     * kode mentah channel. Alasannya: banyak kode mentah bermuara ke status yang
+     * sama (Lazada 'canceled' dan 'cancelled' sama-sama CANCELLED), sehingga versi
+     * mentah memunculkan opsi kembar yang hasil filternya identik. Label memakai
+     * bahasa Indonesia karena dropdown ini dibaca pengguna gudang, bukan developer.
      *
      * @return array<int, array{value: string, label: string}>
      */
     private function statusMpOptions(): array
     {
+        $lifecycle = array_flip(self::STATUS_LIFECYCLE);
         $options = [];
 
         foreach (ChannelStatusNormalizer::catalog() as $channel => $statuses) {
-            foreach (array_keys($statuses) as $raw) {
+            foreach (array_unique(array_map(fn ($s) => $s->value, $statuses)) as $canonical) {
                 $options[] = [
-                    'value' => $channel . '::' . $raw,
-                    'label' => self::statusMpLabel($channel, $raw),
+                    'value' => $channel . '::' . $canonical,
+                    'label' => self::statusMpLabel($channel, $canonical),
+                    'sort' => [$lifecycle[$canonical] ?? 99, self::CHANNEL_LABELS[$channel] ?? $channel],
                 ];
             }
         }
 
-        usort($options, fn ($a, $b) => $a['label'] <=> $b['label']);
+        usort($options, fn ($a, $b) => $a['sort'] <=> $b['sort']);
 
-        return $options;
+        return array_map(
+            fn ($o) => ['value' => $o['value'], 'label' => $o['label']],
+            $options,
+        );
     }
 
-    public static function statusMpLabel(?string $source, string $raw): string
+    public static function statusMpLabel(?string $source, string $canonical): string
     {
-        $words = ucwords(strtolower(str_replace('_', ' ', $raw)));
-        $words = str_replace(['3pl', 'Id'], ['3PL', 'ID'], $words);
+        $status = self::CHANNEL_STATUS_LABELS[$canonical]
+            ?? ucwords(strtolower(str_replace('_', ' ', $canonical)));
 
-        return $source ? $words . ' - ' . strtoupper($source) : $words;
+        if (! $source) {
+            return $status;
+        }
+
+        return $status . ' — ' . (self::CHANNEL_LABELS[$source] ?? ucfirst($source));
     }
 
     /**

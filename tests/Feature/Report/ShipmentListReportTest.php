@@ -196,13 +196,22 @@ class ShipmentListReportTest extends TestCase
             'channel_status' => ChannelStatus::SHIPPED->value,
         ]);
 
-        $rows = $this->rows([
+        $kanonik = $this->rows([
+            'from' => '2026-07-18', 'to' => '2026-07-18',
+            'status_mp' => 'shopee::READY_TO_SHIP',
+        ]);
+
+        $this->assertCount(1, $kanonik);
+        $this->assertSame('SP-RTS', $kanonik[0]->salesorder_no);
+
+        // Kode mentah tetap diterima supaya tautan/bookmark lama tidak rusak.
+        $mentah = $this->rows([
             'from' => '2026-07-18', 'to' => '2026-07-18',
             'status_mp' => 'shopee::ready_to_ship',
         ]);
 
-        $this->assertCount(1, $rows);
-        $this->assertSame('SP-RTS', $rows[0]->salesorder_no);
+        $this->assertCount(1, $mentah);
+        $this->assertSame('SP-RTS', $mentah[0]->salesorder_no);
     }
 
     public function test_filter_status_mp_memisahkan_channel(): void
@@ -222,11 +231,11 @@ class ShipmentListReportTest extends TestCase
 
         $shopee = $this->rows([
             'from' => '2026-07-18', 'to' => '2026-07-18',
-            'status_mp' => 'shopee::cancelled',
+            'status_mp' => 'shopee::CANCELLED',
         ]);
         $lazada = $this->rows([
             'from' => '2026-07-18', 'to' => '2026-07-18',
-            'status_mp' => 'lazada::canceled',
+            'status_mp' => 'lazada::CANCELLED',
         ]);
 
         $this->assertCount(1, $shopee);
@@ -235,29 +244,64 @@ class ShipmentListReportTest extends TestCase
         $this->assertSame('LZ-CANCEL', $lazada[0]->salesorder_no);
     }
 
-    public function test_opsi_status_mp_berupa_katalog_statis_semua_channel(): void
+    public function test_opsi_status_berlabel_indonesia_untuk_semua_channel(): void
     {
         $statuses = $this->service->shipmentFilterOptions()['statuses'];
         $labels = array_column($statuses, 'label');
 
-        $this->assertGreaterThan(
-            40,
-            count($statuses),
-            'Katalog harus kaya seperti daftar status_mp Jubelio',
-        );
-
-        foreach (['SHOPEE', 'TIKTOK', 'LAZADA', 'WOOCOMMERCE'] as $channel) {
+        foreach (['Shopee', 'TikTok', 'Lazada', 'WooCommerce'] as $channel) {
             $this->assertNotEmpty(
-                array_filter($labels, fn ($l) => str_ends_with($l, " - {$channel}")),
+                array_filter($labels, fn ($l) => str_ends_with($l, " — {$channel}")),
                 "Channel {$channel} harus punya opsi",
             );
         }
 
-        $this->assertContains('Ready To Ship - SHOPEE', $labels);
-        $this->assertContains('To Confirm Receive - SHOPEE', $labels);
-        $this->assertContains('Packed - LAZADA', $labels);
-        $this->assertContains('Lost By 3PL - LAZADA', $labels);
-        $this->assertContains('Awaiting Shipment - TIKTOK', $labels);
+        $this->assertContains('Siap Kirim — Shopee', $labels);
+        $this->assertContains('Menunggu Konfirmasi Terima — Shopee', $labels);
+        $this->assertContains('Diproses — Lazada', $labels);
+        $this->assertContains('Dibatalkan — TikTok', $labels);
+
+        foreach ($labels as $label) {
+            $this->assertDoesNotMatchRegularExpression(
+                '/[A-Z_]{2,}/',
+                $label,
+                "Label '{$label}' masih memakai kode mentah channel",
+            );
+        }
+    }
+
+    public function test_opsi_status_tidak_kembar(): void
+    {
+        $values = array_column($this->service->shipmentFilterOptions()['statuses'], 'value');
+        $labels = array_column($this->service->shipmentFilterOptions()['statuses'], 'label');
+
+        $this->assertSame(array_unique($values), $values, 'Ada value kembar');
+        $this->assertSame(
+            array_unique($labels),
+            $labels,
+            'Ada label kembar — dua opsi berbeda yang hasil filternya identik',
+        );
+    }
+
+    public function test_opsi_status_terurut_mengikuti_tahapan_pesanan(): void
+    {
+        $labels = array_column($this->service->shipmentFilterOptions()['statuses'], 'label');
+
+        $posisi = function (string $needle) use ($labels) {
+            foreach ($labels as $i => $label) {
+                if (str_starts_with($label, $needle)) {
+                    return $i;
+                }
+            }
+
+            return PHP_INT_MAX;
+        };
+
+        $this->assertLessThan($posisi('Siap Kirim'), $posisi('Belum Dibayar'));
+        $this->assertLessThan($posisi('Dikirim'), $posisi('Diproses'));
+        $this->assertLessThan($posisi('Selesai'), $posisi('Dikirim'));
+        $this->assertLessThan($posisi('Dibatalkan'), $posisi('Selesai'));
+        $this->assertLessThan($posisi('Diretur'), $posisi('Dibatalkan'));
     }
 
     public function test_katalog_tidak_bergantung_pada_data(): void
@@ -412,8 +456,8 @@ class ShipmentListReportTest extends TestCase
         $response = $this->getJson('/api/v1/reports/wms/shipment/options')->assertOk();
 
         $labels = array_column($response->json('data.statuses'), 'label');
-        $this->assertContains('Shipped - SHOPEE', $labels);
-        $this->assertContains('Ready To Ship - LAZADA', $labels);
+        $this->assertContains('Dikirim — Shopee', $labels);
+        $this->assertContains('Siap Kirim — Lazada', $labels);
         $this->assertCount(2, $response->json('data.couriers'));
     }
 }
