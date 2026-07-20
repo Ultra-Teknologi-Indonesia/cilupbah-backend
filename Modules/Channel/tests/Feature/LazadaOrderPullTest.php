@@ -18,6 +18,7 @@ use Tests\TestCase;
 class LazadaOrderPullTest extends TestCase
 {
     use RefreshDatabase;
+    use \Modules\Channel\Tests\Support\SeedsCatalogVariant;
 
     private User $user;
     private ChannelShop $shop;
@@ -25,6 +26,8 @@ class LazadaOrderPullTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->seedCatalogVariant('SKU-LZD-1');
 
         config([
             'services.lazada.app_key' => 'test_key',
@@ -132,7 +135,7 @@ class LazadaOrderPullTest extends TestCase
 
         $category = Category::create(['name' => 'C', 'is_active' => true]);
         $product = Product::create(['category_id' => $category->id, 'name' => 'Kaos', 'status' => 'master', 'is_active' => true]);
-        $variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'SKU-LZD-1', 'sell_price' => 70000, 'is_active' => true]);
+        $variant = ProductVariant::firstOrCreate(['sku' => 'SKU-LZD-1'], ['product_id' => $product->id, 'sell_price' => 70000, 'is_active' => true]);
         $location = \Modules\Warehouse\Models\Location::where('location_code', \Modules\Warehouse\Models\Location::SYSTEM_KECIL_CODE)->firstOrFail();
         DB::table('channel_warehouses')->insert([
             'channel_id' => $this->shop->channel_id,

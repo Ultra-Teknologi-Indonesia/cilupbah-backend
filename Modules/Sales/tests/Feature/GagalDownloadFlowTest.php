@@ -124,23 +124,98 @@ class GagalDownloadFlowTest extends TestCase
         return SalesOrder::with('items')->findOrFail($orderId);
     }
 
-    public function test_channel_order_with_unknown_sku_is_kept_but_unmapped(): void
+    /**
+     * Menyisipkan pesanan unmapped langsung ke database, melewati jalur ingest.
+     *
+     * Sejak guard "hanya terima SKU yang sudah diunduh" berlaku, pesanan semacam ini
+     * tidak bisa lagi masuk lewat upsertFromChannel. Tapi barisnya masih ada di
+     * database dari sebelum guard, dan alur Gagal Download tetap harus melayaninya —
+     * itulah yang diuji memakai helper ini.
+     */
+    protected function seedLegacyUnmappedOrder(string $orderNo, string $sku): string
     {
+        $orderId = Str::uuid()->toString();
 
+        DB::table('sales_orders')->insert([
+            'id' => $orderId,
+            'salesorder_no' => $orderNo,
+            'channel_shop_id' => 'SHOP-GD',
+            'customer_name' => 'Buyer Gagal Download',
+            'transaction_date' => now(),
+            'sub_total' => 10000,
+            'total_disc' => 0,
+            'total_tax' => 0,
+            'shipping_cost' => 0,
+            'insurance_cost' => 0,
+            'grand_total' => 10000,
+            'status' => 'pending',
+            'is_paid' => true,
+            'source' => 'shopee',
+            'location_id' => $this->locationId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('sales_order_items')->insert([
+            'id' => Str::uuid()->toString(),
+            'order_id' => $orderId,
+            'item_id' => null,
+            'channel_product_id' => 'CP-GD',
+            'sku' => $sku,
+            'description' => 'Item ' . $sku,
+            'qty_in_base' => 2,
+            'price' => 5000,
+            'disc' => 0,
+            'disc_amount' => 0,
+            'tax_amount' => 0,
+            'amount' => 10000,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $orderId;
+    }
+
+    public function test_channel_order_with_unknown_sku_is_rejected(): void
+    {
         $orderId = $this->service->upsertFromChannel($this->channelOrderData('GD-1', 'SKU-ASING'));
 
-        $order = $this->freshOrder($orderId);
-
-        $this->assertNotNull($order);
-        $this->assertCount(1, $order->items);
-        $this->assertNull($order->items->first()->item_id, 'SKU asing harus tetap tersimpan tanpa item_id');
-
+        $this->assertNull($orderId, 'pesanan ber-SKU asing tidak boleh diterima');
+        $this->assertDatabaseMissing('sales_orders', ['salesorder_no' => 'GD-1']);
+        $this->assertSame(0, DB::table('sales_order_items')->count());
         $this->assertSame(0, DB::table('inventory_movements')->where('source', 'ORDER_RESERVE')->count());
+    }
+
+    public function test_rejection_applies_to_every_channel(): void
+    {
+        foreach (['shopee', 'tiktok', 'lazada', 'woocommerce'] as $source) {
+            $payload = $this->channelOrderData('GD-CH-' . $source, 'SKU-ASING');
+            $payload['source'] = $source;
+
+            $this->assertNull(
+                $this->service->upsertFromChannel($payload),
+                "pesanan {$source} ber-SKU asing seharusnya ditolak",
+            );
+        }
+
+        $this->assertSame(0, DB::table('sales_orders')->count());
+    }
+
+    public function test_order_with_downloaded_sku_is_accepted(): void
+    {
+        $this->seedVariant('SKU-OK');
+
+        $orderId = $this->service->upsertFromChannel($this->channelOrderData('GD-OK', 'SKU-OK'));
+
+        $this->assertNotNull($orderId);
+        $this->assertNotNull(
+            DB::table('sales_order_items')->where('order_id', $orderId)->value('item_id'),
+        );
     }
 
     public function test_unmapped_order_appears_in_failed_tab_not_ready_to_process(): void
     {
-        $this->service->upsertFromChannel($this->channelOrderData('GD-2', 'SKU-ASING'));
+        $this->seedLegacyUnmappedOrder('GD-2', 'SKU-ASING');
 
         $counts = $this->repository->getTabCounts();
 
@@ -152,7 +227,7 @@ class GagalDownloadFlowTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $this->service->upsertFromChannel($this->channelOrderData('GD-ALL-FAIL', 'SKU-ASING'));
+        $this->seedLegacyUnmappedOrder('GD-ALL-FAIL', 'SKU-ASING');
         $this->seedVariant('SKU-OK');
         $this->service->upsertFromChannel($this->channelOrderData('GD-ALL-OK', 'SKU-OK'));
 
@@ -174,7 +249,7 @@ class GagalDownloadFlowTest extends TestCase
     public function test_cancelled_unmapped_order_is_quarantined_to_failed_tab(): void
     {
 
-        $orderId = $this->service->upsertFromChannel($this->channelOrderData('GD-CANCEL', 'SKU-ASING'));
+        $orderId = $this->seedLegacyUnmappedOrder('GD-CANCEL', 'SKU-ASING');
         DB::table('sales_orders')->where('id', $orderId)->update(['status' => 'cancelled']);
 
         $counts = $this->repository->getTabCounts();
@@ -188,7 +263,7 @@ class GagalDownloadFlowTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $orderId = $this->service->upsertFromChannel($this->channelOrderData('GD-CANCEL-HTTP', 'SKU-ASING'));
+        $orderId = $this->seedLegacyUnmappedOrder('GD-CANCEL-HTTP', 'SKU-ASING');
         DB::table('sales_orders')->where('id', $orderId)->update(['status' => 'cancelled']);
 
         $cancellation = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?tab=cancellation');
@@ -205,7 +280,7 @@ class GagalDownloadFlowTest extends TestCase
 
     public function test_download_binds_item_reserves_stock_and_moves_to_ready_to_process(): void
     {
-        $orderId = $this->service->upsertFromChannel($this->channelOrderData('GD-3', 'SKU-DOWNLOAD'));
+        $orderId = $this->seedLegacyUnmappedOrder('GD-3', 'SKU-DOWNLOAD');
         $order = $this->freshOrder($orderId);
         $itemId = $order->items->first()->id;
 
@@ -226,7 +301,7 @@ class GagalDownloadFlowTest extends TestCase
 
     public function test_download_pulls_product_from_channel_then_binds(): void
     {
-        $orderId = $this->service->upsertFromChannel($this->channelOrderData('GD-PULL', 'SKU-PULL'));
+        $orderId = $this->seedLegacyUnmappedOrder('GD-PULL', 'SKU-PULL');
         $order = $this->freshOrder($orderId);
         $itemId = $order->items->first()->id;
 
@@ -252,7 +327,7 @@ class GagalDownloadFlowTest extends TestCase
 
     public function test_download_keeps_order_quarantined_when_channel_pull_fails(): void
     {
-        $orderId = $this->service->upsertFromChannel($this->channelOrderData('GD-4', 'SKU-ASING'));
+        $orderId = $this->seedLegacyUnmappedOrder('GD-4', 'SKU-ASING');
         $order = $this->freshOrder($orderId);
         $itemId = $order->items->first()->id;
 
@@ -312,7 +387,7 @@ class GagalDownloadFlowTest extends TestCase
     public function test_index_failed_tab_lists_unmapped_order_via_http(): void
     {
         $user = User::factory()->create();
-        $this->service->upsertFromChannel($this->channelOrderData('GD-IDX', 'SKU-ASING'));
+        $this->seedLegacyUnmappedOrder('GD-IDX', 'SKU-ASING');
 
         $failed = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?tab=failed');
         $failed->assertStatus(200);

@@ -237,6 +237,14 @@ class ReportRepository
         return DB::table('sales_orders as so')
             ->leftJoin('shipment_orders as sho', 'sho.order_id', '=', 'so.id')
             ->leftJoin('shipments as sh', 'sh.id', '=', 'sho.shipment_id')
+            // Sejalan dengan scopeExcludeFailedDownload di daftar pesanan: pesanan
+            // yang punya item tanpa padanan katalog tidak ditampilkan. Baris warisan
+            // dari sebelum guard ingest berlaku ikut tersaring di sini.
+            ->whereNotExists(fn ($q) => $q
+                ->select(DB::raw(1))
+                ->from('sales_order_items as soi')
+                ->whereColumn('soi.order_id', 'so.id')
+                ->whereNull('soi.item_id'))
             ->when($from, fn ($q, $v) => $q->where('so.transaction_date', '>=', $v . ' 00:00:00'))
             ->when($to, fn ($q, $v) => $q->where('so.transaction_date', '<=', $v . ' 23:59:59'))
             ->when(! empty($courierIds), fn ($q) => $q->whereIn('so.courier_id', $courierIds))

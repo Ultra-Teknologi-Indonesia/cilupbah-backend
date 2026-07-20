@@ -1268,6 +1268,28 @@ class SalesOrderService
             $wasNewOrder = $existing === null;
             $previousStatus = $existing?->status;
 
+            // Kebijakan: kita hanya menerima pesanan untuk SKU yang sudah kita unduh.
+            // Berlaku untuk semua channel. Pesanan yang sudah pernah masuk tetap boleh
+            // diperbarui, supaya perubahan status pesanan lama tidak ikut terblokir.
+            if ($wasNewOrder && ! empty($orderData['items']) && is_array($orderData['items'])) {
+                $unmapped = $this->orderRepository->unmappedSkus($orderData['items']);
+
+                if (! empty($unmapped)) {
+                    DB::rollBack();
+
+                    Log::warning('Pesanan channel ditolak: SKU belum diunduh', [
+                        'salesorder_no'    => $orderData['salesorder_no'] ?? null,
+                        'channel_order_no' => $orderData['channel_order_no'] ?? null,
+                        'source'           => $source,
+                        'channel_shop_id'  => $orderData['channel_shop_id'] ?? null,
+                        'transaction_date' => $orderData['transaction_date'] ?? null,
+                        'unmapped_skus'    => $unmapped,
+                    ]);
+
+                    return null;
+                }
+            }
+
             if ($existing && $existing->handed_to_warehouse_at && in_array($mappedStatus, ['picked', 'packed'], true)) {
                 $mappedStatus = $previousStatus;
             }

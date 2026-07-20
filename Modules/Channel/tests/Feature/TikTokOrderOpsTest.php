@@ -13,6 +13,7 @@ use Tests\TestCase;
 class TikTokOrderOpsTest extends TestCase
 {
     use RefreshDatabase;
+    use \Modules\Channel\Tests\Support\SeedsCatalogVariant;
 
     private User $user;
     private ChannelShop $shop;
@@ -24,6 +25,8 @@ class TikTokOrderOpsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->seedCatalogVariant('TK-S1');
 
         config([
             'services.tiktok.app_key' => 'test_key',

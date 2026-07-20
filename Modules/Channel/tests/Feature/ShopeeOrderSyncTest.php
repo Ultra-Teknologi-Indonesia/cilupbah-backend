@@ -16,10 +16,13 @@ use Tests\TestCase;
 class ShopeeOrderSyncTest extends TestCase
 {
     use RefreshDatabase;
+    use \Modules\Channel\Tests\Support\SeedsCatalogVariant;
 
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->seedCatalogVariant('SKU-TAS');
 
         config([
             'services.shopee.partner_id' => '200123',

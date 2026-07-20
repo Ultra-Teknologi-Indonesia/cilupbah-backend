@@ -13,6 +13,7 @@ use Tests\TestCase;
 class LazadaOrderOpsTest extends TestCase
 {
     use RefreshDatabase;
+    use \Modules\Channel\Tests\Support\SeedsCatalogVariant;
 
     private User $user;
     private ChannelShop $shop;
@@ -20,6 +21,8 @@ class LazadaOrderOpsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->seedCatalogVariant('SKU-A');
 
         config([
             'services.lazada.app_key' => 'test_key',

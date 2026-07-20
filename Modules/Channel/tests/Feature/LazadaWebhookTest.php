@@ -17,12 +17,15 @@ use Tests\TestCase;
 class LazadaWebhookTest extends TestCase
 {
     use RefreshDatabase;
+    use \Modules\Channel\Tests\Support\SeedsCatalogVariant;
 
     private ChannelShop $shop;
 
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->seedCatalogVariant('SKU-TAS');
 
         config([
             'services.lazada.app_key' => 'test_key',

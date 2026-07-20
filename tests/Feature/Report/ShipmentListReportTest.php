@@ -27,6 +27,8 @@ class ShipmentListReportTest extends TestCase
 
     private string $courierJntId;
 
+    private \Modules\Product\Models\ProductVariant $ripple;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -44,6 +46,18 @@ class ShipmentListReportTest extends TestCase
 
         $this->courierSpxId = $this->makeCourier('SPX', 'SPX Hemat');
         $this->courierJntId = $this->makeCourier('JNT', 'J&T Express Standard');
+
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Case Kirim', 'is_active' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $product = \Modules\Product\Models\Product::create([
+            'category_id' => $categoryId, 'name' => 'Cilupbah Ripple Case',
+            'sku' => 'SHP-RIPPLE', 'is_active' => true,
+        ]);
+        $this->ripple = \Modules\Product\Models\ProductVariant::create([
+            'product_id' => $product->id, 'sku' => 'RIPPLE-PINK-IP-17',
+            'sell_price' => 50000, 'is_active' => true,
+        ]);
     }
 
     private function makeCourier(string $code, string $name): string
@@ -138,6 +152,63 @@ class ShipmentListReportTest extends TestCase
         $this->assertSame('SPXID067109318917', $byOrder['SP-26071806C4VCU6']->tracking_number);
 
         unset($batal);
+    }
+
+    public function test_pesanan_dengan_item_tak_terpetakan_tidak_muncul_di_laporan(): void
+    {
+        $bersih = $this->makeOrder([
+            'salesorder_no' => 'SP-BERSIH',
+            'transaction_date' => '2026-07-18 08:00:00',
+        ]);
+        $kotor = $this->makeOrder([
+            'salesorder_no' => 'LZ-TIDAK-DIUNDUH',
+            'transaction_date' => '2026-07-18 09:00:00',
+            'source' => 'lazada',
+        ]);
+
+        DB::table('sales_order_items')->insert([
+            [
+                'id' => (string) Str::uuid7(), 'order_id' => $bersih->id,
+                'item_id' => $this->ripple->id, 'sku' => $this->ripple->sku,
+                'qty_in_base' => 1, 'created_at' => now(), 'updated_at' => now(),
+            ],
+            [
+                'id' => (string) Str::uuid7(), 'order_id' => $kotor->id,
+                'item_id' => null, 'sku' => 'alexTest2026070801',
+                'qty_in_base' => 1, 'created_at' => now(), 'updated_at' => now(),
+            ],
+        ]);
+
+        $rows = $this->rows(['from' => '2026-07-18', 'to' => '2026-07-18']);
+
+        $this->assertSame(
+            ['SP-BERSIH'],
+            array_map(fn ($r) => $r->salesorder_no, $rows),
+            'Laporan harus menyaring sama seperti daftar pesanan di aplikasi',
+        );
+    }
+
+    public function test_pesanan_yang_sebagian_itemnya_tak_terpetakan_juga_disembunyikan(): void
+    {
+        $order = $this->makeOrder([
+            'salesorder_no' => 'SP-CAMPUR',
+            'transaction_date' => '2026-07-18 08:00:00',
+        ]);
+
+        DB::table('sales_order_items')->insert([
+            [
+                'id' => (string) Str::uuid7(), 'order_id' => $order->id,
+                'item_id' => $this->ripple->id, 'sku' => $this->ripple->sku,
+                'qty_in_base' => 1, 'created_at' => now(), 'updated_at' => now(),
+            ],
+            [
+                'id' => (string) Str::uuid7(), 'order_id' => $order->id,
+                'item_id' => null, 'sku' => 'SKU-1',
+                'qty_in_base' => 1, 'created_at' => now(), 'updated_at' => now(),
+            ],
+        ]);
+
+        $this->assertCount(0, $this->rows(['from' => '2026-07-18', 'to' => '2026-07-18']));
     }
 
     public function test_status_pesanan_dan_status_channel_adalah_kolom_berbeda(): void

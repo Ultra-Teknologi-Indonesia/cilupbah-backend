@@ -642,6 +642,26 @@ class SalesOrderRepository
         return DB::table('product_variants')->where('id', $variantId)->exists();
     }
 
+    /**
+     * SKU pada payload channel yang belum punya padanan di katalog kita.
+     * Item tanpa SKU ikut dianggap tak terpetakan — tidak mungkin dipetakan
+     * ke varian mana pun.
+     *
+     * @return array<int, string>
+     */
+    public function unmappedSkus(array $items): array
+    {
+        $known = $this->resolveVariantIdsBySku($items);
+
+        return collect($items)
+            ->map(fn ($item) => $item['sku'] ?? null)
+            ->map(fn ($sku) => $sku === null || $sku === '' ? '(tanpa SKU)' : $sku)
+            ->filter(fn ($sku) => $sku === '(tanpa SKU)' || ! isset($known[$sku]))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
     protected function resolveVariantIdsBySku(array $items): array
     {
         $skus = collect($items)->pluck('sku')->filter()->unique()->values();
