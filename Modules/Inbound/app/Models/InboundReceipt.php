@@ -19,6 +19,7 @@ class InboundReceipt extends Model
         'batch_no',
         'serial_no',
         'condition',
+        'stock_adjustment_id',
         'received_by_user_id',
         'received_date',
     ];

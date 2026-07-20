@@ -539,11 +539,15 @@ class InboundController extends Controller
             required: true,
             content: new OA\JsonContent(
                 required: ['qty'],
-                properties: [new OA\Property(property: 'qty', type: 'integer', example: 3)]
+                properties: [
+                    new OA\Property(property: 'qty', type: 'integer', example: 3),
+                    new OA\Property(property: 'reason_note', type: 'string', nullable: true, description: 'Opsional. Kalau kosong, remarks Penyesuaian Stok disusun otomatis.'),
+                ]
             )
         ),
         responses: [
-            new OA\Response(response: 200, description: 'Jumlah diterima diperbarui'),
+            new OA\Response(response: 200, description: 'Jumlah diterima diperbarui, dokumen Penyesuaian Stok dibuat otomatis'),
+            new OA\Response(response: 412, description: 'Data sudah berubah (stale write)'),
             new OA\Response(response: 422, description: 'Validasi gagal'),
         ]
     )]
@@ -551,6 +555,9 @@ class InboundController extends Controller
     {
         $validated = $request->validate([
             'qty' => 'required|integer|min:0',
+            // Opsional: kalau tidak dikirim, remarks Penyesuaian Stok disusun
+            // otomatis oleh service (keputusan klien 20 Jul 2026).
+            'reason_note' => 'nullable|string',
             '_expected_updated_at' => 'nullable|string',
         ]);
 
@@ -562,9 +569,14 @@ class InboundController extends Controller
                 (int) $validated['qty'],
                 $userId,
                 $validated['_expected_updated_at'] ?? null,
+                $validated['reason_note'] ?? null,
             );
 
-            return $this->successResponse($inbound, 'Jumlah diterima berhasil diperbarui.');
+            return $this->successResponse($inbound, 'Jumlah diterima diperbarui. Penyesuaian Stok dibuat otomatis.');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            // Jangan ditelan jadi 422 generik: StaleWriteException (412) dan
+            // REASON_NOTE_REQUIRED perlu sampai ke FE dengan status + code aslinya.
+            throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal memproses penerimaan.',

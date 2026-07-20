@@ -611,38 +611,6 @@ class PutawayController extends Controller
         }
     }
 
-    #[OA\Post(
-        path: '/api/v1/putaway/{id}/complete-discrepancy',
-        summary: 'Selesaikan putaway meski ada selisih fisik; sisa qty ditempatkan ke rak default',
-        security: [['bearerAuth' => []]],
-        tags: ['Putaway'],
-        parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
-        ],
-        responses: [
-            new OA\Response(response: 200, description: 'Putaway berhasil diselesaikan dengan selisih dialokasikan ke rak default.'),
-            new OA\Response(response: 422, description: 'Validation Error'),
-        ]
-    )]
-    public function completeDiscrepancy(Request $request, string $id): JsonResponse
-    {
-        try {
-            $userId = (string) ($request->user()->id ?? 'system');
-            $result = $this->putawayService->completeWithDiscrepancy($id, $userId);
-
-            return $this->successResponse($result, 'Putaway berhasil diselesaikan. Selisih dialokasikan ke rak default.');
-        } catch (\App\Exceptions\UserFacingException $e) {
-            throw $e;
-        } catch (\Exception $e) {
-            return $this->errorResponse(
-                'Gagal menyelesaikan.',
-                422,
-                ['detail' => $e->getMessage()],
-                'Aksi tidak dapat diproses',
-            );
-        }
-    }
-
     #[OA\Get(
         path: '/api/v1/putaway/bins',
         summary: 'List available bins for putaway',

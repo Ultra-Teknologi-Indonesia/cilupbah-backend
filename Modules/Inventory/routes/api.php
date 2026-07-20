@@ -302,7 +302,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::delete('/{id}/placements', [PutawayController::class, 'deletePlacements'])->middleware('role_or_permission:owner|delete-penempatan')->name('putaway.deletePlacements');
         Route::delete('/{id}/items/{itemId}/placements/{placementId}', [PutawayController::class, 'deletePlacement'])->middleware('role_or_permission:owner|delete-penempatan')->name('putaway.deletePlacement');
         Route::post('/{id}/complete', [PutawayController::class, 'complete'])->middleware('role_or_permission:owner|edit-penempatan')->name('putaway.complete');
-        Route::post('/{id}/complete-discrepancy', [PutawayController::class, 'completeDiscrepancy'])->middleware('role_or_permission:owner|edit-penempatan')->name('putaway.completeDiscrepancy');
         Route::delete('/{id}', [PutawayController::class, 'destroy'])->middleware('role_or_permission:owner|delete-penempatan')->name('putaway.destroy');
     });
 

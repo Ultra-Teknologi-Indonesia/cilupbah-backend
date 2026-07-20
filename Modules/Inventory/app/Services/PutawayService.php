@@ -42,23 +42,21 @@ class PutawayService
         protected NotificationDispatcher $notifications,
     ) {}
 
-    private function notifyPutawayCompleted(?Putaway $putaway, ?int $discrepancyCount = null): void
+    private function notifyPutawayCompleted(?Putaway $putaway): void
     {
         if (! $putaway) {
             return;
         }
 
         $number = $putaway->putaway_number ?? substr((string) $putaway->id, 0, 8);
-        $suffix = $discrepancyCount ? " dengan {$discrepancyCount} selisih." : '.';
 
         $this->notifications->toPermission(self::NOTIF_PERMISSION, [
             'type' => 'putaway_completed',
             'title' => 'Putaway selesai',
-            'message' => "Dokumen {$number} selesai di-putaway{$suffix}",
+            'message' => "Dokumen {$number} selesai di-putaway.",
             'data' => [
                 'putaway_id' => $putaway->id,
                 'putaway_number' => $putaway->putaway_number ?? null,
-                'discrepancy' => (bool) $discrepancyCount,
                 'link' => "/dashboard/barang-masuk/putaway/{$putaway->id}",
             ],
         ], excludeUserIds: array_filter([$putaway->assigned_to ?? null]));
@@ -160,8 +158,61 @@ class PutawayService
         $paginated = $this->putawayRepository->getItemsPaginated($putawayId, $limit);
 
         $this->attachStrictRecommendedBins($putaway, $paginated->getCollection());
+        $this->attachInboundSources($putaway, $paginated->getCollection());
 
         return $paginated;
+    }
+
+    /**
+     * Menempelkan asal penerimaan tiap baris supaya web bisa mengoreksi qty diterima
+     * langsung dari layar Penempatan. Satu baris putaway bisa bersumber dari lebih
+     * dari satu inbound item (penempatan gabungan), jadi ini selalu berbentuk list —
+     * FE yang memilih sumber mana yang dikoreksi, jangan diam-diam ambil yang pertama.
+     */
+    protected function attachInboundSources(Putaway $putaway, $items): void
+    {
+        foreach ($items as $item) {
+            $item->inbound_sources = [];
+        }
+
+        if ($putaway->source_type !== 'INBOUND') {
+            return;
+        }
+
+        $sources = PutawayItemSource::whereIn('putaway_item_id', collect($items)->pluck('id'))
+            ->with(['inboundItem:id,inbound_id,item_id,expected_qty,received_qty,putaway_qty,reserved_qty',
+                    'inboundItem.inbound:id,transaction_number,updated_version_at,updated_at'])
+            ->get()
+            ->groupBy('putaway_item_id');
+
+        foreach ($items as $item) {
+            $item->inbound_sources = ($sources->get($item->id) ?? collect())
+                ->map(function ($src) {
+                    $inboundItem = $src->inboundItem;
+
+                    if (! $inboundItem) {
+                        return null;
+                    }
+
+                    $inbound = $inboundItem->inbound;
+
+                    return [
+                        'inbound_id'         => (string) $inboundItem->inbound_id,
+                        'inbound_item_id'    => (string) $inboundItem->id,
+                        'transaction_number' => $inbound?->transaction_number,
+                        'expected_qty'       => (int) $inboundItem->expected_qty,
+                        'received_qty'       => (int) $inboundItem->received_qty,
+                        'putaway_qty'        => (int) $inboundItem->putaway_qty,
+                        'qty_in_putaway'     => (int) $src->qty,
+                        // Dipakai FE sebagai _expected_updated_at supaya koreksi dari
+                        // layar Penempatan tetap kena optimistic lock milik inbound.
+                        'updated_version_at' => optional($inbound?->updated_version_at ?? $inbound?->updated_at)->toIso8601String(),
+                    ];
+                })
+                ->filter()
+                ->values()
+                ->all();
+        }
     }
 
     protected function attachStrictRecommendedBins(Putaway $putaway, $items): void
@@ -443,7 +494,10 @@ class PutawayService
         if ($channel === \App\Enums\ClientChannelEnum::MOBILE) {
             $this->assertMobileCanMutate($putaway, $actorId);
         } else {
-            $this->assertWebCanMutate($putaway);
+            // Web sengaja TIDAK dikunci saat dokumen dipegang mobile (keputusan klien
+            // 20 Jul 2026). Proteksi diganti optimistic lock: edit berdasarkan layar
+            // basi ditolak, tapi admin tetap boleh mengoreksi selagi staff scan.
+            $this->assertVersionMatches($putaway, $data['_expected_updated_at'] ?? null);
         }
 
         if ($putaway->status === Putaway::STATUS_NOT_STARTED) {
@@ -493,84 +547,6 @@ class PutawayService
         $this->notifyPutawayCompleted($putaway);
 
         return $putaway;
-    }
-
-    public function completeWithDiscrepancy(string $id, string $userId): array
-    {
-        $result = DB::transaction(function () use ($id, $userId) {
-            $putaway = $this->putawayRepository->findByIdForUpdate($id);
-
-            if (!$putaway) {
-                throw new \Exception('Putaway tidak ditemukan.');
-            }
-
-            if ($putaway->status !== Putaway::STATUS_IN_PROGRESS) {
-                throw new \Exception("Hanya putaway IN_PROGRESS yang bisa diselesaikan dengan selisih (status saat ini: {$putaway->status}).");
-            }
-
-            $putaway->load('items');
-            $incomplete = $putaway->items->filter(fn ($item) => $item->putaway_qty < $item->qty);
-
-            if ($incomplete->isEmpty()) {
-                throw new \Exception('Tidak ada selisih pada dokumen ini. Gunakan aksi Selesaikan biasa.');
-            }
-
-            $defaultBin = app(\Modules\Warehouse\Services\LocationBinService::class)->getDefaultBin($putaway->location_id);
-
-            if (!$defaultBin) {
-                throw new \Exception('Rak default (inbound) untuk lokasi ini tidak ditemukan.');
-            }
-
-            $discrepancyItems = [];
-
-            foreach ($incomplete as $item) {
-                $remaining = (int) $item->qty - (int) $item->putaway_qty;
-                if ($remaining <= 0) {
-                    continue;
-                }
-
-                $this->processItem($id, $item->id, [
-                    'destination_bin_id' => $defaultBin->id,
-                    'qty' => $remaining,
-                ]);
-
-                $discrepancyItems[] = [
-                    'putaway_item_id' => $item->id,
-                    'item_id' => $item->item_id,
-                    'qty' => $remaining,
-                    'bin_id' => $defaultBin->id,
-                    'batch_no' => $item->batch_no,
-                    'serial_no' => $item->serial_no,
-                ];
-            }
-
-            $putaway = $this->putawayRepository->findById($id);
-
-            if ($putaway->status !== Putaway::STATUS_COMPLETED) {
-                $this->putawayRepository->updateStatus($id, Putaway::STATUS_COMPLETED, [
-                    'completed_at' => now(),
-                ]);
-                $putaway = $this->putawayRepository->findById($id);
-            }
-
-            if ($putaway->source_type === 'INBOUND') {
-                foreach ($this->sourceInbounds($putaway) as $inbound) {
-                    $this->recomputeInboundStatus($inbound);
-                }
-            }
-
-            return [
-                'putaway' => $putaway,
-                'discrepancy_items' => $discrepancyItems,
-            ];
-        });
-
-        $this->notifyPutawayCompleted(
-            $result['putaway'] ?? null,
-            count($result['discrepancy_items'] ?? []),
-        );
-
-        return $result;
     }
 
     public function deletePlacement(string $putawayId, string $itemId, string $placementId, ?int $qty, string $userId): Putaway

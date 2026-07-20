@@ -25,8 +25,10 @@ use Modules\Inventory\Models\PutawayItem;
 use Modules\Inventory\Models\PutawayPlacement;
 use Modules\Inventory\Models\PutawayItemSource;
 use Modules\Inventory\Models\PutawaySource;
+use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\PutawayService;
+use Modules\Inventory\Services\StockAdjustmentService;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\LocationBin;
 use Modules\Notification\Events\TaskAssigned;
@@ -51,6 +53,8 @@ class InboundService
         protected LocationBinService $binService,
         protected PutawayService $putawayService,
         protected NotificationDispatcher $notifications,
+        protected StockAdjustmentService $stockAdjustmentService,
+        protected InventoryRepository $inventoryRepository,
     ) {}
 
     protected function unlockedOnceColumn(Model $doc): string
@@ -1567,13 +1571,43 @@ class InboundService
         });
     }
 
-    public function setReceivedQty(string $inboundId, string $inboundItemId, int $targetQty, string $userId, ?string $expectedUpdatedAt = null): Inbound
+    /**
+     * Remarks dokumen Penyesuaian Stok disusun otomatis (keputusan klien 20 Jul 2026 —
+     * admin tidak mau mengetik alasan tiap koreksi). Isinya menjawab APA yang berubah:
+     * dokumen, SKU, qty sebelum → sesudah, selisih, dan siapa yang mengoreksi.
+     *
+     * Catatan: ini TIDAK merekam SEBAB (salah hitung / rusak / hilang). Kalau nanti
+     * laporan retur butuh membedakan itu, `$reasonNote` masih diterima dari pemanggil
+     * dan akan dipakai apa adanya kalau diisi.
+     */
+    private function buildQtyCorrectionNote(Inbound $inbound, InboundItem $item, int $before, int $after, string $userId): string
+    {
+        $delta = $after - $before;
+        $sign = $delta > 0 ? '+' : '';
+        $sku = ProductVariant::find($item->item_id)?->sku;
+        $actor = \App\Models\User::find($userId)?->name ?? 'sistem';
+
+        return sprintf(
+            'Koreksi qty diterima %s%s: %d → %d (%s%d) oleh %s',
+            $inbound->transaction_number,
+            $sku ? " · {$sku}" : '',
+            $before,
+            $after,
+            $sign,
+            $delta,
+            $actor,
+        );
+    }
+
+    public function setReceivedQty(string $inboundId, string $inboundItemId, int $targetQty, string $userId, ?string $expectedUpdatedAt = null, ?string $reasonNote = null): Inbound
     {
         if ($targetQty < 0) {
             throw new \Exception('Jumlah tidak boleh negatif.');
         }
 
-        return DB::transaction(function () use ($inboundId, $inboundItemId, $targetQty, $userId, $expectedUpdatedAt) {
+        $reasonNote = trim((string) $reasonNote);
+
+        return DB::transaction(function () use ($inboundId, $inboundItemId, $targetQty, $userId, $expectedUpdatedAt, $reasonNote) {
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
             if (! $inbound) {
                 throw new \Exception('Dokumen Inbound tidak ditemukan.');
@@ -1582,8 +1616,10 @@ class InboundService
                 throw new \Exception('Inbound sudah dibatalkan.');
             }
 
-            $this->assertWebCanMutate($inbound);
-
+            // Sengaja TANPA assertWebCanMutate: koreksi qty harus tetap bisa dilakukan
+            // admin walau ada staff yang sedang scan di mobile (keputusan klien 20 Jul
+            // 2026). Optimistic lock di bawah yang menjaga agar edit dari layar basi
+            // ditolak. Call site assertWebCanMutate yang lain sengaja dibiarkan.
             $this->assertVersionMatches($inbound, $expectedUpdatedAt);
 
             $item = $this->inboundRepository->findItemByUuidForUpdate($inboundItemId);
@@ -1606,14 +1642,30 @@ class InboundService
                 throw new \Exception('Gudang ini belum memiliki Bin Inbound default.');
             }
 
-            $this->inventoryService->adjust([
-                'item_id'            => $item->item_id,
-                'location_id'        => $inbound->location_id,
-                'bin_id'             => $defaultBin->id,
-                'qty'                => $delta,
-                'transaction_number' => $inbound->transaction_number . '-EDIT-QTY',
-                'source'             => $this->movementSourceFor($inbound),
-                'created_by'         => "user:{$userId}",
+            // Mutasi stok dilakukan OLEH dokumen Penyesuaian Stok, bukan inline.
+            // Jangan tambahkan inventoryService->adjust() di sini — ProcessStockAdjustmentJob
+            // sudah menerapkan delta-nya, memanggil keduanya = stok terpotong dua kali.
+            $onHandAtInboundBin = (int) ($this->inventoryRepository->findExact(
+                $item->item_id,
+                $inbound->location_id,
+                $defaultBin->id,
+            )?->on_hand ?? 0);
+
+            $note = $reasonNote !== ''
+                ? $reasonNote
+                : $this->buildQtyCorrectionNote($inbound, $item, $current, $targetQty, $userId);
+
+            $adjustment = $this->stockAdjustmentService->create([
+                'transaction_date' => now()->toDateString(),
+                'location_id'      => $inbound->location_id,
+                'created_by'       => $userId,
+                'notes'            => $note,
+                'items'            => [[
+                    'item_id'    => $item->item_id,
+                    'bin_id'     => $defaultBin->id,
+                    'actual_qty' => $onHandAtInboundBin + $delta,
+                    'notes'      => $note,
+                ]],
             ]);
 
             $this->inboundRepository->updateItemReceivedQty($item->id, $delta);
@@ -1627,6 +1679,7 @@ class InboundService
                 'qty'                 => $delta,
                 'bin_id'              => $defaultBin->id,
                 'condition'           => 'ADJUSTMENT',
+                'stock_adjustment_id' => $adjustment->id,
                 'received_by_user_id' => $userId,
                 'received_by'         => "user:{$userId}",
                 'received_date'       => now(),

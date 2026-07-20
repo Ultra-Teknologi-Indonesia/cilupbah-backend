@@ -85,7 +85,10 @@ class StockAdjustmentService
             return $this->adjustmentRepository->findById($adjustment->id);
         });
 
-        ProcessStockAdjustmentJob::dispatch($adjustment->id, $data['created_by']);
+        // afterCommit: create() bisa dipanggil bersarang dari transaksi lain
+        // (mis. koreksi qty di InboundService). Tanpa ini job bisa jalan sebelum
+        // transaksi luar commit dan membaca stok yang belum tersimpan.
+        ProcessStockAdjustmentJob::dispatch($adjustment->id, $data['created_by'])->afterCommit();
 
         return $adjustment;
     }

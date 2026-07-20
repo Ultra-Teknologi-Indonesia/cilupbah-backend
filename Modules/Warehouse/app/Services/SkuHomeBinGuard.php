@@ -16,6 +16,10 @@ class SkuHomeBinGuard
             return;
         }
 
+        if (! $this->isGuardedTargetBin($targetBinId)) {
+            return;
+        }
+
         $conflict = $this->firstConflictingInventory($locationId, $itemId, $targetBinId);
         if ($conflict === null) {
             return;
@@ -46,7 +50,27 @@ class SkuHomeBinGuard
             return true;
         }
 
+        if (! $this->isGuardedTargetBin($targetBinId)) {
+            return true;
+        }
+
         return $this->firstConflictingInventory($locationId, $itemId, $targetBinId) === null;
+    }
+
+    /**
+     * Rak inbound/staging memang tempat transit multi-SKU, jadi konsep "rak rumah"
+     * tidak berlaku untuk rak itu. Sejajar dengan BinOccupancyGuard::isGuardedBin()
+     * dan dengan pengecualian yang sudah dipakai firstConflictingInventory().
+     */
+    protected function isGuardedTargetBin(string $targetBinId): bool
+    {
+        $bin = LocationBin::find($targetBinId);
+
+        if (! $bin) {
+            return false;
+        }
+
+        return ! $bin->is_inbound && (bool) $bin->is_stock_acknowledged;
     }
 
     public function currentHomeBinId(string $locationId, string $itemId): ?string

@@ -101,6 +101,49 @@ class SkuHomeBinGuardTest extends TestCase
         $this->assertTrue(true);
     }
 
+    public function test_kecil_allows_placing_into_inbound_target_bin_despite_home_bin(): void
+    {
+        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $home = $this->makeBin($loc, 'HOME');
+        $inboundBin = $this->makeBin($loc, 'INBOUND', inbound: true);
+
+        $variant = $this->makeVariant();
+        $this->placeStock($loc, $home, $variant, 5);
+
+        app(SkuHomeBinGuard::class)->assertSkuFitsBin($loc->id, $variant->id, $inboundBin->id);
+
+        $this->assertTrue(
+            app(SkuHomeBinGuard::class)->isTargetBinAllowed($loc->id, $variant->id, $inboundBin->id),
+        );
+    }
+
+    public function test_kecil_allows_placing_into_unacknowledged_target_bin(): void
+    {
+        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $home = $this->makeBin($loc, 'HOME');
+        $staging = $this->makeBin($loc, 'STAGING', acknowledged: false);
+
+        $variant = $this->makeVariant();
+        $this->placeStock($loc, $home, $variant, 5);
+
+        app(SkuHomeBinGuard::class)->assertSkuFitsBin($loc->id, $variant->id, $staging->id);
+        $this->assertTrue(true);
+    }
+
+    public function test_kecil_still_blocks_normal_target_bin_after_inbound_exemption(): void
+    {
+        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $home = $this->makeBin($loc, 'HOME');
+        $target = $this->makeBin($loc, 'TARGET');
+
+        $variant = $this->makeVariant();
+        $this->placeStock($loc, $home, $variant, 5);
+
+        $this->expectException(DomainException::class);
+
+        app(SkuHomeBinGuard::class)->assertSkuFitsBin($loc->id, $variant->id, $target->id);
+    }
+
     public function test_kecil_allows_new_sku_without_existing_home_bin(): void
     {
         $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
