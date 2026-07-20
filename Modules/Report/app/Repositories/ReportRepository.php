@@ -14,6 +14,7 @@ use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Models\StockOpname;
 use Modules\Outbound\Models\Picklist;
+use Modules\Report\Support\OrderPerformanceSpec;
 use Modules\Sales\Support\ChannelStatusNormalizer;
 use Modules\Outbound\Models\Shipment;
 use Modules\Product\Models\ProductChannelMapping;
@@ -286,6 +287,185 @@ class ReportRepository
         $parts = explode('::', $value, 2);
 
         return count($parts) === 2 ? [$parts[0], $parts[1]] : ['', $parts[0]];
+    }
+
+    /**
+     * Baris detail Laporan Performa Proses Pesanan.
+     *
+     * Durasi dihitung di SQL sebagai detik, bukan string, supaya bisa diagregasi
+     * untuk Summary. Nilai negatif dijepit nol — data lapangan bisa punya
+     * completed_at mendahului started_at, dan Jubelio mencetaknya apa adanya
+     * sebagai "-30 jam -39 menit".
+     *
+     * @return array<int, object>
+     */
+    public function orderPerformanceRows(string $type, array $filters): array
+    {
+        $from = ($filters['from'] ?? null) ? $filters['from'] . ' 00:00:00' : null;
+        $to = ($filters['to'] ?? null) ? $filters['to'] . ' 23:59:59' : null;
+        $locationIds = $filters['location_ids'] ?? [];
+
+        $query = match ($type) {
+            OrderPerformanceSpec::PICKER => $this->pickerPerformanceQuery(),
+            OrderPerformanceSpec::PACKER => $this->packerPerformanceQuery(),
+            OrderPerformanceSpec::SHIPPER, OrderPerformanceSpec::KURIR => $this->shipmentPerformanceQuery($type),
+            OrderPerformanceSpec::PESANAN => $this->orderProcessingQuery(),
+        };
+
+        return $query
+            ->when($from, fn ($q, $v) => $q->where('tanggal_raw', '>=', $v))
+            ->when($to, fn ($q, $v) => $q->where('tanggal_raw', '<=', $v))
+            ->when(! empty($locationIds), fn ($q) => $q->whereIn('location_id', $locationIds))
+            ->orderBy('lokasi')
+            ->orderBy('grup')
+            ->orderByDesc('tanggal_raw')
+            ->get()
+            ->all();
+    }
+
+    private const DURATION_SQL = 'GREATEST(0, COALESCE(EXTRACT(EPOCH FROM (%s - %s)), 0))';
+
+    private static function durationSeconds(string $end, string $start): string
+    {
+        return sprintf(self::DURATION_SQL, $end, $start);
+    }
+
+    private function pickerPerformanceQuery(): \Illuminate\Database\Query\Builder
+    {
+        return DB::query()->fromSub(
+            DB::table('picklist_items as pi')
+                ->join('picklists as p', 'p.id', '=', 'pi.picklist_id')
+                ->leftJoin('users as u', 'u.id', '=', 'p.picker_id')
+                ->leftJoin('locations as l', 'l.id', '=', 'p.location_id')
+                ->leftJoin('sales_orders as so', 'so.id', '=', 'pi.order_id')
+                ->whereNotIn('p.status', [Picklist::STATUS_DRAFT, Picklist::STATUS_CANCELLED])
+                ->select([
+                    'p.location_id',
+                    'l.location_name as lokasi',
+                    'p.id as transaksi_id',
+                    'p.picklist_no as no_transaksi',
+                    'so.salesorder_no as no_pesanan',
+                    'pi.sku',
+                ])
+                ->selectRaw('COALESCE(u.name, ?) AS grup', ['(tanpa picker)'])
+                ->selectRaw('COALESCE(p.started_at, p.created_at) AS tanggal_raw')
+                ->selectRaw('COALESCE(pi.qty_picked, 0) AS qty')
+                ->selectRaw(self::durationSeconds('p.completed_at', 'COALESCE(p.started_at, p.created_at)') . ' AS durasi_detik'),
+            'r',
+        );
+    }
+
+    private function packerPerformanceQuery(): \Illuminate\Database\Query\Builder
+    {
+        return DB::query()->fromSub(
+            DB::table('packlist_items as pi')
+                ->join('packlists as p', 'p.id', '=', 'pi.packlist_id')
+                ->leftJoin('users as u', 'u.id', '=', 'p.packer_id')
+                ->leftJoin('locations as l', 'l.id', '=', 'p.location_id')
+                ->leftJoin('sales_orders as so', 'so.id', '=', 'p.order_id')
+                ->select([
+                    'p.location_id',
+                    'l.location_name as lokasi',
+                    'p.id as transaksi_id',
+                    'p.packlist_no as no_transaksi',
+                    'so.salesorder_no as no_pesanan',
+                    'so.tracking_number as no_resi',
+                    'pi.sku',
+                ])
+                ->selectRaw('COALESCE(u.name, ?) AS grup', ['(tanpa packer)'])
+                ->selectRaw('COALESCE(p.started_at, p.created_at) AS tanggal_raw')
+                ->selectRaw('COALESCE(pi.qty_packed, 0) AS qty')
+                ->selectRaw(self::durationSeconds('p.completed_at', 'COALESCE(p.started_at, p.created_at)') . ' AS durasi_detik'),
+            'r',
+        );
+    }
+
+    /**
+     * Shipper dan Kurir memakai data yang sama; yang berbeda hanya sumbu
+     * pengelompokan keduanya — petugas pengirim vs nama kurir.
+     */
+    private function shipmentPerformanceQuery(string $type): \Illuminate\Database\Query\Builder
+    {
+        $grup = $type === OrderPerformanceSpec::KURIR
+            ? "COALESCE(NULLIF(s.courier_name, ''), '(tanpa kurir)')"
+            : "COALESCE(u.name, '(tanpa shipper)')";
+
+        return DB::query()->fromSub(
+            DB::table('shipments as s')
+                ->leftJoin('shipment_orders as so', 'so.shipment_id', '=', 's.id')
+                ->leftJoin('users as u', 'u.id', '=', 's.shipper_id')
+                ->leftJoin('locations as l', 'l.id', '=', 's.location_id')
+                ->where('s.status', '<>', Shipment::STATUS_CANCELLED)
+                ->select([
+                    's.location_id',
+                    'l.location_name as lokasi',
+                    's.id as transaksi_id',
+                    's.shipment_no as no_transaksi',
+                ])
+                ->selectRaw($grup . ' AS grup')
+                ->selectRaw('s.created_at AS tanggal_raw')
+                ->selectRaw('COALESCE(so.qty_given, 0) AS qty')
+                ->selectRaw(self::durationSeconds('s.handed_over_at', 's.created_at') . ' AS durasi_detik'),
+            'r',
+        );
+    }
+
+    /**
+     * Enam durasi tahapan pesanan. Definisi tiap kolom sengaja dikumpulkan di satu
+     * tempat agar koreksi cukup satu baris — lihat PLANNING-LAPORAN-PERFORMA-PESANAN.md §5.
+     */
+    private function orderProcessingQuery(): \Illuminate\Database\Query\Builder
+    {
+        $pick = DB::table('picklist_items as pit')
+            ->join('picklists as pl', 'pl.id', '=', 'pit.picklist_id')
+            ->select('pit.order_id')
+            ->selectRaw('MIN(pl.assigned_at) AS assigned_at')
+            ->selectRaw('MIN(COALESCE(pl.started_at, pl.created_at)) AS started_at')
+            ->selectRaw('MAX(pl.completed_at) AS completed_at')
+            ->groupBy('pit.order_id');
+
+        $pack = DB::table('packlists')
+            ->select('order_id')
+            ->selectRaw('MIN(COALESCE(started_at, created_at)) AS started_at')
+            ->selectRaw('MAX(completed_at) AS completed_at')
+            ->groupBy('order_id');
+
+        $ship = DB::table('shipment_orders as sho')
+            ->join('shipments as sh', 'sh.id', '=', 'sho.shipment_id')
+            ->select('sho.order_id')
+            ->selectRaw('MIN(sh.created_at) AS created_at')
+            ->selectRaw('MAX(sh.handed_over_at) AS handed_over_at')
+            ->groupBy('sho.order_id');
+
+        return DB::query()->fromSub(
+            DB::table('sales_orders as o')
+                ->leftJoin('locations as l', 'l.id', '=', 'o.location_id')
+                ->leftJoinSub($pick, 'pk', 'pk.order_id', '=', 'o.id')
+                ->leftJoinSub($pack, 'pc', 'pc.order_id', '=', 'o.id')
+                ->leftJoinSub($ship, 'sp', 'sp.order_id', '=', 'o.id')
+                ->whereNotExists(fn ($q) => $q
+                    ->select(DB::raw(1))
+                    ->from('sales_order_items as soi')
+                    ->whereColumn('soi.order_id', 'o.id')
+                    ->whereNull('soi.item_id'))
+                ->select([
+                    'o.location_id',
+                    'l.location_name as lokasi',
+                    'o.id as transaksi_id',
+                    'o.salesorder_no as no_transaksi',
+                ])
+                ->selectRaw("'' AS grup")
+                ->selectRaw('o.transaction_date AS tanggal_raw')
+                ->selectRaw('0 AS qty')
+                ->selectRaw(self::durationSeconds('pk.started_at', 'o.transaction_date') . ' AS durasi_proses_detik')
+                ->selectRaw(self::durationSeconds('pk.started_at', 'pk.assigned_at') . ' AS durasi_penugasan_pick_detik')
+                ->selectRaw(self::durationSeconds('pk.completed_at', 'pk.started_at') . ' AS durasi_pick_detik')
+                ->selectRaw(self::durationSeconds('pc.completed_at', 'pc.started_at') . ' AS durasi_pack_detik')
+                ->selectRaw(self::durationSeconds('sp.handed_over_at', 'sp.created_at') . ' AS durasi_ship_detik')
+                ->selectRaw(self::durationSeconds('sp.handed_over_at', 'o.transaction_date') . ' AS durasi_selesai_detik')
+                ->selectRaw('0 AS durasi_detik'),
+            'r',
+        );
     }
 
     public function courierOptions(): \Illuminate\Support\Collection

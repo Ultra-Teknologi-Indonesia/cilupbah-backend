@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Report\Exports\NegativeStockReportExport;
 use Modules\Report\Exports\PickListReportExport;
@@ -15,7 +16,9 @@ use Modules\Report\Http\Requests\BarcodeReportRequest;
 use Modules\Report\Http\Requests\HppReportRequest;
 use Modules\Report\Http\Requests\PenyesuaianStokPdfRequest;
 use Modules\Report\Http\Resources\LazadaDocumentResource;
+use Modules\Report\Services\OrderPerformanceReportService;
 use Modules\Report\Services\ReportService;
+use Modules\Report\Support\OrderPerformanceSpec;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Reports', description: 'API Endpoints for printable Reports')]
@@ -555,6 +558,55 @@ class ReportController extends Controller
     public function shipmentFilterOptions(): JsonResponse
     {
         return response()->json(['data' => $this->reportService->shipmentFilterOptions()]);
+    }
+
+    #[OA\Post(
+        path: '/api/v1/reports/wms/order-performance/pdf',
+        summary: 'Cetak Laporan Performa Proses Pesanan (PDF)',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        responses: [new OA\Response(response: 200, description: 'PDF stream')]
+    )]
+    public function orderPerformancePdf(Request $request): Response|JsonResponse
+    {
+        $validated = $request->validate([
+            'jenis' => ['required', Rule::in(OrderPerformanceSpec::TYPES)],
+            'mode' => ['required', Rule::in(['detail', 'summary'])],
+            'from' => 'required|date',
+            'to' => 'required|date|after_or_equal:from',
+            'location_ids' => 'nullable|array',
+            'location_ids.*' => 'uuid',
+            'download' => 'nullable|boolean',
+        ]);
+
+        // Pesanan tidak punya Summary; menolak di sini supaya tidak diam-diam
+        // menghasilkan laporan kosong yang membingungkan.
+        if ($validated['mode'] === 'summary' && ! OrderPerformanceSpec::supportsSummary($validated['jenis'])) {
+            return response()->json([
+                'message' => 'Laporan Pesanan hanya tersedia dalam mode Detail.',
+            ], 422);
+        }
+
+        $pdf = app(OrderPerformanceReportService::class)->build(
+            $validated['jenis'],
+            $validated['mode'] === 'detail',
+            $validated,
+        );
+
+        $filename = sprintf(
+            'Laporan-Performa-%s-%s_%s_%s.pdf',
+            ucfirst($validated['jenis']),
+            ucfirst($validated['mode']),
+            $validated['from'],
+            $validated['to'],
+        );
+
+        $disposition = ($validated['download'] ?? false) ? 'attachment' : 'inline';
+
+        return response($pdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => "{$disposition}; filename=\"{$filename}\"",
+        ]);
     }
 
     public function lazadaGetDocument(Request $request): JsonResponse
