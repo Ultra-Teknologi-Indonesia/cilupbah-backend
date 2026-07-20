@@ -468,6 +468,55 @@ class ReportRepository
         );
     }
 
+    /**
+     * Baris Laporan Performa Penempatan. Satu baris per dokumen putaway —
+     * berbeda dari laporan picker/packer yang satu baris per SKU.
+     *
+     * "Rata-rata durasi per SKU" dihitung sebagai durasi dokumen dibagi jumlah
+     * baris SKU di dalamnya, sesuai judul kolom di laporan Jubelio.
+     *
+     * @return array<int, object>
+     */
+    public function putawayPerformanceRows(array $filters): array
+    {
+        $from = ($filters['from'] ?? null) ? $filters['from'] . ' 00:00:00' : null;
+        $to = ($filters['to'] ?? null) ? $filters['to'] . ' 23:59:59' : null;
+        $locationIds = $filters['location_ids'] ?? [];
+
+        $items = DB::table('putaway_items')
+            ->select('putaway_id')
+            ->selectRaw('COUNT(*) AS sku_count')
+            ->selectRaw('COALESCE(SUM(putaway_qty), 0) AS qty')
+            ->groupBy('putaway_id');
+
+        return DB::query()->fromSub(
+            DB::table('putaways as p')
+                ->leftJoin('users as u', 'u.id', '=', 'p.assigned_to')
+                ->leftJoin('locations as l', 'l.id', '=', 'p.location_id')
+                ->leftJoinSub($items, 'it', 'it.putaway_id', '=', 'p.id')
+                ->select([
+                    'p.location_id',
+                    'l.location_name as lokasi',
+                    'p.id as transaksi_id',
+                    'p.putaway_no as no_transaksi',
+                ])
+                ->selectRaw('COALESCE(u.name, ?) AS grup', ['(tanpa petugas)'])
+                ->selectRaw('COALESCE(p.started_at, p.created_at) AS tanggal_raw')
+                ->selectRaw('COALESCE(it.qty, 0) AS qty')
+                ->selectRaw('COALESCE(it.sku_count, 0) AS sku_count')
+                ->selectRaw(self::durationSeconds('p.completed_at', 'COALESCE(p.started_at, p.created_at)') . ' AS durasi_detik'),
+            'r',
+        )
+            ->when($from, fn ($q, $v) => $q->where('tanggal_raw', '>=', $v))
+            ->when($to, fn ($q, $v) => $q->where('tanggal_raw', '<=', $v))
+            ->when(! empty($locationIds), fn ($q) => $q->whereIn('location_id', $locationIds))
+            ->orderBy('lokasi')
+            ->orderBy('grup')
+            ->orderByDesc('tanggal_raw')
+            ->get()
+            ->all();
+    }
+
     public function courierOptions(): \Illuminate\Support\Collection
     {
         return DB::table('couriers')

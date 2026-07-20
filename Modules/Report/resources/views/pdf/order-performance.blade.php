@@ -1,6 +1,16 @@
 @php
     $companyName = config('app.company_name', 'PT ULTRA TEKNOLOGI INDONESIA');
     $printedAt = now()->format('d M Y H:i');
+
+    // Laporan Penempatan memakai susunan kolom Summary yang lebih pendek, punya
+    // baris Total di dalam tabel Detail, dan tidak punya Grand Total.
+    $summaryColumns = $summaryColumns ?? [
+        ['key' => 'total_transaksi', 'label' => 'Total Transaksi', 'align' => 'right'],
+        ['key' => 'total_quantity', 'label' => 'Total Quantity', 'align' => 'right'],
+        ['key' => 'durasi', 'label' => 'Durasi', 'align' => 'center'],
+        ['key' => 'durasi_per_pesanan', 'label' => 'Durasi Per Pesanan', 'align' => 'center'],
+    ];
+    $detailTotals = $detailTotals ?? false;
 @endphp
 <!DOCTYPE html>
 <html lang="id">
@@ -106,6 +116,15 @@
                             @endforeach
                         </tr>
                     @endforeach
+
+                    @if ($detailTotals && ! empty($sub['total']))
+                        <tr class="total">
+                            <td class="label">Total</td>
+                            @foreach (array_slice($columns, 1) as $col)
+                                <td class="{{ $col['align'] ?? '' }}">{{ $sub['total'][$col['key']] ?? '' }}</td>
+                            @endforeach
+                        </tr>
+                    @endif
                 </tbody>
             </table>
         @endforeach
@@ -118,28 +137,25 @@
             <thead>
                 <tr>
                     <th style="text-align: left;">{{ $summaryFirstLabel }}</th>
-                    <th class="right">Total Transaksi</th>
-                    <th class="right">Total Quantity</th>
-                    <th class="center">Durasi</th>
-                    <th class="center">Durasi Per Pesanan</th>
+                    @foreach ($summaryColumns as $col)
+                        <th class="{{ $col['align'] ?? '' }}">{{ $col['label'] }}</th>
+                    @endforeach
                 </tr>
             </thead>
             <tbody>
                 @foreach ($group['rows'] as $row)
                     <tr>
                         <td>{{ $row['nama'] }}</td>
-                        <td class="right">{{ $row['total_transaksi'] }}</td>
-                        <td class="right">{{ $row['total_quantity'] }}</td>
-                        <td class="center">{{ $row['durasi'] }}</td>
-                        <td class="center">{{ $row['durasi_per_pesanan'] }}</td>
+                        @foreach ($summaryColumns as $col)
+                            <td class="{{ $col['align'] ?? '' }}">{{ $row[$col['key']] ?? '' }}</td>
+                        @endforeach
                     </tr>
                 @endforeach
                 <tr class="total">
                     <td class="label">Total</td>
-                    <td class="right">{{ $group['total']['total_transaksi'] }}</td>
-                    <td class="right">{{ $group['total']['total_quantity'] }}</td>
-                    <td class="center">{{ $group['total']['durasi'] }}</td>
-                    <td class="center">{{ $group['total']['durasi_per_pesanan'] }}</td>
+                    @foreach ($summaryColumns as $col)
+                        <td class="{{ $col['align'] ?? '' }}">{{ $group['total'][$col['key']] ?? '' }}</td>
+                    @endforeach
                 </tr>
             </tbody>
         </table>
@@ -149,10 +165,11 @@
         <table class="grand">
             <tr>
                 <td class="label">Grand Total</td>
-                <td style="text-align: right;">{{ $grandTotal['total_transaksi'] }}</td>
-                <td style="text-align: right;">{{ $grandTotal['total_quantity'] }}</td>
-                <td style="text-align: center;">{{ $grandTotal['durasi'] }}</td>
-                <td style="text-align: center;">{{ $grandTotal['durasi_per_pesanan'] }}</td>
+                @foreach ($summaryColumns as $col)
+                    <td style="text-align: {{ ($col['align'] ?? 'left') === 'right' ? 'right' : 'center' }};">
+                        {{ $grandTotal[$col['key']] ?? '' }}
+                    </td>
+                @endforeach
             </tr>
         </table>
     @endif

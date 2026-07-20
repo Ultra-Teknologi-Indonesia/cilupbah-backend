@@ -28,6 +28,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('reports/wms/shipment/export', [ReportController::class, 'shipmentListExport'])->name('reports.wms.shipment.export');
         Route::get('reports/wms/shipment/options', [ReportController::class, 'shipmentFilterOptions'])->name('reports.wms.shipment.options');
         Route::post('reports/wms/order-performance/pdf', [ReportController::class, 'orderPerformancePdf'])->name('reports.wms.order-performance.pdf');
+        Route::post('reports/wms/putaway-performance/pdf', [ReportController::class, 'putawayPerformancePdf'])->name('reports.wms.putaway-performance.pdf');
     });
     Route::middleware('role_or_permission:owner|view-laporan-hpp')->group(function () {
         Route::get('reports/hpp', [ReportController::class, 'hpp'])->name('reports.hpp');
@@ -44,5 +45,5 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('reports/negative-stock/export', [ReportController::class, 'negativeStockExport'])->name('reports.negative-stock.export');
     });
 
-    Route::get('lazada/get-document', [ReportController::class, 'lazadaGetDocument'])->name('lazada.get-document');
+    Route::get('lazada/get-document', [ReportController::class, 'lazadaGetDocument'])->name('lazada.get-document')->middleware('role_or_permission:owner|export-pengiriman');
 });

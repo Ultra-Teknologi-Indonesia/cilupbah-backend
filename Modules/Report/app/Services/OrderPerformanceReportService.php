@@ -19,16 +19,17 @@ class OrderPerformanceReportService
      * Nilai negatif dijepit nol; laporan performa yang menampilkan durasi minus
      * hanya membingungkan pembacanya.
      */
-    public static function formatDuration(int|float|null $seconds): string
+    public static function formatDuration(int|float|null $seconds, bool $withSeconds = true): string
     {
         $total = max(0, (int) round((float) $seconds));
+        $jam = intdiv($total, 3600);
+        $menit = intdiv($total % 3600, 60);
 
-        return sprintf(
-            '%d jam %d menit %d detik',
-            intdiv($total, 3600),
-            intdiv($total % 3600, 60),
-            $total % 60,
-        );
+        // Laporan Penempatan menulis durasi tanpa detik ("0 jam 2 menit");
+        // laporan lain menyertakannya.
+        return $withSeconds
+            ? sprintf('%d jam %d menit %d detik', $jam, $menit, $total % 60)
+            : sprintf('%d jam %d menit', $jam, $menit);
     }
 
     public function build(string $type, bool $detail, array $filters)
