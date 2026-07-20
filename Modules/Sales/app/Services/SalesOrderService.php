@@ -569,8 +569,7 @@ class SalesOrderService
             $requestedDocType = $options['document_type'] ?? null;
 
             $cacheUsable = $order->shipping_label_status === 'ready'
-                && $order->shipping_label_doc_type
-                && (! $requestedDocType || $requestedDocType === $order->shipping_label_doc_type);
+                && $order->shipping_label_doc_type;
 
             if ($cacheUsable) {
                 $download = $shopeeService->downloadShippingDocument(
@@ -660,7 +659,7 @@ class SalesOrderService
                 );
             }
 
-            $shopeeDocType = $requestedDocType ?? 'NORMAL_AIR_WAYBILL';
+            $shopeeDocType = $order->shipping_label_doc_type ?? $requestedDocType ?? 'NORMAL_AIR_WAYBILL';
             $result = $shopeeService->getAirwayBill($shopId, $channelOrderNo, $shopeeDocType);
 
             if (! empty($result['ready']) && ! empty($result['document_base64'])) {
