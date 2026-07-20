@@ -78,16 +78,6 @@ class PurchaseOrderController extends Controller
         }
     }
 
-    public function cancel(string $id): JsonResponse
-    {
-        try {
-            $po = $this->poService->cancel($id);
-            return $this->successResponse($po, 'PO berhasil dibatalkan');
-        } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
-        }
-    }
-
     public function destroy(string $id): JsonResponse
     {
         try {

@@ -5,6 +5,9 @@ namespace Modules\Purchase\Services;
 use Modules\Purchase\Repositories\PurchaseOrderRepository;
 use Modules\Purchase\Enums\PurchaseActivityAction;
 use Modules\Purchase\Models\PurchaseOrder;
+use Modules\Purchase\Models\PurchaseBill;
+use Modules\Purchase\Models\PurchasePayment;
+use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Services\InboundService;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Warehouse\Services\CompanyProfileService;
@@ -76,8 +79,6 @@ class PurchaseOrderService
                 $itemData['purchase_order_id'] = $po->id;
                 $this->calculateItemAmounts($itemData);
                 $this->poRepository->createItem($itemData);
-
-                $this->adjustOnOrder($itemData['item_id'], $po->location_id, $itemData['qty']);
             }
 
             $this->activityLogger->log($po, PurchaseActivityAction::CREATED, [
@@ -99,10 +100,6 @@ class PurchaseOrderService
 
             if (!$po) {
                 throw new \Exception('PO tidak ditemukan.');
-            }
-
-            if ($po->status === PurchaseOrder::STATUS_CANCELLED) {
-                throw new \Exception('PO yang sudah dibatalkan tidak bisa diedit.');
             }
 
             $this->inboundService->assertPurchaseOrderEditable($po);
@@ -345,44 +342,14 @@ class PurchaseOrderService
         });
     }
 
-    public function cancel(string $id): PurchaseOrder
-    {
-        return DB::transaction(function () use ($id) {
-            $po = $this->poRepository->findByIdForUpdate($id);
-
-            if (!$po) {
-                throw new \Exception('PO tidak ditemukan.');
-            }
-
-            if ($po->status === PurchaseOrder::STATUS_FULLY_RECEIVED) {
-                throw new \Exception('PO yang sudah fully received tidak bisa dibatalkan.');
-            }
-
-            if ($po->status === PurchaseOrder::STATUS_CANCELLED) {
-                throw new \Exception('PO sudah dibatalkan.');
-            }
-
-            if (in_array($po->status, [PurchaseOrder::STATUS_OPEN, PurchaseOrder::STATUS_PARTIAL_RECEIVED])) {
-                $po->load('items');
-                foreach ($po->items as $item) {
-                    $pendingQty = $item->pendingQty();
-                    if ($pendingQty > 0) {
-                        $this->adjustOnOrder($item->item_id, $po->location_id, -$pendingQty);
-                    }
-                }
-            }
-
-            $statusBefore = $po->status;
-            $this->poRepository->updateStatus($po, PurchaseOrder::STATUS_CANCELLED);
-
-            $this->activityLogger->log($po, PurchaseActivityAction::CANCELLED, [
-                'prev_values' => ['status' => $statusBefore],
-            ]);
-
-            return $this->getById($id);
-        });
-    }
-
+    /**
+     * PO bisa dihapus di status mana pun. Penerimaan yang terlanjur tercatat
+     * ditarik balik lebih dulu, lalu seluruh jejak hilir dilepas: inbound
+     * dinetralkan, tagihan dan pembayarannya ikut dihapus.
+     *
+     * Penghapusan ini permanen — tidak ada SoftDeletes, dan riwayat PO ikut
+     * hilang lewat cascade purchase_order_activities.
+     */
     public function delete(string $id): bool
     {
         return DB::transaction(function () use ($id) {
@@ -392,33 +359,104 @@ class PurchaseOrderService
                 throw new \Exception('PO tidak ditemukan.');
             }
 
-            if (in_array($po->status, [
-                PurchaseOrder::STATUS_OPEN,
-                PurchaseOrder::STATUS_PARTIAL_RECEIVED,
-                PurchaseOrder::STATUS_FULLY_RECEIVED,
-            ])) {
-                throw new \Exception('PO yang sudah diapprove tidak bisa dihapus. Batalkan terlebih dahulu.');
-            }
+            $this->reverseAllReceipts($po);
+            $this->detachInbounds($po);
+            $this->deleteBillsAndPayments($po);
 
             return $this->poRepository->delete($po);
         });
     }
 
+    /**
+     * Tarik balik seluruh penerimaan PO sebelum dokumennya dihapus.
+     *
+     * Sama seperti reverseReceiptsForShrunkLines(), kekurangan stok diperiksa
+     * di muka lewat assertPurchaseReversalPossible() supaya penolakan bisa
+     * merinci per SKU/rak alih-alih gagal di tengah cascade. Barang yang sudah
+     * dipicking atau terjual akan menolak penghapusan di sini.
+     */
+    private function reverseAllReceipts(PurchaseOrder $po): void
+    {
+        $po->load('items');
+
+        $reversalByVariant = [];
+
+        foreach ($po->items as $poItem) {
+            $received = (int) $poItem->received_qty;
+
+            if ($received <= 0) {
+                continue;
+            }
+
+            $reversalByVariant[$poItem->item_id] =
+                ($reversalByVariant[$poItem->item_id] ?? 0) + $received;
+        }
+
+        if (empty($reversalByVariant)) {
+            return;
+        }
+
+        $this->inboundService->assertPurchaseReversalPossible($po, $reversalByVariant);
+
+        $actorId = auth()->id();
+
+        foreach ($reversalByVariant as $variantId => $qty) {
+            $this->inboundService->reversePurchaseReceiptForVariant($po, $variantId, $qty, $actorId);
+        }
+    }
+
+    /**
+     * inbounds menaut ke PO lewat source_type/source_id tanpa foreign key, jadi
+     * menghapus PO tidak memicu cascade apa pun dan akan meninggalkan penunjuk
+     * yatim. Inbound-nya sendiri tidak bisa dihapus karena putaway_sources
+     * memeganginya dengan restrictOnDelete, jadi cukup dinetralkan.
+     */
+    private function detachInbounds(PurchaseOrder $po): void
+    {
+        Inbound::where('source_type', 'purchase_order')
+            ->where('source_id', $po->id)
+            ->update([
+                'status'      => Inbound::STATUS_CANCELLED,
+                'source_type' => null,
+                'source_id'   => null,
+            ]);
+    }
+
+    /**
+     * purchase_bills memakai SET NULL sehingga tagihan akan bertahan tanpa
+     * induk. Pembayaran dihapus lebih dulu karena FK-nya ke bill restrictive.
+     */
+    private function deleteBillsAndPayments(PurchaseOrder $po): void
+    {
+        $billIds = PurchaseBill::where('purchase_order_id', $po->id)->pluck('id');
+
+        if ($billIds->isEmpty()) {
+            return;
+        }
+
+        PurchasePayment::whereIn('purchase_bill_id', $billIds)->delete();
+        PurchaseBill::whereIn('id', $billIds)->delete();
+    }
+
     public function bulkDelete(array $ids): array
     {
-        return DB::transaction(function () use ($ids) {
-            $deleted = 0;
-            $failed = 0;
-            foreach ($ids as $id) {
-                try {
-                    $this->delete($id);
-                    $deleted++;
-                } catch (\Exception $e) {
-                    $failed++;
-                }
+        $deleted = 0;
+        $errors = [];
+
+        foreach ($ids as $id) {
+            try {
+                $this->delete($id);
+                $deleted++;
+            } catch (\Throwable $e) {
+                $errors[$id] = $e->getMessage();
             }
-            return ['deleted' => $deleted, 'failed' => $failed];
-        });
+        }
+
+        return [
+            'deleted' => $deleted,
+            'failed'  => count($errors),
+            'errors'  => $errors,
+        ];
     }
 
     private function calculateItemAmounts(array &$item): void
@@ -461,8 +499,4 @@ class PurchaseOrderService
         ];
     }
 
-    private function adjustOnOrder(string $itemId, string $locationId, int $qty): void
-    {
-
-    }
 }

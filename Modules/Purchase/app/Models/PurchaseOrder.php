@@ -46,14 +46,12 @@ class PurchaseOrder extends Model
     const STATUS_OPEN              = 'OPEN';
     const STATUS_PARTIAL_RECEIVED  = 'PARTIAL_RECEIVED';
     const STATUS_FULLY_RECEIVED    = 'FULLY_RECEIVED';
-    const STATUS_CANCELLED         = 'CANCELLED';
 
     const STATUSES = [
         self::STATUS_DRAFT,
         self::STATUS_OPEN,
         self::STATUS_PARTIAL_RECEIVED,
         self::STATUS_FULLY_RECEIVED,
-        self::STATUS_CANCELLED,
     ];
 
     public function contact(): BelongsTo
@@ -84,10 +82,6 @@ class PurchaseOrder extends Model
 
     public function recomputeStatus(): string
     {
-        if ($this->status === self::STATUS_CANCELLED) {
-            return self::STATUS_CANCELLED;
-        }
-
         $items = $this->items()->get(['id', 'qty', 'received_qty']);
 
         if ($items->isEmpty() || $items->sum('received_qty') <= 0) {

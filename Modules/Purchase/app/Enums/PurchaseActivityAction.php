@@ -12,7 +12,6 @@ enum PurchaseActivityAction: string
     case RECEIPT_REVERSED = 'RECEIPT_REVERSED';
     case RECEIVED         = 'RECEIVED';
     case STATUS_CHANGED   = 'STATUS_CHANGED';
-    case CANCELLED        = 'CANCELLED';
 
     /**
      * Kode numerik untuk pengurutan stabil dalam satu detik yang sama --
@@ -29,7 +28,6 @@ enum PurchaseActivityAction: string
             self::RECEIPT_REVERSED => '400',
             self::RECEIVED         => '500',
             self::STATUS_CHANGED   => '900',
-            self::CANCELLED        => '000',
         };
     }
 
@@ -44,7 +42,6 @@ enum PurchaseActivityAction: string
             self::RECEIPT_REVERSED => 'Penerimaan ditarik balik',
             self::RECEIVED         => 'Barang diterima',
             self::STATUS_CHANGED   => 'Status berubah',
-            self::CANCELLED        => 'Pesanan dibatalkan',
         };
     }
 }

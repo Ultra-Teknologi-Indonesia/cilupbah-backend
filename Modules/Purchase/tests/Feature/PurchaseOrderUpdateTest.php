@@ -442,15 +442,22 @@ class PurchaseOrderUpdateTest extends TestCase
         $this->assertSame('Petugas Uji', $response->json('data.0.actor_name'));
     }
 
-    public function test_cancelled_po_cannot_be_edited(): void
+    public function test_open_po_can_be_deleted(): void
     {
-        $po = $this->makePO(PurchaseOrder::STATUS_CANCELLED, qty: 100, receivedQty: 0);
-        $item = $po->items->first();
+        $po = $this->makePO(PurchaseOrder::STATUS_OPEN, qty: 100, receivedQty: 0);
 
-        $this->expectExceptionMessage('PO yang sudah dibatalkan tidak bisa diedit.');
+        $this->assertTrue($this->service->delete($po->id));
+        $this->assertDatabaseMissing('purchase_orders', ['id' => $po->id]);
+    }
 
-        $this->service->update($po->id, $this->payload($po, [
-            $this->line($item, ['qty' => 150]),
-        ]));
+    public function test_deleting_received_po_reverses_receipts_and_detaches_inbound(): void
+    {
+        $po = $this->makePO(PurchaseOrder::STATUS_OPEN, qty: 100, receivedQty: 100);
+
+        $this->assertTrue($this->service->delete($po->id));
+
+        $this->assertDatabaseMissing('purchase_orders', ['id' => $po->id]);
+        $this->assertDatabaseMissing('inbounds', ['source_id' => $po->id]);
+        $this->assertDatabaseHas('inventory_movements', ['source' => 'PURCHASE_REVERSAL']);
     }
 }
