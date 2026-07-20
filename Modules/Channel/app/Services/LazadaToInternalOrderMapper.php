@@ -5,29 +5,37 @@ namespace Modules\Channel\Services;
 class LazadaToInternalOrderMapper
 {
 
+    /**
+     * Nilainya WAJIB memakai vokabuler Modules\Sales\Enums\ChannelStatus.
+     * Sebelumnya peta ini memakai kosakata TikTok (AWAITING_SHIPMENT,
+     * AWAITING_COLLECTION, DELIVERED) yang tidak dikenali ChannelStatusNormalizer,
+     * sehingga pesanan Lazada yang justru siap diproses jatuh ke UNKNOWN dan mandek.
+     */
     protected const STATUS_MAP = [
         'unpaid' => 'UNPAID',
-        'pending' => 'AWAITING_SHIPMENT',
-        'repacked' => 'AWAITING_SHIPMENT',
-        'packed' => 'AWAITING_COLLECTION',
-        'ready_to_ship' => 'AWAITING_COLLECTION',
-        'ready_to_ship_pending' => 'AWAITING_COLLECTION',
-        'shipped' => 'IN_TRANSIT',
-        'shipping' => 'IN_TRANSIT',
-        'delivered' => 'DELIVERED',
-        'confirmed' => 'DELIVERED',
+        'pending' => 'READY_TO_SHIP',
+        'repacked' => 'READY_TO_SHIP',
+        'packed' => 'PROCESSED',
+        'ready_to_ship' => 'READY_TO_SHIP',
+        'ready_to_ship_pending' => 'PROCESSED',
+        'topack' => 'READY_TO_SHIP',
+        'toship' => 'PROCESSED',
+        'shipped' => 'SHIPPED',
+        'shipping' => 'SHIPPED',
+        'delivered' => 'TO_CONFIRM_RECEIVE',
+        'confirmed' => 'TO_CONFIRM_RECEIVE',
         'canceled' => 'CANCELLED',
         'cancelled' => 'CANCELLED',
         'failed' => 'CANCELLED',
 
-        'returned' => 'DELIVERED',
+        'returned' => 'RETURNED',
 
-        'failed_delivery' => 'IN_TRANSIT',
-        'shipped_back' => 'IN_TRANSIT',
-        'shipped_back_success' => 'IN_TRANSIT',
-        'shipped_back_failed' => 'IN_TRANSIT',
-        'lost_by_3pl' => 'IN_TRANSIT',
-        'damaged_by_3pl' => 'IN_TRANSIT',
+        'failed_delivery' => 'SHIPPED',
+        'shipped_back' => 'RETURNED',
+        'shipped_back_success' => 'RETURNED',
+        'shipped_back_failed' => 'SHIPPED',
+        'lost_by_3pl' => 'SHIPPED',
+        'damaged_by_3pl' => 'SHIPPED',
     ];
 
     public function map(array $lazadaOrder, array $orderItems, string $shopId): array
@@ -75,6 +83,7 @@ class LazadaToInternalOrderMapper
             'shipping_country' => $address['country'] ?? null,
 
             'channel_status' => $channelStatus,
+            'channel_fulfillment_status' => $lazadaStatus !== '' ? $lazadaStatus : null,
             'status' => 'UNPAID',
             'is_paid' => $isPaid,
             'is_canceled' => $channelStatus === 'CANCELLED',

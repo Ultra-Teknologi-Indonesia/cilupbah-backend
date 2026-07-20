@@ -7,11 +7,11 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Modules\Report\Repositories\ReportRepository;
 use Modules\Sales\Enums\ChannelStatus;
+use Modules\Sales\Support\ChannelStatusNormalizer;
 use Modules\Sales\Models\SalesOrder;
 
 class ReportService
 {
-    /** Label Indonesia untuk setiap nilai ChannelStatus. */
     /**
      * Label Indonesia untuk status pesanan internal. Kuncinya dinormalkan
      * (huruf kecil, "-"/"_" disamakan) karena data lapangan bercampur bentuk:
@@ -37,6 +37,7 @@ class ReportService
         'returned'                   => 'Diretur',
     ];
 
+    /** Label Indonesia untuk setiap nilai kanonik ChannelStatus. */
     public const CHANNEL_STATUS_LABELS = [
         'UNPAID'             => 'Belum Dibayar',
         'READY_TO_SHIP'      => 'Siap Kirim',
@@ -409,18 +410,40 @@ class ReportService
             'couriers' => $this->repository->courierOptions()
                 ->map(fn ($c) => ['value' => $c->id, 'label' => $c->name])
                 ->all(),
-            'statuses' => $this->repository->shipmentStatusMpOptions()
-                ->map(fn ($r) => [
-                    'value' => ($r->source ?? '') . '::' . $r->channel_fulfillment_status,
-                    'label' => self::statusMpLabel($r->source, $r->channel_fulfillment_status),
-                ])
-                ->all(),
+            'statuses' => $this->statusMpOptions(),
         ];
+    }
+
+    /**
+     * Katalog statis semua status mentah per channel, bukan DISTINCT dari data,
+     * supaya seluruh kemungkinan tetap terpilih meski belum ada pesanannya.
+     *
+     * @return array<int, array{value: string, label: string}>
+     */
+    private function statusMpOptions(): array
+    {
+        $options = [];
+
+        foreach (ChannelStatusNormalizer::catalog() as $channel => $statuses) {
+            foreach (array_keys($statuses) as $raw) {
+                $options[] = [
+                    'value' => $channel . '::' . $raw,
+                    'label' => self::statusMpLabel($channel, $raw),
+                ];
+            }
+        }
+
+        usort($options, fn ($a, $b) => $a['label'] <=> $b['label']);
+
+        return $options;
     }
 
     public static function statusMpLabel(?string $source, string $raw): string
     {
-        return $source ? $raw . ' - ' . strtoupper($source) : $raw;
+        $words = ucwords(strtolower(str_replace('_', ' ', $raw)));
+        $words = str_replace(['3pl', 'Id'], ['3PL', 'ID'], $words);
+
+        return $source ? $words . ' - ' . strtoupper($source) : $words;
     }
 
     /**

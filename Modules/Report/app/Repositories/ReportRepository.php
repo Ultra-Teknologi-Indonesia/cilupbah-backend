@@ -14,6 +14,7 @@ use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Models\StockOpname;
 use Modules\Outbound\Models\Picklist;
+use Modules\Sales\Support\ChannelStatusNormalizer;
 use Modules\Outbound\Models\Shipment;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
@@ -239,9 +240,14 @@ class ReportRepository
             ->when($from, fn ($q, $v) => $q->where('so.transaction_date', '>=', $v . ' 00:00:00'))
             ->when($to, fn ($q, $v) => $q->where('so.transaction_date', '<=', $v . ' 23:59:59'))
             ->when(! empty($courierIds), fn ($q) => $q->whereIn('so.courier_id', $courierIds))
+            // Yang tersimpan di kolom channel_status adalah nilai kanonik ChannelStatus
+            // (dijaga CHECK constraint), bukan kode mentah channel. Jadi pilihan dropdown
+            // diterjemahkan dulu lewat normalizer, lalu disaring bersama source-nya.
             ->when($statusMp, function ($q, $v) {
                 [$source, $raw] = self::splitStatusMp($v);
-                $q->where('so.channel_fulfillment_status', $raw);
+                $canonical = ChannelStatusNormalizer::normalize($source ?: null, $raw);
+
+                $q->where('so.channel_status', $canonical?->value ?? $raw);
                 $source === '' ? $q->whereNull('so.source') : $q->where('so.source', $source);
             })
             ->select([
@@ -272,22 +278,6 @@ class ReportRepository
         $parts = explode('::', $value, 2);
 
         return count($parts) === 2 ? [$parts[0], $parts[1]] : ['', $parts[0]];
-    }
-
-    /**
-     * Opsi diturunkan dari data nyata (DISTINCT), bukan daftar statis — sama seperti
-     * cara Jubelio menyusun daftarnya, jadi otomatis ikut kalau channel menambah status.
-     */
-    public function shipmentStatusMpOptions(): \Illuminate\Support\Collection
-    {
-        return DB::table('sales_orders')
-            ->select('source', 'channel_fulfillment_status')
-            ->whereNotNull('channel_fulfillment_status')
-            ->where('channel_fulfillment_status', '<>', '')
-            ->distinct()
-            ->orderBy('channel_fulfillment_status')
-            ->orderBy('source')
-            ->get();
     }
 
     public function courierOptions(): \Illuminate\Support\Collection

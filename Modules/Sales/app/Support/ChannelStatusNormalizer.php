@@ -64,6 +64,40 @@ final class ChannelStatusNormalizer
         'shipped'    => ChannelStatus::SHIPPED,
     ];
 
+    /**
+     * Katalog seluruh status mentah yang mungkin dikirim tiap channel, beserta
+     * padanan kanoniknya. Dipakai untuk mengisi dropdown filter laporan — daftarnya
+     * statis, bukan DISTINCT dari data, supaya semua kemungkinan tetap tampil
+     * meski belum pernah ada pesanannya (mengikuti gaya daftar status_mp Jubelio).
+     *
+     * @return array<string, array<string, ChannelStatus>>
+     */
+    public static function catalog(): array
+    {
+        return [
+            'shopee'      => self::SHOPEE,
+            'tiktok'      => self::TIKTOK,
+            'lazada'      => self::LAZADA + self::LAZADA_EXTRA,
+            'woocommerce' => self::WOOCOMMERCE,
+        ];
+    }
+
+    /**
+     * Status Lazada yang ditangani mapper tapi belum ada di peta normalisasi.
+     * Sebagian muncul juga di daftar Jubelio (LOST BY 3PL, DAMAGED BY 3PL).
+     */
+    private const LAZADA_EXTRA = [
+        'repacked'             => ChannelStatus::READY_TO_SHIP,
+        'shipping'             => ChannelStatus::SHIPPED,
+        'confirmed'            => ChannelStatus::TO_CONFIRM_RECEIVE,
+        'failed_delivery'      => ChannelStatus::SHIPPED,
+        'shipped_back'         => ChannelStatus::RETURNED,
+        'shipped_back_success' => ChannelStatus::RETURNED,
+        'shipped_back_failed'  => ChannelStatus::SHIPPED,
+        'lost_by_3pl'          => ChannelStatus::SHIPPED,
+        'damaged_by_3pl'       => ChannelStatus::SHIPPED,
+    ];
+
     public static function normalize(?string $channel, ?string $rawCode): ?ChannelStatus
     {
         if ($rawCode === null || $rawCode === '') {
@@ -75,13 +109,9 @@ final class ChannelStatusNormalizer
             return $canonical;
         }
 
-        $map = match (strtolower((string) $channel)) {
-            'shopee'      => self::SHOPEE,
-            'tiktok'      => self::TIKTOK,
-            'lazada'      => self::LAZADA,
-            'woocommerce' => self::WOOCOMMERCE,
-            default       => [],
-        };
+        // Satu sumber dengan catalog(), supaya setiap opsi yang bisa dipilih di
+        // dropdown laporan dijamin punya padanan kanonik.
+        $map = self::catalog()[strtolower((string) $channel)] ?? [];
 
         if (isset($map[$rawCode])) {
             return $map[$rawCode];
