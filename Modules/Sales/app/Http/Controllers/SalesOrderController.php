@@ -877,6 +877,20 @@ class SalesOrderController extends Controller
                 ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
+        } catch (\Throwable $e) {
+            // Channel clients throw plain \Exception, which would otherwise surface as a 500.
+            \Illuminate\Support\Facades\Log::error('shippingLabel gagal', [
+                'order_id' => $order->id,
+                'source' => $source,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->errorResponse(
+                'Gagal mengambil label pengiriman: ' . $e->getMessage(),
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 

@@ -98,16 +98,31 @@ class ShopeeClient
                 'path' => $apiPath,
                 'error' => $error,
                 'message' => $data['message'] ?? null,
+                'result_list' => $data['response']['result_list'] ?? null,
             ]);
 
             if (in_array($error, self::TOKEN_ERROR_CODES, true) || str_contains(strtolower($error), 'token')) {
                 throw new TokenExpiredException($shopId, $data['message'] ?? 'Shopee access token expired');
             }
 
-            throw new \Exception('Shopee API Error: ' . ($data['message'] ?? $error));
+            throw new \Exception('Shopee API Error: ' . $this->describeError($data, $error));
         }
 
         return $data;
+    }
+
+    /**
+     * Batch endpoints answer with a generic "All failed" message and put the real
+     * reason inside response.result_list. Surface that so the caller sees why.
+     */
+    protected function describeError(array $data, string $error): string
+    {
+        $message = (string) ($data['message'] ?? $error);
+
+        $row = $data['response']['result_list'][0] ?? [];
+        $detail = $row['fail_message'] ?? $row['fail_error'] ?? null;
+
+        return $detail ? $message . ' (' . $detail . ')' : $message;
     }
 
     public function requestBinary(string $apiPath, array $params, string $accessToken, string $shopId): array
@@ -143,13 +158,14 @@ class ShopeeClient
                     'path' => $apiPath,
                     'error' => $error,
                     'message' => $data['message'] ?? null,
+                    'result_list' => $data['response']['result_list'] ?? null,
                 ]);
 
                 if (in_array($error, self::TOKEN_ERROR_CODES, true) || str_contains(strtolower($error), 'token')) {
                     throw new TokenExpiredException($shopId, $data['message'] ?? 'Shopee access token expired');
                 }
 
-                throw new \Exception('Shopee API Error: ' . ($data['message'] ?? $error));
+                throw new \Exception('Shopee API Error: ' . $this->describeError($data, $error));
             }
 
             return $data;

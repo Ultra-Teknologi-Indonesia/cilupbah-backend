@@ -40,6 +40,12 @@ class BulkShippingLabelService
         self::SIZE_100X120 => [100.0, 120.0],
     ];
 
+    /** Ink boxes smaller than this are treated as detection noise, not a label. */
+    private const BBOX_MIN_SIDE_MM = 20.0;
+
+    /** Ink already covering this share of the sheet leaves nothing worth trimming. */
+    private const BBOX_FULL_SHEET_RATIO = 0.95;
+
     public const TIKTOK_DOWNLOAD_TIMEOUT = 20;
     public const TIKTOK_DOWNLOAD_RETRIES = 2;
     public const TIKTOK_PARALLEL_LANES = 8;
@@ -237,6 +243,102 @@ class BulkShippingLabelService
         return $srcPdfBytes;
     }
 
+    /**
+     * Shopee A4 waybills carry more than one label per sheet, so the ink bounding
+     * box would span all of them. Those sheets keep the fixed-region crop below.
+     */
+    private function isShopeeA4Sheet(?string $channel, float $srcW, float $srcH): bool
+    {
+        if ($channel !== self::CHANNEL_SHOPEE) {
+            return false;
+        }
+
+        $portrait = $srcW >= 200 && $srcW <= 220 && $srcH >= 285 && $srcH <= 302;
+        $landscape = $srcW >= 285 && $srcW <= 302 && $srcH >= 200 && $srcH <= 220;
+
+        return $portrait || $landscape;
+    }
+
+    /**
+     * Ink bounding box of one page, in mm, via Ghostscript's bbox device.
+     * Returns [x0, y0, x1, y1] with a bottom-left origin, or null when unavailable.
+     */
+    private function detectInkBBoxMm(string $pdfBytes, int $page): ?array
+    {
+        $gs = trim((string) @shell_exec('command -v gs 2>/dev/null'));
+        if ($gs === '') {
+            return null;
+        }
+
+        $tmp = tempnam(sys_get_temp_dir(), 'lbl_bbox_');
+        try {
+            file_put_contents($tmp, $pdfBytes);
+            $cmd = sprintf(
+                '%s -q -dNOPAUSE -dBATCH -dFirstPage=%d -dLastPage=%d -sDEVICE=bbox %s 2>&1',
+                escapeshellcmd($gs),
+                $page,
+                $page,
+                escapeshellarg($tmp),
+            );
+            $out = (string) @shell_exec($cmd);
+
+            if (! preg_match('/%%HiResBoundingBox:\s*([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)/', $out, $m)) {
+                return null;
+            }
+
+            $ptToMm = 25.4 / 72.0;
+            $box = [
+                (float) $m[1] * $ptToMm,
+                (float) $m[2] * $ptToMm,
+                (float) $m[3] * $ptToMm,
+                (float) $m[4] * $ptToMm,
+            ];
+
+            return ($box[2] > $box[0] && $box[3] > $box[1]) ? $box : null;
+        } catch (\Throwable $e) {
+            Log::warning('detectInkBBoxMm gagal', ['error' => $e->getMessage()]);
+
+            return null;
+        } finally {
+            @unlink($tmp);
+        }
+    }
+
+    /**
+     * Scale the page so its ink box fills the label, centred. Null when the box is
+     * degenerate or already covers the sheet, leaving the caller on the fallback.
+     */
+    private function placementFromBBox(float $srcW, float $srcH, array $bbox, float $targetW, float $targetH): ?array
+    {
+        $x0 = max(0.0, min($bbox[0], $srcW));
+        $y0 = max(0.0, min($bbox[1], $srcH));
+        $x1 = max(0.0, min($bbox[2], $srcW));
+        $y1 = max(0.0, min($bbox[3], $srcH));
+
+        $boxW = $x1 - $x0;
+        $boxH = $y1 - $y0;
+
+        if ($boxW < self::BBOX_MIN_SIDE_MM || $boxH < self::BBOX_MIN_SIDE_MM) {
+            return null;
+        }
+
+        if (($boxW * $boxH) >= ($srcW * $srcH * self::BBOX_FULL_SHEET_RATIO)) {
+            return null;
+        }
+
+        $scale = min($targetW / $boxW, $targetH / $boxH);
+
+        // Ghostscript measures from the bottom, FPDI draws from the top.
+        $topOffset = $srcH - $y1;
+
+        return [
+            -$x0 * $scale + ($targetW - $boxW * $scale) / 2,
+            -$topOffset * $scale + ($targetH - $boxH * $scale) / 2,
+            $srcW * $scale,
+            $srcH * $scale,
+        ];
+    }
+
     private function placementOnTarget(float $srcW, float $srcH, float $targetW, float $targetH, ?string $channel = null): array
     {
         $isShopeeA4Portrait = $channel === self::CHANNEL_SHOPEE
@@ -284,13 +386,20 @@ class BulkShippingLabelService
             for ($p = 1; $p <= $pageCount; $p++) {
                 $tpl = $out->importPage($p);
                 $src = $out->getTemplateSize($tpl);
-                [$x, $y, $drawW, $drawH] = $this->placementOnTarget(
-                    (float) $src['width'],
-                    (float) $src['height'],
-                    $targetW,
-                    $targetH,
-                    $channel,
-                );
+                $srcW = (float) $src['width'];
+                $srcH = (float) $src['height'];
+
+                $placement = null;
+                if (! $this->isShopeeA4Sheet($channel, $srcW, $srcH)) {
+                    $bbox = $this->detectInkBBoxMm($prepared, $p);
+                    if ($bbox !== null) {
+                        $placement = $this->placementFromBBox($srcW, $srcH, $bbox, $targetW, $targetH);
+                    }
+                }
+
+                $placement ??= $this->placementOnTarget($srcW, $srcH, $targetW, $targetH, $channel);
+
+                [$x, $y, $drawW, $drawH] = $placement;
 
                 $out->AddPage('P', [$targetW, $targetH]);
                 $out->useTemplate($tpl, $x, $y, $drawW, $drawH, false);
