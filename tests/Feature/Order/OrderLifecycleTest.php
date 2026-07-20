@@ -25,7 +25,7 @@ class OrderLifecycleTest extends TestCase
     {
         parent::setUp();
         Cache::flush();
-        $this->actingAs(User::factory()->create(), 'sanctum');
+        $this->actingAs($this->createPrivilegedUser(), 'sanctum');
         $this->seedWarehouseAndStock();
     }
 

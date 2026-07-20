@@ -30,15 +30,15 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('inventory/activity', [InventoryController::class, 'movements'])->name('inventory.activity.index');
     });
 
-    Route::get('inventory/items/to-stock', [InventoryController::class, 'itemsToStock'])->name('inventory.items.toStock');
-    Route::get('inventory/items/item-on-stock', [InventoryController::class, 'itemsOnStock'])->name('inventory.items.itemOnStock');
-    Route::get('inventory/items/to-sell/{locationId}', [InventoryController::class, 'toSell'])->name('inventory.items.toSell');
-    Route::get('inventory/items/to-sales-return', [InventoryController::class, 'toSalesReturn'])->name('inventory.items.toSalesReturn');
-    Route::get('inventory/items/{id}/batch-number', [InventoryController::class, 'batchNumbers'])->name('inventory.items.batchNumber');
-    Route::post('inventory/items/to-adjust', [InventoryController::class, 'toAdjust'])->name('inventory.items.toAdjust');
-    Route::post('inventory/items/split-item', [InventoryController::class, 'splitItem'])->name('inventory.items.splitItem');
-    Route::get('inventory/items/by-bill/{docId}', [InventoryController::class, 'itemsByBill'])->name('inventory.items.byBill');
-    Route::get('inventory/items/by-invoice/{invoiceId}', [InventoryController::class, 'itemsByInvoice'])->name('inventory.items.byInvoice');
+    Route::get('inventory/items/to-stock', [InventoryController::class, 'itemsToStock'])->name('inventory.items.toStock')->middleware('role_or_permission:owner|view-posisi-stok');
+    Route::get('inventory/items/item-on-stock', [InventoryController::class, 'itemsOnStock'])->name('inventory.items.itemOnStock')->middleware('role_or_permission:owner|view-posisi-stok');
+    Route::get('inventory/items/to-sell/{locationId}', [InventoryController::class, 'toSell'])->name('inventory.items.toSell')->middleware('role_or_permission:owner|view-posisi-stok');
+    Route::get('inventory/items/to-sales-return', [InventoryController::class, 'toSalesReturn'])->name('inventory.items.toSalesReturn')->middleware('role_or_permission:owner|view-retur-penjualan');
+    Route::get('inventory/items/{id}/batch-number', [InventoryController::class, 'batchNumbers'])->name('inventory.items.batchNumber')->middleware('role_or_permission:owner|view-produk');
+    Route::post('inventory/items/to-adjust', [InventoryController::class, 'toAdjust'])->name('inventory.items.toAdjust')->middleware('role_or_permission:owner|view-penyesuaian-stok');
+    Route::post('inventory/items/split-item', [InventoryController::class, 'splitItem'])->name('inventory.items.splitItem')->middleware('role_or_permission:owner|edit-produk');
+    Route::get('inventory/items/by-bill/{docId}', [InventoryController::class, 'itemsByBill'])->name('inventory.items.byBill')->middleware('role_or_permission:owner|view-produk');
+    Route::get('inventory/items/by-invoice/{invoiceId}', [InventoryController::class, 'itemsByInvoice'])->name('inventory.items.byInvoice')->middleware('role_or_permission:owner|view-produk');
 
     Route::middleware('role_or_permission:owner|view-posisi-stok')->group(function () {
         Route::get('inventory/out-of-stock-in-order', [InventoryController::class, 'outOfStockInOrder'])->name('inventory.outOfStockInOrder');
@@ -47,28 +47,29 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('inventory/history', [InventoryController::class, 'history'])->name('inventory.history');
     });
 
-    Route::get('inventory/movement-filters', [InventoryController::class, 'movementFilters'])->name('inventory.movementFilters');
-    Route::get('inventory/items/by-location/{locationId}', [InventoryController::class, 'byLocation'])->name('inventory.items.byLocation');
-    Route::get('inventory/purchase-order/items', [InventoryController::class, 'purchaseOrderItems'])->name('inventory.purchaseOrder.items');
+    Route::get('inventory/movement-filters', [InventoryController::class, 'movementFilters'])->name('inventory.movementFilters')->middleware('role_or_permission:owner|view-posisi-stok');
+    Route::get('inventory/items/by-location/{locationId}', [InventoryController::class, 'byLocation'])->name('inventory.items.byLocation')->middleware('role_or_permission:owner|view-posisi-stok');
+    Route::get('inventory/purchase-order/items', [InventoryController::class, 'purchaseOrderItems'])->name('inventory.purchaseOrder.items')->middleware('role_or_permission:owner|view-transaksi-pembelian');
 
     Route::get('inventory/items/by-sku/{sku}', [InventoryController::class, 'bySku'])->name('inventory.items.bySku');
-    Route::get('inventory/stock/by-sku/{sku}', [InventoryController::class, 'bySku'])->name('inventory.stock.bySku');
-    Route::get('inventory/stock/by-bin-code/{binCode}', [InventoryController::class, 'byBinCode'])->name('inventory.stock.byBinCode');
-    Route::get('inventory/stock/items', [InventoryController::class, 'stockedItems'])->name('inventory.stock.items');
-    Route::post('inventory/items/all-stocks', [InventoryController::class, 'allStocksByIds'])->name('inventory.items.allStocks');
+    Route::get('inventory/stock/by-sku/{sku}', [InventoryController::class, 'bySku'])->name('inventory.stock.bySku')->middleware('role_or_permission:owner|view-posisi-stok');
+    Route::get('inventory/stock/by-bin-code/{binCode}', [InventoryController::class, 'byBinCode'])->name('inventory.stock.byBinCode')->middleware('role_or_permission:owner|view-posisi-stok');
+    Route::get('inventory/stock/items', [InventoryController::class, 'stockedItems'])->name('inventory.stock.items')->middleware('role_or_permission:owner|view-posisi-stok');
+    Route::post('inventory/items/all-stocks', [InventoryController::class, 'allStocksByIds'])->name('inventory.items.allStocks')->middleware('role_or_permission:owner|view-posisi-stok');
     Route::delete('inventory/items/item-variant', [InventoryController::class, 'deleteVariant'])->name('inventory.items.deleteVariant');
 
-    Route::middleware('role_or_permission:owner|view-harga-jual')->group(function () {
-        Route::get('inventory/internal-price-list', [PriceListController::class, 'index'])->name('inventory.priceList.index');
-    });
-    Route::middleware('role_or_permission:owner|edit-harga-jual')->group(function () {
-        Route::post('inventory/price-list', [PriceListController::class, 'update'])->name('inventory.priceList.update');
-        Route::post('inventory/items/prices', [PriceListController::class, 'pricesByIds'])->name('inventory.items.prices');
-    });
+    /*
+     * DIHAPUS: inventory/internal-price-list, inventory/price-list,
+     * inventory/items/prices, inventory/item-bundles.
+     *
+     * Keempatnya juga didefinisikan di Modules/Product/routes/api.php. Registrasi
+     * Product menang karena mendaftar belakangan dan menimpa key URI+method di
+     * RouteCollection, jadi definisi di sini tidak pernah dieksekusi. Dihapus agar
+     * tidak ada dua sumber kebenaran yang bergantung pada urutan muat modul.
+     * Gate untuk keempat URI itu ada di Modules/Product/routes/api.php.
+     * Lihat PLANNING-RBAC-MAPPING-GAP.md Bagian II.
+     */
 
-    Route::middleware('role_or_permission:owner|view-bundle')->group(function () {
-        Route::get('inventory/item-bundles', [BundleController::class, 'index'])->name('inventory.bundles.index');
-    });
     Route::middleware('role_or_permission:owner|create-bundle')->group(function () {
         Route::post('inventory/items/bundle', [BundleController::class, 'store'])->name('inventory.bundles.store');
     });
@@ -177,7 +178,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
         $responder = new class { use \App\Traits\ApiResponse; };
         return $responder->successResponse($users);
-    })->name('inventory.warehouseWorkers');
+    })->name('inventory.warehouseWorkers')->middleware('role_or_permission:owner|view-user');
 
     Route::middleware('role_or_permission:owner|view-barang-keluar')->group(function () {
         Route::get('inventory/transfers/transit', [InventoryTransactionController::class, 'transitList'])->name('inventory.transfers.transit');
@@ -225,7 +226,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
         $responder = new class { use \App\Traits\ApiResponse; };
         return $responder->successResponse($result, 'Product berhasil di-set sebagai master.');
-    })->name('inventory.catalog.setMaster');
+    })->name('inventory.catalog.setMaster')->middleware('role_or_permission:owner|edit-produk-naik');
 
     Route::prefix('inventory/amount-adjustments')->group(function () {
         Route::middleware('role_or_permission:owner|view-revaluasi-stok')->group(function () {
@@ -285,8 +286,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('/not-started', [PutawayController::class, 'notStarted'])->middleware('role_or_permission:owner|view-penempatan')->name('putaway.notStarted');
         Route::get('/in-progress', [PutawayController::class, 'inProgress'])->middleware('role_or_permission:owner|view-penempatan')->name('putaway.inProgress');
         Route::get('/completed', [PutawayController::class, 'completed'])->middleware('role_or_permission:owner|view-penempatan')->name('putaway.completed');
-        Route::get('/bins', [PutawayController::class, 'listBins'])->name('putaway.listBins');
-        Route::get('/bins/lookup', [PutawayController::class, 'lookupBin'])->name('putaway.lookupBin');
+        Route::get('/bins', [PutawayController::class, 'listBins'])->name('putaway.listBins')->middleware('role_or_permission:owner|view-penempatan');
+        Route::get('/bins/lookup', [PutawayController::class, 'lookupBin'])->name('putaway.lookupBin')->middleware('role_or_permission:owner|view-penempatan');
         Route::post('/bulk/pdf', [PutawayController::class, 'bulkPdf'])->middleware('role_or_permission:owner|export-penempatan')->name('putaway.bulkPdf');
         Route::delete('/bulk', [PutawayController::class, 'bulkDestroy'])->middleware('role_or_permission:owner|delete-penempatan')->name('putaway.bulkDestroy');
         Route::get('/{id}/pdf', [PutawayController::class, 'pdf'])->middleware('role_or_permission:owner|export-penempatan')->name('putaway.pdf');
@@ -296,8 +297,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
         Route::delete('/{id}/assignment', [PutawayController::class, 'unassign'])->middleware('role_or_permission:owner|edit-penempatan')->name('putaway.unassign');
         Route::post('/{id}/assignment/reset', [PutawayController::class, 'resetAssignment'])->middleware('role_or_permission:owner|delete-penempatan')->name('putaway.resetAssignment');
-        Route::post('/{id}/start', [PutawayController::class, 'start'])->name('putaway.start');
-        Route::post('/{id}/items/{itemId}/process', [PutawayController::class, 'processItem'])->name('putaway.processItem');
+        Route::post('/{id}/start', [PutawayController::class, 'start'])->name('putaway.start')->middleware('role_or_permission:owner|edit-penempatan');
+        Route::post('/{id}/items/{itemId}/process', [PutawayController::class, 'processItem'])->name('putaway.processItem')->middleware('role_or_permission:owner|edit-penempatan');
         Route::delete('/{id}/placements', [PutawayController::class, 'deletePlacements'])->middleware('role_or_permission:owner|delete-penempatan')->name('putaway.deletePlacements');
         Route::delete('/{id}/items/{itemId}/placements/{placementId}', [PutawayController::class, 'deletePlacement'])->middleware('role_or_permission:owner|delete-penempatan')->name('putaway.deletePlacement');
         Route::post('/{id}/complete', [PutawayController::class, 'complete'])->middleware('role_or_permission:owner|edit-penempatan')->name('putaway.complete');
@@ -307,7 +308,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::prefix('inventory/stock-replenishment')->group(function () {
         Route::get('/', [StockReplenishmentController::class, 'index'])->middleware('role_or_permission:owner|view-permintaan-restock')->name('inventory.stockReplenishment.index');
-        Route::get('/pending-count', [StockReplenishmentController::class, 'pendingCount'])->name('inventory.stockReplenishment.pendingCount');
+        Route::get('/pending-count', [StockReplenishmentController::class, 'pendingCount'])->name('inventory.stockReplenishment.pendingCount')->middleware('role_or_permission:owner|view-permintaan-restock');
         Route::post('/', [StockReplenishmentController::class, 'store'])->middleware('role_or_permission:owner|create-permintaan-restock')->name('inventory.stockReplenishment.store');
         Route::get('/{id}', [StockReplenishmentController::class, 'show'])->middleware('role_or_permission:owner|view-permintaan-restock')->name('inventory.stockReplenishment.show');
         Route::post('/{id}/accept', [StockReplenishmentController::class, 'accept'])->middleware('role_or_permission:owner|edit-permintaan-restock')->name('inventory.stockReplenishment.accept');

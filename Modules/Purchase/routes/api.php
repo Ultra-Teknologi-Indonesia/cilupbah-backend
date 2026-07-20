@@ -9,7 +9,7 @@ use Modules\Purchase\Http\Controllers\PurchaseSerialNumberController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
-    Route::get('purchase/serial-number/wms/{bill_detail_id}', [PurchaseSerialNumberController::class, 'wmsByBillDetail'])->name('purchase.serial-number.wms');
+    Route::get('purchase/serial-number/wms/{bill_detail_id}', [PurchaseSerialNumberController::class, 'wmsByBillDetail'])->name('purchase.serial-number.wms')->middleware('role_or_permission:owner|view-transaksi-pembelian');
     Route::middleware('role_or_permission:owner|edit-transaksi-pembelian')->group(function () {
         Route::post('purchase/serial-number/mark-printed', [PurchaseSerialNumberController::class, 'markPrinted'])->name('purchase.serial-number.mark-printed');
     });

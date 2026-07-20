@@ -23,7 +23,7 @@ class InventoryActivityTest extends TestCase
     {
         parent::setUp();
 
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
         $this->location = Location::factory()->create();
 
         $category = Category::create(['name' => 'Cat Act', 'is_active' => true]);

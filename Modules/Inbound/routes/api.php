@@ -9,8 +9,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('inbounds/my-assignments', [InboundController::class, 'myAssignments'])->name('inbounds.myAssignments');
     });
 
-    Route::get('inbounds/scan/{qrCode}', [InboundController::class, 'scanQr'])->name('inbounds.scanQr');
-    Route::post('inbounds/scan-putaway', [InboundController::class, 'scanPutaway'])->name('inbounds.scanPutaway');
+    Route::get('inbounds/scan/{qrCode}', [InboundController::class, 'scanQr'])->name('inbounds.scanQr')->middleware('role_or_permission:owner|view-barang-masuk');
+    Route::post('inbounds/scan-putaway', [InboundController::class, 'scanPutaway'])->name('inbounds.scanPutaway')->middleware('role_or_permission:owner|edit-penempatan');
 
     Route::middleware('role_or_permission:owner|delete-barang-masuk')->group(function () {
         Route::post('inbounds/bulk-cancel', [InboundController::class, 'bulkCancel'])->name('inbounds.bulkCancel');
@@ -43,7 +43,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('inbounds/{id}/assignments', [InboundController::class, 'assignments'])->name('inbounds.assignments');
     });
 
-    Route::post('inbounds/assignments/{assignmentId}/start', [InboundController::class, 'startAssignment'])->name('inbounds.startAssignment');
+    Route::post('inbounds/assignments/{assignmentId}/start', [InboundController::class, 'startAssignment'])->name('inbounds.startAssignment')->middleware('role_or_permission:owner|edit-barang-masuk');
 
     Route::middleware('role_or_permission:owner|edit-barang-masuk')->group(function () {
         Route::post('inbounds/{id}/receive', [InboundController::class, 'receive'])->name('inbounds.receive');

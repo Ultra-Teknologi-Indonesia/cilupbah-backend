@@ -8,7 +8,7 @@ use Modules\Supplier\Http\Controllers\SalesmanController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
-    Route::get('salesmen/all', [SalesmanController::class, 'all'])->name('salesmen.all');
+    Route::get('salesmen/all', [SalesmanController::class, 'all'])->name('salesmen.all')->middleware('role_or_permission:owner|view-salesman');
 
     Route::middleware('role_or_permission:owner|view-salesman')->group(function () {
         Route::get('salesmen', [SalesmanController::class, 'index'])->name('salesmen.index');
@@ -32,9 +32,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('contacts/import/save', [ContactImportController::class, 'save'])->name('contacts.import.save');
     });
 
-    Route::get('contacts/customers', [ContactController::class, 'customers'])->name('contacts.customers');
-    Route::get('contacts/suppliers', [ContactController::class, 'suppliers'])->name('contacts.suppliers');
-    Route::get('contacts/customers-suppliers', [ContactController::class, 'customersSuppliers'])->name('contacts.customers-suppliers');
+    Route::get('contacts/customers', [ContactController::class, 'customers'])->name('contacts.customers')->middleware('role_or_permission:owner|view-kontak-pelanggan');
+    Route::get('contacts/suppliers', [ContactController::class, 'suppliers'])->name('contacts.suppliers')->middleware('role_or_permission:owner|view-kontak-pemasok');
+    Route::get('contacts/customers-suppliers', [ContactController::class, 'customersSuppliers'])->name('contacts.customers-suppliers')->middleware('role_or_permission:owner|view-kontak-pelanggan');
 
     Route::middleware('role_or_permission:owner|view-kontak-pelanggan')->group(function () {
         Route::get('contacts', [ContactController::class, 'index'])->name('contacts.index');
@@ -63,7 +63,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('contact/category', [ContactController::class, 'categories'])->name('contact.category');
     });
 
-    Route::get('contact/account-payable', [ContactController::class, 'accountPayableOptions'])->name('contact.account-payable');
+    Route::get('contact/account-payable', [ContactController::class, 'accountPayableOptions'])->name('contact.account-payable')->middleware('role_or_permission:owner|view-kontak-pemasok');
 
     Route::middleware('role_or_permission:owner|view-kontak-pemasok')->group(function () {
         Route::apiResource('suppliers', SupplierController::class)->only(['index', 'show'])->names('supplier');

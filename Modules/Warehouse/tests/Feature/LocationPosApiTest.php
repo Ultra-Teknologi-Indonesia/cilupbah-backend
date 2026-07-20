@@ -16,7 +16,7 @@ class LocationPosApiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
     }
 
     public function test_pos_endpoint_returns_only_active_pos_locations(): void

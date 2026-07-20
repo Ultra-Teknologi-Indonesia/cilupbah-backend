@@ -28,8 +28,8 @@ class InboundScanFlowTest extends TestCase
     {
         parent::setUp();
 
-        $this->admin = User::factory()->create(['name' => 'Admin Gudang']);
-        $this->worker = User::factory()->create(['name' => 'Pekerja Gudang']);
+        $this->admin = $this->createPrivilegedUser(['name' => 'Admin Gudang']);
+        $this->worker = $this->createPrivilegedUser(['name' => 'Pekerja Gudang']);
 
         $this->actingAs($this->admin, 'sanctum');
         $this->seedTestData();
@@ -212,7 +212,7 @@ class InboundScanFlowTest extends TestCase
 
         $assignmentId = $assignResponse->json('data.id');
 
-        $otherWorker = User::factory()->create();
+        $otherWorker = $this->createPrivilegedUser();
         $this->actingAs($otherWorker, 'sanctum');
 
         $response = $this->postJson("/api/v1/inbounds/assignments/{$assignmentId}/start");

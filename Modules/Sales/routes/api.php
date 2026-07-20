@@ -47,7 +47,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::middleware('role_or_permission:owner|create-pesanan')->group(function () {
         Route::post('sales/manual', [SalesOrderManualController::class, 'store'])->name('sales.manual.store');
     });
-    Route::get('sales/manual/lookup-sku', [SalesOrderManualController::class, 'lookupSku'])->name('sales.manual.lookup-sku');
+    Route::get('sales/manual/lookup-sku', [SalesOrderManualController::class, 'lookupSku'])->name('sales.manual.lookup-sku')->middleware('role_or_permission:owner|view-produk');
 
     Route::middleware('role_or_permission:owner|view-pengaturan-sistem')->group(function () {
         Route::get('systemsetting/sales-return-setting', [\Modules\Sales\Http\Controllers\SalesReturnSettingController::class, 'index'])->name('sales.returnSetting.index');
@@ -169,21 +169,21 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::delete('sales/return-settlements/{id}', [SalesReturnSettlementController::class, 'destroy'])->whereUuid('id')->name('sales.return-settlements.destroy');
     });
 
-    Route::get('sales/packlists/shipped', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('shipped', $request))->name('sales.packlists.shipped');
+    Route::get('sales/packlists/shipped', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('shipped', $request))->name('sales.packlists.shipped')->middleware('role_or_permission:owner|view-pengiriman');
     Route::middleware('role_or_permission:owner|create-faktur-penjualan')->group(function () {
         Route::post('sales/packlists/create-invoice', [SalesInvoiceController::class, 'createFromOrder'])->name('sales.packlists.create-invoice');
         Route::post('sales/packlists/create-invoice-payment', [SalesInvoiceController::class, 'createFromOrderWithPayment'])->name('sales.packlists.create-invoice-payment');
     });
-    Route::get('sales/packlists', fn (Request $request) => app(PacklistController::class)->index($request))->name('sales.packlists.index');
-    Route::get('sales/packlists/{id}', fn (Request $request, string $id) => app(PacklistController::class)->show($id))->whereUuid('id')->name('sales.packlists.show');
+    Route::get('sales/packlists', fn (Request $request) => app(PacklistController::class)->index($request))->name('sales.packlists.index')->middleware('role_or_permission:owner|view-packing');
+    Route::get('sales/packlists/{id}', fn (Request $request, string $id) => app(PacklistController::class)->show($id))->whereUuid('id')->name('sales.packlists.show')->middleware('role_or_permission:owner|view-packing');
 
-    Route::post('sales/picklists/items-to-pick', fn (Request $request) => app(PicklistController::class)->items($request->input('picklist_id'), $request))->name('sales.picklists.items-to-pick');
-    Route::delete('sales/picklists/to-ship', fn (Request $request) => app(PicklistController::class)->destroy($request->input('id')))->name('sales.picklists.to-ship.destroy');
-    Route::get('sales/picklists/{picklist_id}', fn (Request $request, string $picklist_id) => app(PicklistController::class)->items($picklist_id, $request))->whereUuid('picklist_id')->name('sales.picklists.show');
+    Route::post('sales/picklists/items-to-pick', fn (Request $request) => app(PicklistController::class)->items($request->input('picklist_id'), $request))->name('sales.picklists.items-to-pick')->middleware('role_or_permission:owner|view-picking');
+    Route::delete('sales/picklists/to-ship', fn (Request $request) => app(PicklistController::class)->destroy($request->input('id')))->name('sales.picklists.to-ship.destroy')->middleware('role_or_permission:owner|delete-picking');
+    Route::get('sales/picklists/{picklist_id}', fn (Request $request, string $picklist_id) => app(PicklistController::class)->items($picklist_id, $request))->whereUuid('picklist_id')->name('sales.picklists.show')->middleware('role_or_permission:owner|view-picking');
 
-    Route::post('sales/shipments/orders', fn (Request $request) => app(ShipmentController::class)->addOrders($request->input('shipment_id'), $request))->name('sales.shipments.orders');
-    Route::post('sales/shipments', fn (Request $request) => app(ShipmentController::class)->handOver($request->input('shipment_id')))->name('sales.shipments.handover');
-    Route::get('sales/shipments/{shipment_header_id}', fn (Request $request, string $shipment_header_id) => app(ShipmentController::class)->show($shipment_header_id))->whereUuid('shipment_header_id')->name('sales.shipments.show');
+    Route::post('sales/shipments/orders', fn (Request $request) => app(ShipmentController::class)->addOrders($request->input('shipment_id'), $request))->name('sales.shipments.orders')->middleware('role_or_permission:owner|edit-pengiriman');
+    Route::post('sales/shipments', fn (Request $request) => app(ShipmentController::class)->handOver($request->input('shipment_id')))->name('sales.shipments.handover')->middleware('role_or_permission:owner|edit-pengiriman');
+    Route::get('sales/shipments/{shipment_header_id}', fn (Request $request, string $shipment_header_id) => app(ShipmentController::class)->show($shipment_header_id))->whereUuid('shipment_header_id')->name('sales.shipments.show')->middleware('role_or_permission:owner|view-pengiriman');
 
     Route::middleware('role_or_permission:owner|export-pesanan')->group(function () {
         Route::get('sales/orders/export', [SalesOrderController::class, 'export'])->name('sales.orders.export');

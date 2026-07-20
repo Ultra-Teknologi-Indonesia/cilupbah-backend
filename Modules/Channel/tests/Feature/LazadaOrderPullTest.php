@@ -36,7 +36,7 @@ class LazadaOrderPullTest extends TestCase
             'services.lazada.auth_url' => 'https://auth.lazada.com',
         ]);
 
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
 
         $lazada = Channel::create(['code' => 'lazada', 'name' => 'Lazada', 'is_active' => true]);
         $this->shop = ChannelShop::create([

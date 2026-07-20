@@ -21,7 +21,7 @@ class TikTokSyncCategoryAttributesTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
         config([
             'services.tiktok.app_key' => 'k',
             'services.tiktok.app_secret' => 's',

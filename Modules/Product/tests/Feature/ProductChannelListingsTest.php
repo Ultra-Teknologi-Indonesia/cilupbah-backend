@@ -22,7 +22,7 @@ class ProductChannelListingsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->actingAs(User::factory()->create());
+        $this->actingAs($this->createPrivilegedUser());
 
         $category = Category::create(['name' => 'HP']);
         $this->product = Product::create([

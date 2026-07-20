@@ -23,7 +23,7 @@ class ProductVariationConstraintTest extends TestCase
     {
         parent::setUp();
 
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
         $this->actingAs($this->user);
 
         $this->category = Category::create(['name' => 'Baju']);

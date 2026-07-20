@@ -20,7 +20,7 @@ class CategoryFormAttributeTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
         $this->actingAs($this->user);
 
         $this->category = Category::create(['name' => 'Handphone']);

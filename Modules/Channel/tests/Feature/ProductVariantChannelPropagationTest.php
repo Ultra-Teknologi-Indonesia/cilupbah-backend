@@ -36,7 +36,7 @@ class ProductVariantChannelPropagationTest extends TestCase
 
     public function test_variant_expansion_dispatches_channel_update(): void
     {
-        $user = User::factory()->create();
+        $user = $this->createPrivilegedUser();
         $this->actingAs($user);
 
         $category = Category::create(['name' => 'Handphone']);
@@ -82,7 +82,7 @@ class ProductVariantChannelPropagationTest extends TestCase
 
     public function test_no_dispatch_when_no_channel_connected(): void
     {
-        $user = User::factory()->create();
+        $user = $this->createPrivilegedUser();
         $this->actingAs($user);
 
         $category = Category::create(['name' => 'HP']);

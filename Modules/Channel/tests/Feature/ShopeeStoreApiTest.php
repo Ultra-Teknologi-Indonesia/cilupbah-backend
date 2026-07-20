@@ -26,7 +26,7 @@ class ShopeeStoreApiTest extends TestCase
             'services.shopee.host' => 'https://partner.shopeemobile.com',
         ]);
 
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
         $shopee = Channel::create(['code' => 'shopee', 'name' => 'Shopee', 'is_active' => true]);
         $this->shop = ChannelShop::create([
             'channel_id' => $shopee->id,

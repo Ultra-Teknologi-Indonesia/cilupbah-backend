@@ -47,10 +47,10 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/profile/sessions/{id}/revoke', [AuthController::class, 'revokeSession'])->name('auth.profile.sessions.revoke');
     Route::post('/profile/sessions/revoke-others', [AuthController::class, 'revokeOtherSessions'])->name('auth.profile.sessions.revoke-others');
 
-    Route::get('/systemsetting/users', [UserController::class, 'lookup'])->name('auth.users.lookup');
+    Route::get('/systemsetting/users', [UserController::class, 'lookup'])->name('auth.users.lookup')->middleware('role_or_permission:owner|view-user');
 
-    Route::get('/roles', [RoleController::class, 'index'])->name('auth.roles.index');
-    Route::get('/roles/{id}', [RoleController::class, 'show'])->whereUuid('id')->name('auth.roles.show');
+    Route::get('/roles', [RoleController::class, 'index'])->name('auth.roles.index')->middleware('role_or_permission:owner|view-role');
+    Route::get('/roles/{id}', [RoleController::class, 'show'])->whereUuid('id')->name('auth.roles.show')->middleware('role_or_permission:owner|view-role');
 
     Route::middleware('role_or_permission:owner|create-role')->post('/roles', [RoleController::class, 'store'])->name('auth.roles.store');
     Route::middleware('role_or_permission:owner|edit-role')->group(function () {

@@ -31,7 +31,7 @@ class InventoryExtendedTest extends TestCase
         parent::setUp();
         Queue::fake();
 
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
         $this->actingAs($this->user, 'sanctum');
 
         $this->location = Location::create([

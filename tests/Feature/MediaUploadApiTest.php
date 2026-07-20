@@ -24,7 +24,7 @@ class MediaUploadApiTest extends TestCase
         config(['media-library.disk_name' => 'media_test']);
         Storage::fake('media_test');
 
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
     }
 
     private function file(string $name = 'doc.pdf', string $mime = 'application/pdf'): UploadedFile

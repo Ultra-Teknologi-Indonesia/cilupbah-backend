@@ -19,9 +19,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('systemsetting/company', [CompanyProfileController::class, 'store'])->name('warehouse.company.store');
     });
 
-    Route::get('locations/store', [ChannelWarehouseController::class, 'index'])->name('warehouse.location.store-mapping');
+    Route::get('locations/store', [ChannelWarehouseController::class, 'index'])->name('warehouse.location.store-mapping')->middleware('role_or_permission:owner|view-manajemen-rak');
 
-    Route::get('locations/pos', [LocationController::class, 'pos'])->name('warehouse.location.pos');
+    Route::get('locations/pos', [LocationController::class, 'pos'])->name('warehouse.location.pos')->middleware('role_or_permission:owner|view-manajemen-rak');
 
     Route::middleware('role_or_permission:owner|view-manajemen-rak')->group(function () {
         Route::apiResource('locations', LocationController::class)->only(['index', 'show'])->names('warehouse.location')->whereUuid('location');
@@ -69,7 +69,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('locations/{locationId}/bins/uniform-apply', [LocationBinController::class, 'uniformApply'])->whereUuid('locationId')->name('warehouse.bins.uniform-apply');
     });
 
-    Route::get('locations/{locationId}/default-bin', [LocationBinController::class, 'defaultBin'])->whereUuid('locationId')->name('warehouse.bins.default');
+    Route::get('locations/{locationId}/default-bin', [LocationBinController::class, 'defaultBin'])->whereUuid('locationId')->name('warehouse.bins.default')->middleware('role_or_permission:owner|view-manajemen-rak');
 
     Route::middleware('role_or_permission:owner|create-manajemen-rak')->group(function () {
         Route::post('bins', [LocationBinController::class, 'store'])->name('warehouse.bins.store');

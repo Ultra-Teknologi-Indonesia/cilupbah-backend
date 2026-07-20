@@ -18,7 +18,7 @@ class ManualOrderStockGuardTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
 
         $categoryId = DB::table('categories')->insertGetId([
             'name' => 'Kategori Manual',

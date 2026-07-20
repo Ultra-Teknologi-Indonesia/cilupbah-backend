@@ -27,7 +27,7 @@ class ChannelListingValidatorTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
 
         $this->channel = Channel::create(['code' => 'lazada', 'name' => 'Lazada']);
         $this->category = Category::create(['name' => 'Handphone']);

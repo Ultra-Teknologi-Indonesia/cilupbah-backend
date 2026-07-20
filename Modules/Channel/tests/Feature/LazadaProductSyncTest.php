@@ -38,7 +38,7 @@ class LazadaProductSyncTest extends TestCase
             'channel.lazada_defaults' => ['primary_category' => '10001234', 'brand' => 'No Brand'],
         ]);
 
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
         $this->lazada = Channel::create(['code' => 'lazada', 'name' => 'Lazada', 'is_active' => true]);
         $this->shop = ChannelShop::create([
             'channel_id' => $this->lazada->id,

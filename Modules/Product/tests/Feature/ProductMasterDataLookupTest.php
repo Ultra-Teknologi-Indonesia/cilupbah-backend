@@ -15,7 +15,7 @@ class ProductMasterDataLookupTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->actingAs(User::factory()->create());
+        $this->actingAs($this->createPrivilegedUser());
 
         $this->seed(ChartOfAccountsSeeder::class);
         $this->seed(TaxDatabaseSeeder::class);

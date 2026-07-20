@@ -32,7 +32,7 @@ class StockIntegrationTest extends TestCase
         parent::setUp();
         Cache::flush();
         Queue::fake();
-        $this->actingAs(User::factory()->create(), 'sanctum');
+        $this->actingAs($this->createPrivilegedUser(), 'sanctum');
         $this->seedBaseData();
     }
 

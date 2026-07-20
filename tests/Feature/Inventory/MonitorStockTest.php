@@ -22,7 +22,7 @@ class MonitorStockTest extends TestCase
     {
         parent::setUp();
         Cache::flush();
-        $this->actingAs(User::factory()->create(), 'sanctum');
+        $this->actingAs($this->createPrivilegedUser(), 'sanctum');
 
         $this->location = Location::create([
             'location_code' => 'WH-01',

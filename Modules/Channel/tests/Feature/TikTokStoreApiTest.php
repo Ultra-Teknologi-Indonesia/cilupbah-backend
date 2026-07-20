@@ -25,7 +25,7 @@ class TikTokStoreApiTest extends TestCase
             'services.tiktok.app_secret' => 'test_secret',
         ]);
 
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
         $this->tiktok = Channel::create(['code' => 'tiktok', 'name' => 'TikTok Shop', 'is_active' => true]);
     }
 

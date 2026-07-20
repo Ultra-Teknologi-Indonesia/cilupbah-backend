@@ -15,7 +15,7 @@ class MarketplaceCancelReasonApiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
     }
 
     public function test_requires_authentication(): void

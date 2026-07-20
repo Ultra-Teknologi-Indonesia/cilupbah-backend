@@ -21,7 +21,7 @@ class LazadaSyncCategoryAttributesTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
         config([
             'services.lazada.app_key' => 'k',
             'services.lazada.app_secret' => 's',

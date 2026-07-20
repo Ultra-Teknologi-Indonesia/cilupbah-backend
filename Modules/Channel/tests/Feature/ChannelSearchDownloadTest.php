@@ -37,7 +37,7 @@ class ChannelSearchDownloadTest extends TestCase
             'channel.lazada_defaults' => ['primary_category' => '10001234', 'brand' => 'No Brand'],
         ]);
 
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
 
         $tiktok = Channel::create(['code' => 'tiktok', 'name' => 'TikTok', 'is_active' => true]);
         $this->tiktokShop = ChannelShop::create([

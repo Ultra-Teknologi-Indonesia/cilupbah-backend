@@ -151,7 +151,7 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
 
     public function test_all_tab_keeps_order_visible_after_handed_to_warehouse_without_action_scoping(): void
     {
-        $user = User::factory()->create();
+        $user = $this->createPrivilegedUser();
 
         $inWarehouse = $this->seedOrder('SO-DIGUDANG', [
             'status' => 'picked',
@@ -174,7 +174,7 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
 
     public function test_ready_to_process_tab_still_excludes_handed_to_warehouse_orders(): void
     {
-        $user = User::factory()->create();
+        $user = $this->createPrivilegedUser();
 
         $this->seedOrder('SO-SUDAH-HANDOVER', [
             'status' => 'reserved',
@@ -194,7 +194,7 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
 
     public function test_status_filter_distinguishes_siap_proses_from_pengambilan_belum(): void
     {
-        $user = User::factory()->create();
+        $user = $this->createPrivilegedUser();
 
         $siapProses = $this->seedOrder('SO-SIAP-PROSES', [
             'status' => 'reserved',
@@ -217,7 +217,7 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
 
     public function test_status_filter_picking_diproses_and_selesai_and_packing_diproses(): void
     {
-        $user = User::factory()->create();
+        $user = $this->createPrivilegedUser();
 
         $diproses = $this->seedOrder('SO-PICKING-DIPROSES', [
             'status' => 'reserved',
@@ -248,7 +248,7 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
 
     public function test_status_filter_distinguishes_siap_kirim_from_menunggu_kirim(): void
     {
-        $user = User::factory()->create();
+        $user = $this->createPrivilegedUser();
 
         $siapKirim = $this->seedOrder('SO-SIAP-KIRIM', [
             'status' => 'packed',
@@ -269,7 +269,7 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
 
     public function test_empty_stock_order_is_hidden_from_all_tab_but_visible_in_empty_stock_tab(): void
     {
-        $user = User::factory()->create();
+        $user = $this->createPrivilegedUser();
 
         $emptyStock = $this->seedOrder('SO-STOK-KOSONG', ['status' => 'reserved']);
 
@@ -295,7 +295,7 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
 
     public function test_status_filter_multi_select_is_or_between_buckets(): void
     {
-        $user = User::factory()->create();
+        $user = $this->createPrivilegedUser();
 
         $this->seedOrder('SO-BATAL', ['status' => 'cancelled']);
         $this->seedOrder('SO-SELESAI', ['status' => 'shipped', 'received_date' => now()]);

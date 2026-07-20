@@ -28,7 +28,7 @@ class CombinedPutawayTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->actingAs(User::factory()->create(), 'sanctum');
+        $this->actingAs($this->createPrivilegedUser(), 'sanctum');
         $this->seedTestData();
     }
 

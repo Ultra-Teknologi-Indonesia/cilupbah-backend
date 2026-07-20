@@ -33,7 +33,7 @@ class TikTokOrderOpsTest extends TestCase
             'services.tiktok.app_secret' => 'test_secret',
         ]);
 
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
         $tiktok = Channel::create(['code' => 'tiktok', 'name' => 'TikTok Shop', 'is_active' => true]);
         $this->shop = ChannelShop::create([
             'channel_id' => $tiktok->id,

@@ -19,7 +19,7 @@ class JournalApiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
         $this->seed(ChartOfAccountsSeeder::class);
     }
 

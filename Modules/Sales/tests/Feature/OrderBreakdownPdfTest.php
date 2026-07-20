@@ -17,7 +17,7 @@ class OrderBreakdownPdfTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
     }
 
     private function makeOrder(array $overrides = []): SalesOrder

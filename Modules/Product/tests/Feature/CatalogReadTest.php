@@ -20,7 +20,7 @@ class CatalogReadTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
         $this->category = Category::create(['name' => 'Cat Cat', 'is_active' => true]);
     }
 

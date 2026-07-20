@@ -24,7 +24,7 @@ class SalesReturnSettingTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
         $this->location = Location::factory()->create();
 
         $category = Category::create(['name' => 'Cat Ret', 'is_active' => true]);

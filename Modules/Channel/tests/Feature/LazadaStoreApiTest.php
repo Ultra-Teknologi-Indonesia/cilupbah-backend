@@ -31,7 +31,7 @@ class LazadaStoreApiTest extends TestCase
             'services.lazada.base_url' => 'https://api.lazada.co.id/rest',
         ]);
 
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
         $this->lazada = Channel::create(['code' => 'lazada', 'name' => 'Lazada', 'is_active' => true]);
     }
 

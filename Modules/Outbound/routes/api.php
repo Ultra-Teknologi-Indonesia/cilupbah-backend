@@ -13,7 +13,7 @@ use Modules\Outbound\Http\Controllers\WmsController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
 
-    Route::post('orders/get-by-no', [OutboundFulfillmentController::class, 'getOrderByNo'])->name('outbound.orders.get-by-no');
+    Route::post('orders/get-by-no', [OutboundFulfillmentController::class, 'getOrderByNo'])->name('outbound.orders.get-by-no')->middleware('role_or_permission:owner|view-pesanan');
     Route::post('orders/move-to-ready-to-pick', [OutboundFulfillmentController::class, 'moveToReadyToPick'])->name('outbound.orders.move-to-ready-to-pick')->middleware('role_or_permission:owner|edit-pesanan');
     Route::post('orders/move-to-ready-to-process', [OutboundFulfillmentController::class, 'moveToReadyToProcess'])->name('outbound.orders.move-to-ready-to-process')->middleware('role_or_permission:owner|edit-pesanan');
     Route::post('orders/change-location', [OutboundFulfillmentController::class, 'changeLocation'])->name('outbound.orders.change-location')->middleware('role_or_permission:owner|edit-pesanan');
@@ -23,13 +23,13 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('orders/instant-driver-call', [OutboundFulfillmentController::class, 'bulkInstantDriverCall'])->name('outbound.orders.instant-driver-call')->middleware('role_or_permission:owner|edit-pesanan');
     Route::post('orders/ad-hoc-pick', [AdHocPickController::class, 'complete'])->name('outbound.orders.ad-hoc-pick')->middleware('role_or_permission:owner|edit-picking');
     Route::post('orders/ad-hoc-pick/scan', [AdHocPickController::class, 'scan'])->name('outbound.orders.ad-hoc-pick.scan')->middleware('role_or_permission:owner|edit-picking');
-    Route::get('pickers', [OutboundFulfillmentController::class, 'pickers'])->name('outbound.pickers.index');
-    Route::get('orders/{stage}', [OutboundFulfillmentController::class, 'ordersByStage'])->name('outbound.orders.stage');
+    Route::get('pickers', [OutboundFulfillmentController::class, 'pickers'])->name('outbound.pickers.index')->middleware('role_or_permission:owner|view-picking');
+    Route::get('orders/{stage}', [OutboundFulfillmentController::class, 'ordersByStage'])->name('outbound.orders.stage')->middleware('role_or_permission:owner|view-pesanan');
     Route::delete('orders/{orderId}', [OutboundFulfillmentController::class, 'destroyOrder'])->name('outbound.orders.destroy')->middleware('role_or_permission:owner|delete-pesanan');
 
-    Route::get('picklists/on-picking', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('on-picking', $request))->name('outbound.picklists.on-picking');
-    Route::get('packlists/on-packing', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('on-packing', $request))->name('outbound.packlists.on-packing');
-    Route::get('packlists/finish-pack', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('finish-pack', $request))->name('outbound.packlists.finish-pack');
+    Route::get('picklists/on-picking', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('on-picking', $request))->name('outbound.picklists.on-picking')->middleware('role_or_permission:owner|view-picking');
+    Route::get('packlists/on-packing', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('on-packing', $request))->name('outbound.packlists.on-packing')->middleware('role_or_permission:owner|view-packing');
+    Route::get('packlists/finish-pack', fn (Request $request) => app(OutboundFulfillmentController::class)->ordersByStage('finish-pack', $request))->name('outbound.packlists.finish-pack')->middleware('role_or_permission:owner|view-packing');
 
     Route::get('picklists/counts', [PicklistController::class, 'counts'])->name('outbound.picklists.counts')->middleware('role_or_permission:owner|view-picking');
     Route::get('picklists', [PicklistController::class, 'index'])->name('outbound.picklists.index')->middleware('role_or_permission:owner|view-picking');
@@ -42,13 +42,13 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
 
     Route::delete('picklists/{id}/assignment', [PicklistController::class, 'unassign'])->name('outbound.picklists.unassign')->middleware('role_or_permission:owner|edit-picking');
     Route::post('picklists/{id}/assignment/reset', [PicklistController::class, 'resetAssignment'])->name('outbound.picklists.resetAssignment')->middleware('role_or_permission:owner|delete-picking');
-    Route::post('picklists/{id}/start', [PicklistController::class, 'start'])->name('outbound.picklists.start');
-    Route::post('picklists/{id}/scan', [PicklistController::class, 'scan'])->name('outbound.picklists.scan');
-    Route::post('picklists/{id}/items/{itemId}/pick', [PicklistController::class, 'pickItem'])->name('outbound.picklists.pick-item');
+    Route::post('picklists/{id}/start', [PicklistController::class, 'start'])->name('outbound.picklists.start')->middleware('role_or_permission:owner|edit-picking');
+    Route::post('picklists/{id}/scan', [PicklistController::class, 'scan'])->name('outbound.picklists.scan')->middleware('role_or_permission:owner|edit-picking');
+    Route::post('picklists/{id}/items/{itemId}/pick', [PicklistController::class, 'pickItem'])->name('outbound.picklists.pick-item')->middleware('role_or_permission:owner|edit-picking');
     Route::delete('picklists/{id}/pick', [PicklistController::class, 'unpickItems'])->name('outbound.picklists.unpick-items')->middleware('role_or_permission:owner|delete-picking');
-    Route::delete('picklists/{id}/items/{itemId}/pick', [PicklistController::class, 'unpickItem'])->name('outbound.picklists.unpick-item');
-    Route::post('picklists/{id}/items/{itemId}/fail', [PicklistController::class, 'failItem'])->name('outbound.picklists.fail-item');
-    Route::post('picklists/{id}/items/{itemId}/unfail', [PicklistController::class, 'unfailItem'])->name('outbound.picklists.unfail-item');
+    Route::delete('picklists/{id}/items/{itemId}/pick', [PicklistController::class, 'unpickItem'])->name('outbound.picklists.unpick-item')->middleware('role_or_permission:owner|edit-picking');
+    Route::post('picklists/{id}/items/{itemId}/fail', [PicklistController::class, 'failItem'])->name('outbound.picklists.fail-item')->middleware('role_or_permission:owner|edit-picking');
+    Route::post('picklists/{id}/items/{itemId}/unfail', [PicklistController::class, 'unfailItem'])->name('outbound.picklists.unfail-item')->middleware('role_or_permission:owner|edit-picking');
 
     Route::post('picklists/{id}/complete', [PicklistController::class, 'complete'])->name('outbound.picklists.complete')->middleware('role_or_permission:owner|edit-picking');
     Route::post('picklists/{id}/fail', [PicklistController::class, 'fail'])->name('outbound.picklists.fail')->middleware('role_or_permission:owner|edit-picking');
@@ -56,17 +56,17 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::delete('picklists/{id}', [PicklistController::class, 'destroy'])->name('outbound.picklists.destroy')->middleware('role_or_permission:owner|delete-picking');
     Route::post('picklists/{id}/revert', [PicklistController::class, 'revert'])->name('outbound.picklists.revert')->middleware('role_or_permission:owner|edit-picking');
 
-    Route::get('packlists/scan-order', [PacklistController::class, 'scanOrder'])->name('outbound.packlists.scan-order');
+    Route::get('packlists/scan-order', [PacklistController::class, 'scanOrder'])->name('outbound.packlists.scan-order')->middleware('role_or_permission:owner|view-packing');
     Route::get('packlists', [PacklistController::class, 'index'])->name('outbound.packlists.index')->middleware('role_or_permission:owner|view-packing');
     Route::post('packlists', [PacklistController::class, 'store'])->name('outbound.packlists.store')->middleware('role_or_permission:owner|create-packing');
     Route::get('packlists/{id}', [PacklistController::class, 'show'])->name('outbound.packlists.show')->middleware('role_or_permission:owner|view-packing');
     Route::get('packlists/{id}/items', [PacklistController::class, 'items'])->name('outbound.packlists.items')->middleware('role_or_permission:owner|view-packing');
     Route::post('packlists/{id}/assign-packer', [PacklistController::class, 'assignPacker'])->name('outbound.packlists.assign-packer')->middleware('role_or_permission:owner|edit-packing');
-    Route::post('packlists/{id}/start', [PacklistController::class, 'start'])->name('outbound.packlists.start');
-    Route::post('packlists/{id}/items/{itemId}/pack', [PacklistController::class, 'packItem'])->name('outbound.packlists.pack-item');
-    Route::delete('packlists/{id}/pack', [PacklistController::class, 'unpackItems'])->name('outbound.packlists.unpack-items');
-    Route::delete('packlists/{id}/items/{itemId}/pack', [PacklistController::class, 'unpackItem'])->name('outbound.packlists.unpack-item');
-    Route::post('packlists/{id}/verify-barcode', [PacklistController::class, 'verifyBarcode'])->name('outbound.packlists.verify-barcode');
+    Route::post('packlists/{id}/start', [PacklistController::class, 'start'])->name('outbound.packlists.start')->middleware('role_or_permission:owner|edit-packing');
+    Route::post('packlists/{id}/items/{itemId}/pack', [PacklistController::class, 'packItem'])->name('outbound.packlists.pack-item')->middleware('role_or_permission:owner|edit-packing');
+    Route::delete('packlists/{id}/pack', [PacklistController::class, 'unpackItems'])->name('outbound.packlists.unpack-items')->middleware('role_or_permission:owner|edit-packing');
+    Route::delete('packlists/{id}/items/{itemId}/pack', [PacklistController::class, 'unpackItem'])->name('outbound.packlists.unpack-item')->middleware('role_or_permission:owner|edit-packing');
+    Route::post('packlists/{id}/verify-barcode', [PacklistController::class, 'verifyBarcode'])->name('outbound.packlists.verify-barcode')->middleware('role_or_permission:owner|edit-packing');
     Route::post('packlists/{id}/complete', [PacklistController::class, 'complete'])->name('outbound.packlists.complete')->middleware('role_or_permission:owner|edit-packing');
     Route::post('packlists/{id}/cancel', [PacklistController::class, 'cancel'])->name('outbound.packlists.cancel')->middleware('role_or_permission:owner|edit-packing');
     Route::delete('packlists/{id}', [PacklistController::class, 'destroy'])->name('outbound.packlists.destroy')->middleware('role_or_permission:owner|delete-packing');
@@ -74,7 +74,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
 
     Route::get('shipments', [ShipmentController::class, 'index'])->name('outbound.shipments.index')->middleware('role_or_permission:owner|view-pengiriman');
     Route::post('shipments', [ShipmentController::class, 'store'])->name('outbound.shipments.store')->middleware('role_or_permission:owner|create-pengiriman');
-    Route::post('shipments/scan', [ShipmentController::class, 'scan'])->name('outbound.shipments.scan');
+    Route::post('shipments/scan', [ShipmentController::class, 'scan'])->name('outbound.shipments.scan')->middleware('role_or_permission:owner|edit-pengiriman');
     Route::get('shipments/instant', [ShipmentController::class, 'instantAll'])->name('outbound.shipments.instant')->middleware('role_or_permission:owner|view-pengiriman');
     Route::post('shipments/instant', [ShipmentController::class, 'storeInstant'])->name('outbound.shipments.instant.store')->middleware('role_or_permission:owner|create-pengiriman');
     Route::get('shipments/completed/{type}/{courierIds}', [ShipmentController::class, 'completed'])->name('outbound.shipments.completed')->middleware('role_or_permission:owner|view-pengiriman');
@@ -87,7 +87,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::get('shipments/{id}/tracking-events', [ShipmentController::class, 'trackingEvents'])->name('outbound.shipments.tracking-events')->middleware('role_or_permission:owner|view-pengiriman');
     Route::get('shipments/{id}', [ShipmentController::class, 'show'])->name('outbound.shipments.show')->middleware('role_or_permission:owner|view-pengiriman');
     Route::get('shipments/{id}/orders', [ShipmentController::class, 'orders'])->name('outbound.shipments.orders')->middleware('role_or_permission:owner|view-pengiriman');
-    Route::post('shipments/{id}/scan-order', [ShipmentController::class, 'scanOrder'])->name('outbound.shipments.scan-order');
+    Route::post('shipments/{id}/scan-order', [ShipmentController::class, 'scanOrder'])->name('outbound.shipments.scan-order')->middleware('role_or_permission:owner|edit-pengiriman');
     Route::post('shipments/{id}/add-orders', [ShipmentController::class, 'addOrders'])->name('outbound.shipments.add-orders')->middleware('role_or_permission:owner|edit-pengiriman');
     Route::post('shipments/{id}/remove-orders', [ShipmentController::class, 'removeOrders'])->name('outbound.shipments.remove-orders')->middleware('role_or_permission:owner|edit-pengiriman');
     Route::post('shipments/{id}/save-awb', [ShipmentController::class, 'saveAwb'])->name('outbound.shipments.save-awb')->middleware('role_or_permission:owner|edit-pengiriman');
@@ -106,14 +106,14 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::patch('pre-manifest/cancelled/{orderId}/undismiss', [PreManifestCancelController::class, 'undismiss'])->name('outbound.pre-manifest.cancelled.undismiss')->middleware('role_or_permission:owner|edit-pengiriman');
 
     Route::get('couriers', [CourierController::class, 'index'])->name('outbound.couriers.index')->middleware('role_or_permission:owner|view-kurir');
-    Route::get('couriers/all', [CourierController::class, 'all'])->name('outbound.couriers.all');
+    Route::get('couriers/all', [CourierController::class, 'all'])->name('outbound.couriers.all')->middleware('role_or_permission:owner|view-kurir');
     Route::get('couriers/tenant/{tenantId}', [CourierController::class, 'byTenant'])->name('outbound.couriers.by-tenant')->middleware('role_or_permission:owner|view-kurir');
     Route::post('couriers', [CourierController::class, 'store'])->name('outbound.couriers.store')->middleware('role_or_permission:owner|create-kurir');
     Route::get('couriers/{id}', [CourierController::class, 'show'])->name('outbound.couriers.show')->middleware('role_or_permission:owner|view-kurir');
     Route::put('couriers/{id}', [CourierController::class, 'update'])->name('outbound.couriers.update')->middleware('role_or_permission:owner|edit-kurir');
     Route::delete('couriers/{id}', [CourierController::class, 'destroy'])->name('outbound.couriers.destroy')->middleware('role_or_permission:owner|delete-kurir');
 
-    Route::get('wms/employee/{identifier}', [WmsController::class, 'employee'])->name('outbound.wms.employee');
-    Route::get('wms/default-bin/{locationId}', [WmsController::class, 'defaultBin'])->name('outbound.wms.default-bin');
+    Route::get('wms/employee/{identifier}', [WmsController::class, 'employee'])->name('outbound.wms.employee')->middleware('role_or_permission:owner|view-picking');
+    Route::get('wms/default-bin/{locationId}', [WmsController::class, 'defaultBin'])->name('outbound.wms.default-bin')->middleware('role_or_permission:owner|view-manajemen-rak');
     Route::put('wms/default-bin/{locationId}', [WmsController::class, 'setDefaultBin'])->name('outbound.wms.set-default-bin')->middleware('role_or_permission:owner|edit-manajemen-rak');
 });

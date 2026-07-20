@@ -16,7 +16,7 @@ class BundleConsolidationTest extends TestCase
     public function test_store_writes_to_canonical_table(): void
     {
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Umum']);
-        $user = User::factory()->create();
+        $user = $this->createPrivilegedUser();
 
         $component = Product::create([
             'name' => 'Komponen A',
@@ -54,7 +54,7 @@ class BundleConsolidationTest extends TestCase
     public function test_store_rejects_bundle_in_bundle(): void
     {
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Umum']);
-        $user = User::factory()->create();
+        $user = $this->createPrivilegedUser();
 
         $innerBundle = Product::create([
             'name' => 'Inner Bundle',
@@ -84,7 +84,7 @@ class BundleConsolidationTest extends TestCase
     public function test_store_rejects_inactive_component(): void
     {
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Umum']);
-        $user = User::factory()->create();
+        $user = $this->createPrivilegedUser();
 
         $product = Product::create([
             'name' => 'Produk Nonaktif',

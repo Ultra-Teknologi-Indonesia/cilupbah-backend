@@ -29,7 +29,7 @@ class EmptyStockGuardTest extends TestCase
         parent::setUp();
         Cache::flush();
         Queue::fake();
-        $this->actingAs(User::factory()->create(), 'sanctum');
+        $this->actingAs($this->createPrivilegedUser(), 'sanctum');
 
         $this->location = Location::firstOrCreate(
             ['location_code' => Location::SYSTEM_KECIL_CODE],

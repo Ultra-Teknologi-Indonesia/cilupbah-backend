@@ -15,7 +15,7 @@ class ProductNo500GuardTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->user = User::factory()->create();
+        $this->user = $this->createPrivilegedUser();
     }
 
     public function test_non_uuid_path_ids_return_404_not_500(): void

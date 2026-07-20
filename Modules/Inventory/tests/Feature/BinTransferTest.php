@@ -206,7 +206,7 @@ class BinTransferTest extends TestCase
             'on_hand' => 5, 'on_order' => 0, 'available' => 5, 'avg_cost' => 100,
         ]);
 
-        $user = \App\Models\User::factory()->create();
+        $user = $this->createPrivilegedUser();
         $this->actingAs($user);
 
         $res = $this->postJson('/api/v1/inventory/bin-transfers', [
@@ -250,7 +250,7 @@ class BinTransferTest extends TestCase
         $product = Product::create(['category_id' => $catId, 'name' => 'PS', 'sku' => 'PS', 'is_active' => true]);
         $variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V-STOCKLESS']);
 
-        $user = \App\Models\User::factory()->create();
+        $user = $this->createPrivilegedUser();
         $this->actingAs($user);
 
         $res = $this->getJson("/api/v1/inventory/stock/by-sku/V-STOCKLESS?location_id={$wh->id}&require_stock=1");
@@ -297,7 +297,7 @@ class BinTransferTest extends TestCase
             'on_hand' => 0, 'on_order' => 0, 'available' => 0, 'avg_cost' => 100,
         ]);
 
-        $user = \App\Models\User::factory()->create();
+        $user = $this->createPrivilegedUser();
         $this->actingAs($user);
 
         $res = $this->getJson("/api/v1/inventory/stock/items?location_id={$whA->id}");
@@ -316,7 +316,7 @@ class BinTransferTest extends TestCase
 
     public function test_stocked_items_requires_location_id(): void
     {
-        $user = \App\Models\User::factory()->create();
+        $user = $this->createPrivilegedUser();
         $this->actingAs($user);
 
         $res = $this->getJson('/api/v1/inventory/stock/items');

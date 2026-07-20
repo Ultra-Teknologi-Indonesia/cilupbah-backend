@@ -225,7 +225,7 @@ class GagalDownloadFlowTest extends TestCase
 
     public function test_unmapped_order_is_excluded_from_all_tab_and_default_listing(): void
     {
-        $user = User::factory()->create();
+        $user = $this->createPrivilegedUser();
 
         $this->seedLegacyUnmappedOrder('GD-ALL-FAIL', 'SKU-ASING');
         $this->seedVariant('SKU-OK');
@@ -261,7 +261,7 @@ class GagalDownloadFlowTest extends TestCase
 
     public function test_cancelled_unmapped_order_is_hidden_from_cancellation_tab_via_http(): void
     {
-        $user = User::factory()->create();
+        $user = $this->createPrivilegedUser();
 
         $orderId = $this->seedLegacyUnmappedOrder('GD-CANCEL-HTTP', 'SKU-ASING');
         DB::table('sales_orders')->where('id', $orderId)->update(['status' => 'cancelled']);
@@ -366,7 +366,7 @@ class GagalDownloadFlowTest extends TestCase
 
     public function test_download_endpoint_maps_item_and_returns_order(): void
     {
-        $user = User::factory()->create();
+        $user = $this->createPrivilegedUser();
 
         $orderId = $this->service->upsertFromChannel($this->channelOrderData('GD-6', 'SKU-HTTP'));
         $order = $this->freshOrder($orderId);
@@ -386,7 +386,7 @@ class GagalDownloadFlowTest extends TestCase
 
     public function test_index_failed_tab_lists_unmapped_order_via_http(): void
     {
-        $user = User::factory()->create();
+        $user = $this->createPrivilegedUser();
         $this->seedLegacyUnmappedOrder('GD-IDX', 'SKU-ASING');
 
         $failed = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?tab=failed');
@@ -400,7 +400,7 @@ class GagalDownloadFlowTest extends TestCase
 
     public function test_index_defaults_to_ten_per_page(): void
     {
-        $user = User::factory()->create();
+        $user = $this->createPrivilegedUser();
 
         $response = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales');
 
@@ -410,7 +410,7 @@ class GagalDownloadFlowTest extends TestCase
 
     public function test_index_supports_legacy_sort_and_search_params(): void
     {
-        $user = User::factory()->create();
+        $user = $this->createPrivilegedUser();
         $this->seedVariant('SKU-IDX-A');
         $this->seedVariant('SKU-IDX-B');
         $idA = $this->service->upsertFromChannel($this->channelOrderData('IDX-A', 'SKU-IDX-A'));
@@ -431,7 +431,7 @@ class GagalDownloadFlowTest extends TestCase
 
     public function test_index_sku_search_filters_by_item_sku(): void
     {
-        $user = User::factory()->create();
+        $user = $this->createPrivilegedUser();
         $this->seedVariant('KAOS-MERAH');
         $this->seedVariant('CELANA-BIRU');
         $this->service->upsertFromChannel($this->channelOrderData('SKU-1', 'KAOS-MERAH'));

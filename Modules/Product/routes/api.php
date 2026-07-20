@@ -25,12 +25,12 @@ use Modules\Product\Http\Controllers\ProductMasterDataController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
-    Route::get('products/master-data/sales-taxes', [ProductMasterDataController::class, 'salesTaxes']);
-    Route::get('products/master-data/purchase-taxes', [ProductMasterDataController::class, 'purchaseTaxes']);
-    Route::get('products/master-data/sales-accounts', [ProductMasterDataController::class, 'salesAccounts']);
-    Route::get('products/master-data/sales-return-accounts', [ProductMasterDataController::class, 'salesReturnAccounts']);
-    Route::get('products/master-data/inventory-accounts', [ProductMasterDataController::class, 'inventoryAccounts']);
-    Route::get('products/master-data/cogs-accounts', [ProductMasterDataController::class, 'cogsAccounts']);
+    Route::get('products/master-data/sales-taxes', [ProductMasterDataController::class, 'salesTaxes'])->middleware('role_or_permission:owner|view-produk');
+    Route::get('products/master-data/purchase-taxes', [ProductMasterDataController::class, 'purchaseTaxes'])->middleware('role_or_permission:owner|view-produk');
+    Route::get('products/master-data/sales-accounts', [ProductMasterDataController::class, 'salesAccounts'])->middleware('role_or_permission:owner|view-produk');
+    Route::get('products/master-data/sales-return-accounts', [ProductMasterDataController::class, 'salesReturnAccounts'])->middleware('role_or_permission:owner|view-produk');
+    Route::get('products/master-data/inventory-accounts', [ProductMasterDataController::class, 'inventoryAccounts'])->middleware('role_or_permission:owner|view-produk');
+    Route::get('products/master-data/cogs-accounts', [ProductMasterDataController::class, 'cogsAccounts'])->middleware('role_or_permission:owner|view-produk');
 
     Route::middleware('role_or_permission:owner|view-produk-naik')->group(function () {
         Route::get('products/uploadable', [ProductController::class, 'uploadable']);
@@ -323,19 +323,19 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('products/import/batches/{batch}/errors/download', [\Modules\Product\Http\Controllers\ProductImportController::class, 'downloadErrors'])->whereUuid('batch');
     });
 
-    Route::get('inventory/items/by-sku/{sku}', [ProductController::class, 'showBySku']);
-    Route::get('inventory/item-bundles', [ProductController::class, 'bundles']);
+    Route::get('inventory/items/by-sku/{sku}', [ProductController::class, 'showBySku'])->middleware('role_or_permission:owner|view-produk');
+    Route::get('inventory/item-bundles', [ProductController::class, 'bundles'])->middleware('role_or_permission:owner|view-bundle');
     // Path lama 'inventory/items/all-stocks' bentrok dengan route bernama sama di
     // Modules/Inventory. Keduanya beda kontrak (item_ids vs ids) dan beda bentuk
     // balikan, jadi yang kalah urutan registrasi selalu 422. Endpoint ini dipindah
     // ke namespace produk; path kanonik diserahkan ke modul Inventory.
-    Route::post('inventory/items/variant-stocks', [ProductController::class, 'allStocks']);
-    Route::post('inventory/items/prices', [ProductController::class, 'prices']);
-    Route::post('inventory/items', [ProductController::class, 'storeBundle']);
+    Route::post('inventory/items/variant-stocks', [ProductController::class, 'allStocks'])->middleware('role_or_permission:owner|view-posisi-stok');
+    Route::post('inventory/items/prices', [ProductController::class, 'prices'])->middleware('role_or_permission:owner|view-harga-jual');
+    Route::post('inventory/items', [ProductController::class, 'storeBundle'])->middleware('role_or_permission:owner|create-bundle');
 
-    Route::get('inventory/items/channel-category-attributes', [\Modules\Product\Http\Controllers\ChannelAttributeController::class, 'all']);
+    Route::get('inventory/items/channel-category-attributes', [\Modules\Product\Http\Controllers\ChannelAttributeController::class, 'all'])->middleware('role_or_permission:owner|view-kategori');
 
-    Route::get('inventory/categories/category-map/{id}', [CategoryController::class, 'channelMap'])->whereNumber('id');
+    Route::get('inventory/categories/category-map/{id}', [CategoryController::class, 'channelMap'])->whereNumber('id')->middleware('role_or_permission:owner|view-kategori');
 
     Route::middleware('role_or_permission:owner|view-kategori')->group(function () {
         Route::get('variations', [VariantController::class, 'index']);
@@ -345,8 +345,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::delete('inventory/items/item-variant', [VariantController::class, 'destroy']);
     });
 
-    Route::get('inventory/internal-price-list', [PriceListController::class, 'index']);
-    Route::post('inventory/price-list', [PriceListController::class, 'update']);
+    Route::get('inventory/internal-price-list', [PriceListController::class, 'index'])->middleware('role_or_permission:owner|view-harga-jual');
+    Route::post('inventory/price-list', [PriceListController::class, 'update'])->middleware('role_or_permission:owner|edit-harga-jual');
 
     Route::middleware('role_or_permission:owner|create-produk-naik')->group(function () {
         Route::post('inventory/catalog/listing', [ProductChannelDraftController::class, 'catalogListing']);
@@ -362,13 +362,13 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('inventory/catalog/upload', [ProductChannelDraftController::class, 'bulkUpload']);
     });
 
-    Route::get('inventory/items/errors', [ProductSyncLogController::class, 'errors']);
+    Route::get('inventory/items/errors', [ProductSyncLogController::class, 'errors'])->middleware('role_or_permission:owner|view-produk');
 });
 
 Route::middleware(['auth:sanctum'])->prefix('v1/{channel}')->group(function () {
 
-    Route::get('categories', [ChannelCategoryController::class, 'index']);
-    Route::get('categories/{categoryId}/attributes', [\Modules\Product\Http\Controllers\ChannelAttributeController::class, 'index']);
+    Route::get('categories', [ChannelCategoryController::class, 'index'])->middleware('role_or_permission:owner|view-kategori');
+    Route::get('categories/{categoryId}/attributes', [\Modules\Product\Http\Controllers\ChannelAttributeController::class, 'index'])->middleware('role_or_permission:owner|view-kategori');
 
     Route::middleware('role_or_permission:owner|view-produk')->group(function () {
         Route::get('products/categories', [ChannelProductController::class, 'categories']);
@@ -385,5 +385,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1/{channel}')->group(function () {
         Route::delete('products/{id}/link', [ChannelProductController::class, 'unlink']);
     });
 
-    Route::apiResource('products', ChannelProductController::class)->names('channel.product');
+    Route::apiResource('products', ChannelProductController::class)->names('channel.product')
+        ->middlewareFor(['index', 'show'], 'role_or_permission:owner|view-produk')
+        ->middlewareFor('store', 'role_or_permission:owner|create-produk')
+        ->middlewareFor('update', 'role_or_permission:owner|edit-produk')
+        ->middlewareFor('destroy', 'role_or_permission:owner|delete-produk');
 });

@@ -71,7 +71,7 @@ class StockSourceAllocationTest extends TestCase
 
     private function api()
     {
-        return $this->actingAs(\App\Models\User::factory()->create(), 'sanctum');
+        return $this->actingAs($this->createPrivilegedUser(), 'sanctum');
     }
 
     public function test_resolver_total_mode_sums_all_active_warehouses_excluding_transit(): void
