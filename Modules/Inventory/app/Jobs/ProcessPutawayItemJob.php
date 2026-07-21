@@ -55,11 +55,13 @@ class ProcessPutawayItemJob implements ShouldQueue
                     throw new \RuntimeException("Putaway item tidak ditemukan.");
                 }
 
-                $remaining = $putawayItem->qty - $putawayItem->putaway_qty;
-                $qty = min($this->data['qty'], $remaining);
+                // Over-quantity diperbolehkan — putaway_qty boleh > qty (mis. 502/500).
+                // Guard `min()` lama sengaja dihapus supaya list & detail putaway
+                // menampilkan actual scan, bukan angka yg di-clamp.
+                $qty = (int) $this->data['qty'];
 
                 if ($qty <= 0) {
-                    throw new \RuntimeException("Item sudah selesai di-putaway.");
+                    throw new \RuntimeException("Qty putaway harus lebih dari 0.");
                 }
 
                 $putaway = $putawayItem->putaway;
