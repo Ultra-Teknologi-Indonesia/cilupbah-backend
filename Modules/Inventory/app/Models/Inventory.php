@@ -56,6 +56,7 @@ class Inventory extends Model
             $q->selectRaw('1')
                 ->from('location_bins')
                 ->whereColumn('location_bins.id', 'inventories.bin_id')
+                ->whereColumn('location_bins.location_id', 'inventories.location_id')
                 ->where('location_bins.is_inbound', false);
         });
     }

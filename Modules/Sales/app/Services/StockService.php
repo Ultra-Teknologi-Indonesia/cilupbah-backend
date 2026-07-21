@@ -134,6 +134,15 @@ class StockService
 
     public function restoreToBin(string $sku, string $itemId, string $locationId, ?string $binId, int $qty, string $transactionNumber, string $source = 'ORDER_RESTORE_CANCEL'): void
     {
+        if ($binId !== null) {
+            $binBelongsToLocation = \Modules\Warehouse\Models\LocationBin::where('id', $binId)
+                ->where('location_id', $locationId)
+                ->exists();
+            if (! $binBelongsToLocation) {
+                $binId = null;
+            }
+        }
+
         if ($binId === null) {
             $this->restore($sku, $itemId, $locationId, $qty, $transactionNumber);
             return;

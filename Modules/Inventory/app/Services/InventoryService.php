@@ -1704,6 +1704,8 @@ class InventoryService
 
             $receivedItems = collect($data['items'] ?? []);
             [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
+            $defaultDestBin = app(\Modules\Warehouse\Services\LocationBinService::class)
+                ->getDefaultBin($transfer->destination_location_id);
 
             foreach ($transfer->items as $item) {
                 $receivedData = $receivedItems->firstWhere('item_id', $item->item_id);
@@ -1750,17 +1752,12 @@ class InventoryService
                 ]);
 
                 if ($receivedQty > 0) {
-                    if (! empty($item->destination_bin_id)) {
-                        app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
-                            ->assertBinFitsSku($item->destination_bin_id, $item->item_id);
-                        app(\Modules\Warehouse\Services\SkuHomeBinGuard::class)
-                            ->assertSkuFitsBin($transfer->destination_location_id, $item->item_id, $item->destination_bin_id);
-                    }
+                    $destBinId = $defaultDestBin?->id;
 
                     $destInventory = $this->inventoryRepository->findOrCreateForUpdate(
                         $item->item_id,
                         $transfer->destination_location_id,
-                        $item->destination_bin_id,
+                        $destBinId,
                         $item->batch_no,
                         $item->serial_no,
                     );
@@ -1771,7 +1768,7 @@ class InventoryService
                     $this->movementRepository->create([
                         'item_id'            => $item->item_id,
                         'location_id'        => $transfer->destination_location_id,
-                        'bin_id'             => $item->destination_bin_id,
+                        'bin_id'             => $destBinId,
                         'transaction_number' => $transfer->transfer_number,
                         'source'             => 'TRANSFER_IN',
                         'qty'                => $receivedQty,
