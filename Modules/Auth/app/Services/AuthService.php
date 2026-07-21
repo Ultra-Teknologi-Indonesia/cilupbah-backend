@@ -6,18 +6,22 @@ use App\Models\LoginHistory;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Laravel\Sanctum\PersonalAccessToken;
 use Modules\Auth\Repositories\UserRepository;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class AuthService
 {
-
     public const ACCESS_TOKEN_TTL_MINUTES = 60;
 
     public const REFRESH_TOKEN_TTL_DAYS = 30;
 
     public const ABILITY_REFRESH = 'refresh';
+
+    public const REFRESH_REUSE_GRACE_SECONDS = 60;
 
     public function __construct(
         protected UserRepository $userRepository
@@ -67,39 +71,80 @@ class AuthService
         }
 
         return [
-            'access_token'  => $pair['access_token'],
+            'access_token' => $pair['access_token'],
             'refresh_token' => $pair['refresh_token'],
-            'expires_in'    => self::ACCESS_TOKEN_TTL_MINUTES * 60,
+            'expires_in' => self::ACCESS_TOKEN_TTL_MINUTES * 60,
             'refresh_expires_in' => self::REFRESH_TOKEN_TTL_DAYS * 86400,
-            'token_type'    => 'Bearer',
-            'user'          => $user,
+            'token_type' => 'Bearer',
+            'user' => $user,
         ];
     }
 
-    public function refresh(User $user, \Laravel\Sanctum\PersonalAccessToken $current): array
+    public function refresh(User $user, PersonalAccessToken $current): array
     {
         $user->load('roles', 'permissions');
-        $tokenName = $this->deriveNameForRotation($current->name);
+        $cacheKey = self::rotationCacheKey($current->getKey());
 
-        DB::table('personal_access_tokens')
-            ->where('id', $current->id)
-            ->orWhere(function ($q) use ($user, $tokenName) {
-                $q->where('tokenable_id', $user->id)
-                  ->where('tokenable_type', $user::class)
-                  ->where('name', $tokenName);
-            })
-            ->delete();
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached)) {
+            return array_merge($cached, ['user' => $user]);
+        }
 
-        $pair = $this->issueTokenPair($user, $tokenName);
+        $lock = Cache::lock('auth:refresh-lock:'.$current->getKey(), 10);
 
-        return [
-            'access_token'  => $pair['access_token'],
-            'refresh_token' => $pair['refresh_token'],
-            'expires_in'    => self::ACCESS_TOKEN_TTL_MINUTES * 60,
-            'refresh_expires_in' => self::REFRESH_TOKEN_TTL_DAYS * 86400,
-            'token_type'    => 'Bearer',
-            'user'          => $user,
-        ];
+        return $lock->block(5, function () use ($user, $current, $cacheKey) {
+
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached)) {
+                return array_merge($cached, ['user' => $user]);
+            }
+
+            $tokenName = $this->deriveNameForRotation($current->name);
+
+            DB::table('personal_access_tokens')
+                ->where('tokenable_id', $user->id)
+                ->where('tokenable_type', $user::class)
+                ->where('name', $tokenName)
+                ->delete();
+
+            $pair = $this->issueTokenPair($user, $tokenName);
+
+            // Sapu refresh token sesi ini yang sudah benar-benar mati (grace
+            // lewat) supaya baris kedaluwarsa tidak menumpuk seiring rotasi
+            // berkala. Token yang sedang di-grace punya expires_at di masa depan
+            // sehingga aman dari sapuan ini.
+            DB::table('personal_access_tokens')
+                ->where('tokenable_id', $user->id)
+                ->where('tokenable_type', $user::class)
+                ->where('name', $tokenName.self::REFRESH_NAME_SUFFIX)
+                ->where('expires_at', '<', now())
+                ->delete();
+
+            $result = [
+                'access_token' => $pair['access_token'],
+                'refresh_token' => $pair['refresh_token'],
+                'expires_in' => self::ACCESS_TOKEN_TTL_MINUTES * 60,
+                'refresh_expires_in' => self::REFRESH_TOKEN_TTL_DAYS * 86400,
+                'token_type' => 'Bearer',
+            ];
+
+            Cache::put(
+                $cacheKey,
+                $result,
+                self::REFRESH_REUSE_GRACE_SECONDS + 30,
+            );
+
+            DB::table('personal_access_tokens')
+                ->where('id', $current->getKey())
+                ->update(['expires_at' => now()->addSeconds(self::REFRESH_REUSE_GRACE_SECONDS)]);
+
+            return array_merge($result, ['user' => $user]);
+        });
+    }
+
+    protected static function rotationCacheKey(int|string $tokenId): string
+    {
+        return 'auth:refresh-rotation:'.$tokenId;
     }
 
     protected function issueTokenPair(User $user, string $tokenName): array
@@ -110,14 +155,14 @@ class AuthService
             now()->addMinutes(self::ACCESS_TOKEN_TTL_MINUTES),
         );
         $refresh = $user->createToken(
-            $tokenName . ':refresh',
+            $tokenName.':refresh',
             [self::ABILITY_REFRESH],
             now()->addDays(self::REFRESH_TOKEN_TTL_DAYS),
         );
 
         return [
-            'access_token'   => $access->plainTextToken,
-            'refresh_token'  => $refresh->plainTextToken,
+            'access_token' => $access->plainTextToken,
+            'refresh_token' => $refresh->plainTextToken,
             'access_token_id' => $access->accessToken->getKey(),
         ];
     }
@@ -127,6 +172,7 @@ class AuthService
         if (str_ends_with($tokenName, ':refresh')) {
             return substr($tokenName, 0, -strlen(':refresh'));
         }
+
         return $tokenName;
     }
 
@@ -286,7 +332,7 @@ class AuthService
     public function revokeSession(User $user, string $tokenId, ?string $currentTokenId): void
     {
         if ($currentTokenId !== null && $tokenId === $currentTokenId) {
-            throw new \Symfony\Component\HttpKernel\Exception\HttpException(
+            throw new HttpException(
                 422,
                 'Tidak dapat mencabut sesi saat ini di sini — gunakan tombol Keluar.'
             );
