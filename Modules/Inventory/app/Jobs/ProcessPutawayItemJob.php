@@ -55,13 +55,15 @@ class ProcessPutawayItemJob implements ShouldQueue
                     throw new \RuntimeException("Putaway item tidak ditemukan.");
                 }
 
-                // Over-quantity diperbolehkan — putaway_qty boleh > qty (mis. 502/500).
-                // Guard `min()` lama sengaja dihapus supaya list & detail putaway
-                // menampilkan actual scan, bukan angka yg di-clamp.
                 $qty = (int) $this->data['qty'];
 
                 if ($qty <= 0) {
                     throw new \RuntimeException("Qty putaway harus lebih dari 0.");
+                }
+
+                $remaining = (int) $putawayItem->qty - (int) $putawayItem->putaway_qty;
+                if ($qty > $remaining) {
+                    throw new \RuntimeException("Qty melebihi sisa kuota ({$remaining}).");
                 }
 
                 $putaway = $putawayItem->putaway;
@@ -215,13 +217,18 @@ class ProcessPutawayItemJob implements ShouldQueue
                     }
                 }
 
-                // Auto-complete sengaja dihapus — Selesai harus dipencet manual
-                // via endpoint POST /putaway/{id}/complete (tombol "Selesai" di
-                // detail mobile). Alasan:
-                //   1) Konsistensi UX — user harus konfirmasi sebelum lock dokumen.
-                //   2) Over-quantity (putaway_qty > qty) tidak boleh silent-close;
-                //      user harus lihat badge kelebihan lalu putuskan.
-                //   3) Web flow juga panggil endpoint /complete secara eksplisit.
+                $allFull = PutawayItem::where('putaway_id', $this->putawayId)
+                    ->get()
+                    ->every(fn ($i) => (int) $i->putaway_qty >= (int) $i->qty);
+
+                if ($allFull) {
+                    Putaway::where('id', $this->putawayId)
+                        ->where('status', Putaway::STATUS_IN_PROGRESS)
+                        ->update([
+                            'status' => Putaway::STATUS_COMPLETED,
+                            'completed_at' => now(),
+                        ]);
+                }
 
                 Putaway::where('id', $this->putawayId)->update(['updated_version_at' => now()]);
             });

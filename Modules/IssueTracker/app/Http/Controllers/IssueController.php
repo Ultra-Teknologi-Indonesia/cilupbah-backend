@@ -110,7 +110,7 @@ class IssueController extends Controller
             'actor_name' => ['nullable', 'string', 'max:100'],
         ]);
 
-        $this->service->deleteIssue($issue, $request->input('actor_name', 'Sistem'));
+        $this->service->deleteIssue($issue, $request->input('actor_name') ?? 'Sistem');
 
         return redirect()->route('issues.index')->with('success', 'Issue berhasil dihapus.');
     }
