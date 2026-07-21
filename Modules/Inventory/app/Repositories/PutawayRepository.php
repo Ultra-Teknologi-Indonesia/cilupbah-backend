@@ -70,13 +70,13 @@ class PutawayRepository
     public function getByStatus(string $status, int $limit = 10)
     {
         return QueryBuilder::for(Putaway::where('status', $status))
-            ->with(['location:id,location_name', 'assignee:id,name', 'creator:id,name', 'items:id,putaway_id,item_id,qty,putaway_qty'])
+            ->with(['location:id,location_name', 'assignee:id,name', 'creator:id,name', 'items:id,putaway_id,item_id,qty,putaway_qty', 'sources:id,reference_number,transaction_number'])
             ->allowedFilters(
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('assigned_to'),
             )
             ->allowedSearch('putaway_no', 'sources.reference_number', 'sources.transaction_number')
-            ->allowedSorts('created_at', 'started_at')
+            ->allowedSorts('created_at', 'started_at', 'completed_at')
             ->defaultSort('-created_at')
             ->paginate(request('per_page', $limit))
             ->appends(request()->query());
