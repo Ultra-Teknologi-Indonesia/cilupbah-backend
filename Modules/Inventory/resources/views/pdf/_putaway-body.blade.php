@@ -4,6 +4,7 @@
     /** @var string $sourceLabel */
     $items = collect($putaway->items ?? []);
     $locationName = optional($putaway->location)->location_name ?? '-';
+    $isStrictBin = optional($putaway->location)->enforcesStrictBinSku() ?? false;
     $companyName = config('app.company_name', 'PT ULTRA TEKNOLOGI INDONESIA');
     $assigneeName = optional($putaway->assignee)->name ?? '-';
     $creatorName = optional($putaway->creator)->name ?? '-';
@@ -46,12 +47,12 @@
     <thead>
         <tr>
             <th class="col-no">No</th>
-            <th>SKU</th>
+            <th class="col-sku">SKU</th>
             <th>Nama Barang</th>
             <th class="col-qty">Qty</th>
             <th class="col-date">Tgl. Penerimaan</th>
             <th class="col-source">Sumber</th>
-            <th class="col-rak">Rekomendasi Rak</th>
+            <th class="col-rak">{{ $isStrictBin ? 'Rak Tetap' : 'Rekomendasi Rak' }}</th>
             <th class="col-rak">Kode Rak</th>
         </tr>
     </thead>
@@ -78,7 +79,7 @@
                 <td class="rak-bin" style="font-size: 9px;">
                     @if(count($recommendedBins) > 0)
                         @foreach($recommendedBins as $rec)
-                            <div class="rec-line">{{ $rec['code'] }} <span class="rec-qty">({{ $rec['qty'] }})</span></div>
+                            <div class="rec-line">{{ $rec['code'] }}</div>
                         @endforeach
                     @else
                         -
@@ -87,7 +88,7 @@
                 <td class="rak-bin" style="font-size: 9px;">
                     @if(count($placedBins) > 0)
                         @foreach($placedBins as $placed)
-                            <div class="rec-line">{{ $placed['code'] }} <span class="rec-qty">({{ $placed['qty'] }})</span></div>
+                            <div class="rec-line">{{ $placed['code'] }}</div>
                         @endforeach
                     @else
                         -

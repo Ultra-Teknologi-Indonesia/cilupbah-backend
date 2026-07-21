@@ -70,17 +70,18 @@
     }
     .center { text-align: center; }
     .num { text-align: right; }
-    .col-no { width: 28px; }
-    .col-qty { width: 50px; }
-    .col-date { width: 80px; }
-    .col-source { width: 80px; }
-    .col-rak { width: 110px; }
+    .col-no { width: 24px; }
+    .col-sku { width: 140px; }
+    .col-qty { width: 40px; }
+    .col-date { width: 72px; }
+    .col-source { width: 72px; }
+    .col-rak { width: 90px; }
     .rec-line { margin-bottom: 1px; }
-    .rec-qty { font-weight: 400; font-size: 8.5px; color: #333; }
     .barang-sku {
         font-family: DejaVu Sans Mono, monospace;
         font-weight: 700;
         font-size: 10px;
+        word-break: break-all;
     }
     .barang-name {
         margin-top: 2px;

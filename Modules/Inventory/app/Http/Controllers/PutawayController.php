@@ -855,7 +855,7 @@ class PutawayController extends Controller
 
     protected function preparePutawayForPdf($putaway): array
     {
-        $putaway->load(['inbound', 'sources:id,reference_number,transaction_number']);
+        $putaway->load(['inbound', 'sources:id,reference_number,transaction_number', 'location']);
 
         $this->attachRecommendedBins($putaway);
 
