@@ -525,9 +525,10 @@ class PutawayService
                 if ($unplaced > 0 && $putaway->source_type === 'INBOUND') {
                     $this->releasePartialReservation($putaway, $item, $unplaced);
                 }
-                if ($unplaced > 0) {
-                    $item->update(['qty' => $item->putaway_qty]);
-                }
+                // Qty rencana admin sengaja TIDAK di-overwrite ke putaway_qty.
+                // Simpan discrepancy apa adanya supaya display putaway_qty/qty
+                // (mis. 1/10) tetap menunjukkan rencana vs aktual.
+                // Reservasi sisa sudah di-release di atas.
             }
 
             $this->putawayRepository->updateStatus($id, Putaway::STATUS_COMPLETED, [
