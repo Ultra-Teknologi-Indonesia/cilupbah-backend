@@ -48,10 +48,6 @@ abstract class AbstractLogisticsService implements MarketPlaceLogisticsInterface
         ];
     }
 
-    /**
-     * channel_status yang mustahil / percuma dipanggil driver (sudah dibatalkan,
-     * diretur, atau sudah diserahkan ke kurir).
-     */
     private const NON_CALLABLE_CHANNEL_STATUSES = [
         'CANCELLED', 'IN_CANCEL', 'RETURN_REQUESTED', 'RETURNED',
         'SHIPPED', 'TO_CONFIRM_RECEIVE', 'COMPLETED',

@@ -24,11 +24,6 @@ class SalesOrderDriverCallService
         return $this->orderRepository->findOrFail($id);
     }
 
-    /**
-     * channel_status yang mustahil / percuma dipanggil driver — order sudah
-     * dibatalkan, diretur, atau sudah diserahkan ke kurir. Menghindari error
-     * "Package is not ready to ship" dari Shopee & pesan gagal yang menyesatkan.
-     */
     private const NON_CALLABLE_CHANNEL_STATUSES = [
         'CANCELLED',
         'IN_CANCEL',

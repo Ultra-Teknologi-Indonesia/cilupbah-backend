@@ -322,7 +322,7 @@ class BulkShippingLabelService
 
         return [
             -$x0 * $scale + ($targetW - $boxW * $scale) / 2,
-            -$topOffset * $scale + ($targetH - $boxH * $scale) / 2,
+            -$topOffset * $scale + self::BBOX_SAFE_MARGIN_MM,
             $srcW * $scale,
             $srcH * $scale,
         ];
@@ -358,7 +358,7 @@ class BulkShippingLabelService
         $renderH = $effH * $scale;
 
         $x = ($targetW - $renderW) / 2;
-        $y = $renderH >= $targetH ? 0.0 : ($targetH - $renderH) / 2;
+        $y = 0.0;
 
         return [$x, $y, $srcW * $scale, $srcH * $scale];
     }

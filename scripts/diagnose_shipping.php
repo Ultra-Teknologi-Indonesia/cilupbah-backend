@@ -1,21 +1,10 @@
 <?php
 
-/**
- * Diagnosa kenapa panggil driver / cetak label Shopee GAGAL. READ-ONLY.
- *
- * Jalankan (VPS docker staging):
- *   docker exec cilupbah-staging php artisan tinker --execute="require '/var/www/html/scripts/diagnose_shipping.php';"
- *
- * Default: ambil 15 order Shopee dengan driver_call_status=failed terbaru.
- * Untuk order spesifik, isi $IDS di bawah (cocokkan channel_order_no / tracking / salesorder_no).
- */
-
 use Modules\Sales\Models\SalesOrder;
 use Modules\Outbound\Support\InstantOrderClassifier;
 
-// Isi manual kalau mau target order tertentu (biarkan kosong = ambil failed terbaru)
 $IDS = [
-    // '2607206QVR0T8V', '200001535720', 'SP-2607206QUWA51D', ...
+
 ];
 
 $q = SalesOrder::query()->where('source', 'shopee');
@@ -52,7 +41,6 @@ foreach ($orders as $o) {
     echo "driver_message : " . ($o->driver_call_message ?: '—') . "\n";
     echo "attempted_at   : " . ($o->driver_call_attempted_at ?: '—') . "\n";
 
-    // Raw response Shopee (berisi result_list & error detail sebenarnya)
     $resp = $o->driver_call_response;
     if (is_array($resp) && ! empty($resp)) {
         echo "raw response   :\n";
