@@ -309,15 +309,12 @@ class ReportRepository
                 ->join('picklists as p', 'p.id', '=', 'pi.picklist_id')
                 ->leftJoin('users as u', 'u.id', '=', 'p.picker_id')
                 ->leftJoin('locations as l', 'l.id', '=', 'p.location_id')
-                ->leftJoin('sales_orders as so', 'so.id', '=', 'pi.order_id')
                 ->whereNotIn('p.status', [Picklist::STATUS_DRAFT, Picklist::STATUS_CANCELLED])
                 ->select([
                     'p.location_id',
                     'l.location_name as lokasi',
                     'p.id as transaksi_id',
                     'p.picklist_no as no_transaksi',
-                    'so.salesorder_no as no_pesanan',
-                    'pi.sku',
                 ])
                 ->selectRaw('COALESCE(u.name, ?) AS grup', ['(tanpa picker)'])
                 ->selectRaw('COALESCE(p.started_at, p.created_at) AS tanggal_raw')

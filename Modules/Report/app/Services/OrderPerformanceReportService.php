@@ -97,11 +97,15 @@ class OrderPerformanceReportService
             ];
         }
 
-        return $base + [
-            'no_pesanan' => $r->no_pesanan ?? '-',
-            'no_resi' => $r->no_resi ?? '-',
-            'sku' => $r->sku ?? '-',
-        ];
+        if ($type === OrderPerformanceSpec::PACKER) {
+            return $base + [
+                'no_pesanan' => $r->no_pesanan ?? '-',
+                'no_resi' => $r->no_resi ?? '-',
+                'sku' => $r->sku ?? '-',
+            ];
+        }
+
+        return $base;
     }
 
     private function summaryGroups(string $type, Collection $rows): array

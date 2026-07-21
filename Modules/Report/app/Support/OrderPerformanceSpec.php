@@ -38,8 +38,6 @@ final class OrderPerformanceSpec
         return match ($type) {
             self::PICKER => [
                 $tanggal, $noTrx,
-                ['key' => 'no_pesanan', 'label' => 'No Pesanan'],
-                ['key' => 'sku', 'label' => 'SKU'],
                 ['key' => 'qty', 'label' => 'Qty', 'align' => 'right'],
                 $durasi,
             ],
