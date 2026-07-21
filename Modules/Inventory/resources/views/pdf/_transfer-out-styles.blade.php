@@ -22,12 +22,15 @@
     .info-grid .value { }
     .info-grid .r-label { text-align: right; width: 90px; font-weight: 700; }
     .info-grid .r-value { text-align: right; width: 130px; }
-    table.items { width: 100%; border-collapse: collapse; margin-top: 2px; }
+    table.items { width: 100%; border-collapse: collapse; margin-top: 2px; table-layout: fixed; }
     table.items th, table.items td {
         border: 1px solid #555;
         padding: 5px 6px;
         vertical-align: top;
         font-size: 9.5px;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        word-break: break-word;
     }
     table.items th {
         background: #efefef;
