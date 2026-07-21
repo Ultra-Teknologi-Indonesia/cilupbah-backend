@@ -101,8 +101,10 @@ try {
         $shipment->status === Shipment::STATUS_HANDED_OVER);
 
     // --- 4. Channel lapor terkirim → observer + auto-close ---
+    //     Pakai TO_CONFIRM_RECEIVE = nilai kanonik "kurir terkirim" (shopee tak
+    //     punya raw 'DELIVERED'; normalizer akan menolaknya jadi UNKNOWN).
     $order->refresh();
-    $order->channel_status = 'DELIVERED';
+    $order->channel_status = 'TO_CONFIRM_RECEIVE';
     $order->save();                       // memicu SalesOrderChannelStatusObserver
 
     $order->refresh();
@@ -134,7 +136,7 @@ try {
 
     // channel delivered SEBELUM handOver (observer no-op karena masih SCHEDULED)
     $order2->refresh();
-    $order2->channel_status = 'DELIVERED';
+    $order2->channel_status = 'TO_CONFIRM_RECEIVE';
     $order2->save();
     $shipment2->refresh();
     $check("Celah urutan: manifest masih SCHEDULED saat delivered lebih dulu",
