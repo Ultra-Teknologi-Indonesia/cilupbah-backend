@@ -17,7 +17,7 @@ use Modules\Inventory\Models\PutawaySource;
 use Modules\Inventory\Models\PutawayItemSource;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\StockAdjustmentService;
-use Modules\Warehouse\Services\BinService;
+use Modules\Warehouse\Services\LocationBinService;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundItem;
 use Modules\Inventory\Jobs\ProcessPutawayItemJob;
@@ -930,6 +930,96 @@ class PutawayService
         if (! empty($updates)) {
             $inbound->update($updates);
         }
+    }
+
+    private function releasePartialReservation(Putaway $putaway, PutawayItem $item, int $unplaced): void
+    {
+        $sources = PutawayItemSource::query()
+            ->where('putaway_item_sources.putaway_item_id', $item->id)
+            ->join('inbound_items', 'inbound_items.id', '=', 'putaway_item_sources.inbound_item_id')
+            ->join('inbounds', 'inbounds.id', '=', 'inbound_items.inbound_id')
+            ->orderByDesc('inbounds.created_at')
+            ->lockForUpdate()
+            ->select('putaway_item_sources.*')
+            ->get();
+
+        if ($sources->isNotEmpty()) {
+            $remaining = $unplaced;
+            foreach ($sources as $src) {
+                if ($remaining <= 0) {
+                    break;
+                }
+                $srcUnplaced = (int) $src->qty - (int) $src->putaway_qty;
+                if ($srcUnplaced <= 0) {
+                    continue;
+                }
+                $take = min($srcUnplaced, $remaining);
+                $src->decrement('qty', $take);
+                InboundItem::where('id', $src->inbound_item_id)
+                    ->update(['reserved_qty' => DB::raw('GREATEST(reserved_qty - ' . (int) $take . ', 0)')]);
+                $remaining -= $take;
+            }
+        } elseif ($putaway->source_id) {
+            InboundItem::where('inbound_id', $putaway->source_id)
+                ->where('item_id', $item->item_id)
+                ->update(['reserved_qty' => DB::raw('GREATEST(reserved_qty - ' . (int) $unplaced . ', 0)')]);
+        }
+    }
+
+    private function createCorrectionAdjustment(Putaway $putaway, array $entries, string $userId): void
+    {
+        $putaway->load('items');
+        $adjItems = [];
+
+        foreach ($entries as $entry) {
+            $putawayItem = $putaway->items->firstWhere('id', $entry['item_id']);
+            if (! $putawayItem) {
+                continue;
+            }
+
+            $placement = isset($entry['placement_id'])
+                ? PutawayPlacement::find($entry['placement_id'])
+                : null;
+
+            $sourceBinId = $putawayItem->source_bin_id;
+            if (! $sourceBinId) {
+                continue;
+            }
+
+            $qtyReversed = $entry['qty']
+                ?? ($placement ? (int) $placement->qty : 0);
+            if ($qtyReversed <= 0) {
+                continue;
+            }
+
+            $onHand = (int) ($this->inventoryRepository->findExact(
+                $putawayItem->item_id,
+                $putaway->location_id,
+                $sourceBinId,
+            )?->on_hand ?? 0);
+
+            $adjItems[] = [
+                'item_id'    => $putawayItem->item_id,
+                'bin_id'     => $sourceBinId,
+                'actual_qty' => $onHand - $qtyReversed,
+                'notes'      => "Koreksi penempatan {$putaway->putaway_no}: qty -{$qtyReversed}",
+            ];
+        }
+
+        if (empty($adjItems)) {
+            return;
+        }
+
+        $user = \App\Models\User::find($userId);
+        $userName = $user?->name ?? $userId;
+
+        app(StockAdjustmentService::class)->create([
+            'transaction_date' => now()->toDateString(),
+            'location_id'      => $putaway->location_id,
+            'created_by'       => $userId,
+            'notes'            => "Koreksi penempatan {$putaway->putaway_no} oleh {$userName}",
+            'items'            => $adjItems,
+        ]);
     }
 
     public function reduceOpenTargetForInboundItem(string $inboundItemId, int $amount): int
