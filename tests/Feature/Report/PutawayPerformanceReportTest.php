@@ -66,7 +66,6 @@ class PutawayPerformanceReportTest extends TestCase
         ]);
     }
 
-    /** @param array<int, int> $qtyPerSku */
     private function makePutaway(
         string $no,
         int $durasiDetik,
@@ -147,7 +146,7 @@ class PutawayPerformanceReportTest extends TestCase
 
     public function test_rata_rata_durasi_per_sku_membagi_durasi_dokumen(): void
     {
-        // 10 menit dibagi 5 SKU = 2 menit per SKU.
+
         $this->makePutaway('PUT-PERSKU', 600, [1, 1, 1, 1, 1]);
 
         $html = $this->html(true);
@@ -197,7 +196,7 @@ class PutawayPerformanceReportTest extends TestCase
 
     public function test_summary_merata_ratakan_durasi_per_transaksi(): void
     {
-        // 2 transaksi: 2 menit dan 4 menit -> rata-rata 3 menit.
+
         $this->makePutaway('PUT-R1', 120, [10]);
         $this->makePutaway('PUT-R2', 240, [10]);
 

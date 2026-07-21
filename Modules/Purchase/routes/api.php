@@ -14,7 +14,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('purchase/serial-number/mark-printed', [PurchaseSerialNumberController::class, 'markPrinted'])->name('purchase.serial-number.mark-printed');
     });
 
-
     Route::middleware('role_or_permission:owner|view-pembayaran-pembelian')->group(function () {
         Route::get('purchase/payments', [PurchasePaymentController::class, 'index'])->name('purchase.payments.index');
         Route::get('purchase/payments/{id}', [PurchasePaymentController::class, 'show'])->name('purchase.payments.show');

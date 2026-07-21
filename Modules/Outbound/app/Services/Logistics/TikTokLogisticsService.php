@@ -25,7 +25,7 @@ class TikTokLogisticsService extends AbstractLogisticsService
             ];
         }
 
-        $service = app('\Modules\Channel\app\Services\TikTokOrderService');
+        $service = app(\Modules\Channel\Services\TikTokOrderService::class);
         $result = $service->readyToShip((string) $shopId, (string) $orderId, null);
 
         if (empty($result['shipped'])) {
@@ -88,17 +88,30 @@ class TikTokLogisticsService extends AbstractLogisticsService
         $channelOrderNo = $order->channel_order_no;
         if (! $shopId || ! $channelOrderNo) return [];
 
-        $service = app('\Modules\Channel\app\Services\TikTokOrderService');
+        $service = app(\Modules\Channel\Services\TikTokOrderService::class);
         try {
             $shop = app(\Modules\Channel\Repositories\ChannelShopRepository::class)
                 ->findByShopId((string) $shopId);
             if (! $shop) return [];
+
             $service->fetchAndStoreTracking($shop, (string) $channelOrderNo, ['shop_cipher' => $shop->shop_cipher ?? '']);
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('TikTok fetchAndStoreTracking gagal: ' . $e->getMessage(), [
                 'order_id' => $orderId,
             ]);
         }
-        return [];
+
+        $order->refresh();
+        $channelStatus = strtoupper((string) ($order->channel_status ?? ''));
+        if ($channelStatus === '') return [];
+
+        return [[
+            'event_type' => strtolower($channelStatus),
+            'driver_name' => null,
+            'driver_phone' => null,
+            'driver_vehicle_plate' => null,
+            'occurred_at' => $order->updated_at?->toIso8601String(),
+            'raw' => ['channel_status' => $channelStatus, 'source' => 'polling_fallback'],
+        ]];
     }
 }

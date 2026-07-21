@@ -174,8 +174,6 @@ class BinOccupancyGuardTest extends TestCase
 
     public function test_pusat_allows_multi_sku_per_bin(): void
     {
-        // "1 rak = 1 SKU" hanya berlaku di WH-KECIL. Di WH-PUSAT satu rak
-        // boleh menampung banyak SKU sekaligus.
 
         $loc = $this->makeLocation(Location::SYSTEM_PUSAT_CODE);
         $bin = LocationBin::factory()->create([
@@ -196,7 +194,6 @@ class BinOccupancyGuardTest extends TestCase
 
     public function test_pusat_reserved_only_bin_still_allows_other_sku(): void
     {
-        // Baris on_order (belum putaway) juga tidak lagi mengunci rak PUSAT.
 
         $loc = $this->makeLocation(Location::SYSTEM_PUSAT_CODE);
         $bin = LocationBin::factory()->create([
@@ -216,8 +213,6 @@ class BinOccupancyGuardTest extends TestCase
 
     public function test_random_location_allows_multi_sku_per_bin(): void
     {
-        // Guard kembali di-scope lewat Location::enforcesStrictBinSku(), jadi
-        // lokasi non-KECIL apapun bebas multi-SKU per rak.
 
         $loc = Location::factory()->create([
             'location_code' => 'WH-CUSTOM-' . Str::random(4),
@@ -239,8 +234,7 @@ class BinOccupancyGuardTest extends TestCase
 
     public function test_pusat_allows_same_sku_in_bin(): void
     {
-        // "1 SKU = M rak" tetap berlaku di PUSAT — SKU sama boleh nambah
-        // qty di rak yang sudah berisi SKU itu sendiri.
+
         $loc = $this->makeLocation(Location::SYSTEM_PUSAT_CODE);
         $bin = LocationBin::factory()->create([
             'location_id' => $loc->id,

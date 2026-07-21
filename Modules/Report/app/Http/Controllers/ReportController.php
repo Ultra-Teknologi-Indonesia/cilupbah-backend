@@ -581,8 +581,6 @@ class ReportController extends Controller
             'download' => 'nullable|boolean',
         ]);
 
-        // Pesanan tidak punya Summary; menolak di sini supaya tidak diam-diam
-        // menghasilkan laporan kosong yang membingungkan.
         if ($validated['mode'] === 'summary' && ! OrderPerformanceSpec::supportsSummary($validated['jenis'])) {
             return response()->json([
                 'message' => 'Laporan Pesanan hanya tersedia dalam mode Detail.',

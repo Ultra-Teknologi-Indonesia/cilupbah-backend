@@ -8,27 +8,10 @@ use Illuminate\Support\Facades\Hash;
 
 class MobileDemoSeeder extends Seeder
 {
-    /**
-     * Seed akun demo untuk testing mobile lokal (password: password).
-     *
-     * Akun berbasis ROLE (permissions ikut peta role di config/rbac.php):
-     *   - mobile@cilupbah.id         → Mobile Tester    (role: owner)         → semua menu
-     *   - putaway1@cilupbah.test     → Putaway Satu     (role: putaway)       → 3 menu warehouse
-     *   - receiving1@cilupbah.test   → Receiver Satu    (role: warehouse)     → 3 menu warehouse
-     *   - picker1@cilupbah.test      → Picker Satu      (role: picker)        → 3 menu warehouse
-     *   - purchasing1@cilupbah.test  → Purchasing Satu  (role: purchasing)    → 0 menu warehouse
-     *
-     * Akun untuk TEST RBAC — tanpa role, hanya direct permission spesifik
-     * supaya bisa lihat kombinasi menu tertentu di mobile:
-     *   - rbac1menu@cilupbah.test  → hanya view-barang-masuk           → 1 menu (Penerimaan)
-     *   - rbac2menu@cilupbah.test  → view-barang-masuk + view-penempatan → 2 menu (Penerimaan + Penempatan)
-     *
-     * Lengkap dengan 1 lokasi gudang + 1 rak default supaya bisa dipakai
-     * seeder Inbound/Putaway/Picklist lain.
-     */
+
     public function run(): void
     {
-        // Akun dengan role standar
+
         $roleAccounts = [
             [
                 'email' => 'mobile@cilupbah.id',
@@ -68,14 +51,12 @@ class MobileDemoSeeder extends Seeder
 
             try {
                 $user->syncRoles([$acc['role']]);
-                $user->syncPermissions([]); // bersihkan direct perms kalau ada sisa
+                $user->syncPermissions([]); 
             } catch (\Throwable $e) {
                 $this->command->warn("Role '{$acc['role']}' belum ada untuk {$acc['email']}: {$e->getMessage()}");
             }
         }
 
-        // Akun test RBAC — tanpa role, permission langsung di-assign
-        // supaya menu di mobile tampil sesuai jumlah yg diinginkan.
         $permAccounts = [
             [
                 'email'       => 'rbac1menu@cilupbah.test',
@@ -99,14 +80,13 @@ class MobileDemoSeeder extends Seeder
             );
 
             try {
-                $user->syncRoles([]);                            // reset role
-                $user->syncPermissions($acc['permissions']);     // assign perms langsung
+                $user->syncRoles([]);                            
+                $user->syncPermissions($acc['permissions']);     
             } catch (\Throwable $e) {
                 $this->command->warn("Gagal set permission untuk {$acc['email']}: {$e->getMessage()}");
             }
         }
 
-        // Lokasi gudang demo — kolomnya location_code (bukan code) & is_warehouse boolean.
         $location = \Modules\Warehouse\Models\Location::firstOrCreate(
             ['location_code' => 'WH-MOB'],
             [
@@ -116,7 +96,6 @@ class MobileDemoSeeder extends Seeder
             ]
         );
 
-        // Rak default — hanya bin_final_code + location_id yang wajib.
         \Modules\Warehouse\Models\LocationBin::firstOrCreate(
             ['bin_final_code' => 'WH-MOB-A1'],
             [

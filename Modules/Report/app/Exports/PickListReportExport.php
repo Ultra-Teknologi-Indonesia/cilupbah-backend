@@ -14,10 +14,6 @@ use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-/**
- * FromQuery, bukan FromCollection — rentang sebulan bisa puluhan ribu baris dan
- * memuat semuanya ke memori akan meledak. Laravel Excel meng-chunk query ini.
- */
 class PickListReportExport implements FromQuery, WithHeadings, WithMapping, WithStyles, WithColumnFormatting, ShouldAutoSize
 {
     private const DATE_FORMAT = 'dd/mm/yyyy hh:mm';

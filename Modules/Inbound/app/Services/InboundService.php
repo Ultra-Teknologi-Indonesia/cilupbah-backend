@@ -221,12 +221,6 @@ class InboundService
         return $this->inboundRepository->findById($id);
     }
 
-    /**
-     * Ternary lama meruntuhkan PURCHASE_ORDER, TRANSIT_IN, dan CONSIGNMENT jadi
-     * 'ADJUSTMENT' -- penerimaan barang tampil sebagai "Penyesuaian" di kronologi,
-     * tercampur dengan penyesuaian stok betulan. Map per-tipe supaya tiap
-     * penerimaan terbaca sesuai asal dokumennya.
-     */
     private function movementSourceFor(Inbound $inbound): string
     {
         return match ($inbound->type) {
@@ -425,11 +419,6 @@ class InboundService
         }
     }
 
-    /**
-     * Baris inbound milik PO untuk satu varian, terbaru dulu (LIFO).
-     * Penerimaan terakhir yang dibatalkan duluan -- sejalan dengan urutan
-     * reverseOnePlacement() yang juga LIFO lewat putaway_item_sources.
-     */
     private function purchaseInboundItemsForVariant(PurchaseOrder $po, string $variantId)
     {
         return InboundItem::query()
@@ -445,9 +434,6 @@ class InboundService
             ->get();
     }
 
-    /**
-     * Penempatan fisik yang menopang satu baris inbound, terbaru dulu.
-     */
     private function placementsForInboundItem(InboundItem $item)
     {
         return PutawayItemSource::query()
@@ -466,13 +452,6 @@ class InboundService
             ->get();
     }
 
-    /**
-     * Pastikan seluruh stok yang hendak ditarik balik masih ada di raknya.
-     * Dipanggil SEBELUM mutasi apa pun supaya penolakan bisa merinci per
-     * SKU/rak, bukan gagal di tengah cascade dengan pesan generik.
-     *
-     * @param array<string,int> $qtyByVariant
-     */
     public function assertPurchaseReversalPossible(PurchaseOrder $po, array $qtyByVariant): void
     {
         $needed = [];
@@ -529,12 +508,6 @@ class InboundService
         ]);
     }
 
-    /**
-     * Tarik balik penerimaan pembelian sebanyak $qtyToReverse untuk satu varian:
-     * balikkan penempatan di rak (LIFO) -> balikkan sisa yang belum ditempatkan
-     * -> turunkan received_qty baris inbound. received_qty di PO diselaraskan
-     * terpisah oleh pemanggil lewat recomputePurchaseOrderReceived().
-     */
     public function reversePurchaseReceiptForVariant(
         PurchaseOrder $po,
         string $variantId,
@@ -1571,15 +1544,6 @@ class InboundService
         });
     }
 
-    /**
-     * Remarks dokumen Penyesuaian Stok disusun otomatis (keputusan klien 20 Jul 2026 —
-     * admin tidak mau mengetik alasan tiap koreksi). Isinya menjawab APA yang berubah:
-     * dokumen, SKU, qty sebelum → sesudah, selisih, dan siapa yang mengoreksi.
-     *
-     * Catatan: ini TIDAK merekam SEBAB (salah hitung / rusak / hilang). Kalau nanti
-     * laporan retur butuh membedakan itu, `$reasonNote` masih diterima dari pemanggil
-     * dan akan dipakai apa adanya kalau diisi.
-     */
     private function buildQtyCorrectionNote(Inbound $inbound, InboundItem $item, int $before, int $after, string $userId): string
     {
         $delta = $after - $before;
@@ -1616,10 +1580,6 @@ class InboundService
                 throw new \Exception('Inbound sudah dibatalkan.');
             }
 
-            // Sengaja TANPA assertWebCanMutate: koreksi qty harus tetap bisa dilakukan
-            // admin walau ada staff yang sedang scan di mobile (keputusan klien 20 Jul
-            // 2026). Optimistic lock di bawah yang menjaga agar edit dari layar basi
-            // ditolak. Call site assertWebCanMutate yang lain sengaja dibiarkan.
             $this->assertVersionMatches($inbound, $expectedUpdatedAt);
 
             $item = $this->inboundRepository->findItemByUuidForUpdate($inboundItemId);
@@ -1642,9 +1602,6 @@ class InboundService
                 throw new \Exception('Gudang ini belum memiliki Bin Inbound default.');
             }
 
-            // Mutasi stok dilakukan OLEH dokumen Penyesuaian Stok, bukan inline.
-            // Jangan tambahkan inventoryService->adjust() di sini — ProcessStockAdjustmentJob
-            // sudah menerapkan delta-nya, memanggil keduanya = stok terpotong dua kali.
             $onHandAtInboundBin = (int) ($this->inventoryRepository->findExact(
                 $item->item_id,
                 $inbound->location_id,
@@ -1862,12 +1819,6 @@ class InboundService
         }
     }
 
-    /**
-     * Selaraskan purchase_order_items.received_qty dengan jumlah yang benar-benar
-     * tercatat di inbound aktif. Satu-satunya sumber kebenaran untuk received_qty
-     * di sisi PO -- dipanggil dari pembatalan inbound maupun dari edit PO, supaya
-     * kedua jalur tidak bisa saling berbeda.
-     */
     public function recomputePurchaseOrderReceived(PurchaseOrder $po, ?string $excludeInboundId = null): void
     {
         $otherActiveInbounds = Inbound::where('source_type', 'purchase_order')

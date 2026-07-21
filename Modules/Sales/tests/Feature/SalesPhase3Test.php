@@ -21,8 +21,7 @@ class SalesPhase3Test extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        // Endpoint /api/v1/sales/{id} dijaga role_or_permission; tanpa role,
-        // request balik 403 sebelum sempat menguji perilaku apa pun.
+
         $this->seed(\Database\Seeders\RoleSeeder::class);
         $this->seed(\Database\Seeders\RbacPermissionSeeder::class);
 
@@ -53,9 +52,6 @@ class SalesPhase3Test extends TestCase
             'updated_at' => now(),
         ]);
 
-        // Alokasi order diarahkan ke WH-KECIL oleh resolveLocationId. Kalau stok
-        // di-seed di lokasi lain, reserve() melihat 0 dan melempar
-        // InsufficientStockException -- bukan bug produksi, fixture-nya yang meleset.
         $kecilCode = \Modules\Warehouse\Models\Location::SYSTEM_KECIL_CODE;
         $existing = DB::table('locations')->where('location_code', $kecilCode)->value('id');
 
@@ -75,9 +71,6 @@ class SalesPhase3Test extends TestCase
             ]);
         }
 
-        // Stok WAJIB ditaruh di rak: sumOnHandAtLocation() memakai scope placed(),
-        // jadi baris agregat (bin_id NULL) tidak dihitung sebagai on_hand dan
-        // reserve() akan melihat 0 lalu melempar InsufficientStockException.
         $binId = Str::uuid()->toString();
         DB::table('location_bins')->insert([
             'id' => $binId,
@@ -162,8 +155,7 @@ class SalesPhase3Test extends TestCase
         ]);
 
         $service->updateOrder($order->fresh(), ['status' => 'picked']);
-        // Transisi status TIDAK memotong fisik. Sejak 647876d1 on_hand hanya turun
-        // saat picker men-scan rak; di sini yang terjadi cuma pelepasan alokasi.
+
         $this->assertSame(100, $this->inventory()->on_hand);
         $this->assertSame(0, $this->inventory()->on_order);
 

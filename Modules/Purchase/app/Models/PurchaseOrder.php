@@ -74,7 +74,6 @@ class PurchaseOrder extends Model
         return $this->hasMany(PurchaseBill::class);
     }
 
-
     public function isReceivable(): bool
     {
         return in_array($this->status, [self::STATUS_OPEN, self::STATUS_PARTIAL_RECEIVED]);

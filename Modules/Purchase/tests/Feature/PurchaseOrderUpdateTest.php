@@ -119,11 +119,6 @@ class PurchaseOrderUpdateTest extends TestCase
         return $po->fresh('items');
     }
 
-    /**
-     * Bangun putaway COMPLETED yang menempatkan $qty unit varian A ke rak tujuan,
-     * lengkap dengan pivot putaway_item_sources supaya jalur reversal bisa
-     * menelusurinya balik ke baris inbound.
-     */
     private function makePutawayCovering(PurchaseOrder $po, int $qty): Putaway
     {
         $inboundItem = InboundItem::query()

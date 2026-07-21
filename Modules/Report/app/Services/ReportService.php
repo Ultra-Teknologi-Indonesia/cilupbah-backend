@@ -12,12 +12,7 @@ use Modules\Sales\Models\SalesOrder;
 
 class ReportService
 {
-    /**
-     * Label Indonesia untuk status pesanan internal. Kuncinya dinormalkan
-     * (huruf kecil, "-"/"_" disamakan) karena data lapangan bercampur bentuk:
-     * "cancelled", "CANCELED", "ready-to-ship", "AWAITING_BUYER_CONFIRMATION".
-     * Selaras dengan registry "sales-order" di FE lib/status.ts.
-     */
+
     public const ORDER_STATUS_LABELS = [
         'pending'                    => 'Menunggu',
         'unpaid'                     => 'Belum Dibayar',
@@ -37,7 +32,6 @@ class ReportService
         'returned'                   => 'Diretur',
     ];
 
-    /** Label Indonesia untuk setiap nilai kanonik ChannelStatus. */
     public const CHANNEL_STATUS_LABELS = [
         'UNPAID'             => 'Belum Dibayar',
         'READY_TO_SHIP'      => 'Siap Kirim',
@@ -263,9 +257,6 @@ class ReportService
             'paper' => $paper,
         ]);
 
-        // Array [x0, y0, w, h] sudah dalam orientasi final (lebar x tinggi).
-        // Jangan pakai 'landscape' di sini: dompdf menukar w/h saat orientasi
-        // landscape (CPDF::__construct), sehingga label thermal jadi tegak.
         switch ($paper) {
             case 'thermal_50x40':
                 $pdf->setPaper([0, 0, 141.7, 113.4], 'portrait');
@@ -399,11 +390,6 @@ class ReportService
         return $this->repository->shipmentListQuery($filters);
     }
 
-    /**
-     * Opsi filter dialog Daftar Pengiriman. Status memakai status_mp mentah per channel
-     * ("Cancelled - SHOPEE"), bukan 11 nilai kanonik ChannelStatus, karena normalisasi
-     * menggabungkan varian yang secara operasional berbeda.
-     */
     public function shipmentFilterOptions(): array
     {
         return [
@@ -414,7 +400,6 @@ class ReportService
         ];
     }
 
-    /** Nama channel sebagaimana dibaca pengguna, bukan kode internal. */
     private const CHANNEL_LABELS = [
         'shopee'      => 'Shopee',
         'tiktok'      => 'TikTok',
@@ -422,7 +407,6 @@ class ReportService
         'woocommerce' => 'WooCommerce',
     ];
 
-    /** Urutan tahapan pesanan, dipakai untuk mengurutkan dropdown. */
     private const STATUS_LIFECYCLE = [
         'UNPAID',
         'READY_TO_SHIP',
@@ -437,15 +421,6 @@ class ReportService
         'UNKNOWN',
     ];
 
-    /**
-     * Opsi dropdown dibentuk dari kombinasi channel x status kanonik, bukan dari
-     * kode mentah channel. Alasannya: banyak kode mentah bermuara ke status yang
-     * sama (Lazada 'canceled' dan 'cancelled' sama-sama CANCELLED), sehingga versi
-     * mentah memunculkan opsi kembar yang hasil filternya identik. Label memakai
-     * bahasa Indonesia karena dropdown ini dibaca pengguna gudang, bukan developer.
-     *
-     * @return array<int, array{value: string, label: string}>
-     */
     private function statusMpOptions(): array
     {
         $lifecycle = array_flip(self::STATUS_LIFECYCLE);
@@ -481,10 +456,6 @@ class ReportService
         return $status . ' — ' . (self::CHANNEL_LABELS[$source] ?? ucfirst($source));
     }
 
-    /**
-     * Label status channel untuk dibaca pengguna. Kode kanonik yang belum punya
-     * label dikembalikan apa adanya agar status baru tetap terbaca, bukan hilang.
-     */
     public static function channelStatusLabel(?string $channelStatus): ?string
     {
         if ($channelStatus === null || $channelStatus === '') {
@@ -494,10 +465,6 @@ class ReportService
         return self::CHANNEL_STATUS_LABELS[$channelStatus] ?? $channelStatus;
     }
 
-    /**
-     * Nilai yang tak dikenal dikembalikan apa adanya, bukan dijadikan "-",
-     * supaya status baru dari channel tetap terbaca di laporan.
-     */
     public static function orderStatusLabel(?string $status): ?string
     {
         if ($status === null || $status === '') {
@@ -509,9 +476,6 @@ class ReportService
         return self::ORDER_STATUS_LABELS[$key] ?? $status;
     }
 
-    /**
-     * @return array<int, array{value: string, label: string, orders: array}>
-     */
     public function pickListLookup(?string $search, int $perPage = 20): array
     {
         return $this->repository->pickListLookup($search, $perPage)

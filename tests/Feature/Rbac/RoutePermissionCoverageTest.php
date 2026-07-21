@@ -7,29 +7,14 @@ use Modules\Auth\Support\PermissionCatalog;
 use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
 use Tests\TestCase;
 
-/**
- * Menjaga hasil audit RBAC (lihat PLANNING-RBAC-MAPPING-GAP.md).
- *
- * Di codebase ini middleware route adalah SATU-SATUNYA penegak otorisasi —
- * tidak ada Policy maupun $this->authorize() di controller. Karena itu route
- * bisnis yang lolos tanpa gate langsung jadi lubang, dan tidak ada lapisan
- * kedua yang menangkapnya. Test ini menahan regresi tersebut.
- */
 class RoutePermissionCoverageTest extends TestCase
 {
-    /** Prefix milik paket pihak ketiga, di luar tanggung jawab RBAC kita. */
+
     private const VENDOR_PREFIXES = [
         'horizon', 'telescope', '_ignition', 'sanctum',
         'api/documentation', 'docs', 'oauth', 'up', 'storage',
     ];
 
-    /**
-     * Route yang memang boleh diakses user terautentikasi mana pun.
-     *
-     * Semuanya self-scoped (data milik user itu sendiri) atau lookup referensi
-     * tanpa data bisnis. Menambah entri di sini adalah keputusan sadar —
-     * bukan tempat membuang route yang malas di-gate.
-     */
     private const SELF_SERVICE = [
         'api/v1/auth/logout',
         'api/v1/auth/refresh',
@@ -53,7 +38,7 @@ class RoutePermissionCoverageTest extends TestCase
         'api/v1/profile/sessions',
         'api/v1/profile/sessions/revoke-others',
         'api/v1/profile/sessions/{id}/revoke',
-        // Issue tracker sengaja anonim; hanya destroy yang diberi `auth`.
+
         'issues/{issue}',
     ];
 
@@ -137,7 +122,7 @@ class RoutePermissionCoverageTest extends TestCase
                 }
             }
             if (! $authenticated) {
-                continue; // login/webhook/callback publik — di luar cakupan test ini
+                continue; 
             }
 
             if (in_array($route->uri(), self::SELF_SERVICE, true)) {

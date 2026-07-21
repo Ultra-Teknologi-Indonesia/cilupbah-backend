@@ -107,10 +107,6 @@ class TransferReportExport implements FromCollection, WithHeadings, WithMapping,
         ];
     }
 
-    /**
-     * Ditulis sebagai serial datetime Excel, bukan teks, supaya kolomnya bisa
-     * di-sort/filter sebagai tanggal — menyamai file export Jubelio.
-     */
     private function toDate($value): ?float
     {
         return $value ? ExcelDate::PHPToExcel(Carbon::parse($value)) : null;

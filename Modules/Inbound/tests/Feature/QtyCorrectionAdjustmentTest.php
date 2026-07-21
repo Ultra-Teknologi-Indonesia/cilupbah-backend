@@ -19,10 +19,6 @@ use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Tests\TestCase;
 
-/**
- * Koreksi qty diterima dari web wajib menghasilkan dokumen Penyesuaian Stok
- * (keputusan klien K3/K6, 20 Jul 2026) dan hanya boleh memotong stok SEKALI.
- */
 class QtyCorrectionAdjustmentTest extends TestCase
 {
     use RefreshDatabase;
@@ -132,10 +128,6 @@ class QtyCorrectionAdjustmentTest extends TestCase
         $this->assertEquals(-5, (int) $item->difference_qty);
     }
 
-    /**
-     * Remarks disusun otomatis — admin tidak mengetik apa pun. Harus tetap
-     * menjawab: dokumen mana, SKU apa, dari berapa ke berapa, siapa pelakunya.
-     */
     public function test_qty_correction_auto_generates_remarks(): void
     {
         $inbound = $this->makeReceivedInbound(100);
@@ -199,11 +191,6 @@ class QtyCorrectionAdjustmentTest extends TestCase
         $this->assertEquals(-5, (int) $receipt->qty);
     }
 
-    /**
-     * Jaring pengaman R2: dulu jalur ini memanggil inventoryService->adjust() inline.
-     * Kalau panggilan itu tidak terhapus saat dokumen ADJ ditambahkan, stok
-     * terpotong dua kali dan test ini merah.
-     */
     public function test_qty_correction_applies_stock_delta_exactly_once(): void
     {
         $inbound = $this->makeReceivedInbound(100);

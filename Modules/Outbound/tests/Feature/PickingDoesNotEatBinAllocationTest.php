@@ -11,19 +11,6 @@ use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Services\PicklistService;
 use Tests\TestCase;
 
-/**
- * Regresi: PicklistService::commitPickAllocation() dulu menurunkan `on_order`
- * pada baris BIN, tanpa menulis baris ledger apa pun.
- *
- * Diam-diam no-op selama bin belum punya alokasi (max(0, ...) menelannya), tapi
- * begitu bin memang memegang alokasi -- Reserved Stock mengalokasikan on_order
- * PER BIN lewat ProcessReservedStockJob -- picking ikut memakannya. Karena
- * sumOnOrderAtLocation() menjumlah SEMUA baris (bin + agregat), total lokasi
- * turun 2x untuk satu pick: sekali di sini, sekali lagi oleh StockService yang
- * melepas dari baris agregat dengan ledger ORDER_RELEASE.
- *
- * Tanpa ledger, drift itu tak pernah terdeteksi inventory:reconcile-on-order.
- */
 class PickingDoesNotEatBinAllocationTest extends TestCase
 {
     use RefreshDatabase;
@@ -39,9 +26,6 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        // User disisipkan lewat query builder, jadi belum punya role. Endpoint
-        // outbound ter-gate permission, karena itu beri role owner (lolos via
-        // Gate::before) supaya test menguji perilaku, bukan otorisasi.
         \App\Models\User::find($id)->assignRole(
             \App\Models\Role::firstOrCreate(['name' => 'owner', 'guard_name' => 'web'])
         );
@@ -168,7 +152,6 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
         $binId      = $this->seedBin($locationId, 'RACK-ALLOC-1');
         $variantId  = $this->seedProductVariant('SKU-ALLOC-1');
 
-        // Bin memegang 3 unit alokasi Reserved Stock (pola ProcessReservedStockJob).
         $this->seedInventory($variantId, $locationId, $binId, onHand: 10, onOrder: 3);
 
         $ids = $this->seedPicklistWithItem($locationId, $variantId, 'SKU-ALLOC-1', 2, $userId);

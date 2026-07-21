@@ -555,8 +555,7 @@ class InboundController extends Controller
     {
         $validated = $request->validate([
             'qty' => 'required|integer|min:0',
-            // Opsional: kalau tidak dikirim, remarks Penyesuaian Stok disusun
-            // otomatis oleh service (keputusan klien 20 Jul 2026).
+
             'reason_note' => 'nullable|string',
             '_expected_updated_at' => 'nullable|string',
         ]);
@@ -574,8 +573,7 @@ class InboundController extends Controller
 
             return $this->successResponse($inbound, 'Jumlah diterima diperbarui. Penyesuaian Stok dibuat otomatis.');
         } catch (\App\Exceptions\UserFacingException $e) {
-            // Jangan ditelan jadi 422 generik: StaleWriteException (412) dan
-            // REASON_NOTE_REQUIRED perlu sampai ke FE dengan status + code aslinya.
+
             throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(

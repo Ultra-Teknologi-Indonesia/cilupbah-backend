@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Outbound\Support\InstantOrderClassifier;
+use Modules\Warehouse\Models\Location;
 
 class ShipmentService
 {
@@ -61,9 +62,11 @@ class ShipmentService
             ? $data['shipment_no']
             : $this->shipmentRepository->generateShipmentNo();
 
+        $locationId = $data['location_id'] ?? $this->resolveDefaultLocationId();
+
         return $this->shipmentRepository->create([
             'shipment_no' => $shipmentNo,
-            'location_id' => $data['location_id'],
+            'location_id' => $locationId,
             'courier_name' => $data['courier_name'] ?? null,
             'courier_code' => $data['courier_code'] ?? null,
             'shipment_type' => $data['shipment_type'],
@@ -165,6 +168,13 @@ class ShipmentService
         ]);
 
         ProcessShipmentHandOverJob::dispatch($id);
+
+        $shipment->loadMissing('orders.order');
+        foreach ($shipment->orders as $so) {
+            if ($so->order) {
+                $this->syncFromChannelStatus($so->order);
+            }
+        }
 
         return $this->shipmentRepository->findById($id);
     }
@@ -367,8 +377,6 @@ class ShipmentService
         $currentRank = self::SHIPMENT_STATUS_RANK[$shipment->status] ?? 0;
         $targetRank = self::SHIPMENT_STATUS_RANK[$targetStatus] ?? 0;
 
-        // Manifest SCHEDULED masih terbuka dan milik operator: hanya handOver() manual
-        // yang boleh menutupnya, supaya resi lost-scan tetap bisa digabungkan.
         if ($currentRank < self::SHIPMENT_STATUS_RANK[Shipment::STATUS_HANDED_OVER]) {
             return $shipment;
         }
@@ -547,5 +555,18 @@ class ShipmentService
                 );
             }
         }
+    }
+
+    private function resolveDefaultLocationId(): string
+    {
+        $id = Location::query()
+            ->where('location_code', Location::SYSTEM_KECIL_CODE)
+            ->value('id');
+
+        if (! $id) {
+            throw new \Exception('Lokasi gudang kecil (WH-KECIL) tidak ditemukan.');
+        }
+
+        return $id;
     }
 }

@@ -71,9 +71,6 @@ class TransferReportTest extends TestCase
         ]);
     }
 
-    /**
-     * @param  array<int, array{variant: ProductVariant, qty: int, received_qty?: int, item_notes?: string}>  $items
-     */
     private function makeTransfer(
         string $transferNumber,
         string $status,

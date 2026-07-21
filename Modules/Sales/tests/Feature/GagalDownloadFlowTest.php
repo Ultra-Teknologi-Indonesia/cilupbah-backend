@@ -124,14 +124,6 @@ class GagalDownloadFlowTest extends TestCase
         return SalesOrder::with('items')->findOrFail($orderId);
     }
 
-    /**
-     * Menyisipkan pesanan unmapped langsung ke database, melewati jalur ingest.
-     *
-     * Sejak guard "hanya terima SKU yang sudah diunduh" berlaku, pesanan semacam ini
-     * tidak bisa lagi masuk lewat upsertFromChannel. Tapi barisnya masih ada di
-     * database dari sebelum guard, dan alur Gagal Download tetap harus melayaninya —
-     * itulah yang diuji memakai helper ini.
-     */
     protected function seedLegacyUnmappedOrder(string $orderNo, string $sku): string
     {
         $orderId = Str::uuid()->toString();

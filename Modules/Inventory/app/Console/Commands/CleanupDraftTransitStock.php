@@ -8,17 +8,6 @@ use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Services\InventoryService;
 
-/**
- * Bersihkan stok yang menggantung di lokasi transit akibat perilaku lama
- * (sebelum 24c0f14b): item transfer DRAFT langsung menambah on_hand transit,
- * padahal barangnya belum dikirim.
- *
- * Kode baru hanya menghentikan kasus baru -- baris lama tidak tertarik sendiri,
- * karena jalur release yang sekarang memang tidak lagi menyentuh transit.
- *
- * Yang DITARIK hanya sisi transit. Sisi sumber sengaja tidak disentuh: perilaku
- * lama tidak pernah mengurangi on_hand rak asal, jadi stok fisiknya sudah benar.
- */
 class CleanupDraftTransitStock extends Command
 {
     protected $signature = 'inventory:cleanup-draft-transit
@@ -26,7 +15,6 @@ class CleanupDraftTransitStock extends Command
 
     protected $description = 'Tarik kembali stok transit milik transfer yang masih DRAFT/APPROVED (warisan perilaku lama).';
 
-    /** Status yang barangnya BELUM berjalan, jadi tidak boleh ada di transit. */
     private const STATUS_BELUM_JALAN = ['DRAFT', 'APPROVED'];
 
     public function handle(
@@ -92,9 +80,6 @@ class CleanupDraftTransitStock extends Command
                     return;
                 }
 
-                // Tidak boleh menarik lebih dari yang benar-benar ada di transit:
-                // sebagian bisa sudah tertarik jalur lain, dan on_hand transit
-                // tidak boleh jadi negatif.
                 $take = min((int) $row->qty, (int) $transit->on_hand);
                 if ($take <= 0) {
                     return;

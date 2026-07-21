@@ -642,13 +642,6 @@ class SalesOrderRepository
         return DB::table('product_variants')->where('id', $variantId)->exists();
     }
 
-    /**
-     * SKU pada payload channel yang belum punya padanan di katalog kita.
-     * Item tanpa SKU ikut dianggap tak terpetakan — tidak mungkin dipetakan
-     * ke varian mana pun.
-     *
-     * @return array<int, string>
-     */
     public function unmappedSkus(array $items): array
     {
         $known = $this->resolveVariantIdsBySku($items);

@@ -5,11 +5,6 @@ namespace Modules\Channel\Tests\Support;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
-/**
- * Sejak kebijakan "hanya terima pesanan untuk SKU yang sudah diunduh" berlaku,
- * fixture pull/webhook channel wajib menyemai varian lebih dulu — kalau tidak,
- * pesanannya ditolak di ingest dan test menguji hal yang salah.
- */
 trait SeedsCatalogVariant
 {
     protected function seedCatalogVariant(string $sku): string

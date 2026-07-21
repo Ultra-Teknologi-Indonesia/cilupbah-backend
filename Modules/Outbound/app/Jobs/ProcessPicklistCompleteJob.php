@@ -24,13 +24,6 @@ class ProcessPicklistCompleteJob implements ShouldQueue
         $this->onQueue(config('queue.names.stock_critical'));
     }
 
-    /**
-     * Jaring pengaman. Sejak rilis per-pesanan dijalankan inkremental tiap pick
-     * (lihat PicklistService::pickItem), umumnya semua pesanan di sini sudah
-     * lepas dan OrderReleaseService akan melewatinya. Job tetap dipertahankan
-     * untuk menangkap pesanan yang baru tuntas lewat jalur lain, mis. item
-     * ditandai SHORT/REJECTED.
-     */
     public function handle(OrderReleaseService $orderReleaseService): void
     {
         $picklist = Picklist::with('items.order', 'items.orderItem', 'picker')->find($this->picklistId);

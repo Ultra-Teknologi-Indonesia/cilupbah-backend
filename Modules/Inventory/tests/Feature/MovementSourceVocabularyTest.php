@@ -5,22 +5,9 @@ namespace Modules\Inventory\Tests\Feature;
 use Modules\Inventory\Support\InventoryMovementSourceMap;
 use Tests\TestCase;
 
-/**
- * Penjaga kosakata `source`.
- *
- * Akar seluruh audit kronologi (PLANNING-KRONOLOGI-STOK-PARITY.md) adalah tiga
- * vocabulary yang saling drift: yang ditulis produksi, yang dipetakan untuk
- * label/filter, dan yang di-hardcode FE. Drift-nya senyap -- source yang tidak
- * terpetakan tetap tersimpan, hanya tampil sebagai enum mentah dan hilang dari
- * dropdown filter.
- *
- * Test ini memindai kode produksi dan menuntut setiap literal source yang ditulis
- * punya entri di SOURCES, serta setiap kategori punya tempat di CATEGORY_ORDER.
- * Tanpa ini, kelas bug tersebut berulang diam-diam alih-alih gagal di CI.
- */
 class MovementSourceVocabularyTest extends TestCase
 {
-    /** Direktori kode produksi yang boleh menulis movement. */
+
     private const SCAN_DIRS = ['Modules', 'app'];
 
     private function productionSourceLiterals(): array
@@ -45,7 +32,6 @@ class MovementSourceVocabularyTest extends TestCase
 
                 $real = $file->getRealPath();
 
-                // Test dan definisi peta itu sendiri bukan penulis movement.
                 if (str_contains($real, DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR)
                     || str_contains($real, 'InventoryMovementSourceMap.php')) {
                     continue;
@@ -56,8 +42,6 @@ class MovementSourceVocabularyTest extends TestCase
                     continue;
                 }
 
-                // Hanya literal SCREAMING_SNAKE -- source dinamis (variabel) tak
-                // bisa dipindai statis dan memang bukan sasaran test ini.
                 preg_match_all(
                     "/'source'\s*=>\s*'([A-Z][A-Z_]{2,})'/",
                     $code,
@@ -122,8 +106,7 @@ class MovementSourceVocabularyTest extends TestCase
 
     public function test_partisi_alokasi_memuat_semua_source_on_order(): void
     {
-        // Source yang menggerakkan on_order (bukan on_hand) HARUS masuk partisi
-        // alokasi, kalau tidak qty-nya mencemari saldo fisik di kronologi.
+
         foreach (['ORDER_RESERVE', 'ORDER_RELEASE', 'RESERVE', 'RESERVE_CANCEL', 'RESERVE_EXPIRED'] as $source) {
             $this->assertContains(
                 $source,
@@ -132,8 +115,6 @@ class MovementSourceVocabularyTest extends TestCase
             );
         }
 
-        // Ledger per-pesanan sengaja lebih sempit: Reserved Stock punya dokumen
-        // dan penomoran sendiri, mencampurnya merusak hitungan sisa alokasi.
         $this->assertSame(
             ['ORDER_RESERVE', 'ORDER_RELEASE'],
             InventoryMovementSourceMap::ORDER_LEDGER_SOURCES,

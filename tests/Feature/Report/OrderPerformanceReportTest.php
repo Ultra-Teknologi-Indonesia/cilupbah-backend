@@ -70,7 +70,6 @@ class OrderPerformanceReportTest extends TestCase
         ]);
     }
 
-    /** Satu picklist dengan beberapa SKU, durasi tetap satu untuk seluruh baris. */
     private function makePicklist(string $no, int $durasiDetik, array $skus, ?SalesOrder $order = null): Picklist
     {
         $order ??= $this->makeOrder('SO-' . $no);
@@ -132,7 +131,7 @@ class OrderPerformanceReportTest extends TestCase
     {
         $order = $this->makeOrder('SO-NEG');
         $picklist = $this->makePicklist('PICK-NEG', 600, ['PRF-SKU-1' => 1], $order);
-        // completed_at mendahului started_at — data lapangan bisa begini.
+
         DB::table('picklists')->where('id', $picklist->id)
             ->update(['completed_at' => '2026-07-19 08:00:00']);
 
@@ -215,8 +214,7 @@ class OrderPerformanceReportTest extends TestCase
 
     public function test_durasi_dijumlahkan_per_transaksi_bukan_per_baris(): void
     {
-        // Satu picklist berdurasi 10 menit berisi 3 SKU. Kalau durasi dijumlah
-        // per baris hasilnya 30 menit — itu yang harus dicegah.
+
         $this->makePicklist('PICK-AGG', 600, [
             'PRF-SKU-1' => 2, 'PRF-SKU-2' => 3, 'PRF-SKU-3' => 5,
         ]);
@@ -246,7 +244,7 @@ class OrderPerformanceReportTest extends TestCase
 
         $this->assertStringContainsString('ari.s', $html);
         $this->assertStringContainsString('Grand Total', $html);
-        // 2 transaksi, qty 2+3+5 = 10, durasi 600+1200 = 30 menit, rata-rata 15 menit.
+
         $this->assertStringContainsString('0 jam 30 menit 0 detik', $html);
         $this->assertStringContainsString('0 jam 15 menit 0 detik', $html);
     }

@@ -15,10 +15,6 @@ use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 
-/**
- * Pesan guard rak harus sampai ke user apa adanya lewat endpoint process,
- * bukan tertelan jadi "Gagal memproses aksi."
- */
 class PutawayGuardMessageTest extends TestCase
 {
     use RefreshDatabase;

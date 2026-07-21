@@ -162,7 +162,7 @@ class ReconcileOnOrderTest extends TestCase
     public function test_fix_drains_excess_that_sits_on_bin_rows(): void
     {
         $v = $this->variant('RECON-5');
-        // Agregat kosong, kelebihan justru tersimpan di baris bin.
+
         $this->setAggregateOnOrder($v->id, 0);
         $this->setBinOnOrder($v->id, 3);
 

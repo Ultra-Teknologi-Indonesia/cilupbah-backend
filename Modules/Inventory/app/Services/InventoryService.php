@@ -1549,11 +1549,6 @@ class InventoryService
                         ]);
                     }
 
-                    // Transit kini diisi saat pengiriman, jadi membatalkan
-                    // pengiriman WAJIB menariknya kembali. Sebelum perubahan ini
-                    // transit diisi sejak DRAFT sehingga revert memang tidak
-                    // boleh menyentuhnya -- kalau blok ini tidak ada, stok akan
-                    // tertinggal menggantung di transit selamanya.
                     [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
 
                     $transitInventory = $this->inventoryRepository->findExactForUpdate(
@@ -1653,9 +1648,6 @@ class InventoryService
                     'created_by'         => $data['shipped_by'] ?? $transfer->assigned_to,
                 ]);
 
-                // Barang baru masuk transit DI SINI -- saat surat jalan dicetak.
-                // Sebelumnya ini terjadi sejak item ditambahkan ke DRAFT, sehingga
-                // transfer yang belum berjalan sudah terhitung di kolom Transit.
                 [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
 
                 $transitInventory = $this->inventoryRepository->findOrCreateForUpdate(
@@ -2188,9 +2180,6 @@ class InventoryService
                     'created_by'         => $transfer->created_by,
                 ]);
 
-                // Sama seperti shipTransfer: transit diisi saat pengiriman, bukan
-                // saat draft dibuat. submitDraft adalah jalur kirim langsung dari
-                // mobile, jadi perlakuannya harus identik.
                 [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
 
                 $transitInventory = $this->inventoryRepository->findOrCreateForUpdate(

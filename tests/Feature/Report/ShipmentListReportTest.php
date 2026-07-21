@@ -275,7 +275,6 @@ class ShipmentListReportTest extends TestCase
         $this->assertCount(1, $kanonik);
         $this->assertSame('SP-RTS', $kanonik[0]->salesorder_no);
 
-        // Kode mentah tetap diterima supaya tautan/bookmark lama tidak rusak.
         $mentah = $this->rows([
             'from' => '2026-07-18', 'to' => '2026-07-18',
             'status_mp' => 'shopee::ready_to_ship',

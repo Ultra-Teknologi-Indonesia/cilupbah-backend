@@ -8,18 +8,12 @@ use Illuminate\Support\Collection;
 use Modules\Report\Repositories\ReportRepository;
 use Modules\Warehouse\Models\Location;
 
-/**
- * Daftar Penempatan Barang — rincian isi tiap dokumen putaway pada satu tanggal
- * dan satu lokasi. Berbeda dari Laporan Performa Penempatan yang mengukur durasi;
- * laporan ini mendata barang, sumber penerimaan, dan rak tujuannya.
- */
 class PutawayListReportService
 {
     public function __construct(
         protected ReportRepository $repository,
     ) {}
 
-    /** @return array<int, array{value: string, label: string}> */
     public function lookup(string $date, string $locationId): array
     {
         return $this->repository->putawayLookup($date, $locationId)
@@ -44,7 +38,6 @@ class PutawayListReportService
         return $pdf;
     }
 
-    /** Dikelompokkan per dokumen putaway; tiap dokumen punya blok kepala sendiri. */
     private function documents(Collection $rows): array
     {
         return $rows
@@ -74,7 +67,6 @@ class PutawayListReportService
             ->all();
     }
 
-    /** Format Jubelio: "nama(email)"; tanpa email cukup namanya saja. */
     private function runnerLabel(object $row): string
     {
         $nama = $row->runner_name ?: '-';

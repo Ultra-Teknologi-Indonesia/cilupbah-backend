@@ -6,14 +6,9 @@ use Modules\Purchase\Enums\PurchaseActivityAction;
 use Modules\Purchase\Models\PurchaseOrder;
 use Modules\Purchase\Models\PurchaseOrderActivity;
 
-/**
- * Pencatat riwayat PO. Meniru pola sales_order_status_histories: satu baris per
- * peristiwa, pelaku disimpan sebagai FK + snapshot nama/email, dan detail
- * perubahan masuk ke metadata sebagai pasangan nilai lama/baru.
- */
 class PurchaseOrderActivityLogger
 {
-    /** Kolom header yang layak muncul di riwayat. Sisanya (total, status) punya baris sendiri. */
+
     private const TRACKED_HEADER_FIELDS = [
         'contact_id',
         'location_id',
@@ -25,7 +20,6 @@ class PurchaseOrderActivityLogger
         'po_number',
     ];
 
-    /** Kolom item yang perubahannya berarti bagi pengguna. */
     private const TRACKED_ITEM_FIELDS = [
         'qty',
         'unit_price',
@@ -59,10 +53,6 @@ class PurchaseOrderActivityLogger
         ]);
     }
 
-    /**
-     * Catat perubahan kolom header. Tidak menulis apa pun kalau tak ada yang
-     * benar-benar berubah -- riwayat yang penuh baris kosong tidak terbaca.
-     */
     public function logHeaderChanges(PurchaseOrder $po, array $before, array $after): void
     {
         $prev = [];
@@ -145,10 +135,6 @@ class PurchaseOrderActivityLogger
         ], PurchaseOrderActivity::ENTITY_ITEM, $itemId);
     }
 
-    /**
-     * Penarikan balik stok dicatat terpisah dari perubahan qty biasa: ini yang
-     * menjelaskan kenapa stok di rak ikut berkurang.
-     */
     public function logReceiptReversed(PurchaseOrder $po, ?string $sku, int $qty, string $reason): void
     {
         $this->log($po, PurchaseActivityAction::RECEIPT_REVERSED, [

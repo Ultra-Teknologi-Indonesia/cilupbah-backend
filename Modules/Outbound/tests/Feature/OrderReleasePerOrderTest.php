@@ -9,11 +9,6 @@ use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Services\PicklistService;
 use Tests\TestCase;
 
-/**
- * Satu picklist bisa memuat banyak pesanan. Pesanan yang seluruh itemnya sudah
- * tuntas harus langsung lepas ke tahap berikutnya, tanpa menunggu pesanan lain
- * di picklist yang sama selesai -- inilah yang dulu membuat packing menganggur.
- */
 class OrderReleasePerOrderTest extends TestCase
 {
     use RefreshDatabase;
@@ -29,9 +24,6 @@ class OrderReleasePerOrderTest extends TestCase
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        // User disisipkan lewat query builder, jadi belum punya role. Endpoint
-        // outbound ter-gate permission, karena itu beri role owner (lolos via
-        // Gate::before) supaya test menguji perilaku, bukan otorisasi.
         \App\Models\User::find($id)->assignRole(
             \App\Models\Role::firstOrCreate(['name' => 'owner', 'guard_name' => 'web'])
         );
@@ -158,10 +150,6 @@ class OrderReleasePerOrderTest extends TestCase
         return (string) DB::table('picklists')->where('id', $picklistId)->value('status');
     }
 
-    /**
-     * Dua pesanan dalam satu picklist. Menuntaskan pesanan A saja harus membuat
-     * A lepas ke packing sementara B tetap tertahan, dan picklist tetap berjalan.
-     */
     public function test_completed_order_releases_while_sibling_order_still_in_progress(): void
     {
         $userId = $this->seedUser();
@@ -186,7 +174,6 @@ class OrderReleasePerOrderTest extends TestCase
 
         $service = app(PicklistService::class);
 
-        // Tuntaskan hanya pesanan A.
         $service->pickItem($picklistId, $orderA['item_id'], [
             'qty_delta' => 3,
             'bin_code' => 'L1-B1-K1-R1',
@@ -249,9 +236,6 @@ class OrderReleasePerOrderTest extends TestCase
         );
     }
 
-    /**
-     * Rilis inkremental dipanggil tiap pick, jadi harus aman dipanggil berkali-kali.
-     */
     public function test_release_is_idempotent_across_repeated_picks(): void
     {
         $userId = $this->seedUser();
@@ -280,8 +264,6 @@ class OrderReleasePerOrderTest extends TestCase
         ]);
         $this->assertSame('picked', $this->orderStatus($order['order_id']));
 
-        // Koreksi turun lalu naik lagi: rilis kedua tidak boleh menimbulkan error
-        // maupun mengubah status pesanan yang sudah lepas.
         $service->pickItem($picklistId, $order['item_id'], [
             'qty_picked' => 1,
             'bin_code' => 'L1-B1-K1-R1',

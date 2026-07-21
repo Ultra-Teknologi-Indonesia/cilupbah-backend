@@ -7,13 +7,6 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Modules\Report\Repositories\ReportRepository;
 
-/**
- * Laporan Performa Penempatan (putaway).
- *
- * Bentuknya beda dari Laporan Performa Proses Pesanan meski sekilas mirip:
- * durasinya ditulis tanpa detik, tabel Detail punya baris Total per petugas,
- * Summary hanya empat kolom, dan tidak ada Grand Total.
- */
 class PutawayPerformanceReportService
 {
     private const DETAIL_COLUMNS = [
@@ -51,7 +44,7 @@ class PutawayPerformanceReportService
             'summaryGroupLabel' => 'Lokasi Gudang',
             'detailTotals' => true,
             'groups' => $detail ? $this->detailGroups($rows) : $this->summaryGroups($rows),
-            // Jubelio tidak menampilkan Grand Total pada laporan ini.
+
             'grandTotal' => null,
         ]);
         $pdf->setPaper('a4', 'portrait');
@@ -94,7 +87,6 @@ class PutawayPerformanceReportService
             ->all();
     }
 
-    /** Durasi dokumen dibagi jumlah SKU di dalamnya. */
     private function perSkuSeconds(object $r): float
     {
         $skuCount = max(1, (int) ($r->sku_count ?? 1));
@@ -102,10 +94,6 @@ class PutawayPerformanceReportService
         return (float) ($r->durasi_detik ?? 0) / $skuCount;
     }
 
-    /**
-     * Baris Total di dalam tabel Detail: jumlah transaksi menempati kolom
-     * No Transaksi, lalu total qty dan rata-rata durasi per SKU.
-     */
     private function detailTotal(Collection $rows): array
     {
         $count = $rows->count();

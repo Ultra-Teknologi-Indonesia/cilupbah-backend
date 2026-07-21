@@ -14,19 +14,12 @@ class OrderPerformanceReportService
         protected ReportRepository $repository,
     ) {}
 
-    /**
-     * "{j} jam {m} menit {d} detik", termasuk saat nol — mengikuti format Jubelio.
-     * Nilai negatif dijepit nol; laporan performa yang menampilkan durasi minus
-     * hanya membingungkan pembacanya.
-     */
     public static function formatDuration(int|float|null $seconds, bool $withSeconds = true): string
     {
         $total = max(0, (int) round((float) $seconds));
         $jam = intdiv($total, 3600);
         $menit = intdiv($total % 3600, 60);
 
-        // Laporan Penempatan menulis durasi tanpa detik ("0 jam 2 menit");
-        // laporan lain menyertakannya.
         return $withSeconds
             ? sprintf('%d jam %d menit %d detik', $jam, $menit, $total % 60)
             : sprintf('%d jam %d menit', $jam, $menit);
@@ -65,10 +58,6 @@ class OrderPerformanceReportService
         return $fmt($filters['from'] ?? null) . ' - ' . $fmt($filters['to'] ?? null);
     }
 
-    /**
-     * Detail: lokasi → grup (pengguna/kurir) → baris. Pesanan tidak punya grup kedua,
-     * jadi seluruh barisnya langsung di bawah lokasi.
-     */
     private function detailGroups(string $type, Collection $rows): array
     {
         return $rows
@@ -115,10 +104,6 @@ class OrderPerformanceReportService
         ];
     }
 
-    /**
-     * Summary Kurir dikelompokkan per kurir dengan baris lokasi; jenis lain
-     * dikelompokkan per lokasi dengan baris pengguna. Sumbunya sekadar bertukar.
-     */
     private function summaryGroups(string $type, Collection $rows): array
     {
         $isKurir = $type === OrderPerformanceSpec::KURIR;
@@ -140,10 +125,6 @@ class OrderPerformanceReportService
             ->all();
     }
 
-    /**
-     * Durasi dijumlahkan per transaksi unik, bukan per baris — satu picklist yang
-     * berisi 40 SKU tetap dihitung satu durasi, bukan 40 kali.
-     */
     private function aggregate(Collection $rows): array
     {
         $perTransaksi = $rows->groupBy('transaksi_id');

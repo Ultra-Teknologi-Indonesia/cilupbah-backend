@@ -1267,9 +1267,6 @@ class SalesOrderService
             $wasNewOrder = $existing === null;
             $previousStatus = $existing?->status;
 
-            // Kebijakan: kita hanya menerima pesanan untuk SKU yang sudah kita unduh.
-            // Berlaku untuk semua channel. Pesanan yang sudah pernah masuk tetap boleh
-            // diperbarui, supaya perubahan status pesanan lama tidak ikut terblokir.
             if ($wasNewOrder && ! empty($orderData['items']) && is_array($orderData['items'])) {
                 $unmapped = $this->orderRepository->unmappedSkus($orderData['items']);
 
@@ -1531,13 +1528,6 @@ class SalesOrderService
         return $mutated;
     }
 
-    /**
-     * Transisi divalidasi lewat enum SalesOrderStatus supaya status non-kanonik
-     * (mis. AWAITING_BUYER_CONFIRMATION -> RESERVED) ikut dikenali. Sebelumnya
-     * memakai array hardcoded, sehingga status seperti itu punya daftar transisi
-     * KOSONG dan pesanannya beku total (tak bisa pick/pack/batal).
-     * Tabel transisi enum identik dengan ALLOWED_TRANSITIONS untuk status kanonik.
-     */
     private function validateTransition(string $from, string $to): void
     {
         $fromStatus = SalesOrderStatus::tryFrom($from);
@@ -1557,7 +1547,6 @@ class SalesOrderService
         }
     }
 
-    /** Rank tahap fulfillment, dinormalkan dulu lewat canonical(). */
     private function statusRank(?string $status, int $default = -1): int
     {
         $canonical = SalesOrderStatus::tryFrom((string) $status)?->canonical();
@@ -1574,8 +1563,7 @@ class SalesOrderService
         match ($newStatus) {
             'reserved'  => $this->reserveStockForOrder($order),
             'picked'    => $this->pickStockForOrder($order),
-            // 'shipped' tidak lagi menyentuh stok: pengiriman bukan gerakan stok,
-            // jejaknya di sales_order_status_histories.
+
             'cancelled' => $this->releaseStockForOrder($order),
             default     => null,
         };
@@ -1630,19 +1618,6 @@ class SalesOrderService
         $this->releaseStockForStatus($order, $order->status);
     }
 
-    /**
-     * Melepas stok saat pesanan dibatalkan.
-     *
-     * Default DIBALIK: dulu "hanya lepas bila status termasuk 4 status yang
-     * dikenal", sehingga status di luar daftar (ready-to-ship,
-     * AWAITING_BUYER_CONFIRMATION, status baru dari marketplace) TIDAK PERNAH
-     * melepas kunci dan on_order bocor permanen. Sekarang: SELALU lepas sisa
-     * kunci, dan kembalikan on_hand ke bin asal hanya bila barang memang sudah
-     * diambil fisik (picked/packed).
-     *
-     * Jumlah yang dilepas diambil dari ledger alokasi per salesorder_no, bukan
-     * ditebak dari qty pesanan, sehingga tidak bisa melepas kunci pesanan lain.
-     */
     private function releaseStockForStatus(SalesOrder $order, ?string $status): bool
     {
         $order->loadMissing('items');

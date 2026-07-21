@@ -16,8 +16,6 @@ return new class extends Migration
             $table->string('action_id', 16);
             $table->string('action', 32);
 
-            // Trio pelaku: FK untuk penelusuran, nama+email sebagai snapshot supaya
-            // riwayat tetap terbaca setelah user dihapus (actor_id jadi NULL).
             $table->uuid('actor_id')->nullable();
             $table->string('actor_name')->nullable();
             $table->string('actor_email')->nullable();

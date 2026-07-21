@@ -27,9 +27,6 @@ class PicklistFailAndSplitTest extends TestCase
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        // User disisipkan lewat query builder, jadi belum punya role. Endpoint
-        // outbound ter-gate permission, karena itu beri role owner (lolos via
-        // Gate::before) supaya test menguji perilaku, bukan otorisasi.
         \App\Models\User::find($id)->assignRole(
             \App\Models\Role::firstOrCreate(['name' => 'owner', 'guard_name' => 'web'])
         );

@@ -8,27 +8,12 @@ use Modules\Outbound\Models\PicklistItem;
 use Modules\Sales\Events\OrderNeedsBuyerConfirmation;
 use Modules\Sales\Services\SalesOrderService as OrderService;
 
-/**
- * Melepas satu pesanan ke tahap berikutnya begitu seluruh itemnya tuntas,
- * tanpa menunggu picklist-nya selesai semua.
- *
- * Satu picklist bisa memuat banyak pesanan. Sebelumnya logika ini hanya berjalan
- * saat seluruh picklist di-complete, sehingga satu pesanan yang tersendat
- * menahan pesanan lain yang sebenarnya sudah lengkap -- packing ikut menganggur.
- *
- * Idempoten: pesanan yang sudah lepas dari status 'reserved' dilewati, jadi aman
- * dipanggil berkali-kali (tiap pick) maupun sekali di akhir lewat
- * ProcessPicklistCompleteJob sebagai jaring pengaman.
- */
 class OrderReleaseService
 {
     public function __construct(
         protected OrderService $orderService,
     ) {}
 
-    /**
-     * @return bool true kalau pesanan ini baru saja dilepas.
-     */
     public function releaseIfComplete(Picklist $picklist, string $orderId): bool
     {
         $items = PicklistItem::with('order')
@@ -42,8 +27,6 @@ class OrderReleaseService
 
         $order = $items->first()->order;
 
-        // Sudah pernah dilepas (atau tidak lagi di tahap picking) -- jangan
-        // sentuh lagi supaya event tidak terkirim dua kali.
         if (! $order || $order->status !== 'reserved') {
             return false;
         }

@@ -7,16 +7,6 @@ use App\Models\Role;
 use Illuminate\Console\Command;
 use Modules\Auth\Support\PermissionCatalog;
 
-/**
- * Pemeriksaan pra-deploy RBAC. HANYA MEMBACA — tidak mengubah apa pun.
- *
- * Jalankan di target (staging/produksi) SEBELUM `db:seed --class=RbacPermissionSeeder`
- * untuk melihat persis apa yang akan berubah. Ini penting karena seeder memakai
- * syncPermissions(), yang MENIMPA permission per-role dengan isi config/rbac.php —
- * penyesuaian manual lewat UI RBAC akan hilang tanpa peringatan.
- *
- * Lihat PLANNING-RBAC-MAPPING-GAP.md.
- */
 class RbacPreflight extends Command
 {
     protected $signature = 'rbac:preflight {--json : Keluarkan sebagai JSON untuk diarsipkan}';

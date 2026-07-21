@@ -128,12 +128,6 @@ class MultiParticipantReceiveTest extends TestCase
         $this->assertEquals(150, $item->received_qty, 'F1: over-receipt tidak diblok');
     }
 
-    /**
-     * DIBALIK 20 Jul 2026 (keputusan klien K2): koreksi qty dari web sengaja TIDAK
-     * lagi dikunci saat masih ada staff yang scan di mobile. Sebelumnya test ini
-     * mengharapkan MobileSessionActiveException. Guard hanya dicabut di jalur
-     * setReceivedQty — call site assertWebCanMutate yang lain tetap mengunci.
-     */
     public function test_web_edit_allowed_while_participant_active_F2(): void
     {
         $inbound = $this->makeInbound(100);
@@ -150,7 +144,6 @@ class MultiParticipantReceiveTest extends TestCase
 
         $this->assertEquals(60, $inbound->fresh('items')->items->first()->received_qty);
     }
-
 
     public function test_admin_close_receiving_finalizes_and_withdraws_active_participants(): void
     {

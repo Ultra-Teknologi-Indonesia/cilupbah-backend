@@ -24,12 +24,11 @@ Route::prefix('v1/auth')->group(function () {
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout'])->name('auth.logout');
-        // Terima refresh_token di header Authorization. Kontroller cek
-        // ability 'refresh' — access token biasa akan balas 401.
+
         Route::post('/refresh', [AuthController::class, 'refresh'])
             ->middleware('throttle:20,1')
             ->name('auth.refresh');
-        // Buka idle lock — verifikasi password tanpa menerbitkan token baru.
+
         Route::post('/unlock', [AuthController::class, 'unlock'])
             ->middleware('throttle:5,1')
             ->name('auth.unlock');

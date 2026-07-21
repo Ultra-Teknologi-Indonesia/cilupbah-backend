@@ -155,6 +155,54 @@ class ProcessShopeeWebhook implements ShouldQueue
         }
 
         $orderService->pullOrderById($shopId, $orderSn);
+
+        $this->recordDeliveredEventIfApplicable($orderSn, $data);
+    }
+
+    protected function recordDeliveredEventIfApplicable(string $orderSn, array $data): void
+    {
+        $status = strtolower((string) ($data['status'] ?? ''));
+        if (! in_array($status, ['completed', 'to_confirm_receive', 'shipped'], true)) {
+            return;
+        }
+
+        $order = \Modules\Sales\Models\SalesOrder::query()
+            ->where('source', 'shopee')
+            ->where('channel_order_no', $orderSn)
+            ->first();
+        if (! $order) return;
+
+        $shipment = \Modules\Outbound\Models\Shipment::query()
+            ->whereHas('orders', fn ($q) => $q->where('order_id', $order->id))
+            ->latest('id')
+            ->first();
+        if (! $shipment) return;
+
+        $eventType = match ($status) {
+            'shipped' => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_IN_TRANSIT,
+            'to_confirm_receive', 'completed' => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_DELIVERED,
+            default => null,
+        };
+        if (! $eventType) return;
+
+        $exists = \Modules\Outbound\Models\ShipmentTrackingEvent::query()
+            ->where('shipment_id', $shipment->id)
+            ->where('source', 'shopee')
+            ->where('event_type', $eventType)
+            ->exists();
+        if ($exists) return;
+
+        \Modules\Outbound\Models\ShipmentTrackingEvent::create([
+            'shipment_id' => $shipment->id,
+            'source' => 'shopee',
+            'event_type' => $eventType,
+            'driver_name' => null,
+            'driver_phone' => null,
+            'driver_vehicle_plate' => null,
+            'raw_payload' => $data,
+            'occurred_at' => now(),
+            'received_at' => now(),
+        ]);
     }
 
     protected function handleReturnEvent(ShopeeOrderService $orderService, string $shopId, array $data): void

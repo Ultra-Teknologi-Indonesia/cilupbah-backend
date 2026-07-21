@@ -4,11 +4,6 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-/**
- * Jejak balik dari baris koreksi qty ke dokumen Penyesuaian Stok yang dibuat
- * otomatis oleh InboundService::setReceivedQty(). Tanpa kolom ini satu-satunya
- * tautan adalah nomor dokumen di dalam string `notes` — tidak bisa di-query.
- */
 return new class extends Migration
 {
     public function up(): void

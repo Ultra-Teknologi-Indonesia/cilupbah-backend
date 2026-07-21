@@ -64,14 +64,6 @@ final class ChannelStatusNormalizer
         'shipped'    => ChannelStatus::SHIPPED,
     ];
 
-    /**
-     * Katalog seluruh status mentah yang mungkin dikirim tiap channel, beserta
-     * padanan kanoniknya. Dipakai untuk mengisi dropdown filter laporan — daftarnya
-     * statis, bukan DISTINCT dari data, supaya semua kemungkinan tetap tampil
-     * meski belum pernah ada pesanannya (mengikuti gaya daftar status_mp Jubelio).
-     *
-     * @return array<string, array<string, ChannelStatus>>
-     */
     public static function catalog(): array
     {
         return [
@@ -82,10 +74,6 @@ final class ChannelStatusNormalizer
         ];
     }
 
-    /**
-     * Status Lazada yang ditangani mapper tapi belum ada di peta normalisasi.
-     * Sebagian muncul juga di daftar Jubelio (LOST BY 3PL, DAMAGED BY 3PL).
-     */
     private const LAZADA_EXTRA = [
         'repacked'             => ChannelStatus::READY_TO_SHIP,
         'shipping'             => ChannelStatus::SHIPPED,
@@ -109,8 +97,6 @@ final class ChannelStatusNormalizer
             return $canonical;
         }
 
-        // Satu sumber dengan catalog(), supaya setiap opsi yang bisa dipilih di
-        // dropdown laporan dijamin punya padanan kanonik.
         $map = self::catalog()[strtolower((string) $channel)] ?? [];
 
         if (isset($map[$rawCode])) {

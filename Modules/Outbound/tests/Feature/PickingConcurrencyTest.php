@@ -265,11 +265,6 @@ class PickingConcurrencyTest extends TestCase
         $this->assertSame(8, $this->onHand($s['item_variant_id']), 'Koreksi turun harus mengembalikan 3 unit ke rak.');
     }
 
-    /**
-     * Atribusi dibaca dari picklist_item_allocations lewat subselect di
-     * getItemsPaginated. Kalau subselect-nya salah, seluruh endpoint daftar item
-     * ikut rusak -- jadi dikunci di sini.
-     */
     public function test_items_listing_exposes_who_picked_last(): void
     {
         $s = $this->scenario(onHand: 10, ordered: 10);

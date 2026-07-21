@@ -14,30 +14,14 @@ use Modules\Purchase\Models\PurchaseOrder;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 
-/**
- * Seed data end-to-end untuk 3 skenario testing mobile.
- *
- * Aturan bisnis (ditegakkan Guard di BE):
- *   - WH-PUSAT: 1 rak = 1 SKU (BinOccupancyGuard),
- *               1 SKU boleh di banyak rak (SkuHomeBinGuard OFF).
- *   - WH-KECIL: 1 rak = 1 SKU + 1 SKU = 1 rak (kedua guard ON).
- *
- * Skenario yang di-seed:
- *   1. Pembelian → Penerimaan → Putaway ke WH-PUSAT
- *   2. Transfer  → Penerimaan → Putaway ke WH-KECIL
- *   3. Transfer  → Penerimaan → Putaway ke WH-PUSAT
- *
- * Idempotent — bisa di-rerun. Skip data yang sudah ada.
- */
 class WarehouseE2ESeeder extends Seeder
 {
     public function run(): void
     {
-        // 1. Pastikan location default sudah ada (dari core seeder).
+
         $pusat = Location::where('location_code', Location::SYSTEM_PUSAT_CODE)->firstOrFail();
         $kecil = Location::where('location_code', Location::SYSTEM_KECIL_CODE)->firstOrFail();
 
-        // 2. Category + Supplier untuk PO.
         $categoryId = DB::table('categories')->where('name', 'E2E Kategori')->value('id')
             ?: DB::table('categories')->insertGetId([
                 'name'       => 'E2E Kategori',
@@ -62,7 +46,6 @@ class WarehouseE2ESeeder extends Seeder
             $supplierId = $supplier->id;
         }
 
-        // 3. Products + Variants (4 SKU).
         $variants = [];
         foreach ([
             ['sku' => 'E2E-SKU-A', 'name' => 'E2E Barang A'],
@@ -91,15 +74,9 @@ class WarehouseE2ESeeder extends Seeder
             $variants[$spec['sku']] = $variant;
         }
 
-        // 4. Bins tambahan.
         $binsPusat = $this->ensureBins($pusat, ['A-01', 'A-02', 'A-03', 'B-01']);
         $binsKecil = $this->ensureBins($kecil, ['K-01', 'K-02', 'K-03']);
 
-        // 5. Stok awal untuk source transfer.
-        // WAJIB ditaruh di bin is_inbound=true (staging) supaya guard
-        // "1 rak = 1 SKU" tidak block — kalau ditaruh di rak stok biasa,
-        // rak itu jadi "terkunci" untuk 1 SKU dan test putaway ke rak
-        // yang sama akan ditolak (bukan tujuan seed).
         $pusatSrcBin = $this->findStagingBin($pusat) ?? $binsPusat['A-01']->id;
         $kecilSrcBin = $this->findStagingBin($kecil) ?? $binsKecil['K-01']->id;
 
@@ -107,13 +84,9 @@ class WarehouseE2ESeeder extends Seeder
         $this->ensureStock($pusat->id, $pusatSrcBin, $variants['E2E-SKU-B']->id, 50);
         $this->ensureStock($kecil->id, $kecilSrcBin, $variants['E2E-SKU-K']->id, 30);
 
-        // Alias untuk bagian lain seeder yang butuh reference bin sumber.
         $pusatDefaultBin = $pusatSrcBin;
         $kecilDefaultBin = $kecilSrcBin;
 
-        // 6. Skenario 1 — Purchase Order → auto-Inbound (via observer).
-        // Wrap dgn transaction supaya observer PurchaseOrderObserver::created
-        // yang pakai DB::afterCommit fire SETELAH PO items commit.
         $poNumber = 'PO-E2E-001';
         if (! PurchaseOrder::where('po_number', $poNumber)->exists()) {
             DB::transaction(function () use ($poNumber, $supplierId, $pusat, $variants) {
@@ -153,7 +126,6 @@ class WarehouseE2ESeeder extends Seeder
             $this->command->line("  [1] PO {$poNumber} sudah ada, skip");
         }
 
-        // 7. Skenario 2 — Transfer WH-PUSAT → WH-KECIL.
         $trfKecilNumber = 'TRF-E2E-KE-KECIL-001';
         if (! InventoryTransfer::where('transfer_number', $trfKecilNumber)->exists()) {
             $trf = InventoryTransfer::create([
@@ -175,7 +147,6 @@ class WarehouseE2ESeeder extends Seeder
             $this->command->line("  [2] Transfer {$trfKecilNumber} sudah ada, skip");
         }
 
-        // 8. Skenario 3 — Transfer WH-KECIL → WH-PUSAT.
         $trfPusatNumber = 'TRF-E2E-KE-PUSAT-001';
         if (! InventoryTransfer::where('transfer_number', $trfPusatNumber)->exists()) {
             $trf = InventoryTransfer::create([
@@ -212,11 +183,6 @@ class WarehouseE2ESeeder extends Seeder
         $this->command->line('  WH-KECIL: K-01, K-02, K-03 (strict 1 rak 1 SKU + 1 SKU 1 rak)');
     }
 
-    /**
-     * Cari bin staging (is_inbound=true) untuk taruh stok sumber
-     * tanpa memicu guard 1-rak-1-SKU. Bin ini biasanya dibuat core
-     * seeder Warehouse & di-mark sebagai default location.
-     */
     private function findStagingBin(Location $location): ?string
     {
         $bin = LocationBin::where('location_id', $location->id)
@@ -225,9 +191,6 @@ class WarehouseE2ESeeder extends Seeder
         return $bin?->id;
     }
 
-    /**
-     * Buat bin kalau belum ada. Return keyed array [bin_code => LocationBin].
-     */
     private function ensureBins(Location $location, array $binCodes): array
     {
         $result = [];
@@ -247,9 +210,6 @@ class WarehouseE2ESeeder extends Seeder
         return $result;
     }
 
-    /**
-     * Set stok minimum di 1 rak. Kalau sudah cukup, skip.
-     */
     private function ensureStock(string $locationId, string $binId, string $itemId, int $minQty): void
     {
         $inv = Inventory::firstOrCreate(

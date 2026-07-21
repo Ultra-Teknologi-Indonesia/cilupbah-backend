@@ -8,15 +8,6 @@ use Illuminate\Support\Str;
 use Modules\Inventory\Services\InventoryService;
 use Tests\TestCase;
 
-/**
- * Pembersihan warisan perilaku lama: item transfer DRAFT dulu langsung menambah
- * on_hand di lokasi transit padahal barangnya belum dikirim.
- *
- * Dua jaminan yang dikunci:
- * 1. Transfer yang BELUM berjalan (DRAFT/APPROVED) ditarik dari transit.
- * 2. Transfer yang SEDANG berjalan (IN_TRANSIT) TIDAK tersentuh -- stoknya
- *    memang seharusnya ada di sana.
- */
 class CleanupDraftTransitStockTest extends TestCase
 {
     use RefreshDatabase;
@@ -75,7 +66,6 @@ class CleanupDraftTransitStockTest extends TestCase
         return $id;
     }
 
-    /** Tiru keadaan yang ditinggalkan perilaku lama: stok sudah di transit. */
     private function transferDenganStokDiTransit(string $trxNo, string $status, string $itemId, int $qty): void
     {
         $transferId = Str::uuid()->toString();

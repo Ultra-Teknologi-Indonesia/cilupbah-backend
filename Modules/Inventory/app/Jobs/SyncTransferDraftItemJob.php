@@ -107,14 +107,6 @@ class SyncTransferDraftItemJob implements ShouldQueue
             return;
         }
 
-        // DRAFT hanya MENGUNCI stok, tidak memindahkannya. Barang tetap fisik di
-        // rak asal sampai surat jalan dicetak (InventoryService::shipTransfer) --
-        // itu batas "sedang di jalan" menurut klien.
-        //
-        // Dulu di sini stok ikut ditambahkan ke lokasi transit PADAHAL on_hand
-        // sumber tidak pernah dikurangi, jadi qty yang sama terhitung dua kali
-        // dan transfer yang masih DRAFT sudah muncul di kolom Transit.
-        // Movement TRANSFER_OUT-nya pun menulis balance yang tidak berubah.
         $sourceInventory->on_order += $this->qty;
         $inventoryRepository->updateStock($sourceInventory);
 
@@ -154,8 +146,6 @@ class SyncTransferDraftItemJob implements ShouldQueue
             return;
         }
 
-        // Ubah qty item DRAFT: cukup geser kuncian. Stok belum berpindah ke mana
-        // pun sampai surat jalan dicetak.
         if ($sourceInventory) {
             $sourceInventory->on_order += $delta;
             $inventoryRepository->updateStock($sourceInventory);
@@ -193,9 +183,6 @@ class SyncTransferDraftItemJob implements ShouldQueue
                     $item->serial_no ?? '',
                 );
 
-                // Hapus item DRAFT: lepaskan kuncian saja. Tidak ada stok yang
-                // perlu ditarik balik dari transit, karena DRAFT memang tidak
-                // pernah memindahkannya ke sana.
                 if ($sourceInventory) {
                     $releaseQty = min($this->qty, $sourceInventory->on_order);
                     $sourceInventory->on_order -= $releaseQty;

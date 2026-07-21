@@ -12,17 +12,11 @@ use Modules\Auth\Repositories\UserRepository;
 
 class AuthService
 {
-    /** Umur access token — token untuk hit endpoint API biasa. */
+
     public const ACCESS_TOKEN_TTL_MINUTES = 60;
 
-    /** Umur refresh token — untuk minta access token baru tanpa login ulang. */
     public const REFRESH_TOKEN_TTL_DAYS = 30;
 
-    /**
-     * Ability marker untuk refresh token. Access token pakai default ['*'];
-     * refresh token dibatasi ke ['refresh'] supaya kalau bocor tidak bisa
-     * dipakai untuk memanggil endpoint API lain.
-     */
     public const ABILITY_REFRESH = 'refresh';
 
     public function __construct(
@@ -82,22 +76,11 @@ class AuthService
         ];
     }
 
-    /**
-     * Tukar refresh token ke access token baru. Refresh token lama
-     * di-revoke (rotasi) supaya replay attack dari token yang bocor
-     * langsung mati saat token asli sudah dipakai refresh.
-     *
-     * $current adalah PersonalAccessToken yang dipakai untuk hit endpoint
-     * refresh (harus punya ability 'refresh').
-     */
     public function refresh(User $user, \Laravel\Sanctum\PersonalAccessToken $current): array
     {
         $user->load('roles', 'permissions');
         $tokenName = $this->deriveNameForRotation($current->name);
 
-        // Revoke refresh token yg dipakai (rotation) + revoke access token
-        // lama untuk device yg sama supaya tidak ada 2 access token aktif
-        // sekaligus.
         DB::table('personal_access_tokens')
             ->where('id', $current->id)
             ->orWhere(function ($q) use ($user, $tokenName) {
@@ -119,13 +102,6 @@ class AuthService
         ];
     }
 
-    /**
-     * Bikin sepasang token untuk 1 device. Access token pendek + refresh
-     * token panjang. Nama refresh token = access name + ":refresh" supaya
-     * bisa dikaitkan balik saat rotasi.
-     *
-     * @return array{access_token: string, refresh_token: string, access_token_id: int|string}
-     */
     protected function issueTokenPair(User $user, string $tokenName): array
     {
         $access = $user->createToken(
@@ -146,10 +122,6 @@ class AuthService
         ];
     }
 
-    /**
-     * Kalau nama token yg dipakai adalah refresh (ada suffix ":refresh"),
-     * kembalikan nama access-nya. Kalau tidak ada suffix, pakai apa adanya.
-     */
     protected function deriveNameForRotation(string $tokenName): string
     {
         if (str_ends_with($tokenName, ':refresh')) {
@@ -158,17 +130,8 @@ class AuthService
         return $tokenName;
     }
 
-    /** Suffix penanda refresh token pada kolom name. */
     public const REFRESH_NAME_SUFFIX = ':refresh';
 
-    /**
-     * Akses & refresh token selalu terbit berpasangan dengan nama
-     * "N" dan "N:refresh". Semua pencabutan sesi harus mengenai keduanya —
-     * kalau hanya access token yang dicabut, refresh token yang tertinggal
-     * akan mencetak access token baru dan sesi itu hidup lagi.
-     *
-     * @return array<int,string> id baris yang menjadi satu pasangan
-     */
     protected function pairTokenIds(User $user, string $tokenId): array
     {
         $row = DB::table('personal_access_tokens')
@@ -232,12 +195,6 @@ class AuthService
         return $clientType.':'.$label;
     }
 
-    /**
-     * Logout harus mencabut access DAN refresh token. Kalau hanya access
-     * token yang dihapus, refresh token tetap hidup sampai 30 hari dan
-     * masih bisa dipakai mencetak access token baru — sesi tidak
-     * benar-benar berakhir.
-     */
     public function logout(User $user): void
     {
         $current = $user->currentAccessToken();
@@ -251,7 +208,6 @@ class AuthService
             ->delete();
     }
 
-    /** Verifikasi password user untuk membuka idle lock. */
     public function verifyPassword(User $user, string $password): bool
     {
         return Hash::check($password, $user->password);
@@ -289,12 +245,6 @@ class AuthService
         return $user->refresh()->load('roles', 'permissions');
     }
 
-    /**
-     * Satu sesi = satu pasang token, jadi baris ":refresh" tidak ditampilkan
-     * sebagai sesi tersendiri. Tapi `expires_at` diambil dari baris refresh,
-     * karena itulah yang menentukan kapan sesi benar-benar berakhir —
-     * access token cuma berumur 60 menit dan terus diperbarui.
-     */
     public function listSessions(User $user, ?string $currentTokenId): Collection
     {
         $rows = DB::table('personal_access_tokens')
@@ -342,19 +292,11 @@ class AuthService
             );
         }
 
-        // Cabut sepasang — kalau refresh token pasangannya tertinggal,
-        // sesi yang "sudah dicabut" akan hidup lagi lewat /auth/refresh.
         DB::table('personal_access_tokens')
             ->whereIn('id', $this->pairTokenIds($user, $tokenId))
             ->delete();
     }
 
-    /**
-     * Kecualikan SEPASANG token milik sesi berjalan, bukan hanya access
-     * token-nya. Kalau refresh token sendiri ikut terhapus, user yang
-     * menekan "cabut sesi lain" akan ter-logout paksa begitu access
-     * token-nya kedaluwarsa.
-     */
     public function revokeOtherSessions(User $user, ?string $currentTokenId): int
     {
         $query = DB::table('personal_access_tokens')
@@ -367,8 +309,6 @@ class AuthService
 
         $deleted = $query->delete();
 
-        // Hitung per sesi (pasangan), bukan per baris token, supaya angka
-        // yang muncul di UI cocok dengan jumlah sesi yang ditampilkan.
         return (int) ceil($deleted / 2);
     }
 }

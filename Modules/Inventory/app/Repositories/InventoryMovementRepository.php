@@ -86,10 +86,6 @@ class InventoryMovementRepository
 
         $reservedList = "'" . implode("','", InventoryMovementSourceMap::ALLOCATION_PARTITION_SOURCES) . "'";
 
-        // Mutasi picking menyimpan no. picklist di transaction_number, bukan no.
-        // pesanan. Resolusi pesanannya lewat picklist_items: 1 baris mutasi =
-        // 1 SKU pada 1 picklist, dan picklist_items menyimpan order_id-nya.
-        // Suffix -KOREKSI/-HAPUS (reversal) dipangkas dulu agar tetap ketemu.
         $pickOrderScope = "FROM picklist_items pi"
             . " JOIN picklists p ON p.id = pi.picklist_id"
             . " JOIN sales_orders so ON so.id = pi.order_id"
@@ -106,10 +102,7 @@ class InventoryMovementRepository
             ->selectRaw("(CASE WHEN {$isPick} THEN (SELECT COUNT(DISTINCT pi.order_id) {$pickOrderScope}) END) AS pick_order_count")
             ->selectRaw('COALESCE((SELECT COALESCE(so.channel_order_no, so.no_ref) FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), ' . $pickOrder('COALESCE(so.channel_order_no, so.no_ref)') . ') AS ref_no')
             ->selectRaw('COALESCE((SELECT so.customer_name FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), ' . $pickOrder('so.customer_name') . ') AS ref_note')
-            // Nama toko diambil lewat subquery, BUKAN kolom denormalisasi di
-            // inventory_movements -- jalur tulis ledger ada di hot path dan tidak
-            // perlu menanggung biaya itu. Pola resolusinya sama dengan ref_no:
-            // cocokkan langsung ke salesorder_no, fallback ke order via picklist.
+
             ->selectRaw(
                 'COALESCE('
                 . '(SELECT cs.shop_name FROM sales_orders so'
@@ -132,8 +125,7 @@ class InventoryMovementRepository
                 \Spatie\QueryBuilder\AllowedFilter::exact('location_id'),
                 \Spatie\QueryBuilder\AllowedFilter::callback('source', function ($query, $value) {
                     $tokens = is_array($value) ? $value : explode(',', (string) $value);
-                    // Menerima nama source maupun nama kategori, jadi ?source=ORDER
-                    // bekerja sama seperti di Jubelio.
+
                     $sources = InventoryMovementSourceMap::expandFilterTokens($tokens);
                     if (count($sources) > 0) {
                         $query->whereIn('source', $sources);
@@ -147,8 +139,7 @@ class InventoryMovementRepository
                         $query->where('qty', '<', 0);
                     }
                 }),
-                // FE mengirim maksud drill-down ('transit'/'allocation'), bukan
-                // daftar source -- definisinya dikunci di InventoryMovementSourceMap.
+
                 \Spatie\QueryBuilder\AllowedFilter::callback('drill', function ($query, $value) {
                     $sources = InventoryMovementSourceMap::DRILL_SCOPES[(string) $value] ?? null;
                     if ($sources !== null) {

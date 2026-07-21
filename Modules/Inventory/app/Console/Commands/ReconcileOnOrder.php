@@ -98,8 +98,6 @@ class ReconcileOnOrder extends Command
 
                     $remaining = $delta - $realDelta;
 
-                    // Kelebihan yang tidak tertampung baris agregat biasanya tersimpan di
-                    // baris bin (mis. reservasi transfer draft). Kuras dari sana.
                     if ($remaining > 0) {
                         $binRows = DB::table('inventories')
                             ->where('item_id', $itemId)

@@ -14,7 +14,6 @@ Route::prefix('issues')->name('issues.')->group(function () {
     Route::put('/{issue}/status', [IssueController::class, 'updateStatus'])->name('status');
     Route::put('/{issue}/assign', [IssueController::class, 'assign'])->name('assign');
     Route::post('/{issue}/comment', [IssueController::class, 'comment'])->middleware('throttle:10,1')->name('comment');
-    // Tracker ini sengaja anonim (lihat `actor_name` free-text di updateStatus/assign),
-    // tapi penghapusan permanen tidak boleh ikut anonim. Hanya destroy yang diberi auth.
+
     Route::delete('/{issue}', [IssueController::class, 'destroy'])->middleware('auth')->name('destroy');
 });

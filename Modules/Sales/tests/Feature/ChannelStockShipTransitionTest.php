@@ -45,9 +45,6 @@ class ChannelStockShipTransitionTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        // Order channel SELALU dialokasikan ke WH-KECIL (resolveLocationId),
-        // jadi fixture harus memakai lokasi itu -- kalau bikin sendiri, alokasinya
-        // mendarat di baris lain dan assertion di sini tak melihat perubahan.
         $kecilCode = \Modules\Warehouse\Models\Location::SYSTEM_KECIL_CODE;
         $existing = DB::table('locations')->where('location_code', $kecilCode)->value('id');
 
@@ -202,8 +199,7 @@ class ChannelStockShipTransitionTest extends TestCase
         $inv = $this->inventory();
         $this->assertSame(0, $inv->on_order);
         $this->assertSame(10, $inv->on_hand);
-        // Pembatalan melepas alokasi lewat ledger ORDER_RELEASE. Source ORDER_CANCEL
-        // sudah dihapus di commit 1b11b08c bersama ORDER_BOOK.
+
         $this->assertSame(1, $this->movements('ORDER_RELEASE'));
     }
 

@@ -9,15 +9,6 @@ use Modules\Inventory\Services\InventoryService;
 use Modules\Warehouse\Models\Location;
 use Tests\TestCase;
 
-/**
- * Permintaan klien (issue iNPmW3yQ3IcC): yang boleh masuk kolom Transit HANYA
- * transfer yang sedang di jalan -- sudah dicetak surat jalannya. Transfer yang
- * masih "Baru Dibuat" tidak boleh muncul di sana.
- *
- * Sebelum perbaikan, item DRAFT langsung menambah on_hand di lokasi transit
- * PADAHAL on_hand di rak asal tidak dikurangi, jadi qty yang sama terhitung dua
- * kali sekaligus memunculkan draft di kolom Transit.
- */
 class TransferDraftTidakMasukTransitTest extends TestCase
 {
     use RefreshDatabase;

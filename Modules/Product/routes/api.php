@@ -325,10 +325,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::get('inventory/items/by-sku/{sku}', [ProductController::class, 'showBySku'])->middleware('role_or_permission:owner|view-produk');
     Route::get('inventory/item-bundles', [ProductController::class, 'bundles'])->middleware('role_or_permission:owner|view-bundle');
-    // Path lama 'inventory/items/all-stocks' bentrok dengan route bernama sama di
-    // Modules/Inventory. Keduanya beda kontrak (item_ids vs ids) dan beda bentuk
-    // balikan, jadi yang kalah urutan registrasi selalu 422. Endpoint ini dipindah
-    // ke namespace produk; path kanonik diserahkan ke modul Inventory.
+
     Route::post('inventory/items/variant-stocks', [ProductController::class, 'allStocks'])->middleware('role_or_permission:owner|view-posisi-stok');
     Route::post('inventory/items/prices', [ProductController::class, 'prices'])->middleware('role_or_permission:owner|view-harga-jual');
     Route::post('inventory/items', [ProductController::class, 'storeBundle'])->middleware('role_or_permission:owner|create-bundle');

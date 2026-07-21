@@ -221,13 +221,6 @@ class ReportRepository
         return $this->paginate($query);
     }
 
-    /**
-     * Query datar untuk export xlsx Daftar Pengiriman (laporan manifest).
-     * FromQuery — contoh dari klien berisi 11 ribu baris untuk rentang 2 hari saja.
-     *
-     * No Manifest sengaja LEFT JOIN: pesanan yang batal atau belum dimanifes tetap
-     * muncul dengan kolom manifest kosong (39% baris pada contoh klien).
-     */
     public function shipmentListQuery(array $filters): \Illuminate\Database\Query\Builder
     {
         $from = $filters['from'] ?? null;
@@ -238,9 +231,7 @@ class ReportRepository
         return DB::table('sales_orders as so')
             ->leftJoin('shipment_orders as sho', 'sho.order_id', '=', 'so.id')
             ->leftJoin('shipments as sh', 'sh.id', '=', 'sho.shipment_id')
-            // Sejalan dengan scopeExcludeFailedDownload di daftar pesanan: pesanan
-            // yang punya item tanpa padanan katalog tidak ditampilkan. Baris warisan
-            // dari sebelum guard ingest berlaku ikut tersaring di sini.
+
             ->whereNotExists(fn ($q) => $q
                 ->select(DB::raw(1))
                 ->from('sales_order_items as soi')
@@ -249,9 +240,7 @@ class ReportRepository
             ->when($from, fn ($q, $v) => $q->where('so.transaction_date', '>=', $v . ' 00:00:00'))
             ->when($to, fn ($q, $v) => $q->where('so.transaction_date', '<=', $v . ' 23:59:59'))
             ->when(! empty($courierIds), fn ($q) => $q->whereIn('so.courier_id', $courierIds))
-            // Yang tersimpan di kolom channel_status adalah nilai kanonik ChannelStatus
-            // (dijaga CHECK constraint), bukan kode mentah channel. Jadi pilihan dropdown
-            // diterjemahkan dulu lewat normalizer, lalu disaring bersama source-nya.
+
             ->when($statusMp, function ($q, $v) {
                 [$source, $raw] = self::splitStatusMp($v);
                 $canonical = ChannelStatusNormalizer::normalize($source ?: null, $raw);
@@ -275,13 +264,6 @@ class ReportRepository
             ->orderBy('so.salesorder_no');
     }
 
-    /**
-     * status_mp dikodekan "<source>::<status mentah>" supaya satu nilai dropdown
-     * membawa channel sekaligus statusnya — "Cancelled" milik Shopee bukan hal yang
-     * sama dengan "Canceled" milik Lazada.
-     *
-     * @return array{0: string, 1: string} [source, raw]
-     */
     public static function splitStatusMp(string $value): array
     {
         $parts = explode('::', $value, 2);
@@ -289,16 +271,6 @@ class ReportRepository
         return count($parts) === 2 ? [$parts[0], $parts[1]] : ['', $parts[0]];
     }
 
-    /**
-     * Baris detail Laporan Performa Proses Pesanan.
-     *
-     * Durasi dihitung di SQL sebagai detik, bukan string, supaya bisa diagregasi
-     * untuk Summary. Nilai negatif dijepit nol — data lapangan bisa punya
-     * completed_at mendahului started_at, dan Jubelio mencetaknya apa adanya
-     * sebagai "-30 jam -39 menit".
-     *
-     * @return array<int, object>
-     */
     public function orderPerformanceRows(string $type, array $filters): array
     {
         $from = ($filters['from'] ?? null) ? $filters['from'] . ' 00:00:00' : null;
@@ -380,10 +352,6 @@ class ReportRepository
         );
     }
 
-    /**
-     * Shipper dan Kurir memakai data yang sama; yang berbeda hanya sumbu
-     * pengelompokan keduanya — petugas pengirim vs nama kurir.
-     */
     private function shipmentPerformanceQuery(string $type): \Illuminate\Database\Query\Builder
     {
         $grup = $type === OrderPerformanceSpec::KURIR
@@ -410,10 +378,6 @@ class ReportRepository
         );
     }
 
-    /**
-     * Enam durasi tahapan pesanan. Definisi tiap kolom sengaja dikumpulkan di satu
-     * tempat agar koreksi cukup satu baris — lihat PLANNING-LAPORAN-PERFORMA-PESANAN.md §5.
-     */
     private function orderProcessingQuery(): \Illuminate\Database\Query\Builder
     {
         $pick = DB::table('picklist_items as pit')
@@ -468,15 +432,6 @@ class ReportRepository
         );
     }
 
-    /**
-     * Baris Laporan Performa Penempatan. Satu baris per dokumen putaway —
-     * berbeda dari laporan picker/packer yang satu baris per SKU.
-     *
-     * "Rata-rata durasi per SKU" dihitung sebagai durasi dokumen dibagi jumlah
-     * baris SKU di dalamnya, sesuai judul kolom di laporan Jubelio.
-     *
-     * @return array<int, object>
-     */
     public function putawayPerformanceRows(array $filters): array
     {
         $from = ($filters['from'] ?? null) ? $filters['from'] . ' 00:00:00' : null;
@@ -517,15 +472,6 @@ class ReportRepository
             ->all();
     }
 
-    /**
-     * Baris Daftar Penempatan Barang: satu baris per penempatan ke rak.
-     *
-     * Satu putaway_item bisa terpecah ke beberapa rak (putaway_placements) dan
-     * bisa berasal dari beberapa penerimaan (putaway_item_sources). Dokumen yang
-     * belum punya baris placement tetap muncul lewat destination_bin_id di item.
-     *
-     * @return array<int, object>
-     */
     public function putawayItemRows(string $date, string $locationId, array $putawayIds = []): array
     {
         $sumber = DB::table('putaway_item_sources as pis')
@@ -566,7 +512,6 @@ class ReportRepository
             ->all();
     }
 
-    /** Nomor penempatan pada tanggal dan lokasi terpilih, untuk isi combobox. */
     public function putawayLookup(string $date, string $locationId): \Illuminate\Support\Collection
     {
         return DB::table('putaways')
@@ -597,10 +542,6 @@ class ReportRepository
             ->get();
     }
 
-    /**
-     * Query datar untuk export xlsx Daftar Picklist. Sengaja query builder, bukan
-     * Eloquent with(), supaya bisa di-chunk FromQuery — satu bulan bisa puluhan ribu baris.
-     */
     public function pickListRowsQuery(array $filters): \Illuminate\Database\Query\Builder
     {
         $from = $filters['from'] ?? null;
@@ -718,9 +659,6 @@ class ReportRepository
         $ongkosAngkut = (float) (clone $poItemsQuery)->sum('shipping_cost');
         $potonganPembelian = (float) (clone $poItemsQuery)->sum('disc_amount');
 
-        // Fitur Retur Pembelian dicabut. Komponen ini dipertahankan agar bentuk
-        // laporan HPP dan konsumennya di FE tidak berubah; nilainya memang 0
-        // selama tidak ada retur ke supplier.
         $returPembelian = 0.0;
 
         $cogsQuery = SalesInvoiceItem::whereHas('invoice', function ($q) use ($dateFrom, $dateTo) {

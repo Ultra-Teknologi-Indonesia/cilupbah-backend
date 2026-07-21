@@ -12,10 +12,6 @@ use Modules\Sales\Services\SalesOrderService;
 use Modules\Sales\Services\StockService;
 use Tests\TestCase;
 
-/**
- * Regresi untuk kebocoran on_order: kunci stok wajib terlepas berapa pun
- * statusnya, sebanyak yang benar-benar dikunci pesanan itu saja.
- */
 class OrderReleaseByLedgerTest extends TestCase
 {
     use RefreshDatabase;
@@ -66,7 +62,6 @@ class OrderReleaseByLedgerTest extends TestCase
         ]);
     }
 
-    /** on_hand hanya dihitung dari stok yang sudah ditempatkan di rak. */
     private function setInventory(string $variantId, int $onHand): void
     {
         $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
@@ -132,7 +127,6 @@ class OrderReleaseByLedgerTest extends TestCase
 
         $this->stock()->releaseReservationByTransaction('SO-AAA');
 
-        // Hanya kunci milik SO-AAA yang lepas; SO-BBB tetap utuh.
         $this->assertSame(3, $this->onOrder($v->id));
     }
 
@@ -165,13 +159,10 @@ class OrderReleaseByLedgerTest extends TestCase
         $this->stock()->reserve('REL-5', $v->id, $this->locationId, 4, 'SO-REL-5');
         $this->assertSame(4, $this->onOrder($v->id));
 
-        // Simulasi penulisan status langsung oleh job (bypass state machine).
         DB::table('sales_orders')->where('id', $order->id)
             ->update(['status' => 'AWAITING_BUYER_CONFIRMATION']);
         $order->refresh();
 
-        // Dulu ini melempar InvalidStatusTransitionException (pesanan beku)
-        // dan on_order tidak pernah dilepas.
         app(SalesOrderService::class)->updateOrder($order, ['status' => 'cancelled']);
 
         $this->assertSame(0, $this->onOrder($v->id), 'Kunci wajib lepas walau status non-kanonik.');
@@ -191,12 +182,10 @@ class OrderReleaseByLedgerTest extends TestCase
 
         $this->stock()->reserve('REL-6', $v->id, $this->locationId, 7, 'SO-REL-6');
 
-        // Status yang sama sekali asing (mis. nama stage yang bocor ke kolom status).
         DB::table('sales_orders')->where('id', $order->id)
             ->update(['status' => 'ready-to-ship']);
         $order->refresh();
 
-        // Jalur pembatalan langsung (tanpa validateTransition) tetap harus melepas.
         $released = $this->stock()->releaseReservationByTransaction($order->salesorder_no);
 
         $this->assertSame(7, $released);

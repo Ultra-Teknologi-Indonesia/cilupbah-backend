@@ -18,7 +18,6 @@ class ShipmentListReportExport implements FromQuery, WithHeadings, WithMapping, 
 {
     private const DATE_FORMAT = 'dd/mm/yyyy hh:mm';
 
-    /** Nomor urut baris, dipertahankan lintas chunk. */
     private int $rowNumber = 0;
 
     public function __construct(
@@ -57,9 +56,7 @@ class ShipmentListReportExport implements FromQuery, WithHeadings, WithMapping, 
             $row->tracking_number,
             $row->note,
             ReportService::orderStatusLabel($row->status),
-            // Selalu label kanonik, tidak pernah kode mentah. channel_fulfillment_status
-            // berisi status LOGISTIK (LOGISTICS_PICKUP_FAILED dan sejenisnya) yang tidak
-            // berarti apa-apa bagi pembaca laporan.
+
             ReportService::channelStatusLabel($row->channel_status),
         ];
     }

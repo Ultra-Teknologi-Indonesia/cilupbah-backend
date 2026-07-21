@@ -45,9 +45,6 @@ class ChannelStockReconcileTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        // Order channel SELALU dialokasikan ke WH-KECIL (SalesOrderService::resolveLocationId),
-        // jadi fixture harus memakai lokasi itu -- kalau bikin lokasi sendiri, alokasinya
-        // mendarat di baris lain dan assertion di sini tidak melihat perubahan apa pun.
         $kecilCode = \Modules\Warehouse\Models\Location::SYSTEM_KECIL_CODE;
         $existing = DB::table('locations')->where('location_code', $kecilCode)->value('id');
 
@@ -194,10 +191,6 @@ class ChannelStockReconcileTest extends TestCase
         $inv = $this->inventory();
         $this->assertSame(2, $inv->on_order, 'order channel tetap di-reserve walau stok kurang');
 
-        // Kolom `available` pada baris agregat (bin_id = NULL) selalu 0 --
-        // recalculateAvailable() memaksanya begitu untuk baris non-placed.
-        // Ketersediaan sebenarnya dihitung on-the-fly: on_hand - on_order.
-        // Lihat PLANNING-KOLOM-AVAILABLE-SEMANTIK.md; jangan "perbaiki" di sini.
         $this->assertSame(
             -1,
             (int) $inv->on_hand - (int) $inv->on_order,

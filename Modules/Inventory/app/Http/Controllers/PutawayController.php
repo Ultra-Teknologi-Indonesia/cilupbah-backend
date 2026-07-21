@@ -188,7 +188,7 @@ class PutawayController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        // Auto-scope mobile ke assignee login (X-Client-Channel: MOBILE).
+
         $this->forceMobileScopeToAuth($request, 'assigned_to');
 
         $limit = $request->query('limit', 10);
@@ -225,7 +225,7 @@ class PutawayController extends Controller
     )]
     public function counts(Request $request): JsonResponse
     {
-        // Auto-scope mobile ke assignee login (X-Client-Channel: MOBILE).
+
         $this->forceMobileScopeToAuth($request, 'assigned_to');
 
         $filter = (array) $request->query('filter', []);

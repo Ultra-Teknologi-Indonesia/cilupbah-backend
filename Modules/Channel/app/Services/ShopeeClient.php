@@ -111,10 +111,6 @@ class ShopeeClient
         return $data;
     }
 
-    /**
-     * Batch endpoints answer with a generic "All failed" message and put the real
-     * reason inside response.result_list. Surface that so the caller sees why.
-     */
     protected function describeError(array $data, string $error): string
     {
         $message = (string) ($data['message'] ?? $error);

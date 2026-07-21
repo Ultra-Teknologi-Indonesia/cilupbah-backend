@@ -7,19 +7,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
-/**
- * Backfill label penerimaan lama: ADJUSTMENT -> PURCHASE/TRANSFER_IN/CONSIGNMENT.
- *
- * Dua jaminan yang dikunci di sini:
- *
- * 1. Baris koreksi & edit qty IKUT terbawa. InboundService menulis movement
- *    dengan nomor bersufiks (`-KOREKSI`, `-EDIT-QTY`), jadi kecocokan persis
- *    ke inbounds.transaction_number meleset. Di staging ini menyembunyikan
- *    54 baris dari versi pertama command.
- *
- * 2. Penyesuaian stok ASLI tidak tersentuh. `ADJUSTMENT` juga ditulis sah oleh
- *    ProcessStockAdjustmentJob; backfill by-source akan merusaknya.
- */
 class BackfillInboundMovementSourceTest extends TestCase
 {
     use RefreshDatabase;
@@ -95,7 +82,6 @@ class BackfillInboundMovementSourceTest extends TestCase
         return DB::table('inventory_movements')->where('transaction_number', $trxNo)->value('source');
     }
 
-    /** Seluruh sufiks yang dipakai kode produksi saat menulis transaction_number. */
     public static function sufiks(): array
     {
         return [
@@ -108,12 +94,6 @@ class BackfillInboundMovementSourceTest extends TestCase
         ];
     }
 
-    /**
-     * @dataProvider sufiks
-     *
-     * Tiap sufiks yang luput menyembunyikan baris dari backfill secara senyap:
-     * ia tidak error, hanya meninggalkan penerimaan berlabel ADJUSTMENT selamanya.
-     */
     public function test_setiap_sufiks_ikut_terbawa(string $sufiks): void
     {
         $this->inbound('PO-SUF', 'PURCHASE_ORDER');

@@ -103,9 +103,6 @@ class PickListReportTest extends TestCase
         ]);
     }
 
-    /**
-     * @param  array<int, array{variant: ProductVariant, order: SalesOrder, ordered: int, picked: int}>  $items
-     */
     private function makePicklist(
         string $no,
         string $status,

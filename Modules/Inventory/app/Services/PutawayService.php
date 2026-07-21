@@ -72,10 +72,6 @@ class PutawayService
         return $this->putawayRepository->getByStatus($status, $limit);
     }
 
-    /**
-     * Jumlah putaway per status untuk badge angka di filter tabs mobile.
-     * 1 request untuk semua tab, tidak perlu 3x paginated call ke list.
-     */
     public function getStatusCounts(
         ?string $locationId = null,
         ?string $assignedTo = null,
@@ -163,12 +159,6 @@ class PutawayService
         return $paginated;
     }
 
-    /**
-     * Menempelkan asal penerimaan tiap baris supaya web bisa mengoreksi qty diterima
-     * langsung dari layar Penempatan. Satu baris putaway bisa bersumber dari lebih
-     * dari satu inbound item (penempatan gabungan), jadi ini selalu berbentuk list —
-     * FE yang memilih sumber mana yang dikoreksi, jangan diam-diam ambil yang pertama.
-     */
     protected function attachInboundSources(Putaway $putaway, $items): void
     {
         foreach ($items as $item) {
@@ -204,8 +194,7 @@ class PutawayService
                         'received_qty'       => (int) $inboundItem->received_qty,
                         'putaway_qty'        => (int) $inboundItem->putaway_qty,
                         'qty_in_putaway'     => (int) $src->qty,
-                        // Dipakai FE sebagai _expected_updated_at supaya koreksi dari
-                        // layar Penempatan tetap kena optimistic lock milik inbound.
+
                         'updated_version_at' => optional($inbound?->updated_version_at ?? $inbound?->updated_at)->toIso8601String(),
                     ];
                 })
@@ -494,9 +483,7 @@ class PutawayService
         if ($channel === \App\Enums\ClientChannelEnum::MOBILE) {
             $this->assertMobileCanMutate($putaway, $actorId);
         } else {
-            // Web sengaja TIDAK dikunci saat dokumen dipegang mobile (keputusan klien
-            // 20 Jul 2026). Proteksi diganti optimistic lock: edit berdasarkan layar
-            // basi ditolak, tapi admin tetap boleh mengoreksi selagi staff scan.
+
             $this->assertVersionMatches($putaway, $data['_expected_updated_at'] ?? null);
         }
 

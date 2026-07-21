@@ -121,12 +121,6 @@ class StockService
         });
     }
 
-    // ship()/shipSingle() dihapus: dulu menulis movement ORDER_SHIP dengan qty = 0,
-    // yang tak pernah tampil di kronologi (base query memfilter qty != 0) sekaligus
-    // bukan gerakan stok. Jejak pengiriman hidup di sales_order_status_histories --
-    // itu tempatnya peristiwa non-stok. Baris ORDER_SHIP lama tetap punya label di
-    // InventoryMovementSourceMap agar riwayat legacy tidak kehilangan artinya.
-
     public function restore(string $sku, string $itemId, string $locationId, int $qty, string $transactionNumber): void
     {
         $handled = $this->cascadeBundle($itemId, $qty, fn ($compSku, $compId, $compQty) => $this->restoreSingle($compSku, $compId, $locationId, $compQty, $transactionNumber));
@@ -219,20 +213,6 @@ class StockService
         });
     }
 
-    /**
-     * Lepas SISA kunci milik satu pesanan, dihitung dari ledger alokasi:
-     *   sisa = Σ ORDER_RESERVE + Σ ORDER_RELEASE  (release bernilai negatif)
-     * per (item, lokasi) untuk transaction_number tersebut.
-     *
-     * Menggantikan penebakan lama "kurangi sebanyak qty pesanan", yang bocor saat
-     * status tidak dikenal dan bisa salah melepas kunci milik pesanan LAIN atas
-     * item yang sama. Di sini pelepasan di-scope ke satu pesanan, jadi:
-     *  - kebal kosakata status (tak peduli statusnya apa),
-     *  - idempoten (dipanggil dua kali, sisa sudah 0 -> tidak melepas lagi),
-     *  - bundle otomatis ikut karena ledger sudah per komponen.
-     *
-     * @return int total unit yang dilepas
-     */
     public function releaseReservationByTransaction(string $transactionNumber): int
     {
         $outstanding = DB::table('inventory_movements')

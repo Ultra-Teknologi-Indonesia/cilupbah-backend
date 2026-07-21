@@ -40,16 +40,10 @@ class BulkShippingLabelService
         self::SIZE_100X120 => [100.0, 120.0],
     ];
 
-    /** Ink boxes smaller than this are treated as detection noise, not a label. */
     private const BBOX_MIN_SIDE_MM = 20.0;
 
-    /** Ink already covering this share of the sheet leaves nothing worth trimming. */
     private const BBOX_FULL_SHEET_RATIO = 0.95;
 
-    /**
-     * Trimming scales ink to fill the label exactly, which would sit it flush against
-     * the edge. Thermal heads have an unprintable border, so hold this much back.
-     */
     private const BBOX_SAFE_MARGIN_MM = 2.0;
 
     public const TIKTOK_DOWNLOAD_TIMEOUT = 20;
@@ -249,10 +243,6 @@ class BulkShippingLabelService
         return $srcPdfBytes;
     }
 
-    /**
-     * Shopee A4 waybills carry more than one label per sheet, so the ink bounding
-     * box would span all of them. Those sheets keep the fixed-region crop below.
-     */
     private function isShopeeA4Sheet(?string $channel, float $srcW, float $srcH): bool
     {
         if ($channel !== self::CHANNEL_SHOPEE) {
@@ -265,10 +255,6 @@ class BulkShippingLabelService
         return $portrait || $landscape;
     }
 
-    /**
-     * Ink bounding box of one page, in mm, via Ghostscript's bbox device.
-     * Returns [x0, y0, x1, y1] with a bottom-left origin, or null when unavailable.
-     */
     private function detectInkBBoxMm(string $pdfBytes, int $page): ?array
     {
         $gs = trim((string) @shell_exec('command -v gs 2>/dev/null'));
@@ -310,10 +296,6 @@ class BulkShippingLabelService
         }
     }
 
-    /**
-     * Scale the page so its ink box fills the label, centred. Null when the box is
-     * degenerate or already covers the sheet, leaving the caller on the fallback.
-     */
     private function placementFromBBox(float $srcW, float $srcH, array $bbox, float $targetW, float $targetH): ?array
     {
         $x0 = max(0.0, min($bbox[0], $srcW));
@@ -336,7 +318,6 @@ class BulkShippingLabelService
         $usableH = max(1.0, $targetH - 2 * self::BBOX_SAFE_MARGIN_MM);
         $scale = min($usableW / $boxW, $usableH / $boxH);
 
-        // Ghostscript measures from the bottom, FPDI draws from the top.
         $topOffset = $srcH - $y1;
 
         return [
@@ -373,8 +354,6 @@ class BulkShippingLabelService
             ? $targetW / $effW
             : min($targetW / $effW, $targetH / $effH);
 
-        // Centre the region we actually show, not the whole sheet: an A4 crop starts
-        // at the source origin, so centring on the full sheet would push it off-label.
         $renderW = $effW * $scale;
         $renderH = $effH * $scale;
 

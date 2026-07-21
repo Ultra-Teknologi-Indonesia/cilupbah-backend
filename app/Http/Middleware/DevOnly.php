@@ -21,9 +21,6 @@ class DevOnly
         $user = config('devtracker.basic_auth.user');
         $pass = config('devtracker.basic_auth.pass');
 
-        // Di environment yang TIDAK diizinkan, kita hanya sampai di sini lewat override
-        // DEVTRACKER_ENABLED. Di situ Basic auth wajib — kalau kredensialnya tidak
-        // dikonfigurasi, tolak, jangan biarkan tracker terbuka tanpa cek apa pun.
         if (! $inAllowedEnv && (! $user || ! $pass)) {
             abort(404);
         }

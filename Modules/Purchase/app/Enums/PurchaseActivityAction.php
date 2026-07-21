@@ -13,10 +13,6 @@ enum PurchaseActivityAction: string
     case RECEIVED         = 'RECEIVED';
     case STATUS_CHANGED   = 'STATUS_CHANGED';
 
-    /**
-     * Kode numerik untuk pengurutan stabil dalam satu detik yang sama --
-     * beberapa baris riwayat bisa lahir dari satu transaksi edit.
-     */
     public function code(): string
     {
         return match ($this) {

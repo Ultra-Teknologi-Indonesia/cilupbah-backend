@@ -5,12 +5,6 @@ namespace Modules\Channel\Services;
 class LazadaToInternalOrderMapper
 {
 
-    /**
-     * Nilainya WAJIB memakai vokabuler Modules\Sales\Enums\ChannelStatus.
-     * Sebelumnya peta ini memakai kosakata TikTok (AWAITING_SHIPMENT,
-     * AWAITING_COLLECTION, DELIVERED) yang tidak dikenali ChannelStatusNormalizer,
-     * sehingga pesanan Lazada yang justru siap diproses jatuh ke UNKNOWN dan mandek.
-     */
     protected const STATUS_MAP = [
         'unpaid' => 'UNPAID',
         'pending' => 'READY_TO_SHIP',

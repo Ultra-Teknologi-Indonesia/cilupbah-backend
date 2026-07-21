@@ -223,9 +223,6 @@ class ProcessPutawayItemJob implements ShouldQueue
                 //      user harus lihat badge kelebihan lalu putuskan.
                 //   3) Web flow juga panggil endpoint /complete secara eksplisit.
 
-                // Menopang optimistic lock di PutawayService::processItem(). Tiap scan
-                // menaikkan versi dokumen supaya edit web yang berdasarkan layar basi
-                // ditolak dengan 412, bukan diam-diam menimpa hasil scan staff.
                 Putaway::where('id', $this->putawayId)->update(['updated_version_at' => now()]);
             });
         });

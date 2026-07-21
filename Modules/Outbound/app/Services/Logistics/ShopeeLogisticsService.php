@@ -24,7 +24,7 @@ class ShopeeLogisticsService extends AbstractLogisticsService
             ];
         }
 
-        $service = app('\Modules\Channel\app\Services\ShopeeOrderService');
+        $service = app(\Modules\Channel\Services\ShopeeOrderService::class);
 
         $opts = array_filter([
             'method' => 'pickup',
@@ -61,7 +61,7 @@ class ShopeeLogisticsService extends AbstractLogisticsService
             ];
         }
 
-        $service = app('\Modules\Channel\app\Services\ShopeeOrderService');
+        $service = app(\Modules\Channel\Services\ShopeeOrderService::class);
         $result = $service->updateShippingOrder($shopId, $orderSn, [
             'address_id' => $addressId,
             'pickup_time_id' => $pickupTimeId,
@@ -96,7 +96,7 @@ class ShopeeLogisticsService extends AbstractLogisticsService
         $orderSn = $order->channel_order_no;
         if (! $shopId || ! $orderSn) return [];
 
-        $service = app('\Modules\Channel\app\Services\ShopeeOrderService');
+        $service = app(\Modules\Channel\Services\ShopeeOrderService::class);
         $info = $service->getTrackingInfo((string) $shopId, (string) $orderSn);
 
         return array_map(function ($entry) {

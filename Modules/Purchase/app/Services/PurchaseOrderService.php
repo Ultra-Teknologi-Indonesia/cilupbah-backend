@@ -151,13 +151,6 @@ class PurchaseOrderService
         });
     }
 
-    /**
-     * Potret baris item sebelum sync, dipakai untuk mendiff riwayat. SKU ikut
-     * disalin karena baris yang dihapus tidak bisa lagi di-join ke variant
-     * setelah sync selesai.
-     *
-     * @return array<string,array>
-     */
     private function snapshotItems(PurchaseOrder $po): array
     {
         $po->load('items.variant:id,sku');
@@ -175,9 +168,6 @@ class PurchaseOrderService
         ]])->all();
     }
 
-    /**
-     * @param array<string,array> $before
-     */
     private function logItemDiff(PurchaseOrder $po, array $before): void
     {
         $after = $this->snapshotItems($po);
@@ -210,13 +200,6 @@ class PurchaseOrderService
         }
     }
 
-    /**
-     * Baris yang qty-nya diturunkan di bawah jumlah yang sudah diterima -- atau
-     * dihapus sama sekali -- harus menarik balik penerimaannya sampai ke stok di
-     * rak. Dijalankan SEBELUM syncItems supaya received_qty sudah turun saat
-     * baris hendak dihapus, dan seluruh kekurangan stok dilaporkan sekaligus di
-     * muka alih-alih gagal di tengah cascade.
-     */
     private function reverseReceiptsForShrunkLines(PurchaseOrder $po, array $items): void
     {
         $po->load('items');
@@ -342,14 +325,6 @@ class PurchaseOrderService
         });
     }
 
-    /**
-     * PO bisa dihapus di status mana pun. Penerimaan yang terlanjur tercatat
-     * ditarik balik lebih dulu, lalu seluruh jejak hilir dilepas: inbound
-     * dinetralkan, tagihan dan pembayarannya ikut dihapus.
-     *
-     * Penghapusan ini permanen — tidak ada SoftDeletes, dan riwayat PO ikut
-     * hilang lewat cascade purchase_order_activities.
-     */
     public function delete(string $id): bool
     {
         return DB::transaction(function () use ($id) {
@@ -367,14 +342,6 @@ class PurchaseOrderService
         });
     }
 
-    /**
-     * Tarik balik seluruh penerimaan PO sebelum dokumennya dihapus.
-     *
-     * Sama seperti reverseReceiptsForShrunkLines(), kekurangan stok diperiksa
-     * di muka lewat assertPurchaseReversalPossible() supaya penolakan bisa
-     * merinci per SKU/rak alih-alih gagal di tengah cascade. Barang yang sudah
-     * dipicking atau terjual akan menolak penghapusan di sini.
-     */
     private function reverseAllReceipts(PurchaseOrder $po): void
     {
         $po->load('items');
@@ -405,12 +372,6 @@ class PurchaseOrderService
         }
     }
 
-    /**
-     * inbounds menaut ke PO lewat source_type/source_id tanpa foreign key, jadi
-     * menghapus PO tidak memicu cascade apa pun dan akan meninggalkan penunjuk
-     * yatim. Inbound-nya sendiri tidak bisa dihapus karena putaway_sources
-     * memeganginya dengan restrictOnDelete, jadi cukup dinetralkan.
-     */
     private function detachInbounds(PurchaseOrder $po): void
     {
         Inbound::where('source_type', 'purchase_order')
@@ -422,10 +383,6 @@ class PurchaseOrderService
             ]);
     }
 
-    /**
-     * purchase_bills memakai SET NULL sehingga tagihan akan bertahan tanpa
-     * induk. Pembayaran dihapus lebih dulu karena FK-nya ke bill restrictive.
-     */
     private function deleteBillsAndPayments(PurchaseOrder $po): void
     {
         $billIds = PurchaseBill::where('purchase_order_id', $po->id)->pluck('id');

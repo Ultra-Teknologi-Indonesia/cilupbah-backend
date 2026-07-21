@@ -370,13 +370,6 @@ class PicklistService
                 ]);
             }
 
-            // Lepas pesanan ini ke tahap berikutnya begitu seluruh itemnya
-            // tuntas, tanpa menunggu picklist selesai semua. Satu picklist bisa
-            // memuat banyak pesanan; tanpa ini pesanan yang sudah lengkap ikut
-            // tertahan oleh pesanan lain yang masih digarap.
-            //
-            // Di-resolve lazy (bukan lewat konstruktor) supaya PicklistService
-            // tidak terikat ke SalesOrderService saat container membangunnya.
             if ($item->order_id) {
                 app(OrderReleaseService::class)
                     ->releaseIfComplete($picklist, (string) $item->order_id);
@@ -828,12 +821,6 @@ class PicklistService
             throw new OutboundValidationException("Stok tidak cukup di rak {$bin->bin_final_code}. Tersedia: {$inventory->on_hand}, dibutuhkan: {$qty}. Silahkan pilih rak lain.");
         }
 
-        // Hanya on_hand. Pelepasan `on_order` adalah tanggung jawab StockService,
-        // yang melakukannya di baris agregat (bin_id = NULL) sekaligus menulis
-        // ledger ORDER_RELEASE. Dulu di sini ada `on_order -= qty` pada baris BIN:
-        // diam-diam no-op saat bin belum punya alokasi (max(0, ...)), tapi memakan
-        // alokasi Reserved Stock saat bin memang memegangnya -- tanpa jejak ledger,
-        // jadi drift-nya tak pernah terdeteksi inventory:reconcile-on-order.
         $inventory->on_hand -= $qty;
         $inventory->recalculateAvailable();
         $inventory->save();

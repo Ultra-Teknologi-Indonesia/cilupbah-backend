@@ -58,18 +58,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('inventory/items/all-stocks', [InventoryController::class, 'allStocksByIds'])->name('inventory.items.allStocks')->middleware('role_or_permission:owner|view-posisi-stok');
     Route::delete('inventory/items/item-variant', [InventoryController::class, 'deleteVariant'])->name('inventory.items.deleteVariant');
 
-    /*
-     * DIHAPUS: inventory/internal-price-list, inventory/price-list,
-     * inventory/items/prices, inventory/item-bundles.
-     *
-     * Keempatnya juga didefinisikan di Modules/Product/routes/api.php. Registrasi
-     * Product menang karena mendaftar belakangan dan menimpa key URI+method di
-     * RouteCollection, jadi definisi di sini tidak pernah dieksekusi. Dihapus agar
-     * tidak ada dua sumber kebenaran yang bergantung pada urutan muat modul.
-     * Gate untuk keempat URI itu ada di Modules/Product/routes/api.php.
-     * Lihat PLANNING-RBAC-MAPPING-GAP.md Bagian II.
-     */
-
     Route::middleware('role_or_permission:owner|create-bundle')->group(function () {
         Route::post('inventory/items/bundle', [BundleController::class, 'store'])->name('inventory.bundles.store');
     });

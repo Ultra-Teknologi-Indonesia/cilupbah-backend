@@ -102,10 +102,6 @@ class AuthController extends Controller
         $user = $request->user();
         $token = $user?->currentAccessToken();
 
-        // Endpoint ini hanya boleh dipanggil pakai refresh token —
-        // access token biasa dgn ability '*' juga akan lolos `->can()`
-        // (wildcard), jadi cek abilities secara ketat: harus HANYA
-        // berisi 'refresh' dan tidak boleh punya '*'.
         $abilities = $token?->abilities ?? [];
         $isRefreshToken = ! in_array('*', $abilities, true)
             && in_array(AuthService::ABILITY_REFRESH, $abilities, true);
