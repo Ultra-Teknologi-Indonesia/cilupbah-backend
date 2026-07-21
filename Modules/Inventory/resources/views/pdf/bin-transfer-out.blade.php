@@ -37,13 +37,13 @@
         <table class="items">
             <thead>
                 <tr>
-                    <th style="width:22px">No</th>
-                    <th style="width:70px">Rak Asal</th>
-                    <th style="width:92px">SKU</th>
+                    <th style="width:18px">No</th>
+                    <th style="width:58px">Rak Asal</th>
+                    <th style="width:110px">SKU</th>
                     <th>Nama Barang</th>
-                    <th style="width:34px">Qty</th>
-                    <th style="width:32px">Unit</th>
-                    <th style="width:72px">Keterangan</th>
+                    <th style="width:24px">Qty</th>
+                    <th style="width:28px">Unit</th>
+                    <th style="width:50px">Keterangan</th>
                 </tr>
             </thead>
             <tbody>
@@ -75,8 +75,8 @@
         <table style="width:100%; border-collapse:collapse;">
             <tr class="total-row">
                 <td class="num">Total Qty</td>
-                <td class="num mono" style="width:34px">{{ $totalQty }}</td>
-                <td style="width:72px"></td>
+                <td class="num mono" style="width:24px">{{ $totalQty }}</td>
+                <td style="width:50px"></td>
             </tr>
         </table>
 
