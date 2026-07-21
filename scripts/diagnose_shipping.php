@@ -65,7 +65,9 @@ foreach ($orders as $o) {
 echo str_repeat('=', 74) . PHP_EOL;
 echo "Total: {$orders->count()} order.\n";
 echo "\nPetunjuk baca:\n";
-echo "- channel_status = RETRY_SHIP  → percobaan ship pertama gagal di Shopee;\n";
-echo "  label/AWB belum siap. Recovery = get_shipping_parameter lalu ship_order ulang.\n";
-echo "- 'tracking number is invalid' → biasanya order belum benar-benar READY_TO_SHIP,\n";
-echo "  atau method pickup/dropoff belum sesuai yang diminta Shopee saat itu.\n";
+echo "- CATATAN: Shopee RETRY_SHIP dinormalisasi jadi PROCESSED di channel_status.\n";
+echo "  Jadi RETRY_SHIP TIDAK muncul di sini — lihat driver_message untuk indikasinya.\n";
+echo "- 'Package is not ready to ship'  → order sudah CANCELLED / bukan state bisa-ship.\n";
+echo "- 'System error, try again later' → error transient Shopee, ulangi beberapa saat lagi.\n";
+echo "- 'tracking number is invalid'    → order belum benar-benar READY_TO_SHIP saat dipanggil.\n";
+echo "- 'Label belum siap'              → AWB Shopee di-generate asinkron; tunggu lalu ulang.\n";

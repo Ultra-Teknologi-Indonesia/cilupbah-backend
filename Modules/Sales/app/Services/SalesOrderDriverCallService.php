@@ -24,8 +24,29 @@ class SalesOrderDriverCallService
         return $this->orderRepository->findOrFail($id);
     }
 
+    /**
+     * channel_status yang mustahil / percuma dipanggil driver — order sudah
+     * dibatalkan, diretur, atau sudah diserahkan ke kurir. Menghindari error
+     * "Package is not ready to ship" dari Shopee & pesan gagal yang menyesatkan.
+     */
+    private const NON_CALLABLE_CHANNEL_STATUSES = [
+        'CANCELLED',
+        'IN_CANCEL',
+        'RETURN_REQUESTED',
+        'RETURNED',
+        'SHIPPED',
+        'TO_CONFIRM_RECEIVE',
+        'COMPLETED',
+    ];
+
     public function callDriver(SalesOrder $order): bool
     {
+        if ($guard = $this->guardCallable($order)) {
+            $this->markUnsupported($order, $guard);
+
+            return false;
+        }
+
         $source = strtolower((string) $order->source);
 
         return match ($source) {
@@ -34,6 +55,22 @@ class SalesOrderDriverCallService
             'lazada' => $this->callLazada($order),
             default  => $this->markUnsupported($order, "Panggil driver untuk source '{$source}' belum didukung."),
         };
+    }
+
+    private function guardCallable(SalesOrder $order): ?string
+    {
+        $cs = strtoupper((string) $order->channel_status);
+
+        if (in_array($cs, self::NON_CALLABLE_CHANNEL_STATUSES, true)) {
+            return match (true) {
+                in_array($cs, ['CANCELLED', 'IN_CANCEL'], true)              => 'Pesanan sudah dibatalkan — tidak bisa panggil driver.',
+                in_array($cs, ['RETURN_REQUESTED', 'RETURNED'], true)        => 'Pesanan dalam proses retur — tidak bisa panggil driver.',
+                in_array($cs, ['SHIPPED', 'TO_CONFIRM_RECEIVE', 'COMPLETED'], true) => 'Pesanan sudah dikirim/selesai — driver tidak perlu dipanggil lagi.',
+                default                                                       => "Status '{$cs}' tidak bisa panggil driver.",
+            };
+        }
+
+        return null;
     }
 
     public function retryDriverCall(SalesOrder $order): void
@@ -93,8 +130,9 @@ class SalesOrderDriverCallService
             }
         } catch (\Throwable $e) {
             $order->update([
-                'driver_call_status'  => 'failed',
-                'driver_call_message' => mb_substr($e->getMessage(), 0, 500),
+                'driver_call_status'   => 'failed',
+                'driver_call_message'  => mb_substr($e->getMessage(), 0, 500),
+                'driver_call_response' => ['exception' => $e->getMessage(), 'class' => get_class($e)],
             ]);
         }
 
@@ -136,8 +174,9 @@ class SalesOrderDriverCallService
             ]);
         } catch (\Throwable $e) {
             $order->update([
-                'driver_call_status'  => 'failed',
-                'driver_call_message' => mb_substr($e->getMessage(), 0, 500),
+                'driver_call_status'   => 'failed',
+                'driver_call_message'  => mb_substr($e->getMessage(), 0, 500),
+                'driver_call_response' => ['exception' => $e->getMessage(), 'class' => get_class($e)],
             ]);
         }
 
@@ -188,8 +227,9 @@ class SalesOrderDriverCallService
             return true;
         } catch (\Throwable $e) {
             $order->update([
-                'driver_call_status'  => 'failed',
-                'driver_call_message' => mb_substr($e->getMessage(), 0, 500),
+                'driver_call_status'   => 'failed',
+                'driver_call_message'  => mb_substr($e->getMessage(), 0, 500),
+                'driver_call_response' => ['exception' => $e->getMessage(), 'class' => get_class($e)],
             ]);
             $order->refresh();
 

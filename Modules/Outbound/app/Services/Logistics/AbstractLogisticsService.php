@@ -48,6 +48,15 @@ abstract class AbstractLogisticsService implements MarketPlaceLogisticsInterface
         ];
     }
 
+    /**
+     * channel_status yang mustahil / percuma dipanggil driver (sudah dibatalkan,
+     * diretur, atau sudah diserahkan ke kurir).
+     */
+    private const NON_CALLABLE_CHANNEL_STATUSES = [
+        'CANCELLED', 'IN_CANCEL', 'RETURN_REQUESTED', 'RETURNED',
+        'SHIPPED', 'TO_CONFIRM_RECEIVE', 'COMPLETED',
+    ];
+
     protected function invoke(array $orderIds, int $shipperId, callable $handler): DriverCallResult
     {
         $orders = SalesOrder::query()->whereIn('id', $orderIds)->get()->keyBy('id');
@@ -64,12 +73,20 @@ abstract class AbstractLogisticsService implements MarketPlaceLogisticsInterface
                 continue;
             }
 
+            if ($guard = $this->guardCallable($order)) {
+                $this->persistFailure($order, ['message' => $guard]);
+                $results[] = ['order_id' => $id, 'status' => DriverCallResult::STATUS_FAILED, 'message' => $guard];
+                continue;
+            }
+
             try {
                 $outcome = $handler($order);
                 $status = $outcome['status'] ?? DriverCallResult::STATUS_FAILED;
 
                 if ($status === DriverCallResult::STATUS_SUCCESS) {
                     $this->persistSuccess($order, $shipperId, $outcome);
+                } else {
+                    $this->persistFailure($order, $outcome);
                 }
 
                 $results[] = array_merge(['order_id' => $id], $outcome);
@@ -78,6 +95,10 @@ abstract class AbstractLogisticsService implements MarketPlaceLogisticsInterface
                     'order_id' => $id,
                     'source' => $order->source ?? null,
                     'error' => $e->getMessage(),
+                ]);
+                $this->persistFailure($order, [
+                    'message'  => $e->getMessage(),
+                    'response' => ['exception' => $e->getMessage(), 'class' => get_class($e)],
                 ]);
                 $results[] = [
                     'order_id' => $id,
@@ -88,6 +109,31 @@ abstract class AbstractLogisticsService implements MarketPlaceLogisticsInterface
         }
 
         return new DriverCallResult($results);
+    }
+
+    private function guardCallable(SalesOrder $order): ?string
+    {
+        $cs = strtoupper((string) $order->channel_status);
+
+        if (! in_array($cs, self::NON_CALLABLE_CHANNEL_STATUSES, true)) {
+            return null;
+        }
+
+        return match (true) {
+            in_array($cs, ['CANCELLED', 'IN_CANCEL'], true)                    => 'Pesanan sudah dibatalkan — tidak bisa panggil driver.',
+            in_array($cs, ['RETURN_REQUESTED', 'RETURNED'], true)              => 'Pesanan dalam proses retur — tidak bisa panggil driver.',
+            default                                                            => 'Pesanan sudah dikirim/selesai — driver tidak perlu dipanggil lagi.',
+        };
+    }
+
+    protected function persistFailure(SalesOrder $order, array $outcome): void
+    {
+        $order->forceFill([
+            'driver_call_status'       => 'failed',
+            'driver_call_message'      => isset($outcome['message']) ? mb_substr((string) $outcome['message'], 0, 500) : null,
+            'driver_call_response'     => $outcome['response'] ?? $outcome,
+            'driver_call_attempted_at' => now(),
+        ])->save();
     }
 
     protected function persistSuccess(SalesOrder $order, int $shipperId, array $outcome): void
