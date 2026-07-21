@@ -184,10 +184,12 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
                 ->onQueue(config('queue.names.channel_sync'))
                 ->delay(now()->addMinutes(5));
         } else {
-            Log::error('PrepareShopeeShippingLabelJob: max global attempts tercapai, menyerah', [
+            $order->update(['shipping_label_status' => 'failed']);
+            Log::error('PrepareShopeeShippingLabelJob: max global attempts tercapai, tandai failed', [
                 'order_id' => $order->id,
                 'order_sn' => $orderSn,
             ]);
+            $this->notifyBulkListeners();
         }
     }
 
