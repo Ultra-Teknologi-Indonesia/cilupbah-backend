@@ -215,18 +215,13 @@ class ProcessPutawayItemJob implements ShouldQueue
                     }
                 }
 
-                $allDone = PutawayItem::where('putaway_id', $this->putawayId)
-                    ->get(['qty', 'putaway_qty'])
-                    ->every(fn ($i) => $i->putaway_qty >= $i->qty);
-
-                if ($allDone) {
-                    Putaway::where('id', $this->putawayId)
-                        ->where('status', '!=', Putaway::STATUS_COMPLETED)
-                        ->update([
-                            'status' => Putaway::STATUS_COMPLETED,
-                            'completed_at' => now(),
-                        ]);
-                }
+                // Auto-complete sengaja dihapus — Selesai harus dipencet manual
+                // via endpoint POST /putaway/{id}/complete (tombol "Selesai" di
+                // detail mobile). Alasan:
+                //   1) Konsistensi UX — user harus konfirmasi sebelum lock dokumen.
+                //   2) Over-quantity (putaway_qty > qty) tidak boleh silent-close;
+                //      user harus lihat badge kelebihan lalu putuskan.
+                //   3) Web flow juga panggil endpoint /complete secara eksplisit.
 
                 // Menopang optimistic lock di PutawayService::processItem(). Tiap scan
                 // menaikkan versi dokumen supaya edit web yang berdasarkan layar basi
