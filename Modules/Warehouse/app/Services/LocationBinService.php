@@ -283,7 +283,7 @@ class LocationBinService
             return [];
         }
 
-        $variants = ProductVariant::with('product:id,name')
+        $variants = ProductVariant::with(['media', 'product:id,name', 'product.media'])
             ->whereIn('id', $rows->pluck('item_id'))
             ->get()
             ->keyBy('id');
@@ -316,6 +316,7 @@ class LocationBinService
                 'sku' => $sku,
                 'name' => $name,
                 'pending_qty' => (int) $row->pending_qty,
+                'thumbnail' => $this->resolveVariantThumbnail($variant),
             ];
 
             if (count($result) >= $limit) {
@@ -324,6 +325,24 @@ class LocationBinService
         }
 
         return $result;
+    }
+
+    protected function resolveVariantThumbnail(ProductVariant $variant): ?string
+    {
+        if ($variant->relationLoaded('media') && $variant->media->isNotEmpty()) {
+            $primary = $variant->media->firstWhere('is_primary', true);
+
+            return $primary ? $primary->url : $variant->media->first()->url;
+        }
+
+        $product = $variant->relationLoaded('product') ? $variant->product : null;
+        if ($product && $product->relationLoaded('media') && $product->media->isNotEmpty()) {
+            $primary = $product->media->firstWhere('is_primary', true);
+
+            return $primary ? $primary->url : $product->media->first()->url;
+        }
+
+        return null;
     }
 
     /**
