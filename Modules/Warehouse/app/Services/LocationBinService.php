@@ -2,6 +2,11 @@
 
 namespace Modules\Warehouse\Services;
 
+use App\Traits\StockLockable;
+use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Services\InventoryService;
+use Modules\Product\Models\ProductVariant;
+use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Repositories\LocationBinRepository;
 use Modules\Warehouse\Repositories\LocationRepository;
 use Modules\Warehouse\Models\LocationBin;
@@ -12,6 +17,8 @@ use Illuminate\Support\Facades\DB;
 
 class LocationBinService
 {
+    use StockLockable;
+
     public function __construct(
         protected LocationBinRepository $binRepository,
         protected LocationRepository $locationRepository
@@ -251,5 +258,158 @@ class LocationBinService
         $query = $this->binRepository->applyFilterQuery($locationId);
 
         return $query->update($updateData);
+    }
+
+    /**
+     * SKU yang sudah diterima & siap putaway di gudang kecil (WH-KECIL) tapi
+     * belum punya rak. Dipakai combobox "Isi Rak" untuk rak yang masih kosong.
+     */
+    public function getPendingPutawaySkus(string $locationId, ?string $search = null, int $limit = 200): array
+    {
+        $location = Location::find($locationId);
+        if (! $location || ! $location->enforcesStrictBinSku()) {
+            return [];
+        }
+
+        $rows = Inventory::query()
+            ->pendingPlacement()
+            ->where('inventories.location_id', $locationId)
+            ->where('inventories.on_hand', '>', 0)
+            ->selectRaw('inventories.item_id as item_id, SUM(inventories.on_hand) as pending_qty')
+            ->groupBy('inventories.item_id')
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return [];
+        }
+
+        $variants = ProductVariant::with('product:id,name')
+            ->whereIn('id', $rows->pluck('item_id'))
+            ->get()
+            ->keyBy('id');
+
+        $homeGuard = app(SkuHomeBinGuard::class);
+        $needle = $search !== null && $search !== '' ? mb_strtolower($search) : null;
+
+        $result = [];
+        foreach ($rows as $row) {
+            $variant = $variants->get($row->item_id);
+            if (! $variant) {
+                continue;
+            }
+
+            if ($homeGuard->currentHomeBinId($locationId, $row->item_id) !== null) {
+                continue;
+            }
+
+            $sku = (string) ($variant->sku ?? '');
+            $name = (string) ($variant->product?->name ?? '');
+
+            if ($needle !== null
+                && ! str_contains(mb_strtolower($sku), $needle)
+                && ! str_contains(mb_strtolower($name), $needle)) {
+                continue;
+            }
+
+            $result[] = [
+                'variant_id' => $row->item_id,
+                'sku' => $sku,
+                'name' => $name,
+                'pending_qty' => (int) $row->pending_qty,
+            ];
+
+            if (count($result) >= $limit) {
+                break;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Tempatkan seluruh stok pending sebuah SKU ke satu rak kosong di WH-KECIL.
+     * Memakai InventoryService::putaway (guard + ledger PUTAWAY_IN/OUT) per baris
+     * inventory pending, dibungkus satu lock + transaksi agar atomik.
+     */
+    public function assignSkuToBin(string $locationId, string $binId, string $itemId, string $userId): array
+    {
+        $location = Location::find($locationId);
+        if (! $location) {
+            throw new ModelNotFoundException('Lokasi tidak ditemukan.');
+        }
+        if (! $location->enforcesStrictBinSku()) {
+            throw new \DomainException('Penempatan SKU langsung hanya berlaku untuk gudang kecil (WH-KECIL).');
+        }
+
+        $bin = LocationBin::where('location_id', $locationId)->find($binId);
+        if (! $bin) {
+            throw new ModelNotFoundException('Rak tidak ditemukan.');
+        }
+        if ($bin->is_inbound) {
+            throw new \DomainException('Rak inbound tidak dapat diisi SKU secara manual.');
+        }
+
+        $occupant = app(BinOccupancyGuard::class)->currentOccupantItemId($binId);
+        if ($occupant !== null && $occupant !== $itemId) {
+            throw new \DomainException('Rak sudah berisi SKU lain.');
+        }
+
+        app(SkuHomeBinGuard::class)->assertSkuFitsBin($locationId, $itemId, $binId);
+        app(BinOccupancyGuard::class)->assertBinFitsSku($binId, $itemId);
+
+        $inventoryService = app(InventoryService::class);
+
+        return $this->withStockLock($itemId, $locationId, function () use ($locationId, $binId, $itemId, $userId, $inventoryService) {
+            return DB::transaction(function () use ($locationId, $binId, $itemId, $userId, $inventoryService) {
+                $rows = Inventory::query()
+                    ->pendingPlacement()
+                    ->where('inventories.location_id', $locationId)
+                    ->where('inventories.item_id', $itemId)
+                    ->where('inventories.on_hand', '>', 0)
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($rows->isEmpty()) {
+                    // Idempoten: kalau rak ini sudah berisi SKU tsb (mis. sudah
+                    // ditempatkan di percobaan Simpan sebelumnya), anggap sukses.
+                    if (app(BinOccupancyGuard::class)->currentOccupantItemId($binId) === $itemId) {
+                        return [
+                            'bin_id' => $binId,
+                            'item_id' => $itemId,
+                            'placed_qty' => 0,
+                        ];
+                    }
+
+                    throw new \DomainException('Tidak ada stok pending untuk SKU ini di gudang kecil.');
+                }
+
+                $placed = 0;
+                foreach ($rows as $row) {
+                    $qty = (int) $row->on_hand;
+                    if ($qty <= 0) {
+                        continue;
+                    }
+
+                    $inventoryService->putaway([
+                        'item_id' => $itemId,
+                        'location_id' => $locationId,
+                        'source_bin_id' => $row->bin_id,
+                        'destination_bin_id' => $binId,
+                        'qty' => $qty,
+                        'batch_no' => $row->batch_no ?? '',
+                        'serial_no' => $row->serial_no ?? '',
+                        'created_by' => "user:{$userId}",
+                    ]);
+
+                    $placed += $qty;
+                }
+
+                return [
+                    'bin_id' => $binId,
+                    'item_id' => $itemId,
+                    'placed_qty' => $placed,
+                ];
+            });
+        });
     }
 }

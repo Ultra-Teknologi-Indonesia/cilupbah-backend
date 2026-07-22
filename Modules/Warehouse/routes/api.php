@@ -52,6 +52,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::middleware('role_or_permission:owner|view-manajemen-rak')->group(function () {
         Route::get('locations/{locationId}/bins', [LocationBinController::class, 'index'])->whereUuid('locationId')->name('warehouse.bins.index');
         Route::get('locations/{locationId}/bins/print-qr', [LocationBinController::class, 'printQr'])->whereUuid('locationId')->name('warehouse.bins.print-qr');
+        Route::get('locations/{locationId}/pending-putaway-skus', [LocationBinController::class, 'pendingPutawaySkus'])->whereUuid('locationId')->name('warehouse.bins.pending-putaway-skus');
     });
     Route::middleware('role_or_permission:owner|edit-manajemen-rak')->group(function () {
         Route::post('locations/{locationId}/bins/print-qr-job', [LocationBinController::class, 'printQrJob'])->whereUuid('locationId')->name('warehouse.bins.print-qr-job');
@@ -67,6 +68,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('locations/{locationId}/bins/generate', [LocationBinController::class, 'generate'])->whereUuid('locationId')->name('warehouse.bins.generate');
         Route::put('locations/{locationId}/bins/bulk', [LocationBinController::class, 'bulkUpdate'])->whereUuid('locationId')->name('warehouse.bins.bulk-update');
         Route::post('locations/{locationId}/bins/uniform-apply', [LocationBinController::class, 'uniformApply'])->whereUuid('locationId')->name('warehouse.bins.uniform-apply');
+        Route::post('locations/{locationId}/bins/{binId}/assign-sku', [LocationBinController::class, 'assignSku'])->whereUuid(['locationId', 'binId'])->name('warehouse.bins.assign-sku');
     });
 
     Route::get('locations/{locationId}/default-bin', [LocationBinController::class, 'defaultBin'])->whereUuid('locationId')->name('warehouse.bins.default')->middleware('role_or_permission:owner|view-manajemen-rak');

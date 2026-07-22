@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Warehouse\Http\Requests\AssignSkuLocationBinRequest;
 use Modules\Warehouse\Http\Requests\GenerateLocationBinRequest;
 use Modules\Warehouse\Http\Requests\StoreLocationBinRequest;
 use Modules\Warehouse\Http\Requests\UniformApplyLocationBinRequest;
@@ -256,6 +257,40 @@ class LocationBinController extends Controller
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal memperbarui.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
+        }
+    }
+
+    public function pendingPutawaySkus(Request $request, string $locationId): JsonResponse
+    {
+        $search = $request->query('search');
+        $items = $this->binService->getPendingPutawaySkus(
+            $locationId,
+            is_string($search) ? $search : null,
+        );
+
+        return $this->successResponse($items, 'Daftar SKU siap putaway berhasil diambil');
+    }
+
+    public function assignSku(AssignSkuLocationBinRequest $request, string $locationId, string $binId): JsonResponse
+    {
+        try {
+            $result = $this->binService->assignSkuToBin(
+                $locationId,
+                $binId,
+                $request->validated()['item_id'],
+                (string) ($request->user()?->id ?? ''),
+            );
+
+            return $this->successResponse($result, 'SKU berhasil ditempatkan ke rak.');
+        } catch (ModelNotFoundException $e) {
+            return $this->errorResponse('Lokasi atau rak tidak ditemukan.', 404);
+        } catch (\DomainException $e) {
+            return $this->errorResponse(
+                'Gagal menempatkan SKU.',
                 422,
                 ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
