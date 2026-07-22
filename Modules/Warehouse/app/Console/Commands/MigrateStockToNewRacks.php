@@ -37,22 +37,17 @@ class MigrateStockToNewRacks extends Command
         'WH-KECIL' => 'wh-kecil-bin-codes.csv',
     ];
 
-    /** Tabel history yang mereferensi bin (SELAIN inventories, yang ditangani terpisah). */
-    private const HISTORY_TABLES = [
-        ['inventory_movements', ['bin_id']],
-        ['putaway_items', ['source_bin_id', 'destination_bin_id']],
-        ['inventory_transfer_items', ['source_bin_id', 'destination_bin_id']],
-        ['bin_transfer_items', ['source_bin_id', 'destination_bin_id']],
-        ['inbound_receipts', ['bin_id']],
-    ];
-
     private bool $commit = false;
     private array $reports = [];
+
+    /** @var array<int,array{0:string,1:string}> (tabel,kolom) FK ke location_bins, di-resolve dinamis. */
+    private array $refCols = [];
 
     public function handle(): int
     {
         $this->commit = (bool) $this->option('commit');
         $locations = $this->option('location') ?: array_keys(self::TARGETS);
+        $this->refCols = $this->resolveBinRefColumns();
 
         $mode = $this->commit ? '<fg=red;options=bold>COMMIT</>' : '<fg=green;options=bold>DRY-RUN</>';
         $this->line('');
@@ -205,51 +200,35 @@ class MigrateStockToNewRacks extends Command
         }
     }
 
-    /** Re-point kolom bin di tabel history: per-item ke targetnya (tabel tanpa item_id → DEFAULT). */
+    /** Re-point kolom bin di semua tabel history: per-item ke targetnya (tabel tanpa item_id → DEFAULT). */
     private function repointHistory(array $oldBinIds, array $itemTarget, string $defaultBin): void
     {
-        foreach (self::HISTORY_TABLES as [$table, $cols]) {
-            if (! Schema::hasTable($table)) {
-                continue;
-            }
-            $hasItem = Schema::hasColumn($table, 'item_id');
-            foreach ($cols as $col) {
-                if (! Schema::hasColumn($table, $col)) {
-                    continue;
-                }
-                if ($hasItem) {
-                    // per item → targetnya
-                    $byTarget = [];
-                    foreach ($itemTarget as $item => $target) {
-                        $byTarget[$target][] = $item;
-                    }
-                    foreach ($byTarget as $target => $items) {
-                        DB::table($table)->whereIn($col, $oldBinIds)->whereIn('item_id', $items)
-                            ->update([$col => $target]);
-                    }
-                    // sisa (item tak terpetakan) → DEFAULT
-                    DB::table($table)->whereIn($col, $oldBinIds)->update([$col => $defaultBin]);
-                } else {
-                    DB::table($table)->whereIn($col, $oldBinIds)->update([$col => $defaultBin]);
+        $byTarget = [];
+        foreach ($itemTarget as $item => $target) {
+            $byTarget[$target][] = $item;
+        }
+
+        foreach ($this->refCols as [$table, $col]) {
+            if (Schema::hasColumn($table, 'item_id')) {
+                foreach ($byTarget as $target => $items) {
+                    DB::table($table)->whereIn($col, $oldBinIds)->whereIn('item_id', $items)
+                        ->update([$col => $target]);
                 }
             }
+            // sisa (tanpa item_id, atau item tak terpetakan) → DEFAULT
+            DB::table($table)->whereIn($col, $oldBinIds)->update([$col => $defaultBin]);
         }
     }
 
     private function itemsReferencingOldBins(array $oldBinIds): array
     {
         $items = [];
-        foreach (self::HISTORY_TABLES as [$table, $cols]) {
-            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'item_id')) {
+        foreach ($this->refCols as [$table, $col]) {
+            if (! Schema::hasColumn($table, 'item_id')) {
                 continue;
             }
-            foreach ($cols as $col) {
-                if (! Schema::hasColumn($table, $col)) {
-                    continue;
-                }
-                $found = DB::table($table)->whereIn($col, $oldBinIds)->distinct()->pluck('item_id')->all();
-                $items = array_merge($items, $found);
-            }
+            $found = DB::table($table)->whereIn($col, $oldBinIds)->distinct()->pluck('item_id')->all();
+            $items = array_merge($items, $found);
         }
         return array_values(array_unique(array_filter($items)));
     }
@@ -257,17 +236,43 @@ class MigrateStockToNewRacks extends Command
     private function countHistory(array $oldBinIds): int
     {
         $n = 0;
-        foreach (self::HISTORY_TABLES as [$table, $cols]) {
-            if (! Schema::hasTable($table)) {
-                continue;
-            }
-            foreach ($cols as $col) {
-                if (Schema::hasColumn($table, $col)) {
-                    $n += DB::table($table)->whereIn($col, $oldBinIds)->count();
-                }
-            }
+        foreach ($this->refCols as [$table, $col]) {
+            $n += DB::table($table)->whereIn($col, $oldBinIds)->count();
         }
         return $n;
+    }
+
+    /**
+     * Semua (tabel,kolom) yang FK ke location_bins, KECUALI inventories (ditangani
+     * moveInventory) dan locations.default_bin_id (jangan disentuh). Resolve dinamis
+     * dari information_schema agar tak ada tabel yang terlewat.
+     *
+     * @return array<int,array{0:string,1:string}>
+     */
+    private function resolveBinRefColumns(): array
+    {
+        $rows = DB::select(
+            "SELECT tc.table_name AS t, kcu.column_name AS c
+             FROM information_schema.table_constraints tc
+             JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
+             JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name
+             WHERE tc.constraint_type = 'FOREIGN KEY' AND ccu.table_name = 'location_bins'"
+        );
+
+        $seen = [];
+        $out = [];
+        foreach ($rows as $r) {
+            if (in_array($r->t, ['inventories', 'locations'], true)) {
+                continue;
+            }
+            $key = $r->t.'.'.$r->c;
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = [$r->t, $r->c];
+        }
+        return $out;
     }
 
     private function printGrand(array $grand): void
