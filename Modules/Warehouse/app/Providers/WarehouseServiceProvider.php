@@ -7,6 +7,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Modules\Warehouse\Console\Commands\AuditMultiSkuBins;
 use Modules\Warehouse\Console\Commands\ImportBinAllocation;
 use Modules\Warehouse\Console\Commands\ReconcileBinLayout;
+use Modules\Warehouse\Console\Commands\MigrateStockToNewRacks;
 
 class WarehouseServiceProvider extends ModuleServiceProvider
 {
@@ -19,6 +20,7 @@ class WarehouseServiceProvider extends ModuleServiceProvider
         AuditMultiSkuBins::class,
         ImportBinAllocation::class,
         ReconcileBinLayout::class,
+        MigrateStockToNewRacks::class,
     ];
 
     protected array $providers = [
