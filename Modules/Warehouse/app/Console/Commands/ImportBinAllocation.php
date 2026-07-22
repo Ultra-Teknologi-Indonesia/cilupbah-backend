@@ -31,6 +31,7 @@ class ImportBinAllocation extends Command
         {--file= : Path file CSV export Jubelio (kolom SKU, Lokasi, Rak).}
         {--location=WH-KECIL : location_code gudang tujuan.}
         {--commit : Terapkan perubahan. Tanpa flag ini = dry-run (aman, tidak menulis).}
+        {--layout-only : Hanya buat kode rak + zona. TIDAK menyentuh stok/alokasi (seeding pra-produksi).}
         {--report-dir= : Direktori output laporan CSV (default: storage/app/bin-migration).}';
 
     protected $description = 'Import layout + alokasi rak dari CSV Jubelio (dry-run secara default).';
@@ -45,6 +46,7 @@ class ImportBinAllocation extends Command
     public function handle(InventoryRepository $inventoryRepo, InventoryMovementRepository $movementRepo): int
     {
         $this->commit = (bool) $this->option('commit');
+        $layoutOnly = (bool) $this->option('layout-only');
         $file = (string) $this->option('file');
 
         if ($file === '' || ! is_readable($file)) {
@@ -61,6 +63,7 @@ class ImportBinAllocation extends Command
         $mode = $this->commit ? '<fg=red;options=bold>COMMIT (menulis DB)</>' : '<fg=green;options=bold>DRY-RUN (tidak menulis)</>';
         $this->line('');
         $this->line("Mode        : {$mode}");
+        $this->line('Cakupan     : '.($layoutOnly ? '<options=bold>LAYOUT-ONLY</> (kode rak + zona saja, tanpa stok)' : 'Layout + Alokasi stok'));
         $this->line("Lokasi      : {$location->location_code} ({$location->location_name})");
         $this->line('Aturan rak  : '.($location->enforcesStrictBinSku() ? '1 rak = 1 SKU (STRICT)' : 'bebas'));
         $this->line("File        : {$file}");
@@ -112,12 +115,15 @@ class ImportBinAllocation extends Command
 
         $allRaks = array_keys($rakToSkus);
 
-        // ---- Phase C: resolusi SKU -> variant ----------------------------------
+        // ---- Phase C: resolusi SKU -> variant (hanya bila alokasi) -------------
         $allSkus = array_keys($skuToRak);
-        $variantMap = ProductVariant::whereIn('sku', $allSkus)->pluck('id', 'sku')->all();
-        $missingSkus = array_values(array_diff($allSkus, array_keys($variantMap)));
-        foreach ($missingSkus as $sku) {
-            $this->reports['sku_tak_ada_di_produk'][] = ['sku' => $sku, 'rak_tujuan' => $skuToRak[$sku] ?? '-'];
+        $variantMap = [];
+        if (! $layoutOnly) {
+            $variantMap = ProductVariant::whereIn('sku', $allSkus)->pluck('id', 'sku')->all();
+            $missingSkus = array_values(array_diff($allSkus, array_keys($variantMap)));
+            foreach ($missingSkus as $sku) {
+                $this->reports['sku_tak_ada_di_produk'][] = ['sku' => $sku, 'rak_tujuan' => $skuToRak[$sku] ?? '-'];
+            }
         }
 
         // ---- Phase D: LAYOUT (buat semua kode rak) -----------------------------
@@ -149,6 +155,7 @@ class ImportBinAllocation extends Command
         // ---- Phase E: ALOKASI (rak 1-SKU) --------------------------------------
         $alloc = ['moved' => 0, 'no_stock' => 0, 'conflict' => 0, 'already' => 0, 'skipped_missing' => 0, 'qty' => 0];
 
+        if (! $layoutOnly) {
         foreach ($singleSkuRaks as $rak => $sku) {
             $itemId = $variantMap[$sku] ?? null;
             if (! $itemId) { $alloc['skipped_missing']++; continue; }
@@ -211,9 +218,10 @@ class ImportBinAllocation extends Command
                 'on_hand' => (int) $invs->sum('on_hand'),
             ];
         }
+        } // end ! layoutOnly
 
         // ---- Ringkasan ----------------------------------------------------------
-        $this->printSummary($rows, $allRaks, $singleSkuRaks, $multiSkuRaks, $newCodes, $zonesCreated, $alloc);
+        $this->printSummary($rows, $allRaks, $singleSkuRaks, $multiSkuRaks, $newCodes, $zonesCreated, $alloc, $layoutOnly);
         $this->dumpReports();
 
         if (! $this->commit) {
@@ -400,25 +408,35 @@ class ImportBinAllocation extends Command
         array $multiSkuRaks,
         array $newCodes,
         int $zonesCreated,
-        array $alloc
+        array $alloc,
+        bool $layoutOnly = false
     ): void {
-        $this->line('');
-        $this->line('<options=bold>== RINGKASAN ==</>');
-        $this->table(['Metrik', 'Nilai'], [
+        $table = [
             ['Baris valid (lokasi ini)', number_format(count($rows))],
             ['Rak unik total', number_format(count($allRaks))],
             ['  - kode rak BARU dibuat', number_format(count($newCodes)).($this->commit ? '' : ' (dry-run: belum dibuat)')],
             ['  - kode rak sudah ada (skip)', number_format(count($allRaks) - count($newCodes))],
             ['Zona dibuat', $this->commit ? number_format($zonesCreated) : '(dry-run)'],
-            ['Rak 1-SKU (dialokasi)', number_format(count($singleSkuRaks))],
-            ['Rak multi-SKU (TIDAK dialokasi)', number_format(count($multiSkuRaks))],
-            ['  → stok dipindah (SKU)', number_format($alloc['moved']).($this->commit ? '' : ' (prediksi)')],
-            ['  → qty dipindah', number_format($alloc['qty'])],
-            ['  → sudah di rak tujuan', number_format($alloc['already'])],
-            ['  → kode dibuat, stok 0', number_format($alloc['no_stock'])],
-            ['  → rak tujuan konflik SKU lain', number_format($alloc['conflict'])],
-            ['  → SKU tak ada di produk', number_format($alloc['skipped_missing'])],
-        ]);
+            ['Rak 1-SKU', number_format(count($singleSkuRaks))],
+            ['Rak multi-SKU (dilaporkan)', number_format(count($multiSkuRaks))],
+        ];
+
+        if (! $layoutOnly) {
+            $table[5][0] = 'Rak 1-SKU (dialokasi)';
+            $table[6][0] = 'Rak multi-SKU (TIDAK dialokasi)';
+            $table = array_merge($table, [
+                ['  → stok dipindah (SKU)', number_format($alloc['moved']).($this->commit ? '' : ' (prediksi)')],
+                ['  → qty dipindah', number_format($alloc['qty'])],
+                ['  → sudah di rak tujuan', number_format($alloc['already'])],
+                ['  → kode dibuat, stok 0', number_format($alloc['no_stock'])],
+                ['  → rak tujuan konflik SKU lain', number_format($alloc['conflict'])],
+                ['  → SKU tak ada di produk', number_format($alloc['skipped_missing'])],
+            ]);
+        }
+
+        $this->line('');
+        $this->line('<options=bold>== RINGKASAN ==</>');
+        $this->table(['Metrik', 'Nilai'], $table);
     }
 
     private function dumpReports(): void
