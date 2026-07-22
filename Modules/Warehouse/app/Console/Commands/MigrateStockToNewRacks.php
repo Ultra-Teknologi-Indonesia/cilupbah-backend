@@ -200,7 +200,11 @@ class MigrateStockToNewRacks extends Command
         }
     }
 
-    /** Re-point kolom bin di semua tabel history: per-item ke targetnya (tabel tanpa item_id → DEFAULT). */
+    /**
+     * Re-point kolom bin di semua tabel history ke rak tujuan (per-item; tabel tanpa
+     * item_id → DEFAULT). Coba bulk; jika bentrok unique constraint, fallback per-baris
+     * (re-point yang bisa, buang baris duplikat) supaya rak lama pasti bebas referensi.
+     */
     private function repointHistory(array $oldBinIds, array $itemTarget, string $defaultBin): void
     {
         $byTarget = [];
@@ -209,14 +213,40 @@ class MigrateStockToNewRacks extends Command
         }
 
         foreach ($this->refCols as [$table, $col]) {
-            if (Schema::hasColumn($table, 'item_id')) {
-                foreach ($byTarget as $target => $items) {
-                    DB::table($table)->whereIn($col, $oldBinIds)->whereIn('item_id', $items)
-                        ->update([$col => $target]);
-                }
+            $hasItem = Schema::hasColumn($table, 'item_id');
+            try {
+                DB::transaction(function () use ($table, $col, $oldBinIds, $byTarget, $defaultBin, $hasItem) {
+                    if ($hasItem) {
+                        foreach ($byTarget as $target => $items) {
+                            DB::table($table)->whereIn($col, $oldBinIds)->whereIn('item_id', $items)
+                                ->update([$col => $target]);
+                        }
+                    }
+                    DB::table($table)->whereIn($col, $oldBinIds)->update([$col => $defaultBin]);
+                });
+            } catch (\Throwable $e) {
+                $this->repointRowWise($table, $col, $oldBinIds, $itemTarget, $defaultBin, $hasItem);
             }
-            // sisa (tanpa item_id, atau item tak terpetakan) → DEFAULT
-            DB::table($table)->whereIn($col, $oldBinIds)->update([$col => $defaultBin]);
+        }
+    }
+
+    /** Fallback per-baris: re-point tiap baris; jika bentrok unique → hapus baris (duplikat). */
+    private function repointRowWise(string $table, string $col, array $oldBinIds, array $itemTarget, string $defaultBin, bool $hasItem): void
+    {
+        if (! Schema::hasColumn($table, 'id')) {
+            // tanpa PK: tak bisa re-point aman → hapus referensi rak lama
+            DB::table($table)->whereIn($col, $oldBinIds)->delete();
+            return;
+        }
+
+        $select = $hasItem ? ['id', 'item_id'] : ['id'];
+        foreach (DB::table($table)->whereIn($col, $oldBinIds)->get($select) as $row) {
+            $target = $hasItem ? ($itemTarget[$row->item_id] ?? $defaultBin) : $defaultBin;
+            try {
+                DB::transaction(fn () => DB::table($table)->where('id', $row->id)->update([$col => $target]));
+            } catch (\Throwable $e) {
+                DB::table($table)->where('id', $row->id)->delete();
+            }
         }
     }
 
