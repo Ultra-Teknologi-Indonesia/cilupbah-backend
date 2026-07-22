@@ -43,7 +43,8 @@ class WarehouseDatabaseSeeder extends Seeder
             ]);
         }
 
-        // Kode rak WH-KECIL sesuai layout Jubelio client (aditif, idempoten).
+        // Kode rak sesuai layout Jubelio client (aditif, idempoten).
+        $this->call(WhPusatBinLayoutSeeder::class);
         $this->call(WhKecilBinLayoutSeeder::class);
     }
 
