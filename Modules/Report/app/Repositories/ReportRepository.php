@@ -518,6 +518,57 @@ class ReportRepository
             ->get(['id', 'putaway_no']);
     }
 
+    /**
+     * Baris Laporan Pengiriman Berdasarkan Ekspedisi: satu baris per pesanan.
+     *
+     * Keluarga ekspedisi (SPX/J&T/…) tidak ada sebagai kolom; dinormalisasi di
+     * service dari provider mentah. Quantity dijumlah dari item pesanan lewat
+     * subquery agar join manifest tak menggandakan baris. Sejalan dengan Daftar
+     * Pengiriman, pesanan ber-item unmapped dikecualikan.
+     *
+     * @return array<int, object>
+     */
+    public function shipmentByCourierRows(array $filters): array
+    {
+        $from = ($filters['from'] ?? null) ? $filters['from'] . ' 00:00:00' : null;
+        $to = ($filters['to'] ?? null) ? $filters['to'] . ' 23:59:59' : null;
+        $locationIds = $filters['location_ids'] ?? [];
+
+        $qty = DB::table('sales_order_items')
+            ->select('order_id')
+            ->selectRaw('COALESCE(SUM(qty_in_base), 0) AS qty')
+            ->groupBy('order_id');
+
+        $manifest = DB::table('shipment_orders as sho')
+            ->join('shipments as sh', 'sh.id', '=', 'sho.shipment_id')
+            ->select('sho.order_id')
+            ->selectRaw("STRING_AGG(DISTINCT sh.shipment_no, ', ') AS kode_pengiriman")
+            ->groupBy('sho.order_id');
+
+        return DB::table('sales_orders as so')
+            ->leftJoinSub($qty, 'q', 'q.order_id', '=', 'so.id')
+            ->leftJoinSub($manifest, 'm', 'm.order_id', '=', 'so.id')
+            ->whereNotExists(fn ($sub) => $sub
+                ->select(DB::raw(1))
+                ->from('sales_order_items as soi')
+                ->whereColumn('soi.order_id', 'so.id')
+                ->whereNull('soi.item_id'))
+            ->when($from, fn ($qb, $v) => $qb->where('so.transaction_date', '>=', $v))
+            ->when($to, fn ($qb, $v) => $qb->where('so.transaction_date', '<=', $v))
+            ->when(! empty($locationIds), fn ($qb) => $qb->whereIn('so.location_id', $locationIds))
+            ->select([
+                'so.transaction_date as tanggal',
+                'so.salesorder_no as no_pesanan',
+                'so.tracking_number as no_resi',
+                'm.kode_pengiriman',
+            ])
+            ->selectRaw('COALESCE(so.shipping_provider, so.courier_name) AS provider')
+            ->selectRaw('COALESCE(q.qty, 0) AS qty')
+            ->orderByDesc('so.transaction_date')
+            ->get()
+            ->all();
+    }
+
     public function courierOptions(): \Illuminate\Support\Collection
     {
         return DB::table('couriers')

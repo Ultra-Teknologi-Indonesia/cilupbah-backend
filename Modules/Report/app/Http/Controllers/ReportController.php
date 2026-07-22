@@ -18,6 +18,7 @@ use Modules\Report\Http\Requests\PenyesuaianStokPdfRequest;
 use Modules\Report\Http\Resources\LazadaDocumentResource;
 use Modules\Report\Services\OrderPerformanceReportService;
 use Modules\Report\Services\PutawayListReportService;
+use Modules\Report\Services\ShipmentByCourierReportService;
 use Modules\Report\Services\PutawayPerformanceReportService;
 use Modules\Report\Services\ReportService;
 use Modules\Report\Support\OrderPerformanceSpec;
@@ -691,6 +692,42 @@ class ReportController extends Controller
         );
 
         $filename = sprintf('Daftar-Penempatan-Barang_%s.pdf', $validated['date']);
+        $disposition = ($validated['download'] ?? false) ? 'attachment' : 'inline';
+
+        return response($pdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => "{$disposition}; filename=\"{$filename}\"",
+        ]);
+    }
+
+    #[OA\Post(
+        path: '/api/v1/reports/wms/shipment-by-courier/pdf',
+        summary: 'Cetak Laporan Pengiriman Berdasarkan Ekspedisi (PDF)',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        responses: [new OA\Response(response: 200, description: 'PDF stream')]
+    )]
+    public function shipmentByCourierPdf(Request $request): Response
+    {
+        $validated = $request->validate([
+            'mode' => ['required', Rule::in(['detail', 'summary'])],
+            'from' => 'required|date',
+            'to' => 'required|date|after_or_equal:from',
+            'location_ids' => 'nullable|array',
+            'location_ids.*' => 'uuid',
+            'download' => 'nullable|boolean',
+        ]);
+
+        $pdf = app(ShipmentByCourierReportService::class)
+            ->build($validated['mode'] === 'detail', $validated);
+
+        $filename = sprintf(
+            'Laporan-Pengiriman-Ekspedisi-%s_%s_%s.pdf',
+            ucfirst($validated['mode']),
+            $validated['from'],
+            $validated['to'],
+        );
+
         $disposition = ($validated['download'] ?? false) ? 'attachment' : 'inline';
 
         return response($pdf->output(), 200, [
