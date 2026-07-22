@@ -11,6 +11,7 @@ use Maatwebsite\Excel\Facades\Excel;
 use Modules\Report\Exports\NegativeStockReportExport;
 use Modules\Report\Exports\PickListReportExport;
 use Modules\Report\Exports\PicklistDetailPhotoExport;
+use Modules\Report\Exports\SalesListPesananExport;
 use Modules\Report\Exports\SectionedReportExport;
 use Modules\Report\Exports\ShipmentListReportExport;
 use Modules\Report\Exports\TransferReportExport;
@@ -20,6 +21,7 @@ use Modules\Report\Http\Requests\PenyesuaianStokPdfRequest;
 use Modules\Report\Http\Resources\LazadaDocumentResource;
 use Modules\Report\Services\OrderPerformanceReportService;
 use Modules\Report\Services\PutawayListReportService;
+use Modules\Report\Services\SalesListReportService;
 use Modules\Report\Services\ShipmentByCourierReportService;
 use Modules\Report\Services\PutawayPerformanceReportService;
 use Modules\Report\Services\ReportService;
@@ -892,6 +894,38 @@ class ReportController extends Controller
             new PicklistDetailPhotoExport($data['picklist'], $data['groups']),
             $filename,
         );
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/sales/list/export',
+        summary: 'Export Daftar Penjualan (Referensi Pesanan) ke XLSX',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        parameters: [
+            new OA\Parameter(name: 'from', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'to', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'location_ids[]', in: 'query', required: false, schema: new OA\Schema(type: 'array', items: new OA\Items(type: 'string', format: 'uuid'))),
+        ],
+        responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
+    )]
+    public function salesListExport(Request $request)
+    {
+        $validated = $request->validate([
+            'from' => 'nullable|date',
+            'to' => 'nullable|date|after_or_equal:from',
+            'location_ids' => 'nullable|array',
+            'location_ids.*' => 'uuid',
+        ]);
+
+        $query = app(SalesListReportService::class)->query($validated);
+
+        $filename = sprintf(
+            'Daftar-Penjualan_%s_%s.xlsx',
+            $validated['from'] ?? 'semua',
+            $validated['to'] ?? now()->format('Y-m-d'),
+        );
+
+        return Excel::download(new SalesListPesananExport($query), $filename);
     }
 
     public function lazadaGetDocument(Request $request): JsonResponse

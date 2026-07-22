@@ -41,6 +41,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::middleware('role_or_permission:owner|view-laporan-hpp')->group(function () {
         Route::get('reports/hpp', [ReportController::class, 'hpp'])->name('reports.hpp');
     });
+    Route::middleware('role_or_permission:owner|view-laporan-penjualan')->group(function () {
+        Route::get('reports/sales/list/export', [ReportController::class, 'salesListExport'])->name('reports.sales.list.export');
+    });
     Route::middleware('role_or_permission:owner|export-laporan-persediaan')->group(function () {
         Route::post('reports/barcode/pdf', [ReportController::class, 'barcodePdf'])->name('reports.barcode.pdf');
         Route::post('reports/penyesuaian-stok/pdf', [ReportController::class, 'penyesuaianStokPdf'])->name('reports.penyesuaian-stok.pdf');
