@@ -499,6 +499,17 @@ class ReportService
         ini_set('memory_limit', '1024M');
         set_time_limit(180);
 
+        $data = $this->pickListDetailData($picklistId, $orderIds);
+
+        $pdf = Pdf::loadView('report::pdf.detail-picklist', $data);
+        $pdf->setPaper('a4', 'portrait');
+
+        return $pdf;
+    }
+
+    /** Data terstruktur satu picklist untuk dipakai bersama cetak PDF & ekspor Excel. */
+    public function pickListDetailData(string $picklistId, ?array $orderIds = null): array
+    {
         $picklist = $this->repository->pickList([
             'picklist_id' => $picklistId,
             'order_ids' => $this->normalizeOrderIds($orderIds),
@@ -525,13 +536,7 @@ class ReportService
             ])
             ->values();
 
-        $pdf = Pdf::loadView('report::pdf.detail-picklist', [
-            'picklist' => $picklist,
-            'groups' => $groups,
-        ]);
-        $pdf->setPaper('a4', 'portrait');
-
-        return $pdf;
+        return ['picklist' => $picklist, 'groups' => $groups];
     }
 
     public function transferReportRows(array $filters): array

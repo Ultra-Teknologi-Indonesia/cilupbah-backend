@@ -7,6 +7,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Modules\Report\Repositories\ReportRepository;
 use Modules\Report\Support\EkspedisiNormalizer;
+use Modules\Report\Support\SectionedReport;
 
 /**
  * Laporan Pengiriman Berdasarkan Ekspedisi — permintaan docx "laporan manifest
@@ -44,6 +45,59 @@ class ShipmentByCourierReportService
         $pdf->setPaper('a4', 'portrait');
 
         return $pdf;
+    }
+
+    /** Varian Excel "cermin PDF": grup per ekspedisi + subtotal + Grand Total. */
+    public function sectioned(bool $detail, array $filters): SectionedReport
+    {
+        ini_set('memory_limit', '1024M');
+        set_time_limit(300);
+
+        $rows = collect($this->repository->shipmentByCourierRows($filters))
+            ->map(function ($r) {
+                $r->ekspedisi = EkspedisiNormalizer::family($r->provider);
+
+                return $r;
+            });
+
+        $report = SectionedReport::make(
+            'Laporan Pengiriman Berdasarkan Ekspedisi' . ($detail ? ' - Detail' : ''),
+            $this->periodeLabel($filters),
+        );
+
+        if ($rows->isEmpty()) {
+            return $report->emptyNotice('Tidak ada pengiriman pada rentang tanggal ini.');
+        }
+
+        if ($detail) {
+            $rows->groupBy('ekspedisi')->sortKeys()->each(function (Collection $items, $ekspedisi) use ($report) {
+                $report->group("Nama Ekspedisi: {$ekspedisi}")
+                    ->head(['Tanggal Transaksi', 'Kode Pengiriman', 'No Pesanan', 'No Resi', 'Quantity']);
+
+                foreach ($items as $r) {
+                    $report->row([
+                        $r->tanggal ? Carbon::parse($r->tanggal)->format('d M Y H.i') : '-',
+                        $r->kode_pengiriman ?? '',
+                        $r->no_pesanan ?? '',
+                        $r->no_resi ?? '',
+                        (int) $r->qty,
+                    ]);
+                }
+
+                $report->subtotal(['Total', '', '', '', (int) $items->sum(fn ($r) => (float) $r->qty)])
+                    ->spacer();
+            });
+
+            return $report;
+        }
+
+        $report->head(['Nama Ekspedisi', 'Total Pesanan', 'Total Quantity']);
+        $rows->groupBy('ekspedisi')->sortKeys()->each(function (Collection $items, $ekspedisi) use ($report) {
+            $report->row([$ekspedisi, $items->count(), (int) $items->sum(fn ($r) => (float) $r->qty)]);
+        });
+        $report->grand(['Grand Total', $rows->count(), (int) $rows->sum(fn ($r) => (float) $r->qty)]);
+
+        return $report;
     }
 
     private function periodeLabel(array $filters): string

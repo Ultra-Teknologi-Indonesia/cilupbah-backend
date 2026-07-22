@@ -6,6 +6,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Modules\Report\Repositories\ReportRepository;
+use Modules\Report\Support\SectionedReport;
 use Modules\Warehouse\Models\Location;
 
 class PutawayListReportService
@@ -36,6 +37,57 @@ class PutawayListReportService
         $pdf->setPaper('a4', 'portrait');
 
         return $pdf;
+    }
+
+    /** Varian Excel "cermin PDF": satu blok per dokumen penempatan. */
+    public function sectioned(string $date, string $locationId, array $putawayIds = []): SectionedReport
+    {
+        ini_set('memory_limit', '1024M');
+        set_time_limit(300);
+
+        $rows = collect($this->repository->putawayItemRows($date, $locationId, $putawayIds));
+
+        $report = SectionedReport::make(
+            'Daftar Penempatan Barang',
+            sprintf(
+                'Tanggal: %s   |   Lokasi: %s',
+                Carbon::parse($date)->format('d M Y'),
+                Location::find($locationId)?->location_name ?? '-',
+            ),
+        );
+
+        if ($rows->isEmpty()) {
+            return $report->emptyNotice('Tidak ada penempatan pada tanggal dan lokasi ini.');
+        }
+
+        $rows->groupBy('putaway_id')->each(function (Collection $items) use ($report) {
+            $first = $items->first();
+
+            $report->group(sprintf(
+                'No. Putaway: %s   |   %s   |   Runner: %s',
+                $first->putaway_no,
+                $first->tanggal ? Carbon::parse($first->tanggal)->format('d M Y H.i') : '-',
+                $this->runnerLabel($first),
+            ))->head(['No', 'SKU', 'Deskripsi', 'Serial No', 'Batch No', 'Sumber', 'Kode Rak', 'Qty']);
+
+            $no = 0;
+            foreach ($items as $r) {
+                $report->row([
+                    (string) ++$no,
+                    $r->sku ?? '-',
+                    $r->deskripsi ?? '-',
+                    $r->serial_no ?? '',
+                    $r->batch_no ?? '',
+                    $r->sumber ?? '',
+                    $r->kode_rak ?? '',
+                    (int) $r->qty,
+                ]);
+            }
+
+            $report->spacer();
+        });
+
+        return $report;
     }
 
     private function documents(Collection $rows): array

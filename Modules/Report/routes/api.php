@@ -32,6 +32,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('reports/wms/putaway-list/lookup', [ReportController::class, 'putawayListLookup'])->name('reports.wms.putaway-list.lookup');
         Route::post('reports/wms/putaway-list/pdf', [ReportController::class, 'putawayListPdf'])->name('reports.wms.putaway-list.pdf');
         Route::post('reports/wms/shipment-by-courier/pdf', [ReportController::class, 'shipmentByCourierPdf'])->name('reports.wms.shipment-by-courier.pdf');
+        Route::get('reports/wms/order-performance/export', [ReportController::class, 'orderPerformanceExport'])->name('reports.wms.order-performance.export');
+        Route::get('reports/wms/putaway-performance/export', [ReportController::class, 'putawayPerformanceExport'])->name('reports.wms.putaway-performance.export');
+        Route::get('reports/wms/putaway-list/export', [ReportController::class, 'putawayListExport'])->name('reports.wms.putaway-list.export');
+        Route::get('reports/wms/shipment-by-courier/export', [ReportController::class, 'shipmentByCourierExport'])->name('reports.wms.shipment-by-courier.export');
+        Route::post('reports/wms/pick-list/xlsx', [ReportController::class, 'pickListDetailExcel'])->name('reports.wms.pick-list.xlsx');
     });
     Route::middleware('role_or_permission:owner|view-laporan-hpp')->group(function () {
         Route::get('reports/hpp', [ReportController::class, 'hpp'])->name('reports.hpp');

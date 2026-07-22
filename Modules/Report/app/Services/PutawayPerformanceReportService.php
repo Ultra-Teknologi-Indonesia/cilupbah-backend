@@ -6,6 +6,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Modules\Report\Repositories\ReportRepository;
+use Modules\Report\Support\SectionedReport;
 
 class PutawayPerformanceReportService
 {
@@ -57,6 +58,98 @@ class PutawayPerformanceReportService
         $fmt = fn (?string $d) => $d ? Carbon::parse($d)->format('d M Y') : '-';
 
         return $fmt($filters['from'] ?? null) . ' - ' . $fmt($filters['to'] ?? null);
+    }
+
+    /** Varian Excel "cermin PDF": Lokasi → Nama Pengguna, dengan subtotal per grup. */
+    public function sectioned(bool $detail, array $filters): SectionedReport
+    {
+        ini_set('memory_limit', '1024M');
+        set_time_limit(300);
+
+        $rows = collect($this->repository->putawayPerformanceRows($filters));
+
+        $report = SectionedReport::make(
+            'Laporan Performa Penempatan' . ($detail ? ' - Detail' : ''),
+            $this->periodeLabel($filters),
+        );
+
+        if ($rows->isEmpty()) {
+            return $report->emptyNotice('Tidak ada data pada rentang tanggal ini.');
+        }
+
+        if ($detail) {
+            $rows->groupBy(fn ($r) => $r->lokasi ?: '(tanpa lokasi)')
+                ->each(function (Collection $perLokasi, $lokasi) use ($report) {
+                    $report->group("Lokasi Gudang: {$lokasi}");
+
+                    $perLokasi->groupBy(fn ($r) => $r->grup ?: '-')
+                        ->each(function (Collection $perUser, $user) use ($report) {
+                            $report->subgroup('Nama Pengguna: ' . ($user !== '' ? $user : '-'))
+                                ->head(['Tanggal Transaksi', 'No Transaksi', 'Quantity', 'Rata-rata Durasi Per SKU']);
+
+                            foreach ($perUser as $r) {
+                                $report->row([
+                                    $r->tanggal_raw ? Carbon::parse($r->tanggal_raw)->format('d M Y H.i') : '-',
+                                    $r->no_transaksi,
+                                    (int) $r->qty,
+                                    OrderPerformanceReportService::formatDuration($this->perSkuSeconds($r), withSeconds: false),
+                                ]);
+                            }
+
+                            $count = $perUser->count();
+                            $report->subtotal([
+                                'Total',
+                                $count,
+                                (int) $perUser->sum(fn ($r) => (float) $r->qty),
+                                OrderPerformanceReportService::formatDuration(
+                                    $count > 0 ? $perUser->sum(fn ($r) => $this->perSkuSeconds($r)) / $count : 0,
+                                    withSeconds: false,
+                                ),
+                            ])->spacer();
+                        });
+                });
+
+            return $report;
+        }
+
+        $rows->groupBy(fn ($r) => $r->lokasi ?: '(tanpa lokasi)')
+            ->each(function (Collection $perLokasi, $lokasi) use ($report) {
+                $report->group("Lokasi Gudang: {$lokasi}")
+                    ->head(['Nama Pengguna', 'Total Transaksi', 'Total Quantity', 'Rata-rata Durasi Per Transaksi']);
+
+                $perLokasi->groupBy(fn ($r) => $r->grup ?: '-')
+                    ->each(function (Collection $perUser, $user) use ($report) {
+                        $agg = $this->rawAggregate($perUser);
+                        $report->row([
+                            $user !== '' ? $user : '-',
+                            $agg['total_transaksi'],
+                            $agg['total_quantity'],
+                            $agg['durasi_per_transaksi'],
+                        ]);
+                    });
+
+                $sub = $this->rawAggregate($perLokasi);
+                $report->subtotal(['Total', $sub['total_transaksi'], $sub['total_quantity'], $sub['durasi_per_transaksi']])
+                    ->spacer();
+            });
+
+        return $report;
+    }
+
+    /** Sama seperti aggregate() tapi mengembalikan angka mentah untuk sel Excel. */
+    private function rawAggregate(Collection $rows): array
+    {
+        $count = $rows->count();
+        $durasi = $rows->sum(fn ($r) => (float) ($r->durasi_detik ?? 0));
+
+        return [
+            'total_transaksi' => $count,
+            'total_quantity' => (int) $rows->sum(fn ($r) => (float) $r->qty),
+            'durasi_per_transaksi' => OrderPerformanceReportService::formatDuration(
+                $count > 0 ? $durasi / $count : 0,
+                withSeconds: false,
+            ),
+        ];
     }
 
     private function detailGroups(Collection $rows): array

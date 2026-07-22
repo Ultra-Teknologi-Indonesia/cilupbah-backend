@@ -10,6 +10,8 @@ use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Report\Exports\NegativeStockReportExport;
 use Modules\Report\Exports\PickListReportExport;
+use Modules\Report\Exports\PicklistDetailPhotoExport;
+use Modules\Report\Exports\SectionedReportExport;
 use Modules\Report\Exports\ShipmentListReportExport;
 use Modules\Report\Exports\TransferReportExport;
 use Modules\Report\Http\Requests\BarcodeReportRequest;
@@ -734,6 +736,162 @@ class ReportController extends Controller
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => "{$disposition}; filename=\"{$filename}\"",
         ]);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/wms/order-performance/export',
+        summary: 'Export Laporan Performa Proses Pesanan ke XLSX',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
+    )]
+    public function orderPerformanceExport(Request $request)
+    {
+        $validated = $request->validate([
+            'jenis' => ['required', Rule::in(OrderPerformanceSpec::TYPES)],
+            'mode' => ['required', Rule::in(['detail', 'summary'])],
+            'from' => 'required|date',
+            'to' => 'required|date|after_or_equal:from',
+            'location_ids' => 'nullable|array',
+            'location_ids.*' => 'uuid',
+        ]);
+
+        if ($validated['mode'] === 'summary' && ! OrderPerformanceSpec::supportsSummary($validated['jenis'])) {
+            return response()->json([
+                'message' => 'Laporan Pesanan hanya tersedia dalam mode Detail.',
+            ], 422);
+        }
+
+        $report = app(OrderPerformanceReportService::class)->sectioned(
+            $validated['jenis'],
+            $validated['mode'] === 'detail',
+            $validated,
+        );
+
+        $filename = sprintf(
+            'Laporan-Performa-%s-%s_%s_%s.xlsx',
+            ucfirst($validated['jenis']),
+            ucfirst($validated['mode']),
+            $validated['from'],
+            $validated['to'],
+        );
+
+        return Excel::download(new SectionedReportExport($report), $filename);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/wms/putaway-performance/export',
+        summary: 'Export Laporan Performa Penempatan ke XLSX',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
+    )]
+    public function putawayPerformanceExport(Request $request)
+    {
+        $validated = $request->validate([
+            'mode' => ['required', Rule::in(['detail', 'summary'])],
+            'from' => 'required|date',
+            'to' => 'required|date|after_or_equal:from',
+            'location_ids' => 'nullable|array',
+            'location_ids.*' => 'uuid',
+        ]);
+
+        $report = app(PutawayPerformanceReportService::class)
+            ->sectioned($validated['mode'] === 'detail', $validated);
+
+        $filename = sprintf(
+            'Laporan-Performa-Penempatan-%s_%s_%s.xlsx',
+            ucfirst($validated['mode']),
+            $validated['from'],
+            $validated['to'],
+        );
+
+        return Excel::download(new SectionedReportExport($report), $filename);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/wms/putaway-list/export',
+        summary: 'Export Daftar Penempatan Barang ke XLSX',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
+    )]
+    public function putawayListExport(Request $request)
+    {
+        $validated = $request->validate([
+            'date' => 'required|date',
+            'location_id' => 'required|uuid',
+            'putaway_ids' => 'nullable|array',
+            'putaway_ids.*' => 'uuid',
+        ]);
+
+        $report = app(PutawayListReportService::class)->sectioned(
+            $validated['date'],
+            $validated['location_id'],
+            $validated['putaway_ids'] ?? [],
+        );
+
+        $filename = sprintf('Daftar-Penempatan-Barang_%s.xlsx', $validated['date']);
+
+        return Excel::download(new SectionedReportExport($report), $filename);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/wms/shipment-by-courier/export',
+        summary: 'Export Laporan Pengiriman Berdasarkan Ekspedisi ke XLSX',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
+    )]
+    public function shipmentByCourierExport(Request $request)
+    {
+        $validated = $request->validate([
+            'mode' => ['required', Rule::in(['detail', 'summary'])],
+            'from' => 'required|date',
+            'to' => 'required|date|after_or_equal:from',
+            'location_ids' => 'nullable|array',
+            'location_ids.*' => 'uuid',
+        ]);
+
+        $report = app(ShipmentByCourierReportService::class)
+            ->sectioned($validated['mode'] === 'detail', $validated);
+
+        $filename = sprintf(
+            'Laporan-Pengiriman-Ekspedisi-%s_%s_%s.xlsx',
+            ucfirst($validated['mode']),
+            $validated['from'],
+            $validated['to'],
+        );
+
+        return Excel::download(new SectionedReportExport($report), $filename);
+    }
+
+    #[OA\Post(
+        path: '/api/v1/reports/wms/pick-list/xlsx',
+        summary: 'Export Detail Picklist ke XLSX (dengan foto)',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
+    )]
+    public function pickListDetailExcel(Request $request)
+    {
+        $validated = $request->validate([
+            'picklist_id' => 'required|uuid',
+            'order_ids' => 'nullable|array',
+            'order_ids.*' => 'uuid',
+        ]);
+
+        $data = $this->reportService->pickListDetailData(
+            $validated['picklist_id'],
+            $validated['order_ids'] ?? null,
+        );
+
+        $filename = sprintf('Detail-Picklist_%s.xlsx', substr($validated['picklist_id'], 0, 8));
+
+        return Excel::download(
+            new PicklistDetailPhotoExport($data['picklist'], $data['groups']),
+            $filename,
+        );
     }
 
     public function lazadaGetDocument(Request $request): JsonResponse
