@@ -91,6 +91,19 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         });
     });
 
+    Route::prefix('inventory/settings')->group(function () {
+        Route::middleware('role_or_permission:owner|view-pengaturan-persediaan')->group(function () {
+            Route::get('products', [\Modules\Inventory\Http\Controllers\InventorySettingController::class, 'products'])->name('inventory.settings.products');
+            Route::get('export/rack-allocation', [\Modules\Inventory\Http\Controllers\InventorySettingController::class, 'exportRackAllocation'])->name('inventory.settings.export.rack');
+            Route::get('import/template/{type}', [\Modules\Inventory\Http\Controllers\InventorySettingController::class, 'importTemplate'])->name('inventory.settings.import.template');
+        });
+        Route::middleware('role_or_permission:owner|edit-pengaturan-persediaan')->group(function () {
+            Route::patch('products/{itemId}', [\Modules\Inventory\Http\Controllers\InventorySettingController::class, 'updateThresholds'])->whereUuid('itemId')->name('inventory.settings.products.update');
+            Route::post('import/{type}/preview', [\Modules\Inventory\Http\Controllers\InventorySettingController::class, 'importPreview'])->name('inventory.settings.import.preview');
+            Route::post('import/{type}/confirm', [\Modules\Inventory\Http\Controllers\InventorySettingController::class, 'importConfirm'])->name('inventory.settings.import.confirm');
+        });
+    });
+
     Route::middleware('role_or_permission:owner|create-penyesuaian-stok')->group(function () {
         Route::post('inventory/adjustments', [InventoryTransactionController::class, 'adjust'])->name('inventory.adjust');
     });
