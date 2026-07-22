@@ -14,8 +14,8 @@ class GenerateLocationBinRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'floor_code' => 'required|string|max:10',
-            'qty_floor' => 'required|integer|min:1',
+            // Segmen pertama = ZONA (kode custom bebas, tanpa angka, tanpa iterasi).
+            'zone_code' => 'required|string|max:20',
             'row_code' => 'required|string|max:10',
             'qty_row' => 'required|integer|min:1',
             'column_code' => 'required|string|max:10',
@@ -30,12 +30,11 @@ class GenerateLocationBinRequest extends FormRequest
     public function withValidator($validator)
     {
         $validator->after(function ($validator) {
-            $qtyFloor = (int) $this->input('qty_floor', 1);
             $qtyRow = (int) $this->input('qty_row', 1);
             $qtyColumn = (int) $this->input('qty_column', 1);
             $qtyBin = (int) $this->input('qty_bin', 1);
 
-            $totalCombinations = $qtyFloor * $qtyRow * $qtyColumn * $qtyBin;
+            $totalCombinations = $qtyRow * $qtyColumn * $qtyBin;
 
             if ($totalCombinations > 2000) {
                 $validator->errors()->add(

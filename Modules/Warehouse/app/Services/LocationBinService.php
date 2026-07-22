@@ -95,36 +95,46 @@ class LocationBinService
             throw new ModelNotFoundException('Lokasi tidak ditemukan.');
         }
 
-        return DB::transaction(function () use ($locationId, $data) {
+        $zoneCode = trim((string) ($data['zone_code'] ?? ''));
+
+        return DB::transaction(function () use ($locationId, $data, $zoneCode) {
+            $zoneId = null;
+            if ($zoneCode !== '') {
+                $zone = \Modules\Warehouse\Models\LocationZone::firstOrCreate(
+                    ['location_id' => $locationId, 'zone_code' => $zoneCode],
+                    ['zone_name' => null]
+                );
+                $zoneId = $zone->id;
+            }
+
             $created = 0;
 
-            for ($f = 1; $f <= $data['qty_floor']; $f++) {
-                for ($r = 1; $r <= $data['qty_row']; $r++) {
-                    for ($c = 1; $c <= $data['qty_column']; $c++) {
-                        for ($b = 1; $b <= $data['qty_bin']; $b++) {
-                            $codes = [
-                                'floor_code' => "{$data['floor_code']}{$f}",
-                                'row_code' => "{$data['row_code']}{$r}",
-                                'column_code' => "{$data['column_code']}{$c}",
-                                'bin_code' => "{$data['bin_code']}{$b}",
-                            ];
+            for ($r = 1; $r <= $data['qty_row']; $r++) {
+                for ($c = 1; $c <= $data['qty_column']; $c++) {
+                    for ($b = 1; $b <= $data['qty_bin']; $b++) {
+                        $codes = [
+                            'floor_code' => $zoneCode,
+                            'row_code' => "{$data['row_code']}{$r}",
+                            'column_code' => "{$data['column_code']}{$c}",
+                            'bin_code' => "{$data['bin_code']}{$b}",
+                        ];
 
-                            $finalCode = $this->generateFinalCode($codes);
+                        $finalCode = $this->generateFinalCode($codes);
 
-                            [, $isNew] = $this->binRepository->firstOrCreateByFinalCode(
-                                $locationId,
-                                $finalCode,
-                                array_merge($codes, [
-                                    'is_inbound' => false,
-                                    'is_stock_acknowledged' => true,
-                                    'is_large_bin' => false,
-                                    'category' => null,
-                                ])
-                            );
+                        [, $isNew] = $this->binRepository->firstOrCreateByFinalCode(
+                            $locationId,
+                            $finalCode,
+                            array_merge($codes, [
+                                'zone_id' => $zoneId,
+                                'is_inbound' => false,
+                                'is_stock_acknowledged' => true,
+                                'is_large_bin' => false,
+                                'category' => null,
+                            ])
+                        );
 
-                            if ($isNew) {
-                                $created++;
-                            }
+                        if ($isNew) {
+                            $created++;
                         }
                     }
                 }
@@ -172,12 +182,11 @@ class LocationBinService
 
     public function previewMassGenerate(array $data, int $page = 1, int $perPage = 50): array
     {
-        $qtyFloor = (int) $data['qty_floor'];
         $qtyRow = (int) $data['qty_row'];
         $qtyColumn = (int) $data['qty_column'];
         $qtyBin = (int) $data['qty_bin'];
 
-        $total = $qtyFloor * $qtyRow * $qtyColumn * $qtyBin;
+        $total = $qtyRow * $qtyColumn * $qtyBin;
         $perPage = max(1, min($perPage, 1000));
         $page = max(1, $page);
         $lastPage = max(1, (int) ceil($total / $perPage));
@@ -204,23 +213,19 @@ class LocationBinService
 
     protected function buildPreviewRowAtIndex(int $index, array $data): array
     {
-        $qtyRow = (int) $data['qty_row'];
         $qtyColumn = (int) $data['qty_column'];
         $qtyBin = (int) $data['qty_bin'];
 
-        $perFloor = $qtyRow * $qtyColumn * $qtyBin;
         $perRow = $qtyColumn * $qtyBin;
         $perColumn = $qtyBin;
 
-        $f = intdiv($index, $perFloor) + 1;
-        $rem = $index % $perFloor;
-        $r = intdiv($rem, $perRow) + 1;
-        $rem = $rem % $perRow;
+        $r = intdiv($index, $perRow) + 1;
+        $rem = $index % $perRow;
         $c = intdiv($rem, $perColumn) + 1;
         $b = ($rem % $perColumn) + 1;
 
         $codes = [
-            'floor_code' => "{$data['floor_code']}{$f}",
+            'floor_code' => trim((string) ($data['zone_code'] ?? '')),
             'row_code' => "{$data['row_code']}{$r}",
             'column_code' => "{$data['column_code']}{$c}",
             'bin_code' => "{$data['bin_code']}{$b}",
@@ -260,10 +265,6 @@ class LocationBinService
         return $query->update($updateData);
     }
 
-    /**
-     * SKU yang sudah diterima & siap putaway di gudang kecil (WH-KECIL) tapi
-     * belum punya rak. Dipakai combobox "Isi Rak" untuk rak yang masih kosong.
-     */
     public function getPendingPutawaySkus(string $locationId, ?string $search = null, int $limit = 200): array
     {
         $location = Location::find($locationId);
@@ -345,11 +346,6 @@ class LocationBinService
         return null;
     }
 
-    /**
-     * Tempatkan seluruh stok pending sebuah SKU ke satu rak kosong di WH-KECIL.
-     * Memakai InventoryService::putaway (guard + ledger PUTAWAY_IN/OUT) per baris
-     * inventory pending, dibungkus satu lock + transaksi agar atomik.
-     */
     public function assignSkuToBin(string $locationId, string $binId, string $itemId, string $userId): array
     {
         $location = Location::find($locationId);
@@ -389,8 +385,7 @@ class LocationBinService
                     ->get();
 
                 if ($rows->isEmpty()) {
-                    // Idempoten: kalau rak ini sudah berisi SKU tsb (mis. sudah
-                    // ditempatkan di percobaan Simpan sebelumnya), anggap sukses.
+
                     if (app(BinOccupancyGuard::class)->currentOccupantItemId($binId) === $itemId) {
                         return [
                             'bin_id' => $binId,

@@ -15,8 +15,10 @@ use Modules\Warehouse\Http\Requests\UniformApplyLocationBinRequest;
 use Modules\Warehouse\Http\Resources\LocationBinResource;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
+use Modules\Warehouse\Services\BinLayoutImporter;
 use Modules\Warehouse\Services\BinQrPrintService;
 use Modules\Warehouse\Services\LocationBinService;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use OpenApi\Attributes as OA;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Throwable;
@@ -235,6 +237,98 @@ class LocationBinController extends Controller
         }
 
         return $this->successResponse($result, 'Bin berhasil di-generate', 201);
+    }
+
+    /** Alias kolom kode rak yang diterima importer (mendukung export Jubelio "No Rak"). */
+    private const RACK_CODE_ALIASES = ['kode_rak', 'rak', 'bin_final_code', 'no rak', 'no_rak', 'kode rak', 'kode final rak'];
+
+    public function importPreview(Request $request, string $locationId): JsonResponse
+    {
+        $request->validate(['file' => 'required|file|max:20480']);
+
+        $location = Location::find($locationId);
+        if (! $location) {
+            return $this->errorResponse('Lokasi tidak ditemukan.', 404);
+        }
+
+        try {
+            $codes = $this->parseRackCodes($request->file('file')->getRealPath());
+        } catch (Throwable $e) {
+            return $this->errorResponse('Gagal membaca file.', 422, ['detail' => $e->getMessage()], 'Aksi tidak dapat diproses');
+        }
+
+        if (empty($codes)) {
+            return $this->errorResponse('Tidak ada kode rak terbaca. Pastikan ada kolom "kode_rak"/"rak"/"No Rak".', 422);
+        }
+
+        $result = app(BinLayoutImporter::class)->import($location, $codes, false);
+
+        return $this->successResponse([
+            'total' => $result['total'],
+            'new' => count($result['new_codes']),
+            'existing' => $result['existing'],
+            'sample_new' => array_slice($result['new_codes'], 0, 50),
+        ], 'Pratinjau import rak berhasil.');
+    }
+
+    public function import(Request $request, string $locationId): JsonResponse
+    {
+        $request->validate(['file' => 'required|file|max:20480']);
+
+        $location = Location::find($locationId);
+        if (! $location) {
+            return $this->errorResponse('Lokasi tidak ditemukan.', 404);
+        }
+
+        try {
+            $codes = $this->parseRackCodes($request->file('file')->getRealPath());
+        } catch (Throwable $e) {
+            return $this->errorResponse('Gagal membaca file.', 422, ['detail' => $e->getMessage()], 'Aksi tidak dapat diproses');
+        }
+
+        if (empty($codes)) {
+            return $this->errorResponse('Tidak ada kode rak terbaca.', 422);
+        }
+
+        $result = app(BinLayoutImporter::class)->import($location, $codes, true);
+
+        return $this->successResponse([
+            'created' => $result['created'],
+            'existing' => $result['existing'],
+            'zones_created' => $result['zones_created'],
+        ], "Import rak selesai. {$result['created']} rak baru dibuat, {$result['existing']} sudah ada.");
+    }
+
+    /** Ekstrak daftar kode rak unik dari file (xlsx/csv); ambil kolom kode rak (alias) atau kolom terakhir. */
+    private function parseRackCodes(string $path): array
+    {
+        $sheet = IOFactory::load($path)->getActiveSheet();
+        $rows = $sheet->toArray(null, true, false, false);
+        if (empty($rows)) {
+            return [];
+        }
+
+        $header = array_map(fn ($h) => mb_strtolower(trim((string) $h)), $rows[0]);
+        $idx = null;
+        foreach ($header as $i => $name) {
+            if (in_array($name, self::RACK_CODE_ALIASES, true)) {
+                $idx = $i;
+                break;
+            }
+        }
+        if ($idx === null) {
+            $idx = count($header) === 1 ? 0 : count($header) - 1;
+        }
+
+        $codes = [];
+        foreach (array_slice($rows, 1) as $row) {
+            $v = trim((string) ($row[$idx] ?? ''));
+            if ($v !== '' && mb_strtolower($v) !== 'tidak ada rak') {
+                $codes[] = $v;
+            }
+        }
+
+        return array_values(array_unique($codes));
     }
 
     public function bulkUpdate(Request $request, string $locationId): JsonResponse
