@@ -42,6 +42,9 @@ class WarehouseDatabaseSeeder extends Seeder
                 'is_locked' => true,
             ]);
         }
+
+        // Kode rak WH-KECIL sesuai layout Jubelio client (aditif, idempoten).
+        $this->call(WhKecilBinLayoutSeeder::class);
     }
 
     private function insertLocationWithDefaultBin(array $attributes): void

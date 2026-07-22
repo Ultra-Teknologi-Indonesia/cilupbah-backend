@@ -10,8 +10,7 @@ use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
-use Modules\Warehouse\Models\LocationBin;
-use Modules\Warehouse\Models\LocationZone;
+use Modules\Warehouse\Services\BinLayoutImporter;
 
 /**
  * Migrasi layout + alokasi rak dari export Jubelio (kolom: SKU, Lokasi, Rak).
@@ -109,7 +108,7 @@ class ImportBinAllocation extends Command
             }
         }
         foreach ($multiSkuRaks as $rak => $skus) {
-            $bucket = $this->isSpecialRak($rak) ? 'rak_spesial_multi_sku' : 'rak_shelf_multi_sku';
+            $bucket = BinLayoutImporter::isSpecialRak($rak) ? 'rak_spesial_multi_sku' : 'rak_shelf_multi_sku';
             $this->reports[$bucket][] = ['rak' => $rak, 'jumlah_sku' => count($skus), 'skus' => implode('|', $skus)];
         }
 
@@ -126,31 +125,11 @@ class ImportBinAllocation extends Command
             }
         }
 
-        // ---- Phase D: LAYOUT (buat semua kode rak) -----------------------------
-        $existingCodes = LocationBin::where('location_id', $location->id)
-            ->pluck('id', 'bin_final_code')->all();
-        $codeToBinId = $existingCodes; // code => binId (dilengkapi saat commit)
-        $newCodes = array_values(array_diff($allRaks, array_keys($existingCodes)));
-
-        $zonesCreated = 0;
-        if ($this->commit) {
-            $zoneMap = $this->ensureZones($location->id, $allRaks, $zonesCreated);
-            foreach ($newCodes as $code) {
-                $struct = $this->deriveStructure($code);
-                $zoneCode = $struct['floor_code']; // segmen pertama = zona
-                $bin = LocationBin::firstOrCreate(
-                    ['location_id' => $location->id, 'bin_final_code' => $code],
-                    array_merge($struct, [
-                        'zone_id' => $zoneMap[$zoneCode] ?? null,
-                        'is_inbound' => false,
-                        'is_stock_acknowledged' => true,
-                        'is_large_bin' => false,
-                        'category' => null,
-                    ])
-                );
-                $codeToBinId[$code] = $bin->id;
-            }
-        }
+        // ---- Phase D: LAYOUT (buat semua kode rak) via BinLayoutImporter -------
+        $layout = app(BinLayoutImporter::class)->import($location, $allRaks, $this->commit);
+        $codeToBinId = $layout['map'];      // code => binId (dry-run: hanya kode existing)
+        $newCodes = $layout['new_codes'];
+        $zonesCreated = $layout['zones_created'];
 
         // ---- Phase E: ALOKASI (rak 1-SKU) --------------------------------------
         $alloc = ['moved' => 0, 'no_stock' => 0, 'conflict' => 0, 'already' => 0, 'skipped_missing' => 0, 'qty' => 0];
@@ -301,49 +280,6 @@ class ImportBinAllocation extends Command
 
             return $moved;
         });
-    }
-
-    /** Buat LocationZone dari segmen pertama tiap kode rak (unik per lokasi). */
-    private function ensureZones(string $locationId, array $allRaks, int &$created): array
-    {
-        $zoneCodes = [];
-        foreach ($allRaks as $rak) {
-            $zoneCodes[$this->deriveStructure($rak)['floor_code']] = true;
-        }
-        $map = LocationZone::where('location_id', $locationId)->pluck('id', 'zone_code')->all();
-        foreach (array_keys($zoneCodes) as $code) {
-            if ($code === '' || isset($map[$code])) { continue; }
-            $zone = LocationZone::firstOrCreate(
-                ['location_id' => $locationId, 'zone_code' => $code],
-                ['zone_name' => null]
-            );
-            if ($zone->wasRecentlyCreated) { $created++; }
-            $map[$code] = $zone->id;
-        }
-        return $map;
-    }
-
-    /** Split kode rak by '-' → floor(zona)/row/column/bin (best-effort, sisa digabung ke bin). */
-    private function deriveStructure(string $code): array
-    {
-        $parts = explode('-', $code);
-        $floor = $parts[0] ?? null;
-        $row = $parts[1] ?? null;
-        $col = $parts[2] ?? null;
-        $bin = isset($parts[3]) ? implode('-', array_slice($parts, 3)) : null;
-
-        return [
-            'floor_code' => $floor !== '' ? $floor : null,
-            'row_code' => $row,
-            'column_code' => $col,
-            'bin_code' => $bin,
-        ];
-    }
-
-    /** Rak dengan segmen box non-numerik (KANTOR/OUTBOUND/REFUND/ADJST/...) = rak spesial. */
-    private function isSpecialRak(string $code): bool
-    {
-        return (bool) ! preg_match('/-[A-Za-z]*[0-9]+$/', $code);
     }
 
     /**
