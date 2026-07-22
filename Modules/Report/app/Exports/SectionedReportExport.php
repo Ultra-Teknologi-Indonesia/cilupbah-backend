@@ -14,12 +14,6 @@ use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-/**
- * Menuliskan sebuah SectionedReport ke satu sheet Excel dengan tata letak yang
- * mencerminkan versi PDF-nya: judul & periode digabung di atas, tiap grup punya
- * label + header kolom + baris data + subtotal, ditutup Grand Total. Sel numerik
- * ditulis apa adanya (bisa di-SUM) dan diformat ribuan.
- */
 class SectionedReportExport implements FromArray, WithEvents, WithTitle, ShouldAutoSize
 {
     private const NUMBER_FORMAT = '#,##0';
@@ -128,7 +122,6 @@ class SectionedReportExport implements FromArray, WithEvents, WithTitle, ShouldA
         $sheet->getStyle($range)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
     }
 
-    /** Sel angka mentah dibuat rata-kanan dan diberi format ribuan. */
     private function formatNumeric(Worksheet $sheet, array $cells, int $r): void
     {
         foreach ($cells as $idx => $val) {

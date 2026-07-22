@@ -9,13 +9,6 @@ use Modules\Report\Repositories\ReportRepository;
 use Modules\Report\Support\EkspedisiNormalizer;
 use Modules\Report\Support\SectionedReport;
 
-/**
- * Laporan Pengiriman Berdasarkan Ekspedisi — permintaan docx "laporan manifest
- * yang belum ada di jubelio". Merangkum pesanan per keluarga ekspedisi.
- *
- * Detail: per ekspedisi, satu baris tiap pesanan + baris Total.
- * Summary: satu baris tiap ekspedisi (jumlah pesanan & quantity) + Grand Total.
- */
 class ShipmentByCourierReportService
 {
     public function __construct(
@@ -47,7 +40,6 @@ class ShipmentByCourierReportService
         return $pdf;
     }
 
-    /** Varian Excel "cermin PDF": grup per ekspedisi + subtotal + Grand Total. */
     public function sectioned(bool $detail, array $filters): SectionedReport
     {
         ini_set('memory_limit', '1024M');
@@ -107,7 +99,6 @@ class ShipmentByCourierReportService
         return $fmt($filters['from'] ?? null) . ' - ' . $fmt($filters['to'] ?? null);
     }
 
-    /** Ekspedisi diurut alfabet; baris di dalamnya menurun menurut tanggal. */
     private function detailGroups(Collection $rows): array
     {
         return $rows

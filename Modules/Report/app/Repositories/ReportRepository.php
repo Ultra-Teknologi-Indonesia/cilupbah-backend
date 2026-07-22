@@ -518,16 +518,6 @@ class ReportRepository
             ->get(['id', 'putaway_no']);
     }
 
-    /**
-     * Baris Laporan Pengiriman Berdasarkan Ekspedisi: satu baris per pesanan.
-     *
-     * Keluarga ekspedisi (SPX/J&T/…) tidak ada sebagai kolom; dinormalisasi di
-     * service dari provider mentah. Quantity dijumlah dari item pesanan lewat
-     * subquery agar join manifest tak menggandakan baris. Sejalan dengan Daftar
-     * Pengiriman, pesanan ber-item unmapped dikecualikan.
-     *
-     * @return array<int, object>
-     */
     public function shipmentByCourierRows(array $filters): array
     {
         $from = ($filters['from'] ?? null) ? $filters['from'] . ' 00:00:00' : null;

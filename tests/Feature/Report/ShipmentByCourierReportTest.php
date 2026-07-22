@@ -101,8 +101,7 @@ class ShipmentByCourierReportTest extends TestCase
 
     public function test_spx_instant_tetap_keluarga_spx_bukan_instan(): void
     {
-        // "SPX Instant" memuat kata INSTANT tapi tetap keluarga SPX — kurir bernama
-        // menang atas Instan. Sejalan dengan carve-out di BulkShippingLabelService.
+
         $this->assertSame('SPX', EkspedisiNormalizer::family('SPX Instant'));
         $this->assertSame('SPX', EkspedisiNormalizer::family('SPX Hemat'));
     }
@@ -118,7 +117,7 @@ class ShipmentByCourierReportTest extends TestCase
         $this->assertStringContainsString('SPX', $html);
         $this->assertStringContainsString('J&amp;T', $html);
         $this->assertStringContainsString('Grand Total', $html);
-        // SPX: 2 pesanan, qty 5. Grand total 3 pesanan, qty 6.
+
         $this->assertStringContainsString('Nama Ekspedisi', $html);
     }
 

@@ -21,7 +21,6 @@ class ReportExcelExportTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** PNG 1x1 valid untuk mensimulasikan foto yang berhasil diunduh. */
     private const PNG_1X1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAADElEQVQImWNgYGAAAAAEAAGjChXjAAAAAElFTkSuQmCC';
 
     private Location $kecil;
@@ -74,7 +73,6 @@ class ReportExcelExportTest extends TestCase
         return $order;
     }
 
-    /** @return list<string> */
     private function types(SectionedReport $report): array
     {
         return array_column($report->rows, 'type');
@@ -104,7 +102,6 @@ class ReportExcelExportTest extends TestCase
         $this->assertContains(SectionedReport::HEAD, $types);
         $this->assertContains(SectionedReport::SUBTOTAL, $types);
 
-        // Judul benar & sel Quantity pada baris data adalah int (bisa di-SUM di Excel).
         $this->assertSame('Laporan Pengiriman Berdasarkan Ekspedisi - Detail', $report->title);
         $data = $this->firstRowOfType($report, SectionedReport::DATA);
         $this->assertIsInt($data[4]);
@@ -121,7 +118,7 @@ class ReportExcelExportTest extends TestCase
         $grand = $this->firstRowOfType($report, SectionedReport::GRAND);
         $this->assertNotNull($grand);
         $this->assertSame('Grand Total', $grand[0]);
-        // 1 ekspedisi (SPX), 2 pesanan, qty 5.
+
         $this->assertSame(2, $grand[1]);
         $this->assertSame(5, $grand[2]);
     }
@@ -194,14 +191,13 @@ class ReportExcelExportTest extends TestCase
     {
         $matrix = $this->picklistExport()->array();
 
-        // title + 3 meta + spacer + header + 2 data = 8 baris.
         $this->assertCount(8, $matrix);
         $this->assertSame('Detail Picklist', $matrix[0][0]);
         $this->assertSame(
             ['Pesanan', 'Foto', 'SKU', 'Produk', 'Qty Pesan', 'Lokasi', 'Rak', 'Qty Ambil'],
             $matrix[5],
         );
-        $this->assertSame(2, $matrix[6][4]); // Qty Pesan numerik
+        $this->assertSame(2, $matrix[6][4]); 
     }
 
     public function test_picklist_export_menanam_foto_yang_berhasil_diunduh(): void
@@ -210,7 +206,6 @@ class ReportExcelExportTest extends TestCase
 
         $drawings = $this->picklistExport()->drawings();
 
-        // Hanya satu baris punya image_url.
         $this->assertCount(1, $drawings);
     }
 

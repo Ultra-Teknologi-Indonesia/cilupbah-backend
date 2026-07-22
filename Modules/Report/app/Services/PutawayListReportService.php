@@ -39,7 +39,6 @@ class PutawayListReportService
         return $pdf;
     }
 
-    /** Varian Excel "cermin PDF": satu blok per dokumen penempatan. */
     public function sectioned(string $date, string $locationId, array $putawayIds = []): SectionedReport
     {
         ini_set('memory_limit', '1024M');

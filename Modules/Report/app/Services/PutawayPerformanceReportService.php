@@ -60,7 +60,6 @@ class PutawayPerformanceReportService
         return $fmt($filters['from'] ?? null) . ' - ' . $fmt($filters['to'] ?? null);
     }
 
-    /** Varian Excel "cermin PDF": Lokasi → Nama Pengguna, dengan subtotal per grup. */
     public function sectioned(bool $detail, array $filters): SectionedReport
     {
         ini_set('memory_limit', '1024M');
@@ -136,7 +135,6 @@ class PutawayPerformanceReportService
         return $report;
     }
 
-    /** Sama seperti aggregate() tapi mengembalikan angka mentah untuk sel Excel. */
     private function rawAggregate(Collection $rows): array
     {
         $count = $rows->count();

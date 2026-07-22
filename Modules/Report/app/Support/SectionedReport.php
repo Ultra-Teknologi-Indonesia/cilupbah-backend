@@ -2,15 +2,6 @@
 
 namespace Modules\Report\Support;
 
-/**
- * Representasi netral satu laporan gudang bersubtotal untuk diekspor ke Excel
- * dengan tata letak "cermin PDF": judul, periode, blok grup berheader kolom,
- * baris subtotal, dan Grand Total. Tiap service laporan memetakan datanya ke
- * struktur ini; SectionedReportExport yang menuliskannya ke sheet.
- *
- * Sel numerik (qty/jumlah) dikirim sebagai int/float mentah agar bisa di-SUM
- * di Excel; label & durasi dikirim sebagai string.
- */
 final class SectionedReport
 {
     public const TITLE = 'title';
@@ -24,7 +15,6 @@ final class SectionedReport
     public const GRAND = 'grand';
     public const EMPTY = 'empty';
 
-    /** @var array<int, array{type: string, cells: array<int, mixed>}> */
     public array $rows = [];
 
     private int $columnCount = 1;

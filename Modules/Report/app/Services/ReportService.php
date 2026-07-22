@@ -507,7 +507,6 @@ class ReportService
         return $pdf;
     }
 
-    /** Data terstruktur satu picklist untuk dipakai bersama cetak PDF & ekspor Excel. */
     public function pickListDetailData(string $picklistId, ?array $orderIds = null): array
     {
         $picklist = $this->repository->pickList([

@@ -109,10 +109,6 @@ class AuthService
 
             $pair = $this->issueTokenPair($user, $tokenName);
 
-            // Sapu refresh token sesi ini yang sudah benar-benar mati (grace
-            // lewat) supaya baris kedaluwarsa tidak menumpuk seiring rotasi
-            // berkala. Token yang sedang di-grace punya expires_at di masa depan
-            // sehingga aman dari sapuan ini.
             DB::table('personal_access_tokens')
                 ->where('tokenable_id', $user->id)
                 ->where('tokenable_type', $user::class)

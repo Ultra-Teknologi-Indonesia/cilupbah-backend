@@ -17,13 +17,6 @@ use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\MemoryDrawing;
 
-/**
- * Ekspor Detail Picklist ke Excel dengan foto produk tertanam per baris.
- *
- * PhpSpreadsheet tidak bisa memasang URL langsung, jadi tiap image_url diunduh
- * (di-cache per URL), diubah ke resource GD, lalu ditempel sebagai MemoryDrawing
- * di kolom Foto. Gambar yang gagal diunduh dilewati tanpa menggagalkan ekspor.
- */
 class PicklistDetailPhotoExport implements FromArray, WithColumnWidths, WithDrawings, WithEvents, WithTitle
 {
     private const HEADERS = ['Pesanan', 'Foto', 'SKU', 'Produk', 'Qty Pesan', 'Lokasi', 'Rak', 'Qty Ambil'];
@@ -32,10 +25,8 @@ class PicklistDetailPhotoExport implements FromArray, WithColumnWidths, WithDraw
     private const DATA_START = 7;
     private const PHOTO_HEIGHT_PX = 46;
 
-    /** @var array<int, array{image_url: ?string, cells: array<int, mixed>}>|null */
     private ?array $flat = null;
 
-    /** @var array<string, ?string> */
     private array $cache = [];
 
     public function __construct(
@@ -149,7 +140,6 @@ class PicklistDetailPhotoExport implements FromArray, WithColumnWidths, WithDraw
         ];
     }
 
-    /** @return array<int, array{image_url: ?string, cells: array<int, mixed>}> */
     private function flatRows(): array
     {
         if ($this->flat !== null) {

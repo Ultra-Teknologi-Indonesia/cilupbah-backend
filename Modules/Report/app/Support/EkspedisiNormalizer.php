@@ -2,26 +2,9 @@
 
 namespace Modules\Report\Support;
 
-/**
- * Menyederhanakan nama layanan kurir dari channel ("SPX Hemat",
- * "J&T Express Standard", "GoTo Logistics GTL NEXT-DAY DELIVERY") menjadi
- * keluarga ekspedisi ("SPX", "J&T", "GTL") untuk pengelompokan laporan.
- *
- * Sistem tidak menyimpan keluarga ekspedisi sebagai kolom — master kurir hanya
- * berisi 141 nama layanan lengkap tanpa kode keluarga. Jadi pemetaan ini
- * berbasis kata kunci, dan sengaja dikumpulkan di satu tempat supaya mudah
- * dikoreksi kalau ada layanan baru yang belum tertangkap.
- */
 final class EkspedisiNormalizer
 {
-    /**
-     * Kurir bernama diperiksa lebih dulu, "Instan" jadi jaring terakhir. Dengan
-     * begitu "SPX Instant" tetap masuk keluarga SPX (layanan instan milik SPX),
-     * sejalan dengan carve-out di BulkShippingLabelService; sedangkan GoSend,
-     * Grab, dan Lalamove — yang tak memuat nama kurir mana pun — jatuh ke Instan.
-     *
-     * @var array<string, array<int, string>>
-     */
+
     private const FAMILIES = [
         'SPX'    => ['SPX', 'SHOPEE EXPRESS', 'SHOPEE XPRESS'],
         'J&T'    => ['J&T', 'JNT', 'J AND T'],
@@ -54,8 +37,6 @@ final class EkspedisiNormalizer
             }
         }
 
-        // Provider tak dikenal ditampilkan apa adanya (dipangkas), bukan disatukan
-        // ke "Lainnya" — supaya kurir baru tetap terbaca dan bisa ditambahkan ke peta.
         return trim((string) $provider) ?: self::LAINNYA;
     }
 }

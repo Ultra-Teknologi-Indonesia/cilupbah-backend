@@ -59,7 +59,6 @@ class OrderPerformanceReportService
         return $fmt($filters['from'] ?? null) . ' - ' . $fmt($filters['to'] ?? null);
     }
 
-    /** Varian Excel "cermin PDF": Lokasi → grup sekunder, subtotal & Grand Total (summary). */
     public function sectioned(string $type, bool $detail, array $filters): SectionedReport
     {
         ini_set('memory_limit', '1024M');
@@ -157,7 +156,6 @@ class OrderPerformanceReportService
         };
     }
 
-    /** Sama seperti aggregate() tapi angka mentah untuk sel Excel. */
     private function rawAggregate(Collection $rows): array
     {
         $perTransaksi = $rows->groupBy('transaksi_id');
