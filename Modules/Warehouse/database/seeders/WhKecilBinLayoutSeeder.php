@@ -6,14 +6,6 @@ use Illuminate\Database\Seeder;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Services\BinLayoutImporter;
 
-/**
- * Seed kode rak WH-KECIL sesuai layout Jubelio client (bundled di
- * database/data/wh-kecil-bin-codes.csv). Aditif & idempoten — aman dijalankan
- * ulang. Hanya membuat kode rak + zona; tidak menyentuh stok.
- *
- * Tujuan: saat provisioning VPS production, kode rak sudah tersedia sesuai
- * barcode fisik client tanpa perlu import CSV manual.
- */
 class WhKecilBinLayoutSeeder extends Seeder
 {
     public function run(): void

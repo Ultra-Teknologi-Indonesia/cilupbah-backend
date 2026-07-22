@@ -12,18 +12,6 @@ use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Services\BinLayoutImporter;
 
-/**
- * Migrasi layout + alokasi rak dari export Jubelio (kolom: SKU, Lokasi, Rak).
- *
- * Strategi (lihat PLANNING-IMPORT-LAYOUT-GUDANG-ZONA.md):
- *  - LAYOUT  : semua kode rak unik dibuat (aditif, existing-wins) + zona auto-create.
- *  - ALOKASI : hanya rak 1-SKU yang dipindah stoknya (patuh aturan WH-KECIL 1 rak = 1 SKU).
- *              Rak multi-SKU (GK shelf / KANTOR / OUTBOUND) hanya dibuat kodenya, TIDAK dialokasi,
- *              lalu dilaporkan untuk penanganan manual.
- *  - Bin DEFAULT/inbound tidak disentuh. SKU cilupbah ber-stok yang tak ada di file dilaporkan.
- *
- * Default = DRY-RUN (tidak menulis apa pun). Tambahkan --commit untuk menerapkan.
- */
 class ImportBinAllocation extends Command
 {
     protected $signature = 'warehouse:import-bin-allocation
@@ -39,7 +27,6 @@ class ImportBinAllocation extends Command
 
     private bool $commit = false;
 
-    /** @var array<string,array<string,int>> laporan bucket => rows */
     private array $reports = [];
 
     public function handle(InventoryRepository $inventoryRepo, InventoryMovementRepository $movementRepo): int
@@ -68,7 +55,6 @@ class ImportBinAllocation extends Command
         $this->line("File        : {$file}");
         $this->line('');
 
-        // ---- Phase A: parse CSV -------------------------------------------------
         [$rows, $parseErrors] = $this->parseCsv($file, $location->location_name);
         if (! empty($parseErrors)) {
             foreach ($parseErrors as $e) {
@@ -81,7 +67,6 @@ class ImportBinAllocation extends Command
             return self::FAILURE;
         }
 
-        // rak => set SKU ; sku => rak (1 SKU = 1 rak diasumsikan; bentrok dilaporkan)
         $rakToSkus = [];
         $skuToRak = [];
         foreach ($rows as $r) {
@@ -96,9 +81,8 @@ class ImportBinAllocation extends Command
             $skuToRak[$r['sku']] = $r['rak'];
         }
 
-        // ---- Phase B: klasifikasi rak ------------------------------------------
-        $singleSkuRaks = [];   // rak_code => sku
-        $multiSkuRaks = [];     // rak_code => [sku,...]
+        $singleSkuRaks = [];   
+        $multiSkuRaks = [];     
         foreach ($rakToSkus as $rak => $skuSet) {
             $skus = array_keys($skuSet);
             if (count($skus) === 1) {
@@ -114,7 +98,6 @@ class ImportBinAllocation extends Command
 
         $allRaks = array_keys($rakToSkus);
 
-        // ---- Phase C: resolusi SKU -> variant (hanya bila alokasi) -------------
         $allSkus = array_keys($skuToRak);
         $variantMap = [];
         if (! $layoutOnly) {
@@ -125,13 +108,11 @@ class ImportBinAllocation extends Command
             }
         }
 
-        // ---- Phase D: LAYOUT (buat semua kode rak) via BinLayoutImporter -------
         $layout = app(BinLayoutImporter::class)->import($location, $allRaks, $this->commit);
-        $codeToBinId = $layout['map'];      // code => binId (dry-run: hanya kode existing)
+        $codeToBinId = $layout['map'];      
         $newCodes = $layout['new_codes'];
         $zonesCreated = $layout['zones_created'];
 
-        // ---- Phase E: ALOKASI (rak 1-SKU) --------------------------------------
         $alloc = ['moved' => 0, 'no_stock' => 0, 'conflict' => 0, 'already' => 0, 'skipped_missing' => 0, 'qty' => 0];
 
         if (! $layoutOnly) {
@@ -139,9 +120,8 @@ class ImportBinAllocation extends Command
             $itemId = $variantMap[$sku] ?? null;
             if (! $itemId) { $alloc['skipped_missing']++; continue; }
 
-            $targetBinId = $codeToBinId[$rak] ?? null; // null di dry-run utk kode baru
+            $targetBinId = $codeToBinId[$rak] ?? null; 
 
-            // konflik: rak tujuan sudah dihuni SKU LAIN
             if ($targetBinId) {
                 $occupant = Inventory::where('bin_id', $targetBinId)
                     ->where(fn ($w) => $w->where('on_hand', '>', 0)->orWhere('on_order', '>', 0))
@@ -154,7 +134,6 @@ class ImportBinAllocation extends Command
                 }
             }
 
-            // stok yang perlu dipindah = total on_hand SKU ini di lokasi - yang sudah di target
             $totalOnHand = (int) Inventory::where('item_id', $itemId)
                 ->where('location_id', $location->id)
                 ->where('on_hand', '>', 0)
@@ -166,12 +145,12 @@ class ImportBinAllocation extends Command
             $sourceOnHand = $totalOnHand - $inTarget;
 
             if ($sourceOnHand <= 0) {
-                $alloc['no_stock']++; // kode rak dibuat, tak ada stok utk dipindah
+                $alloc['no_stock']++; 
                 continue;
             }
 
             if (! $this->commit || ! $targetBinId) {
-                $alloc['moved']++; $alloc['qty'] += $sourceOnHand; // prediksi
+                $alloc['moved']++; $alloc['qty'] += $sourceOnHand; 
                 continue;
             }
 
@@ -180,7 +159,6 @@ class ImportBinAllocation extends Command
             else { $alloc['already']++; }
         }
 
-        // ---- Phase F: SKU cilupbah ber-stok yang TAK ada di file ---------------
         $fileSkuIds = array_values(array_filter(array_map(fn ($s) => $variantMap[$s] ?? null, $allSkus)));
         $unmatched = Inventory::query()
             ->where('location_id', $location->id)
@@ -197,9 +175,8 @@ class ImportBinAllocation extends Command
                 'on_hand' => (int) $invs->sum('on_hand'),
             ];
         }
-        } // end ! layoutOnly
+        } 
 
-        // ---- Ringkasan ----------------------------------------------------------
         $this->printSummary($rows, $allRaks, $singleSkuRaks, $multiSkuRaks, $newCodes, $zonesCreated, $alloc, $layoutOnly);
         $this->dumpReports();
 
@@ -216,13 +193,6 @@ class ImportBinAllocation extends Command
         return self::SUCCESS;
     }
 
-    // ------------------------------------------------------------------------
-
-    /**
-     * Pindahkan SELURUH on_hand sebuah SKU (dari semua bin selain target) ke rak target.
-     * Otoritatif (bypass guard interaktif) — kebenaran invarian dijamin di pemanggil
-     * (hanya dipakai untuk rak 1-SKU). Menulis ledger PUTAWAY_OUT/IN agar auditable.
-     */
     private function relocateStock(
         InventoryRepository $inventoryRepo,
         InventoryMovementRepository $movementRepo,
@@ -241,7 +211,7 @@ class ImportBinAllocation extends Command
 
             $moved = 0;
             foreach ($sources as $src) {
-                if ($src->bin_id === $targetBinId) { continue; } // sudah di target
+                if ($src->bin_id === $targetBinId) { continue; } 
                 $qty = (int) $src->on_hand;
                 if ($qty <= 0) { continue; }
 
@@ -282,9 +252,6 @@ class ImportBinAllocation extends Command
         });
     }
 
-    /**
-     * @return array{0: array<int,array{sku:string,lokasi:string,rak:string}>, 1: array<int,array<string,string>>}
-     */
     private function parseCsv(string $path, string $locationName): array
     {
         $fh = fopen($path, 'r');
@@ -320,7 +287,6 @@ class ImportBinAllocation extends Command
         return [$rows, $otherLoc];
     }
 
-    /** @return array{sku:?int,lokasi:?int,rak:?int} */
     private function resolveColumns(array $header): array
     {
         $norm = array_map(fn ($h) => mb_strtolower(trim((string) $h)), $header);

@@ -6,20 +6,9 @@ use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Modules\Warehouse\Models\LocationZone;
 
-/**
- * Pembuat kode rak (layout) dari daftar kode bebas — dipakai bersama oleh
- * command migrasi (ImportBinAllocation) dan seeder (WhKecilBinLayoutSeeder).
- *
- * Sifat: aditif, existing-wins, idempoten. TIDAK menyentuh stok/alokasi.
- * Zona di-auto-create dari segmen pertama kode; struktur floor/row/column/bin
- * diisi best-effort (split '-') agar filter Stok Opname tetap jalan.
- */
 class BinLayoutImporter
 {
-    /**
-     * @param iterable<string> $codes
-     * @return array{total:int,created:int,existing:int,new_codes:array<int,string>,zones_created:int,map:array<string,string>}
-     */
+
     public function import(Location $location, iterable $codes, bool $commit = true): array
     {
         $codes = is_array($codes) ? $codes : iterator_to_array($codes);
@@ -60,7 +49,6 @@ class BinLayoutImporter
         ];
     }
 
-    /** Buat LocationZone dari segmen pertama tiap kode (unik per lokasi). */
     private function ensureZones(string $locationId, array $codes, int &$created): array
     {
         $zoneCodes = [];
@@ -89,7 +77,6 @@ class BinLayoutImporter
         return $map;
     }
 
-    /** Split kode by '-' → floor(zona)/row/column/bin (best-effort, sisa digabung ke bin). */
     public static function deriveStructure(string $code): array
     {
         $parts = explode('-', $code);
@@ -106,7 +93,6 @@ class BinLayoutImporter
         ];
     }
 
-    /** Rak dengan segmen box non-numerik (KANTOR/OUTBOUND/REFUND/ADJST/...) = rak spesial. */
     public static function isSpecialRak(string $code): bool
     {
         return ! preg_match('/-[A-Za-z]*[0-9]+$/', $code);
