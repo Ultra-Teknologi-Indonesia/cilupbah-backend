@@ -1401,6 +1401,8 @@ class SalesOrderService
             'platform_shipping_rebate',
             'settlement_amount',
             'fee_currency',
+            'total_tax',
+            'insurance_cost',
         ];
 
         $update = array_intersect_key($finance, array_flip($allowed));

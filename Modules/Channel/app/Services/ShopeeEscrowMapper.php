@@ -47,6 +47,20 @@ class ShopeeEscrowMapper
             'is_settled'               => $settlement !== null,
         ];
 
+        // Pajak & asuransi tak ada di Order API Shopee — hanya muncul di escrow.
+        // Ditulis HANYA bila tersedia agar tidak menimpa nilai dengan null.
+        $tax = $this->num($income, 'escrow_tax')
+            ?? $this->sumPresent($income, ['final_product_vat_tax', 'final_shipping_vat_tax']);
+        if ($tax !== null) {
+            $result['total_tax'] = $tax;
+        }
+
+        $insurance = $this->num($income, 'final_product_protection')
+            ?? $this->num($income, 'shipping_seller_protection_fee_amount');
+        if ($insurance !== null) {
+            $result['insurance_cost'] = $insurance;
+        }
+
         $result['fee_lines'] = $this->feeLines($result, [
             'seller_voucher'           => 'voucher_from_seller',
             'platform_voucher'         => 'voucher_from_shopee',
@@ -86,5 +100,19 @@ class ShopeeEscrowMapper
     private function num(array $src, string $key): ?float
     {
         return isset($src[$key]) && $src[$key] !== '' ? (float) $src[$key] : null;
+    }
+
+    private function sumPresent(array $src, array $keys): ?float
+    {
+        $sum = null;
+
+        foreach ($keys as $key) {
+            $val = $this->num($src, $key);
+            if ($val !== null) {
+                $sum = ($sum ?? 0) + $val;
+            }
+        }
+
+        return $sum;
     }
 }

@@ -46,6 +46,40 @@ class ShopeeEscrowMapperTest extends TestCase
         $this->assertSame(10000.0, $result['platform_shipping_rebate']);
     }
 
+    public function test_maps_tax_and_insurance_when_present(): void
+    {
+        $result = (new ShopeeEscrowMapper())->map($this->escrow([
+            'escrow_amount'          => 50000,
+            'escrow_tax'             => 1500,
+            'final_product_protection' => 2000,
+        ]));
+
+        $this->assertSame(1500.0, $result['total_tax']);
+        $this->assertSame(2000.0, $result['insurance_cost']);
+    }
+
+    public function test_tax_falls_back_to_vat_components(): void
+    {
+        $result = (new ShopeeEscrowMapper())->map($this->escrow([
+            'escrow_amount'         => 50000,
+            'final_product_vat_tax'  => 1000,
+            'final_shipping_vat_tax' => 250,
+        ]));
+
+        $this->assertSame(1250.0, $result['total_tax']);
+    }
+
+    public function test_omits_tax_and_insurance_keys_when_absent(): void
+    {
+        $result = (new ShopeeEscrowMapper())->map($this->escrow([
+            'commission_fee' => 2200,
+            'escrow_amount'  => 50000,
+        ]));
+
+        $this->assertArrayNotHasKey('total_tax', $result);
+        $this->assertArrayNotHasKey('insurance_cost', $result);
+    }
+
     public function test_not_settled_when_escrow_amount_missing(): void
     {
         $result = (new ShopeeEscrowMapper())->map($this->escrow([
