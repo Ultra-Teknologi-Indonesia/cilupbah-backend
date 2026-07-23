@@ -40,6 +40,7 @@ class ShopeeToInternalOrderMapper
         $address = $shopeeOrder['recipient_address'] ?? [];
 
         $subTotal = array_sum(array_column($items, 'amount'));
+        $totalDisc = array_sum(array_column($items, 'disc_amount'));
         $shippingFee = (float) ($shopeeOrder['estimated_shipping_fee'] ?? 0);
         $grandTotal = isset($shopeeOrder['total_amount']) ? (float) $shopeeOrder['total_amount'] : ($subTotal + $shippingFee);
 
@@ -55,7 +56,7 @@ class ShopeeToInternalOrderMapper
             'transaction_date' => $this->parseTimestamp($shopeeOrder['create_time'] ?? null),
 
             'sub_total' => $subTotal,
-            'total_disc' => 0,
+            'total_disc' => $totalDisc,
 
             'seller_voucher' => null,
             'platform_voucher' => null,
@@ -123,9 +124,11 @@ class ShopeeToInternalOrderMapper
 
         foreach ($itemList as $row) {
             $sku = $row['model_sku'] ?? $row['item_sku'] ?? null;
-            $price = (float) ($row['model_discounted_price'] ?? $row['model_original_price'] ?? 0);
+            $discounted = (float) ($row['model_discounted_price'] ?? $row['model_original_price'] ?? 0);
+            $original = (float) ($row['model_original_price'] ?? $discounted);
+            $disc = max(0.0, $original - $discounted);
             $qty = (int) ($row['model_quantity_purchased'] ?? 1);
-            $key = $sku . '|' . $price;
+            $key = $sku . '|' . $original . '|' . $disc;
 
             if (! isset($grouped[$key])) {
                 $grouped[$key] = [
@@ -133,8 +136,8 @@ class ShopeeToInternalOrderMapper
                     'sku' => $sku,
                     'description' => trim(($row['item_name'] ?? '') . (! empty($row['model_name']) ? ' - ' . $row['model_name'] : '')),
                     'qty_in_base' => 0,
-                    'price' => $price,
-                    'disc' => 0,
+                    'price' => $original,
+                    'disc' => $disc,
                     'disc_amount' => 0,
                     'tax_amount' => 0,
                     'amount' => 0,
@@ -142,7 +145,8 @@ class ShopeeToInternalOrderMapper
             }
 
             $grouped[$key]['qty_in_base'] += $qty;
-            $grouped[$key]['amount'] += $price * $qty;
+            $grouped[$key]['disc_amount'] += $disc * $qty;
+            $grouped[$key]['amount'] += ($original - $disc) * $qty;
         }
 
         return array_values($grouped);

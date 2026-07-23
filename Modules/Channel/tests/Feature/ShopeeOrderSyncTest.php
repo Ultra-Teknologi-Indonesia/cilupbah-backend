@@ -77,6 +77,29 @@ class ShopeeOrderSyncTest extends TestCase
         $this->assertEquals(120000.0, $internal['items'][0]['amount']);
     }
 
+    public function test_mapper_derives_discount_from_original_vs_discounted_price(): void
+    {
+        $mapper = new ShopeeToInternalOrderMapper();
+
+        $internal = $mapper->map($this->orderDetail([
+            'item_list' => [[
+                'item_id' => 555100,
+                'item_name' => 'Tas Kanvas',
+                'model_sku' => 'SKU-TAS',
+                'model_quantity_purchased' => 2,
+                'model_original_price' => 100000,
+                'model_discounted_price' => 60000,
+            ]],
+        ]), '778899');
+
+        $item = $internal['items'][0];
+        $this->assertEquals(100000.0, $item['price']);        // harga gross
+        $this->assertEquals(40000.0, $item['disc']);          // per unit: 100rb - 60rb
+        $this->assertEquals(80000.0, $item['disc_amount']);   // × qty 2
+        $this->assertEquals(120000.0, $item['amount']);       // net (60rb × 2) — sub_total tak berubah
+        $this->assertEquals(80000.0, $internal['total_disc']);
+    }
+
     public function test_pull_orders_creates_sales_order_with_items(): void
     {
         Http::fake([
