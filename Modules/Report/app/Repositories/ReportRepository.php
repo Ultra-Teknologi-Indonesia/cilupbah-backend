@@ -848,7 +848,6 @@ class ReportRepository
                 (SELECT shop_name FROM channel_shops WHERE channel_shops.shop_id = sales_orders.channel_shop_id LIMIT 1),
                 (SELECT name FROM internal_stores WHERE internal_stores.id = sales_orders.internal_store_id LIMIT 1)
             ) AS shop_label")
-            ->selectRaw('(SELECT invoice_number FROM sales_invoices WHERE sales_invoices.order_id = sales_orders.id ORDER BY invoice_date DESC LIMIT 1) AS invoice_no')
             ->orderByDesc('sales_orders.transaction_date')
             ->orderByDesc('sales_orders.salesorder_no');
     }

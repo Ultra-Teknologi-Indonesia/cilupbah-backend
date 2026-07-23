@@ -9,7 +9,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Report\Exports\SalesListPesananExport;
 use Modules\Report\Services\SalesListReportService;
-use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Warehouse\Models\Location;
 use Tests\TestCase;
@@ -71,17 +70,7 @@ class SalesListReportTest extends TestCase
 
     public function test_query_exposes_derived_columns(): void
     {
-        $order = $this->order();
-        SalesInvoice::create([
-            'invoice_number' => 'INV-1',
-            'order_id'       => $order->id,
-            'customer_name'  => $order->customer_name,
-            'location_id'    => $this->locA->id,
-            'status'         => SalesInvoice::STATUS_OPEN,
-            'invoice_date'   => '2026-07-20',
-            'total_amount'   => 100000,
-            'created_by'     => $this->user->id,
-        ]);
+        $this->order();
 
         $row = app(SalesListReportService::class)
             ->query(['from' => '2026-07-01', 'to' => '2026-07-31'])
@@ -90,10 +79,9 @@ class SalesListReportTest extends TestCase
 
         $this->assertSame('Gudang Kecil', $row->loc_name);
         $this->assertSame('Toko Uji', $row->shop_label);
-        $this->assertSame('INV-1', $row->invoice_no);
     }
 
-    public function test_export_maps_22_columns_and_channel_label(): void
+    public function test_export_maps_20_columns_and_channel_label(): void
     {
         $order = $this->order([
             'total_disc'           => 65000,
@@ -109,15 +97,14 @@ class SalesListReportTest extends TestCase
         $fetched = $query->get()->firstWhere('id', $order->id);
         $cells = $export->map($fetched);
 
-        $this->assertCount(22, $cells);
-        $this->assertSame('SHOPEE', $cells[4]);          // Channel
-        $this->assertSame('Gudang Kecil', $cells[6]);    // Lokasi
-        $this->assertSame('COMPLETED', $cells[10]);      // Status
-        $this->assertSame(65000.0, $cells[11]);          // Diskon
-        $this->assertSame(5600.0, $cells[13]);           // Potongan Biaya
-        $this->assertNull($cells[18]);                   // Tip Shopify
-        $this->assertSame(1250.0, $cells[19]);           // Biaya Proses Pesanan
-        $this->assertSame(28150.0, $cells[21]);          // Grand Total
+        $this->assertCount(20, $cells);
+        $this->assertSame('SHOPEE', $cells[3]);          // Channel
+        $this->assertSame('Gudang Kecil', $cells[5]);    // Lokasi
+        $this->assertSame('COMPLETED', $cells[9]);       // Status
+        $this->assertSame(65000.0, $cells[10]);          // Diskon
+        $this->assertSame(5600.0, $cells[12]);           // Potongan Biaya
+        $this->assertSame(1250.0, $cells[17]);           // Biaya Proses Pesanan
+        $this->assertSame(28150.0, $cells[19]);          // Grand Total
     }
 
     public function test_filters_by_location_ids(): void
@@ -154,6 +141,6 @@ class SalesListReportTest extends TestCase
 
         $cells = $export->map($query->get()->firstWhere('id', $order->id));
 
-        $this->assertSame('Shop | Tokopedia', $cells[4]);
+        $this->assertSame('Shop | Tokopedia', $cells[3]);
     }
 }

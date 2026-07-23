@@ -41,7 +41,6 @@ class SalesListPesananExport implements FromQuery, WithHeadings, WithMapping, Wi
             'Tanggal',
             'No Pesanan',
             'REF',
-            'No Invoice',
             'Channel',
             'Nama Toko',
             'Lokasi',
@@ -56,7 +55,6 @@ class SalesListPesananExport implements FromQuery, WithHeadings, WithMapping, Wi
             'Pajak',
             'Ongkir',
             'Asuransi',
-            'Tip Shopify',
             'Biaya Proses Pesanan',
             'Total',
             'Grand Total',
@@ -69,7 +67,6 @@ class SalesListPesananExport implements FromQuery, WithHeadings, WithMapping, Wi
             $order->transaction_date?->format('Y-m-d H:i:s'),
             $order->salesorder_no,
             $order->channel_order_no,
-            $order->invoice_no ?? '',
             $this->channelLabel($order->source),
             $order->shop_label ?? '',
             $order->loc_name ?? '',
@@ -77,14 +74,13 @@ class SalesListPesananExport implements FromQuery, WithHeadings, WithMapping, Wi
             $order->shipping_phone ?? '',
             $order->courier_name ?: ($order->shipping_provider ?? ''),
             $order->channel_status ?: ($order->status ?? ''),
-            (float) ($order->total_disc ?? 0),
-            (float) ($order->other_discount ?? 0),
-            (float) ($order->transaction_fee ?? 0),   // "Potongan Biaya" — verifikasi mapping fee di staging
-            (float) ($order->service_fee ?? 0),        // "Biaya Lainnya" — verifikasi mapping fee di staging
+            (float) ($order->total_disc ?? 0),         // "Diskon" — diskon penjual (seller_discount/voucher); Shopee 0 di order API
+            (float) ($order->platform_voucher ?? 0),   // "Diskon Lainnya" — diskon platform (TikTok/Lazada); other_discount tak pernah diisi channel
+            (float) ($order->transaction_fee ?? 0),   // "Potongan Biaya" — biaya transaksi channel (dari sync escrow/statement/finance)
+            (float) ($order->service_fee ?? 0),        // "Biaya Lainnya" — biaya layanan channel (dari sync escrow/statement/finance)
             (float) ($order->total_tax ?? 0),
             (float) ($order->shipping_cost ?? 0),
             (float) ($order->insurance_cost ?? 0),
-            null,                                       // Tip Shopify — khusus Shopify, selalu kosong
             (float) ($order->order_processing_fee ?? 0),
             (float) ($order->sub_total ?? 0),
             (float) ($order->grand_total ?? 0),
@@ -94,18 +90,17 @@ class SalesListPesananExport implements FromQuery, WithHeadings, WithMapping, Wi
     public function columnWidths(): array
     {
         return [
-            'A' => 20, 'B' => 26, 'C' => 22, 'D' => 16, 'E' => 16,
-            'F' => 24, 'G' => 16, 'H' => 22, 'I' => 16, 'J' => 26,
-            'K' => 14, 'L' => 12, 'M' => 14, 'N' => 14, 'O' => 14,
-            'P' => 10, 'Q' => 12, 'R' => 12, 'S' => 12, 'T' => 18,
-            'U' => 14, 'V' => 14,
+            'A' => 20, 'B' => 26, 'C' => 22, 'D' => 16, 'E' => 24,
+            'F' => 16, 'G' => 22, 'H' => 16, 'I' => 26, 'J' => 14,
+            'K' => 12, 'L' => 14, 'M' => 14, 'N' => 14, 'O' => 10,
+            'P' => 12, 'Q' => 12, 'R' => 18, 'S' => 14, 'T' => 14,
         ];
     }
 
     public function columnFormats(): array
     {
         $money = [];
-        foreach (['L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V'] as $col) {
+        foreach (['K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T'] as $col) {
             $money[$col] = self::MONEY_FORMAT;
         }
 
