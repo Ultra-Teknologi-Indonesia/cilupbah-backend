@@ -843,6 +843,11 @@ class ReportRepository
             ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v . ' 00:00:00'))
             ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v . ' 23:59:59'))
             ->when(! empty($locationIds), fn ($q) => $q->whereIn('sales_orders.location_id', $locationIds))
+            ->whereNotExists(fn ($q) => $q
+                ->select(DB::raw(1))
+                ->from('sales_order_items as soi')
+                ->whereColumn('soi.order_id', 'sales_orders.id')
+                ->whereNull('soi.item_id'))
             ->select('sales_orders.*')
             ->selectRaw('(SELECT location_name FROM locations WHERE locations.id = sales_orders.location_id LIMIT 1) AS loc_name')
             ->selectRaw("COALESCE(
@@ -866,6 +871,7 @@ class ReportRepository
             ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v . ' 23:59:59'))
             ->when(! empty($locationIds), fn ($q) => $q->whereIn('sales_orders.location_id', $locationIds))
             ->when(! empty($itemIds), fn ($q) => $q->whereIn('sales_order_items.item_id', $itemIds))
+            ->whereNotNull('sales_order_items.item_id')
             ->select('sales_order_items.*')
             ->addSelect([
                 'sales_orders.salesorder_no as so_no',

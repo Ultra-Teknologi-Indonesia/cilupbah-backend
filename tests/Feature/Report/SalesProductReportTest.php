@@ -156,6 +156,27 @@ class SalesProductReportTest extends TestCase
         $this->assertSame($inScope->id, $rows->first()->id);
     }
 
+    public function test_excludes_undownloaded_sku_items(): void
+    {
+        $item = $this->orderWithItem();
+
+        // item belum di-download (item_id NULL) di order yang sama
+        SalesOrderItem::create([
+            'order_id'    => $item->order_id,
+            'item_id'     => null,
+            'sku'         => 'BELUM-DOWNLOAD',
+            'description' => 'Produk belum diunduh',
+            'qty_in_base' => 1,
+            'price'       => 1000,
+            'amount'      => 1000,
+        ]);
+
+        $rows = app(SalesProductReportService::class)->query([])->get();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('CASE-BLACK-15', $rows->first()->sku);
+    }
+
     public function test_sku_options_endpoint_paginates_with_image(): void
     {
         ProductMedia::create([

@@ -10,6 +10,7 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Report\Exports\SalesListPesananExport;
 use Modules\Report\Services\SalesListReportService;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Models\SalesOrderItem;
 use Modules\Warehouse\Models\Location;
 use Tests\TestCase;
 
@@ -131,6 +132,27 @@ class SalesListReportTest extends TestCase
 
         $this->assertCount(1, $rows);
         $this->assertSame($inRange->id, $rows->first()->id);
+    }
+
+    public function test_excludes_orders_with_undownloaded_sku(): void
+    {
+        $included = $this->order();
+
+        $excluded = $this->order();
+        SalesOrderItem::create([
+            'order_id'    => $excluded->id,
+            'item_id'     => null,
+            'sku'         => 'BELUM-DOWNLOAD',
+            'description' => 'Produk belum diunduh',
+            'qty_in_base' => 1,
+            'price'       => 1000,
+            'amount'      => 1000,
+        ]);
+
+        $ids = app(SalesListReportService::class)->query([])->get()->pluck('id')->all();
+
+        $this->assertContains($included->id, $ids);
+        $this->assertNotContains($excluded->id, $ids);
     }
 
     public function test_channel_label_for_tiktok(): void
