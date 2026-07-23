@@ -26,6 +26,7 @@ use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesInvoiceItem;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderItem;
+use Modules\Sales\Models\SalesReturnItem;
 
 class ReportRepository
 {
@@ -889,6 +890,53 @@ class ReportRepository
             ) AS shop_label")
             ->orderByDesc('sales_orders.transaction_date')
             ->orderByDesc('sales_order_items.sku');
+    }
+
+    public function salesReturnQuery(array $filters): \Illuminate\Database\Eloquent\Builder
+    {
+        $from = $filters['from'] ?? null;
+        $to = $filters['to'] ?? null;
+        $locationIds = $filters['location_ids'] ?? [];
+
+        $line = fn (string $col) => "(SELECT {$col} FROM sales_order_items soi
+            WHERE soi.order_id = sales_returns.order_id
+              AND soi.item_id = sales_return_items.item_id LIMIT 1)";
+
+        return SalesReturnItem::query()
+            ->join('sales_returns', 'sales_returns.id', '=', 'sales_return_items.sales_return_id')
+            ->when($from, fn ($q, $v) => $q->where('sales_returns.created_at', '>=', $v . ' 00:00:00'))
+            ->when($to, fn ($q, $v) => $q->where('sales_returns.created_at', '<=', $v . ' 23:59:59'))
+            ->when(! empty($locationIds), fn ($q) => $q->whereIn('sales_returns.location_id', $locationIds))
+            ->select('sales_return_items.*')
+            ->addSelect([
+                'sales_returns.created_at as return_date',
+                'sales_returns.return_number as return_no',
+                'sales_returns.source as ret_source',
+                'sales_returns.customer_name as ret_customer',
+                'sales_returns.return_tracking_number as ret_resi',
+                'sales_returns.notes as ret_notes',
+            ])
+            ->selectRaw('(SELECT location_name FROM locations WHERE locations.id = sales_returns.location_id LIMIT 1) AS loc_name')
+            ->selectRaw('(SELECT salesorder_no FROM sales_orders WHERE sales_orders.id = sales_returns.order_id LIMIT 1) AS so_no')
+            ->selectRaw('(SELECT invoice_number FROM sales_invoices WHERE sales_invoices.order_id = sales_returns.order_id ORDER BY invoice_date DESC LIMIT 1) AS invoice_no')
+            ->selectRaw("COALESCE(
+                (SELECT shop_name FROM channel_shops WHERE channel_shops.shop_id = sales_returns.channel_shop_id LIMIT 1),
+                (SELECT shop_name FROM channel_shops WHERE channel_shops.shop_id =
+                    (SELECT channel_shop_id FROM sales_orders WHERE sales_orders.id = sales_returns.order_id LIMIT 1) LIMIT 1)
+            ) AS shop_label")
+            ->selectRaw("(SELECT p.putaway_no FROM putaways p
+                JOIN putaway_sources ps ON ps.putaway_id = p.id
+                JOIN inbounds ib ON ib.id = ps.inbound_id
+                WHERE ib.source_type = 'sales_return' AND ib.source_id = sales_returns.id LIMIT 1) AS putaway_no")
+            ->selectRaw("COALESCE({$line('sku')},
+                (SELECT sku FROM product_variants WHERE id = sales_return_items.item_id LIMIT 1)) AS line_sku")
+            ->selectRaw("COALESCE({$line('description')},
+                (SELECT p.name FROM products p JOIN product_variants pv ON pv.product_id = p.id
+                 WHERE pv.id = sales_return_items.item_id LIMIT 1)) AS line_desc")
+            ->selectRaw("COALESCE({$line('price')}, 0) AS line_price")
+            ->selectRaw("COALESCE({$line('disc')}, 0) AS line_disc")
+            ->orderByDesc('sales_returns.created_at')
+            ->orderBy('sales_returns.return_number');
     }
 
     public function salesProductSkuOptions(?string $search, int $perPage = 20): LengthAwarePaginator
