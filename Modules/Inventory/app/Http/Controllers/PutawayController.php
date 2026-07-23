@@ -89,7 +89,8 @@ class PutawayController extends Controller
             }
 
             foreach ($inbounds as $inbound) {
-                if (in_array($inbound->status, [\Modules\Inbound\Models\Inbound::STATUS_COMPLETED, \Modules\Inbound\Models\Inbound::STATUS_CANCELLED], true)) {
+                // COMPLETED = penerimaan selesai (masih bisa di-putaway). Hanya CANCELLED yang blok.
+                if ($inbound->status === \Modules\Inbound\Models\Inbound::STATUS_CANCELLED) {
                     return $this->errorResponse("Penerimaan {$inbound->transaction_number} sudah {$inbound->status}, tidak bisa dibuat penempatan.", 422);
                 }
             }

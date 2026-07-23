@@ -897,37 +897,10 @@ class PutawayService
 
     private function recomputeInboundStatus(Inbound $inbound): void
     {
-        $inbound->loadMissing('items');
-
-        if ($inbound->items->isEmpty()
-            || in_array($inbound->status, [Inbound::STATUS_DRAFT, Inbound::STATUS_CANCELLED], true)) {
-            return;
-        }
-
-        $allPutaway = $inbound->items->every(fn ($i) => $i->isFullyPutaway());
-        $anyPutaway = $inbound->items->contains(fn ($i) => (int) $i->putaway_qty > 0);
-
-        $newStatus = $allPutaway
-            ? Inbound::STATUS_COMPLETED
-            : ($anyPutaway ? Inbound::STATUS_PUTAWAY_IN_PROGRESS : Inbound::STATUS_RECEIVED);
-
-        $updates = [];
-        if ($inbound->status !== $newStatus) {
-            $updates['status'] = $newStatus;
-        }
-
-        if ($inbound->once_received_at === null
-            && in_array($newStatus, [
-                Inbound::STATUS_RECEIVED,
-                Inbound::STATUS_PUTAWAY_IN_PROGRESS,
-                Inbound::STATUS_COMPLETED,
-            ], true)) {
-            $updates['once_received_at'] = now();
-        }
-
-        if (! empty($updates)) {
-            $inbound->update($updates);
-        }
+        // Putaway TIDAK lagi menentukan status penerimaan. Status inbound = siklus
+        // penerimaan saja (lihat InboundService: qty penuh / admin close = COMPLETED).
+        // Progres putaway dilacak di entitas Putaway sendiri, bukan di inbound->status.
+        // Sengaja no-op agar partial putaway tak pernah menutup penerimaan yang berjalan.
     }
 
     private function releasePartialReservation(Putaway $putaway, PutawayItem $item, int $unplaced): void

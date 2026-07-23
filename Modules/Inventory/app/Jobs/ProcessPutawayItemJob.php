@@ -237,23 +237,8 @@ class ProcessPutawayItemJob implements ShouldQueue
 
     private function recomputeInboundStatus(string $inboundId): void
     {
-        $inbound = Inbound::with('items')->find($inboundId);
-
-        if (! $inbound
-            || $inbound->items->isEmpty()
-            || in_array($inbound->status, [Inbound::STATUS_DRAFT, Inbound::STATUS_CANCELLED], true)) {
-            return;
-        }
-
-        $allPutaway = $inbound->items->every(fn ($i) => $i->isFullyPutaway());
-        $anyPutaway = $inbound->items->contains(fn ($i) => (int) $i->putaway_qty > 0);
-
-        $newStatus = $allPutaway
-            ? Inbound::STATUS_COMPLETED
-            : ($anyPutaway ? Inbound::STATUS_PUTAWAY_IN_PROGRESS : Inbound::STATUS_RECEIVED);
-
-        if ($inbound->status !== $newStatus) {
-            $inbound->update(['status' => $newStatus]);
-        }
+        // Putaway TIDAK lagi menentukan status penerimaan (status inbound = siklus
+        // penerimaan saja; qty penuh / admin close = COMPLETED di InboundService).
+        // Sengaja no-op agar partial putaway tak pernah menutup penerimaan yang berjalan.
     }
 }
