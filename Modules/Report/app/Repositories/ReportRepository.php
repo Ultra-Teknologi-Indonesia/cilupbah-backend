@@ -25,6 +25,7 @@ use Modules\Purchase\Models\PurchaseOrderItem;
 use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesInvoiceItem;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Models\SalesOrderItem;
 
 class ReportRepository
 {
@@ -850,5 +851,53 @@ class ReportRepository
             ) AS shop_label")
             ->orderByDesc('sales_orders.transaction_date')
             ->orderByDesc('sales_orders.salesorder_no');
+    }
+
+    public function salesProductQuery(array $filters): \Illuminate\Database\Eloquent\Builder
+    {
+        $from = $filters['from'] ?? null;
+        $to = $filters['to'] ?? null;
+        $locationIds = $filters['location_ids'] ?? [];
+        $itemIds = $filters['item_ids'] ?? [];
+
+        return SalesOrderItem::query()
+            ->join('sales_orders', 'sales_orders.id', '=', 'sales_order_items.order_id')
+            ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v . ' 00:00:00'))
+            ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v . ' 23:59:59'))
+            ->when(! empty($locationIds), fn ($q) => $q->whereIn('sales_orders.location_id', $locationIds))
+            ->when(! empty($itemIds), fn ($q) => $q->whereIn('sales_order_items.item_id', $itemIds))
+            ->select('sales_order_items.*')
+            ->addSelect([
+                'sales_orders.salesorder_no as so_no',
+                'sales_orders.source as so_source',
+                'sales_orders.transaction_date as so_date',
+                'sales_orders.customer_name as so_customer',
+                'sales_orders.shipping_phone as so_phone',
+                'sales_orders.channel_status as so_status',
+                'sales_orders.buyer_message as so_note',
+            ])
+            ->selectRaw('(SELECT location_name FROM locations WHERE locations.id = sales_orders.location_id LIMIT 1) AS loc_name')
+            ->selectRaw("COALESCE(
+                (SELECT shop_name FROM channel_shops WHERE channel_shops.shop_id = sales_orders.channel_shop_id LIMIT 1),
+                (SELECT name FROM internal_stores WHERE internal_stores.id = sales_orders.internal_store_id LIMIT 1)
+            ) AS shop_label")
+            ->orderByDesc('sales_orders.transaction_date')
+            ->orderByDesc('sales_order_items.sku');
+    }
+
+    public function salesProductSkuOptions(?string $search, int $perPage = 20): LengthAwarePaginator
+    {
+        return ProductVariant::query()
+            ->with(['media:id,variant_id,url,is_primary', 'product:id,name', 'product.media:id,product_id,url,is_primary'])
+            ->select('id', 'product_id', 'sku')
+            ->when($search, function ($q, $v) {
+                $like = '%' . $v . '%';
+                $q->where(function ($qq) use ($like) {
+                    $qq->where('sku', 'ILIKE', $like)
+                        ->orWhereHas('product', fn ($p) => $p->where('name', 'ILIKE', $like));
+                });
+            })
+            ->orderBy('sku')
+            ->paginate($perPage);
     }
 }

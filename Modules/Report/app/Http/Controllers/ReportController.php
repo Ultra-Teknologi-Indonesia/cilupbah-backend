@@ -12,6 +12,7 @@ use Modules\Report\Exports\NegativeStockReportExport;
 use Modules\Report\Exports\PickListReportExport;
 use Modules\Report\Exports\PicklistDetailPhotoExport;
 use Modules\Report\Exports\SalesListPesananExport;
+use Modules\Report\Exports\SalesProductExport;
 use Modules\Report\Exports\SectionedReportExport;
 use Modules\Report\Exports\ShipmentListReportExport;
 use Modules\Report\Exports\TransferReportExport;
@@ -22,6 +23,7 @@ use Modules\Report\Http\Resources\LazadaDocumentResource;
 use Modules\Report\Services\OrderPerformanceReportService;
 use Modules\Report\Services\PutawayListReportService;
 use Modules\Report\Services\SalesListReportService;
+use Modules\Report\Services\SalesProductReportService;
 use Modules\Report\Services\ShipmentByCourierReportService;
 use Modules\Report\Services\PutawayPerformanceReportService;
 use Modules\Report\Services\ReportService;
@@ -926,6 +928,66 @@ class ReportController extends Controller
         );
 
         return Excel::download(new SalesListPesananExport($query), $filename);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/sales/product/sku-options',
+        summary: 'Opsi SKU (varian) untuk filter Laporan Penjualan Produk — paginated + gambar',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        parameters: [
+            new OA\Parameter(name: 'search', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 1)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
+        ],
+        responses: [new OA\Response(response: 200, description: 'Daftar opsi SKU paginated')]
+    )]
+    public function salesProductSkuOptions(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'search' => 'nullable|string|max:200',
+            'per_page' => 'nullable|integer|min:1|max:50',
+        ]);
+
+        $result = app(SalesProductReportService::class)
+            ->skuOptions($validated['search'] ?? null, $validated['per_page'] ?? 20);
+
+        return $this->successResponse($result['data'], 'Opsi SKU berhasil diambil.', 200, $result['meta']);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/sales/product/export',
+        summary: 'Export Laporan Penjualan Produk (item-level) ke XLSX',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        parameters: [
+            new OA\Parameter(name: 'from', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'to', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'location_ids[]', in: 'query', required: false, schema: new OA\Schema(type: 'array', items: new OA\Items(type: 'string', format: 'uuid'))),
+            new OA\Parameter(name: 'item_ids[]', in: 'query', required: false, schema: new OA\Schema(type: 'array', items: new OA\Items(type: 'string', format: 'uuid'))),
+        ],
+        responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
+    )]
+    public function salesProductExport(Request $request)
+    {
+        $validated = $request->validate([
+            'from' => 'nullable|date',
+            'to' => 'nullable|date|after_or_equal:from',
+            'location_ids' => 'nullable|array',
+            'location_ids.*' => 'uuid',
+            'item_ids' => 'nullable|array',
+            'item_ids.*' => 'uuid',
+        ]);
+
+        $query = app(SalesProductReportService::class)->query($validated);
+
+        $filename = sprintf(
+            'Daftar-Penjualan-Produk_%s_%s.xlsx',
+            $validated['from'] ?? 'semua',
+            $validated['to'] ?? now()->format('Y-m-d'),
+        );
+
+        return Excel::download(new SalesProductExport($query), $filename);
     }
 
     public function lazadaGetDocument(Request $request): JsonResponse
