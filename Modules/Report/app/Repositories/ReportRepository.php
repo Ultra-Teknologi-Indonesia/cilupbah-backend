@@ -27,6 +27,7 @@ use Modules\Sales\Models\SalesInvoiceItem;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderItem;
 use Modules\Sales\Models\SalesReturnItem;
+use Modules\Supplier\Models\Contact;
 
 class ReportRepository
 {
@@ -1032,5 +1033,20 @@ class ReportRepository
             ->selectRaw('(SELECT name FROM salesmen WHERE salesmen.id = sales_orders.salesman_id LIMIT 1) AS salesman_name')
             ->orderByDesc('sales_orders.transaction_date')
             ->orderBy('sales_invoices.invoice_number');
+    }
+
+    public function customerListQuery(array $filters): \Illuminate\Database\Eloquent\Builder
+    {
+        $from = $filters['from'] ?? null;
+        $to = $filters['to'] ?? null;
+
+        return Contact::query()
+            ->customers()
+            ->when($from, fn ($q, $v) => $q->where('contacts.created_at', '>=', $v . ' 00:00:00'))
+            ->when($to, fn ($q, $v) => $q->where('contacts.created_at', '<=', $v . ' 23:59:59'))
+            ->select('contacts.*')
+            ->selectRaw('(SELECT name FROM contact_categories WHERE contact_categories.id = contacts.category_id LIMIT 1) AS category_name')
+            ->orderByDesc('contacts.created_at')
+            ->orderBy('contacts.name');
     }
 }

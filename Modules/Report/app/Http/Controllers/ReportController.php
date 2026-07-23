@@ -12,6 +12,7 @@ use Modules\Report\Exports\NegativeStockReportExport;
 use Modules\Report\Exports\PickListReportExport;
 use Modules\Report\Exports\PicklistDetailPhotoExport;
 use Modules\Report\Exports\SalesListPesananExport;
+use Modules\Report\Exports\CustomerListExport;
 use Modules\Report\Exports\RincianPendapatanExport;
 use Modules\Report\Exports\RincianPendapatanPerBarangExport;
 use Modules\Report\Exports\SalesProductExport;
@@ -27,6 +28,7 @@ use Modules\Report\Services\OrderPerformanceReportService;
 use Modules\Report\Services\PutawayListReportService;
 use Modules\Report\Services\SalesListReportService;
 use Modules\Report\Services\SalesProductReportService;
+use Modules\Report\Services\CustomerListReportService;
 use Modules\Report\Services\RincianPendapatanReportService;
 use Modules\Report\Services\SalesReturnReportService;
 use Modules\Report\Services\ShipmentByCourierReportService;
@@ -1065,6 +1067,35 @@ class ReportController extends Controller
         );
 
         return Excel::download($export, $filename);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/sales/customer/export',
+        summary: 'Export Daftar Pelanggan ke XLSX',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        parameters: [
+            new OA\Parameter(name: 'from', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'to', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+        ],
+        responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
+    )]
+    public function customerListExport(Request $request)
+    {
+        $validated = $request->validate([
+            'from' => 'nullable|date',
+            'to' => 'nullable|date|after_or_equal:from',
+        ]);
+
+        $query = app(CustomerListReportService::class)->query($validated);
+
+        $filename = sprintf(
+            'Daftar-Pelanggan_%s_%s.xlsx',
+            $validated['from'] ?? 'semua',
+            $validated['to'] ?? now()->format('Y-m-d'),
+        );
+
+        return Excel::download(new CustomerListExport($query), $filename);
     }
 
     public function lazadaGetDocument(Request $request): JsonResponse
