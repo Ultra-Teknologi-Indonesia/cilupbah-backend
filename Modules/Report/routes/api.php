@@ -46,6 +46,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('reports/sales/product/sku-options', [ReportController::class, 'salesProductSkuOptions'])->name('reports.sales.product.sku-options');
         Route::get('reports/sales/product/export', [ReportController::class, 'salesProductExport'])->name('reports.sales.product.export');
         Route::get('reports/sales/return/export', [ReportController::class, 'salesReturnExport'])->name('reports.sales.return.export');
+        Route::get('reports/sales/income/export', [ReportController::class, 'rincianPendapatanExport'])->name('reports.sales.income.export');
     });
     Route::middleware('role_or_permission:owner|export-laporan-persediaan')->group(function () {
         Route::post('reports/barcode/pdf', [ReportController::class, 'barcodePdf'])->name('reports.barcode.pdf');

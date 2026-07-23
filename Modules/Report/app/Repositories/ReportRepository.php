@@ -954,4 +954,83 @@ class ReportRepository
             ->orderBy('sku')
             ->paginate($perPage);
     }
+
+    private function shopLabelSub(): string
+    {
+        return "COALESCE(
+            (SELECT shop_name FROM channel_shops WHERE channel_shops.shop_id = sales_orders.channel_shop_id LIMIT 1),
+            (SELECT name FROM internal_stores WHERE internal_stores.id = sales_orders.internal_store_id LIMIT 1)
+        )";
+    }
+
+    public function rincianPendapatanQuery(array $filters): \Illuminate\Database\Eloquent\Builder
+    {
+        $from = $filters['from'] ?? null;
+        $to = $filters['to'] ?? null;
+
+        return SalesInvoice::query()
+            ->join('sales_orders', 'sales_orders.id', '=', 'sales_invoices.order_id')
+            ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v . ' 00:00:00'))
+            ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v . ' 23:59:59'))
+            ->select('sales_invoices.id', 'sales_invoices.invoice_number as invoice_no')
+            ->addSelect([
+                'sales_orders.salesorder_no as so_no',
+                'sales_orders.transaction_date as tgl',
+                'sales_orders.channel_status as ch_status',
+                'sales_orders.source as src',
+                'sales_orders.customer_name as cust',
+                'sales_orders.sub_total as sub_total',
+                'sales_orders.total_disc as diskon',
+                'sales_orders.platform_voucher as diskon_lain',
+                'sales_orders.transaction_fee as potongan_biaya',
+                'sales_orders.service_fee as biaya_lain',
+                'sales_orders.price_includes_tax as inc_tax',
+                'sales_orders.total_tax as pajak',
+                'sales_orders.shipping_cost as ongkir',
+                'sales_orders.insurance_cost as asuransi',
+                'sales_orders.settlement_amount as escrow',
+                'sales_orders.channel_updated_at as tgl_complete',
+            ])
+            ->selectRaw($this->shopLabelSub() . ' AS shop_label')
+            ->selectRaw('(SELECT COALESCE(SUM(total_cogs), 0) FROM sales_invoice_items WHERE sales_invoice_id = sales_invoices.id) AS hpp')
+            ->orderByDesc('sales_orders.transaction_date')
+            ->orderBy('sales_invoices.invoice_number');
+    }
+
+    public function rincianPendapatanPerBarangQuery(array $filters): \Illuminate\Database\Eloquent\Builder
+    {
+        $from = $filters['from'] ?? null;
+        $to = $filters['to'] ?? null;
+        $itemIds = $filters['item_ids'] ?? [];
+
+        return SalesInvoiceItem::query()
+            ->join('sales_invoices', 'sales_invoices.id', '=', 'sales_invoice_items.sales_invoice_id')
+            ->join('sales_orders', 'sales_orders.id', '=', 'sales_invoices.order_id')
+            ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v . ' 00:00:00'))
+            ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v . ' 23:59:59'))
+            ->when(! empty($itemIds), fn ($q) => $q->whereIn('sales_invoice_items.item_id', $itemIds))
+            ->select('sales_invoice_items.*')
+            ->addSelect([
+                'sales_invoices.invoice_number as invoice_no',
+                'sales_orders.salesorder_no as so_no',
+                'sales_orders.transaction_date as tgl',
+                'sales_orders.channel_status as ch_status',
+                'sales_orders.source as src',
+                'sales_orders.customer_name as cust',
+                'sales_orders.platform_voucher as diskon_lain',
+                'sales_orders.transaction_fee as potongan_biaya',
+                'sales_orders.service_fee as biaya_lain',
+                'sales_orders.price_includes_tax as inc_tax',
+                'sales_orders.shipping_cost as ongkir',
+                'sales_orders.insurance_cost as asuransi',
+                'sales_orders.order_processing_fee as biaya_proses',
+            ])
+            ->selectRaw('(SELECT location_name FROM locations WHERE locations.id = sales_orders.location_id LIMIT 1) AS loc_name')
+            ->selectRaw($this->shopLabelSub() . ' AS shop_label')
+            ->selectRaw('(SELECT sku FROM product_variants WHERE id = sales_invoice_items.item_id LIMIT 1) AS line_sku')
+            ->selectRaw('(SELECT p.name FROM products p JOIN product_variants pv ON pv.product_id = p.id WHERE pv.id = sales_invoice_items.item_id LIMIT 1) AS line_desc')
+            ->selectRaw('(SELECT name FROM salesmen WHERE salesmen.id = sales_orders.salesman_id LIMIT 1) AS salesman_name')
+            ->orderByDesc('sales_orders.transaction_date')
+            ->orderBy('sales_invoices.invoice_number');
+    }
 }

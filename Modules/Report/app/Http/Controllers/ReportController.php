@@ -12,6 +12,8 @@ use Modules\Report\Exports\NegativeStockReportExport;
 use Modules\Report\Exports\PickListReportExport;
 use Modules\Report\Exports\PicklistDetailPhotoExport;
 use Modules\Report\Exports\SalesListPesananExport;
+use Modules\Report\Exports\RincianPendapatanExport;
+use Modules\Report\Exports\RincianPendapatanPerBarangExport;
 use Modules\Report\Exports\SalesProductExport;
 use Modules\Report\Exports\SalesReturnExport;
 use Modules\Report\Exports\SectionedReportExport;
@@ -25,6 +27,7 @@ use Modules\Report\Services\OrderPerformanceReportService;
 use Modules\Report\Services\PutawayListReportService;
 use Modules\Report\Services\SalesListReportService;
 use Modules\Report\Services\SalesProductReportService;
+use Modules\Report\Services\RincianPendapatanReportService;
 use Modules\Report\Services\SalesReturnReportService;
 use Modules\Report\Services\ShipmentByCourierReportService;
 use Modules\Report\Services\PutawayPerformanceReportService;
@@ -1022,6 +1025,46 @@ class ReportController extends Controller
         );
 
         return Excel::download(new SalesReturnExport($query), $filename);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/reports/sales/income/export',
+        summary: 'Export Rincian Pendapatan (invoice-level / per barang) ke XLSX',
+        security: [['bearerAuth' => []]],
+        tags: ['Reports'],
+        parameters: [
+            new OA\Parameter(name: 'jenis', in: 'query', required: false, schema: new OA\Schema(type: 'string', enum: ['rincian', 'per_barang'])),
+            new OA\Parameter(name: 'from', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'to', in: 'query', required: false, schema: new OA\Schema(type: 'string', format: 'date')),
+            new OA\Parameter(name: 'item_ids[]', in: 'query', required: false, schema: new OA\Schema(type: 'array', items: new OA\Items(type: 'string', format: 'uuid'))),
+        ],
+        responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
+    )]
+    public function rincianPendapatanExport(Request $request)
+    {
+        $validated = $request->validate([
+            'jenis' => ['nullable', Rule::in(['rincian', 'per_barang'])],
+            'from' => 'nullable|date',
+            'to' => 'nullable|date|after_or_equal:from',
+            'item_ids' => 'nullable|array',
+            'item_ids.*' => 'uuid',
+        ]);
+
+        $mode = $validated['jenis'] ?? RincianPendapatanReportService::MODE_RINCIAN;
+        $query = app(RincianPendapatanReportService::class)->query($mode, $validated);
+
+        $export = $mode === RincianPendapatanReportService::MODE_PER_BARANG
+            ? new RincianPendapatanPerBarangExport($query)
+            : new RincianPendapatanExport($query);
+
+        $filename = sprintf(
+            'Rincian-Pendapatan%s_%s_%s.xlsx',
+            $mode === RincianPendapatanReportService::MODE_PER_BARANG ? '-Barang' : '',
+            $validated['from'] ?? 'semua',
+            $validated['to'] ?? now()->format('Y-m-d'),
+        );
+
+        return Excel::download($export, $filename);
     }
 
     public function lazadaGetDocument(Request $request): JsonResponse
