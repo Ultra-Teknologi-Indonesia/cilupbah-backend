@@ -12,6 +12,7 @@ use Modules\Outbound\Exports\ShipmentManifestExport;
 use Modules\Outbound\Http\Resources\ShipmentResource;
 use Modules\Outbound\Repositories\ShipmentRepository;
 use Modules\Outbound\Services\ShipmentService;
+use Modules\Outbound\Exceptions\ScanRejectedException;
 use Modules\Outbound\Http\Requests\CreateShipmentRequest;
 use Modules\Outbound\Http\Requests\AddShipmentOrdersRequest;
 use OpenApi\Attributes as OA;
@@ -466,12 +467,19 @@ class ShipmentController extends Controller
 
         try {
             $shipment = $this->shipmentService->scanAndAddOrder($id, $request->barcode);
+        } catch (ScanRejectedException $e) {
+            return $this->errorResponse(
+                $e->getMessage(),
+                422,
+                ['code' => $e->reason],
+                'Gagal memindai',
+            );
         } catch (\Exception $e) {
             return $this->errorResponse(
-                'Gagal memindai.',
+                'Gagal memindai. Coba lagi atau laporkan ke admin.',
                 422,
-                ['detail' => $e->getMessage()],
-                'Aksi tidak dapat diproses',
+                ['code' => 'error', 'detail' => $e->getMessage()],
+                'Gagal memindai',
             );
         }
 

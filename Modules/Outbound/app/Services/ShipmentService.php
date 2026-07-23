@@ -9,6 +9,7 @@ use Modules\Outbound\Jobs\ProcessShipmentPickupJob;
 use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\ShipmentOrder;
+use Modules\Outbound\Exceptions\ScanRejectedException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -290,17 +291,31 @@ class ShipmentService
             ->first();
 
         if (! $order) {
-            throw new \Exception("Pesanan '{$barcode}' tidak ditemukan atau belum packed.");
+            throw new ScanRejectedException(
+                'not_found',
+                "Pesanan '{$barcode}' tidak ditemukan atau belum packed."
+            );
         }
 
-        if ($order->cancel_requested_at !== null || $order->is_canceled) {
-            throw new \Exception(
-                "Pesanan {$order->salesorder_no} sedang dibatalkan — pisahkan paket fisik, jangan dimanifestkan."
+        if ($order->is_canceled) {
+            throw new ScanRejectedException(
+                'order_canceled',
+                "Pesanan {$order->salesorder_no} sudah DIBATALKAN — pisahkan paket fisik, jangan dimanifestkan."
+            );
+        }
+
+        if ($order->cancel_requested_at !== null) {
+            throw new ScanRejectedException(
+                'order_cancel_requested',
+                "Pesanan {$order->salesorder_no} sedang MINTA BATAL (req cancel) — cek dulu sebelum dimanifestkan."
             );
         }
 
         if (ShipmentOrder::where('order_id', $order->id)->exists()) {
-            throw new \Exception("Pesanan {$order->salesorder_no} sudah ada di pengiriman lain.");
+            throw new ScanRejectedException(
+                'duplicate',
+                "Pesanan {$order->salesorder_no} sudah ada di pengiriman lain."
+            );
         }
 
         if ($shipment->courier_name && $order->shipping_provider) {
@@ -308,7 +323,8 @@ class ShipmentService
             $sc = $normalize($shipment->courier_name);
             $oc = $normalize($order->shipping_provider);
             if (! str_contains($oc, $sc) && ! str_contains($sc, $oc)) {
-                throw new \Exception(
+                throw new ScanRejectedException(
+                    'courier_mismatch',
                     "Kurir tidak sesuai. Pengiriman ini '{$shipment->courier_name}', "
                     . "pesanan menggunakan '{$order->shipping_provider}'."
                 );
@@ -317,7 +333,7 @@ class ShipmentService
 
         if ($shipment->location_id && $order->location_id
             && $shipment->location_id !== $order->location_id) {
-            throw new \Exception('Pesanan berasal dari lokasi berbeda.');
+            throw new ScanRejectedException('location_mismatch', 'Pesanan berasal dari lokasi berbeda.');
         }
 
         $packlist = Packlist::where('order_id', $order->id)
