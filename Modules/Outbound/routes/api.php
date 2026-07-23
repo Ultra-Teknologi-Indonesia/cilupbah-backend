@@ -24,6 +24,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('orders/ad-hoc-pick', [AdHocPickController::class, 'complete'])->name('outbound.orders.ad-hoc-pick')->middleware('role_or_permission:owner|edit-picking');
     Route::post('orders/ad-hoc-pick/scan', [AdHocPickController::class, 'scan'])->name('outbound.orders.ad-hoc-pick.scan')->middleware('role_or_permission:owner|edit-picking');
     Route::get('pickers', [OutboundFulfillmentController::class, 'pickers'])->name('outbound.pickers.index')->middleware('role_or_permission:owner|view-picking');
+    // WAJIB di atas orders/{stage} agar tidak tertangkap sebagai wildcard {stage}.
+    Route::get('orders/monitoring', [OutboundFulfillmentController::class, 'monitoring'])->name('outbound.orders.monitoring')->middleware('role_or_permission:owner|view-pesanan');
     Route::get('orders/{stage}', [OutboundFulfillmentController::class, 'ordersByStage'])->name('outbound.orders.stage')->middleware('role_or_permission:owner|view-pesanan');
     Route::delete('orders/{orderId}', [OutboundFulfillmentController::class, 'destroyOrder'])->name('outbound.orders.destroy')->middleware('role_or_permission:owner|delete-pesanan');
 

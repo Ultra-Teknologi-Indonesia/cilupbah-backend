@@ -58,6 +58,23 @@ class OutboundFulfillmentController extends Controller
         return $this->successResponse($data);
     }
 
+    #[OA\Get(
+        path: '/api/v1/outbound/orders/monitoring',
+        summary: 'Monitoring ringkas Proses Pesanan (tab Pantauan)',
+        description: 'Kartu KPI (hari ini, bulan ini, pending, terproses) + tabel per-periode umur order (Picking, Ditunda, Packing, Siap Kirim, Menunggu Pengiriman).',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Fulfillment'],
+        responses: [
+            new OA\Response(response: 200, description: 'Success'),
+        ]
+    )]
+    public function monitoring(): JsonResponse
+    {
+        $data = $this->fulfillmentService->getMonitoring();
+
+        return $this->successResponse($data);
+    }
+
     #[OA\Post(
         path: '/api/v1/outbound/orders/change-location',
         summary: 'Change order fulfillment location',

@@ -155,6 +155,128 @@ class OutboundFulfillmentService
         return $this->fulfillmentRepository->paginateStage($query, $limit, $extraSelects);
     }
 
+    /**
+     * Agregasi untuk tab "Pantauan" di Proses Pesanan.
+     *
+     * Memakai ulang scope stage yang sama dengan getOrdersByStage() supaya angka
+     * Pantauan selalu konsisten dengan isi tab Picking/Packing/Shipping.
+     *
+     * @return array{summary: array<string,int>, periods: list<array<string,int>>}
+     */
+    public function getMonitoring(): array
+    {
+        // Umur order dari transaction_date, di-bucket 0..4 (4 = "> 3 Hari"). Sintaks PostgreSQL.
+        $bucketExpr = 'LEAST(GREATEST(CURRENT_DATE - sales_orders.transaction_date::date, 0), 4)';
+
+        // key kolom UI => scope stage existing
+        $stageScopes = [
+            'ready_to_process' => fn () => $this->readyToProcess(),
+            'pick'             => fn () => $this->onPicking(),
+            'pending'          => fn () => $this->emptyStock(),      // "Ditunda" = order tertahan stok kosong
+            'pack'             => fn () => $this->onPacking(),
+            'ready_to_ship'    => fn () => $this->finishPack(),
+            'waiting_ship'     => fn () => $this->readyToShipStage(),
+        ];
+
+        // Inisialisasi 5 baris periode (bucket 0..4) dengan nilai 0.
+        $periods = [];
+        for ($bucket = 0; $bucket <= 4; $bucket++) {
+            $periods[$bucket] = [
+                'day_term'         => $bucket,
+                'ready_to_process' => 0,
+                'pick'             => 0,
+                'pending'          => 0,
+                'pack'             => 0,
+                'ready_to_ship'    => 0,
+                'waiting_ship'     => 0,
+            ];
+        }
+
+        foreach ($stageScopes as $key => $scopeFactory) {
+            $rows = $scopeFactory()
+                ->reorder()
+                ->selectRaw("{$bucketExpr} as day_term, COUNT(*) as c")
+                ->groupByRaw($bucketExpr)
+                ->pluck('c', 'day_term');
+
+            foreach ($rows as $bucket => $count) {
+                $periods[(int) $bucket][$key] = (int) $count;
+            }
+        }
+
+        return [
+            'summary' => $this->monitoringSummary(),
+            'periods' => array_values($periods),
+        ];
+    }
+
+    /**
+     * Kartu KPI untuk tab Pantauan.
+     *
+     * @return array<string,int>
+     */
+    private function monitoringSummary(): array
+    {
+        $now      = now();
+        $timeCap  = $now->format('H:i:s');
+        $today    = $now->toDateString();
+        $yesterday = $now->copy()->subDay()->toDateString();
+
+        // Total pesanan masuk: hari ini vs kemarin (dibatasi jam yang sama).
+        $todayCount = Order::whereDate('transaction_date', $today)->count();
+        $yestCount  = Order::whereDate('transaction_date', $yesterday)
+            ->whereRaw('transaction_date::time <= ?', [$timeCap])
+            ->count();
+
+        // Month-to-date vs bulan lalu (sampai tanggal & jam yang sama).
+        $mtdCount = Order::whereBetween('transaction_date', [
+            $now->copy()->startOfMonth(),
+            $now,
+        ])->count();
+        $prevMonthCount = Order::whereBetween('transaction_date', [
+            $now->copy()->subMonthNoOverflow()->startOfMonth(),
+            $now->copy()->subMonthNoOverflow(),
+        ])->count();
+
+        // Belum diproses (menunggu picking).
+        $readyToPick      = $this->readyToProcess()->count();
+        $readyToPick2days = $this->readyToProcess()
+            ->whereDate('transaction_date', '<=', $now->copy()->subDays(2)->toDateString())
+            ->count();
+
+        // Terproses: order yang picklist-nya COMPLETED pada hari tsb.
+        $pickedToday = $this->pickedOrdersCount($today);
+        $pickedYest  = $this->pickedOrdersCount($yesterday, $timeCap);
+
+        return [
+            'today'               => $todayCount,
+            'yest'                => $yestCount,
+            'mtd'                 => $mtdCount,
+            'prev_month'          => $prevMonthCount,
+            'ready_to_pick'       => $readyToPick,
+            'ready_to_pick_2days' => $readyToPick2days,
+            'picked_today'        => $pickedToday,
+            'picked_yest'         => $pickedYest,
+        ];
+    }
+
+    /**
+     * Jumlah order (distinct) yang picklist-nya COMPLETED pada tanggal tertentu.
+     * Bila $timeCap diisi, dibatasi sampai jam tsb (untuk perbandingan "kemarin di jam yang sama").
+     */
+    private function pickedOrdersCount(string $date, ?string $timeCap = null): int
+    {
+        return Order::whereHas('picklistItems', function ($q) use ($date, $timeCap) {
+            $q->whereHas('picklist', function ($pq) use ($date, $timeCap) {
+                $pq->where('status', Picklist::STATUS_COMPLETED)
+                    ->whereDate('completed_at', $date);
+                if ($timeCap !== null) {
+                    $pq->whereRaw('completed_at::time <= ?', [$timeCap]);
+                }
+            });
+        })->count();
+    }
+
     public function getPickers(?string $locationId, string $role): \Illuminate\Support\Collection
     {
         return $this->fulfillmentRepository->getPickers($locationId, $role);
