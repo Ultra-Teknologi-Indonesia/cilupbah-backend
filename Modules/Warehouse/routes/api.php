@@ -66,6 +66,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::middleware('role_or_permission:owner|view-manajemen-rak')->group(function () {
         Route::get('locations/{locationId}/bins', [LocationBinController::class, 'index'])->whereUuid('locationId')->name('warehouse.bins.index');
+        Route::get('locations/{locationId}/bins/import/template', [LocationBinController::class, 'importTemplate'])->whereUuid('locationId')->name('warehouse.bins.import.template');
         Route::get('locations/{locationId}/bins/print-qr', [LocationBinController::class, 'printQr'])->whereUuid('locationId')->name('warehouse.bins.print-qr');
         Route::get('locations/{locationId}/pending-putaway-skus', [LocationBinController::class, 'pendingPutawaySkus'])->whereUuid('locationId')->name('warehouse.bins.pending-putaway-skus');
     });

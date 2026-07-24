@@ -19,8 +19,11 @@ use Modules\Warehouse\Services\BinLayoutImporter;
 use Modules\Warehouse\Services\BinQrPrintService;
 use Modules\Warehouse\Services\LocationBinService;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
 use OpenApi\Attributes as OA;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
 #[OA\Tag(name: 'Location Bins', description: 'API Endpoints for Warehouse Location Bins')]
@@ -242,6 +245,96 @@ class LocationBinController extends Controller
     /** Alias kolom kode rak yang diterima importer (mendukung export Jubelio "No Rak"). */
     private const RACK_CODE_ALIASES = ['kode_rak', 'rak', 'bin_final_code', 'no rak', 'no_rak', 'kode rak', 'kode final rak'];
 
+    private const IMPORT_SHEET_NAME = 'Pengisian Data';
+
+    public function importTemplate(string $locationId): StreamedResponse
+    {
+        $location = Location::find($locationId);
+        abort_if(! $location, 404, 'Lokasi tidak ditemukan.');
+
+        $examples = LocationBin::where('location_id', $locationId)
+            ->orderBy('bin_final_code')
+            ->limit(3)
+            ->pluck('bin_final_code')
+            ->all();
+
+        $spreadsheet = $this->buildImportTemplate($location->location_name ?? '', $examples);
+
+        return response()->streamDownload(function () use ($spreadsheet) {
+            (new XlsxWriter($spreadsheet))->save('php://output');
+        }, 'template-import-kode-rak.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    /**
+     * Sheet "Pengisian Data" sengaja diletakkan pertama DAN di-set aktif — importer
+     * membaca sheet bernama itu, dengan sheet aktif hanya sebagai cadangan.
+     *
+     * Baris contoh diisi kode rak yang SUDAH ADA di lokasi ini, bukan placeholder.
+     * Kalau ditinggal apa adanya, import-nya jadi no-op (existing-wins) alih-alih
+     * membuat rak sampah bernama "IN-A1-K1-P1".
+     */
+    private function buildImportTemplate(string $locationName, array $examples): Spreadsheet
+    {
+        $spreadsheet = new Spreadsheet();
+
+        $data = $spreadsheet->getActiveSheet();
+        $data->setTitle(self::IMPORT_SHEET_NAME);
+        $data->setCellValue('A1', 'kode_rak');
+        $data->getStyle('A1')->getFont()->setBold(true);
+        $data->getColumnDimension('A')->setWidth(30);
+        $data->freezePane('A2');
+
+        foreach ($examples as $i => $code) {
+            $data->setCellValueExplicit(
+                'A' . ($i + 2),
+                $code,
+                \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING
+            );
+        }
+
+        $instr = $spreadsheet->createSheet();
+        $instr->setTitle('Instruksi');
+
+        $instr->setCellValue('A1', 'Import Kode Rak' . ($locationName !== '' ? " — {$locationName}" : ''));
+        $instr->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+
+        $lines = [
+            '',
+            '1. Isi kode rak di sheet "Pengisian Data", satu kode per baris, mulai baris 2.',
+            '2. Jangan mengubah nama sheet maupun judul kolom "kode_rak".',
+            '3. Kode rak berformat bebas. Yang dipakai sistem adalah teksnya persis.',
+            '4. Kode yang sudah ada akan dilewati, bukan ditimpa. Aman dijalankan ulang.',
+            '5. Baris kosong dan teks "Tidak ada rak" diabaikan.',
+            '',
+            'Contoh kode rak:',
+            '  IN-A1-K1-P1',
+            '  GK-14-K1-B1',
+            '  O-LX-KX-KANTOR',
+            '',
+            $examples === []
+                ? 'Lokasi ini belum punya rak, jadi sheet "Pengisian Data" masih kosong.'
+                : 'Sheet "Pengisian Data" sudah berisi beberapa kode rak yang ADA di lokasi ini sebagai',
+        ];
+
+        if ($examples !== []) {
+            $lines[] = 'contoh format. Boleh dihapus atau dibiarkan — kode yang sudah ada tidak akan diproses ulang.';
+        }
+
+        $lines[] = '';
+        $lines[] = 'Zona dibuat otomatis dari segmen pertama kode rak (mis. "GK-14-K1-B1" → zona "GK").';
+
+        foreach ($lines as $i => $line) {
+            $instr->setCellValue('A' . ($i + 2), $line);
+        }
+        $instr->getColumnDimension('A')->setWidth(100);
+
+        $spreadsheet->setActiveSheetIndex(0);
+
+        return $spreadsheet;
+    }
+
     public function importPreview(Request $request, string $locationId): JsonResponse
     {
         $request->validate(['file' => 'required|file|max:20480']);
@@ -302,7 +395,13 @@ class LocationBinController extends Controller
     /** Ekstrak daftar kode rak unik dari file (xlsx/csv); ambil kolom kode rak (alias) atau kolom terakhir. */
     private function parseRackCodes(string $path): array
     {
-        $sheet = IOFactory::load($path)->getActiveSheet();
+        $spreadsheet = IOFactory::load($path);
+
+        // Sheet aktif ikut tersimpan saat user menyimpan file di Excel. Kalau ia menutup
+        // template dengan sheet "Instruksi" terpilih, sheet aktif jadi Instruksi dan
+        // fallback "kolom terakhir" di bawah akan membaca teks instruksi sebagai kode rak.
+        // Karena itu sheet bernama "Pengisian Data" selalu diutamakan.
+        $sheet = $spreadsheet->getSheetByName(self::IMPORT_SHEET_NAME) ?? $spreadsheet->getActiveSheet();
         $rows = $sheet->toArray(null, true, false, false);
         if (empty($rows)) {
             return [];
