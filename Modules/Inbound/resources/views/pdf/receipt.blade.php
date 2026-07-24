@@ -9,6 +9,13 @@
         'SALES_RETURN'   => 'Retur',
         'CONSIGNMENT'    => 'Konsinyasi',
     ][$inbound->type] ?? $inbound->type;
+    // Tgl. Penerimaan = saat sesi penerimaan ditutup; fallback ke tanggal rencana.
+    $receivedDate = $inbound->once_received_at
+        ? $inbound->once_received_at->format('d M Y')
+        : ($inbound->expected_date ? $inbound->expected_date->format('d M Y') : '-');
+    // reference_number diisi dari po_number saat inbound dibuat dari PO; untuk
+    // sumber non-PO (transfer/retur) tetap tampil sebagai "No. Referensi".
+    $refLabel = $inbound->type === 'PURCHASE_ORDER' ? 'No. PO' : 'No. Referensi';
 @endphp
 <!DOCTYPE html>
 <html lang="id">
@@ -86,8 +93,14 @@
 
     <table class="info-grid">
         <tr>
-            <td class="label">No. Referensi</td>
+            <td class="label">{{ $refLabel }}</td>
             <td class="value">{{ $inbound->reference_number ?? '-' }}</td>
+            <td class="label">No. Penerimaan</td>
+            <td class="value">{{ $inbound->transaction_number }}</td>
+        </tr>
+        <tr>
+            <td class="label">Tgl. Penerimaan</td>
+            <td class="value">{{ $receivedDate }}</td>
             <td class="label">Status</td>
             <td class="value">{{ $inbound->status }}</td>
         </tr>
@@ -105,10 +118,9 @@
                 <th style="width:24px">No</th>
                 <th>SKU</th>
                 <th>Nama Produk</th>
-                <th style="width:64px">Qty Diharapkan</th>
-                <th style="width:60px">Qty Diterima</th>
-                <th style="width:56px">Qty Ditolak</th>
-                <th>Catatan</th>
+                <th style="width:70px">Qty Diharapkan</th>
+                <th style="width:64px">Qty Diterima</th>
+                <th style="width:64px">Qty Sisa</th>
             </tr>
         </thead>
         <tbody>
@@ -117,24 +129,23 @@
                     $variant = $item->variant ?? null;
                     $sku = optional($variant)->sku ?? '-';
                     $name = optional(optional($variant)->product)->name ?? '-';
-                    $rejected = (int) ($item->rejected_qty ?? 0);
-                    $noteParts = array_filter([
-                        $item->notes ?? null,
-                        $rejected > 0 && ! empty($item->rejection_note) ? 'Ditolak: ' . $item->rejection_note : null,
-                    ]);
+                    $expected = (int) $item->expected_qty;
+                    $received = (int) ($item->received_qty ?? 0);
+                    // Qty Sisa = Qty Diharapkan − Qty Diterima (cek barang kurang/belum
+                    // terkirim). Negatif berarti diterima melebihi yang diharapkan.
+                    $remaining = $expected - $received;
                 @endphp
                 <tr>
                     <td class="center mono">{{ $i + 1 }}</td>
                     <td class="mono">{{ $sku }}</td>
                     <td>{{ $name }}</td>
-                    <td class="num mono">{{ (int) $item->expected_qty }}</td>
-                    <td class="num mono">{{ (int) ($item->received_qty ?? 0) }}</td>
-                    <td class="num mono">{{ $rejected }}</td>
-                    <td>{{ count($noteParts) ? implode(' — ', $noteParts) : '-' }}</td>
+                    <td class="num mono">{{ $expected }}</td>
+                    <td class="num mono">{{ $received }}</td>
+                    <td class="num mono">{{ $remaining }}</td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="7" class="center" style="padding: 18px;">Tidak ada item.</td>
+                    <td colspan="6" class="center" style="padding: 18px;">Tidak ada item.</td>
                 </tr>
             @endforelse
         </tbody>
