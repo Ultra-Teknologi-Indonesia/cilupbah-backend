@@ -159,6 +159,7 @@ class InventorySettingImportService
 
         $homeGuard = app(SkuHomeBinGuard::class);
         $binGuard = app(BinOccupancyGuard::class);
+        $ruleService = app(\Modules\Warehouse\Services\BinMultiSkuRuleService::class);
 
         $items = [];
         $manualMoves = [];
@@ -198,7 +199,7 @@ class InventorySettingImportService
                 continue;
             }
 
-            $bin = LocationBin::where('location_id', $location->id)->where('bin_final_code', $binCode)->first(['id', 'bin_final_code', 'is_inbound']);
+            $bin = LocationBin::where('location_id', $location->id)->where('bin_final_code', $binCode)->first(['id', 'location_id', 'bin_final_code', 'is_inbound']);
             if (! $bin) {
                 $push('error', "Rak \"{$binCode}\" tidak ada di lokasi ini.");
                 continue;
@@ -230,7 +231,7 @@ class InventorySettingImportService
                 continue;
             }
 
-            if ($location->enforcesStrictBinSku()) {
+            if ($location->enforcesStrictBinSku() && ! $ruleService->allowsMultiSku($bin)) {
                 $occupant = $binGuard->currentOccupantItemId($bin->id);
                 if ($occupant !== null && $occupant !== $variant->id) {
                     $push('error', 'Rak sudah berisi SKU lain (gudang kecil = 1 rak 1 SKU).');

@@ -21,6 +21,8 @@ class LocationBinResource extends JsonResource
             'is_inbound' => (bool) $this->is_inbound,
             'is_stock_acknowledged' => (bool) $this->is_stock_acknowledged,
             'is_large_bin' => (bool) $this->is_large_bin,
+            'allows_multi_sku' => app(\Modules\Warehouse\Services\BinMultiSkuRuleService::class)
+                ->allowsMultiSkuCode((string) $this->location_id, $this->bin_final_code),
             'category' => $this->category,
             'skus' => $this->buildSkuSummary(),
             'created_at' => $this->created_at,

@@ -364,9 +364,11 @@ class LocationBinService
             throw new \DomainException('Rak inbound tidak dapat diisi SKU secara manual.');
         }
 
-        $occupant = app(BinOccupancyGuard::class)->currentOccupantItemId($binId);
-        if ($occupant !== null && $occupant !== $itemId) {
-            throw new \DomainException('Rak sudah berisi SKU lain.');
+        if (! app(BinMultiSkuRuleService::class)->allowsMultiSku($bin)) {
+            $occupant = app(BinOccupancyGuard::class)->currentOccupantItemId($binId);
+            if ($occupant !== null && $occupant !== $itemId) {
+                throw new \DomainException('Rak sudah berisi SKU lain.');
+            }
         }
 
         app(SkuHomeBinGuard::class)->assertSkuFitsBin($locationId, $itemId, $binId);
@@ -386,7 +388,14 @@ class LocationBinService
 
                 if ($rows->isEmpty()) {
 
-                    if (app(BinOccupancyGuard::class)->currentOccupantItemId($binId) === $itemId) {
+                    $alreadyPlaced = Inventory::where('bin_id', $binId)
+                        ->where('item_id', $itemId)
+                        ->where(function ($w) {
+                            $w->where('on_hand', '>', 0)->orWhere('on_order', '>', 0);
+                        })
+                        ->exists();
+
+                    if ($alreadyPlaced) {
                         return [
                             'bin_id' => $binId,
                             'item_id' => $itemId,

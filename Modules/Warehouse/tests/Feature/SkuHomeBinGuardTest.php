@@ -11,8 +11,10 @@ use Modules\Inventory\Models\Inventory;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
+use Modules\Warehouse\Models\BinMultiSkuRule;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
+use Modules\Warehouse\Services\BinMultiSkuRuleService;
 use Modules\Warehouse\Services\SkuHomeBinGuard;
 
 class SkuHomeBinGuardTest extends TestCase
@@ -23,6 +25,7 @@ class SkuHomeBinGuardTest extends TestCase
     {
         parent::setUp();
         User::factory()->create();
+        BinMultiSkuRuleService::flushPatternCache();
     }
 
     private function makeVariant(string $skuSuffix = ''): ProductVariant
@@ -238,5 +241,36 @@ class SkuHomeBinGuardTest extends TestCase
         $variant = $this->makeVariant();
 
         $this->assertNull(app(SkuHomeBinGuard::class)->currentHomeBinId($loc->id, $variant->id));
+    }
+
+    /**
+     * Invariant yang menopang recommended_bin_locked di putaway dan mobile picking
+     * skip-scan-rak: satu SKU tetap hanya boleh menempati satu rak, walaupun rak
+     * tujuannya cocok pola multi-SKU. Melonggarkan ini bukan bagian dari fitur.
+     */
+    public function test_sku_with_home_bin_is_still_blocked_from_a_multi_sku_bin(): void
+    {
+        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+
+        BinMultiSkuRule::create([
+            'location_id' => $loc->id,
+            'pattern' => 'GK-*',
+            'is_active' => true,
+        ]);
+
+        $home = $this->makeBin($loc, 'O');
+        $target = LocationBin::factory()->create([
+            'location_id' => $loc->id,
+            'is_inbound' => false,
+            'is_stock_acknowledged' => true,
+            'bin_final_code' => 'GK-14-K1-B1',
+        ]);
+
+        $variant = $this->makeVariant();
+        $this->placeStock($loc, $home, $variant, 5);
+
+        $this->expectException(DomainException::class);
+
+        app(SkuHomeBinGuard::class)->assertSkuFitsBin($loc->id, $variant->id, $target->id);
     }
 }

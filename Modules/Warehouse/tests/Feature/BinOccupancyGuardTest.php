@@ -11,8 +11,10 @@ use Modules\Inventory\Models\Inventory;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
+use Modules\Warehouse\Models\BinMultiSkuRule;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
+use Modules\Warehouse\Services\BinMultiSkuRuleService;
 use Modules\Warehouse\Services\BinOccupancyGuard;
 
 class BinOccupancyGuardTest extends TestCase
@@ -23,6 +25,7 @@ class BinOccupancyGuardTest extends TestCase
     {
         parent::setUp();
         User::factory()->create();
+        BinMultiSkuRuleService::flushPatternCache();
     }
 
     private function makeVariant(string $skuSuffix = ''): ProductVariant
@@ -246,6 +249,97 @@ class BinOccupancyGuardTest extends TestCase
         $this->placeStock($loc, $bin, $variant, 5);
 
         app(BinOccupancyGuard::class)->assertBinFitsSku($bin->id, $variant->id);
+        $this->assertTrue(true);
+    }
+
+    private function addMultiSkuRule(Location $loc, string $pattern): void
+    {
+        BinMultiSkuRule::create([
+            'location_id' => $loc->id,
+            'pattern' => $pattern,
+            'is_active' => true,
+        ]);
+    }
+
+    public function test_kecil_bin_matching_rule_accepts_a_second_sku(): void
+    {
+        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $this->addMultiSkuRule($loc, 'GK-*');
+
+        $bin = LocationBin::factory()->create([
+            'location_id' => $loc->id,
+            'is_inbound' => false,
+            'is_stock_acknowledged' => true,
+            'bin_final_code' => 'GK-14-K1-B1',
+        ]);
+
+        $existing = $this->makeVariant('A');
+        $newcomer = $this->makeVariant('B');
+        $this->placeStock($loc, $bin, $existing, 5);
+
+        app(BinOccupancyGuard::class)->assertBinFitsSku($bin->id, $newcomer->id);
+        $this->assertTrue(app(BinOccupancyGuard::class)->isBinFreeFor($bin->id, $newcomer->id));
+    }
+
+    /** Regresi: rak yang tidak cocok pola harus tetap ketat walau aturan lain ada. */
+    public function test_kecil_bin_not_matching_rule_still_rejects_second_sku(): void
+    {
+        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $this->addMultiSkuRule($loc, 'GK-*');
+
+        $bin = LocationBin::factory()->create([
+            'location_id' => $loc->id,
+            'is_inbound' => false,
+            'is_stock_acknowledged' => true,
+            'bin_final_code' => 'O-A1-K1-X1',
+        ]);
+
+        $existing = $this->makeVariant('A');
+        $newcomer = $this->makeVariant('B');
+        $this->placeStock($loc, $bin, $existing, 5);
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('Rak O-A1-K1-X1 sudah berisi SKU');
+
+        app(BinOccupancyGuard::class)->assertBinFitsSku($bin->id, $newcomer->id);
+    }
+
+    /** Regresi: fitur ini tidak boleh memperketat apa pun di gudang pusat. */
+    public function test_pusat_stays_open_even_without_any_rule(): void
+    {
+        $loc = $this->makeLocation(Location::SYSTEM_PUSAT_CODE);
+        $bin = LocationBin::factory()->create([
+            'location_id' => $loc->id,
+            'is_inbound' => false,
+            'is_stock_acknowledged' => true,
+            'bin_final_code' => 'IN-A1-K1-P1',
+        ]);
+
+        $existing = $this->makeVariant('A');
+        $newcomer = $this->makeVariant('B');
+        $this->placeStock($loc, $bin, $existing, 5);
+
+        app(BinOccupancyGuard::class)->assertBinFitsSku($bin->id, $newcomer->id);
+        $this->assertTrue(true);
+    }
+
+    public function test_inbound_bin_matching_rule_stays_exempt(): void
+    {
+        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $this->addMultiSkuRule($loc, 'GK-*');
+
+        $bin = LocationBin::factory()->create([
+            'location_id' => $loc->id,
+            'is_inbound' => true,
+            'is_stock_acknowledged' => true,
+            'bin_final_code' => 'GK-INBOUND',
+        ]);
+
+        $existing = $this->makeVariant('A');
+        $newcomer = $this->makeVariant('B');
+        $this->placeStock($loc, $bin, $existing, 5);
+
+        app(BinOccupancyGuard::class)->assertBinFitsSku($bin->id, $newcomer->id);
         $this->assertTrue(true);
     }
 }

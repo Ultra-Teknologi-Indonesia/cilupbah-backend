@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Warehouse\Http\Controllers\BinMultiSkuRuleController;
 use Modules\Warehouse\Http\Controllers\ChannelWarehouseController;
 use Modules\Warehouse\Http\Controllers\CompanyProfileController;
 use Modules\Warehouse\Http\Controllers\LocationBinController;
@@ -47,6 +48,20 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     });
     Route::middleware('role_or_permission:owner|delete-manajemen-rak')->group(function () {
         Route::delete('locations/{locationId}/zones/{zoneId}', [LocationZoneController::class, 'destroy'])->whereUuid(['locationId', 'zoneId'])->name('warehouse.zones.destroy');
+    });
+
+    Route::middleware('role_or_permission:owner|view-manajemen-rak')->group(function () {
+        Route::get('locations/{locationId}/multi-sku-rules', [BinMultiSkuRuleController::class, 'index'])->whereUuid('locationId')->name('warehouse.multi-sku-rules.index');
+        Route::get('locations/{locationId}/multi-sku-rules/preview', [BinMultiSkuRuleController::class, 'preview'])->whereUuid('locationId')->name('warehouse.multi-sku-rules.preview');
+    });
+    Route::middleware('role_or_permission:owner|create-manajemen-rak')->group(function () {
+        Route::post('locations/{locationId}/multi-sku-rules', [BinMultiSkuRuleController::class, 'store'])->whereUuid('locationId')->name('warehouse.multi-sku-rules.store');
+    });
+    Route::middleware('role_or_permission:owner|edit-manajemen-rak')->group(function () {
+        Route::put('locations/{locationId}/multi-sku-rules/{ruleId}', [BinMultiSkuRuleController::class, 'update'])->whereUuid(['locationId', 'ruleId'])->name('warehouse.multi-sku-rules.update');
+    });
+    Route::middleware('role_or_permission:owner|delete-manajemen-rak')->group(function () {
+        Route::delete('locations/{locationId}/multi-sku-rules/{ruleId}', [BinMultiSkuRuleController::class, 'destroy'])->whereUuid(['locationId', 'ruleId'])->name('warehouse.multi-sku-rules.destroy');
     });
 
     Route::middleware('role_or_permission:owner|view-manajemen-rak')->group(function () {

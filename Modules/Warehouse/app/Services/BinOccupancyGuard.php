@@ -46,6 +46,12 @@ class BinOccupancyGuard
         return $this->firstConflictingInventory($binId, $itemId) === null;
     }
 
+    /**
+     * Hanya bermakna di rak non-multi-SKU. Di rak yang cocok pola
+     * `bin_multi_sku_rules`, penghuninya bisa lebih dari satu dan method ini
+     * mengembalikan salah satu baris sembarang — cek keberadaan SKU tertentu
+     * secara eksplisit, jangan bandingkan hasil method ini.
+     */
     public function currentOccupantItemId(string $binId): ?string
     {
         return Inventory::where('bin_id', $binId)
@@ -66,6 +72,10 @@ class BinOccupancyGuard
         }
 
         if (! $bin->is_stock_acknowledged) {
+            return false;
+        }
+
+        if (app(BinMultiSkuRuleService::class)->allowsMultiSku($bin)) {
             return false;
         }
 
