@@ -20,7 +20,8 @@ WORKDIR /var/www/html
 
 COPY start.sh /usr/local/bin/start.sh
 COPY start.staging.sh /usr/local/bin/start.staging.sh
-RUN chmod +x /usr/local/bin/start.sh /usr/local/bin/start.staging.sh
+COPY start.production.sh /usr/local/bin/start.production.sh
+RUN chmod +x /usr/local/bin/start.sh /usr/local/bin/start.staging.sh /usr/local/bin/start.production.sh
 
 ENTRYPOINT ["/usr/local/bin/start.sh"]
 

@@ -1,0 +1,65 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: production-superapp-prod
+    container_name: cilupbah-production
+    entrypoint: ["/usr/local/bin/start.production.sh"]
+    ports:
+      - "8000:8000"
+    volumes:
+      - /var/www/cilupbah:/var/www/html
+    environment:
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d:/var/www/html/docker/php
+    # PostgreSQL runs natively on the host (not in Docker).
+    # The app reaches it via the docker0 gateway IP (DB_HOST=172.17.0.1 in .env).
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  horizon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: production-superapp-prod
+    container_name: cilupbah-production-horizon
+    entrypoint: ["php", "artisan", "horizon"]
+    volumes:
+      - /var/www/cilupbah:/var/www/html
+    environment:
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d:/var/www/html/docker/php
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: production-superapp-prod
+    container_name: cilupbah-production-scheduler
+    entrypoint: ["php", "artisan", "schedule:work"]
+    volumes:
+      - /var/www/cilupbah:/var/www/html
+    environment:
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d:/var/www/html/docker/php
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    container_name: cilupbah-production-redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - production_redisdata:/data
+
+volumes:
+  production_redisdata:
