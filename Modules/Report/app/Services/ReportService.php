@@ -207,6 +207,12 @@ class ReportService
             $onlineMappings = $this->repository->barcodeOnlineMappings($variants->pluck('id'));
         }
 
+        // Rak selalu diambil dari gudang kecil, tidak dari gudang si pencetak:
+        // label yang dicetak tim gudang pusat pun menunjuk rak gudang kecil.
+        $homeBins = $variants->isNotEmpty()
+            ? $this->repository->barcodeKecilHomeBins($variants->pluck('id'))
+            : [];
+
         $cells = [];
         $qrCache = [];
 
@@ -215,7 +221,7 @@ class ReportService
             if ($sku === '') {
                 continue;
             }
-            $name = $variant->product?->name ?? '-';
+            $bin = $homeBins[$variant->id] ?? null;
 
             if (! isset($qrCache[$sku])) {
                 $qrCache[$sku] = $this->qrDataUri($sku);
@@ -232,7 +238,7 @@ class ReportService
                     $price = $mapping->synced_price ?? $variant->sell_price;
                     $cells[] = [
                         'sku' => $sku,
-                        'name' => $name,
+                        'bin' => $bin,
                         'qr' => $qr,
                         'store_name' => $shop?->shop_name,
                         'price' => $price !== null ? (float) $price : null,
@@ -241,7 +247,7 @@ class ReportService
             } else {
                 $cells[] = [
                     'sku' => $sku,
-                    'name' => $name,
+                    'bin' => $bin,
                     'qr' => $qr,
                     'store_name' => null,
                     'price' => $harga === 'default' && $variant->sell_price !== null

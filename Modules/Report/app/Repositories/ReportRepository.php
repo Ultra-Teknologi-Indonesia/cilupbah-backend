@@ -28,6 +28,7 @@ use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderItem;
 use Modules\Sales\Models\SalesReturnItem;
 use Modules\Supplier\Models\Contact;
+use Modules\Warehouse\Models\Location;
 
 class ReportRepository
 {
@@ -722,8 +723,40 @@ class ReportRepository
     public function barcodeVariants(string $jenis, array $ids): Collection
     {
         return $jenis === 'sku_induk'
-            ? ProductVariant::where('is_active', true)->whereIn('product_id', $ids)->with('product:id,name')->orderBy('sku')->get()
-            : ProductVariant::whereIn('id', $ids)->with('product:id,name')->orderBy('sku')->get();
+            ? ProductVariant::where('is_active', true)->whereIn('product_id', $ids)->orderBy('sku')->get()
+            : ProductVariant::whereIn('id', $ids)->orderBy('sku')->get();
+    }
+
+    /**
+     * Rak "rumah" tiap SKU di gudang kecil. Definisi rak rumah disamakan dengan
+     * SkuHomeBinGuard: rak nyata (bukan rak inbound, stoknya sudah diakui) yang
+     * masih memegang stok. Lokasi dikunci ke WH-KECIL supaya label yang dicetak
+     * dari gudang mana pun tetap menunjuk rak gudang kecil.
+     *
+     * @return array<string, string> item_id => bin_final_code
+     */
+    public function barcodeKecilHomeBins($variantIds): array
+    {
+        $locationId = Location::where('location_code', Location::SYSTEM_KECIL_CODE)->value('id');
+
+        if (! $locationId) {
+            return [];
+        }
+
+        return DB::table('inventories')
+            ->join('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
+            ->where('inventories.location_id', $locationId)
+            ->whereIn('inventories.item_id', $variantIds)
+            ->where(fn ($w) => $w->where('inventories.on_hand', '>', 0)->orWhere('inventories.on_order', '>', 0))
+            ->where('location_bins.is_inbound', false)
+            ->where('location_bins.is_stock_acknowledged', true)
+            ->where('location_bins.bin_final_code', '!=', 'DEFAULT')
+            // Satu SKU semestinya hanya menempati satu rak di WH-KECIL, tapi bila
+            // stoknya sempat tercecer, rak dengan stok terbanyak yang dicetak:
+            // pluck memakai baris terakhir, jadi urutkan menaik.
+            ->orderBy('inventories.on_hand')
+            ->pluck('location_bins.bin_final_code', 'inventories.item_id')
+            ->all();
     }
 
     public function barcodeOnlineMappings($variantIds): Collection
