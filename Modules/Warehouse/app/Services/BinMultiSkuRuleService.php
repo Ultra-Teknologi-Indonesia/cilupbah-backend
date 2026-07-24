@@ -14,8 +14,6 @@ use Modules\Warehouse\Models\LocationBin;
  */
 class BinMultiSkuRuleService
 {
-    protected const MAX_DEEP_SUGGESTION_BINS = 50;
-
     protected const MAX_SUGGESTIONS = 50;
 
     /** @var array<string, string[]> locationId => daftar pola aktif */
@@ -74,10 +72,16 @@ class BinMultiSkuRuleService
      * Dipakai supaya pola tidak perlu diketik: tidak bisa salah ketik, tidak bisa
      * menghasilkan pola yang cocok nol rak, dan jumlah rak sudah terlihat sebelum dipilih.
      *
-     * Segmen pertama (setara zona) selalu ditawarkan. Prefix yang lebih dalam hanya
-     * ditawarkan kalau kelompoknya kecil DAN benar-benar mempersempit induknya — kalau
-     * `O-LX-KX-*` mengenai rak yang sama persis dengan `O-LX-*`, yang ditawarkan cukup
-     * yang lebih pendek.
+     * HANYA segmen pertama (setara zona) yang ditawarkan — `O-*`, `GK-*`, `IN-*`.
+     * Prefix lebih dalam sengaja tidak ditawarkan: pada 10.696 rak WH-KECIL ia
+     * menghasilkan ratusan opsi (`O-A1-K1-*`, `GK-15-*`, …) yang menenggelamkan tiga
+     * pilihan yang benar-benar dipakai.
+     *
+     * Konsekuensinya, rak khusus yang berbagi segmen pertama dengan kelompok besar
+     * tidak bisa ditandai lewat UI — mis. `O-LX-KX-KANTOR` yang berprefix `O` sama
+     * dengan 10.457 rak shelving. Rak seperti itu perlu kode rak berawalan tersendiri.
+     * BE tetap menerima pola sedalam apa pun, jadi kalau nanti dibutuhkan cukup
+     * longgarkan daftar ini tanpa mengubah pencocokannya.
      *
      * @return array<int, array{pattern: string, matched_count: int}>
      */
@@ -87,31 +91,17 @@ class BinMultiSkuRuleService
 
         foreach (LocationBin::where('location_id', $locationId)->pluck('bin_final_code') as $code) {
             $parts = explode('-', (string) $code);
-            $prefix = '';
 
-            for ($i = 0, $last = count($parts) - 1; $i < $last; $i++) {
-                $prefix = $prefix === '' ? $parts[$i] : $prefix . '-' . $parts[$i];
-                $pattern = $prefix . '-*';
-                $counts[$pattern] = ($counts[$pattern] ?? 0) + 1;
+            if (count($parts) < 2 || $parts[0] === '') {
+                continue;
             }
+
+            $pattern = $parts[0] . '-*';
+            $counts[$pattern] = ($counts[$pattern] ?? 0) + 1;
         }
 
         $suggestions = [];
-
         foreach ($counts as $pattern => $count) {
-            $depth = substr_count($pattern, '-');
-
-            if ($depth > 1) {
-                if ($count > self::MAX_DEEP_SUGGESTION_BINS) {
-                    continue;
-                }
-
-                $parent = $this->parentPattern($pattern);
-                if ($parent !== null && ($counts[$parent] ?? null) === $count) {
-                    continue;
-                }
-            }
-
             $suggestions[] = ['pattern' => $pattern, 'matched_count' => $count];
         }
 
@@ -119,19 +109,6 @@ class BinMultiSkuRuleService
             ?: strcmp($a['pattern'], $b['pattern']));
 
         return array_slice($suggestions, 0, self::MAX_SUGGESTIONS);
-    }
-
-    protected function parentPattern(string $pattern): ?string
-    {
-        $parts = explode('-', substr($pattern, 0, -2));
-
-        if (count($parts) < 2) {
-            return null;
-        }
-
-        array_pop($parts);
-
-        return implode('-', $parts) . '-*';
     }
 
     public static function flushPatternCache(): void
