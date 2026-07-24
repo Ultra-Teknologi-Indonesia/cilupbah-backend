@@ -5,7 +5,6 @@ namespace Modules\Warehouse\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Modules\Warehouse\Http\Requests\SaveBinMultiSkuRuleRequest;
 use Modules\Warehouse\Http\Resources\BinMultiSkuRuleResource;
 use Modules\Warehouse\Models\BinMultiSkuRule;
@@ -37,29 +36,23 @@ class BinMultiSkuRuleController extends Controller
         );
     }
 
-    public function preview(Request $request, string $locationId): JsonResponse
+    public function suggestions(string $locationId): JsonResponse
     {
         if ($response = $this->rejectUnlessStrict($locationId)) {
             return $response;
         }
 
-        $pattern = trim((string) $request->query('pattern', ''));
+        $suggestions = array_map(
+            fn (array $s) => $s + [
+                'samples' => $this->ruleService->sampleMatching($locationId, $s['pattern']),
+            ],
+            $this->ruleService->suggestedPatterns($locationId)
+        );
 
-        if ($pattern === '') {
-            return $this->successResponse([
-                'pattern' => '',
-                'matched_count' => 0,
-                'samples' => [],
-                'total_bins' => $this->ruleService->totalBins($locationId),
-            ], 'Pratinjau pola berhasil diambil');
-        }
-
-        return $this->successResponse([
-            'pattern' => $pattern,
-            'matched_count' => $this->ruleService->countMatching($locationId, $pattern),
-            'samples' => $this->ruleService->sampleMatching($locationId, $pattern),
-            'total_bins' => $this->ruleService->totalBins($locationId),
-        ], 'Pratinjau pola berhasil diambil');
+        return $this->successResponse(
+            $suggestions,
+            'Daftar pola yang tersedia berhasil diambil'
+        );
     }
 
     public function store(SaveBinMultiSkuRuleRequest $request, string $locationId): JsonResponse

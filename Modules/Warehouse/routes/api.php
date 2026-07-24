@@ -52,7 +52,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::middleware('role_or_permission:owner|view-manajemen-rak')->group(function () {
         Route::get('locations/{locationId}/multi-sku-rules', [BinMultiSkuRuleController::class, 'index'])->whereUuid('locationId')->name('warehouse.multi-sku-rules.index');
-        Route::get('locations/{locationId}/multi-sku-rules/preview', [BinMultiSkuRuleController::class, 'preview'])->whereUuid('locationId')->name('warehouse.multi-sku-rules.preview');
+        Route::get('locations/{locationId}/multi-sku-rules/suggestions', [BinMultiSkuRuleController::class, 'suggestions'])->whereUuid('locationId')->name('warehouse.multi-sku-rules.suggestions');
     });
     Route::middleware('role_or_permission:owner|create-manajemen-rak')->group(function () {
         Route::post('locations/{locationId}/multi-sku-rules', [BinMultiSkuRuleController::class, 'store'])->whereUuid('locationId')->name('warehouse.multi-sku-rules.store');

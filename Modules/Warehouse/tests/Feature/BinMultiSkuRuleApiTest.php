@@ -63,31 +63,73 @@ class BinMultiSkuRuleApiTest extends TestCase
             ->assertJsonPath('data.0.matched_count', 2);
     }
 
-    public function test_preview_returns_count_and_samples(): void
+    /** @return array<string, int> pattern => matched_count */
+    private function suggestionMap(Location $loc): array
+    {
+        $data = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/locations/{$loc->id}/multi-sku-rules/suggestions")
+            ->assertStatus(200)
+            ->json('data');
+
+        return collect($data)->pluck('matched_count', 'pattern')->all();
+    }
+
+    public function test_suggestions_offer_top_level_prefixes_with_counts(): void
     {
         $loc = $this->kecil();
         $this->makeBin($loc, 'GK-14-K1-B1');
         $this->makeBin($loc, 'GK-14-K1-B2');
         $this->makeBin($loc, 'O-A1-K1-X1');
 
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson("/api/v1/locations/{$loc->id}/multi-sku-rules/preview?pattern=" . urlencode('GK-*'))
-            ->assertStatus(200)
-            ->assertJsonPath('data.matched_count', 2)
-            ->assertJsonPath('data.samples.0', 'GK-14-K1-B1');
+        $map = $this->suggestionMap($loc);
 
-        $this->assertGreaterThanOrEqual(3, $response->json('data.total_bins'));
+        $this->assertSame(2, $map['GK-*'] ?? null);
+        $this->assertArrayHasKey('O-*', $map);
     }
 
-    public function test_preview_with_empty_pattern_matches_nothing(): void
+    /** Kasus O-LX-KX-KANTOR: prefix dalam yang kelompoknya kecil tetap ditawarkan. */
+    public function test_suggestions_include_a_deep_prefix_that_narrows_its_parent(): void
+    {
+        $loc = $this->kecil();
+        $this->makeBin($loc, 'O-LX-KX-KANTOR');
+        $this->makeBin($loc, 'O-LX-KX-REFUND');
+        for ($i = 1; $i <= 5; $i++) {
+            $this->makeBin($loc, "O-A1-K1-X{$i}");
+        }
+
+        $map = $this->suggestionMap($loc);
+
+        $this->assertSame(2, $map['O-LX-*'] ?? null);
+        $this->assertSame(7, $map['O-*'] ?? null);
+    }
+
+    /** Prefix lebih dalam yang mengenai rak yang sama persis dengan induknya dibuang. */
+    public function test_suggestions_drop_deeper_prefixes_that_add_nothing(): void
+    {
+        $loc = $this->kecil();
+        $this->makeBin($loc, 'LX-BX-KX-TRANS');
+        $this->makeBin($loc, 'LX-BX-KX-ADJST');
+
+        $map = $this->suggestionMap($loc);
+
+        $this->assertSame(2, $map['LX-*'] ?? null);
+        $this->assertArrayNotHasKey('LX-BX-*', $map);
+        $this->assertArrayNotHasKey('LX-BX-KX-*', $map);
+    }
+
+    public function test_suggestions_carry_sample_bin_codes(): void
     {
         $loc = $this->kecil();
         $this->makeBin($loc, 'GK-14-K1-B1');
 
-        $this->actingAs($this->user, 'sanctum')
-            ->getJson("/api/v1/locations/{$loc->id}/multi-sku-rules/preview?pattern=")
+        $data = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/locations/{$loc->id}/multi-sku-rules/suggestions")
             ->assertStatus(200)
-            ->assertJsonPath('data.matched_count', 0);
+            ->json('data');
+
+        $gk = collect($data)->firstWhere('pattern', 'GK-*');
+
+        $this->assertSame(['GK-14-K1-B1'], $gk['samples']);
     }
 
     public function test_duplicate_pattern_is_rejected(): void
