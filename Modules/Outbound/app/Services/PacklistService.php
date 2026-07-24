@@ -305,7 +305,7 @@ class PacklistService
             ->first();
 
         if (!$item) {
-            throw new \Exception("Barcode/SKU '{$barcode}' tidak ditemukan dalam packlist ini.");
+            throw new OutboundValidationException("Barcode/SKU '{$barcode}' tidak ditemukan dalam packlist ini.");
         }
 
         $this->packlistRepository->updateItem($item->id, ['barcode_verified' => true]);

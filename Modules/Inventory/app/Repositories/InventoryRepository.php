@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Repositories;
 
 use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Models\ProductVariant;
 use Illuminate\Database\Eloquent\Collection;
@@ -522,13 +523,31 @@ class InventoryRepository
             ->sum('on_hand');
     }
 
-    public function availableBinStocks(string $itemId, ?string $locationId): Collection
+    public function availableBinStocks(string $itemId, ?string $locationId, string $strategy = 'default'): Collection
     {
-        return Inventory::where('item_id', $itemId)
+        $query = Inventory::where('item_id', $itemId)
             ->whereNotNull('bin_id')
             ->where('on_hand', '>', 0)
             ->tap(fn ($q) => $this->applyStockSourceScope($q, $locationId))
-            ->with('bin:id,bin_final_code')
+            ->with('bin:id,bin_final_code');
+
+        if ($strategy === 'fifo') {
+            $firstInSub = InventoryMovement::query()
+                ->selectRaw('MIN(transaction_date)')
+                ->whereColumn('inventory_movements.item_id', 'inventories.item_id')
+                ->whereColumn('inventory_movements.location_id', 'inventories.location_id')
+                ->whereColumn('inventory_movements.bin_id', 'inventories.bin_id')
+                ->where('qty', '>', 0);
+
+            return $query
+                ->select('inventories.*')
+                ->selectSub($firstInSub, 'first_in_at')
+                ->orderByRaw('first_in_at ASC NULLS LAST')
+                ->orderBy('inventories.created_at', 'asc')
+                ->get();
+        }
+
+        return $query
             ->orderBy('created_at')
             ->get();
     }

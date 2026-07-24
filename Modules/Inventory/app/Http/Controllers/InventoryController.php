@@ -589,8 +589,9 @@ class InventoryController extends Controller
         }
 
         $locationId = $request->query('location_id');
+        $strategy = $request->query('strategy') === 'fifo' ? 'fifo' : 'default';
 
-        $summary = $this->inventoryService->buildSkuStockSummary($variant, $locationId);
+        $summary = $this->inventoryService->buildSkuStockSummary($variant, $locationId, $strategy);
 
         if ($locationId && $request->boolean('require_stock') && empty($summary['available_bins'])) {
             return $this->errorResponse('SKU tidak punya stok di gudang ini.', 404);

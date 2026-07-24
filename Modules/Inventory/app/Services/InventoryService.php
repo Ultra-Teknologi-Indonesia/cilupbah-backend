@@ -91,12 +91,12 @@ class InventoryService
         return $this->inventoryRepository->findVariantBySkuOrBarcode(trim($sku));
     }
 
-    public function buildSkuStockSummary(\Modules\Product\Models\ProductVariant $variant, ?string $locationId): array
+    public function buildSkuStockSummary(\Modules\Product\Models\ProductVariant $variant, ?string $locationId, string $strategy = 'default'): array
     {
         $primary = $this->inventoryRepository->findPrimaryBinStock($variant->id, $locationId);
         $onHand = $this->inventoryRepository->sumOnHandForSku($variant->id, $locationId);
 
-        $availableBins = $this->inventoryRepository->availableBinStocks($variant->id, $locationId)
+        $availableBins = $this->inventoryRepository->availableBinStocks($variant->id, $locationId, $strategy)
             ->map(fn ($inv) => [
                 'id'       => $inv->bin_id,
                 'code'     => $inv->bin?->bin_final_code,
