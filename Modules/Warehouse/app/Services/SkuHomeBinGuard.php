@@ -9,6 +9,12 @@ use Modules\Warehouse\Models\LocationBin;
 
 class SkuHomeBinGuard
 {
+    /**
+     * Kode rak default/staging (bin inbound). Bukan rak penyimpanan nyata,
+     * jadi tidak pernah dianggap sebagai "rak yang di-assign" untuk sebuah SKU.
+     */
+    public const DEFAULT_BIN_CODE = 'DEFAULT';
+
     public function assertSkuFitsBin(string $locationId, string $itemId, string $targetBinId): void
     {
         $location = Location::find($locationId);
@@ -65,7 +71,9 @@ class SkuHomeBinGuard
             return false;
         }
 
-        return ! $bin->is_inbound && (bool) $bin->is_stock_acknowledged;
+        return ! $bin->is_inbound
+            && (bool) $bin->is_stock_acknowledged
+            && $bin->bin_final_code !== self::DEFAULT_BIN_CODE;
     }
 
     public function currentHomeBinId(string $locationId, string $itemId): ?string
@@ -78,7 +86,10 @@ class SkuHomeBinGuard
                 $w->where('on_hand', '>', 0)->orWhere('on_order', '>', 0);
             })
             ->whereHas('bin', function ($q) {
-                $q->where('is_inbound', false)->where('is_stock_acknowledged', true);
+                $q->where('is_inbound', false)
+                    ->where('is_stock_acknowledged', true)
+                    // Rak default/staging tidak dianggap rak assigned.
+                    ->where('bin_final_code', '!=', self::DEFAULT_BIN_CODE);
             })
             ->value('bin_id');
     }
@@ -94,7 +105,10 @@ class SkuHomeBinGuard
                 $w->where('on_hand', '>', 0)->orWhere('on_order', '>', 0);
             })
             ->whereHas('bin', function ($q) {
-                $q->where('is_inbound', false)->where('is_stock_acknowledged', true);
+                $q->where('is_inbound', false)
+                    ->where('is_stock_acknowledged', true)
+                    // Rak default/staging tidak dianggap rumah SKU.
+                    ->where('bin_final_code', '!=', self::DEFAULT_BIN_CODE);
             })
             ->first();
     }

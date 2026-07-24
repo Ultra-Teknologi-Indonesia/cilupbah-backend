@@ -157,8 +157,25 @@ class PutawayService
 
         $this->attachStrictRecommendedBins($putaway, $paginated->getCollection());
         $this->attachInboundSources($putaway, $paginated->getCollection());
+        $this->attachRackAssignment($putaway, $paginated->getCollection());
 
         return $paginated;
+    }
+
+    /**
+     * Tandai tiap item apakah SKU-nya sudah punya rak yang di-assign admin.
+     * Berlaku untuk SEMUA gudang (bukan hanya strict-bin). Mobile memakai flag
+     * ini untuk menyembunyikan tombol scan rak — validasi tetap di backend
+     * (lihat processItem).
+     */
+    protected function attachRackAssignment(Putaway $putaway, $items): void
+    {
+        $guard = app(\Modules\Warehouse\Services\SkuHomeBinGuard::class);
+
+        foreach ($items as $item) {
+            $item->is_rack_assigned =
+                $guard->currentHomeBinId($putaway->location_id, $item->item_id) !== null;
+        }
     }
 
     protected function attachInboundSources(Putaway $putaway, $items): void
@@ -487,6 +504,21 @@ class PutawayService
         } else {
 
             $this->assertVersionMatches($putaway, $data['_expected_updated_at'] ?? null);
+        }
+
+        $item = PutawayItem::where('putaway_id', $putawayId)
+            ->where('id', $itemId)
+            ->first();
+        if (! $item) {
+            throw new \Exception('Item putaway tidak ditemukan.');
+        }
+
+        // Rak untuk SKU wajib sudah di-assign admin sebelum bisa ditempatkan
+        // (berlaku semua gudang). Ditolak di backend supaya mobile tak perlu
+        // memvalidasi sendiri.
+        $guard = app(\Modules\Warehouse\Services\SkuHomeBinGuard::class);
+        if ($guard->currentHomeBinId($putaway->location_id, $item->item_id) === null) {
+            throw new \DomainException('Rak belum diassign, silahkan hubungi admin.');
         }
 
         if ($putaway->status === Putaway::STATUS_NOT_STARTED) {
