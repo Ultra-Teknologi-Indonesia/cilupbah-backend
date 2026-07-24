@@ -186,10 +186,27 @@ class SalesOrderDriverCallService
         $channelOrderNo = (string) $order->channel_order_no;
         $shippingProvider = (string) ($order->channel_shipping_provider_code ?? $order->shipping_provider ?? '');
 
+        // Model operasional app ini: packer memindai lalu app meng-RTS dengan resi
+        // milik seller → delivery_type dropship. Lazada RTS dropship WAJIB
+        // shipping_provider + tracking_number; tanpa keduanya RTS ditolak Lazada.
+        $deliveryType = 'dropship';
+        $trackingNumber = $order->tracking_number ?: null;
+
         if ($shippingProvider === '') {
             $order->update([
                 'driver_call_status'       => 'failed',
                 'driver_call_message'      => 'Lazada: shipping_provider order kosong.',
+                'driver_call_attempted_at' => now(),
+            ]);
+            $order->refresh();
+
+            return false;
+        }
+
+        if ($deliveryType === 'dropship' && $trackingNumber === null) {
+            $order->update([
+                'driver_call_status'       => 'failed',
+                'driver_call_message'      => 'Lazada dropship: nomor resi (tracking_number) belum ada. Ambil resi lebih dulu sebelum panggil driver.',
                 'driver_call_attempted_at' => now(),
             ]);
             $order->refresh();
@@ -207,8 +224,8 @@ class SalesOrderDriverCallService
                 $shopId,
                 $channelOrderNo,
                 $shippingProvider,
-                'dropship',
-                $order->tracking_number ?: null,
+                $deliveryType,
+                $trackingNumber,
                 null,
             )->afterCommit();
 
