@@ -87,31 +87,50 @@ class BinMultiSkuRuleApiTest extends TestCase
         $this->assertArrayHasKey('O-*', $map);
     }
 
-    /**
-     * Hanya segmen pertama yang ditawarkan. Tanpa batas ini, 10.696 rak WH-KECIL
-     * menghasilkan ratusan opsi (`O-A1-K1-*`, `GK-15-*`, …) yang menenggelamkan
-     * tiga pilihan yang benar-benar dipakai.
-     */
-    public function test_suggestions_only_go_one_segment_deep(): void
+    /** Kasus O-LX-KX-KANTOR: prefix dalam yang kelompoknya kecil tetap ditawarkan. */
+    public function test_suggestions_include_a_deep_prefix_that_narrows_its_parent(): void
     {
         $loc = $this->kecil();
-        $this->makeBin($loc, 'GK-15-K1-B1');
-        $this->makeBin($loc, 'GK-16-K1-B1');
-        $this->makeBin($loc, 'O-A1-K1-X1');
         $this->makeBin($loc, 'O-LX-KX-KANTOR');
+        $this->makeBin($loc, 'O-LX-KX-REFUND');
+        for ($i = 1; $i <= 5; $i++) {
+            $this->makeBin($loc, "O-A1-K1-X{$i}");
+        }
 
         $map = $this->suggestionMap($loc);
 
-        $this->assertSame(2, $map['GK-*'] ?? null);
-        $this->assertSame(2, $map['O-*'] ?? null);
+        $this->assertSame(2, $map['O-LX-*'] ?? null);
+        $this->assertSame(7, $map['O-*'] ?? null);
+    }
 
-        foreach (array_keys($map) as $pattern) {
-            $this->assertSame(
-                1,
-                substr_count($pattern, '-'),
-                "Pola {$pattern} lebih dalam dari satu segmen."
-            );
+    /** Prefix lebih dalam yang mengenai rak yang sama persis dengan induknya dibuang. */
+    public function test_suggestions_drop_deeper_prefixes_that_add_nothing(): void
+    {
+        $loc = $this->kecil();
+        $this->makeBin($loc, 'LX-BX-KX-TRANS');
+        $this->makeBin($loc, 'LX-BX-KX-ADJST');
+
+        $map = $this->suggestionMap($loc);
+
+        $this->assertSame(2, $map['LX-*'] ?? null);
+        $this->assertArrayNotHasKey('LX-BX-*', $map);
+        $this->assertArrayNotHasKey('LX-BX-KX-*', $map);
+    }
+
+    /** Prefix dalam yang kelompoknya besar tidak ditawarkan supaya daftarnya tidak meledak. */
+    public function test_suggestions_skip_large_deep_groups(): void
+    {
+        $loc = $this->kecil();
+        for ($i = 1; $i <= 60; $i++) {
+            $this->makeBin($loc, sprintf('O-A1-K1-X%03d', $i));
         }
+        $this->makeBin($loc, 'O-B2-K1-X1');
+
+        $map = $this->suggestionMap($loc);
+
+        $this->assertSame(61, $map['O-*'] ?? null);
+        $this->assertArrayNotHasKey('O-A1-*', $map);
+        $this->assertSame(1, $map['O-B2-*'] ?? null);
     }
 
     public function test_code_without_a_separator_is_not_suggested(): void
@@ -122,7 +141,8 @@ class BinMultiSkuRuleApiTest extends TestCase
 
         $map = $this->suggestionMap($loc);
 
-        $this->assertSame(['GK-*'], array_keys($map));
+        $this->assertArrayNotHasKey('TANPAPEMISAH-*', $map);
+        $this->assertSame(1, $map['GK-*'] ?? null);
     }
 
     public function test_suggestions_carry_sample_bin_codes(): void

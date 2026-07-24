@@ -42,15 +42,8 @@ class BinMultiSkuRuleController extends Controller
             return $response;
         }
 
-        $suggestions = array_map(
-            fn (array $s) => $s + [
-                'samples' => $this->ruleService->sampleMatching($locationId, $s['pattern']),
-            ],
-            $this->ruleService->suggestedPatterns($locationId)
-        );
-
         return $this->successResponse(
-            $suggestions,
+            $this->ruleService->suggestedPatterns($locationId),
             'Daftar pola yang tersedia berhasil diambil'
         );
     }
