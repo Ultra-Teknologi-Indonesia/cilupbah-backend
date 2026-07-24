@@ -211,6 +211,11 @@ class InboundService
         return $this->inboundRepository->getPaginatedItems($inboundId, $perPage);
     }
 
+    public function getItemTotals(string $inboundId): array
+    {
+        return $this->inboundRepository->getItemTotals($inboundId);
+    }
+
     public function getReceiptsPaginated(string $inboundId, int $perPage = 50)
     {
         return $this->inboundRepository->getReceiptsPaginated($inboundId, $perPage);

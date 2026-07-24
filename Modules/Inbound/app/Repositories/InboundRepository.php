@@ -186,6 +186,28 @@ class InboundRepository
             ->appends(request()->query());
     }
 
+    /**
+     * Total akumulasi qty seluruh item pada 1 inbound (lintas halaman, bukan
+     * hanya halaman aktif) — untuk ringkasan "Total Qty" di detail penerimaan.
+     */
+    public function getItemTotals(string $inboundId): array
+    {
+        $row = InboundItem::query()
+            ->where('inbound_id', $inboundId)
+            ->selectRaw('COALESCE(SUM(expected_qty), 0) AS expected_qty')
+            ->selectRaw('COALESCE(SUM(received_qty), 0) AS received_qty')
+            ->selectRaw('COALESCE(SUM(putaway_qty), 0) AS putaway_qty')
+            ->selectRaw('COUNT(*) AS line_count')
+            ->first();
+
+        return [
+            'expected_qty' => (int) ($row->expected_qty ?? 0),
+            'received_qty' => (int) ($row->received_qty ?? 0),
+            'putaway_qty'  => (int) ($row->putaway_qty ?? 0),
+            'line_count'   => (int) ($row->line_count ?? 0),
+        ];
+    }
+
     public function getReceiptsPaginated(string $inboundId, int $perPage = 50)
     {
         $base = InboundReceipt::query()

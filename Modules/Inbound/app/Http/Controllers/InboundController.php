@@ -401,7 +401,16 @@ class InboundController extends Controller
     {
         $perPage = (int) $request->query('per_page', 20);
         $items = $this->inboundService->getPaginatedItems($id, $perPage);
-        return $this->successPaginatedResponse($items, 'Daftar item Inbound berhasil diambil');
+
+        $meta = [
+            'current_page' => $items->currentPage(),
+            'last_page'    => $items->lastPage(),
+            'per_page'     => $items->perPage(),
+            'total'        => $items->total(),
+            'totals'       => $this->inboundService->getItemTotals($id),
+        ];
+
+        return $this->successResponse($items->items(), 'Daftar item Inbound berhasil diambil', 200, $meta);
     }
 
     #[OA\Get(
