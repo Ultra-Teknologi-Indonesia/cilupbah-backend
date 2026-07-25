@@ -166,6 +166,15 @@ class PutawayService
 
     protected function attachRackAssignment(Putaway $putaway, $items): void
     {
+        $location = \Modules\Warehouse\Models\Location::find($putaway->location_id);
+        if (! $location || ! $location->enforcesStrictBinSku()) {
+            foreach ($items as $item) {
+                $item->is_rack_assigned = true;
+            }
+
+            return;
+        }
+
         $guard = app(\Modules\Warehouse\Services\SkuHomeBinGuard::class);
 
         foreach ($items as $item) {
@@ -712,9 +721,12 @@ class PutawayService
             throw new \Exception('Item putaway tidak ditemukan.');
         }
 
-        $guard = app(\Modules\Warehouse\Services\SkuHomeBinGuard::class);
-        if ($guard->currentHomeBinId($putaway->location_id, $item->item_id) === null) {
-            throw new \DomainException('Rak belum diassign, silahkan hubungi admin.');
+        $location = \Modules\Warehouse\Models\Location::find($putaway->location_id);
+        if ($location && $location->enforcesStrictBinSku()) {
+            $guard = app(\Modules\Warehouse\Services\SkuHomeBinGuard::class);
+            if ($guard->currentHomeBinId($putaway->location_id, $item->item_id) === null) {
+                throw new \DomainException('Rak belum diassign, silahkan hubungi admin.');
+            }
         }
 
         if ($putaway->status === Putaway::STATUS_NOT_STARTED) {

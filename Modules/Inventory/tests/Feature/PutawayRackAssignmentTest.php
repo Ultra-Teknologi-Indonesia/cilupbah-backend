@@ -32,7 +32,14 @@ class PutawayRackAssignmentTest extends TestCase
     {
 
         return Location::factory()->create([
-            'location_code' => 'WH-REG-' . Str::upper(Str::random(4)),
+            'location_code' => Location::SYSTEM_KECIL_CODE,
+        ]);
+    }
+
+    private function pusatLocation(): Location
+    {
+        return Location::factory()->create([
+            'location_code' => Location::SYSTEM_PUSAT_CODE,
         ]);
     }
 
@@ -175,5 +182,44 @@ class PutawayRackAssignmentTest extends TestCase
         $this->assertNotNull($unassignedRow);
         $this->assertTrue($assignedRow['is_rack_assigned']);
         $this->assertFalse($unassignedRow['is_rack_assigned']);
+    }
+
+    public function test_wh_pusat_bypasses_the_rack_guard(): void
+    {
+        $loc = $this->pusatLocation();
+        $inbound = $this->makeBin($loc, 'INB', true);
+        $target = $this->makeBin($loc, 'RAK');
+
+        $variant = $this->makeVariant();
+        $putaway = $this->makePutaway($loc);
+        $item = $this->addItem($putaway, $inbound, $variant);
+
+        $res = $this->postJson(
+            "/api/v1/putaway/{$putaway->id}/items/{$item->id}/process",
+            ['destination_bin_id' => $target->id, 'qty' => 1],
+        );
+
+        $this->assertStringNotContainsString(
+            'Rak belum diassign',
+            (string) $res->json('message'),
+        );
+    }
+
+    public function test_wh_pusat_items_are_always_marked_rack_assigned(): void
+    {
+        $loc = $this->pusatLocation();
+        $inbound = $this->makeBin($loc, 'INB', true);
+
+        $unassigned = $this->makeVariant();
+        $putaway = $this->makePutaway($loc);
+        $this->addItem($putaway, $inbound, $unassigned);
+
+        $res = $this->getJson("/api/v1/putaway/{$putaway->id}/items?limit=50");
+        $res->assertStatus(200);
+
+        $row = collect($res->json('data'))->firstWhere('item_id', $unassigned->id);
+
+        $this->assertNotNull($row);
+        $this->assertTrue($row['is_rack_assigned']);
     }
 }
