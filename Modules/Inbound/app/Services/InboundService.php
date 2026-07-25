@@ -1705,7 +1705,7 @@ class InboundService
             $adjustment = $this->stockAdjustmentService->create([
                 'transaction_date' => now()->toDateString(),
                 'location_id'      => $inbound->location_id,
-                'created_by'       => $userId,
+                'created_by'       => \App\Support\ActorName::resolve($userId),
                 'notes'            => $note,
                 'items'            => [[
                     'item_id'    => $item->item_id,

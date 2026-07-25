@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Http\Resources;
 
 use Illuminate\Http\Request;
+use App\Support\ActorName;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Modules\Inventory\Support\InventoryMovementSourceMap;
 
@@ -35,7 +36,7 @@ class InventoryMovementResource extends JsonResource
             'qty' => $qty,
             'balance' => (int) ($this->total_balance ?? $this->balance),
             'transaction_date' => $this->transaction_date,
-            'created_by' => $this->created_by,
+            'created_by' => ActorName::resolve($this->created_by),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

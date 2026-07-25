@@ -1224,7 +1224,7 @@ class PutawayService
         app(StockAdjustmentService::class)->create([
             'transaction_date' => now()->toDateString(),
             'location_id'      => $putaway->location_id,
-            'created_by'       => $userId,
+            'created_by'       => $userName,
             'notes'            => "Koreksi penempatan {$putaway->putaway_no} oleh {$userName}",
             'items'            => $adjItems,
         ]);

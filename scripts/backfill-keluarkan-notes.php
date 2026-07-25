@@ -89,8 +89,11 @@ foreach ($groups as $txn => $movements) {
         ? "Keluarkan / penyesuaian stok rak {$binCode} (backfill dari Kronologi)"
         : 'Penyesuaian stok (backfill dari Kronologi)';
 
-    // "user:UUID" → UUID biar kolom Dibuat Oleh rapi.
-    $createdBy = preg_replace('/^user:/', '', (string) $first->created_by);
+    // "user:UUID" → resolve ke NAMA user (kolom Dibuat Oleh menampilkan apa adanya,
+    // dan flow normal menyimpan nama, bukan UUID). Fallback ke nilai asli bila
+    // user tak ditemukan (mis. "system").
+    $rawBy = preg_replace('/^user:/', '', (string) $first->created_by);
+    $createdBy = optional(\App\Models\User::find($rawBy))->name ?? $rawBy;
 
     echo sprintf(
         "%s  %s  %d item  → %s\n",
