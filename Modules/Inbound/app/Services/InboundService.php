@@ -226,6 +226,69 @@ class InboundService
         return $this->inboundRepository->findById($id);
     }
 
+    /**
+     * Payload detail inbound untuk endpoint show: dokumen + ringkasan peserta
+     * (jumlah & total qty receipt per user) + status edit_lock.
+     *
+     * Ringkasan receipt diagregasi dalam SATU query (bukan N+1 per peserta).
+     * Mengembalikan null bila dokumen tidak ditemukan.
+     */
+    public function getDetailPayload(string $id): ?array
+    {
+        $inbound = $this->getById($id);
+        if (! $inbound) {
+            return null;
+        }
+
+        $inbound->load(['participants.user:id,name']);
+
+        $receiptAgg = InboundReceipt::query()
+            ->join('inbound_items as i', 'inbound_receipts.inbound_item_id', '=', 'i.id')
+            ->where('i.inbound_id', $inbound->id)
+            ->groupBy('inbound_receipts.received_by_user_id')
+            ->selectRaw('inbound_receipts.received_by_user_id as user_id')
+            ->selectRaw('COUNT(*) as cnt')
+            ->selectRaw('COALESCE(SUM(inbound_receipts.qty),0) as qty_sum')
+            ->get()
+            ->keyBy('user_id');
+
+        $participantsData = $inbound->participants->map(function ($p) use ($receiptAgg) {
+            $agg = $receiptAgg->get($p->user_id);
+
+            return [
+                'id' => $p->id,
+                'user_id' => $p->user_id,
+                'name' => $p->user?->name ?? 'staff',
+                'role' => $p->role,
+                'status' => $p->status,
+                'joined_at' => $p->joined_at?->toIso8601String(),
+                'completed_at' => $p->completed_at?->toIso8601String(),
+                'withdrawn_at' => $p->withdrawn_at?->toIso8601String(),
+                'withdraw_reason' => $p->withdraw_reason,
+                'receipts_count' => (int) ($agg->cnt ?? 0),
+                'receipts_qty_sum' => (int) ($agg->qty_sum ?? 0),
+            ];
+        })->values();
+
+        $activeParticipants = $participantsData
+            ->where('status', InboundParticipant::STATUS_ACTIVE)
+            ->values();
+
+        $editLock = [
+            'locked' => $activeParticipants->isNotEmpty(),
+            'reason' => $activeParticipants->isNotEmpty() ? 'mobile_session_active' : null,
+            'active_participants' => $activeParticipants
+                ->map(fn ($p) => ['user_id' => $p['user_id'], 'name' => $p['name']])
+                ->values(),
+        ];
+
+        $data = $inbound->toArray();
+        $data['participants'] = $participantsData;
+        $data['edit_lock'] = $editLock;
+
+        return $data;
+    }
+
     private function movementSourceFor(Inbound $inbound): string
     {
         return match ($inbound->type) {
@@ -649,7 +712,6 @@ class InboundService
 
             $data['transaction_number'] = $data['transaction_number'] ?? app(InventoryService::class)->generateTrfiNumber();
 
-            // Transfer masuk diterima penuh (received = expected) = penerimaan selesai.
             $data['status'] = Inbound::STATUS_COMPLETED;
             $data['once_received_at'] = now();
 
@@ -722,7 +784,7 @@ class InboundService
             }
 
             $inbound->update([
-                // Penuh = penerimaan selesai (COMPLETED); kurang = masih PARTIAL.
+
                 'status'             => $anyShortfall ? Inbound::STATUS_PARTIAL : Inbound::STATUS_COMPLETED,
                 'once_received_at'   => $inbound->once_received_at ?? now(),
                 'transaction_number' => $data['transaction_number'] ?? $inbound->transaction_number,
@@ -866,8 +928,6 @@ class InboundService
                 }
             }
 
-            // Aturan penyelesaian penerimaan (lepas dari putaway): begitu qty terima
-            // memenuhi expected untuk semua item -> COMPLETED, walau sesi masih aktif.
             $allReceived = $inbound->items->isNotEmpty()
                 && $inbound->items->every(fn ($i) => $i->isFullyReceived());
             $newStatus = $allReceived ? Inbound::STATUS_COMPLETED : Inbound::STATUS_PARTIAL;
@@ -925,8 +985,6 @@ class InboundService
                     'withdrawn_at' => now(),
                 ]);
 
-            // Admin menutup sesi = penerimaan dinyatakan selesai (rule #1), lepas dari
-            // apakah qty sudah penuh atau belum, dan lepas dari putaway.
             $this->inboundRepository->updateStatus($inbound, Inbound::STATUS_COMPLETED);
             $fill = ['updated_version_at' => now()];
             if ($inbound->once_received_at === null) {
@@ -1083,7 +1141,6 @@ class InboundService
                 throw new \Exception("Dokumen Inbound tidak ditemukan.");
             }
 
-            // COMPLETED = penerimaan selesai (masih perlu di-putaway), jadi tetap bisa di-assign.
             if ($inbound->status === Inbound::STATUS_CANCELLED) {
                 throw new \Exception("Inbound berstatus {$inbound->status}, tidak bisa di-assign.");
             }
@@ -1483,9 +1540,7 @@ class InboundService
 
     private function completeAssignmentIfDone(Inbound $inbound, string $userId): void
     {
-        // Tugas putaway worker selesai saat SEMUA barang yang diterima sudah ditempatkan,
-        // bukan saat inbound->status COMPLETED (yang kini menandai penerimaan selesai,
-        // bukan putaway). Pakai kondisi putaway langsung.
+
         $inbound->loadMissing('items');
         $allPutaway = $inbound->items->isNotEmpty()
             && $inbound->items->every(fn ($i) => $i->isFullyPutaway());
@@ -1674,8 +1729,6 @@ class InboundService
                 'received_date'       => now(),
             ]);
 
-            // Koreksi qty via web ikut aturan penyelesaian penerimaan: qty penuh -> COMPLETED;
-            // bila diturunkan di bawah expected dan sebelumnya COMPLETED -> buka lagi ke RECEIVED.
             $inbound->load('items');
             $allReceived = $inbound->items->isNotEmpty()
                 && $inbound->items->every(fn ($i) => $i->isFullyReceived());
@@ -1715,8 +1768,7 @@ class InboundService
 
             $newStatus = $anyPutaway ? Inbound::STATUS_PUTAWAY_IN_PROGRESS : Inbound::STATUS_PARTIAL;
         } else {
-            // COMPLETED hanya bila seluruh qty dipesan sudah diterima DAN sudah ditempatkan;
-            // penerimaan parsial yang belum tuntas tidak boleh auto-complete.
+
             $newStatus = ($allReceived && $allPutaway)
                 ? Inbound::STATUS_COMPLETED
                 : ($anyPutaway ? Inbound::STATUS_PUTAWAY_IN_PROGRESS : Inbound::STATUS_RECEIVED);
@@ -2092,8 +2144,6 @@ class InboundService
 
     private function resolveInboundPutawayStatus(Inbound $inbound): void
     {
-        // Putaway TIDAK lagi menentukan status penerimaan. Status inbound murni siklus
-        // penerimaan (qty penuh / admin close = COMPLETED). Progres putaway dilacak di
-        // entitas Putaway. Sengaja no-op agar putaway tak mengubah status penerimaan.
+
     }
 }

@@ -1888,6 +1888,47 @@ class InventoryService
         return $this->transferRepository->findById($id);
     }
 
+    /**
+     * Hapus atau kembalikan-ke-draft banyak transfer sekaligus.
+     *
+     * Kebijakan domain: transfer IN_TRANSIT tidak boleh dihapus langsung (stok
+     * sedang di transit), melainkan di-revert ke Baru Dibuat; status lain dihapus.
+     * Kegagalan per-id dikumpulkan agar satu error tidak membatalkan sisanya.
+     *
+     * @param  string[]  $ids
+     * @return array{deleted:int, reverted:int, failed:array<int, array{id:string, reason:string}>}
+     */
+    public function bulkDeleteOrRevertTransfers(array $ids, string $actor): array
+    {
+        $deleted = 0;
+        $reverted = 0;
+        $failed = [];
+
+        foreach ($ids as $id) {
+            try {
+                $transfer = $this->getTransferById($id);
+                if (! $transfer) {
+                    throw new \Exception('Transfer tidak ditemukan.');
+                }
+
+                if ($transfer->status === InventoryTransfer::STATUS_IN_TRANSIT) {
+                    $this->revertToDraft($id, ['actor' => $actor]);
+                    $reverted++;
+                } else {
+                    $this->deleteTransfer($id);
+                    $deleted++;
+                }
+            } catch (\Throwable $e) {
+                $failed[] = [
+                    'id' => $id,
+                    'reason' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return ['deleted' => $deleted, 'reverted' => $reverted, 'failed' => $failed];
+    }
+
     public function deleteTransfer(string $id): void
     {
         $itemIds = DB::transaction(function () use ($id) {

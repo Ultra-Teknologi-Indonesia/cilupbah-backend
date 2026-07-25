@@ -9,10 +9,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Inventory\Services\PutawayService;
 use Modules\Inventory\Models\Putaway;
-use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Http\Requests\AssignPutawayStaffRequest;
 use Modules\Inventory\Http\Requests\ProcessPutawayItemRequest;
-use Modules\Warehouse\Models\LocationBin;
 use Barryvdh\DomPDF\Facade\Pdf;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Throwable;
@@ -79,111 +77,20 @@ class PutawayController extends Controller
             'assigned_to' => 'nullable|string|exists:users,id',
         ]);
 
+        $userId = $request->user()->id ?? 'system';
+
         try {
-            $inbounds = \Modules\Inbound\Models\Inbound::with(['items'])
-                ->whereIn('id', $request->inbound_ids)
-                ->get();
-
-            if ($inbounds->pluck('location_id')->unique()->count() > 1) {
-                return $this->errorResponse('Penerimaan harus dari lokasi/gudang yang sama untuk digabung.', 422);
-            }
-
-            foreach ($inbounds as $inbound) {
-                // COMPLETED = penerimaan selesai (masih bisa di-putaway). Hanya CANCELLED yang blok.
-                if ($inbound->status === \Modules\Inbound\Models\Inbound::STATUS_CANCELLED) {
-                    return $this->errorResponse("Penerimaan {$inbound->transaction_number} sudah {$inbound->status}, tidak bisa dibuat penempatan.", 422);
-                }
-            }
-
-            $locationId = $inbounds->first()->location_id;
-            $defaultBin = app(\Modules\Warehouse\Services\LocationBinService::class)->getDefaultBin($locationId);
-            $userId = $request->user()->id ?? 'system';
-
-            $result = \Illuminate\Support\Facades\DB::transaction(function () use ($inbounds, $defaultBin, $locationId, $userId, $request) {
-                $lockedItems = \Modules\Inbound\Models\InboundItem::whereIn('inbound_id', $inbounds->pluck('id'))
-                    ->lockForUpdate()
-                    ->get()
-                    ->keyBy('id');
-
-                $merged = [];
-                $reservationDeltas = [];
-                foreach ($inbounds as $inbound) {
-                    foreach ($inbound->items as $item) {
-                        $locked = $lockedItems->get($item->id);
-                        if (! $locked) {
-                            continue;
-                        }
-                        $pending = max(0, (int) $locked->received_qty - (int) $locked->putaway_qty - (int) ($locked->reserved_qty ?? 0));
-                        if ($pending <= 0) {
-                            continue;
-                        }
-
-                        if (! isset($merged[$locked->item_id])) {
-                            $merged[$locked->item_id] = [
-                                'item_id'            => $locked->item_id,
-                                'source_bin_id'      => $defaultBin ? $defaultBin->id : null,
-                                'destination_bin_id' => null,
-                                'qty'                => 0,
-                                'batch_no'           => null,
-                                'serial_no'          => null,
-                                'sources'            => [],
-                            ];
-                        }
-
-                        $merged[$locked->item_id]['qty'] += $pending;
-                        $merged[$locked->item_id]['sources'][] = [
-                            'inbound_item_id' => $locked->id,
-                            'qty'             => $pending,
-                        ];
-                        $reservationDeltas[$locked->id] = ($reservationDeltas[$locked->id] ?? 0) + $pending;
-                    }
-                }
-
-                $items = array_values($merged);
-
-                if (empty($items)) {
-                    throw new \RuntimeException('Tidak ada item pending untuk di-putaway (semua qty sudah masuk penempatan aktif atau sudah selesai).');
-                }
-
-                $notes = $inbounds->count() === 1
-                    ? "Manual Putaway from Inbound {$inbounds->first()->transaction_number}"
-                    : 'Manual Putaway gabungan dari ' . $inbounds->count() . ' penerimaan: ' . $inbounds->pluck('transaction_number')->implode(', ');
-
-                $putaway = $this->putawayService->create([
-                    'location_id' => $locationId,
-                    'source_type' => 'INBOUND',
-                    'source_id'   => $inbounds->count() === 1 ? $inbounds->first()->id : null,
-                    'sources'     => $inbounds->pluck('id')->all(),
-                    'notes'       => $notes,
-                    'created_by'  => $userId,
-                    'items'       => $items,
-                ]);
-
-                foreach ($reservationDeltas as $inboundItemId => $delta) {
-                    \Modules\Inbound\Models\InboundItem::where('id', $inboundItemId)
-                        ->increment('reserved_qty', $delta);
-                }
-
-                if ($request->assigned_to) {
-                    app(\Modules\Inventory\Services\PutawayService::class)->assignStaff([
-                        'performed_by' => $userId,
-                        'data' => [
-                            [
-                                'putaway_id' => $putaway->id,
-                                'assigned_to' => $request->assigned_to,
-                            ]
-                        ]
-                    ]);
-                }
-
-                return $putaway;
-            });
+            $result = $this->putawayService->createFromInbounds(
+                $request->input('inbound_ids'),
+                $request->input('assigned_to'),
+                $userId,
+            );
 
             return $this->successResponse($result, 'Penempatan barang berhasil dibuat.', 201);
+        } catch (\InvalidArgumentException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
         } catch (\RuntimeException $e) {
             return $this->errorResponse($e->getMessage(), 400);
-        } catch (\Exception $e) {
-            throw $e;
         }
     }
 
@@ -858,99 +765,13 @@ class PutawayController extends Controller
     {
         $putaway->load(['inbound', 'sources:id,reference_number,transaction_number', 'location']);
 
-        $this->attachRecommendedBins($putaway);
+        $this->putawayService->attachRecommendedBins($putaway);
 
         return [
             'putaway' => $putaway,
             'qrDataUri' => $this->generateQrDataUri((string) ($putaway->putaway_no ?? 'PUT')),
             'sourceLabel' => $this->resolveSourceLabel($putaway),
         ];
-    }
-
-    protected function attachRecommendedBins($putaway): void
-    {
-        $items = $putaway->items ?? collect();
-        if ($items->isEmpty()) {
-            return;
-        }
-
-        $locationId = $putaway->location_id;
-        $itemIds = $items->pluck('item_id')->filter()->unique()->values()->all();
-
-        $stocks = Inventory::query()
-            ->whereIn('item_id', $itemIds)
-            ->where('location_id', $locationId)
-            ->where('on_hand', '>', 0)
-            ->whereNotNull('bin_id')
-            ->whereHas('bin', fn ($q) => $q->where('is_inbound', false))
-            ->with('bin:id,bin_final_code')
-            ->orderByDesc('on_hand')
-            ->get(['id', 'item_id', 'bin_id', 'on_hand']);
-
-        $byItem = $stocks->groupBy('item_id');
-
-        $allBins = LocationBin::where('location_id', $locationId)
-            ->where('is_inbound', false)
-            ->orderBy('bin_final_code')
-            ->get(['id', 'bin_final_code']);
-
-        $binItemIds = Inventory::where('location_id', $locationId)
-            ->where('on_hand', '>', 0)
-            ->whereNotNull('bin_id')
-            ->select('bin_id', 'item_id')
-            ->distinct()
-            ->get()
-            ->groupBy('bin_id')
-            ->map(fn ($rows) => $rows->pluck('item_id')->unique()->values()->all());
-
-        $usedBinItems = [];
-
-        foreach ($items as $item) {
-            $remaining = (int) $item->qty;
-            $plan = [];
-            $usedBinIds = [];
-
-            $itemStocks = $byItem->get($item->item_id, collect());
-            foreach ($itemStocks as $stock) {
-                if ($remaining <= 0) break;
-                $bin = $stock->bin;
-                if (!$bin) continue;
-
-                $existingRecommended = $usedBinItems[$bin->id] ?? [];
-                if (!empty($existingRecommended) && !in_array($item->item_id, $existingRecommended)) {
-                    continue;
-                }
-
-                $allocate = $remaining;
-                $plan[] = ['code' => $bin->bin_final_code, 'qty' => $allocate];
-                $usedBinItems[$bin->id][] = $item->item_id;
-                $usedBinIds[] = $bin->id;
-                $remaining -= $allocate;
-            }
-
-            if ($remaining > 0) {
-                foreach ($allBins as $bin) {
-                    if ($remaining <= 0) break;
-                    if (in_array($bin->id, $usedBinIds)) continue;
-
-                    $existingItemIds = array_unique(array_merge(
-                        $binItemIds[$bin->id] ?? [],
-                        $usedBinItems[$bin->id] ?? []
-                    ));
-                    if (!empty($existingItemIds) && !in_array($item->item_id, $existingItemIds)) {
-                        continue;
-                    }
-
-                    $allocate = $remaining;
-                    $plan[] = ['code' => $bin->bin_final_code, 'qty' => $allocate];
-                    $usedBinItems[$bin->id][] = $item->item_id;
-                    $usedBinIds[] = $bin->id;
-                    $remaining -= $allocate;
-                }
-            }
-
-            $item->recommended_bins = $plan;
-        }
     }
 
     protected function resolveSourceLabel($putaway): string

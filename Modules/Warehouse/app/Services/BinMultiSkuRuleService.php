@@ -2,25 +2,77 @@
 
 namespace Modules\Warehouse\Services;
 
+use Illuminate\Support\Collection;
 use Modules\Warehouse\Models\BinMultiSkuRule;
+use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 
-/**
- * Menjawab satu pertanyaan: kode rak ini boleh diisi lebih dari satu SKU atau tidak.
- *
- * Jawabannya diturunkan dari pola kode rak di `bin_multi_sku_rules`, bukan dari kolom
- * di `location_bins`. Kode rak adalah sumber kebenaran, jadi tidak ada salinan yang
- * bisa melenceng dan tidak ada langkah "terapkan ke rak existing".
- */
 class BinMultiSkuRuleService
 {
+    public function findLocation(string $locationId): ?Location
+    {
+        return Location::find($locationId);
+    }
+
+    /**
+     * Daftar aturan multi-SKU sebuah lokasi, tiap baris dilengkapi jumlah rak
+     * yang cocok dengan polanya (`matched_count`).
+     */
+    public function rulesWithMatchCount(string $locationId): Collection
+    {
+        return BinMultiSkuRule::where('location_id', $locationId)
+            ->orderBy('pattern')
+            ->get()
+            ->each(function (BinMultiSkuRule $rule) use ($locationId) {
+                $rule->matched_count = $this->countMatching($locationId, $rule->pattern);
+            });
+    }
+
+    public function findRule(string $locationId, string $ruleId): ?BinMultiSkuRule
+    {
+        return BinMultiSkuRule::where('location_id', $locationId)->find($ruleId);
+    }
+
+    /**
+     * @throws \Illuminate\Database\QueryException Pola sudah terdaftar (unik per lokasi).
+     */
+    public function createRule(string $locationId, array $data): BinMultiSkuRule
+    {
+        $data['pattern'] = trim($data['pattern']);
+        $data['location_id'] = $locationId;
+
+        $rule = BinMultiSkuRule::create($data);
+        $rule->matched_count = $this->countMatching($locationId, $rule->pattern);
+
+        return $rule;
+    }
+
+    /**
+     * @throws \Illuminate\Database\QueryException Pola sudah terdaftar (unik per lokasi).
+     */
+    public function updateRule(BinMultiSkuRule $rule, array $data): BinMultiSkuRule
+    {
+        if (array_key_exists('pattern', $data)) {
+            $data['pattern'] = trim($data['pattern']);
+        }
+
+        $rule->update($data);
+        $rule->matched_count = $this->countMatching((string) $rule->location_id, $rule->pattern);
+
+        return $rule;
+    }
+
+    public function deleteRule(BinMultiSkuRule $rule): void
+    {
+        $rule->delete();
+    }
+
     protected const MAX_DEEP_SUGGESTION_BINS = 50;
 
     protected const MAX_SUGGESTIONS = 500;
 
     protected const SAMPLES_PER_SUGGESTION = 3;
 
-    /** @var array<string, string[]> locationId => daftar pola aktif */
     protected static array $patternCache = [];
 
     public function allowsMultiSku(?LocationBin $bin): bool
@@ -55,7 +107,6 @@ class BinMultiSkuRuleService
         return $this->matchingQuery($locationId, $pattern)->count();
     }
 
-    /** @return string[] */
     public function sampleMatching(string $locationId, string $pattern, int $limit = 3): array
     {
         return $this->matchingQuery($locationId, $pattern)
@@ -70,27 +121,6 @@ class BinMultiSkuRuleService
         return LocationBin::where('location_id', $locationId)->count();
     }
 
-    /**
-     * Daftar pola yang bisa dipilih, diturunkan dari kode rak yang benar-benar ada.
-     *
-     * Dipakai supaya pola tidak perlu diketik: tidak bisa salah ketik, tidak bisa
-     * menghasilkan pola yang cocok nol rak, dan jumlah rak sudah terlihat sebelum dipilih.
-     *
-     * Segmen pertama (setara zona) selalu ditawarkan: `O-*`, `GK-*`, `IN-*`, `LX-*`.
-     * Prefix lebih dalam ikut ditawarkan kalau kelompoknya ≤50 rak DAN benar-benar
-     * mempersempit induknya — kalau `O-LX-KX-*` mengenai rak yang sama persis dengan
-     * `O-LX-*`, yang ditawarkan cukup yang lebih pendek. Ini yang membuat rak khusus
-     * seperti `O-LX-KX-KANTOR` tetap bisa ditandai walau berbagi segmen pertama
-     * dengan 10.457 rak shelving.
-     *
-     * Daftarnya bisa mencapai ratusan opsi; di UI dipakai Combobox yang bisa dicari,
-     * bukan Select.
-     *
-     * Contoh diambil di satu lintasan yang sama dengan penghitungan — jangan diganti
-     * dengan query per pola, itu jadi ratusan query untuk satu permintaan.
-     *
-     * @return array<int, array{pattern: string, matched_count: int, samples: string[]}>
-     */
     public function suggestedPatterns(string $locationId): array
     {
         $counts = [];
@@ -168,7 +198,6 @@ class BinMultiSkuRuleService
             ->whereRaw('bin_final_code ILIKE ?', [$this->toSqlLike($pattern)]);
     }
 
-    /** @return string[] */
     protected function activePatterns(string $locationId): array
     {
         if (! array_key_exists($locationId, static::$patternCache)) {
@@ -182,21 +211,11 @@ class BinMultiSkuRuleService
         return static::$patternCache[$locationId];
     }
 
-    /**
-     * `*` adalah satu-satunya wildcard. Sengaja BUKAN fnmatch(): fnmatch juga
-     * memperlakukan `?` dan `[...]` sebagai wildcard, sedangkan di sisi SQL keduanya
-     * literal — pencocokan in-memory dan hitungan di layar akan berbeda diam-diam.
-     */
     protected function toRegex(string $pattern): string
     {
         return '/^' . str_replace('\*', '.*', preg_quote($pattern, '/')) . '$/i';
     }
 
-    /**
-     * PostgreSQL: `ILIKE` (bukan `LIKE`, yang case-sensitive di Postgres).
-     * `%` dan `_` di dalam pola diperlakukan literal, jadi harus di-escape lebih dulu —
-     * `_` adalah wildcard satu-karakter di LIKE/ILIKE.
-     */
     protected function toSqlLike(string $pattern): string
     {
         $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], $pattern);

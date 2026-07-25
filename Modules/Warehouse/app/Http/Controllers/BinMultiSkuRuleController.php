@@ -7,8 +7,6 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Modules\Warehouse\Http\Requests\SaveBinMultiSkuRuleRequest;
 use Modules\Warehouse\Http\Resources\BinMultiSkuRuleResource;
-use Modules\Warehouse\Models\BinMultiSkuRule;
-use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Services\BinMultiSkuRuleService;
 
 class BinMultiSkuRuleController extends Controller
@@ -23,15 +21,8 @@ class BinMultiSkuRuleController extends Controller
             return $response;
         }
 
-        $rules = BinMultiSkuRule::where('location_id', $locationId)
-            ->orderBy('pattern')
-            ->get()
-            ->each(function (BinMultiSkuRule $rule) use ($locationId) {
-                $rule->matched_count = $this->ruleService->countMatching($locationId, $rule->pattern);
-            });
-
         return $this->successResponse(
-            BinMultiSkuRuleResource::collection($rules),
+            BinMultiSkuRuleResource::collection($this->ruleService->rulesWithMatchCount($locationId)),
             'Daftar aturan rak multi-SKU berhasil diambil'
         );
     }
@@ -54,17 +45,11 @@ class BinMultiSkuRuleController extends Controller
             return $response;
         }
 
-        $data = $request->validated();
-        $data['pattern'] = trim($data['pattern']);
-        $data['location_id'] = $locationId;
-
         try {
-            $rule = BinMultiSkuRule::create($data);
+            $rule = $this->ruleService->createRule($locationId, $request->validated());
         } catch (QueryException $e) {
             return $this->errorResponse('Pola ini sudah terdaftar di lokasi ini.', 422);
         }
-
-        $rule->matched_count = $this->ruleService->countMatching($locationId, $rule->pattern);
 
         return $this->successResponse(
             new BinMultiSkuRuleResource($rule),
@@ -79,23 +64,16 @@ class BinMultiSkuRuleController extends Controller
             return $response;
         }
 
-        $rule = BinMultiSkuRule::where('location_id', $locationId)->find($ruleId);
+        $rule = $this->ruleService->findRule($locationId, $ruleId);
         if (! $rule) {
             return $this->errorResponse('Aturan tidak ditemukan.', 404);
         }
 
-        $data = $request->validated();
-        if (array_key_exists('pattern', $data)) {
-            $data['pattern'] = trim($data['pattern']);
-        }
-
         try {
-            $rule->update($data);
+            $rule = $this->ruleService->updateRule($rule, $request->validated());
         } catch (QueryException $e) {
             return $this->errorResponse('Pola ini sudah terdaftar di lokasi ini.', 422);
         }
-
-        $rule->matched_count = $this->ruleService->countMatching($locationId, $rule->pattern);
 
         return $this->successResponse(
             new BinMultiSkuRuleResource($rule),
@@ -109,19 +87,19 @@ class BinMultiSkuRuleController extends Controller
             return $response;
         }
 
-        $rule = BinMultiSkuRule::where('location_id', $locationId)->find($ruleId);
+        $rule = $this->ruleService->findRule($locationId, $ruleId);
         if (! $rule) {
             return $this->errorResponse('Aturan tidak ditemukan.', 404);
         }
 
-        $rule->delete();
+        $this->ruleService->deleteRule($rule);
 
         return $this->successResponse(null, 'Aturan rak multi-SKU berhasil dihapus');
     }
 
     protected function rejectUnlessStrict(string $locationId): ?JsonResponse
     {
-        $location = Location::find($locationId);
+        $location = $this->ruleService->findLocation($locationId);
 
         if (! $location) {
             return $this->errorResponse('Lokasi tidak ditemukan.', 404);

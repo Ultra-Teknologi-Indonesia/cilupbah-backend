@@ -591,22 +591,14 @@ class PicklistService
 
     private function suggestBinsForItem(Picklist $picklist, PicklistItem $item): \Illuminate\Support\Collection
     {
-        $lastInSub = InventoryMovement::query()
-            ->selectRaw('MAX(transaction_date)')
-            ->whereColumn('inventory_movements.item_id', 'inventories.item_id')
-            ->whereColumn('inventory_movements.location_id', 'inventories.location_id')
-            ->whereColumn('inventory_movements.bin_id', 'inventories.bin_id')
-            ->where('qty', '>', 0);
-
+        // LIFO: rekomendasi rak dengan stok masuk paling baru didahulukan.
+        // Scaffolding urutan (SSOT) di Inventory::scopeOrderByBinMovement.
         $rows = Inventory::where('item_id', $item->item_id)
             ->where('location_id', $picklist->location_id)
             ->placed()
             ->where('on_hand', '>', 0)
             ->with(['bin:id,bin_final_code'])
-            ->select('inventories.*')
-            ->selectSub($lastInSub, 'last_in_at')
-            ->orderByRaw('last_in_at DESC NULLS LAST')
-            ->orderBy('inventories.created_at', 'desc')
+            ->orderByBinMovement('lifo')
             ->get();
 
         return $rows

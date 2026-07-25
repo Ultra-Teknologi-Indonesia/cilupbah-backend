@@ -10,6 +10,8 @@ use Illuminate\Database\Eloquent\Model;
 use Modules\Inventory\Repositories\PutawayRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
+use Modules\Inventory\Models\Inventory;
+use Modules\Warehouse\Models\LocationBin;
 use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Models\PutawayItem;
 use Modules\Inventory\Models\PutawayPlacement;
@@ -162,12 +164,6 @@ class PutawayService
         return $paginated;
     }
 
-    /**
-     * Tandai tiap item apakah SKU-nya sudah punya rak yang di-assign admin.
-     * Berlaku untuk SEMUA gudang (bukan hanya strict-bin). Mobile memakai flag
-     * ini untuk menyembunyikan tombol scan rak — validasi tetap di backend
-     * (lihat processItem).
-     */
     protected function attachRackAssignment(Putaway $putaway, $items): void
     {
         $guard = app(\Modules\Warehouse\Services\SkuHomeBinGuard::class);
@@ -256,6 +252,209 @@ class PutawayService
                 ? ['id' => $bin->id, 'bin_final_code' => $bin->bin_final_code]
                 : null;
             $item->recommended_bin_locked = $bin !== null;
+        }
+    }
+
+    /**
+     * Buat dokumen putaway dari satu atau beberapa penerimaan (inbound).
+     *
+     * Menggabungkan qty pending lintas-inbound per SKU, mengunci baris inbound
+     * item (lockForUpdate), menaikkan reserved_qty, dan opsional meng-assign staff.
+     * Seluruh orkestrasi transaksional ini milik service, bukan controller.
+     *
+     * @param  string[]  $inboundIds
+     * @throws \InvalidArgumentException Gudang berbeda / inbound sudah dibatalkan (422).
+     * @throws \RuntimeException Tidak ada qty pending untuk di-putaway (400).
+     */
+    public function createFromInbounds(array $inboundIds, ?string $assignedTo, string $userId): Putaway
+    {
+        $inbounds = Inbound::with(['items'])
+            ->whereIn('id', $inboundIds)
+            ->get();
+
+        if ($inbounds->pluck('location_id')->unique()->count() > 1) {
+            throw new \InvalidArgumentException('Penerimaan harus dari lokasi/gudang yang sama untuk digabung.');
+        }
+
+        foreach ($inbounds as $inbound) {
+            if ($inbound->status === Inbound::STATUS_CANCELLED) {
+                throw new \InvalidArgumentException("Penerimaan {$inbound->transaction_number} sudah {$inbound->status}, tidak bisa dibuat penempatan.");
+            }
+        }
+
+        $locationId = $inbounds->first()->location_id;
+        $defaultBin = app(LocationBinService::class)->getDefaultBin($locationId);
+
+        return DB::transaction(function () use ($inbounds, $defaultBin, $locationId, $userId, $assignedTo) {
+            $lockedItems = InboundItem::whereIn('inbound_id', $inbounds->pluck('id'))
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            $merged = [];
+            $reservationDeltas = [];
+            foreach ($inbounds as $inbound) {
+                foreach ($inbound->items as $item) {
+                    $locked = $lockedItems->get($item->id);
+                    if (! $locked) {
+                        continue;
+                    }
+                    $pending = max(0, (int) $locked->received_qty - (int) $locked->putaway_qty - (int) ($locked->reserved_qty ?? 0));
+                    if ($pending <= 0) {
+                        continue;
+                    }
+
+                    if (! isset($merged[$locked->item_id])) {
+                        $merged[$locked->item_id] = [
+                            'item_id'            => $locked->item_id,
+                            'source_bin_id'      => $defaultBin ? $defaultBin->id : null,
+                            'destination_bin_id' => null,
+                            'qty'                => 0,
+                            'batch_no'           => null,
+                            'serial_no'          => null,
+                            'sources'            => [],
+                        ];
+                    }
+
+                    $merged[$locked->item_id]['qty'] += $pending;
+                    $merged[$locked->item_id]['sources'][] = [
+                        'inbound_item_id' => $locked->id,
+                        'qty'             => $pending,
+                    ];
+                    $reservationDeltas[$locked->id] = ($reservationDeltas[$locked->id] ?? 0) + $pending;
+                }
+            }
+
+            $items = array_values($merged);
+
+            if (empty($items)) {
+                throw new \RuntimeException('Tidak ada item pending untuk di-putaway (semua qty sudah masuk penempatan aktif atau sudah selesai).');
+            }
+
+            $notes = $inbounds->count() === 1
+                ? "Manual Putaway from Inbound {$inbounds->first()->transaction_number}"
+                : 'Manual Putaway gabungan dari ' . $inbounds->count() . ' penerimaan: ' . $inbounds->pluck('transaction_number')->implode(', ');
+
+            $putaway = $this->create([
+                'location_id' => $locationId,
+                'source_type' => 'INBOUND',
+                'source_id'   => $inbounds->count() === 1 ? $inbounds->first()->id : null,
+                'sources'     => $inbounds->pluck('id')->all(),
+                'notes'       => $notes,
+                'created_by'  => $userId,
+                'items'       => $items,
+            ]);
+
+            foreach ($reservationDeltas as $inboundItemId => $delta) {
+                InboundItem::where('id', $inboundItemId)->increment('reserved_qty', $delta);
+            }
+
+            if ($assignedTo) {
+                $this->assignStaff([
+                    'performed_by' => $userId,
+                    'data' => [
+                        [
+                            'putaway_id'  => $putaway->id,
+                            'assigned_to' => $assignedTo,
+                        ],
+                    ],
+                ]);
+            }
+
+            return $putaway;
+        });
+    }
+
+    /**
+     * Lampirkan rekomendasi rak (`recommended_bins`) ke tiap item putaway.
+     *
+     * Alokasi mengikuti invariant "1 rak = 1 SKU": rak yang sudah dipakai SKU
+     * lain di-skip. Prioritas rak yang sudah berisi SKU tsb (stok terbanyak),
+     * lalu rak kosong berikutnya. Dipakai untuk cetak PDF Kode Rak.
+     */
+    public function attachRecommendedBins(Putaway $putaway): void
+    {
+        $items = $putaway->items ?? collect();
+        if ($items->isEmpty()) {
+            return;
+        }
+
+        $locationId = $putaway->location_id;
+        $itemIds = $items->pluck('item_id')->filter()->unique()->values()->all();
+
+        $stocks = Inventory::query()
+            ->whereIn('item_id', $itemIds)
+            ->where('location_id', $locationId)
+            ->where('on_hand', '>', 0)
+            ->whereNotNull('bin_id')
+            ->whereHas('bin', fn ($q) => $q->where('is_inbound', false))
+            ->with('bin:id,bin_final_code')
+            ->orderByDesc('on_hand')
+            ->get(['id', 'item_id', 'bin_id', 'on_hand']);
+
+        $byItem = $stocks->groupBy('item_id');
+
+        $allBins = LocationBin::where('location_id', $locationId)
+            ->where('is_inbound', false)
+            ->orderBy('bin_final_code')
+            ->get(['id', 'bin_final_code']);
+
+        $binItemIds = Inventory::where('location_id', $locationId)
+            ->where('on_hand', '>', 0)
+            ->whereNotNull('bin_id')
+            ->select('bin_id', 'item_id')
+            ->distinct()
+            ->get()
+            ->groupBy('bin_id')
+            ->map(fn ($rows) => $rows->pluck('item_id')->unique()->values()->all());
+
+        $usedBinItems = [];
+
+        foreach ($items as $item) {
+            $remaining = (int) $item->qty;
+            $plan = [];
+            $usedBinIds = [];
+
+            $itemStocks = $byItem->get($item->item_id, collect());
+            foreach ($itemStocks as $stock) {
+                if ($remaining <= 0) break;
+                $bin = $stock->bin;
+                if (!$bin) continue;
+
+                $existingRecommended = $usedBinItems[$bin->id] ?? [];
+                if (!empty($existingRecommended) && !in_array($item->item_id, $existingRecommended)) {
+                    continue;
+                }
+
+                $allocate = $remaining;
+                $plan[] = ['code' => $bin->bin_final_code, 'qty' => $allocate];
+                $usedBinItems[$bin->id][] = $item->item_id;
+                $usedBinIds[] = $bin->id;
+                $remaining -= $allocate;
+            }
+
+            if ($remaining > 0) {
+                foreach ($allBins as $bin) {
+                    if ($remaining <= 0) break;
+                    if (in_array($bin->id, $usedBinIds)) continue;
+
+                    $existingItemIds = array_unique(array_merge(
+                        $binItemIds[$bin->id] ?? [],
+                        $usedBinItems[$bin->id] ?? []
+                    ));
+                    if (!empty($existingItemIds) && !in_array($item->item_id, $existingItemIds)) {
+                        continue;
+                    }
+
+                    $allocate = $remaining;
+                    $plan[] = ['code' => $bin->bin_final_code, 'qty' => $allocate];
+                    $usedBinItems[$bin->id][] = $item->item_id;
+                    $usedBinIds[] = $bin->id;
+                    $remaining -= $allocate;
+                }
+            }
+
+            $item->recommended_bins = $plan;
         }
     }
 
@@ -513,9 +712,6 @@ class PutawayService
             throw new \Exception('Item putaway tidak ditemukan.');
         }
 
-        // Rak untuk SKU wajib sudah di-assign admin sebelum bisa ditempatkan
-        // (berlaku semua gudang). Ditolak di backend supaya mobile tak perlu
-        // memvalidasi sendiri.
         $guard = app(\Modules\Warehouse\Services\SkuHomeBinGuard::class);
         if ($guard->currentHomeBinId($putaway->location_id, $item->item_id) === null) {
             throw new \DomainException('Rak belum diassign, silahkan hubungi admin.');
@@ -929,10 +1125,7 @@ class PutawayService
 
     private function recomputeInboundStatus(Inbound $inbound): void
     {
-        // Putaway TIDAK lagi menentukan status penerimaan. Status inbound = siklus
-        // penerimaan saja (lihat InboundService: qty penuh / admin close = COMPLETED).
-        // Progres putaway dilacak di entitas Putaway sendiri, bukan di inbound->status.
-        // Sengaja no-op agar partial putaway tak pernah menutup penerimaan yang berjalan.
+
     }
 
     private function releasePartialReservation(Putaway $putaway, PutawayItem $item, int $unplaced): void

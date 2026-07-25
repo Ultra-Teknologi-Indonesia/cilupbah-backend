@@ -54,7 +54,8 @@ class StockSummary
                 'pending_placement' => (int) $row->pending_on_hand,
                 'on_order' => $onOrder,
                 'transit' => (int) ($transitByItem[$row->item_id] ?? 0),
-                'available' => $onHand - $onOrder,
+                // Samakan dengan availableSql(): clamp ke 0 (oversell dilacak lewat on_order, bukan available negatif).
+                'available' => max(0, $onHand - $onOrder),
             ];
         }
 
@@ -121,7 +122,8 @@ class StockSummary
             'on_order' => $onOrder,
 
             'transit' => 0,
-            'available' => $placedOnHand - $onOrder,
+            // Samakan dengan availableSql(): clamp ke 0 (oversell dilacak lewat on_order, bukan available negatif).
+            'available' => max(0, $placedOnHand - $onOrder),
         ];
     }
 

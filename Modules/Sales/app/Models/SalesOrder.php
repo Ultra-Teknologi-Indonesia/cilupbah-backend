@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Modules\Inventory\Support\StockSummary;
 use Modules\Sales\Support\ChannelStatusNormalizer;
 use Modules\Outbound\Support\InstantOrderClassifier;
 use Spatie\MediaLibrary\HasMedia;
@@ -327,9 +328,15 @@ class SalesOrder extends Model implements HasMedia
 
     public static function shortfallItemWhereRaw(): string
     {
+        // available = placed_on_hand - on_order (SSOT: StockSummary::availableSql).
+        // Wajib menyaring is_inbound=false supaya stok yang belum ditempatkan (masih di
+        // rak inbound) tidak dihitung tersedia — picking hanya mengambil stok placed.
+        $available = StockSummary::availableSql('inventories', 'location_bins');
+
         return "sales_order_items.qty_in_base > COALESCE((
-                    SELECT GREATEST(0, COALESCE(SUM(on_hand),0) - COALESCE(SUM(on_order),0))
+                    SELECT {$available}
                     FROM inventories
+                    LEFT JOIN location_bins ON location_bins.id = inventories.bin_id
                     WHERE inventories.item_id = sales_order_items.item_id
                       AND inventories.location_id = sales_orders.location_id
                 ), 0)

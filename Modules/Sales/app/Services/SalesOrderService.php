@@ -21,6 +21,7 @@ use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Jobs\SyncStockJob;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderItem;
+use Modules\Sales\Support\OrderTotals;
 use Modules\Sales\Models\SalesOrderStatusHistory;
 use Modules\Sales\Repositories\SalesOrderRepository;
 use Modules\Outbound\Models\Picklist;
@@ -1973,8 +1974,19 @@ class SalesOrderService
             $totalTax  += (float) $it->tax_amount;
         }
 
-        $grandTotal = $subTotal - $totalDisc + $totalTax
-            + (float) $order->shipping_cost + (float) $order->insurance_cost;
+        $grandTotal = OrderTotals::grandTotal([
+            'sub_total'            => $subTotal,
+            'total_disc'           => $totalDisc,
+            'total_tax'            => $totalTax,
+            'other_discount'       => (float) $order->other_discount,
+            'shipping_cost'        => (float) $order->shipping_cost,
+            'shipping_discount'    => (float) $order->shipping_discount,
+            'insurance_cost'       => (float) $order->insurance_cost,
+            'service_fee'          => (float) $order->service_fee,
+            'seller_voucher'       => (float) $order->seller_voucher,
+            'order_processing_fee' => (float) $order->order_processing_fee,
+            'price_includes_tax'   => (bool) $order->price_includes_tax,
+        ]);
 
         $order->update([
             'sub_total'   => $subTotal,

@@ -61,6 +61,34 @@ class Inventory extends Model
         });
     }
 
+    /**
+     * Urutkan rak berdasarkan tanggal pergerakan stok masuk (qty > 0) per rak.
+     * SSOT strategi rekomendasi rak — dipakai picking (LIFO) dan transfer (FIFO).
+     *
+     * - fifo: rak dengan stok masuk PALING LAMA didahulukan (MIN transaction_date).
+     * - lifo: rak dengan stok masuk PALING BARU didahulukan (MAX transaction_date).
+     *
+     * Rak tanpa riwayat pergerakan (movement_at NULL) ditaruh terakhir, lalu
+     * di-tiebreak oleh created_at searah strategi.
+     */
+    public function scopeOrderByBinMovement($query, string $strategy)
+    {
+        $lifo = strtolower($strategy) === 'lifo';
+
+        $movementSub = InventoryMovement::query()
+            ->selectRaw(($lifo ? 'MAX' : 'MIN') . '(transaction_date)')
+            ->whereColumn('inventory_movements.item_id', 'inventories.item_id')
+            ->whereColumn('inventory_movements.location_id', 'inventories.location_id')
+            ->whereColumn('inventory_movements.bin_id', 'inventories.bin_id')
+            ->where('qty', '>', 0);
+
+        return $query
+            ->select('inventories.*')
+            ->selectSub($movementSub, 'movement_at')
+            ->orderByRaw('movement_at ' . ($lifo ? 'DESC' : 'ASC') . ' NULLS LAST')
+            ->orderBy('inventories.created_at', $lifo ? 'desc' : 'asc');
+    }
+
     public function scopePendingPlacement($query)
     {
         return $query->where(function ($w) {

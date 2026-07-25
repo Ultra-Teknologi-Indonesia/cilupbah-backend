@@ -282,57 +282,11 @@ class InboundController extends Controller
     )]
     public function show(string $id): JsonResponse
     {
-        $inbound = $this->inboundService->getById($id);
+        $data = $this->inboundService->getDetailPayload($id);
 
-        if (! $inbound) {
+        if ($data === null) {
             return $this->errorResponse('Dokumen Inbound tidak ditemukan', 404);
         }
-
-        $inbound->load(['participants.user:id,name']);
-
-        $participantsData = $inbound->participants->map(function ($p) use ($inbound) {
-            $receiptCount = \Modules\Inbound\Models\InboundReceipt::query()
-                ->join('inbound_items as i', 'inbound_receipts.inbound_item_id', '=', 'i.id')
-                ->where('i.inbound_id', $inbound->id)
-                ->where('inbound_receipts.received_by_user_id', $p->user_id)
-                ->count();
-
-            $receiptQtySum = \Modules\Inbound\Models\InboundReceipt::query()
-                ->join('inbound_items as i', 'inbound_receipts.inbound_item_id', '=', 'i.id')
-                ->where('i.inbound_id', $inbound->id)
-                ->where('inbound_receipts.received_by_user_id', $p->user_id)
-                ->sum('inbound_receipts.qty');
-
-            return [
-                'id' => $p->id,
-                'user_id' => $p->user_id,
-                'name' => $p->user?->name ?? 'staff',
-                'role' => $p->role,
-                'status' => $p->status,
-                'joined_at' => $p->joined_at?->toIso8601String(),
-                'completed_at' => $p->completed_at?->toIso8601String(),
-                'withdrawn_at' => $p->withdrawn_at?->toIso8601String(),
-                'withdraw_reason' => $p->withdraw_reason,
-                'receipts_count' => $receiptCount,
-                'receipts_qty_sum' => (int) $receiptQtySum,
-            ];
-        })->values();
-
-        $activeParticipants = $participantsData
-            ->where('status', \Modules\Inbound\Models\InboundParticipant::STATUS_ACTIVE)
-            ->values();
-
-        $editLock = [
-            'locked' => $activeParticipants->isNotEmpty(),
-            'reason' => $activeParticipants->isNotEmpty() ? 'mobile_session_active' : null,
-            'active_participants' => $activeParticipants
-                ->map(fn ($p) => ['user_id' => $p['user_id'], 'name' => $p['name']])
-                ->values(),
-        ];
-
-        $data = $inbound->toArray();
-        $data['participants'] = $participantsData;
-        $data['edit_lock'] = $editLock;
 
         return $this->successResponse($data, 'Detail Inbound berhasil diambil');
     }

@@ -24,6 +24,26 @@ class BinQrPrintService
 
     public const STORAGE_DIR = 'qr-jobs';
 
+    /**
+     * Query bin yang layak dicetak QR-nya untuk sebuah lokasi: hanya bin dengan
+     * `bin_final_code` terisi, opsional dibatasi ke sekumpulan id. Satu sumber
+     * kebenaran seleksi bin, dipakai jalur sinkron (stream) dan async (job).
+     *
+     * @param  string[]|null  $binIds
+     */
+    public function binsQueryForPrint(string $locationId, ?array $binIds = null)
+    {
+        $query = LocationBin::where('location_id', $locationId)
+            ->whereNotNull('bin_final_code')
+            ->where('bin_final_code', '!=', '');
+
+        if (! empty($binIds)) {
+            $query->whereIn('id', $binIds);
+        }
+
+        return $query;
+    }
+
     public function createJob(string $locationId, array $opts = []): QrPrintJob
     {
         $location = Location::find($locationId);
@@ -40,15 +60,7 @@ class BinQrPrintService
             ? array_values(array_filter(array_map('strval', $opts['bin_ids'])))
             : null;
 
-        $query = LocationBin::where('location_id', $locationId)
-            ->whereNotNull('bin_final_code')
-            ->where('bin_final_code', '!=', '');
-
-        if (! empty($binIds)) {
-            $query->whereIn('id', $binIds);
-        }
-
-        $totalBins = (int) $query->count();
+        $totalBins = (int) $this->binsQueryForPrint($locationId, $binIds)->count();
 
         $job = QrPrintJob::create([
             'id' => (string) Str::uuid(),

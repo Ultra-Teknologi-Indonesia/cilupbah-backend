@@ -242,7 +242,6 @@ class LocationBinController extends Controller
         return $this->successResponse($result, 'Bin berhasil di-generate', 201);
     }
 
-    /** Alias kolom kode rak yang diterima importer (mendukung export Jubelio "No Rak"). */
     private const RACK_CODE_ALIASES = ['kode_rak', 'rak', 'bin_final_code', 'no rak', 'no_rak', 'kode rak', 'kode final rak'];
 
     private const IMPORT_SHEET_NAME = 'Pengisian Data';
@@ -267,14 +266,6 @@ class LocationBinController extends Controller
         ]);
     }
 
-    /**
-     * Sheet "Pengisian Data" sengaja diletakkan pertama DAN di-set aktif — importer
-     * membaca sheet bernama itu, dengan sheet aktif hanya sebagai cadangan.
-     *
-     * Baris contoh diisi kode rak yang SUDAH ADA di lokasi ini, bukan placeholder.
-     * Kalau ditinggal apa adanya, import-nya jadi no-op (existing-wins) alih-alih
-     * membuat rak sampah bernama "IN-A1-K1-P1".
-     */
     private function buildImportTemplate(string $locationName, array $examples): Spreadsheet
     {
         $spreadsheet = new Spreadsheet();
@@ -392,15 +383,10 @@ class LocationBinController extends Controller
         ], "Import rak selesai. {$result['created']} rak baru dibuat, {$result['existing']} sudah ada.");
     }
 
-    /** Ekstrak daftar kode rak unik dari file (xlsx/csv); ambil kolom kode rak (alias) atau kolom terakhir. */
     private function parseRackCodes(string $path): array
     {
         $spreadsheet = IOFactory::load($path);
 
-        // Sheet aktif ikut tersimpan saat user menyimpan file di Excel. Kalau ia menutup
-        // template dengan sheet "Instruksi" terpilih, sheet aktif jadi Instruksi dan
-        // fallback "kolom terakhir" di bawah akan membaca teks instruksi sebagai kode rak.
-        // Karena itu sheet bernama "Pengisian Data" selalu diutamakan.
         $sheet = $spreadsheet->getSheetByName(self::IMPORT_SHEET_NAME) ?? $spreadsheet->getActiveSheet();
         $rows = $sheet->toArray(null, true, false, false);
         if (empty($rows)) {
@@ -547,13 +533,8 @@ class LocationBinController extends Controller
             }
         }
 
-        $query = LocationBin::where('location_id', $locationId)
-            ->whereNotNull('bin_final_code')
-            ->where('bin_final_code', '!=', '');
-
-        if (! empty($binIds)) {
-            $query->whereIn('id', $binIds);
-        }
+        $query = app(\Modules\Warehouse\Services\BinQrPrintService::class)
+            ->binsQueryForPrint($locationId, $binIds ?: null);
 
         $totalBins = (clone $query)->count();
         if ($totalBins > self::MAX_BINS_PER_REQUEST) {

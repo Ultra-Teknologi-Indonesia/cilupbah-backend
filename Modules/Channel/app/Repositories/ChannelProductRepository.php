@@ -4,6 +4,7 @@ namespace Modules\Channel\Repositories;
 
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
+use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
 use Ramsey\Uuid\Uuid;
@@ -184,8 +185,8 @@ class ChannelProductRepository
             ->leftJoin('location_bins as b', 'b.id', '=', 'i.bin_id')
             ->where('i.item_id', $variantId)
             ->where('i.location_id', $locationId)
-            ->selectRaw('COALESCE(SUM(CASE WHEN b.id IS NOT NULL AND b.is_inbound = false THEN i.on_hand ELSE 0 END),0) as oh')
-            ->selectRaw('COALESCE(SUM(i.on_order),0) as r')
+            ->selectRaw(StockSummary::placedOnHandSql('i', 'b') . ' as oh')
+            ->selectRaw(StockSummary::onOrderSql('i') . ' as r')
             ->first();
 
         return max(0, (int) ($row->oh ?? 0) - (int) ($row->r ?? 0));

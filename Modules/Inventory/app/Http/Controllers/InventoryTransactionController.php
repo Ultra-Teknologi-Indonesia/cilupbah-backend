@@ -426,39 +426,15 @@ class InventoryTransactionController extends Controller
 
         $actor = $request->user()?->name ?? $request->user()?->email ?? 'system';
 
-        $deleted = 0;
-        $reverted = 0;
-        $failed = [];
-
-        foreach ($validated['ids'] as $id) {
-            try {
-                $transfer = $this->inventoryService->getTransferById($id);
-                if (!$transfer) {
-                    throw new \Exception('Transfer tidak ditemukan.');
-                }
-
-                if ($transfer->status === InventoryTransfer::STATUS_IN_TRANSIT) {
-                    $this->inventoryService->revertToDraft($id, ['actor' => $actor]);
-                    $reverted++;
-                } else {
-                    $this->inventoryService->deleteTransfer($id);
-                    $deleted++;
-                }
-            } catch (\Throwable $e) {
-                $failed[] = [
-                    'id' => $id,
-                    'reason' => $e->getMessage(),
-                ];
-            }
-        }
+        $result = $this->inventoryService->bulkDeleteOrRevertTransfers($validated['ids'], $actor);
 
         $messageParts = [];
-        if ($deleted > 0) $messageParts[] = "{$deleted} dihapus";
-        if ($reverted > 0) $messageParts[] = "{$reverted} dikembalikan ke Baru Dibuat";
-        if (count($failed) > 0) $messageParts[] = count($failed) . " gagal";
+        if ($result['deleted'] > 0) $messageParts[] = "{$result['deleted']} dihapus";
+        if ($result['reverted'] > 0) $messageParts[] = "{$result['reverted']} dikembalikan ke Baru Dibuat";
+        if (count($result['failed']) > 0) $messageParts[] = count($result['failed']) . " gagal";
 
         return $this->successResponse(
-            ['deleted' => $deleted, 'reverted' => $reverted, 'failed' => $failed],
+            $result,
             $messageParts ? implode(', ', $messageParts) : 'Tidak ada transfer diproses'
         );
     }

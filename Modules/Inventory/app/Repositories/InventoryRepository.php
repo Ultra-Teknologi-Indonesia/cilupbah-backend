@@ -532,18 +532,8 @@ class InventoryRepository
             ->with('bin:id,bin_final_code');
 
         if ($strategy === 'fifo') {
-            $firstInSub = InventoryMovement::query()
-                ->selectRaw('MIN(transaction_date)')
-                ->whereColumn('inventory_movements.item_id', 'inventories.item_id')
-                ->whereColumn('inventory_movements.location_id', 'inventories.location_id')
-                ->whereColumn('inventory_movements.bin_id', 'inventories.bin_id')
-                ->where('qty', '>', 0);
-
             return $query
-                ->select('inventories.*')
-                ->selectSub($firstInSub, 'first_in_at')
-                ->orderByRaw('first_in_at ASC NULLS LAST')
-                ->orderBy('inventories.created_at', 'asc')
+                ->orderByBinMovement('fifo')
                 ->get();
         }
 
