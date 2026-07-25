@@ -293,8 +293,14 @@ class InventoryService
 
             app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
                 ->assertBinFitsSku($data['destination_bin_id'], $data['item_id']);
-            app(\Modules\Warehouse\Services\SkuHomeBinGuard::class)
-                ->assertSkuFitsBin($data['location_id'], $data['item_id'], $data['destination_bin_id']);
+            // Saat memindahkan SELURUH stok antar rak (pindah rak), SKU masih menempati
+            // rak asal pada saat guard dievaluasi, sehingga SkuHomeBinGuard akan salah
+            // menolak. Relokasi penuh tidak melanggar "1 SKU = 1 rak" (hasil akhir tetap
+            // satu rak), jadi pemanggil boleh melewati guard ini secara eksplisit.
+            if (empty($data['skip_home_bin_guard'])) {
+                app(\Modules\Warehouse\Services\SkuHomeBinGuard::class)
+                    ->assertSkuFitsBin($data['location_id'], $data['item_id'], $data['destination_bin_id']);
+            }
 
             $inboundInventory = $this->inventoryRepository->findExactForUpdate(
                 $data['item_id'],

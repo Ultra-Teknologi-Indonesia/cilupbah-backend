@@ -87,6 +87,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::put('locations/{locationId}/bins/bulk', [LocationBinController::class, 'bulkUpdate'])->whereUuid('locationId')->name('warehouse.bins.bulk-update');
         Route::post('locations/{locationId}/bins/uniform-apply', [LocationBinController::class, 'uniformApply'])->whereUuid('locationId')->name('warehouse.bins.uniform-apply');
         Route::post('locations/{locationId}/bins/{binId}/assign-sku', [LocationBinController::class, 'assignSku'])->whereUuid(['locationId', 'binId'])->name('warehouse.bins.assign-sku');
+        Route::post('locations/{locationId}/bins/{binId}/move-sku', [LocationBinController::class, 'moveSku'])->whereUuid(['locationId', 'binId'])->name('warehouse.bins.move-sku');
+        Route::post('locations/{locationId}/bins/{binId}/remove-sku', [LocationBinController::class, 'removeSku'])->whereUuid(['locationId', 'binId'])->name('warehouse.bins.remove-sku');
     });
 
     Route::get('locations/{locationId}/default-bin', [LocationBinController::class, 'defaultBin'])->whereUuid('locationId')->name('warehouse.bins.default')->middleware('role_or_permission:owner|view-manajemen-rak');

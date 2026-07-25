@@ -435,4 +435,140 @@ class LocationBinService
             });
         });
     }
+
+    public function moveSkuToBin(string $locationId, string $sourceBinId, string $itemId, string $destinationBinId, string $userId): array
+    {
+        $location = Location::find($locationId);
+        if (! $location) {
+            throw new ModelNotFoundException('Lokasi tidak ditemukan.');
+        }
+        if (! $location->enforcesStrictBinSku()) {
+            throw new \DomainException('Pindah rak hanya berlaku untuk gudang kecil (WH-KECIL).');
+        }
+
+        if ($sourceBinId === $destinationBinId) {
+            throw new \DomainException('Rak tujuan harus berbeda dari rak asal.');
+        }
+
+        $sourceBin = LocationBin::where('location_id', $locationId)->find($sourceBinId);
+        if (! $sourceBin) {
+            throw new ModelNotFoundException('Rak asal tidak ditemukan.');
+        }
+        $destinationBin = LocationBin::where('location_id', $locationId)->find($destinationBinId);
+        if (! $destinationBin) {
+            throw new ModelNotFoundException('Rak tujuan tidak ditemukan.');
+        }
+        if ($destinationBin->is_inbound) {
+            throw new \DomainException('Rak tujuan tidak boleh rak inbound.');
+        }
+
+        app(BinOccupancyGuard::class)->assertBinFitsSku($destinationBinId, $itemId);
+
+        $inventoryService = app(InventoryService::class);
+
+        return $this->withStockLock($itemId, $locationId, function () use ($locationId, $sourceBinId, $destinationBinId, $itemId, $userId, $inventoryService) {
+            return DB::transaction(function () use ($locationId, $sourceBinId, $destinationBinId, $itemId, $userId, $inventoryService) {
+                $rows = Inventory::query()
+                    ->where('location_id', $locationId)
+                    ->where('bin_id', $sourceBinId)
+                    ->where('item_id', $itemId)
+                    ->where('on_hand', '>', 0)
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($rows->isEmpty()) {
+                    throw new \DomainException('Tidak ada stok yang bisa dipindah dari rak asal.');
+                }
+
+                $moved = 0;
+                foreach ($rows as $row) {
+                    $qty = (int) $row->on_hand;
+                    if ($qty <= 0) {
+                        continue;
+                    }
+
+                    $inventoryService->putaway([
+                        'item_id' => $itemId,
+                        'location_id' => $locationId,
+                        'source_bin_id' => $sourceBinId,
+                        'destination_bin_id' => $destinationBinId,
+                        'qty' => $qty,
+                        'batch_no' => $row->batch_no ?? '',
+                        'serial_no' => $row->serial_no ?? '',
+                        'created_by' => "user:{$userId}",
+                        'skip_home_bin_guard' => true,
+                    ]);
+
+                    $moved += $qty;
+                }
+
+                return [
+                    'source_bin_id' => $sourceBinId,
+                    'destination_bin_id' => $destinationBinId,
+                    'item_id' => $itemId,
+                    'moved_qty' => $moved,
+                ];
+            });
+        });
+    }
+
+    public function removeSkuFromBin(string $locationId, string $binId, string $itemId, string $userId): array
+    {
+        $location = Location::find($locationId);
+        if (! $location) {
+            throw new ModelNotFoundException('Lokasi tidak ditemukan.');
+        }
+        if (! $location->enforcesStrictBinSku()) {
+            throw new \DomainException('Keluarkan SKU hanya berlaku untuk gudang kecil (WH-KECIL).');
+        }
+
+        $bin = LocationBin::where('location_id', $locationId)->find($binId);
+        if (! $bin) {
+            throw new ModelNotFoundException('Rak tidak ditemukan.');
+        }
+        if ($bin->is_inbound) {
+            throw new \DomainException('Rak inbound tidak dapat dikosongkan.');
+        }
+
+        $inventoryService = app(InventoryService::class);
+
+        return $this->withStockLock($itemId, $locationId, function () use ($locationId, $binId, $itemId, $userId, $inventoryService) {
+            return DB::transaction(function () use ($locationId, $binId, $itemId, $userId, $inventoryService) {
+                $rows = Inventory::query()
+                    ->where('location_id', $locationId)
+                    ->where('bin_id', $binId)
+                    ->where('item_id', $itemId)
+                    ->where('on_hand', '>', 0)
+                    ->lockForUpdate()
+                    ->get();
+
+                // Stok fisik sudah 0 → rak dianggap kosong, tidak perlu penyesuaian.
+                $removed = 0;
+                foreach ($rows as $row) {
+                    $qty = (int) $row->on_hand;
+                    if ($qty <= 0) {
+                        continue;
+                    }
+
+                    $inventoryService->adjust([
+                        'item_id' => $itemId,
+                        'location_id' => $locationId,
+                        'bin_id' => $binId,
+                        'qty' => -$qty,
+                        'batch_no' => $row->batch_no ?? '',
+                        'serial_no' => $row->serial_no ?? '',
+                        'created_by' => "user:{$userId}",
+                    ]);
+
+                    $removed += $qty;
+                }
+
+                return [
+                    'bin_id' => $binId,
+                    'item_id' => $itemId,
+                    'removed_qty' => $removed,
+                ];
+            });
+        });
+    }
 }

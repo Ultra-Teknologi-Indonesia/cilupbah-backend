@@ -9,6 +9,8 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Warehouse\Http\Requests\AssignSkuLocationBinRequest;
+use Modules\Warehouse\Http\Requests\MoveSkuLocationBinRequest;
+use Modules\Warehouse\Http\Requests\RemoveSkuLocationBinRequest;
 use Modules\Warehouse\Http\Requests\GenerateLocationBinRequest;
 use Modules\Warehouse\Http\Requests\StoreLocationBinRequest;
 use Modules\Warehouse\Http\Requests\UniformApplyLocationBinRequest;
@@ -470,6 +472,54 @@ class LocationBinController extends Controller
         } catch (\DomainException $e) {
             return $this->errorResponse(
                 'Gagal menempatkan SKU.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
+        }
+    }
+
+    public function moveSku(MoveSkuLocationBinRequest $request, string $locationId, string $binId): JsonResponse
+    {
+        try {
+            $validated = $request->validated();
+            $result = $this->binService->moveSkuToBin(
+                $locationId,
+                $binId,
+                $validated['item_id'],
+                $validated['destination_bin_id'],
+                (string) ($request->user()?->id ?? ''),
+            );
+
+            return $this->successResponse($result, 'SKU berhasil dipindahkan ke rak tujuan.');
+        } catch (ModelNotFoundException $e) {
+            return $this->errorResponse('Lokasi atau rak tidak ditemukan.', 404);
+        } catch (\DomainException $e) {
+            return $this->errorResponse(
+                'Gagal memindahkan SKU.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
+        }
+    }
+
+    public function removeSku(RemoveSkuLocationBinRequest $request, string $locationId, string $binId): JsonResponse
+    {
+        try {
+            $result = $this->binService->removeSkuFromBin(
+                $locationId,
+                $binId,
+                $request->validated()['item_id'],
+                (string) ($request->user()?->id ?? ''),
+            );
+
+            return $this->successResponse($result, 'SKU berhasil dikeluarkan dari rak.');
+        } catch (ModelNotFoundException $e) {
+            return $this->errorResponse('Lokasi atau rak tidak ditemukan.', 404);
+        } catch (\DomainException $e) {
+            return $this->errorResponse(
+                'Gagal mengeluarkan SKU.',
                 422,
                 ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
