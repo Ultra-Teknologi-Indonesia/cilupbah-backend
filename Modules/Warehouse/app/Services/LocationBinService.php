@@ -454,6 +454,9 @@ class LocationBinService
         if (! $sourceBin) {
             throw new ModelNotFoundException('Rak asal tidak ditemukan.');
         }
+        if ($sourceBin->is_inbound) {
+            throw new \DomainException('Stok di rak inbound (DEFAULT) ditempatkan lewat Isi Rak, bukan dipindah dari sini.');
+        }
         $destinationBin = LocationBin::where('location_id', $locationId)->find($destinationBinId);
         if (! $destinationBin) {
             throw new ModelNotFoundException('Rak tujuan tidak ditemukan.');
