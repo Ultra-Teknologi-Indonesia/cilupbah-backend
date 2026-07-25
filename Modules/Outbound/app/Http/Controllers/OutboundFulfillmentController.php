@@ -399,6 +399,46 @@ class OutboundFulfillmentController extends Controller
         return $this->successResponse(null, 'Pesanan dikembalikan ke tahap sebelumnya.');
     }
 
+    #[OA\Post(
+        path: '/api/v1/outbound/orders/bulk-delete',
+        summary: 'Hapus beberapa pesanan sekaligus dari tahap fulfillment (kembalikan ke tahap sebelumnya)',
+        description: 'Sama seperti hapus per-pesanan namun untuk banyak order. Tiap order diproses independen dan dikembalikan sesuai tahap terjauhnya; hasil dikembalikan per-order (success/failed) sehingga sebagian bisa berhasil.',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Fulfillment'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['order_ids', 'reason'],
+                properties: [
+                    new OA\Property(property: 'order_ids', type: 'array', items: new OA\Items(type: 'string')),
+                    new OA\Property(property: 'reason', type: 'string'),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Success (per-order results)'),
+            new OA\Response(response: 422, description: 'Validation error'),
+        ]
+    )]
+    public function bulkDestroyOrders(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'order_ids'   => 'required|array|min:1',
+            'order_ids.*' => 'required|string|exists:sales_orders,id',
+            'reason'      => 'required|string|max:500',
+        ], [
+            'reason.required' => 'Alasan penghapusan wajib diisi (mis. barang apa yang minus).',
+        ]);
+
+        $results = $this->fulfillmentService->bulkDeleteOrdersFromFulfillment(
+            $validated['order_ids'],
+            $validated['reason'],
+            auth()->user()->email,
+        );
+
+        return $this->successResponse($results, 'Proses hapus pesanan selesai.');
+    }
+
     #[OA\Get(
         path: '/api/v1/outbound/pickers',
         summary: 'List warehouse users eligible as pickers',

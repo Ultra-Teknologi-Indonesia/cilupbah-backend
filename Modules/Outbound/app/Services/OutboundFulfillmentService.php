@@ -515,6 +515,42 @@ class OutboundFulfillmentService
         throw new \Exception('Pesanan belum masuk proses picking/packing/pengiriman — tidak ada yang bisa dikembalikan.');
     }
 
+    /**
+     * Hapus beberapa pesanan sekaligus dari tahap fulfillment.
+     * Tiap order diproses independen; kegagalan satu order tidak membatalkan yang lain.
+     *
+     * @param  string[]  $orderIds
+     * @return array<int, array<string, mixed>>  per-order result (order_id, salesorder_no, source, status, message)
+     */
+    public function bulkDeleteOrdersFromFulfillment(array $orderIds, ?string $reason, ?string $removedBy): array
+    {
+        $results = [];
+
+        foreach ($orderIds as $orderId) {
+            $order = Order::find($orderId);
+
+            if (! $order) {
+                $results[] = [
+                    'order_id'      => $orderId,
+                    'salesorder_no' => null,
+                    'source'        => null,
+                    'status'        => 'failed',
+                    'message'       => 'Order tidak ditemukan.',
+                ];
+                continue;
+            }
+
+            try {
+                $this->deleteOrderFromFulfillment($order->id, $reason, $removedBy);
+                $results[] = $this->result($order, 'success', 'Dikembalikan ke tahap sebelumnya.');
+            } catch (\Throwable $e) {
+                $results[] = $this->result($order, 'failed', $e->getMessage());
+            }
+        }
+
+        return $results;
+    }
+
     private function logRemoval(string $orderId, string $stage, string $removedBy, ?string $reason, bool $reversedStock): void
     {
         FulfillmentRemoval::create([
