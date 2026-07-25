@@ -141,6 +141,12 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('/confirm', [\Modules\Inventory\Http\Controllers\StockAdjustmentImportController::class, 'confirm'])->name('inventory.adjustments.import.confirm');
     });
 
+    Route::prefix('inventory/transfers/import')->middleware('role_or_permission:owner|create-barang-keluar')->group(function () {
+        Route::get('/template', [\Modules\Inventory\Http\Controllers\TransferOutImportController::class, 'template'])->name('inventory.transfers.import.template');
+        Route::post('/preview', [\Modules\Inventory\Http\Controllers\TransferOutImportController::class, 'preview'])->name('inventory.transfers.import.preview');
+        Route::post('/confirm', [\Modules\Inventory\Http\Controllers\TransferOutImportController::class, 'confirm'])->name('inventory.transfers.import.confirm');
+    });
+
     Route::prefix('inventory/adjustments/documents')->group(function () {
         Route::middleware('role_or_permission:owner|view-penyesuaian-stok')->group(function () {
             Route::get('/', [StockAdjustmentController::class, 'index'])->name('inventory.adjustments.documents.index');
