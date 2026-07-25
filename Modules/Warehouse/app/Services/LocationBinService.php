@@ -5,6 +5,7 @@ namespace Modules\Warehouse\Services;
 use App\Traits\StockLockable;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Services\InventoryService;
+use Modules\Inventory\Services\StockAdjustmentService;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Repositories\LocationBinRepository;
@@ -515,7 +516,7 @@ class LocationBinService
         });
     }
 
-    public function removeSkuFromBin(string $locationId, string $binId, string $itemId, string $userId): array
+    public function removeSkuFromBin(string $locationId, string $binId, string $itemId, string $createdBy): array
     {
         $location = Location::find($locationId);
         if (! $location) {
@@ -533,45 +534,43 @@ class LocationBinService
             throw new \DomainException('Rak inbound tidak dapat dikosongkan.');
         }
 
-        $inventoryService = app(InventoryService::class);
+        $onHand = (int) Inventory::query()
+            ->where('location_id', $locationId)
+            ->where('bin_id', $binId)
+            ->where('item_id', $itemId)
+            ->sum('on_hand');
 
-        return $this->withStockLock($itemId, $locationId, function () use ($locationId, $binId, $itemId, $userId, $inventoryService) {
-            return DB::transaction(function () use ($locationId, $binId, $itemId, $userId, $inventoryService) {
-                $rows = Inventory::query()
-                    ->where('location_id', $locationId)
-                    ->where('bin_id', $binId)
-                    ->where('item_id', $itemId)
-                    ->where('on_hand', '>', 0)
-                    ->lockForUpdate()
-                    ->get();
+        // Stok fisik sudah 0 → rak dianggap kosong, tak perlu dokumen koreksi.
+        if ($onHand <= 0) {
+            return [
+                'bin_id' => $binId,
+                'item_id' => $itemId,
+                'removed_qty' => 0,
+                'adjustment_no' => null,
+            ];
+        }
 
-                // Stok fisik sudah 0 → rak dianggap kosong, tidak perlu penyesuaian.
-                $removed = 0;
-                foreach ($rows as $row) {
-                    $qty = (int) $row->on_hand;
-                    if ($qty <= 0) {
-                        continue;
-                    }
+        // Buat DOKUMEN Koreksi Stok (bukan mutasi telanjang) supaya tercatat di
+        // Transaksi Stok, bisa dicetak, dan bisa dihapus/dibalik. actual_qty 0 →
+        // selisih negatif → job menurunkan on_hand rak ini menjadi 0.
+        $adjustment = app(StockAdjustmentService::class)->create([
+            'transaction_date' => now()->toDateTimeString(),
+            'location_id' => $locationId,
+            'notes' => "Keluarkan SKU dari rak {$bin->bin_final_code}",
+            'created_by' => $createdBy,
+            'items' => [[
+                'item_id' => $itemId,
+                'bin_id' => $binId,
+                'actual_qty' => 0,
+                'notes' => "Dikeluarkan dari rak {$bin->bin_final_code}",
+            ]],
+        ]);
 
-                    $inventoryService->adjust([
-                        'item_id' => $itemId,
-                        'location_id' => $locationId,
-                        'bin_id' => $binId,
-                        'qty' => -$qty,
-                        'batch_no' => $row->batch_no ?? '',
-                        'serial_no' => $row->serial_no ?? '',
-                        'created_by' => "user:{$userId}",
-                    ]);
-
-                    $removed += $qty;
-                }
-
-                return [
-                    'bin_id' => $binId,
-                    'item_id' => $itemId,
-                    'removed_qty' => $removed,
-                ];
-            });
-        });
+        return [
+            'bin_id' => $binId,
+            'item_id' => $itemId,
+            'removed_qty' => $onHand,
+            'adjustment_no' => $adjustment->adjustment_no,
+        ];
     }
 }

@@ -511,7 +511,7 @@ class LocationBinController extends Controller
                 $locationId,
                 $binId,
                 $request->validated()['item_id'],
-                (string) ($request->user()?->id ?? ''),
+                (string) ($request->user()?->name ?? $request->user()?->email ?? ''),
             );
 
             return $this->successResponse($result, 'SKU berhasil dikeluarkan dari rak.');

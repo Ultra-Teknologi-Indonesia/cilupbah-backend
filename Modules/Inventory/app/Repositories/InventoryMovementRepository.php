@@ -101,7 +101,15 @@ class InventoryMovementRepository
             ->selectRaw($pickOrder('so.salesorder_no') . ' AS pick_order_no')
             ->selectRaw("(CASE WHEN {$isPick} THEN (SELECT COUNT(DISTINCT pi.order_id) {$pickOrderScope}) END) AS pick_order_count")
             ->selectRaw('COALESCE((SELECT COALESCE(so.channel_order_no, so.no_ref) FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), ' . $pickOrder('COALESCE(so.channel_order_no, so.no_ref)') . ') AS ref_no')
-            ->selectRaw('COALESCE((SELECT so.customer_name FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), ' . $pickOrder('so.customer_name') . ') AS ref_note')
+            ->selectRaw(
+                'COALESCE('
+                . '(SELECT so.customer_name FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), '
+                . '(SELECT COALESCE(sai.notes, sa.notes) FROM stock_adjustments sa'
+                . '  LEFT JOIN stock_adjustment_items sai ON sai.stock_adjustment_id = sa.id AND sai.item_id = inventory_movements.item_id'
+                . '  WHERE sa.adjustment_no = inventory_movements.transaction_number AND sa.deleted_at IS NULL LIMIT 1), '
+                . $pickOrder('so.customer_name')
+                . ') AS ref_note'
+            )
 
             ->selectRaw(
                 'COALESCE('
