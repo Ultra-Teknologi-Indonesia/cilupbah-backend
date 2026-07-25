@@ -46,9 +46,12 @@ class JournalRepository
 
     public function nextJournalNo(): string
     {
+        // Only canonical GJ-<digits> numbers count toward the max; a non-numeric
+        // same-prefix value would otherwise win the string sort and reset the sequence.
         $last = Journal::query()
+            ->whereRaw("journal_no ~ '^GJ-[0-9]+$'")
             ->lockForUpdate()
-            ->orderByDesc('journal_no')
+            ->orderByRaw("CAST(SUBSTRING(journal_no FROM 4) AS BIGINT) DESC")
             ->value('journal_no');
 
         $seq = $last ? ((int) substr($last, 3)) + 1 : 1;

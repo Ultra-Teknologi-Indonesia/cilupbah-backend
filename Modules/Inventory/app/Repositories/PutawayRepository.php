@@ -175,16 +175,15 @@ class PutawayRepository
     {
         $prefix = "PUT-";
 
-        $last = Putaway::where('putaway_no', 'like', "{$prefix}%")
-            ->orderByDesc('putaway_no')
+        // Only canonical PUT-<digits> numbers count toward the max; this excludes
+        // seeder rows (PUT-SEED-N) and correction suffixes that would otherwise
+        // pollute the sort and reset the sequence to 1 (duplicate-key violation).
+        $last = Putaway::whereRaw("putaway_no ~ '^PUT-[0-9]+$'")
+            ->orderByRaw("CAST(SUBSTRING(putaway_no FROM 5) AS INTEGER) DESC")
             ->value('putaway_no');
 
-        if ($last) {
-            $seq = (int) substr($last, strlen($prefix)) + 1;
-        } else {
-            $seq = 1;
-        }
+        $seq = $last ? ((int) substr($last, strlen($prefix)) + 1) : 1;
 
-        return $prefix . str_pad($seq, 9, '0', STR_PAD_LEFT);
+        return $prefix . str_pad((string) $seq, 9, '0', STR_PAD_LEFT);
     }
 }
