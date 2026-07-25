@@ -89,12 +89,24 @@ jobs:
             HAS_MIGRATION_CHANGE=$(echo "$CHANGED_FILES" | grep -c '/migrations/' || true)
             HAS_SEEDER_CHANGE=$(echo "$CHANGED_FILES" | grep -ci '/seeders/' || true)
 
+            # ── Compose files ─────────────────────────────────────────────────
+            # Sertakan override lokal `docker-compose.prod-local.yml` bila ada di
+            # server (mis. server bersama: menambah service `db` Postgres container
+            # terisolasi — lihat DEPLOY-DOCKER-VPS.md §5.3). File ini sengaja TIDAK
+            # di-commit (berisi password DB) & tidak terhapus git reset (untracked).
+            # Tanpa override, deploy jalan apa adanya (Postgres native host).
+            COMPOSE="docker compose -f docker-compose.production.yml"
+            if [ -f docker-compose.prod-local.yml ]; then
+              COMPOSE="$COMPOSE -f docker-compose.prod-local.yml"
+              echo "Override docker-compose.prod-local.yml terdeteksi — disertakan."
+            fi
+
             # ── Rollback handler ──────────────────────────────────────────────
             rollback() {
               echo "⚠️  Deployment failed — rolling back to $PREVIOUS_COMMIT"
               git reset --hard "$PREVIOUS_COMMIT"
               # Restart containers to pick up rolled-back code
-              docker compose -f docker-compose.production.yml restart app horizon scheduler
+              $COMPOSE restart app horizon scheduler
               echo "✅ Rollback complete"
               exit 1
             }
@@ -103,7 +115,7 @@ jobs:
             # ── Rebuild containers ONLY if Docker config changed ──────────────
             if [ "$HAS_DOCKER_CHANGE" -gt 0 ]; then
               echo "Docker config changed — rebuilding containers..."
-              docker compose -f docker-compose.production.yml up -d --build --remove-orphans
+              $COMPOSE up -d --build --remove-orphans
               echo "Waiting for containers to be ready..."
               sleep 10
             else
