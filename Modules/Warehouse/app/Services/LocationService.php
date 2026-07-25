@@ -29,7 +29,7 @@ class LocationService
             return null;
         }
 
-        return $this->locationRepository->findById($id);
+        return $this->locationRepository->findById($id, withBins: false);
     }
 
     protected function isValidUuid(string $id): bool

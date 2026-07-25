@@ -42,9 +42,13 @@ class LocationRepository
             ->appends(request()->query());
     }
 
-    public function findById(string $id): ?Location
+    public function findById(string $id, bool $withBins = true): ?Location
     {
-        return Location::with(['bins', 'zones.bins', 'channelWarehouses', 'village.district.city.province'])->find($id);
+        $relations = $withBins
+            ? ['bins', 'zones.bins', 'channelWarehouses', 'village.district.city.province']
+            : ['zones', 'channelWarehouses', 'village.district.city.province'];
+
+        return Location::with($relations)->find($id);
     }
 
     public function exists(string $id): bool
