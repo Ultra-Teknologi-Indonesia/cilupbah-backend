@@ -237,8 +237,6 @@ class ProcessPutawayItemJob implements ShouldQueue
 
     private function recomputeInboundStatus(string $inboundId): void
     {
-        // Putaway TIDAK lagi menentukan status penerimaan (status inbound = siklus
-        // penerimaan saja; qty penuh / admin close = COMPLETED di InboundService).
-        // Sengaja no-op agar partial putaway tak pernah menutup penerimaan yang berjalan.
+
     }
 }

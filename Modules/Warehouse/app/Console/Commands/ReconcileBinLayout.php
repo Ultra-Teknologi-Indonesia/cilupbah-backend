@@ -9,18 +9,6 @@ use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Modules\Warehouse\Services\BinLayoutImporter;
 
-/**
- * Rekonsiliasi layout rak sebuah/beberapa gudang ke daftar kode rak otoritatif
- * (bundled di database/data/wh-*-bin-codes.csv):
- *   - BUAT kode rak baru yang belum ada (+ zona), aditif/idempoten.
- *   - HAPUS rak lama (dummy/stale) yang TIDAK ada di daftar baru DAN aman dihapus
- *     (tanpa stok & tanpa history/referensi). Bin DEFAULT/inbound dipertahankan.
- *   - Rak lama yang masih menyimpan stok/history TIDAK dihapus → dilaporkan
- *     (butuh migrasi stok/history dulu = tahap terpisah).
- *
- * Default = DRY-RUN (tidak menulis). Tambahkan --commit untuk menerapkan.
- * Bagian LAYOUT ini independen dari katalog produk (tidak menyentuh stok).
- */
 class ReconcileBinLayout extends Command
 {
     protected $signature = 'warehouse:reconcile-bin-layout
@@ -30,13 +18,11 @@ class ReconcileBinLayout extends Command
 
     protected $description = 'Rekonsiliasi kode rak gudang ke daftar otoritatif (buat baru + hapus dummy aman). Dry-run default.';
 
-    /** location_code => file kode rak bundled */
     private const TARGETS = [
         'WH-PUSAT' => 'wh-pusat-bin-codes.csv',
         'WH-KECIL' => 'wh-kecil-bin-codes.csv',
     ];
 
-    /** Tabel + kolom yang mereferensi location_bins (untuk cek aman-hapus). */
     private const REF_TABLES = [
         ['inventories', ['bin_id']],
         ['inventory_movements', ['bin_id']],
@@ -48,10 +34,8 @@ class ReconcileBinLayout extends Command
 
     private bool $commit = false;
 
-    /** @var array<string,array<int,array<string,mixed>>> */
     private array $reports = [];
 
-    /** @var array<int,array{0:string,1:string}> daftar (tabel,kolom) yang benar-benar ada */
     private array $refCols = [];
 
     public function handle(): int
@@ -86,7 +70,6 @@ class ReconcileBinLayout extends Command
         return self::SUCCESS;
     }
 
-    /** @return array<string,int>|null */
     private function processLocation(string $code): ?array
     {
         $this->line("── {$code} ──");
@@ -120,10 +103,8 @@ class ReconcileBinLayout extends Command
         $existingCodes = $existing->pluck('bin_final_code')->all();
         $existingSet = array_flip($existingCodes);
 
-        // BUAT: kode baru yang belum ada
         $layout = app(BinLayoutImporter::class)->import($location, $newCodes, $this->commit);
 
-        // HAPUS: bin lama di luar daftar baru & bukan system/inbound
         $systemPreserved = 0;
         $deletable = 0;
         $blocked = 0;
@@ -132,11 +113,11 @@ class ReconcileBinLayout extends Command
         foreach ($existing as $bin) {
             if (isset($newSet[$bin->bin_final_code])) {
                 $keep++;
-                continue; // ada di daftar baru → dipertahankan
+                continue; 
             }
             if ($bin->is_inbound) {
                 $systemPreserved++;
-                continue; // DEFAULT/inbound → jangan hapus
+                continue; 
             }
 
             $refs = $this->refsFor($bin->id);
@@ -207,7 +188,6 @@ class ReconcileBinLayout extends Command
             ->exists();
     }
 
-    /** @return array<int,array{0:string,1:string}> */
     private function resolveRefColumns(): array
     {
         $cols = [];

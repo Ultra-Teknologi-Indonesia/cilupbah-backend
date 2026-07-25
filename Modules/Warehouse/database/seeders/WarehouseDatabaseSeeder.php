@@ -43,7 +43,6 @@ class WarehouseDatabaseSeeder extends Seeder
             ]);
         }
 
-        // Kode rak sesuai layout Jubelio client (aditif, idempoten).
         $this->call(WhPusatBinLayoutSeeder::class);
         $this->call(WhKecilBinLayoutSeeder::class);
     }

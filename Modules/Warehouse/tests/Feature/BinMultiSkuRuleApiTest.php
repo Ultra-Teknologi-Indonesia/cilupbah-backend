@@ -63,7 +63,6 @@ class BinMultiSkuRuleApiTest extends TestCase
             ->assertJsonPath('data.0.matched_count', 2);
     }
 
-    /** @return array<string, int> pattern => matched_count */
     private function suggestionMap(Location $loc): array
     {
         $data = $this->actingAs($this->user, 'sanctum')
@@ -87,7 +86,6 @@ class BinMultiSkuRuleApiTest extends TestCase
         $this->assertArrayHasKey('O-*', $map);
     }
 
-    /** Kasus O-LX-KX-KANTOR: prefix dalam yang kelompoknya kecil tetap ditawarkan. */
     public function test_suggestions_include_a_deep_prefix_that_narrows_its_parent(): void
     {
         $loc = $this->kecil();
@@ -103,7 +101,6 @@ class BinMultiSkuRuleApiTest extends TestCase
         $this->assertSame(7, $map['O-*'] ?? null);
     }
 
-    /** Prefix lebih dalam yang mengenai rak yang sama persis dengan induknya dibuang. */
     public function test_suggestions_drop_deeper_prefixes_that_add_nothing(): void
     {
         $loc = $this->kecil();
@@ -117,7 +114,6 @@ class BinMultiSkuRuleApiTest extends TestCase
         $this->assertArrayNotHasKey('LX-BX-KX-*', $map);
     }
 
-    /** Prefix dalam yang kelompoknya besar tidak ditawarkan supaya daftarnya tidak meledak. */
     public function test_suggestions_skip_large_deep_groups(): void
     {
         $loc = $this->kecil();

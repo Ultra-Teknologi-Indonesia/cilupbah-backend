@@ -59,10 +59,6 @@ class BinImportTemplateTest extends TestCase
         $this->assertSame('GK-14-K1-B2', $sheet->getCell('A3')->getValue());
     }
 
-    /**
-     * Template yang diunduh lalu langsung di-upload kembali harus jadi no-op —
-     * contohnya adalah kode rak yang sudah ada, bukan placeholder yang bikin rak sampah.
-     */
     public function test_unmodified_template_round_trips_without_creating_bins(): void
     {
         $loc = Location::factory()->create();
@@ -82,11 +78,6 @@ class BinImportTemplateTest extends TestCase
         $this->assertSame(1, LocationBin::where('location_id', $loc->id)->count());
     }
 
-    /**
-     * Sheet aktif ikut tersimpan saat user menyimpan file di Excel. Kalau ia menutup
-     * template dengan "Instruksi" terpilih, importer tidak boleh membaca teks instruksi
-     * sebagai kode rak.
-     */
     public function test_import_reads_pengisian_data_even_when_another_sheet_is_active(): void
     {
         $loc = Location::factory()->create();

@@ -47,8 +47,6 @@ class ShopeeEscrowMapper
             'is_settled'               => $settlement !== null,
         ];
 
-        // Pajak & asuransi tak ada di Order API Shopee — hanya muncul di escrow.
-        // Ditulis HANYA bila tersedia agar tidak menimpa nilai dengan null.
         $tax = $this->num($income, 'escrow_tax')
             ?? $this->sumPresent($income, ['final_product_vat_tax', 'final_shipping_vat_tax']);
         if ($tax !== null) {

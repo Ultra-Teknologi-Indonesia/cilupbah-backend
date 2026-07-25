@@ -14,10 +14,6 @@ use Maatwebsite\Excel\Concerns\WithTitle;
 use Modules\Report\Support\ChannelLabel;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-/**
- * Laporan Penjualan Produk — 1 baris per baris pesanan (item-level).
- * Flat export, chunked lewat FromQuery agar aman untuk ratusan ribu baris.
- */
 class SalesProductExport implements FromQuery, WithHeadings, WithMapping, WithColumnWidths, WithColumnFormatting, WithStyles, WithTitle
 {
     private const MONEY_FORMAT = '#,##0';

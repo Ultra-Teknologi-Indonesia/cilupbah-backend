@@ -60,10 +60,6 @@ class BinMultiSkuRuleServiceTest extends TestCase
         $this->assertFalse($service->allowsMultiSku($shelf));
     }
 
-    /**
-     * Kasus yang menjatuhkan aturan "segmen pertama saja": O-LX-KX-KANTOR berprefix O,
-     * sama dengan 10.457 rak shelving, tapi harus boleh multi-SKU.
-     */
     public function test_mid_string_pattern_separates_bins_sharing_a_prefix(): void
     {
         $loc = $this->makeLocation();
@@ -91,7 +87,6 @@ class BinMultiSkuRuleServiceTest extends TestCase
         $this->assertSame(1, app(BinMultiSkuRuleService::class)->countMatching($loc->id, 'gk-*'));
     }
 
-    /** `_` adalah wildcard satu-karakter di ILIKE — harus di-escape supaya literal. */
     public function test_underscore_is_literal_not_a_sql_wildcard(): void
     {
         $loc = $this->makeLocation();
@@ -115,7 +110,6 @@ class BinMultiSkuRuleServiceTest extends TestCase
         $this->assertSame(1, app(BinMultiSkuRuleService::class)->countMatching($loc->id, 'GK%1'));
     }
 
-    /** Parity: pencocokan in-memory dan hitungan SQL harus setuju. */
     public function test_question_mark_is_literal_in_both_engines(): void
     {
         $loc = $this->makeLocation();

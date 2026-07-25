@@ -14,7 +14,7 @@ class GenerateLocationBinRequest extends FormRequest
     public function rules(): array
     {
         return [
-            // Segmen pertama = ZONA (kode custom bebas, tanpa angka, tanpa iterasi).
+
             'zone_code' => 'required|string|max:20',
             'row_code' => 'required|string|max:10',
             'qty_row' => 'required|integer|min:1',

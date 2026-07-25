@@ -6,13 +6,6 @@ use Illuminate\Database\Seeder;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Services\BinLayoutImporter;
 
-/**
- * Seed kode rak WH-PUSAT sesuai layout Jubelio client (bundled di
- * database/data/wh-pusat-bin-codes.csv). Aditif & idempoten.
- *
- * WH-PUSAT bersifat "bebas" (bukan strict 1 rak = 1 SKU), tapi seeder ini
- * hanya membuat kode rak + zona — tidak menyentuh stok.
- */
 class WhPusatBinLayoutSeeder extends Seeder
 {
     public function run(): void

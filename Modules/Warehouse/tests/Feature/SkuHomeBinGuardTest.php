@@ -243,11 +243,6 @@ class SkuHomeBinGuardTest extends TestCase
         $this->assertNull(app(SkuHomeBinGuard::class)->currentHomeBinId($loc->id, $variant->id));
     }
 
-    /**
-     * Invariant yang menopang recommended_bin_locked di putaway dan mobile picking
-     * skip-scan-rak: satu SKU tetap hanya boleh menempati satu rak, walaupun rak
-     * tujuannya cocok pola multi-SKU. Melonggarkan ini bukan bagian dari fitur.
-     */
     public function test_sku_with_home_bin_is_still_blocked_from_a_multi_sku_bin(): void
     {
         $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);

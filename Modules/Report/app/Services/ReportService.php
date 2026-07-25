@@ -207,8 +207,6 @@ class ReportService
             $onlineMappings = $this->repository->barcodeOnlineMappings($variants->pluck('id'));
         }
 
-        // Rak selalu diambil dari gudang kecil, tidak dari gudang si pencetak:
-        // label yang dicetak tim gudang pusat pun menunjuk rak gudang kecil.
         $homeBins = $variants->isNotEmpty()
             ? $this->repository->barcodeKecilHomeBins($variants->pluck('id'))
             : [];

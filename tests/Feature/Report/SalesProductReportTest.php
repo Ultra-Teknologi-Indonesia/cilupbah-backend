@@ -110,16 +110,16 @@ class SalesProductReportTest extends TestCase
         $cells = $export->map($row);
 
         $this->assertCount(13, $cells);
-        $this->assertSame('CASE-BLACK-15', $cells[0]);   // SKU
-        $this->assertSame('Case Keren', $cells[1]);       // Nama Barang
-        $this->assertSame('Gudang Kecil', $cells[3]);     // Lokasi
-        $this->assertSame('SHOPEE', $cells[4]);           // Sumber
-        $this->assertSame('Sari', $cells[6]);             // Pelanggan
-        $this->assertSame(2.0, $cells[8]);                // QTY
-        $this->assertSame(100000.0, $cells[9]);           // amount
-        $this->assertSame('Toko Uji', $cells[10]);        // Nama Toko
-        $this->assertSame('COMPLETED', $cells[11]);       // Status
-        $this->assertSame('warna hitam ya', $cells[12]);  // Catatan
+        $this->assertSame('CASE-BLACK-15', $cells[0]);   
+        $this->assertSame('Case Keren', $cells[1]);       
+        $this->assertSame('Gudang Kecil', $cells[3]);     
+        $this->assertSame('SHOPEE', $cells[4]);           
+        $this->assertSame('Sari', $cells[6]);             
+        $this->assertSame(2.0, $cells[8]);                
+        $this->assertSame(100000.0, $cells[9]);           
+        $this->assertSame('Toko Uji', $cells[10]);        
+        $this->assertSame('COMPLETED', $cells[11]);       
+        $this->assertSame('warna hitam ya', $cells[12]);  
     }
 
     public function test_filters_by_item_ids(): void
@@ -160,7 +160,6 @@ class SalesProductReportTest extends TestCase
     {
         $item = $this->orderWithItem();
 
-        // item belum di-download (item_id NULL) di order yang sama
         SalesOrderItem::create([
             'order_id'    => $item->order_id,
             'item_id'     => null,

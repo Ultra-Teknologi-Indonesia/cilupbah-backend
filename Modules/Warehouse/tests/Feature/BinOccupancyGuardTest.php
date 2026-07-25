@@ -281,7 +281,6 @@ class BinOccupancyGuardTest extends TestCase
         $this->assertTrue(app(BinOccupancyGuard::class)->isBinFreeFor($bin->id, $newcomer->id));
     }
 
-    /** Regresi: rak yang tidak cocok pola harus tetap ketat walau aturan lain ada. */
     public function test_kecil_bin_not_matching_rule_still_rejects_second_sku(): void
     {
         $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
@@ -304,7 +303,6 @@ class BinOccupancyGuardTest extends TestCase
         app(BinOccupancyGuard::class)->assertBinFitsSku($bin->id, $newcomer->id);
     }
 
-    /** Regresi: fitur ini tidak boleh memperketat apa pun di gudang pusat. */
     public function test_pusat_stays_open_even_without_any_rule(): void
     {
         $loc = $this->makeLocation(Location::SYSTEM_PUSAT_CODE);

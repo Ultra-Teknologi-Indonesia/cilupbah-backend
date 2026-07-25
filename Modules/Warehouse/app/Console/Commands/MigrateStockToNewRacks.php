@@ -8,21 +8,6 @@ use Illuminate\Support\Facades\Schema;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 
-/**
- * Migrasi stok + history dari rak LAMA (di luar daftar kode rak otoritatif) ke
- * rak BARU, lalu hapus rak lama. Dipakai untuk membereskan env yang masih punya
- * rak dummy ber-stok/history (mis. staging) menuju layout bersih.
- *
- * Perilaku (sesuai keputusan):
- *   - Setiap SKU ber-stok di rak lama di-AUTO-ASSIGN ke satu rak baru KOSONG
- *     (WH-KECIL strict: 1 SKU/rak; WH-PUSAT bebas: tetap 1 rak/SKU utk kebersihan).
- *   - Stok (inventory) dipindah/di-merge ke rak baru.
- *   - History (inventory_movements/putaway_items/transfer_items/bin_transfer_items/
- *     inbound_receipts) di-RE-POINT per-item ke rak tujuan (item tanpa stok → DEFAULT).
- *   - Rak lama (sudah bebas referensi) DIHAPUS. Bin DEFAULT/inbound dipertahankan.
- *
- * Default = DRY-RUN. Tambahkan --commit untuk menerapkan.
- */
 class MigrateStockToNewRacks extends Command
 {
     protected $signature = 'warehouse:migrate-stock-to-new-racks
@@ -40,7 +25,6 @@ class MigrateStockToNewRacks extends Command
     private bool $commit = false;
     private array $reports = [];
 
-    /** @var array<int,array{0:string,1:string}> (tabel,kolom) FK ke location_bins, di-resolve dinamis. */
     private array $refCols = [];
 
     public function handle(): int
@@ -91,7 +75,6 @@ class MigrateStockToNewRacks extends Command
         $path = dirname(__DIR__, 3).'/database/data/'.self::TARGETS[$code];
         $newCodes = array_flip(array_filter(array_map('trim', file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES))));
 
-        // rak lama = bukan di daftar baru & bukan inbound
         $oldBins = LocationBin::where('location_id', $location->id)
             ->where('is_inbound', false)
             ->get(['id', 'bin_final_code'])
@@ -103,18 +86,15 @@ class MigrateStockToNewRacks extends Command
             return ['assigned' => 0, 'qty' => 0, 'history_repoint' => 0, 'old_deleted' => 0, 'old_total' => 0];
         }
 
-        // item yang punya stok di rak lama
         $stockRows = DB::table('inventories')
             ->whereIn('bin_id', $oldBinIds)->where('on_hand', '>', 0)
             ->select('item_id', DB::raw('SUM(on_hand) as qty'))
             ->groupBy('item_id')->get();
         $itemsWithStock = $stockRows->pluck('qty', 'item_id')->all();
 
-        // item yang punya referensi (stok 0 pun) di rak lama → butuh target history
         $refItems = $this->itemsReferencingOldBins($oldBinIds);
         $itemsNoStock = array_values(array_diff($refItems, array_keys($itemsWithStock)));
 
-        // rak baru KOSONG utk di-assign (tak ada on_hand)
         $occupied = DB::table('inventories')->where('location_id', $location->id)
             ->where('on_hand', '>', 0)->distinct()->pluck('bin_id')->filter()->all();
         $emptyNewRacks = LocationBin::where('location_id', $location->id)
@@ -130,7 +110,6 @@ class MigrateStockToNewRacks extends Command
             return null;
         }
 
-        // assign: item ber-stok → rak baru kosong (distinct); item tanpa stok → DEFAULT
         $itemTarget = [];
         $assignRows = [];
         $rackCodes = $emptyNewRacks->keys()->all();
@@ -142,10 +121,9 @@ class MigrateStockToNewRacks extends Command
             $i++;
         }
         foreach ($itemsNoStock as $itemId) {
-            $itemTarget[$itemId] = $defaultBin; // hanya re-point history, tak ada stok
+            $itemTarget[$itemId] = $defaultBin; 
         }
 
-        // hitung history yang akan di-repoint
         $histCount = $this->countHistory($oldBinIds);
 
         $this->reports["{$code}_assignment"] = $assignRows;
@@ -172,7 +150,6 @@ class MigrateStockToNewRacks extends Command
         return $stats;
     }
 
-    /** Pindahkan SEMUA baris inventory di rak lama ke target (merge sesuai unique key). */
     private function moveInventory(string $locationId, array $oldBinIds, array $itemTarget, string $defaultBin): void
     {
         $rows = DB::table('inventories')->whereIn('bin_id', $oldBinIds)->get();
@@ -200,11 +177,6 @@ class MigrateStockToNewRacks extends Command
         }
     }
 
-    /**
-     * Re-point kolom bin di semua tabel history ke rak tujuan (per-item; tabel tanpa
-     * item_id → DEFAULT). Coba bulk; jika bentrok unique constraint, fallback per-baris
-     * (re-point yang bisa, buang baris duplikat) supaya rak lama pasti bebas referensi.
-     */
     private function repointHistory(array $oldBinIds, array $itemTarget, string $defaultBin): void
     {
         $byTarget = [];
@@ -230,11 +202,10 @@ class MigrateStockToNewRacks extends Command
         }
     }
 
-    /** Fallback per-baris: re-point tiap baris; jika bentrok unique → hapus baris (duplikat). */
     private function repointRowWise(string $table, string $col, array $oldBinIds, array $itemTarget, string $defaultBin, bool $hasItem): void
     {
         if (! Schema::hasColumn($table, 'id')) {
-            // tanpa PK: tak bisa re-point aman → hapus referensi rak lama
+
             DB::table($table)->whereIn($col, $oldBinIds)->delete();
             return;
         }
@@ -272,13 +243,6 @@ class MigrateStockToNewRacks extends Command
         return $n;
     }
 
-    /**
-     * Semua (tabel,kolom) yang FK ke location_bins, KECUALI inventories (ditangani
-     * moveInventory) dan locations.default_bin_id (jangan disentuh). Resolve dinamis
-     * dari information_schema agar tak ada tabel yang terlewat.
-     *
-     * @return array<int,array{0:string,1:string}>
-     */
     private function resolveBinRefColumns(): array
     {
         $rows = DB::select(

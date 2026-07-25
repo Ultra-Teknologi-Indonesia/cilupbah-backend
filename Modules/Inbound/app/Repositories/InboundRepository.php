@@ -186,10 +186,6 @@ class InboundRepository
             ->appends(request()->query());
     }
 
-    /**
-     * Total akumulasi qty seluruh item pada 1 inbound (lintas halaman, bukan
-     * hanya halaman aktif) — untuk ringkasan "Total Qty" di detail penerimaan.
-     */
     public function getItemTotals(string $inboundId): array
     {
         $row = InboundItem::query()

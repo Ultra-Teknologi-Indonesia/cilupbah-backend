@@ -77,20 +77,20 @@ class CustomerListReportTest extends TestCase
         $cells = (new CustomerListExport($query))->map($query->get()->first());
 
         $this->assertCount(12, $cells);
-        $this->assertSame('Emalia Putri', $cells[0]);          // Nama Kontak
-        $this->assertSame('emalia@example.test', $cells[1]);    // Email
-        $this->assertSame('08123456789', $cells[2]);           // No Telepon
-        $this->assertSame('Kota Jakarta Utara', $cells[4]);    // Kota
-        $this->assertSame('WNI', $cells[8]);                   // Kewarganegaraan
-        $this->assertSame('shopee', $cells[10]);               // Sumber Pelanggan
-        $this->assertSame('Reseller', $cells[11]);             // Kategori Pelanggan
+        $this->assertSame('Emalia Putri', $cells[0]);          
+        $this->assertSame('emalia@example.test', $cells[1]);    
+        $this->assertSame('08123456789', $cells[2]);           
+        $this->assertSame('Kota Jakarta Utara', $cells[4]);    
+        $this->assertSame('WNI', $cells[8]);                   
+        $this->assertSame('shopee', $cells[10]);               
+        $this->assertSame('Reseller', $cells[11]);             
     }
 
     public function test_only_customers_within_date_range(): void
     {
         $inRange = $this->customer(['name' => 'A'], '2026-07-10 10:00:00');
         $this->customer(['name' => 'B'], '2026-06-01 10:00:00');
-        // supplier tidak boleh muncul
+
         $this->customer(['name' => 'Supplier X', 'type' => Contact::TYPE_SUPPLIER], '2026-07-10 10:00:00');
 
         $rows = app(CustomerListReportService::class)

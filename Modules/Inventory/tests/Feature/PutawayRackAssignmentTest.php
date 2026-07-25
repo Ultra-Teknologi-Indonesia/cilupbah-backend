@@ -15,12 +15,6 @@ use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 
-/**
- * Aturan: SKU harus punya rak yang di-assign admin sebelum bisa ditempatkan.
- * Berlaku SEMUA gudang (bukan hanya strict-bin WH-KECIL). Validasi ada di
- * backend (PutawayService::processItem) dan flag is_rack_assigned diekspos di
- * endpoint daftar item supaya mobile bisa menyembunyikan tombol scan rak.
- */
 class PutawayRackAssignmentTest extends TestCase
 {
     use RefreshDatabase;
@@ -36,8 +30,7 @@ class PutawayRackAssignmentTest extends TestCase
 
     private function regularLocation(): Location
     {
-        // Gudang non-strict (bukan WH-KECIL) untuk membuktikan aturan berlaku
-        // di semua gudang.
+
         return Location::factory()->create([
             'location_code' => 'WH-REG-' . Str::upper(Str::random(4)),
         ]);
@@ -71,8 +64,7 @@ class PutawayRackAssignmentTest extends TestCase
 
     private function assignRack(Location $loc, LocationBin $bin, ProductVariant $variant, int $onHand = 5): void
     {
-        // "Assign rak admin" dimaterialisasi sebagai stok di rak nyata
-        // (non-inbound, acknowledged) — persis yang dibaca SkuHomeBinGuard.
+
         Inventory::create([
             'item_id' => $variant->id,
             'location_id' => $loc->id,
@@ -114,7 +106,6 @@ class PutawayRackAssignmentTest extends TestCase
         $inbound = $this->makeBin($loc, 'INB', true);
         $target = $this->makeBin($loc, 'RAK');
 
-        // SKU tanpa rak yang di-assign (tidak ada stok di rak nyata).
         $variant = $this->makeVariant();
         $putaway = $this->makePutaway($loc);
         $item = $this->addItem($putaway, $inbound, $variant);
@@ -130,7 +121,6 @@ class PutawayRackAssignmentTest extends TestCase
             $res->json('message'),
         );
 
-        // Status putaway tidak boleh ikut berubah saat ditolak.
         $this->assertSame(
             Putaway::STATUS_NOT_STARTED,
             $putaway->fresh()->status,
@@ -144,7 +134,7 @@ class PutawayRackAssignmentTest extends TestCase
         $home = $this->makeBin($loc, 'HOME');
 
         $variant = $this->makeVariant();
-        $this->assignRack($loc, $home, $variant); // admin sudah assign rak
+        $this->assignRack($loc, $home, $variant); 
 
         $putaway = $this->makePutaway($loc);
         $item = $this->addItem($putaway, $inbound, $variant);
@@ -154,8 +144,6 @@ class PutawayRackAssignmentTest extends TestCase
             ['destination_bin_id' => $home->id, 'qty' => 1],
         );
 
-        // Apa pun hasil pemrosesan lanjutannya, guard rak TIDAK boleh menolak
-        // dengan pesan "belum diassign".
         $this->assertStringNotContainsString(
             'Rak belum diassign',
             (string) $res->json('message'),

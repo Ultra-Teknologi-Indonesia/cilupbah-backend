@@ -727,14 +727,6 @@ class ReportRepository
             : ProductVariant::whereIn('id', $ids)->orderBy('sku')->get();
     }
 
-    /**
-     * Rak "rumah" tiap SKU di gudang kecil. Definisi rak rumah disamakan dengan
-     * SkuHomeBinGuard: rak nyata (bukan rak inbound, stoknya sudah diakui) yang
-     * masih memegang stok. Lokasi dikunci ke WH-KECIL supaya label yang dicetak
-     * dari gudang mana pun tetap menunjuk rak gudang kecil.
-     *
-     * @return array<string, string> item_id => bin_final_code
-     */
     public function barcodeKecilHomeBins($variantIds): array
     {
         $locationId = Location::where('location_code', Location::SYSTEM_KECIL_CODE)->value('id');
@@ -751,9 +743,7 @@ class ReportRepository
             ->where('location_bins.is_inbound', false)
             ->where('location_bins.is_stock_acknowledged', true)
             ->where('location_bins.bin_final_code', '!=', 'DEFAULT')
-            // Satu SKU semestinya hanya menempati satu rak di WH-KECIL, tapi bila
-            // stoknya sempat tercecer, rak dengan stok terbanyak yang dicetak:
-            // pluck memakai baris terakhir, jadi urutkan menaik.
+
             ->orderBy('inventories.on_hand')
             ->pluck('location_bins.bin_final_code', 'inventories.item_id')
             ->all();

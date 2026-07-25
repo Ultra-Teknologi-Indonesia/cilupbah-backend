@@ -13,10 +13,6 @@ use Maatwebsite\Excel\Concerns\WithTitle;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-/**
- * Daftar Penjualan — Referensi Transaksi "Pesanan" (1 baris per order).
- * Flat export, chunked lewat FromQuery agar aman untuk puluhan ribu baris.
- */
 class SalesListPesananExport implements FromQuery, WithHeadings, WithMapping, WithColumnWidths, WithColumnFormatting, WithStyles, WithTitle
 {
     private const MONEY_FORMAT = '#,##0';
@@ -74,10 +70,10 @@ class SalesListPesananExport implements FromQuery, WithHeadings, WithMapping, Wi
             $order->shipping_phone ?? '',
             $order->courier_name ?: ($order->shipping_provider ?? ''),
             $order->channel_status ?: ($order->status ?? ''),
-            (float) ($order->total_disc ?? 0),         // "Diskon" — diskon penjual (seller_discount/voucher); Shopee 0 di order API
-            (float) ($order->platform_voucher ?? 0),   // "Diskon Lainnya" — diskon platform (TikTok/Lazada); other_discount tak pernah diisi channel
-            (float) ($order->transaction_fee ?? 0),   // "Potongan Biaya" — biaya transaksi channel (dari sync escrow/statement/finance)
-            (float) ($order->service_fee ?? 0),        // "Biaya Lainnya" — biaya layanan channel (dari sync escrow/statement/finance)
+            (float) ($order->total_disc ?? 0),         
+            (float) ($order->platform_voucher ?? 0),   
+            (float) ($order->transaction_fee ?? 0),   
+            (float) ($order->service_fee ?? 0),        
             (float) ($order->total_tax ?? 0),
             (float) ($order->shipping_cost ?? 0),
             (float) ($order->insurance_cost ?? 0),

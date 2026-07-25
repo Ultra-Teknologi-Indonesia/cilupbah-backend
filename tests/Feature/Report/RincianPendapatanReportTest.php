@@ -117,16 +117,16 @@ class RincianPendapatanReportTest extends TestCase
 
         $this->assertCount(23, $cells);
         $this->assertSame('FAKTUR', $cells[1]);
-        $this->assertSame('SP-260712E5555P08', $cells[2]);       // REF
-        $this->assertSame('INV-006817356', $cells[3]);           // No Pesanan
-        $this->assertSame('SHOPEE', $cells[6]);                  // Channel
-        $this->assertSame(200000.0, $cells[9]);                  // Sub Total
-        $this->assertSame(110000.0, $cells[10]);                 // Diskon
-        $this->assertSame('TIDAK', $cells[14]);                  // Termasuk Pajak
-        $this->assertSame(90000.0, $cells[18]);                  // Nett Sales
-        $this->assertSame(1000.0, $cells[19]);                   // HPP
-        $this->assertSame(89000.0, $cells[20]);                  // Gross Profit
-        $this->assertSame(17650.0, $cells[21]);                  // Nilai Escrow
+        $this->assertSame('SP-260712E5555P08', $cells[2]);       
+        $this->assertSame('INV-006817356', $cells[3]);           
+        $this->assertSame('SHOPEE', $cells[6]);                  
+        $this->assertSame(200000.0, $cells[9]);                  
+        $this->assertSame(110000.0, $cells[10]);                 
+        $this->assertSame('TIDAK', $cells[14]);                  
+        $this->assertSame(90000.0, $cells[18]);                  
+        $this->assertSame(1000.0, $cells[19]);                   
+        $this->assertSame(89000.0, $cells[20]);                  
+        $this->assertSame(17650.0, $cells[21]);                  
     }
 
     public function test_per_barang_mode_maps_28_columns_with_profit(): void
@@ -138,15 +138,15 @@ class RincianPendapatanReportTest extends TestCase
         $cells = (new RincianPendapatanPerBarangExport($query))->map($row);
 
         $this->assertCount(28, $cells);
-        $this->assertSame('AG-BLACK-IP-16', $cells[10]);   // SKU
-        $this->assertSame(1.0, $cells[11]);                // QTY
-        $this->assertSame(100000.0, $cells[12]);           // Harga
-        $this->assertSame(45000.0, $cells[14]);            // Diskon Per Barang
-        $this->assertSame(7700.0, $cells[19]);             // Potongan Biaya
-        $this->assertSame(1250.0, $cells[23]);             // Biaya Proses Pesanan
-        $this->assertSame(1000.0, $cells[25]);             // HPP
-        $this->assertSame(46050.0, $cells[26]);            // Nett Sales
-        $this->assertSame(45050.0, $cells[27]);            // Gross Profit
+        $this->assertSame('AG-BLACK-IP-16', $cells[10]);   
+        $this->assertSame(1.0, $cells[11]);                
+        $this->assertSame(100000.0, $cells[12]);           
+        $this->assertSame(45000.0, $cells[14]);            
+        $this->assertSame(7700.0, $cells[19]);             
+        $this->assertSame(1250.0, $cells[23]);             
+        $this->assertSame(1000.0, $cells[25]);             
+        $this->assertSame(46050.0, $cells[26]);            
+        $this->assertSame(45050.0, $cells[27]);            
     }
 
     public function test_per_barang_filters_by_item_ids(): void

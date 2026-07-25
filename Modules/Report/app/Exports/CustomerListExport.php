@@ -12,10 +12,6 @@ use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-/**
- * Daftar Pelanggan — 1 baris per kontak pelanggan (Contact type CUSTOMER/BOTH).
- * Kolom Kecamatan & Detail Sumber dihapus (tak ada di data kontak kita).
- */
 class CustomerListExport implements FromQuery, WithHeadings, WithMapping, WithColumnWidths, WithStyles, WithTitle
 {
     public function __construct(

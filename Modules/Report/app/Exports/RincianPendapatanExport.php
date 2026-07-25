@@ -14,10 +14,6 @@ use Maatwebsite\Excel\Concerns\WithTitle;
 use Modules\Report\Support\ChannelLabel;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-/**
- * Rincian Pendapatan — 1 baris per invoice (FAKTUR).
- * Nett Sales = Sub Total − Diskon − Diskon Lainnya. Gross Profit = Nett Sales − HPP.
- */
 class RincianPendapatanExport implements FromQuery, WithHeadings, WithMapping, WithColumnWidths, WithColumnFormatting, WithStyles, WithTitle
 {
     private const MONEY_FORMAT = '#,##0';

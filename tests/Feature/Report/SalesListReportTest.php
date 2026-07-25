@@ -99,13 +99,13 @@ class SalesListReportTest extends TestCase
         $cells = $export->map($fetched);
 
         $this->assertCount(20, $cells);
-        $this->assertSame('SHOPEE', $cells[3]);          // Channel
-        $this->assertSame('Gudang Kecil', $cells[5]);    // Lokasi
-        $this->assertSame('COMPLETED', $cells[9]);       // Status
-        $this->assertSame(65000.0, $cells[10]);          // Diskon
-        $this->assertSame(5600.0, $cells[12]);           // Potongan Biaya
-        $this->assertSame(1250.0, $cells[17]);           // Biaya Proses Pesanan
-        $this->assertSame(28150.0, $cells[19]);          // Grand Total
+        $this->assertSame('SHOPEE', $cells[3]);          
+        $this->assertSame('Gudang Kecil', $cells[5]);    
+        $this->assertSame('COMPLETED', $cells[9]);       
+        $this->assertSame(65000.0, $cells[10]);          
+        $this->assertSame(5600.0, $cells[12]);           
+        $this->assertSame(1250.0, $cells[17]);           
+        $this->assertSame(28150.0, $cells[19]);          
     }
 
     public function test_filters_by_location_ids(): void

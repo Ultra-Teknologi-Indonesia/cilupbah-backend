@@ -14,11 +14,6 @@ use Maatwebsite\Excel\Concerns\WithTitle;
 use Modules\Report\Support\ChannelLabel;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-/**
- * Rincian Pendapatan per Barang — 1 baris per invoice item (FAKTUR).
- * Nett Sales = (Harga×QTY − Diskon Per Barang) − Potongan Biaya − Biaya Proses.
- * Gross Profit = Nett Sales − HPP. Fee level-order ditampilkan per baris (ikut contoh).
- */
 class RincianPendapatanPerBarangExport implements FromQuery, WithHeadings, WithMapping, WithColumnWidths, WithColumnFormatting, WithStyles, WithTitle
 {
     private const MONEY_FORMAT = '#,##0';

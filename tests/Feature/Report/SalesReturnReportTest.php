@@ -131,19 +131,19 @@ class SalesReturnReportTest extends TestCase
         $cells = $export->map($row);
 
         $this->assertCount(20, $cells);
-        $this->assertSame('Gudang Kecil', $cells[1]);                 // Lokasi
-        $this->assertSame('SR-000104337', $cells[2]);                 // return_no
-        $this->assertSame('TT-584674136249173913-73644', $cells[4]);  // salesorder_no
-        $this->assertSame('Shop | Tokopedia', $cells[5]);             // Channel
-        $this->assertSame('iCase Store', $cells[6]);                  // Nama Toko
-        $this->assertSame('JX9777581903', $cells[8]);                 // No Resi
-        $this->assertSame('MATTE-S-BLUE-IP-XSMAX', $cells[11]);       // SKU
-        $this->assertSame(2.0, $cells[13]);                           // QTY (retur)
-        $this->assertSame(50000.0, $cells[14]);                       // Harga (dari line asli)
-        $this->assertSame(40000.0, $cells[15]);                       // Diskon Per Barang
-        $this->assertSame(100000.0, $cells[17]);                      // Sub Total = 50000 x 2
-        $this->assertSame(20000.0, $cells[18]);                       // Setelah diskon = (50000-40000) x 2
-        $this->assertSame(20000.0, $cells[19]);                       // Grand Total
+        $this->assertSame('Gudang Kecil', $cells[1]);                 
+        $this->assertSame('SR-000104337', $cells[2]);                 
+        $this->assertSame('TT-584674136249173913-73644', $cells[4]);  
+        $this->assertSame('Shop | Tokopedia', $cells[5]);             
+        $this->assertSame('iCase Store', $cells[6]);                  
+        $this->assertSame('JX9777581903', $cells[8]);                 
+        $this->assertSame('MATTE-S-BLUE-IP-XSMAX', $cells[11]);       
+        $this->assertSame(2.0, $cells[13]);                           
+        $this->assertSame(50000.0, $cells[14]);                       
+        $this->assertSame(40000.0, $cells[15]);                       
+        $this->assertSame(100000.0, $cells[17]);                      
+        $this->assertSame(20000.0, $cells[18]);                       
+        $this->assertSame(20000.0, $cells[19]);                       
     }
 
     public function test_filters_by_location_and_date(): void

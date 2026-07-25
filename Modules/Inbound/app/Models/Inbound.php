@@ -138,8 +138,7 @@ class Inbound extends Model
 
     public function isPutawayable(): bool
     {
-        // COMPLETED kini berarti "penerimaan selesai" (bukan putaway selesai), jadi
-        // inbound yang penerimaannya sudah selesai TETAP bisa di-putaway.
+
         return in_array($this->status, [
             self::STATUS_PARTIAL,
             self::STATUS_RECEIVED,

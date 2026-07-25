@@ -269,14 +269,12 @@ class MultiParticipantReceiveTest extends TestCase
         );
     }
 
-    /** Regresi bug: partial putaway saat penerimaan masih berjalan TIDAK boleh menutup penerimaan. */
     public function test_partial_putaway_does_not_complete_ongoing_receipt(): void
     {
         $inbound = $this->makeInbound(10000);
         $this->receive($inbound, $this->staff['s1']->id, 1000);
         $this->assertEquals(Inbound::STATUS_PARTIAL, $inbound->fresh()->status);
 
-        // Simulasikan putaway seluruh 1.000 yang sudah diterima.
         $item = $inbound->fresh('items')->items->first();
         $item->update(['putaway_qty' => 1000]);
 
@@ -284,7 +282,6 @@ class MultiParticipantReceiveTest extends TestCase
         $this->assertEquals(Inbound::STATUS_PARTIAL, $reloaded->status, 'Putaway parsial tak boleh menyelesaikan penerimaan yang masih kurang 9.000');
         $this->assertTrue($reloaded->isReceivable(), 'Sisa 9.000 masih bisa diterima');
 
-        // Terima sisa 9.000 -> penerimaan baru selesai.
         $this->receive($reloaded->fresh('items'), $this->staff['s1']->id, 9000);
         $this->assertEquals(Inbound::STATUS_COMPLETED, $inbound->fresh()->status);
     }

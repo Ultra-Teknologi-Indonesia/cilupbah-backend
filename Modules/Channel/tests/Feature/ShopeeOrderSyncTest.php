@@ -93,10 +93,10 @@ class ShopeeOrderSyncTest extends TestCase
         ]), '778899');
 
         $item = $internal['items'][0];
-        $this->assertEquals(100000.0, $item['price']);        // harga gross
-        $this->assertEquals(40000.0, $item['disc']);          // per unit: 100rb - 60rb
-        $this->assertEquals(80000.0, $item['disc_amount']);   // × qty 2
-        $this->assertEquals(120000.0, $item['amount']);       // net (60rb × 2) — sub_total tak berubah
+        $this->assertEquals(100000.0, $item['price']);        
+        $this->assertEquals(40000.0, $item['disc']);          
+        $this->assertEquals(80000.0, $item['disc_amount']);   
+        $this->assertEquals(120000.0, $item['amount']);       
         $this->assertEquals(80000.0, $internal['total_disc']);
     }
 
