@@ -77,7 +77,7 @@ class PurchaseOrderService
 
             foreach ($data['items'] as $itemData) {
                 $itemData['purchase_order_id'] = $po->id;
-                $this->calculateItemAmounts($itemData);
+                $this->calculateItemAmounts($itemData, $data['is_tax_included'] ?? false);
                 $this->poRepository->createItem($itemData);
             }
 
@@ -113,8 +113,9 @@ class PurchaseOrderService
             if (isset($data['items'])) {
                 $this->reverseReceiptsForShrunkLines($po, $data['items']);
 
+                $itemsTaxIncluded = $data['is_tax_included'] ?? (bool) $po->is_tax_included;
                 foreach ($data['items'] as &$itemData) {
-                    $this->calculateItemAmounts($itemData);
+                    $this->calculateItemAmounts($itemData, $itemsTaxIncluded);
                 }
                 unset($itemData);
 
@@ -416,7 +417,7 @@ class PurchaseOrderService
         ];
     }
 
-    private function calculateItemAmounts(array &$item): void
+    private function calculateItemAmounts(array &$item, bool $isTaxIncluded = false): void
     {
         $price = $item['unit_price'] ?? 0;
         $qty = $item['qty'] ?? 0;
@@ -425,7 +426,9 @@ class PurchaseOrderService
         $lineTotal = $price * $qty;
         $item['disc_amount'] = round($lineTotal * $discPercent / 100, 2);
         $item['tax_amount'] = $item['tax_amount'] ?? 0;
-        $item['amount'] = round($lineTotal - $item['disc_amount'] + $item['tax_amount'], 2);
+        // Harga sudah termasuk pajak → pajak TIDAK ditambahkan lagi (sudah di dalam lineTotal).
+        $addTax = $isTaxIncluded ? 0 : $item['tax_amount'];
+        $item['amount'] = round($lineTotal - $item['disc_amount'] + $addTax, 2);
     }
 
     private function calculateTotals(array $items, bool $isTaxIncluded): array
@@ -448,11 +451,14 @@ class PurchaseOrderService
             $totalTax += $taxAmount;
         }
 
+        // Tax-inclusive: pajak sudah ada di dalam sub_total, jangan ditambah lagi ke total.
+        $addTax = $isTaxIncluded ? 0 : $totalTax;
+
         return [
             'sub_total'    => round($subTotal, 2),
             'total_disc'   => round($totalDisc, 2),
             'total_tax'    => round($totalTax, 2),
-            'total_amount' => round($subTotal - $totalDisc + $totalTax, 2),
+            'total_amount' => round($subTotal - $totalDisc + $addTax, 2),
         ];
     }
 

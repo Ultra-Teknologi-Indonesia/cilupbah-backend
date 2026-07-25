@@ -16,23 +16,16 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('channels/print-label-capabilities', [ChannelController::class, 'printLabelCapabilities'])
             ->name('channels.print-label-capabilities');
         Route::get('channels', [ChannelController::class, 'index'])->name('channel.index');
-        Route::get('channels/{channel}', [ChannelController::class, 'show'])->name('channel.show');
 
         Route::get('download-transactions', [\Modules\Channel\Http\Controllers\DownloadTransactionController::class, 'index']);
         Route::get('download-transactions/{id}', [\Modules\Channel\Http\Controllers\DownloadTransactionController::class, 'show']);
     });
 
-    Route::middleware('role_or_permission:owner|create-integrasi-channel')->group(function () {
-        Route::post('channels', [ChannelController::class, 'store'])->name('channel.store');
-    });
-
     Route::middleware('role_or_permission:owner|edit-integrasi-channel')->group(function () {
-        Route::match(['put', 'patch'], 'channels/{channel}', [ChannelController::class, 'update'])->name('channel.update');
         Route::patch('marketplace/store/{id}', [ChannelController::class, 'updateStore'])->whereUuid('id');
     });
 
     Route::middleware('role_or_permission:owner|delete-integrasi-channel')->group(function () {
-        Route::delete('channels/{channel}', [ChannelController::class, 'destroy'])->name('channel.destroy');
         Route::delete('marketplace/store/{id}', [ChannelController::class, 'disconnectShop'])->whereUuid('id');
     });
 });

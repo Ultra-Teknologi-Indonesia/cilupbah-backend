@@ -1279,6 +1279,15 @@ class PutawayService
             $remaining -= $take;
         }
 
+        // Lepas reservasi inbound sebesar target putaway yang dibatalkan, kalau tidak
+        // reserved_qty menggantung > received dan menyembunyikan stok yang diterima
+        // berikutnya (pendingPutawayQty = received - putaway - reserved) selamanya.
+        $released = $amount - $remaining;
+        if ($released > 0) {
+            InboundItem::where('id', $inboundItemId)
+                ->update(['reserved_qty' => DB::raw('GREATEST(reserved_qty - ' . (int) $released . ', 0)')]);
+        }
+
         return $amount - $remaining;
     }
 }

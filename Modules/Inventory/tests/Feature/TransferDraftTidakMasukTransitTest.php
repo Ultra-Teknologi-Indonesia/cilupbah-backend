@@ -166,6 +166,42 @@ class TransferDraftTidakMasukTransitTest extends TestCase
         $this->assertSame(1, $this->movements('TRANSFER_OUT'), 'pengiriman menulis TRANSFER_OUT tepat sekali');
     }
 
+    public function test_approve_fifo_lalu_kirim_tidak_menggandakan_transit(): void
+    {
+        $service = app(InventoryService::class);
+
+        // Draft berisi item TANPA rak asal → approve memicu FIFO auto-assign.
+        $transfer = $service->createDraft([
+            'source_location_id' => $this->sourceLocationId,
+            'destination_location_id' => $this->destLocationId,
+            'created_by' => 'tester',
+        ]);
+        $service->addDraftItem($transfer->id, [
+            'item_id' => $this->itemId,
+            'qty' => 5,
+        ]);
+
+        // APPROVE (FIFO): hanya reserve on_order + pilih rak, TIDAK memindahkan ke transit.
+        $service->approveTransfer($transfer->id, ['approved_by' => 'tester']);
+
+        $src = $this->sourceStock();
+        $this->assertSame(20, (int) $src->on_hand, 'approve tidak memindahkan fisik dari rak asal');
+        $this->assertSame(5, (int) $src->on_order, 'approve me-reserve on_order');
+        $this->assertSame(0, $this->transitOnHand(), 'approve FIFO tidak boleh menaruh stok di transit');
+        $this->assertSame(0, $this->movements('TRANSIT_IN'), 'approve tidak menulis TRANSIT_IN');
+        $this->assertSame(0, $this->movements('TRANSFER_OUT'), 'approve tidak menulis TRANSFER_OUT');
+
+        // SHIP: pemindahan fisik ke transit TEPAT SEKALI (bukan 2x).
+        $service->shipTransfer($transfer->id, ['shipped_by' => 'tester']);
+
+        $src = $this->sourceStock();
+        $this->assertSame(15, (int) $src->on_hand, 'fisik berkurang sekali saat dikirim');
+        $this->assertSame(0, (int) $src->on_order, 'kuncian dilepas saat kirim');
+        $this->assertSame(5, $this->transitOnHand(), 'transit = qty, BUKAN 2x (tidak ada phantom stock nyangkut)');
+        $this->assertSame(1, $this->movements('TRANSIT_IN'), 'TRANSIT_IN tepat sekali');
+        $this->assertSame(1, $this->movements('TRANSFER_OUT'), 'TRANSFER_OUT tepat sekali');
+    }
+
     public function test_batal_kirim_menarik_kembali_stok_dari_transit(): void
     {
         $transferId = $this->buatDraftBerisi(5);

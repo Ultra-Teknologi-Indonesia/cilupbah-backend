@@ -1318,8 +1318,6 @@ class InventoryService
             throw new \Exception("Stok tidak mencukupi di gudang asal untuk SKU {$sku} (butuh {$needed}, tersedia {$totalAvailable}).");
         }
 
-        [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
-
         $remaining = $needed;
         $first = true;
 
@@ -1356,42 +1354,11 @@ class InventoryService
                 ]);
             }
 
+            // Approve HANYA me-reserve on_order + menetapkan rak asal (FIFO).
+            // Pemindahan fisik ke SYS-TRANSIT (kurangi on_hand asal, TRANSFER_OUT,
+            // TRANSIT_IN) dilakukan SEKALI saat shipTransfer — jangan digandakan di sini.
             $row->on_order += $take;
             $this->inventoryRepository->updateStock($row);
-
-            $this->movementRepository->create([
-                'item_id'            => $item->item_id,
-                'location_id'        => $transfer->source_location_id,
-                'bin_id'             => $row->bin_id,
-                'transaction_number' => $transfer->transfer_number,
-                'source'             => 'TRANSFER_OUT',
-                'qty'                => -$take,
-                'balance'            => $row->on_hand,
-                'transaction_date'   => now(),
-                'created_by'         => $actor,
-            ]);
-
-            $transitInventory = $this->inventoryRepository->findOrCreateForUpdate(
-                $item->item_id,
-                $transitLocationId,
-                $transitBinId,
-                $row->batch_no ?? '',
-                $row->serial_no ?? '',
-            );
-            $transitInventory->on_hand += $take;
-            $this->inventoryRepository->updateStock($transitInventory);
-
-            $this->movementRepository->create([
-                'item_id'            => $item->item_id,
-                'location_id'        => $transitLocationId,
-                'bin_id'             => $transitBinId,
-                'transaction_number' => $transfer->transfer_number,
-                'source'             => 'TRANSIT_IN',
-                'qty'                => $take,
-                'balance'            => $transitInventory->on_hand,
-                'transaction_date'   => now(),
-                'created_by'         => $actor,
-            ]);
         }
     }
 

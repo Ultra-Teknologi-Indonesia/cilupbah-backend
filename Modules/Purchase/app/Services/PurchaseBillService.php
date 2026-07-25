@@ -48,7 +48,7 @@ class PurchaseBillService
 
             foreach (($data['items'] ?? []) as $itemData) {
                 $itemData['purchase_bill_id'] = $bill->id;
-                $this->calculateItemAmounts($itemData);
+                $this->calculateItemAmounts($itemData, $data['is_tax_included'] ?? false);
                 $this->billRepository->createItem($itemData);
             }
 
@@ -77,7 +77,7 @@ class PurchaseBillService
 
                 foreach ($data['items'] as $itemData) {
                     $itemData['purchase_bill_id'] = $bill->id;
-                    $this->calculateItemAmounts($itemData);
+                    $this->calculateItemAmounts($itemData, $data['is_tax_included'] ?? false);
                     $this->billRepository->createItem($itemData);
                 }
             }
@@ -118,7 +118,7 @@ class PurchaseBillService
         return $this->billRepository->getForReturn($limit);
     }
 
-    private function calculateItemAmounts(array &$item): void
+    private function calculateItemAmounts(array &$item, bool $isTaxIncluded = false): void
     {
         $price = $item['unit_price'] ?? 0;
         $qty = $item['qty'] ?? 0;
@@ -127,7 +127,9 @@ class PurchaseBillService
         $lineTotal = $price * $qty;
         $item['disc_amount'] = round($lineTotal * $discPercent / 100, 2);
         $item['tax_amount'] = $item['tax_amount'] ?? 0;
-        $item['amount'] = round($lineTotal - $item['disc_amount'] + $item['tax_amount'], 2);
+        // Harga sudah termasuk pajak → pajak TIDAK ditambahkan lagi (sudah di dalam lineTotal).
+        $addTax = $isTaxIncluded ? 0 : $item['tax_amount'];
+        $item['amount'] = round($lineTotal - $item['disc_amount'] + $addTax, 2);
     }
 
     private function calculateTotals(array $items, bool $isTaxIncluded): array
@@ -150,11 +152,14 @@ class PurchaseBillService
             $totalTax += $taxAmount;
         }
 
+        // Tax-inclusive: pajak sudah ada di dalam sub_total, jangan ditambah lagi ke total.
+        $addTax = $isTaxIncluded ? 0 : $totalTax;
+
         return [
             'sub_total'    => round($subTotal, 2),
             'total_disc'   => round($totalDisc, 2),
             'total_tax'    => round($totalTax, 2),
-            'total_amount' => round($subTotal - $totalDisc + $totalTax, 2),
+            'total_amount' => round($subTotal - $totalDisc + $addTax, 2),
         ];
     }
 

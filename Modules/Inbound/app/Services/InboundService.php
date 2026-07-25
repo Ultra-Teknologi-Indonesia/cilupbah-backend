@@ -1609,9 +1609,12 @@ class InboundService
                     throw new \Exception("Qty koreksi tidak valid (maksimal {$item->received_qty}).");
                 }
 
-                $available = (int) $item->received_qty - (int) $item->putaway_qty;
+                // Pakai formula kanonik pendingPutawayQty (received - putaway - reserved):
+                // stok yang sudah direservasi putaway aktif TIDAK boleh ikut dikoreksi,
+                // kalau tidak putaway berjalan menarik dari bin inbound yang sudah kosong.
+                $available = $item->pendingPutawayQty();
                 if ($qtyRev > $available) {
-                    throw new \Exception("Sebagian barang sudah di-putaway; hanya {$available} unit yang masih di bin inbound dan bisa dikoreksi.");
+                    throw new \Exception("Sebagian barang sudah di-putaway atau sedang dalam penempatan aktif; hanya {$available} unit yang masih di bin inbound dan bisa dikoreksi.");
                 }
 
                 $this->inventoryService->adjust([
@@ -1747,45 +1750,6 @@ class InboundService
 
             return $this->getById($inboundId);
         });
-    }
-
-    private function recomputeStatus(Inbound $inbound): void
-    {
-        if ($inbound->items->isEmpty()
-            || in_array($inbound->status, [Inbound::STATUS_DRAFT, Inbound::STATUS_CANCELLED], true)) {
-            return;
-        }
-
-        $hasActive = InboundParticipant::where('inbound_id', $inbound->id)
-            ->where('status', InboundParticipant::STATUS_ACTIVE)
-            ->exists();
-
-        $allReceived = $inbound->items->every(fn ($i) => $i->isFullyReceived());
-        $allPutaway = $inbound->items->every(fn ($i) => $i->isFullyPutaway());
-        $anyPutaway = $inbound->items->contains(fn ($i) => (int) $i->putaway_qty > 0);
-
-        if ($hasActive) {
-
-            $newStatus = $anyPutaway ? Inbound::STATUS_PUTAWAY_IN_PROGRESS : Inbound::STATUS_PARTIAL;
-        } else {
-
-            $newStatus = ($allReceived && $allPutaway)
-                ? Inbound::STATUS_COMPLETED
-                : ($anyPutaway ? Inbound::STATUS_PUTAWAY_IN_PROGRESS : Inbound::STATUS_RECEIVED);
-        }
-
-        if ($inbound->status !== $newStatus) {
-            $this->inboundRepository->updateStatus($inbound, $newStatus);
-        }
-
-        if ($inbound->once_received_at === null
-            && in_array($newStatus, [
-                Inbound::STATUS_RECEIVED,
-                Inbound::STATUS_PUTAWAY_IN_PROGRESS,
-                Inbound::STATUS_COMPLETED,
-            ], true)) {
-            $inbound->forceFill(['once_received_at' => now()])->save();
-        }
     }
 
     public function cancel(string $inboundId, ?string $userId = null): Inbound
