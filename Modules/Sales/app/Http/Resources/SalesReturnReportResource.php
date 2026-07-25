@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Http\Resources;
 
+use App\Support\ActorName;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -28,7 +29,7 @@ class SalesReturnReportResource extends JsonResource
             'reason'              => $this->reason,
             'reason_category'     => $this->reason_category,
             'notes'               => $this->notes,
-            'processed_by'        => $this->processed_by,
+            'processed_by'        => ActorName::resolve($this->processed_by),
             'processed_at'        => optional($this->processed_at)?->format('Y-m-d H:i:s'),
             'created_at'          => optional($this->created_at)?->format('Y-m-d H:i:s'),
 

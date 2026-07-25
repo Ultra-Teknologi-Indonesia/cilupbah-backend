@@ -1728,7 +1728,7 @@ class InboundService
                 'condition'           => 'ADJUSTMENT',
                 'stock_adjustment_id' => $adjustment->id,
                 'received_by_user_id' => $userId,
-                'received_by'         => "user:{$userId}",
+                'received_by'         => \App\Support\ActorName::resolve($userId),
                 'received_date'       => now(),
             ]);
 
