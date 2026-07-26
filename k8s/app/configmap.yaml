@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: cilupbah-staging
+
+data:
+  CIRCUIT_BREAKER_THRESHOLD: 10
+  CIRCUIT_BREAKER_COOLDOWN_MINUTES: 5
+
+  CHANNEL_API_RATE_LIMIT_PER_SECOND: 8
+
+  MAIL_MAILER: smtp
+  MAIL_SCHEME: null
+  MAIL_HOST: 172.17.0.1
+  MAIL_PORT: 1025
+  MAIL_FROM_ADDRESS: no-reply@cilupbah.local
+
+  VITE_APP_NAME: ${APP_NAME}
+
+  TIKTOK_REDIRECT_URI: https://api-ops.ultra-fit.id/api/tiktok/callback
+
+  LAZADA_REDIRECT_URI: https://staging.ultra-fit.id/api/v1/lazada/callback
+  LAZADA_AUTH_URL: https://auth.lazada.com
+  LAZADA_BASE_URL: https://api.lazada.co.id/rest
+
+  FILESYSTEM_DISK: s3
+  MEDIA_DISK: s3
+
+  AWS_DEFAULT_REGION: auto
+  AWS_BUCKET: omnichannel-apps
+  AWS_ENDPOINT: https://f7cd90782537dc930e9813c60ae15e7b.r2.cloudflarestorage.com
+  AWS_URL: https://assets.ultra-fit.id
+  AWS_USE_PATH_STYLE_ENDPOINT: true
+
+  FRONTEND_URL: https://cilupbah-fe.vercel.app
+
+  SHOPEE_REDIRECT_URI: https://staging.ultra-fit.id/api/v1/shopee/callback
+  SHOPEE_HOST: https://openplatform.sandbox.test-stable.shopee.sg
+  SHOPEE_PUSH_URL: https://staging.ultra-fit.id/api/v1/shopee/callback
+  SHOPEE_VERIFY_PUSH_SIGNATURE: false
+
+  WOOCOMMERCE_APP_NAME: Cilupbah
+  WOOCOMMERCE_API_VERSION: wc/v3
+  WOOCOMMERCE_CALLBACK_URL:
+
+  WOOCOMMERCE_VERIFY_WEBHOOK_SIGNATURE: true
+
+  FCM_PROJECT_ID: cilupbah-testing
