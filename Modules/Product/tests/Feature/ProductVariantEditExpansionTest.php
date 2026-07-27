@@ -157,7 +157,7 @@ class ProductVariantEditExpansionTest extends TestCase
                 ['name' => 'Motif', 'sort_order' => 1],
             ],
             'variants' => [
-                ['sku' => 'IP17-BLUE-POLOS', 'sell_price' => 20000, 'is_active' => true,
+                ['sku' => 'IP17-BLUE-POLOS', 'sell_price' => 20000, 'weight' => null, 'is_active' => true,
                     'options' => [['attribute_id' => $w, 'value' => 'Blue'], ['name' => 'Motif', 'value' => 'Polos']]],
                 ['sku' => 'IP17-BLUE-BATIK', 'sell_price' => 20000, 'is_active' => true,
                     'options' => [['attribute_id' => $w, 'value' => 'Blue'], ['name' => 'Motif', 'value' => 'Batik']]],

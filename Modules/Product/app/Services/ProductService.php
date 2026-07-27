@@ -291,6 +291,9 @@ class ProductService
                         'sales_tax_id', 'purchase_tax_id', 'min_stock', 'safe_stock',
                         'weight',
                     ]);
+                    if (array_key_exists('weight', $variantData) && $variantData['weight'] === null) {
+                        unset($variantData['weight']);
+                    }
                     if (!empty($variant['sales_tax_id'])) {
                         $variantData['tax_rate'] = $this->taxRate($variant['sales_tax_id']);
                     }
@@ -499,6 +502,9 @@ class ProductService
             'sales_tax_id', 'purchase_tax_id', 'min_stock', 'safe_stock',
             'weight',
         ]);
+        if (array_key_exists('weight', $f) && $f['weight'] === null) {
+            unset($f['weight']);
+        }
         if (array_key_exists('sell_price', $v) && $v['sell_price'] !== null) {
             $f['sell_price'] = $v['sell_price'];
         }
