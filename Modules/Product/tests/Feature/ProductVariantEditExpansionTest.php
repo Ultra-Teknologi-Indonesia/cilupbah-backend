@@ -175,7 +175,7 @@ class ProductVariantEditExpansionTest extends TestCase
         $this->assertEquals(4, DB::table('product_variants')->where('product_id', $id)->where('is_active', true)->count());
     }
 
-    public function test_edit_variant_with_null_weight_rejected_422(): void
+    public function test_edit_variant_with_null_weight_is_accepted_and_defaults(): void
     {
         $id = $this->createIp17();
         $w = $this->warna->id;
@@ -183,14 +183,19 @@ class ProductVariantEditExpansionTest extends TestCase
         $this->putJson("/api/v1/products/{$id}", [
             'variation_types' => [['attribute_id' => $w, 'sort_order' => 0]],
             'variants' => [
-                ['sku' => 'IP17-BLUE', 'sell_price' => 7000, 'weight' => null, 'is_active' => true,
+                ['sku' => 'IP17-BLUE', 'sell_price' => 7000, 'weight' => 100, 'is_active' => true,
                     'options' => [['attribute_id' => $w, 'value' => 'Blue']]],
                 ['sku' => 'IP17-RED', 'sell_price' => 7000, 'weight' => 100, 'is_active' => true,
                     'options' => [['attribute_id' => $w, 'value' => 'Red']]],
+                ['sku' => 'IP17-GREEN', 'sell_price' => 7000, 'weight' => null, 'is_active' => true,
+                    'options' => [['attribute_id' => $w, 'value' => 'Green']]],
             ],
-        ])
-            ->assertStatus(422)
-            ->assertSee('Berat varian wajib diisi.');
+        ])->assertOk();
+
+        $new = DB::table('product_variants')->where('product_id', $id)->where('sku', 'IP17-GREEN')->first();
+        $this->assertNotNull($new, 'varian baru IP17-GREEN harus ter-insert');
+        $this->assertNotNull($new->weight, 'weight tidak boleh null di DB');
+        $this->assertEquals(0, (int) $new->weight);
     }
 
     public function test_new_combo_inherits_price_from_ancestor_when_omitted(): void

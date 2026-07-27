@@ -69,7 +69,7 @@ class CreateProductRequest extends FormRequest
             'variants.*.min_stock' => 'nullable|integer|min:0',
             'variants.*.safe_stock' => 'nullable|integer|min:0',
             'variants.*.is_active' => 'nullable|boolean',
-            'variants.*.weight' => 'sometimes|required|numeric|min:0',
+            'variants.*.weight' => 'nullable|numeric|min:0',
 
             'variants.*.unlimited_shop_ids' => 'nullable|array',
             'variants.*.unlimited_shop_ids.*' => 'uuid|distinct|exists:channel_shops,id',
@@ -153,7 +153,6 @@ class CreateProductRequest extends FormRequest
     {
         return [
             'variation_types.max' => 'Maksimal 2 jenis varian per produk.',
-            'variants.*.weight.required' => 'Berat varian wajib diisi.',
             'variation_types.*.attribute_id.distinct' => 'Jenis varian tidak boleh duplikat.',
             'sku.unique' => 'SKU produk sudah digunakan.',
             'variants.*.sku.unique' => 'SKU varian sudah digunakan.',
