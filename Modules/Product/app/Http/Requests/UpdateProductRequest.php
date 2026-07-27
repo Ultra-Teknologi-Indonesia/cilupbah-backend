@@ -17,7 +17,7 @@ class UpdateProductRequest extends FormRequest
         return [
             'name' => 'sometimes|required|string|max:255',
             'sku' => [
-                'sometimes', 'required', 'string', 'max:255',
+                'sometimes', 'nullable', 'string', 'max:255',
                 Rule::unique('products', 'sku')->ignore($this->route('product'), 'id'),
             ],
             'description' => 'sometimes|nullable|string',
@@ -30,6 +30,7 @@ class UpdateProductRequest extends FormRequest
             'is_bundle' => 'sometimes|boolean',
             'is_consignment' => 'sometimes|boolean',
             'weight' => 'sometimes|nullable|numeric|min:0',
+            'weight_unit' => 'sometimes|nullable|in:gram,kg',
             'package_contents' => 'sometimes|nullable|string|max:2000',
             'is_cod_allowed' => 'sometimes|boolean',
             'is_active' => 'sometimes|boolean',

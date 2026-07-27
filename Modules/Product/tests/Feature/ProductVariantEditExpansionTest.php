@@ -152,6 +152,7 @@ class ProductVariantEditExpansionTest extends TestCase
         $w = $this->warna->id;
 
         $this->putJson("/api/v1/products/{$id}", [
+            'sku' => null,
             'variation_types' => [
                 ['attribute_id' => $w, 'sort_order' => 0],
                 ['name' => 'Motif', 'sort_order' => 1],
@@ -257,6 +258,26 @@ class ProductVariantEditExpansionTest extends TestCase
                     'options' => [['attribute_id' => $w, 'value' => 'Green']]],
             ],
         ])->assertStatus(422);
+    }
+
+    public function test_edit_persists_weight_unit(): void
+    {
+        $id = $this->createIp17();
+        $w = $this->warna->id;
+
+        $this->putJson("/api/v1/products/{$id}", [
+            'weight' => 60,
+            'weight_unit' => 'gram',
+            'variation_types' => [['attribute_id' => $w, 'sort_order' => 0]],
+            'variants' => [
+                ['sku' => 'IP17-BLUE', 'sell_price' => 7000, 'is_active' => true,
+                    'options' => [['attribute_id' => $w, 'value' => 'Blue']]],
+                ['sku' => 'IP17-RED', 'sell_price' => 7000, 'is_active' => true,
+                    'options' => [['attribute_id' => $w, 'value' => 'Red']]],
+            ],
+        ])->assertOk();
+
+        $this->assertSame('gram', DB::table('products')->where('id', $id)->value('weight_unit'));
     }
 
     public function test_new_combo_inherits_price_from_ancestor_when_omitted(): void

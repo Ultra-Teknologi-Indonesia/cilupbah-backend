@@ -40,6 +40,7 @@ class CreateProductRequest extends FormRequest
             'cogs_account_id' => ['nullable', 'uuid', Rule::exists('accounts', 'id')->where('account_type', 'expense')],
 
             'weight' => 'nullable|numeric|min:0',
+            'weight_unit' => 'nullable|in:gram,kg',
             'package_contents' => 'nullable|string|max:2000',
 
             'media' => 'required|array|min:1|max:10',
