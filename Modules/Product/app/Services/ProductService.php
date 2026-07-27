@@ -417,10 +417,29 @@ class ProductService
         }
 
         $desired = [];
+        $payloadSkus = [];
+        foreach ($payloadVariants as $v) {
+            $desired[$keyOfOpts($v['options'] ?? [])] = true;
+            if (! empty($v['sku'])) {
+                $payloadSkus[] = $v['sku'];
+            }
+        }
+
+        $foreignSkus = $this->writeRepository->skusUsedByOtherProducts($productId, $payloadSkus);
+        if ($foreignSkus) {
+            throw new DomainException('SKU varian sudah digunakan produk lain: ' . implode(', ', $foreignSkus));
+        }
+
+        foreach ($existingByKey as $key => $av) {
+            if (! isset($desired[$key])) {
+                $this->writeRepository->supersedeVariant($av->id);
+            }
+        }
+        $this->writeRepository->freeInactiveVariantSkus($productId, $payloadSkus);
+
         foreach ($payloadVariants as $v) {
             $opts = $v['options'] ?? [];
             $key = $keyOfOpts($opts);
-            $desired[$key] = true;
 
             if (isset($existingByKey[$key])) {
                 $variantId = $existingByKey[$key]->id;
@@ -457,12 +476,6 @@ class ProductService
                 ]]);
             }
             $this->syncVariantMediaFromPayload($productId, $variantId, $v);
-        }
-
-        foreach ($existingByKey as $key => $av) {
-            if (! isset($desired[$key])) {
-                $this->writeRepository->supersedeVariant($av->id);
-            }
         }
 
         foreach ($types as $t) {

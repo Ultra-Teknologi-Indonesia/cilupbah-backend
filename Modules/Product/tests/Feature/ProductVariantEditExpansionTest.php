@@ -198,6 +198,67 @@ class ProductVariantEditExpansionTest extends TestCase
         $this->assertEquals(0, (int) $new->weight);
     }
 
+    public function test_edit_reuses_sku_held_by_inactive_orphan_variant(): void
+    {
+        $id = $this->createIp17();
+        $w = $this->warna->id;
+
+        DB::table('product_variants')->insert([
+            'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
+            'product_id' => $id,
+            'sku' => 'IP17-GREEN',
+            'sell_price' => 1,
+            'weight' => 0,
+            'is_active' => false,
+            'deleted_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->putJson("/api/v1/products/{$id}", [
+            'variation_types' => [['attribute_id' => $w, 'sort_order' => 0]],
+            'variants' => [
+                ['sku' => 'IP17-BLUE', 'sell_price' => 7000, 'weight' => 10, 'is_active' => true,
+                    'options' => [['attribute_id' => $w, 'value' => 'Blue']]],
+                ['sku' => 'IP17-RED', 'sell_price' => 7000, 'weight' => 10, 'is_active' => true,
+                    'options' => [['attribute_id' => $w, 'value' => 'Red']]],
+                ['sku' => 'IP17-GREEN', 'sell_price' => 7000, 'weight' => 10, 'is_active' => true,
+                    'options' => [['attribute_id' => $w, 'value' => 'Green']]],
+            ],
+        ])->assertOk();
+
+        $active = DB::table('product_variants')
+            ->where('product_id', $id)->where('sku', 'IP17-GREEN')
+            ->where('is_active', true)->whereNull('deleted_at')->first();
+        $this->assertNotNull($active, 'varian aktif IP17-GREEN harus tersimpan');
+    }
+
+    public function test_edit_variant_sku_used_by_other_product_rejected_422(): void
+    {
+        $this->postJson('/api/v1/products', [
+            'name' => 'Produk Lain',
+            'sku' => 'OTHER',
+            'category_id' => $this->category->id,
+            'media' => [['url' => 'https://img.test/o.jpg', 'media_type' => 'image']],
+            'variants' => [['sku' => 'SHARED-SKU', 'sell_price' => 1000, 'is_active' => true]],
+        ])->assertCreated();
+
+        $id = $this->createIp17();
+        $w = $this->warna->id;
+
+        $this->putJson("/api/v1/products/{$id}", [
+            'variation_types' => [['attribute_id' => $w, 'sort_order' => 0]],
+            'variants' => [
+                ['sku' => 'IP17-BLUE', 'sell_price' => 7000, 'weight' => 10, 'is_active' => true,
+                    'options' => [['attribute_id' => $w, 'value' => 'Blue']]],
+                ['sku' => 'IP17-RED', 'sell_price' => 7000, 'weight' => 10, 'is_active' => true,
+                    'options' => [['attribute_id' => $w, 'value' => 'Red']]],
+                ['sku' => 'SHARED-SKU', 'sell_price' => 7000, 'weight' => 10, 'is_active' => true,
+                    'options' => [['attribute_id' => $w, 'value' => 'Green']]],
+            ],
+        ])->assertStatus(422);
+    }
+
     public function test_new_combo_inherits_price_from_ancestor_when_omitted(): void
     {
         $id = $this->createIp17(price: 9000);

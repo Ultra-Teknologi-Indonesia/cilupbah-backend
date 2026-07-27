@@ -159,7 +159,39 @@ class ProductWriteRepository
     public function supersedeVariant(string $variantId): void
     {
         DB::table('product_variants')->where('id', $variantId)
-            ->update(['is_active' => false, 'superseded_at' => now(), 'updated_at' => now()]);
+            ->update(['is_active' => false, 'superseded_at' => now(), 'deleted_at' => now(), 'updated_at' => now()]);
+    }
+
+    public function freeInactiveVariantSkus(string $productId, array $skus): void
+    {
+        $skus = array_values(array_filter($skus, fn ($s) => $s !== null && $s !== ''));
+        if (! $skus) {
+            return;
+        }
+
+        DB::table('product_variants')
+            ->where('product_id', $productId)
+            ->where('is_active', false)
+            ->whereNull('deleted_at')
+            ->whereIn('sku', $skus)
+            ->update(['deleted_at' => now(), 'updated_at' => now()]);
+    }
+
+    public function skusUsedByOtherProducts(string $productId, array $skus): array
+    {
+        $skus = array_values(array_filter($skus, fn ($s) => $s !== null && $s !== ''));
+        if (! $skus) {
+            return [];
+        }
+
+        return DB::table('product_variants')
+            ->where('product_id', '!=', $productId)
+            ->whereNull('deleted_at')
+            ->whereIn('sku', $skus)
+            ->pluck('sku')
+            ->unique()
+            ->values()
+            ->all();
     }
 
     public function variationTypeExists(string $productId, int $attributeId): bool
