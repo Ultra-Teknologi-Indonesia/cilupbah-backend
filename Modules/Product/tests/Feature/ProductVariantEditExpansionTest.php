@@ -146,6 +146,35 @@ class ProductVariantEditExpansionTest extends TestCase
         $this->assertEquals(2, DB::table('product_variants')->where('product_id', $id)->where('is_active', true)->count());
     }
 
+    public function test_edit_can_add_custom_variation_type_by_name(): void
+    {
+        $id = $this->createIp17();
+        $w = $this->warna->id;
+
+        $this->putJson("/api/v1/products/{$id}", [
+            'variation_types' => [
+                ['attribute_id' => $w, 'sort_order' => 0],
+                ['name' => 'Motif', 'sort_order' => 1],
+            ],
+            'variants' => [
+                ['sku' => 'IP17-BLUE-POLOS', 'sell_price' => 20000, 'is_active' => true,
+                    'options' => [['attribute_id' => $w, 'value' => 'Blue'], ['name' => 'Motif', 'value' => 'Polos']]],
+                ['sku' => 'IP17-BLUE-BATIK', 'sell_price' => 20000, 'is_active' => true,
+                    'options' => [['attribute_id' => $w, 'value' => 'Blue'], ['name' => 'Motif', 'value' => 'Batik']]],
+                ['sku' => 'IP17-RED-POLOS', 'sell_price' => 20000, 'is_active' => true,
+                    'options' => [['attribute_id' => $w, 'value' => 'Red'], ['name' => 'Motif', 'value' => 'Polos']]],
+                ['sku' => 'IP17-RED-BATIK', 'sell_price' => 20000, 'is_active' => true,
+                    'options' => [['attribute_id' => $w, 'value' => 'Red'], ['name' => 'Motif', 'value' => 'Batik']]],
+            ],
+        ])->assertOk();
+
+        $motif = Attribute::where('name', 'Motif')->first();
+        $this->assertNotNull($motif, 'Attribute custom "Motif" harus dibuat otomatis dari nama');
+        $this->assertEquals(2, DB::table('product_variation_types')->where('product_id', $id)->count());
+        $this->assertDatabaseHas('product_variation_types', ['product_id' => $id, 'attribute_id' => $motif->id]);
+        $this->assertEquals(4, DB::table('product_variants')->where('product_id', $id)->where('is_active', true)->count());
+    }
+
     public function test_new_combo_inherits_price_from_ancestor_when_omitted(): void
     {
         $id = $this->createIp17(price: 9000);

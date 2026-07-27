@@ -51,7 +51,8 @@ class UpdateProductRequest extends FormRequest
             'media.*.sort_order' => 'nullable|integer',
 
             'variation_types' => 'sometimes|nullable|array|max:2',
-            'variation_types.*.attribute_id' => 'required|bail|integer|distinct|exists:attributes,id',
+            'variation_types.*.attribute_id' => 'nullable|bail|integer|distinct',
+            'variation_types.*.name' => 'nullable|string|max:100',
             'variation_types.*.sort_order' => 'nullable|integer|min:0',
 
             'specifications' => 'sometimes|nullable|array',
@@ -62,7 +63,8 @@ class UpdateProductRequest extends FormRequest
             'variants' => 'sometimes|array|min:1',
 
             'variants.*.options' => 'sometimes|array',
-            'variants.*.options.*.attribute_id' => 'required|bail|integer|exists:attributes,id',
+            'variants.*.options.*.attribute_id' => 'nullable|bail|integer',
+            'variants.*.options.*.name' => 'nullable|string|max:100',
             'variants.*.options.*.value' => 'required|string',
             'variants.*.sku' => 'required_with:variants|string|max:50|distinct:ignore_case',
             'variants.*.barcode' => 'sometimes|nullable|string|max:100',
@@ -89,6 +91,20 @@ class UpdateProductRequest extends FormRequest
     public function withValidator(\Illuminate\Contracts\Validation\Validator $validator): void
     {
         $validator->after(function ($v) {
+
+            foreach ((array) $this->input('variation_types', []) as $i => $vt) {
+                if (empty($vt['attribute_id']) && empty($vt['name'])) {
+                    $v->errors()->add("variation_types.$i.attribute_id", 'Attribute ID atau nama jenis varian wajib diisi.');
+                }
+            }
+
+            foreach ((array) $this->input('variants', []) as $vi => $variant) {
+                foreach ((array) ($variant['options'] ?? []) as $oi => $opt) {
+                    if (empty($opt['attribute_id']) && empty($opt['name'])) {
+                        $v->errors()->add("variants.$vi.options.$oi.attribute_id", 'Attribute ID atau nama opsi varian wajib diisi.');
+                    }
+                }
+            }
 
             if ($this->has('category_id') && $v->errors()->has('category_id') === false) {
                 $categoryId = $this->input('category_id');

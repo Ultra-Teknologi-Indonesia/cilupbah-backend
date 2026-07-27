@@ -239,6 +239,8 @@ class ProductService
 
     public function updateProduct(string $productId, array $data)
     {
+        $this->resolveCustomAttributes($data);
+
         if (array_key_exists('specifications', $data) || array_key_exists('variation_types', $data)) {
             $categoryId = $data['category_id'] ?? $this->writeRepository->productCategoryId($productId);
             $this->assertCategoryAttributes($categoryId ? (int) $categoryId : null, $data, array_key_exists('specifications', $data));
