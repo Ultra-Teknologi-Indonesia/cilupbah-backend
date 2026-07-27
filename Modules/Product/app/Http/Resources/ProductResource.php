@@ -102,7 +102,15 @@ class ProductResource extends JsonResource
                         ->groupBy('variant_id')
                     : collect();
 
-                return $this->variants->map(function ($variant) use ($variantImages) {
+                return $this->variants
+                    ->sortBy(
+                        fn ($variant) => $variant->relationLoaded('options')
+                            ? $variant->options->pluck('value')->implode(' / ')
+                            : (string) $variant->sku,
+                        SORT_NATURAL | SORT_FLAG_CASE
+                    )
+                    ->values()
+                    ->map(function ($variant) use ($variantImages) {
                     $imgs = $variantImages->get($variant->id);
                     $variantImage = null;
                     if ($imgs && $imgs->isNotEmpty()) {

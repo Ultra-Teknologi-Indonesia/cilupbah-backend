@@ -260,6 +260,37 @@ class ProductVariantEditExpansionTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_detail_returns_variants_sorted_by_option_value_naturally(): void
+    {
+        $w = $this->warna->id;
+        $res = $this->postJson('/api/v1/products', [
+            'name' => 'Sortir Varian Produk Nama Panjang Sekali',
+            'sku' => 'SORTP',
+            'category_id' => $this->category->id,
+            'media' => [['url' => 'https://img.test/s.jpg', 'media_type' => 'image']],
+            'variation_types' => [['attribute_id' => $w, 'sort_order' => 0]],
+            'variants' => [
+                ['sku' => 'SORT-10', 'sell_price' => 1000, 'is_active' => true,
+                    'options' => [['attribute_id' => $w, 'value' => 'Lanyard 10']]],
+                ['sku' => 'SORT-2', 'sell_price' => 1000, 'is_active' => true,
+                    'options' => [['attribute_id' => $w, 'value' => 'Lanyard 2']]],
+                ['sku' => 'SORT-1', 'sell_price' => 1000, 'is_active' => true,
+                    'options' => [['attribute_id' => $w, 'value' => 'Lanyard 1']]],
+            ],
+        ]);
+        $res->assertCreated();
+        $id = $res->json('data.product_id');
+
+        $detail = $this->getJson("/api/v1/products/{$id}");
+        $detail->assertOk();
+
+        $values = collect($detail->json('data.variants'))
+            ->map(fn ($v) => $v['options'][0]['value'])
+            ->all();
+
+        $this->assertSame(['Lanyard 1', 'Lanyard 2', 'Lanyard 10'], $values);
+    }
+
     public function test_edit_persists_weight_unit(): void
     {
         $id = $this->createIp17();
