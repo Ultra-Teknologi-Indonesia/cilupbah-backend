@@ -13,6 +13,7 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ChannelListingValidator;
 use Modules\Finance\Support\AccountMappingKey;
 use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Jobs\MirrorProductMediaJob;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
@@ -388,13 +389,6 @@ class ProductService
                 throw new DomainException('Jenis varian yang sudah tersimpan tidak boleh dihapus.');
             }
         }
-        foreach ($existingValues as $attrId => $vals) {
-            foreach ($vals as $lk => $orig) {
-                if (! isset($payloadValues[$attrId][$lk])) {
-                    throw new DomainException("Opsi varian '{$orig}' yang sudah tersimpan tidak boleh dihapus.");
-                }
-            }
-        }
 
         $this->assertVariationConstraints($data);
 
@@ -430,8 +424,31 @@ class ProductService
             throw new DomainException('SKU varian sudah digunakan produk lain: ' . implode(', ', $foreignSkus));
         }
 
+        $toSupersede = [];
         foreach ($existingByKey as $key => $av) {
             if (! isset($desired[$key])) {
+                $toSupersede[] = $av;
+            }
+        }
+
+        if ($toSupersede) {
+            $stock = StockSummary::forItems(array_map(fn ($av) => $av->id, $toSupersede));
+            $blocked = [];
+            foreach ($toSupersede as $av) {
+                $s = $stock[$av->id] ?? null;
+                $qty = $s
+                    ? (int) $s['on_hand'] + (int) $s['pending_placement'] + (int) $s['on_order'] + (int) $s['transit']
+                    : 0;
+                if ($qty > 0) {
+                    $blocked[] = $av->sku;
+                }
+            }
+            if ($blocked) {
+                throw new DomainException(
+                    'Opsi varian tidak bisa dihapus karena varian berikut masih punya stok: ' . implode(', ', $blocked)
+                );
+            }
+            foreach ($toSupersede as $av) {
                 $this->writeRepository->supersedeVariant($av->id);
             }
         }

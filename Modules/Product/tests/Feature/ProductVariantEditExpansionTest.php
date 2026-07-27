@@ -7,6 +7,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Modules\Product\Models\Attribute;
 use Modules\Product\Models\Category;
+use Modules\Warehouse\Models\Location;
 use Tests\TestCase;
 
 class ProductVariantEditExpansionTest extends TestCase
@@ -107,17 +108,56 @@ class ProductVariantEditExpansionTest extends TestCase
         ])->assertStatus(422);
     }
 
-    public function test_removing_existing_option_value_is_rejected_422(): void
+    public function test_removing_option_value_without_stock_supersedes(): void
     {
         $id = $this->createIp17();
+        $w = $this->warna->id;
 
         $this->putJson("/api/v1/products/{$id}", [
-            'variation_types' => [['attribute_id' => $this->warna->id, 'sort_order' => 0]],
+            'variation_types' => [['attribute_id' => $w, 'sort_order' => 0]],
             'variants' => [
                 ['sku' => 'IP17-BLUE', 'sell_price' => 7000, 'is_active' => true,
-                    'options' => [['attribute_id' => $this->warna->id, 'value' => 'Blue']]],
+                    'options' => [['attribute_id' => $w, 'value' => 'Blue']]],
             ],
-        ])->assertStatus(422);
+        ])->assertOk();
+
+        $red = DB::table('product_variants')->where('product_id', $id)->where('sku', 'IP17-RED')->first();
+        $this->assertFalse((bool) $red->is_active, 'varian Red harus di-supersede saat opsinya dihapus');
+        $this->assertEquals(1, DB::table('product_variants')->where('product_id', $id)->where('is_active', true)->count());
+    }
+
+    public function test_removing_option_value_with_stock_rejected_422(): void
+    {
+        $id = $this->createIp17();
+        $w = $this->warna->id;
+
+        $red = DB::table('product_variants')->where('product_id', $id)->where('sku', 'IP17-RED')->first();
+        $loc = Location::factory()->create();
+        DB::table('inventories')->insert([
+            'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
+            'item_id' => $red->id,
+            'location_id' => $loc->id,
+            'bin_id' => null,
+            'on_hand' => 5,
+            'on_order' => 0,
+            'available' => 5,
+            'avg_cost' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->putJson("/api/v1/products/{$id}", [
+            'variation_types' => [['attribute_id' => $w, 'sort_order' => 0]],
+            'variants' => [
+                ['sku' => 'IP17-BLUE', 'sell_price' => 7000, 'is_active' => true,
+                    'options' => [['attribute_id' => $w, 'value' => 'Blue']]],
+            ],
+        ])->assertStatus(422)->assertSee('masih punya stok');
+
+        $this->assertTrue(
+            (bool) DB::table('product_variants')->where('id', $red->id)->value('is_active'),
+            'varian Red harus tetap aktif karena masih punya stok'
+        );
     }
 
     public function test_saved_option_value_with_legacy_trailing_space_is_not_rejected(): void
