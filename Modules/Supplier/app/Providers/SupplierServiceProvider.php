@@ -4,6 +4,7 @@ namespace Modules\Supplier\Providers;
 
 use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
+use Modules\Supplier\Console\Commands\ImportSuppliers;
 
 class SupplierServiceProvider extends ModuleServiceProvider
 {
@@ -15,6 +16,10 @@ class SupplierServiceProvider extends ModuleServiceProvider
     protected array $providers = [
         EventServiceProvider::class,
         RouteServiceProvider::class,
+    ];
+
+    protected array $commands = [
+        ImportSuppliers::class,
     ];
 
 }
