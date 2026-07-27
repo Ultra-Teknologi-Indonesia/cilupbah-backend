@@ -157,7 +157,7 @@ class ProductVariantEditExpansionTest extends TestCase
                 ['name' => 'Motif', 'sort_order' => 1],
             ],
             'variants' => [
-                ['sku' => 'IP17-BLUE-POLOS', 'sell_price' => 20000, 'weight' => null, 'is_active' => true,
+                ['sku' => 'IP17-BLUE-POLOS', 'sell_price' => 20000, 'weight' => 100, 'is_active' => true,
                     'options' => [['attribute_id' => $w, 'value' => 'Blue'], ['name' => 'Motif', 'value' => 'Polos']]],
                 ['sku' => 'IP17-BLUE-BATIK', 'sell_price' => 20000, 'is_active' => true,
                     'options' => [['attribute_id' => $w, 'value' => 'Blue'], ['name' => 'Motif', 'value' => 'Batik']]],
@@ -173,6 +173,24 @@ class ProductVariantEditExpansionTest extends TestCase
         $this->assertEquals(2, DB::table('product_variation_types')->where('product_id', $id)->count());
         $this->assertDatabaseHas('product_variation_types', ['product_id' => $id, 'attribute_id' => $motif->id]);
         $this->assertEquals(4, DB::table('product_variants')->where('product_id', $id)->where('is_active', true)->count());
+    }
+
+    public function test_edit_variant_with_null_weight_rejected_422(): void
+    {
+        $id = $this->createIp17();
+        $w = $this->warna->id;
+
+        $this->putJson("/api/v1/products/{$id}", [
+            'variation_types' => [['attribute_id' => $w, 'sort_order' => 0]],
+            'variants' => [
+                ['sku' => 'IP17-BLUE', 'sell_price' => 7000, 'weight' => null, 'is_active' => true,
+                    'options' => [['attribute_id' => $w, 'value' => 'Blue']]],
+                ['sku' => 'IP17-RED', 'sell_price' => 7000, 'weight' => 100, 'is_active' => true,
+                    'options' => [['attribute_id' => $w, 'value' => 'Red']]],
+            ],
+        ])
+            ->assertStatus(422)
+            ->assertSee('Berat varian wajib diisi.');
     }
 
     public function test_new_combo_inherits_price_from_ancestor_when_omitted(): void

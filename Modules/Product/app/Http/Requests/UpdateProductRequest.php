@@ -75,7 +75,7 @@ class UpdateProductRequest extends FormRequest
             'variants.*.min_stock' => 'sometimes|nullable|integer|min:0',
             'variants.*.safe_stock' => 'sometimes|nullable|integer|min:0',
             'variants.*.is_active' => 'sometimes|boolean',
-            'variants.*.weight' => 'sometimes|nullable|numeric|min:0',
+            'variants.*.weight' => 'sometimes|required|numeric|min:0',
             'variants.*.unlimited_shop_ids' => 'sometimes|nullable|array',
             'variants.*.unlimited_shop_ids.*' => 'uuid|distinct|exists:channel_shops,id',
 
@@ -135,5 +135,14 @@ class UpdateProductRequest extends FormRequest
                 }
             }
         });
+    }
+
+    public function messages(): array
+    {
+        return [
+            'variation_types.max' => 'Maksimal 2 jenis varian per produk.',
+            'variation_types.*.attribute_id.distinct' => 'Jenis varian tidak boleh duplikat.',
+            'variants.*.weight.required' => 'Berat varian wajib diisi.',
+        ];
     }
 }
