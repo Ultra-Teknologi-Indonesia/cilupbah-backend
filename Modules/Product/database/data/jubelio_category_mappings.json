@@ -1,18 +1,158 @@
 {
     "data": [
-        { "full_category_name": "material packing", "shopee_category_id": null, "shopee_category_name": "-", "lazada_category_id": null, "lazada_category_name": "-", "tiktok_category_id": null, "tiktok_category_name": "-", "blibli_category_id": null, "blibli_category_name": "-" },
-        { "full_category_name": "Jam Tangan > Aksesoris Jam > Strap & Benzel", "shopee_category_id": "100614", "shopee_category_name": "Strap", "lazada_category_id": null, "lazada_category_name": "-", "tiktok_category_id": null, "tiktok_category_name": "-", "blibli_category_id": null, "blibli_category_name": "-" },
-        { "full_category_name": "Handphone & Aksesoris > Stick & Tripod > Phone Holder", "shopee_category_id": "100279", "shopee_category_name": "Phone Holder", "lazada_category_id": "18866", "lazada_category_name": "Docks & Stands", "tiktok_category_id": null, "tiktok_category_name": "-", "blibli_category_id": "AK-1000192", "blibli_category_name": "Aksesoris Lainnya" },
-        { "full_category_name": "Handphone & Aksesoris > Stick & Tripod > Lazypod", "shopee_category_id": "100476", "shopee_category_name": "Lazypod", "lazada_category_id": "12499", "lazada_category_name": "Monopods", "tiktok_category_id": null, "tiktok_category_name": "-", "blibli_category_id": "AK-1000192", "blibli_category_name": "Aksesoris Lainnya" },
-        { "full_category_name": "Handphone & Aksesoris > Smartwatch > Strap", "shopee_category_id": "100288", "shopee_category_name": "Aksesoris Perangkat Wearable", "lazada_category_id": "10100419", "lazada_category_name": "Straps", "tiktok_category_id": null, "tiktok_category_name": "-", "blibli_category_id": "AK-1000140", "blibli_category_name": "Aksesoris Jam Lainnya" },
-        { "full_category_name": "Handphone & Aksesoris > Screen Guard > Screen Guard", "shopee_category_id": "100289", "shopee_category_name": "Pelindung Layar Handphone", "lazada_category_id": "14728", "lazada_category_name": "Screen Protectors", "tiktok_category_id": "601925", "tiktok_category_name": "Casing, Pelindung Layar, & Stiker", "blibli_category_id": "SK-1000013", "blibli_category_name": "Screen Protector" },
-        { "full_category_name": "Handphone & Aksesoris > Gantungan HP > Gantungan HP", "shopee_category_id": "100280", "shopee_category_name": "Tali & Gantungan Handphone", "lazada_category_id": "10100338", "lazada_category_name": "Phone Charms", "tiktok_category_id": "601925", "tiktok_category_name": "Casing, Pelindung Layar, & Stiker", "blibli_category_id": "AK-1000192", "blibli_category_name": "Aksesoris Lainnya" },
-        { "full_category_name": "Handphone & Aksesoris > Casing & Covers > Soft Case", "shopee_category_id": "100490", "shopee_category_name": "Casing & Skin Handphone", "lazada_category_id": "18870", "lazada_category_name": "Cases & Covers", "tiktok_category_id": "601925", "tiktok_category_name": "Casing, Pelindung Layar, & Stiker", "blibli_category_id": "CA-1000040", "blibli_category_name": "Casing" },
-        { "full_category_name": "Handphone & Aksesoris > Casing & Covers > Skin Handphone", "shopee_category_id": "100490", "shopee_category_name": "Casing & Skin Handphone", "lazada_category_id": "18870", "lazada_category_name": "Cases & Covers", "tiktok_category_id": "601925", "tiktok_category_name": "Casing, Pelindung Layar, & Stiker", "blibli_category_id": "SK-1000013", "blibli_category_name": "Screen Protector" },
-        { "full_category_name": "Handphone & Aksesoris > Casing & Covers > Leather Case", "shopee_category_id": "100490", "shopee_category_name": "Casing & Skin Handphone", "lazada_category_id": "18870", "lazada_category_name": "Cases & Covers", "tiktok_category_id": "601925", "tiktok_category_name": "Casing, Pelindung Layar, & Stiker", "blibli_category_id": "CA-1000040", "blibli_category_name": "Casing" },
-        { "full_category_name": "Handphone & Aksesoris > Casing & Covers > Hard Case", "shopee_category_id": "100490", "shopee_category_name": "Casing & Skin Handphone", "lazada_category_id": "18870", "lazada_category_name": "Cases & Covers", "tiktok_category_id": "601925", "tiktok_category_name": "Casing, Pelindung Layar, & Stiker", "blibli_category_id": "CA-1000040", "blibli_category_name": "Casing" },
-        { "full_category_name": "Handphone & Aksesoris > Casing & Covers > Anti Crack Case", "shopee_category_id": "100490", "shopee_category_name": "Casing & Skin Handphone", "lazada_category_id": "18870", "lazada_category_name": "Cases & Covers", "tiktok_category_id": "601925", "tiktok_category_name": "Casing, Pelindung Layar, & Stiker", "blibli_category_id": "CA-1000040", "blibli_category_name": "Casing" },
-        { "full_category_name": "Handphone & Aksesoris > Adaptor + Kabel", "shopee_category_id": "100077", "shopee_category_name": "Others", "lazada_category_id": null, "lazada_category_name": "-", "tiktok_category_id": null, "tiktok_category_name": "-", "blibli_category_id": null, "blibli_category_name": "-" },
-        { "full_category_name": "Buku & Alat Tulis > Surat-Menyurat > Bubble Wrap", "shopee_category_id": "101334", "shopee_category_name": "Bubble Wrap", "lazada_category_id": null, "lazada_category_name": "-", "tiktok_category_id": null, "tiktok_category_name": "-", "blibli_category_id": null, "blibli_category_name": "-" }
+        {
+            "full_category_name": "material packing",
+            "shopee_category_id": null,
+            "shopee_category_name": "-",
+            "lazada_category_id": null,
+            "lazada_category_name": "-",
+            "tiktok_category_id": null,
+            "tiktok_category_name": "-",
+            "blibli_category_id": null,
+            "blibli_category_name": "-"
+        },
+        {
+            "full_category_name": "Jam Tangan > Aksesoris Jam > Strap & Benzel",
+            "shopee_category_id": "300614",
+            "shopee_category_name": "Strap",
+            "lazada_category_id": null,
+            "lazada_category_name": "-",
+            "tiktok_category_id": null,
+            "tiktok_category_name": "-",
+            "blibli_category_id": null,
+            "blibli_category_name": "-"
+        },
+        {
+            "full_category_name": "Handphone & Aksesoris > Stick & Tripod > Phone Holder",
+            "shopee_category_id": "300279",
+            "shopee_category_name": "Phone Holder",
+            "lazada_category_id": "18866",
+            "lazada_category_name": "Docks & Stands",
+            "tiktok_category_id": null,
+            "tiktok_category_name": "-",
+            "blibli_category_id": "AK-1000192",
+            "blibli_category_name": "Aksesoris Lainnya"
+        },
+        {
+            "full_category_name": "Handphone & Aksesoris > Stick & Tripod > Lazypod",
+            "shopee_category_id": "300476",
+            "shopee_category_name": "Lazypod",
+            "lazada_category_id": "12499",
+            "lazada_category_name": "Monopods",
+            "tiktok_category_id": null,
+            "tiktok_category_name": "-",
+            "blibli_category_id": "AK-1000192",
+            "blibli_category_name": "Aksesoris Lainnya"
+        },
+        {
+            "full_category_name": "Handphone & Aksesoris > Smartwatch > Strap",
+            "shopee_category_id": "300288",
+            "shopee_category_name": "Aksesoris Perangkat Wearable",
+            "lazada_category_id": "10100419",
+            "lazada_category_name": "Straps",
+            "tiktok_category_id": null,
+            "tiktok_category_name": "-",
+            "blibli_category_id": "AK-1000140",
+            "blibli_category_name": "Aksesoris Jam Lainnya"
+        },
+        {
+            "full_category_name": "Handphone & Aksesoris > Screen Guard > Screen Guard",
+            "shopee_category_id": "300289",
+            "shopee_category_name": "Pelindung Layar Handphone",
+            "lazada_category_id": "14728",
+            "lazada_category_name": "Screen Protectors",
+            "tiktok_category_id": "601925",
+            "tiktok_category_name": "Casing, Pelindung Layar, & Stiker",
+            "blibli_category_id": "SK-1000013",
+            "blibli_category_name": "Screen Protector"
+        },
+        {
+            "full_category_name": "Handphone & Aksesoris > Gantungan HP > Gantungan HP",
+            "shopee_category_id": "300280",
+            "shopee_category_name": "Tali & Gantungan Handphone",
+            "lazada_category_id": "10100338",
+            "lazada_category_name": "Phone Charms",
+            "tiktok_category_id": "601925",
+            "tiktok_category_name": "Casing, Pelindung Layar, & Stiker",
+            "blibli_category_id": "AK-1000192",
+            "blibli_category_name": "Aksesoris Lainnya"
+        },
+        {
+            "full_category_name": "Handphone & Aksesoris > Casing & Covers > Soft Case",
+            "shopee_category_id": "300490",
+            "shopee_category_name": "Casing & Skin Handphone",
+            "lazada_category_id": "18870",
+            "lazada_category_name": "Cases & Covers",
+            "tiktok_category_id": "601925",
+            "tiktok_category_name": "Casing, Pelindung Layar, & Stiker",
+            "blibli_category_id": "CA-1000040",
+            "blibli_category_name": "Casing"
+        },
+        {
+            "full_category_name": "Handphone & Aksesoris > Casing & Covers > Skin Handphone",
+            "shopee_category_id": "300490",
+            "shopee_category_name": "Casing & Skin Handphone",
+            "lazada_category_id": "18870",
+            "lazada_category_name": "Cases & Covers",
+            "tiktok_category_id": "601925",
+            "tiktok_category_name": "Casing, Pelindung Layar, & Stiker",
+            "blibli_category_id": "SK-1000013",
+            "blibli_category_name": "Screen Protector"
+        },
+        {
+            "full_category_name": "Handphone & Aksesoris > Casing & Covers > Leather Case",
+            "shopee_category_id": "300490",
+            "shopee_category_name": "Casing & Skin Handphone",
+            "lazada_category_id": "18870",
+            "lazada_category_name": "Cases & Covers",
+            "tiktok_category_id": "601925",
+            "tiktok_category_name": "Casing, Pelindung Layar, & Stiker",
+            "blibli_category_id": "CA-1000040",
+            "blibli_category_name": "Casing"
+        },
+        {
+            "full_category_name": "Handphone & Aksesoris > Casing & Covers > Hard Case",
+            "shopee_category_id": "300490",
+            "shopee_category_name": "Casing & Skin Handphone",
+            "lazada_category_id": "18870",
+            "lazada_category_name": "Cases & Covers",
+            "tiktok_category_id": "601925",
+            "tiktok_category_name": "Casing, Pelindung Layar, & Stiker",
+            "blibli_category_id": "CA-1000040",
+            "blibli_category_name": "Casing"
+        },
+        {
+            "full_category_name": "Handphone & Aksesoris > Casing & Covers > Anti Crack Case",
+            "shopee_category_id": "300490",
+            "shopee_category_name": "Casing & Skin Handphone",
+            "lazada_category_id": "18870",
+            "lazada_category_name": "Cases & Covers",
+            "tiktok_category_id": "601925",
+            "tiktok_category_name": "Casing, Pelindung Layar, & Stiker",
+            "blibli_category_id": "CA-1000040",
+            "blibli_category_name": "Casing"
+        },
+        {
+            "full_category_name": "Handphone & Aksesoris > Adaptor + Kabel",
+            "shopee_category_id": "100077",
+            "shopee_category_name": "Others",
+            "lazada_category_id": null,
+            "lazada_category_name": "-",
+            "tiktok_category_id": null,
+            "tiktok_category_name": "-",
+            "blibli_category_id": null,
+            "blibli_category_name": "-"
+        },
+        {
+            "full_category_name": "Buku & Alat Tulis > Surat-Menyurat > Bubble Wrap",
+            "shopee_category_id": "101334",
+            "shopee_category_name": "Bubble Wrap",
+            "lazada_category_id": null,
+            "lazada_category_name": "-",
+            "tiktok_category_id": null,
+            "tiktok_category_name": "-",
+            "blibli_category_id": null,
+            "blibli_category_name": "-"
+        }
     ]
 }
