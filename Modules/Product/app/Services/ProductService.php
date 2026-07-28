@@ -262,7 +262,7 @@ class ProductService
             $productData = Arr::only($data, [
                 'name', 'sku', 'description', 'category_id', 'search_keyword',
                 'order_type', 'indent_days', 'condition', 'status',
-                'weight', 'weight_unit', 'is_active', 'is_cod_allowed',
+                'weight', 'weight_unit', 'length', 'width', 'height', 'is_active', 'is_cod_allowed',
                 'is_bundle', 'is_consignment', 'package_contents',
                 'is_stored', 'is_sold', 'is_purchased', 'purchase_lead_time',
             ]);
@@ -541,7 +541,7 @@ class ProductService
         $f = Arr::only($v, [
             'buy_price', 'barcode', 'is_active',
             'sales_tax_id', 'purchase_tax_id', 'min_stock', 'safe_stock',
-            'weight',
+            'weight', 'length', 'width', 'height',
         ]);
         if (array_key_exists('weight', $f) && $f['weight'] === null) {
             unset($f['weight']);
@@ -778,7 +778,7 @@ class ProductService
             $productData = Arr::only($data, [
                 'category_id', 'name', 'sku', 'description',
                 'order_type', 'indent_days',
-                'weight', 'weight_unit', 'is_active',
+                'weight', 'weight_unit', 'length', 'width', 'height', 'is_active',
                 'is_bundle', 'is_consignment', 'is_from_channel',
                 'is_stored', 'is_sold', 'is_purchased',
                 'purchase_lead_time', 'package_contents',
@@ -839,7 +839,7 @@ class ProductService
                     $variantData = Arr::only($variant, [
                         'sku', 'barcode', 'buy_price', 'sell_price', 'is_active',
                         'sales_tax_id', 'purchase_tax_id', 'min_stock', 'safe_stock',
-                        'weight',
+                        'weight', 'length', 'width', 'height',
                     ]);
 
                     if (!empty($variant['sales_tax_id'])) {
