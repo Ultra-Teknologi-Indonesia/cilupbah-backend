@@ -1,58 +1,41 @@
+version: "3.8"
+
+# Menggunakan fitur YAML Anchor agar config tidak ditulis berulang-ulang
+x-app-config: &app-config
+  image: ghcr.io/ultra-teknologi-indonesia/cilupbah:staging
+  restart: unless-stopped
+  environment:
+    - APP_ENV=staging
+    - APP_DEBUG=false
+    - PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d:/var/www/html/docker/php
+  depends_on:
+    - redis
+  volumes:
+    # Mount file .env langsung ke root aplikasi di dalam container
+    - /var/www/cilupbah/.env:/var/www/html/.env
+    # Mount folder yang isinya berubah/dinamis di production
+    - /var/www/cilupbah/storage/app:/var/www/html/storage/app
+    - /var/www/cilupbah/storage/framework:/var/www/html/storage/framework
+    - /var/www/cilupbah/storage/logs:/var/www/html/storage/logs
+    - /var/www/cilupbah/bootstrap/cache:/var/www/html/bootstrap/cache
+
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: staging-superapp-prod
+    <<: *app-config
     container_name: cilupbah-staging
     entrypoint: ["/usr/local/bin/start.staging.sh"]
     ports:
       - "8001:8000"
-    volumes:
-      - /var/www/cilupbah:/var/www/html
-    environment:
-      - APP_ENV=staging
-      - APP_DEBUG=false
-      - PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d:/var/www/html/docker/php
-    # PostgreSQL now runs natively on the host (not in Docker).
-    # The app reaches it via the docker0 gateway IP (DB_HOST=172.17.0.1 in .env).
-    depends_on:
-      - redis
-    restart: unless-stopped
 
   horizon:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: staging-superapp-prod
+    <<: *app-config
     container_name: cilupbah-staging-horizon
     entrypoint: ["php", "artisan", "horizon"]
-    volumes:
-      - /var/www/cilupbah:/var/www/html
-    environment:
-      - APP_ENV=staging
-      - APP_DEBUG=false
-      - PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d:/var/www/html/docker/php
-    depends_on:
-      - redis
-    restart: unless-stopped
 
   scheduler:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: staging-superapp-prod
+    <<: *app-config
     container_name: cilupbah-staging-scheduler
     entrypoint: ["php", "artisan", "schedule:work"]
-    volumes:
-      - /var/www/cilupbah:/var/www/html
-    environment:
-      - APP_ENV=staging
-      - APP_DEBUG=false
-      - PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d:/var/www/html/docker/php
-    depends_on:
-      - redis
-    restart: unless-stopped
 
   redis:
     container_name: cilupbah-staging-redis
