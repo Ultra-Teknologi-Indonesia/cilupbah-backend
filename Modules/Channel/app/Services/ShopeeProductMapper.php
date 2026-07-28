@@ -31,9 +31,9 @@ class ShopeeProductMapper
             'item_sku' => $itemSku,
             'weight' => WeightConverter::toKg($product['weight'] ?? $config['weight'] ?? 0.1, $product['weight_unit'] ?? 'kg') ?: 0.1,
             'dimension' => [
-                'package_length' => (int) ($config['length'] ?? 10),
-                'package_width' => (int) ($config['width'] ?? 10),
-                'package_height' => (int) ($config['height'] ?? 10),
+                'package_length' => max(1, (int) ($product['length'] ?? $config['length'] ?? 10)),
+                'package_width' => max(1, (int) ($product['width'] ?? $config['width'] ?? 10)),
+                'package_height' => max(1, (int) ($product['height'] ?? $config['height'] ?? 10)),
             ],
             'image' => ['image_id_list' => array_values($imageIds)],
         ];
