@@ -99,7 +99,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 if ($e instanceof \Symfony\Component\HttpKernel\Exception\NotFoundHttpException ||
                     $e instanceof \Illuminate\Database\Eloquent\ModelNotFoundException) {
                     return $responder->errorResponse(
-                        'Data yang Anda cari tidak dapat ditemukan / ini CI CD BARU',
+                        'Data yang Anda cari tidak dapat ditemukan / ini CI CD BARU V2',
                         404,
                         null,
                         'Data tidak ditemukan',
