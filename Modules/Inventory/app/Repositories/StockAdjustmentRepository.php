@@ -12,7 +12,7 @@ class StockAdjustmentRepository
     public function getAllPaginated(int $limit = 10)
     {
         return QueryBuilder::for(StockAdjustment::class)
-            ->with(['location:id,location_name', 'items'])
+            ->with(['location:id,location_name', 'items.product.product', 'items.bin'])
             ->allowedSearch('adjustment_no')
             ->allowedFilters(
                 AllowedFilter::exact('location_id'),
