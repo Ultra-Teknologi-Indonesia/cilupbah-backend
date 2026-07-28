@@ -25,7 +25,7 @@ class ImportCategoryChannelMappings extends Command
 {
     protected $signature = 'channels:import-category-mappings
         {path? : Path file JSON dump (default: Modules/Product/database/data/jubelio_category_mappings.json)}
-        {--channels=shopee,lazada : Channel yang diproses, dipisah koma (shopee,lazada,tiktok,blibli)}
+        {--channels=shopee,lazada,tiktok : Channel yang diproses, dipisah koma (shopee,lazada,tiktok,blibli)}
         {--overwrite : Timpa pemetaan channel yang sudah ada (default: hanya isi yang kosong)}
         {--dry-run : Tampilkan ringkasan saja, tidak menulis apa pun}';
 
