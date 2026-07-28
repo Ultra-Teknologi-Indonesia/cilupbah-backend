@@ -63,6 +63,9 @@ class ShopeeToInternalProductMapper
 
         $internal['sku'] = $shopeeItem['item_sku'] ?? ($internal['variants'][0]['sku'] ?? null);
 
+        $internal['channel_external_product_id'] = isset($shopeeItem['item_id']) ? (string) $shopeeItem['item_id'] : null;
+        $internal['channel_shop_id_external'] = $shopId;
+
         return $internal;
     }
 

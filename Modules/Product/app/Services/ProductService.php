@@ -212,6 +212,17 @@ class ProductService
             }
         }
 
+        if (! $productId) {
+            $externalProductId = $data['channel_external_product_id'] ?? null;
+            $externalShopId = $data['channel_shop_id_external'] ?? null;
+            if ($externalProductId && $externalShopId) {
+                $productId = $this->writeRepository->productIdByChannelExternalId(
+                    (string) $externalShopId,
+                    (string) $externalProductId
+                );
+            }
+        }
+
         if ($productId) {
             $matchedExisting = true;
 

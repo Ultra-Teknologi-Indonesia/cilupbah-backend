@@ -51,6 +51,15 @@ class ProductWriteRepository
         return DB::table('product_variants')->where('sku', $sku)->value('product_id');
     }
 
+    public function productIdByChannelExternalId(string $shopId, string $externalProductId): ?string
+    {
+        return DB::table('product_channel_mappings as pcm')
+            ->join('channel_shops as cs', 'cs.id', '=', 'pcm.channel_shop_id')
+            ->where('cs.shop_id', $shopId)
+            ->where('pcm.external_product_id', $externalProductId)
+            ->value('pcm.product_id');
+    }
+
     public function productCategoryId(string $productId)
     {
         return DB::table('products')->where('id', $productId)->value('category_id');

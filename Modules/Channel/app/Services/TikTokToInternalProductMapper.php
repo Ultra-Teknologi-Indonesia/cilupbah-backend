@@ -144,6 +144,9 @@ class TikTokToInternalProductMapper
 
         $internal['sku'] = $internal['variants'][0]['sku'] ?? null;
 
+        $internal['channel_external_product_id'] = isset($tiktokProduct['id']) ? (string) $tiktokProduct['id'] : null;
+        $internal['channel_shop_id_external'] = $shopId;
+
         return $internal;
     }
 

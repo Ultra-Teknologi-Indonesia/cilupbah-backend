@@ -42,6 +42,9 @@ class WooCommerceToInternalProductMapper
 
         $internal['sku'] = ! empty($wcProduct['sku']) ? $wcProduct['sku'] : ($internal['variants'][0]['sku'] ?? null);
 
+        $internal['channel_external_product_id'] = isset($wcProduct['id']) ? (string) $wcProduct['id'] : null;
+        $internal['channel_shop_id_external'] = $shopId;
+
         return $internal;
     }
 
