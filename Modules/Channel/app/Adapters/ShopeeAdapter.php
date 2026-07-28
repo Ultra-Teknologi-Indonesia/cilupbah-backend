@@ -54,6 +54,10 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
                     $skus = $this->normalizeSkus($initRes['response']['model_list'] ?? $initRes['response']['model'] ?? []);
                 }
 
+                if (empty($skus)) {
+                    $skus = $this->normalizeSkus($res['response']['model_list'] ?? []);
+                }
+
                 return [
                     'success' => true,
                     'external_product_id' => (string) $itemId,

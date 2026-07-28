@@ -28,6 +28,10 @@ class ProductVariantChannelMapping extends Model
         'sync_enabled' => 'boolean',
     ];
 
+    protected $attributes = [
+        'sync_enabled' => true,
+    ];
+
     public function channelMapping(): BelongsTo
     {
         return $this->belongsTo(ProductChannelMapping::class, 'product_channel_mapping_id');

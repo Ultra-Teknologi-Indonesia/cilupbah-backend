@@ -64,7 +64,7 @@ class TikTokErrorCatalogTest extends TestCase
 
     public function test_messages_are_indonesian_user_facing(): void
     {
-        // Pesan tidak boleh sekadar meneruskan istilah teknis mentah.
+
         $r = TikTokErrorCatalog::resolve('12052034');
         $this->assertSame('Produk ini bukan milik toko Anda.', $r['message']);
     }

@@ -7,9 +7,7 @@ use Illuminate\Support\Facades\Artisan;
 
 class ImportJubelioProductCsvSeeder extends Seeder
 {
-    /**
-     * Jalankan seeder untuk meng-import data master produk dari Jubelio CSV.
-     */
+
     public function run(): void
     {
         $this->command->info('Memulai ImportJubelioProductCsvSeeder...');

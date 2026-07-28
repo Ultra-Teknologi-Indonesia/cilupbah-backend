@@ -9,7 +9,7 @@ class StockSummary
 
     public static function placedOnHandSql(string $inv = 'inventories', string $bin = 'location_bins'): string
     {
-        return "COALESCE(SUM(CASE WHEN {$bin}.id IS NOT NULL AND {$bin}.is_inbound = false THEN {$inv}.on_hand ELSE 0 END),0)";
+        return "COALESCE(SUM(CASE WHEN ({$bin}.id IS NULL OR {$bin}.is_inbound = false) THEN {$inv}.on_hand ELSE 0 END),0)";
     }
 
     public static function onOrderSql(string $inv = 'inventories'): string

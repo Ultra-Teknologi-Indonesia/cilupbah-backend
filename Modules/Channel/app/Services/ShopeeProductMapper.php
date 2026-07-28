@@ -4,6 +4,7 @@ namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Support\DescriptionFormatter;
+use Modules\Channel\Support\WeightConverter;
 
 class ShopeeProductMapper
 {
@@ -15,17 +16,21 @@ class ShopeeProductMapper
         $payload = [
             'category_id' => $categoryId !== null ? (int) $categoryId : null,
             'item_name' => $product['name'] ?? 'Produk',
-            'description' => DescriptionFormatter::toHtml($product['description'] ?? '') ?: ($product['name'] ?? ''),
+            'description' => strip_tags($product['description'] ?? '') ?: ($product['name'] ?? ''),
             'item_sku' => $itemSku,
-            'weight' => \Modules\Channel\Support\WeightConverter::toKg($product['weight'] ?? $config['weight'] ?? 0.1, $product['weight_unit'] ?? 'kg') ?: 0.1,
+            'weight' => WeightConverter::toKg($product['weight'] ?? $config['weight'] ?? 0.1, $product['weight_unit'] ?? 'kg') ?: 0.1,
             'dimension' => [
                 'package_length' => (int) ($config['length'] ?? 10),
                 'package_width' => (int) ($config['width'] ?? 10),
                 'package_height' => (int) ($config['height'] ?? 10),
             ],
             'image' => ['image_id_list' => array_values($imageIds)],
-            'logistic_info' => $config['logistic_info'] ?? [],
         ];
+
+        $logisticInfo = $config['logistic_info'] ?? [];
+        if (! empty($logisticInfo)) {
+            $payload['logistic_info'] = $logisticInfo;
+        }
 
         if (! empty($config['attribute_list'])) {
             $payload['attribute_list'] = $config['attribute_list'];
@@ -49,8 +54,8 @@ class ShopeeProductMapper
             $payload['seller_stock'] = [['stock' => 0]];
         } else {
             $first = $variants[0] ?? [];
-            $payload['price_info'] = [['current_price' => (float) ($first['sell_price'] ?? 0)]];
-            $payload['stock_info_v2'] = [['stock_type' => 1, 'stock' => (int) ($first['stock'] ?? 0)]];
+            $payload['original_price'] = (float) ($first['sell_price'] ?? 0);
+            $payload['seller_stock'] = [['stock' => (int) ($first['stock'] ?? 0)]];
         }
 
         $result = array_filter($payload, fn ($v) => $v !== null);

@@ -14,22 +14,13 @@ use Modules\Product\Models\ProductVariant;
 
 class ImportJubelioProductsCsv extends Command
 {
-    /**
-     * Nama dan signature perintah console.
-     *
-     * @var string
-     */
+
     protected $signature = 'product:import-jubelio-csv 
         {path? : Path file CSV Jubelio} 
         {--dry-run : Simulasi import tanpa menyimpan data ke database}
         {--limit=0 : Batasi jumlah baris CSV yang diproses (0 = tanpa batas)}
         {--mirror-images : Download gambar dari URL eksternal ke Object Storage internal S3/MinIO}';
 
-    /**
-     * Deskripsi perintah console.
-     *
-     * @var string
-     */
     protected $description = 'Import data master produk & variant dari file CSV Jubelio (support dry-run & limit)';
 
     public function handle(): int
@@ -65,7 +56,6 @@ class ImportJubelioProductsCsv extends Command
             return Command::FAILURE;
         }
 
-        // Ambil header CSV
         $header = fgetcsv($handle);
         if (! $header) {
             $this->error("File CSV kosong.");
@@ -73,17 +63,16 @@ class ImportJubelioProductsCsv extends Command
             return Command::FAILURE;
         }
 
-        // Peta index kolom
         $columnIndex = [];
         foreach ($header as $idx => $colName) {
-            $cleanColName = trim($colName, "\xEF\xBB\xBF "); // Strip UTF-8 BOM & spaces
+            $cleanColName = trim($colName, "\xEF\xBB\xBF "); 
             $columnIndex[$cleanColName] = $idx;
         }
 
         $categoryCache = [];
-        $categorySummary = []; // name => ['status' => 'EXISTING'|'NEW', 'id' => ...]
-        $productGroupCache = []; // groupKey => product_id
-        $productSampleMapping = []; // groupKey => ['name' => ..., 'item_group_id' => ..., 'variants' => []]
+        $categorySummary = []; 
+        $productGroupCache = []; 
+        $productSampleMapping = []; 
 
         $importedProductsCount = 0;
         $importedVariantsCount = 0;
@@ -117,7 +106,6 @@ class ImportJubelioProductsCsv extends Command
                     continue;
                 }
 
-                // 1. Resolve Category
                 if (empty($categoryName)) {
                     $categoryName = 'Uncategorized';
                 }
@@ -148,7 +136,6 @@ class ImportJubelioProductsCsv extends Command
                 }
                 $categoryId = $categoryCache[$categoryName];
 
-                // 2. Master Product Parent (Grouping by Item Group ID / Name)
                 $groupKey = ! empty($itemGroupId) ? "group_{$itemGroupId}" : "name_" . Str::slug($name);
 
                 if (! isset($productGroupCache[$groupKey])) {
@@ -185,7 +172,6 @@ class ImportJubelioProductsCsv extends Command
                 }
                 $productId = $productGroupCache[$groupKey];
 
-                // 3. Variant (ProductVariant)
                 $existingVariant = ProductVariant::where('sku', $sku)->first();
                 if (! $existingVariant) {
                     $variant = ProductVariant::create([
@@ -204,7 +190,6 @@ class ImportJubelioProductsCsv extends Command
                     $variant = $existingVariant;
                 }
 
-                // 3.1 Populate variant options from Variation string
                 if (! empty($variation)) {
                     $parts = explode(',', $variation);
                     foreach ($parts as $idx => $part) {
@@ -230,7 +215,6 @@ class ImportJubelioProductsCsv extends Command
                     }
                 }
 
-                // Track sample variant for output display
                 if (isset($productSampleMapping[$groupKey]) && count($productSampleMapping[$groupKey]['variants']) < 4) {
                     $productSampleMapping[$groupKey]['variants'][] = [
                         'sku' => $sku,
@@ -239,7 +223,6 @@ class ImportJubelioProductsCsv extends Command
                     ];
                 }
 
-                // 4. Media (Image 1 s/d 5)
                 $shouldMirror = (bool) $this->option('mirror-images');
                 $uploadService = ($shouldMirror && ! $isDryRun) ? app(UploadService::class) : null;
 
@@ -290,12 +273,10 @@ class ImportJubelioProductsCsv extends Command
             }
             fclose($handle);
 
-            // Display Dry-Run Report Tables
             $this->info("\n=================================================");
             $this->info(" 📊 HASIL ANALISIS MAPPING DATA (JUBELIO → INTERNAL)");
             $this->info("=================================================");
 
-            // Table 1: Category Mapping
             $this->info("\n1. Hasil Mapping Kategori:");
             $catRows = [];
             foreach ($categorySummary as $cat) {
@@ -303,7 +284,6 @@ class ImportJubelioProductsCsv extends Command
             }
             $this->table(['Kategori di CSV', 'Status Kategori', 'Category ID'], array_slice($catRows, 0, 15));
 
-            // Table 2: Product & Variant Samples
             $this->info("\n2. Sample Structure Master Produk & Varian (5 Sample Pertama):");
             foreach (array_slice($productSampleMapping, 0, 5) as $grpKey => $prod) {
                 $this->line("<comment>► Master Product:</comment> <info>{$prod['name']}</info> (Group ID: {$prod['item_group_id']} | Kat: {$prod['category']})");

@@ -9,14 +9,12 @@ class TikTokErrorCatalog
     public const USER_FIXABLE = 'user_fixable';
     public const FATAL = 'fatal';
 
-    /** Kode otorisasi/token yang memicu penyambungan ulang. */
     protected const TOKEN_CODES = [40100, 40102, 40103];
 
     protected const TOKEN_MESSAGE = 'Koneksi ke TikTok Shop terputus. Sistem akan menyambungkan ulang.';
 
-    /** code => [kategori, pesan]. `:detail` diisi pesan asli dari TikTok. */
     protected const MAP = [
-        // --- Gangguan sementara / batas permintaan (bisa dicoba ulang) ---
+
         '12001000' => [self::RETRYABLE, 'Terjadi kesalahan pada TikTok Shop. Coba lagi nanti.'],
         '12052881' => [self::RETRYABLE, 'Terjadi kesalahan pada TikTok Shop. Coba lagi nanti.'],
         '33001002' => [self::RETRYABLE, 'Terjadi kesalahan pada TikTok Shop. Coba lagi nanti.'],
@@ -25,13 +23,11 @@ class TikTokErrorCatalog
         '12052109' => [self::RETRYABLE, 'Terlalu banyak permintaan. Tunggu sebentar lalu coba lagi.'],
         '12052372' => [self::RETRYABLE, 'Gagal membuat gambar label energi (EU). Coba lagi.'],
 
-        // --- Parameter umum ---
         '11050001' => [self::USER_FIXABLE, 'Data yang dikirim tidak sesuai.'],
         '36009004' => [self::USER_FIXABLE, 'Data yang dikirim tidak sesuai.'],
         '98001004' => [self::USER_FIXABLE, 'Data yang dikirim tidak sesuai: :detail'],
         '12052910' => [self::USER_FIXABLE, 'Data yang dikirim tidak sesuai: :detail'],
 
-        // --- Gambar (upload / produk / deskripsi / variasi / kualifikasi) ---
         '12019116' => [self::USER_FIXABLE, 'Ukuran dimensi gambar melebihi batas yang diizinkan.'],
         '12038002' => [self::USER_FIXABLE, 'File yang diunggah tidak valid. Pastikan file gambar benar.'],
         '12038004' => [self::USER_FIXABLE, 'Gagal memproses gambar. Format atau isi gambar tidak didukung.'],
@@ -67,7 +63,6 @@ class TikTokErrorCatalog
         '12052357' => [self::USER_FIXABLE, 'Gambar tambahan SKU hanya boleh diisi jika gambar SKU sudah ada.'],
         '12052360' => [self::USER_FIXABLE, 'Video produk tidak ditemukan.'],
 
-        // --- Deskripsi & nama produk ---
         '12019006' => [self::USER_FIXABLE, 'Deskripsi produk tidak valid.'],
         '12052013' => [self::USER_FIXABLE, 'Deskripsi produk melebihi batas jumlah karakter.'],
         '12052015' => [self::USER_FIXABLE, 'Deskripsi produk wajib diisi.'],
@@ -89,7 +84,6 @@ class TikTokErrorCatalog
         '12052934' => [self::USER_FIXABLE, 'Nilai variasi melanggar aturan format (tanpa emoji, karakter kontrol, hanya simbol, atau karakter berulang berlebihan).'],
         '12052935' => [self::USER_FIXABLE, 'Nilai atribut melanggar aturan format (tanpa emoji, karakter kontrol, hanya simbol, atau karakter berulang berlebihan).'],
 
-        // --- Paket & dimensi ---
         '12019011' => [self::USER_FIXABLE, 'Berat paket produk tidak valid.'],
         '12019012' => [self::USER_FIXABLE, 'Ukuran paket produk tidak valid.'],
         '12019061' => [self::USER_FIXABLE, 'Satuan berat/dimensi imperial tidak didukung untuk produk lokal di luar AS.'],
@@ -101,7 +95,6 @@ class TikTokErrorCatalog
         '12052181' => [self::USER_FIXABLE, 'Berat paket produk tidak boleh 0.'],
         '12052915' => [self::USER_FIXABLE, 'Satuan berat dan satuan dimensi tidak cocok.'],
 
-        // --- Kategori ---
         '12052002' => [self::USER_FIXABLE, 'Format kategori tidak sesuai.'],
         '12052023' => [self::USER_FIXABLE, 'Kategori tidak ditemukan.'],
         '12052024' => [self::USER_FIXABLE, 'Kategori belum sampai level akhir (subkategori terkecil).'],
@@ -118,7 +111,6 @@ class TikTokErrorCatalog
         '12052226' => [self::FATAL, 'Kategori ini dibatasi. Ajukan izin lewat Qualification Center di Seller Center.'],
         '12052227' => [self::FATAL, 'Kategori tidak diizinkan atau tidak tersedia.'],
 
-        // --- Merek ---
         '12019013' => [self::USER_FIXABLE, 'Merek produk tidak valid.'],
         '12052026' => [self::USER_FIXABLE, 'Merek tidak ditemukan.'],
         '12052200' => [self::USER_FIXABLE, 'Merek sudah kedaluwarsa.'],
@@ -126,7 +118,6 @@ class TikTokErrorCatalog
         '12052207' => [self::FATAL, 'Merek ini tidak mendukung gudang tersebut.'],
         '12052208' => [self::FATAL, 'Perlu otorisasi merek untuk menerbitkan produk ini.'],
 
-        // --- Atribut & variasi ---
         '12019019' => [self::USER_FIXABLE, 'Variasi produk tidak valid.'],
         '12052104' => [self::USER_FIXABLE, 'Atribut produk wajib diisi.'],
         '12052151' => [self::USER_FIXABLE, 'Nilai atribut mengandung kata yang dilarang.'],
@@ -160,7 +151,6 @@ class TikTokErrorCatalog
         '12052160' => [self::USER_FIXABLE, 'Produk ini harus punya 1 SKU tanpa variasi.'],
         '12052162' => [self::USER_FIXABLE, 'Produk satuan unik harus punya 1 SKU tanpa variasi.'],
 
-        // --- SKU & gudang ---
         '12019022' => [self::USER_FIXABLE, 'Setiap SKU harus memiliki gudang yang valid.'],
         '12019056' => [self::USER_FIXABLE, 'SKU tidak boleh ditambahkan.'],
         '12019057' => [self::USER_FIXABLE, 'SKU tidak boleh dihapus.'],
@@ -202,7 +192,6 @@ class TikTokErrorCatalog
         '12052503' => [self::USER_FIXABLE, 'Jika stok diatur berbagi antar SKU, jumlah stok harus sama di semua SKU.'],
         '12052516' => [self::USER_FIXABLE, 'Detail stok belum lengkap. Sertakan semua gudang SKU beserta jumlahnya.'],
 
-        // --- Harga ---
         '12019045' => [self::FATAL, 'Harga terkunci.'],
         '12052012' => [self::USER_FIXABLE, 'Format harga tidak sesuai.'],
         '12052073' => [self::USER_FIXABLE, 'Harga produk tidak valid.'],
@@ -219,7 +208,6 @@ class TikTokErrorCatalog
         '12052038' => [self::FATAL, 'Harga terkunci karena produk sedang promosi.'],
         '12052393' => [self::FATAL, 'Produk terkunci karena promosi; stok tidak bisa diturunkan di bawah stok saat ini.'],
 
-        // --- Pre-order / made-to-order / backorder ---
         '12019095' => [self::USER_FIXABLE, 'Jenis pemenuhan pre-order wajib diisi.'],
         '12019096' => [self::USER_FIXABLE, 'Jenis pre-order wajib diisi.'],
         '12019097' => [self::USER_FIXABLE, 'Tanggal rilis pre-order wajib diisi.'],
@@ -242,7 +230,6 @@ class TikTokErrorCatalog
         '12052311' => [self::USER_FIXABLE, 'Jumlah atau proporsi produk stok indent (backorder) melebihi batas.'],
         '12052313' => [self::USER_FIXABLE, 'Produk ini tidak mengizinkan stok indent (backorder).'],
 
-        // --- Produsen / penanggung jawab / kode identifikasi ---
         '12052282' => [self::USER_FIXABLE, 'Produsen produk wajib diisi.'],
         '12052283' => [self::USER_FIXABLE, 'Jumlah produsen melebihi batas yang diizinkan.'],
         '12052284' => [self::USER_FIXABLE, 'Produsen dengan ID tersebut tidak ditemukan: :detail'],
@@ -264,7 +251,6 @@ class TikTokErrorCatalog
         '12052598' => [self::USER_FIXABLE, 'Hanya digit terakhir yang boleh berupa huruf X.'],
         '12052600' => [self::USER_FIXABLE, 'Jenis kode identifikasi wajib dipilih.'],
 
-        // --- Kualifikasi / sertifikat / url / kontak ---
         '12052105' => [self::USER_FIXABLE, 'Dokumen kualifikasi yang wajib belum lengkap.'],
         '12052128' => [self::USER_FIXABLE, 'Tabel ukuran tidak ditemukan.'],
         '12052385' => [self::USER_FIXABLE, 'Masukkan tanggal kedaluwarsa sertifikat yang valid.'],
@@ -278,13 +264,11 @@ class TikTokErrorCatalog
         '12052369' => [self::USER_FIXABLE, 'Panjang kode referensi produk (external_id) tidak sesuai.'],
         '12052996' => [self::USER_FIXABLE, 'Kode referensi produk (external_id) sudah dipakai (ganda).'],
 
-        // --- Pfand (deposit kemasan) ---
         '12052495' => [self::USER_FIXABLE, 'Jenis kemasan Pfand wajib diisi.'],
         '12052497' => [self::USER_FIXABLE, 'Kolom Pfand tidak didukung di negara ini.'],
         '12052498' => [self::USER_FIXABLE, 'Nominal Pfand tidak boleh diisi.'],
         '12052543' => [self::USER_FIXABLE, 'Produk dengan Pfand tidak didukung dalam pembuatan Paket Virtual.'],
 
-        // --- Deposit / batas jual / minimum ---
         '12019215' => [self::USER_FIXABLE, 'Saldo deposit tidak cukup.'],
         '12052585' => [self::USER_FIXABLE, 'Saldo deposit tidak cukup.'],
         '12052093' => [self::USER_FIXABLE, 'Jumlah produk sudah mencapai batas maksimum penjual.'],
@@ -293,7 +277,6 @@ class TikTokErrorCatalog
         '12052317' => [self::USER_FIXABLE, 'Jumlah pemesanan tidak didukung.'],
         '12052319' => [self::USER_FIXABLE, 'Jumlah pesanan maksimum tidak boleh lebih kecil dari minimum.'],
 
-        // --- Penjadwalan / status / platform / handling time ---
         '12019113' => [self::USER_FIXABLE, 'Status produk tidak valid.'],
         '12019210' => [self::USER_FIXABLE, 'Data publikasi tidak valid.'],
         '12052330' => [self::USER_FIXABLE, 'Produk tidak didukung untuk tampil di platform penjualan yang dipilih.'],
@@ -311,7 +294,6 @@ class TikTokErrorCatalog
         '12052922' => [self::USER_FIXABLE, 'Ada batasan kolom yang bisa diedit.'],
         '12052990' => [self::USER_FIXABLE, 'Produk tidak lolos pemeriksaan.'],
 
-        // --- Batas jumlah pada pencarian / operasi massal ---
         '12019027' => [self::USER_FIXABLE, 'Maksimal 10 SKU penjual pada filter pencarian.'],
         '12019087' => [self::USER_FIXABLE, 'Jumlah SKU melebihi batas 10.'],
         '12019108' => [self::USER_FIXABLE, 'Nomor halaman tidak valid.'],
@@ -321,7 +303,6 @@ class TikTokErrorCatalog
         '12019120' => [self::USER_FIXABLE, 'Jumlah produk melebihi batas.'],
         '12052180' => [self::USER_FIXABLE, 'Hasil pencarian melebihi 10.000. Persempit filter pencarian.'],
 
-        // --- Combo / bundle ---
         '12052805' => [self::USER_FIXABLE, 'Paket (bundle) tidak mendukung penambahan jenis produk ini.'],
         '12052815' => [self::USER_FIXABLE, 'Produk dalam bundle deal tidak bisa mengatur jumlah penjualan minimum.'],
         '12052830' => [self::USER_FIXABLE, 'Jumlah sub-produk per paket melebihi batas: :detail'],
@@ -357,7 +338,6 @@ class TikTokErrorCatalog
         '12052863' => [self::USER_FIXABLE, 'Semua SKU produk paket harus berupa SKU paket.'],
         '12052864' => [self::USER_FIXABLE, 'Tidak bisa menambahkan SKU nonaktif ke produk paket.'],
 
-        // --- Produk replika (multi-market) ---
         '12052508' => [self::USER_FIXABLE, 'ID SKU pada produk replika tidak valid atau tidak ditemukan.'],
         '12052509' => [self::USER_FIXABLE, 'SKU penjual wajib diisi untuk semua SKU baru pada produk replika.'],
         '12052510' => [self::USER_FIXABLE, 'SKU penjual tidak cocok dengan produk sumber. Pastikan sama di kedua sisi.'],
@@ -367,7 +347,6 @@ class TikTokErrorCatalog
         '12052514' => [self::USER_FIXABLE, 'Kategori berubah, sinkronkan produk ke semua pasar lain yang punya replika.'],
         '12052515' => [self::USER_FIXABLE, 'Variasi berubah, sinkronkan produk ke semua pasar lain yang punya replika.'],
 
-        // --- Tidak bisa dilanjutkan: produk / toko / status ---
         '12019150' => [self::FATAL, 'Produk tidak ditemukan.'],
         '12052032' => [self::FATAL, 'Produk tidak ditemukan.'],
         '12052260' => [self::FATAL, 'Produk tidak ditemukan.'],
