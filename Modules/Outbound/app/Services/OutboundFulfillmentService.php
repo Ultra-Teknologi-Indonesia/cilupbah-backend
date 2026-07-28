@@ -515,13 +515,6 @@ class OutboundFulfillmentService
         throw new \Exception('Pesanan belum masuk proses picking/packing/pengiriman — tidak ada yang bisa dikembalikan.');
     }
 
-    /**
-     * Hapus beberapa pesanan sekaligus dari tahap fulfillment.
-     * Tiap order diproses independen; kegagalan satu order tidak membatalkan yang lain.
-     *
-     * @param  string[]  $orderIds
-     * @return array<int, array<string, mixed>>  per-order result (order_id, salesorder_no, source, status, message)
-     */
     public function bulkDeleteOrdersFromFulfillment(array $orderIds, ?string $reason, ?string $removedBy): array
     {
         $results = [];

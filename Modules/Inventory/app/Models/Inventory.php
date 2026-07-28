@@ -61,16 +61,6 @@ class Inventory extends Model
         });
     }
 
-    /**
-     * Urutkan rak berdasarkan tanggal pergerakan stok masuk (qty > 0) per rak.
-     * SSOT strategi rekomendasi rak — dipakai picking (LIFO) dan transfer (FIFO).
-     *
-     * - fifo: rak dengan stok masuk PALING LAMA didahulukan (MIN transaction_date).
-     * - lifo: rak dengan stok masuk PALING BARU didahulukan (MAX transaction_date).
-     *
-     * Rak tanpa riwayat pergerakan (movement_at NULL) ditaruh terakhir, lalu
-     * di-tiebreak oleh created_at searah strategi.
-     */
     public function scopeOrderByBinMovement($query, string $strategy)
     {
         $lifo = strtolower($strategy) === 'lifo';

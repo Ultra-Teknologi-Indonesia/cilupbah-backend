@@ -540,7 +540,6 @@ class LocationBinService
             ->where('item_id', $itemId)
             ->sum('on_hand');
 
-        // Stok fisik sudah 0 → rak dianggap kosong, tak perlu dokumen koreksi.
         if ($onHand <= 0) {
             return [
                 'bin_id' => $binId,
@@ -550,9 +549,6 @@ class LocationBinService
             ];
         }
 
-        // Buat DOKUMEN Koreksi Stok (bukan mutasi telanjang) supaya tercatat di
-        // Transaksi Stok, bisa dicetak, dan bisa dihapus/dibalik. actual_qty 0 →
-        // selisih negatif → job menurunkan on_hand rak ini menjadi 0.
         $adjustment = app(StockAdjustmentService::class)->create([
             'transaction_date' => now()->toDateTimeString(),
             'location_id' => $locationId,

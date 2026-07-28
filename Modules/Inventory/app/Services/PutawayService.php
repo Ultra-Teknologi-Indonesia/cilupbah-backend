@@ -264,17 +264,6 @@ class PutawayService
         }
     }
 
-    /**
-     * Buat dokumen putaway dari satu atau beberapa penerimaan (inbound).
-     *
-     * Menggabungkan qty pending lintas-inbound per SKU, mengunci baris inbound
-     * item (lockForUpdate), menaikkan reserved_qty, dan opsional meng-assign staff.
-     * Seluruh orkestrasi transaksional ini milik service, bukan controller.
-     *
-     * @param  string[]  $inboundIds
-     * @throws \InvalidArgumentException Gudang berbeda / inbound sudah dibatalkan (422).
-     * @throws \RuntimeException Tidak ada qty pending untuk di-putaway (400).
-     */
     public function createFromInbounds(array $inboundIds, ?string $assignedTo, string $userId): Putaway
     {
         $inbounds = Inbound::with(['items'])
@@ -374,13 +363,6 @@ class PutawayService
         });
     }
 
-    /**
-     * Lampirkan rekomendasi rak (`recommended_bins`) ke tiap item putaway.
-     *
-     * Alokasi mengikuti invariant "1 rak = 1 SKU": rak yang sudah dipakai SKU
-     * lain di-skip. Prioritas rak yang sudah berisi SKU tsb (stok terbanyak),
-     * lalu rak kosong berikutnya. Dipakai untuk cetak PDF Kode Rak.
-     */
     public function attachRecommendedBins(Putaway $putaway): void
     {
         $items = $putaway->items ?? collect();
@@ -1279,9 +1261,6 @@ class PutawayService
             $remaining -= $take;
         }
 
-        // Lepas reservasi inbound sebesar target putaway yang dibatalkan, kalau tidak
-        // reserved_qty menggantung > received dan menyembunyikan stok yang diterima
-        // berikutnya (pendingPutawayQty = received - putaway - reserved) selamanya.
         $released = $amount - $remaining;
         if ($released > 0) {
             InboundItem::where('id', $inboundItemId)

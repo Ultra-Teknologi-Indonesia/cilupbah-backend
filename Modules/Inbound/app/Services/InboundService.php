@@ -226,13 +226,6 @@ class InboundService
         return $this->inboundRepository->findById($id);
     }
 
-    /**
-     * Payload detail inbound untuk endpoint show: dokumen + ringkasan peserta
-     * (jumlah & total qty receipt per user) + status edit_lock.
-     *
-     * Ringkasan receipt diagregasi dalam SATU query (bukan N+1 per peserta).
-     * Mengembalikan null bila dokumen tidak ditemukan.
-     */
     public function getDetailPayload(string $id): ?array
     {
         $inbound = $this->getById($id);
@@ -1609,9 +1602,6 @@ class InboundService
                     throw new \Exception("Qty koreksi tidak valid (maksimal {$item->received_qty}).");
                 }
 
-                // Pakai formula kanonik pendingPutawayQty (received - putaway - reserved):
-                // stok yang sudah direservasi putaway aktif TIDAK boleh ikut dikoreksi,
-                // kalau tidak putaway berjalan menarik dari bin inbound yang sudah kosong.
                 $available = $item->pendingPutawayQty();
                 if ($qtyRev > $available) {
                     throw new \Exception("Sebagian barang sudah di-putaway atau sedang dalam penempatan aktif; hanya {$available} unit yang masih di bin inbound dan bisa dikoreksi.");

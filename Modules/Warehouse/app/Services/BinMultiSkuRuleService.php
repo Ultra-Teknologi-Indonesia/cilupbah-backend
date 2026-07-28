@@ -14,10 +14,6 @@ class BinMultiSkuRuleService
         return Location::find($locationId);
     }
 
-    /**
-     * Daftar aturan multi-SKU sebuah lokasi, tiap baris dilengkapi jumlah rak
-     * yang cocok dengan polanya (`matched_count`).
-     */
     public function rulesWithMatchCount(string $locationId): Collection
     {
         return BinMultiSkuRule::where('location_id', $locationId)
@@ -33,9 +29,6 @@ class BinMultiSkuRuleService
         return BinMultiSkuRule::where('location_id', $locationId)->find($ruleId);
     }
 
-    /**
-     * @throws \Illuminate\Database\QueryException Pola sudah terdaftar (unik per lokasi).
-     */
     public function createRule(string $locationId, array $data): BinMultiSkuRule
     {
         $data['pattern'] = trim($data['pattern']);
@@ -47,9 +40,6 @@ class BinMultiSkuRuleService
         return $rule;
     }
 
-    /**
-     * @throws \Illuminate\Database\QueryException Pola sudah terdaftar (unik per lokasi).
-     */
     public function updateRule(BinMultiSkuRule $rule, array $data): BinMultiSkuRule
     {
         if (array_key_exists('pattern', $data)) {

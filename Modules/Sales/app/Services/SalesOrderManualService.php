@@ -126,9 +126,7 @@ class SalesOrderManualService
                     'qty_in_base'  => $qty,
                     'price'        => $price,
                     'disc'         => $disc,
-                    // disc_amount = diskon baris (extended) — field kanonik yang dibaca
-                    // recomputeOrderTotals & channel. Tanpa ini, edit pesanan menghitung
-                    // ulang total_disc dari disc_amount=0 dan diskon hilang.
+
                     'disc_amount'  => $disc,
                     'tax_amount'   => $tax,
                     'amount'       => $amount,

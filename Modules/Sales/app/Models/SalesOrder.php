@@ -328,9 +328,7 @@ class SalesOrder extends Model implements HasMedia
 
     public static function shortfallItemWhereRaw(): string
     {
-        // available = placed_on_hand - on_order (SSOT: StockSummary::availableSql).
-        // Wajib menyaring is_inbound=false supaya stok yang belum ditempatkan (masih di
-        // rak inbound) tidak dihitung tersedia — picking hanya mengambil stok placed.
+
         $available = StockSummary::availableSql('inventories', 'location_bins');
 
         return "sales_order_items.qty_in_base > COALESCE((

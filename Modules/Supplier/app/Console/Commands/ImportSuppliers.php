@@ -6,23 +6,6 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Modules\Supplier\Models\Supplier;
 
-/**
- * Import pemasok dari file CSV yang berada di server (path argumen).
- *
- * PENTING: perintah ini GENERIK dan TIDAK memuat data asli apa pun.
- * Data sensitif hanya ada di file CSV yang disalin ke server (gitignored),
- * bukan di dalam kode ini. Jangan pernah hard-code data pemasok di sini.
- *
- * Header CSV yang dikenali (gaya export Jubelio):
- *   contact_name, contact_position, email, phone, mobile, fax, npwp,
- *   payment_term, notes, shipping_address, shipping_area, shipping_city,
- *   shipping_province, shipping_post_code, billing_address, billing_area,
- *   billing_city, billing_province, billing_post_code, is_dropshipper,
- *   is_reseller, contact_source, source_detail
- *
- * Idempoten: dipetakan ke kolom tabel `suppliers` lalu di-upsert dengan
- * `code` deterministik (turunan dari nama), sehingga aman dijalankan ulang.
- */
 class ImportSuppliers extends Command
 {
     protected $signature = 'suppliers:import
@@ -53,7 +36,7 @@ class ImportSuppliers extends Command
             fclose($fh);
             return self::FAILURE;
         }
-        // Buang BOM UTF-8 pada sel header pertama, normalkan nama kolom.
+
         $header = array_map(
             fn ($h) => strtolower(trim(preg_replace('/^\xEF\xBB\xBF/', '', (string) $h))),
             $header
@@ -62,7 +45,7 @@ class ImportSuppliers extends Command
         $created = 0;
         $updated = 0;
         $skipped = 0;
-        $line    = 1; // baris header
+        $line    = 1; 
 
         if ($dryRun) {
             $this->warn('DRY-RUN: tidak ada perubahan yang ditulis.');
@@ -73,12 +56,10 @@ class ImportSuppliers extends Command
             while (($row = fgetcsv($fh, null, ',', '"', '')) !== false) {
                 $line++;
 
-                // Lewati baris kosong total.
                 if ($row === [null] || count(array_filter($row, fn ($v) => trim((string) $v) !== '')) === 0) {
                     continue;
                 }
 
-                // Selaraskan jumlah kolom dengan header.
                 $row = array_pad(array_slice($row, 0, count($header)), count($header), null);
                 $data = array_combine($header, $row);
 
@@ -133,9 +114,6 @@ class ImportSuppliers extends Command
         return self::SUCCESS;
     }
 
-    /**
-     * Petakan satu baris CSV ke kolom tabel `suppliers`.
-     */
     private function mapRow(string $name, array $r): array
     {
         $phone = $this->clean($r['phone'] ?? null) ?? $this->clean($r['mobile'] ?? null);
@@ -147,7 +125,7 @@ class ImportSuppliers extends Command
             ?? $this->clean($r['billing_city'] ?? null);
 
         return [
-            // Kunci deterministik → idempoten & dedupe nama yang sama.
+
             'code'           => 'SUP-' . strtoupper(substr(sha1(mb_strtolower($name)), 0, 8)),
             'name'           => $name,
             'company_name'   => null,
@@ -163,10 +141,6 @@ class ImportSuppliers extends Command
         ];
     }
 
-    /**
-     * Gabungkan `notes` asli + kolom yang tidak punya kolom sendiri di schema,
-     * supaya tidak ada data yang hilang diam-diam. Kolom kosong diabaikan.
-     */
     private function buildNotes(array $r): ?string
     {
         $lines = [];
@@ -201,10 +175,6 @@ class ImportSuppliers extends Command
         return $lines === [] ? null : implode("\n", $lines);
     }
 
-    /**
-     * Rapikan nilai sel: trim, dan anggap string kosong atau placeholder "."
-     * sebagai null (data CSV ini banyak berisi "." sebagai isian kosong).
-     */
     private function clean($value): ?string
     {
         $v = trim((string) ($value ?? ''));

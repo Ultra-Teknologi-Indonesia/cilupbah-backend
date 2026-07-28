@@ -293,10 +293,7 @@ class InventoryService
 
             app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
                 ->assertBinFitsSku($data['destination_bin_id'], $data['item_id']);
-            // Saat memindahkan SELURUH stok antar rak (pindah rak), SKU masih menempati
-            // rak asal pada saat guard dievaluasi, sehingga SkuHomeBinGuard akan salah
-            // menolak. Relokasi penuh tidak melanggar "1 SKU = 1 rak" (hasil akhir tetap
-            // satu rak), jadi pemanggil boleh melewati guard ini secara eksplisit.
+
             if (empty($data['skip_home_bin_guard'])) {
                 app(\Modules\Warehouse\Services\SkuHomeBinGuard::class)
                     ->assertSkuFitsBin($data['location_id'], $data['item_id'], $data['destination_bin_id']);
@@ -1360,9 +1357,6 @@ class InventoryService
                 ]);
             }
 
-            // Approve HANYA me-reserve on_order + menetapkan rak asal (FIFO).
-            // Pemindahan fisik ke SYS-TRANSIT (kurangi on_hand asal, TRANSFER_OUT,
-            // TRANSIT_IN) dilakukan SEKALI saat shipTransfer — jangan digandakan di sini.
             $row->on_order += $take;
             $this->inventoryRepository->updateStock($row);
         }
@@ -1861,16 +1855,6 @@ class InventoryService
         return $this->transferRepository->findById($id);
     }
 
-    /**
-     * Hapus atau kembalikan-ke-draft banyak transfer sekaligus.
-     *
-     * Kebijakan domain: transfer IN_TRANSIT tidak boleh dihapus langsung (stok
-     * sedang di transit), melainkan di-revert ke Baru Dibuat; status lain dihapus.
-     * Kegagalan per-id dikumpulkan agar satu error tidak membatalkan sisanya.
-     *
-     * @param  string[]  $ids
-     * @return array{deleted:int, reverted:int, failed:array<int, array{id:string, reason:string}>}
-     */
     public function bulkDeleteOrRevertTransfers(array $ids, string $actor): array
     {
         $deleted = 0;

@@ -84,11 +84,10 @@ class TransferOutImportTest extends TestCase
             ->assertJsonPath('data.summary.total_rows', 3)
             ->assertJsonPath('data.summary.total_docs', 2);
 
-        // First doc = 2 items grouped under [auto]; second doc = 1 item.
         $this->assertSame(2, $response->json('data.transfers.0.item_count'));
         $this->assertSame('(otomatis)', $response->json('data.transfers.0.ref_no'));
         $this->assertSame('TFO-00002', $response->json('data.transfers.1.ref_no'));
-        // No products/locations seeded, so both documents resolve to errors.
+
         $this->assertSame(0, $response->json('data.summary.valid_docs'));
     }
 

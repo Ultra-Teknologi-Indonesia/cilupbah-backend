@@ -4,16 +4,6 @@ namespace App\Support;
 
 use App\Models\User;
 
-/**
- * Menormalkan nilai "pelaku" (created_by / updated_by / approved_by / dsb) untuk
- * DITAMPILKAN sebagai nama. Sebagian alur menyimpan nama, sebagian menyimpan
- * UUID user atau format "user:UUID" (mis. ledger stok, koreksi otomatis).
- *
- * resolve():
- *   - "user:UUID" / "UUID"  → nama user (di-cache per-request)
- *   - "system" / nama biasa → dikembalikan apa adanya
- *   - null / kosong         → dikembalikan apa adanya
- */
 class ActorName
 {
     private static array $cache = [];

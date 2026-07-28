@@ -175,9 +175,6 @@ class PutawayRepository
     {
         $prefix = "PUT-";
 
-        // Only canonical PUT-<digits> numbers count toward the max; this excludes
-        // seeder rows (PUT-SEED-N) and correction suffixes that would otherwise
-        // pollute the sort and reset the sequence to 1 (duplicate-key violation).
         $last = Putaway::whereRaw("putaway_no ~ '^PUT-[0-9]+$'")
             ->orderByRaw("CAST(SUBSTRING(putaway_no FROM 5) AS INTEGER) DESC")
             ->value('putaway_no');

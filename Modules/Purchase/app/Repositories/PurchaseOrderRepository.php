@@ -243,8 +243,7 @@ class PurchaseOrderRepository
     public function generatePoNumber(): string
     {
         $prefix = 'PO-';
-        // Only canonical PO-<digits> numbers count; excludes seeder rows (PO-SEED-001)
-        // that would otherwise win the sort and reset the sequence (duplicate-key violation).
+
         $last = PurchaseOrder::whereRaw("po_number ~ '^PO-[0-9]+$'")
             ->orderByRaw("CAST(SUBSTRING(po_number FROM 4) AS BIGINT) DESC")
             ->value('po_number');

@@ -6,21 +6,6 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Ramsey\Uuid\Uuid;
 
-/**
- * Impor pemetaan kategori internal -> kategori channel dari dump gaya Jubelio.
- *
- * Sumber cocok berdasarkan NAMA/PATH kategori (`full_category_name`), BUKAN id
- * Jubelio, sehingga file yang sama bisa dipakai di staging maupun production
- * walau id internalnya berbeda.
- *
- * Untuk tiap baris & channel yang ada di tabel `channels`:
- *   1) upsert `channel_categories` (channel_id + external_id marketplace + name),
- *   2) isi `category_channel_mappings` (category_id internal -> channel_category uuid).
- *
- * Idempoten (upsert + cek-exists, tanpa TRUNCATE). Default fill-gap: tidak
- * menimpa pemetaan channel yang sudah ada; pakai --overwrite untuk memaksa.
- * Selalu jalankan --dry-run dulu untuk melihat ringkasan (cocok/skip per env).
- */
 class ImportCategoryChannelMappings extends Command
 {
     protected $signature = 'channels:import-category-mappings
@@ -188,7 +173,7 @@ class ImportCategoryChannelMappings extends Command
                 array_unshift($parts, $cur->name);
             }
             $norm = $this->normalizePath(implode(' > ', $parts));
-            // Path duplikat -> tandai null agar tidak salah pilih.
+
             $pathToId[$norm] = array_key_exists($norm, $pathToId) ? null : $c->id;
 
             $leaf = $this->normalizeSegment((string) $c->name);

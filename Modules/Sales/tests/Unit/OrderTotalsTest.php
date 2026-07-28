@@ -9,9 +9,7 @@ class OrderTotalsTest extends TestCase
 {
     public function test_full_component_formula(): void
     {
-        // net = 1000 - 100 (disc) - 50 (other) + 70 (tax) = 920
-        // additional = 30 (service) - 20 (voucher) + 15 (insurance) + 10 (proc) = 35
-        // grand = 920 + max(0, 25 - 5) (shipping) + 35 = 975
+
         $grand = OrderTotals::grandTotal([
             'sub_total'            => 1000,
             'total_disc'           => 100,
@@ -37,13 +35,12 @@ class OrderTotalsTest extends TestCase
             'price_includes_tax' => true,
         ];
 
-        // tax not added when price already includes it
         $this->assertSame(1000.0, OrderTotals::grandTotal($args));
     }
 
     public function test_shipping_discount_never_makes_shipping_negative(): void
     {
-        // shipping 10 - discount 40 clamps to 0, not -30
+
         $grand = OrderTotals::grandTotal([
             'sub_total'         => 100,
             'shipping_cost'     => 10,

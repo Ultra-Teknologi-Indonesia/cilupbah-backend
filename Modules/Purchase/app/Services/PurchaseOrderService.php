@@ -426,7 +426,7 @@ class PurchaseOrderService
         $lineTotal = $price * $qty;
         $item['disc_amount'] = round($lineTotal * $discPercent / 100, 2);
         $item['tax_amount'] = $item['tax_amount'] ?? 0;
-        // Harga sudah termasuk pajak → pajak TIDAK ditambahkan lagi (sudah di dalam lineTotal).
+
         $addTax = $isTaxIncluded ? 0 : $item['tax_amount'];
         $item['amount'] = round($lineTotal - $item['disc_amount'] + $addTax, 2);
     }
@@ -451,7 +451,6 @@ class PurchaseOrderService
             $totalTax += $taxAmount;
         }
 
-        // Tax-inclusive: pajak sudah ada di dalam sub_total, jangan ditambah lagi ke total.
         $addTax = $isTaxIncluded ? 0 : $totalTax;
 
         return [

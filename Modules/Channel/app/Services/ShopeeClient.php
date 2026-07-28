@@ -5,13 +5,13 @@ namespace Modules\Channel\Services;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
+use Modules\Channel\Exceptions\ShopeeApiException;
 use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Helpers\ShopeeSignature;
+use Modules\Channel\Support\ShopeeErrorCatalog;
 
 class ShopeeClient
 {
-
-    protected const TOKEN_ERROR_CODES = ['error_auth', 'invalid_access_token', 'error_token_expired', 'access_token_error'];
 
     protected string $partnerId;
     protected string $partnerKey;
@@ -94,31 +94,43 @@ class ShopeeClient
         $error = (string) ($data['error'] ?? '');
 
         if ($error !== '') {
-            Log::error('Shopee API Error', [
-                'path' => $apiPath,
-                'error' => $error,
-                'message' => $data['message'] ?? null,
-                'result_list' => $data['response']['result_list'] ?? null,
-            ]);
-
-            if (in_array($error, self::TOKEN_ERROR_CODES, true) || str_contains(strtolower($error), 'token')) {
-                throw new TokenExpiredException($shopId, $data['message'] ?? 'Shopee access token expired');
-            }
-
-            throw new \Exception('Shopee API Error: ' . $this->describeError($data, $error));
+            $this->raiseApiError($apiPath, $error, $data, $shopId);
         }
 
         return $data;
     }
 
-    protected function describeError(array $data, string $error): string
+    protected function raiseApiError(string $apiPath, string $error, array $data, string $shopId): void
     {
-        $message = (string) ($data['message'] ?? $error);
+        $resolved = ShopeeErrorCatalog::resolve($error, $data['message'] ?? null, $this->extractErrorInfo($data));
 
+        Log::error('Shopee API Error', [
+            'path' => $apiPath,
+            'error' => $error,
+            'category' => $resolved['category'],
+            'message' => $data['message'] ?? null,
+            'result_list' => $data['response']['result_list'] ?? null,
+        ]);
+
+        if ($resolved['category'] === ShopeeErrorCatalog::TOKEN) {
+            throw new TokenExpiredException($shopId, $resolved['message']);
+        }
+
+        throw new ShopeeApiException(
+            $resolved['code'],
+            $resolved['category'],
+            $resolved['message'],
+            $resolved['raw_message'],
+            $resolved['error_info'],
+        );
+    }
+
+    protected function extractErrorInfo(array $data): ?string
+    {
         $row = $data['response']['result_list'][0] ?? [];
         $detail = $row['fail_message'] ?? $row['fail_error'] ?? null;
 
-        return $detail ? $message . ' (' . $detail . ')' : $message;
+        return $detail !== null ? (string) $detail : null;
     }
 
     public function requestBinary(string $apiPath, array $params, string $accessToken, string $shopId): array
@@ -150,18 +162,7 @@ class ShopeeClient
             $error = (string) ($data['error'] ?? '');
 
             if ($error !== '') {
-                Log::error('Shopee API Error', [
-                    'path' => $apiPath,
-                    'error' => $error,
-                    'message' => $data['message'] ?? null,
-                    'result_list' => $data['response']['result_list'] ?? null,
-                ]);
-
-                if (in_array($error, self::TOKEN_ERROR_CODES, true) || str_contains(strtolower($error), 'token')) {
-                    throw new TokenExpiredException($shopId, $data['message'] ?? 'Shopee access token expired');
-                }
-
-                throw new \Exception('Shopee API Error: ' . $this->describeError($data, $error));
+                $this->raiseApiError($apiPath, $error, $data, $shopId);
             }
 
             return $data;

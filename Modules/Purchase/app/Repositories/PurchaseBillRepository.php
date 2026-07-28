@@ -107,8 +107,7 @@ class PurchaseBillRepository
     public function generateBillNo(): string
     {
         $prefix = 'BILL-';
-        // Only canonical BILL-<digits> numbers count toward the max; a non-numeric
-        // same-prefix value would otherwise win the string sort and reset the sequence.
+
         $last = PurchaseBill::whereRaw("bill_number ~ '^BILL-[0-9]+$'")
             ->orderByRaw("CAST(SUBSTRING(bill_number FROM 6) AS BIGINT) DESC")
             ->value('bill_number');

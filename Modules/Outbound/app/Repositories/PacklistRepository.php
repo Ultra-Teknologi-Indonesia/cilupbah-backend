@@ -107,8 +107,7 @@ class PacklistRepository
 
     public function generatePacklistNo(): string
     {
-        // Only canonical PACK-<digits> numbers count toward the max; a non-numeric
-        // same-prefix value would otherwise win the string sort and reset the sequence.
+
         $last = Packlist::whereRaw("packlist_no ~ '^PACK-[0-9]+$'")
             ->orderByRaw("CAST(SUBSTRING(packlist_no FROM 6) AS BIGINT) DESC")
             ->value('packlist_no');

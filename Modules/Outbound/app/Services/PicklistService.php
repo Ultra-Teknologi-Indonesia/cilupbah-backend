@@ -591,8 +591,7 @@ class PicklistService
 
     private function suggestBinsForItem(Picklist $picklist, PicklistItem $item): \Illuminate\Support\Collection
     {
-        // LIFO: rekomendasi rak dengan stok masuk paling baru didahulukan.
-        // Scaffolding urutan (SSOT) di Inventory::scopeOrderByBinMovement.
+
         $rows = Inventory::where('item_id', $item->item_id)
             ->where('location_id', $picklist->location_id)
             ->placed()

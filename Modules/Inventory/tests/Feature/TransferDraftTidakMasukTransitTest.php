@@ -170,7 +170,6 @@ class TransferDraftTidakMasukTransitTest extends TestCase
     {
         $service = app(InventoryService::class);
 
-        // Draft berisi item TANPA rak asal → approve memicu FIFO auto-assign.
         $transfer = $service->createDraft([
             'source_location_id' => $this->sourceLocationId,
             'destination_location_id' => $this->destLocationId,
@@ -181,7 +180,6 @@ class TransferDraftTidakMasukTransitTest extends TestCase
             'qty' => 5,
         ]);
 
-        // APPROVE (FIFO): hanya reserve on_order + pilih rak, TIDAK memindahkan ke transit.
         $service->approveTransfer($transfer->id, ['approved_by' => 'tester']);
 
         $src = $this->sourceStock();
@@ -191,7 +189,6 @@ class TransferDraftTidakMasukTransitTest extends TestCase
         $this->assertSame(0, $this->movements('TRANSIT_IN'), 'approve tidak menulis TRANSIT_IN');
         $this->assertSame(0, $this->movements('TRANSFER_OUT'), 'approve tidak menulis TRANSFER_OUT');
 
-        // SHIP: pemindahan fisik ke transit TEPAT SEKALI (bukan 2x).
         $service->shipTransfer($transfer->id, ['shipped_by' => 'tester']);
 
         $src = $this->sourceStock();

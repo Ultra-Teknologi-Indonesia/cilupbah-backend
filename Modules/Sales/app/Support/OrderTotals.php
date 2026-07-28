@@ -2,32 +2,9 @@
 
 namespace Modules\Sales\Support;
 
-/**
- * Sumber tunggal rumus total pesanan.
- *
- * Dipakai saat pembuatan pesanan manual (input dari payload) dan saat
- * penghitungan ulang setelah edit item (input dari kolom order) supaya
- * grand_total tidak pernah berbeda antara kedua jalur.
- */
 class OrderTotals
 {
-    /**
-     * Hitung grand_total dari komponen yang sudah dinormalisasi.
-     *
-     * @param array{
-     *   sub_total?: float|int,
-     *   total_disc?: float|int,
-     *   other_discount?: float|int,
-     *   total_tax?: float|int,
-     *   shipping_cost?: float|int,
-     *   shipping_discount?: float|int,
-     *   insurance_cost?: float|int,
-     *   service_fee?: float|int,
-     *   seller_voucher?: float|int,
-     *   order_processing_fee?: float|int,
-     *   price_includes_tax?: bool
-     * } $c
-     */
+
     public static function grandTotal(array $c): float
     {
         $subTotal      = (float) ($c['sub_total'] ?? 0);

@@ -7,10 +7,6 @@ use Modules\Purchase\Services\PurchaseOrderService;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 
-/**
- * Mengunci perilaku is_tax_included: saat harga sudah termasuk pajak, pajak
- * TIDAK ditambahkan lagi ke total (dulu selalu ditambah → total overstated).
- */
 class PurchaseTaxTotalsTest extends TestCase
 {
     private array $items = [
@@ -19,7 +15,7 @@ class PurchaseTaxTotalsTest extends TestCase
 
     private function totals(string $class, bool $isTaxIncluded): array
     {
-        // calculateTotals murni aritmetika → buat instance tanpa konstruktor (tanpa dependency).
+
         $service = (new \ReflectionClass($class))->newInstanceWithoutConstructor();
         $m = new ReflectionMethod($service, 'calculateTotals');
         $m->setAccessible(true);
@@ -37,7 +33,7 @@ class PurchaseTaxTotalsTest extends TestCase
     public function test_po_tax_inclusive_does_not_add_tax(): void
     {
         $t = $this->totals(PurchaseOrderService::class, true);
-        // harga 100.000 sudah termasuk 10.000 pajak → total tetap 100.000, bukan 110.000
+
         $this->assertSame(100000.0, (float) $t['total_amount']);
         $this->assertSame(10000.0, (float) $t['total_tax']);
     }
