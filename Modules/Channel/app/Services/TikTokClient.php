@@ -5,7 +5,9 @@ namespace Modules\Channel\Services;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
+use Modules\Channel\Exceptions\TikTokApiException;
 use Modules\Channel\Exceptions\TokenExpiredException;
+use Modules\Channel\Support\TikTokErrorCatalog;
 
 class TikTokClient
 {
@@ -84,21 +86,33 @@ class TikTokClient
         $data = $response->json();
 
         if (isset($data['code']) && $data['code'] !== 0) {
-            Log::error('TikTok API Error', [
+            $shopId = $queries['shop_cipher'] ?? 'unknown';
+            $this->raiseApiError($data['code'], $data['message'] ?? null, $shopId, [
                 'url'      => $fullUrl,
                 'body'     => $body,
                 'response' => $data,
             ]);
-
-            if (in_array((int) $data['code'], [40100, 40102, 40103], true)) {
-                $shopId = $queries['shop_cipher'] ?? 'unknown';
-                throw new TokenExpiredException($shopId, $data['message'] ?? 'Access token expired');
-            }
-
-            throw new \Exception("TikTok API Error: " . ($data['message'] ?? 'Unknown error'));
         }
 
         return $data;
+    }
+
+    protected function raiseApiError(int|string $code, ?string $message, string $shopId, array $logContext): void
+    {
+        $resolved = TikTokErrorCatalog::resolve($code, $message);
+
+        Log::error('TikTok API Error', $logContext + ['category' => $resolved['category']]);
+
+        if ($resolved['category'] === TikTokErrorCatalog::TOKEN) {
+            throw new TokenExpiredException($shopId, $resolved['message']);
+        }
+
+        throw new TikTokApiException(
+            $resolved['code'],
+            $resolved['category'],
+            $resolved['message'],
+            $resolved['raw_message'],
+        );
     }
 
     protected function throttle(): void
