@@ -116,9 +116,13 @@ jobs:
 
             # 4. Clear & Cache Konfigurasi Laravel
             docker exec cilupbah-staging php artisan optimize:clear
+            sleep 20
             docker exec cilupbah-staging php artisan config:cache
+            sleep 20
             docker exec cilupbah-staging php artisan route:cache
+            sleep 20
             docker exec cilupbah-staging php artisan view:cache
+            sleep 20
 
             # 5. Jalankan Migrasi Database
             docker exec cilupbah-staging php artisan migrate --force
