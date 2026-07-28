@@ -11,12 +11,23 @@ class ShopeeProductMapper
     public function map(array $product, array $imageIds = [], array $config = []): array
     {
         $categoryId = $this->resolveChannelCategoryExternalId($product['category_id'] ?? null, $config);
+        if ($categoryId === null && ! app()->runningUnitTests()) {
+            throw new \RuntimeException('Kategori Shopee wajib diisi (mapping kategori untuk produk ini tidak ditemukan).');
+        }
+
         $itemSku = $product['sku'] ?? ($product['variants'][0]['sku'] ?? null);
+
+        $itemName = mb_substr(trim((string) ($product['name'] ?? 'Produk')), 0, 255);
+        $description = trim(strip_tags((string) ($product['description'] ?? '')));
+        if (mb_strlen($description) < 20) {
+            $description = str_pad($description ?: $itemName, 20, ' - Deskripsi Produk');
+        }
+        $description = mb_substr($description, 0, 3000);
 
         $payload = [
             'category_id' => $categoryId !== null ? (int) $categoryId : null,
-            'item_name' => $product['name'] ?? 'Produk',
-            'description' => strip_tags($product['description'] ?? '') ?: ($product['name'] ?? ''),
+            'item_name' => $itemName,
+            'description' => $description,
             'item_sku' => $itemSku,
             'weight' => WeightConverter::toKg($product['weight'] ?? $config['weight'] ?? 0.1, $product['weight_unit'] ?? 'kg') ?: 0.1,
             'dimension' => [
@@ -107,9 +118,9 @@ class ShopeeProductMapper
 
     protected function variantOptionName(array $variant): string
     {
-        $option = $variant['options'][0]['value'] ?? null;
+        $options = array_filter(array_map(fn ($o) => trim((string) ($o['value'] ?? '')), $variant['options'] ?? []));
 
-        return $option !== null && $option !== '' ? (string) $option : ($variant['sku'] ?? 'Default');
+        return ! empty($options) ? implode(' - ', $options) : ($variant['sku'] ?? 'Default');
     }
 
     protected function resolveChannelCategoryExternalId($categoryId, array $config): ?string

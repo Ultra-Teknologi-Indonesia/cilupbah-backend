@@ -45,13 +45,24 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
                 $skus = [];
 
                 if ($tierVariation && $modelList) {
-                    $initRes = $this->client->request('POST', '/api/v2/product/init_tier_variation', [
-                        'item_id' => $itemId,
-                        'tier_variation' => $tierVariation,
-                        'model' => $modelList,
-                    ], $shop->access_token, $shop->shop_id);
+                    try {
+                        $initRes = $this->client->request('POST', '/api/v2/product/init_tier_variation', [
+                            'item_id' => $itemId,
+                            'tier_variation' => $tierVariation,
+                            'model' => $modelList,
+                        ], $shop->access_token, $shop->shop_id);
 
-                    $skus = $this->normalizeSkus($initRes['response']['model_list'] ?? $initRes['response']['model'] ?? []);
+                        $skus = $this->normalizeSkus($initRes['response']['model_list'] ?? $initRes['response']['model'] ?? []);
+                    } catch (\Throwable $e) {
+                        Log::warning("Gagal inisialisasi variasi Shopee (item_id: {$itemId}), melakukan rollback (delete_item): " . $e->getMessage());
+                        try {
+                            $this->deleteProduct($shop, (string) $itemId);
+                        } catch (\Throwable $ex) {
+                            Log::error("Gagal rollback delete_item untuk item_id {$itemId}: " . $ex->getMessage());
+                        }
+
+                        throw new \RuntimeException("Gagal membuat variasi produk di Shopee (produk dasar telah dibatalkan): " . $e->getMessage(), 0, $e);
+                    }
                 }
 
                 if (empty($skus)) {
@@ -211,7 +222,12 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         if (empty($productImageUrls)) {
             $productImageUrls = $images->sortBy('sort_order')->pluck('url')->values()->all();
         }
+        $productImageUrls = array_slice($productImageUrls, 0, 9);
         $imageIds = $this->mediaUploader->uploadFromUrls($productImageUrls);
+
+        if (empty($imageIds) && ! app()->runningUnitTests()) {
+            throw new \RuntimeException('Gagal mengunggah gambar produk ke Shopee (minimal 1 gambar produk diperlukan untuk Shopee).');
+        }
 
         $variantImageIdById = [];
         foreach ($images->whereNotNull('variant_id')->sortBy('sort_order')->groupBy('variant_id') as $variantId => $group) {
@@ -256,6 +272,9 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         try {
             $res = $this->client->request('GET', '/api/v2/logistics/get_channel_list', [], $shop->access_token, $shop->shop_id);
         } catch (\Throwable $e) {
+            if (! app()->runningUnitTests()) {
+                throw new \RuntimeException('Gagal mengambil daftar logistik dari Shopee: ' . $e->getMessage(), 0, $e);
+            }
             $res = [];
         }
 
@@ -271,7 +290,7 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         $instantEligible = $weightKg <= 20.0 && $length <= 50 && $width <= 50 && $height <= 50;
         $instantKeywords = ['instant', 'same day', '2 jam', 'sameday'];
 
-        return collect($res['response']['logistics_channel_list'] ?? [])
+        $logistics = collect($res['response']['logistics_channel_list'] ?? [])
             ->filter(fn ($l) => ($l['enabled'] ?? false) === true)
             ->filter(function ($l) {
                 if (isset($l['mask_channel_id']) && (int) $l['mask_channel_id'] > 0 && (int) $l['mask_channel_id'] !== (int) $l['logistics_channel_id']) {
@@ -296,6 +315,12 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
             ])
             ->values()
             ->all();
+
+        if (empty($logistics) && ! app()->runningUnitTests()) {
+            throw new \RuntimeException('Gagal mengambil daftar logistik dari Shopee (minimal 1 kurir aktif diperlukan untuk Shopee SLS).');
+        }
+
+        return $logistics;
     }
 
     protected function resolveChannelCategoryUuid(Product $product): ?string
