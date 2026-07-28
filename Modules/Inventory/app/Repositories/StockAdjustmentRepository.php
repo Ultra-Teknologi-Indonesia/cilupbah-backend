@@ -6,13 +6,14 @@ use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Models\StockAdjustmentItem;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
+use Illuminate\Http\Request;
 
 class StockAdjustmentRepository
 {
     public function getAllPaginated(int $limit = 10)
     {
         return QueryBuilder::for(StockAdjustment::class)
-            ->with(['location:id,location_name', 'items.product.product', 'items.bin'])
+            ->with(['location:id,location_name', 'items'])
             ->allowedSearch('adjustment_no')
             ->allowedFilters(
                 AllowedFilter::exact('location_id'),
@@ -24,6 +25,37 @@ class StockAdjustmentRepository
             ->defaultSort('-transaction_date')
             ->paginate(request('per_page', $limit))
             ->appends(request()->query());
+    }
+
+    public function getQueryForExport(Request $request): \Illuminate\Database\Eloquent\Builder
+    {
+        return \Modules\Inventory\Models\StockAdjustmentItem::query()
+            ->join('stock_adjustments', 'stock_adjustment_items.stock_adjustment_id', '=', 'stock_adjustments.id')
+            ->join('product_variants', 'stock_adjustment_items.item_id', '=', 'product_variants.id')
+            ->join('products', 'product_variants.product_id', '=', 'products.id')
+            ->leftJoin('locations', 'stock_adjustments.location_id', '=', 'locations.id')
+            ->whereNull('stock_adjustments.deleted_at')
+            ->whereNull('product_variants.deleted_at')
+            ->when($request->filled('filter[location_id]'), fn($q) => $q->where('stock_adjustments.location_id', $request->input('filter[location_id]')))
+            ->when($request->filled('filter[date_from]'), fn($q) => $q->whereDate('stock_adjustments.transaction_date', '>=', $request->input('filter[date_from]')))
+            ->when($request->filled('filter[date_to]'), fn($q) => $q->whereDate('stock_adjustments.transaction_date', '<=', $request->input('filter[date_to]')))
+            ->when($request->filled('search'), fn($q) => $q->where('stock_adjustments.adjustment_no', 'like', '%' . $request->input('search') . '%'))
+            ->select([
+                'stock_adjustments.adjustment_no',
+                'stock_adjustments.transaction_date',
+                'stock_adjustments.created_at',
+                'stock_adjustments.notes as doc_notes',
+                'stock_adjustments.is_beginning_balance',
+                'stock_adjustments.created_by',
+                'locations.location_name',
+                'stock_adjustment_items.notes as item_notes',
+                'stock_adjustment_items.difference_qty',
+                'stock_adjustment_items.unit_cost',
+                'product_variants.sku',
+                'products.name as product_name',
+            ])
+            ->orderBy('stock_adjustments.transaction_date', 'desc')
+            ->orderBy('stock_adjustments.adjustment_no', 'desc');
     }
 
     public function findById(string $id): ?StockAdjustment

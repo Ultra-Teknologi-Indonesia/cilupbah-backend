@@ -159,6 +159,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::middleware('role_or_permission:owner|export-penyesuaian-stok')->group(function () {
             Route::post('/bulk/pdf', [StockAdjustmentController::class, 'bulkPdf'])->name('inventory.adjustments.documents.bulkPdf');
             Route::get('/{id}/pdf', [StockAdjustmentController::class, 'pdf'])->name('inventory.adjustments.documents.pdf');
+            Route::get('/export/xlsx', [StockAdjustmentController::class, 'exportXlsx'])->name('inventory.adjustments.documents.exportXlsx');
         });
         Route::middleware('role_or_permission:owner|delete-penyesuaian-stok')->group(function () {
             Route::post('/bulk/delete', [StockAdjustmentController::class, 'bulkDelete'])->name('inventory.adjustments.documents.bulkDelete');

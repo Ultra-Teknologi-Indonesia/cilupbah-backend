@@ -22,6 +22,16 @@ class StockAdjustmentService
         return $this->adjustmentRepository->getAllPaginated($limit);
     }
 
+    public function getAllForExport(\Illuminate\Http\Request $request): array
+    {
+        return $this->adjustmentRepository->getAllForExport($request);
+    }
+
+    public function getQueryForExport(\Illuminate\Http\Request $request): \Illuminate\Database\Eloquent\Builder
+    {
+        return $this->adjustmentRepository->getQueryForExport($request);
+    }
+
     public function getById(string $id): ?StockAdjustment
     {
         return $this->adjustmentRepository->findById($id);

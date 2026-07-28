@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Maatwebsite\Excel\Facades\Excel;
+use Modules\Inventory\Exports\StockAdjustmentExport;
 use Modules\Inventory\Services\StockAdjustmentService;
 use Modules\Inventory\Http\Requests\StoreStockAdjustmentRequest;
 use Modules\Inventory\Http\Resources\StockAdjustmentResource;
@@ -309,5 +311,13 @@ class StockAdjustmentController extends Controller
                 ? "{$deleted} dokumen dihapus" . (count($failed) > 0 ? ", " . count($failed) . " gagal" : "")
                 : 'Tidak ada dokumen yang berhasil dihapus.'
         );
+    }
+
+    public function exportXlsx(Request $request)
+    {
+        $query = $this->adjustmentService->getQueryForExport($request);
+        $filename = 'koreksi-stok-' . now()->format('Ymd') . '.xlsx';
+
+        return Excel::download(new StockAdjustmentExport($query), $filename);
     }
 }
