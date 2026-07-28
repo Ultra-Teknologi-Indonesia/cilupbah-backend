@@ -35,6 +35,7 @@ class DatabaseSeeder extends Seeder
 
         $this->call(\Modules\Product\Database\Seeders\CategorySeeder::class);
         $this->call(\Modules\Product\Database\Seeders\DefaultCategorySeeder::class);
+        $this->call(\Modules\Product\Database\Seeders\CategoryChannelMappingSeeder::class);
         $this->call(\Modules\Product\Database\Seeders\BrandSeeder::class);
 
         $this->call(\Modules\Inventory\Database\Seeders\InventoryDatabaseSeeder::class);
