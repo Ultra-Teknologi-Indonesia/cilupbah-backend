@@ -139,7 +139,6 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         $config['mode'] = 'update';
         $config['warehouse_id'] = $this->resolveWarehouseId($shop);
         $payload = $this->outboundMapper->map($internalProductArray, $imageUris, $config);
-        $payload['product_id'] = $externalProductId;
 
         try {
             $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
@@ -345,10 +344,10 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         try {
             $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
 
-            $invPayload = ['product_id' => $externalProductId, 'skus' => $inventorySkus];
+            $invPayload = ['skus' => $inventorySkus];
             $this->client->request('POST', "/product/202309/products/{$externalProductId}/inventory/update", $queries, $invPayload, $shop->access_token);
 
-            $pricePayload = ['product_id' => $externalProductId, 'skus' => $priceSkus];
+            $pricePayload = ['skus' => $priceSkus];
             $this->client->request('POST', "/product/202309/products/{$externalProductId}/prices/update", $queries, $pricePayload, $shop->access_token);
 
             return [

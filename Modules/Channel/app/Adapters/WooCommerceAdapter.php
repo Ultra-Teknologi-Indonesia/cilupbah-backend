@@ -116,6 +116,8 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
         $variationUpdates = [];
         $simplePayload = null;
 
+        $isVariable = $product->variants->count() > 1;
+
         foreach ($product->variants as $variant) {
             $mapping = $variant->channelMappings()->whereHas('channelMapping', function ($q) use ($shop) {
                 $q->where('channel_shop_id', $shop->id);
@@ -134,7 +136,7 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
                     'manage_stock' => true,
                     'stock_quantity' => $availableQty,
                 ];
-            } else {
+            } elseif (! $isVariable) {
                 $simplePayload = [
                     'regular_price' => (string) $variant->sell_price,
                     'manage_stock' => true,

@@ -59,7 +59,6 @@ class LazadaAdapter implements MarketplaceAdapterInterface
     public function updateProduct(Product $product, ChannelShop $shop, string $externalProductId): array
     {
         $payload = $this->buildProductPayload($product, $shop);
-        $payload['Request']['Product']['ItemId'] = $externalProductId;
 
         try {
             $res = $this->client->request('POST', '/product/update', [

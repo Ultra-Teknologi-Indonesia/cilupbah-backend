@@ -7,7 +7,9 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductSyncLog;
+use Modules\Product\Models\ProductVariantChannelMapping;
 use Ramsey\Uuid\Uuid;
 
 class ShopeeProductService
@@ -383,6 +385,8 @@ class ShopeeProductService
 
     protected function persistItem(object $shop, string $shopId, array $item, ShopeeToInternalProductMapper $mapper, $productService): bool
     {
+        $matchedExisting = false;
+        $variantIds = [];
         $internalData = app(ChannelAssetImporter::class)->import($mapper->map($item, $shopId));
         $insertedId = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
         if (! $insertedId) {
@@ -569,7 +573,7 @@ class ShopeeProductService
 
         $statuses = $this->fetchProductStatuses($shopId);
 
-        $mappings = \Modules\Product\Models\ProductChannelMapping::where('channel_shop_id', $channelShopId)
+        $mappings = ProductChannelMapping::where('channel_shop_id', $channelShopId)
             ->whereNotNull('external_product_id')
             ->get();
 
@@ -608,7 +612,7 @@ class ShopeeProductService
                 if (empty($models)) {
                     $price = $item['price_info'][0]['current_price'] ?? null;
                     if ($price !== null) {
-                        \Modules\Product\Models\ProductVariantChannelMapping::where('product_channel_mapping_id', $mapping->id)
+                        ProductVariantChannelMapping::where('product_channel_mapping_id', $mapping->id)
                             ->update(['synced_price' => $price]);
                     }
                 } else {
@@ -618,7 +622,7 @@ class ShopeeProductService
                             continue;
                         }
 
-                        $vm = \Modules\Product\Models\ProductVariantChannelMapping::where('product_channel_mapping_id', $mapping->id)
+                        $vm = ProductVariantChannelMapping::where('product_channel_mapping_id', $mapping->id)
                             ->where('external_sku_id', $modelId)
                             ->first();
                         if (! $vm) {

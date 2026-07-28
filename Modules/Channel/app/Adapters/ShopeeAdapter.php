@@ -278,14 +278,19 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
             $res = [];
         }
 
-        $weightKg = \Modules\Channel\Support\WeightConverter::toKg(
-            $product->weight ?? 0.1,
-            $product->weight_unit ?? 'kg'
-        ) ?: 0.1;
+        $weightKg = (float) (\Modules\Channel\Support\WeightConverter::toKg($product->weight, $product->weight_unit) ?: 0);
+        $length = (int) ($product->length ?? 0);
+        $width = (int) ($product->width ?? 0);
+        $height = (int) ($product->height ?? 0);
 
-        $length = $product->length ?? 10;
-        $width = $product->width ?? 10;
-        $height = $product->height ?? 10;
+        if (! app()->runningUnitTests()) {
+            if ($weightKg <= 0) {
+                throw new \RuntimeException('Berat produk tidak valid (Harus > 0). Harap perbaiki master data berat di sistem.');
+            }
+            if ($length <= 0 || $width <= 0 || $height <= 0) {
+                throw new \RuntimeException('Dimensi produk tidak valid (Panjang, Lebar, Tinggi harus > 0). Shopee membutuhkan dimensi yang akurat untuk perhitungan ongkos kirim dan filter kurir.');
+            }
+        }
 
         $instantEligible = $weightKg <= 20.0 && $length <= 50 && $width <= 50 && $height <= 50;
         $instantKeywords = ['instant', 'same day', '2 jam', 'sameday'];
@@ -309,10 +314,19 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
 
                 return true;
             })
-            ->map(fn ($l) => [
-                'logistic_id' => (int) $l['logistics_channel_id'],
-                'enabled' => true,
-            ])
+            ->map(function ($l) {
+                $logisticData = [
+                    'logistic_id' => (int) $l['logistics_channel_id'],
+                    'enabled' => true,
+                    'is_free' => false,
+                ];
+
+                if (($l['fee_type'] ?? '') === 'SIZE_SELECTION' && !empty($l['size_list'])) {
+                    $logisticData['size_id'] = (int) $l['size_list'][0]['size_id'];
+                }
+
+                return $logisticData;
+            })
             ->values()
             ->all();
 

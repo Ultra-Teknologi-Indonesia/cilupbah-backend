@@ -202,6 +202,8 @@ class WooCommerceProductService
 
     protected function persistItem(ChannelShop $shop, string $shopId, array $item, $productService): bool
     {
+        $matchedExisting = false;
+        $variantIds = [];
         $internalData = app(ChannelAssetImporter::class)->import($this->inboundMapper->map($item, $shopId));
         $insertedId = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
         if (! $insertedId) {

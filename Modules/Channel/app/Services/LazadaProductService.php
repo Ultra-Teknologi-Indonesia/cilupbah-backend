@@ -359,6 +359,7 @@ class LazadaProductService
         $productService = app(\Modules\Product\Services\ProductService::class);
 
         try {
+            $matchedExisting = false;
             $internalData = app(ChannelAssetImporter::class)->import($this->inboundMapper->map($item, $shopId));
             $insertedId = $productService->upsertFromChannel($internalData, $matchedExisting);
         } catch (\Throwable $e) {
@@ -477,6 +478,8 @@ class LazadaProductService
 
             foreach ($products as $item) {
                 try {
+                    $matchedExisting = false;
+                    $variantIds = [];
                     $internalData = app(ChannelAssetImporter::class)->import($this->inboundMapper->map($item, $shopId));
                     $insertedId = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
 

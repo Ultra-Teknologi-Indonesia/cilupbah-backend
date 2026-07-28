@@ -97,7 +97,7 @@ class LazadaProductSyncTest extends TestCase
         });
     }
 
-    public function test_update_product_includes_item_id(): void
+    public function test_update_product_sends_update_payload(): void
     {
         Http::fake([
             'api.lazada.co.id/rest/product/update*' => Http::response(['code' => '0', 'data' => []], 200),
@@ -112,7 +112,8 @@ class LazadaProductSyncTest extends TestCase
             parse_str(parse_url($request->url(), PHP_URL_QUERY) ?? '', $query);
             $payload = json_decode($query['payload'] ?? ($request['payload'] ?? ''), true);
 
-            return ($payload['Request']['Product']['ItemId'] ?? null) === '555001';
+            return ! isset($payload['Request']['Product']['ItemId'])
+                && ($payload['Request']['Product']['Skus']['Sku'][0]['SellerSku'] ?? null) === 'SKU-A';
         });
     }
 
