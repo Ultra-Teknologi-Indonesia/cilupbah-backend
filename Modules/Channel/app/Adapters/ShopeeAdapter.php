@@ -222,7 +222,17 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         if (empty($productImageUrls)) {
             $productImageUrls = $images->sortBy('sort_order')->pluck('url')->values()->all();
         }
-        $productImageUrls = array_slice($productImageUrls, 0, 9);
+        if (empty($productImageUrls) && ! empty($product->primary_image)) {
+            $productImageUrls[] = $product->primary_image;
+        }
+        if (empty($productImageUrls)) {
+            foreach ($product->variants as $variant) {
+                if (! empty($variant->image)) {
+                    $productImageUrls[] = $variant->image;
+                }
+            }
+        }
+        $productImageUrls = array_slice(array_unique(array_filter($productImageUrls)), 0, 9);
         $imageIds = $this->mediaUploader->uploadFromUrls($productImageUrls);
 
         if (empty($imageIds) && ! app()->runningUnitTests()) {
