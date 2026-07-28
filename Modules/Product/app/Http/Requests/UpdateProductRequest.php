@@ -128,6 +128,11 @@ class UpdateProductRequest extends FormRequest
 
             if ($this->has('media')) {
                 $media = collect((array) $this->input('media', []))->filter(fn ($m) => is_array($m));
+
+                if ($media->isEmpty()) {
+                    return;
+                }
+
                 $images = $media->filter(fn ($m) => ($m['media_type'] ?? 'image') !== 'video');
                 $videos = $media->filter(fn ($m) => ($m['media_type'] ?? 'image') === 'video');
 
