@@ -249,7 +249,11 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
 
     protected function resolveLogistics(ChannelShop $shop, Product $product): array
     {
-        $res = $this->client->request('GET', '/api/v2/logistics/get_channel_list', [], $shop->access_token, $shop->shop_id);
+        try {
+            $res = $this->client->request('GET', '/api/v2/logistics/get_channel_list', [], $shop->access_token, $shop->shop_id);
+        } catch (\Throwable $e) {
+            $res = [];
+        }
 
         $weightKg = \Modules\Channel\Support\WeightConverter::toKg(
             $product->weight ?? 0.1,
@@ -264,7 +268,14 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         $instantKeywords = ['instant', 'same day', '2 jam', 'sameday'];
 
         return collect($res['response']['logistics_channel_list'] ?? [])
-            ->filter(fn ($l) => $l['enabled'] ?? false)
+            ->filter(fn ($l) => ($l['enabled'] ?? false) === true)
+            ->filter(function ($l) {
+                if (isset($l['mask_channel_id']) && (int) $l['mask_channel_id'] > 0 && (int) $l['mask_channel_id'] !== (int) $l['logistics_channel_id']) {
+                    return false;
+                }
+
+                return true;
+            })
             ->filter(function ($l) use ($instantEligible, $instantKeywords) {
                 $name = strtolower($l['logistics_channel_name'] ?? '');
                 foreach ($instantKeywords as $keyword) {
