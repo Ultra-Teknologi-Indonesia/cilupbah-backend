@@ -47,6 +47,9 @@ class LazadaToInternalProductMapper
                 'sell_price' => $price,
                 'buy_price' => $price,
                 'weight' => (float) ($skuData['package_weight'] ?? 0),
+                'length' => (float) ($skuData['package_length'] ?? 0),
+                'width' => (float) ($skuData['package_width'] ?? 0),
+                'height' => (float) ($skuData['package_height'] ?? 0),
                 'is_active' => strtolower((string) ($skuData['Status'] ?? 'active')) === 'active',
             ];
 
@@ -67,6 +70,9 @@ class LazadaToInternalProductMapper
         }
 
         $internal['sku'] = $internal['variants'][0]['sku'] ?? null;
+        $internal['length'] = $internal['variants'][0]['length'] ?? 0;
+        $internal['width'] = $internal['variants'][0]['width'] ?? 0;
+        $internal['height'] = $internal['variants'][0]['height'] ?? 0;
 
         $internal['channel_external_product_id'] = isset($lazadaProduct['item_id']) ? (string) $lazadaProduct['item_id'] : null;
         $internal['channel_shop_id_external'] = $shopId;

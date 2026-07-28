@@ -21,6 +21,9 @@ class ShopeeToInternalProductMapper
             'is_from_channel' => true,
             'verified_at' => now(),
             'weight' => (float) ($shopeeItem['weight'] ?? 0),
+            'length' => (float) ($shopeeItem['dimension']['package_length'] ?? 0),
+            'width' => (float) ($shopeeItem['dimension']['package_width'] ?? 0),
+            'height' => (float) ($shopeeItem['dimension']['package_height'] ?? 0),
         ];
 
         $internal['media'] = [];

@@ -28,10 +28,15 @@ class TikTokToInternalProductMapper
         ];
 
         if (isset($tiktokProduct['package_weight'])) {
-
             $w = (float) ($tiktokProduct['package_weight']['value'] ?? 0);
             $unit = strtoupper((string) ($tiktokProduct['package_weight']['unit'] ?? 'KILOGRAM'));
             $internal['weight'] = $unit === 'GRAM' ? $w / 1000 : $w;
+        }
+
+        if (isset($tiktokProduct['package_dimensions'])) {
+            $internal['length'] = (float) ($tiktokProduct['package_dimensions']['length'] ?? 0);
+            $internal['width'] = (float) ($tiktokProduct['package_dimensions']['width'] ?? 0);
+            $internal['height'] = (float) ($tiktokProduct['package_dimensions']['height'] ?? 0);
         }
 
         $internal['variants'] = [];

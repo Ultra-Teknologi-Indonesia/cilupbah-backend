@@ -29,9 +29,9 @@ class LazadaProductMapper
                 'quantity' => (int) ($variant['stock'] ?? 0),
                 'price' => (float) ($variant['sell_price'] ?? 0),
                 'package_weight' => \Modules\Channel\Support\WeightConverter::toKg($variant['weight'] ?? $product['weight'] ?? 0.1, $product['weight_unit'] ?? 'kg') ?: 0.1,
-                'package_length' => 10,
-                'package_width' => 10,
-                'package_height' => 10,
+                'package_length' => max(1, (int) ($variant['length'] ?? $product['length'] ?? $config['length'] ?? 10)),
+                'package_width' => max(1, (int) ($variant['width'] ?? $product['width'] ?? $config['width'] ?? 10)),
+                'package_height' => max(1, (int) ($variant['height'] ?? $product['height'] ?? $config['height'] ?? 10)),
                 'SaleProp' => $saleProps ?: null,
                 'Images' => ! empty($variant['image_url']) ? [$variant['image_url']] : null,
             ], fn ($v) => $v !== null);
