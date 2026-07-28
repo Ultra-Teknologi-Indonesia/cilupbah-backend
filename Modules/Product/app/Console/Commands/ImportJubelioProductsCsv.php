@@ -162,7 +162,7 @@ class ImportJubelioProductsCsv extends Command
                             'description' => $description,
                             'search_keyword' => Str::lower(str_replace(' ', ',', $name)),
                             'weight' => $weight > 0 ? $weight : 100,
-                            'weight_unit' => 'g',
+                            'weight_unit' => 'gram',
                             'condition' => 'NEW',
                             'is_active' => true,
                             'status' => Product::STATUS_MASTER,
@@ -201,6 +201,32 @@ class ImportJubelioProductsCsv extends Command
                     $importedVariantsCount++;
                 } else {
                     $variant = $existingVariant;
+                }
+
+                // 3.1 Populate variant options from Variation string
+                if (! empty($variation)) {
+                    $parts = explode(',', $variation);
+                    foreach ($parts as $idx => $part) {
+                        $val = trim($part);
+                        if ($val === '') continue;
+                        $attrName = count($parts) > 1 ? 'Varian ' . ($idx + 1) : 'Varian';
+                        $attribute = Attribute::firstOrCreate(
+                            ['name' => $attrName],
+                            ['type' => 'sales']
+                        );
+
+                        DB::table('variant_options')->updateOrInsert(
+                            [
+                                'variant_id'   => $variant->id,
+                                'attribute_id' => $attribute->id,
+                            ],
+                            [
+                                'value'      => $val,
+                                'created_at' => now(),
+                                'updated_at' => now(),
+                            ]
+                        );
+                    }
                 }
 
                 // Track sample variant for output display
