@@ -369,7 +369,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         return $this->inboundMapper->map($channelData, $shopId);
     }
 
-    protected function resolveWarehouseId(ChannelShop $shop): string
+    public function resolveWarehouseId(ChannelShop $shop): string
     {
         $warehouseId = DB::table('channel_warehouses')
             ->where('store_id', $shop->shop_id)
