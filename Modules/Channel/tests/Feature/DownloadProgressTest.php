@@ -48,7 +48,7 @@ class DownloadProgressTest extends TestCase
         $response = $this->getJson('/api/v1/download-transactions');
 
         $response->assertStatus(200);
-        $response->assertJsonPath('meta.per_page', 10);
+        $response->assertJsonPath('meta.per_page', 20);
         $response->assertJsonStructure([
             'data' => [[
                 'trx_id',

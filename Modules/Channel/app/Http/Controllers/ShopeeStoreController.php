@@ -30,7 +30,7 @@ class ShopeeStoreController extends Controller
     {
         try {
             return $this->successPaginatedResponse(
-                ChannelShopResource::collection($this->shopRepository->getPaginatedShops()),
+                ChannelShopResource::collection($this->shopRepository->getPaginatedShops('shopee')),
                 'Daftar toko Shopee berhasil diambil'
             );
         } catch (\Exception $e) {
@@ -53,7 +53,7 @@ class ShopeeStoreController extends Controller
     {
         try {
             return $this->successResponse(
-                new ChannelShopResource($this->authService->getStoreModel($id)),
+                $this->authService->getStoreDetail($id),
                 'Detail toko berhasil diambil'
             );
         } catch (\Exception $e) {

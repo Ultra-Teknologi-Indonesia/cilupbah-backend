@@ -214,7 +214,7 @@ class WooCommerceProductService
             (string) ($item['id'] ?? ''),
             'synced',
             null,
-            (bool) $matchedExisting
+            false
         );
 
         $variations = $item['variations'] ?? [];

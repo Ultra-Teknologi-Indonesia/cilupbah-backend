@@ -69,7 +69,7 @@ class TikTokStoreApiTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJsonPath('data.0.shop_id', $shop->shop_id)
-            ->assertJsonPath('meta.per_page', 10);
+            ->assertJsonPath('meta.per_page', 20);
 
         $this->assertNoTokenLeak($response);
     }

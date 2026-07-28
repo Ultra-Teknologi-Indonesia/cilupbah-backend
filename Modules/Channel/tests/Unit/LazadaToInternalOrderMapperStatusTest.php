@@ -3,6 +3,7 @@
 namespace Modules\Channel\Tests\Unit;
 
 use Modules\Channel\Services\LazadaToInternalOrderMapper;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class LazadaToInternalOrderMapperStatusTest extends TestCase
@@ -22,17 +23,18 @@ class LazadaToInternalOrderMapperStatusTest extends TestCase
     public static function statusProvider(): array
     {
         return [
-            'repacked masih menunggu pack ulang' => ['repacked', 'AWAITING_SHIPMENT'],
-            'returned tetap DELIVERED (detail di SalesReturn)' => ['returned', 'DELIVERED'],
-            'failed_delivery masih in transit' => ['failed_delivery', 'IN_TRANSIT'],
-            'shipped_back masih in transit' => ['shipped_back', 'IN_TRANSIT'],
-            'shipped_back_success masih in transit' => ['shipped_back_success', 'IN_TRANSIT'],
-            'shipped_back_failed masih in transit' => ['shipped_back_failed', 'IN_TRANSIT'],
-            'lost_by_3pl masih in transit' => ['lost_by_3pl', 'IN_TRANSIT'],
-            'damaged_by_3pl masih in transit' => ['damaged_by_3pl', 'IN_TRANSIT'],
+            'repacked' => ['repacked', 'READY_TO_SHIP'],
+            'returned' => ['returned', 'RETURNED'],
+            'failed_delivery' => ['failed_delivery', 'SHIPPED'],
+            'shipped_back' => ['shipped_back', 'RETURNED'],
+            'shipped_back_success' => ['shipped_back_success', 'RETURNED'],
+            'shipped_back_failed' => ['shipped_back_failed', 'SHIPPED'],
+            'lost_by_3pl' => ['lost_by_3pl', 'SHIPPED'],
+            'damaged_by_3pl' => ['damaged_by_3pl', 'SHIPPED'],
         ];
     }
 
+    #[DataProvider('statusProvider')]
     public function test_new_statuses_no_longer_fall_back_to_unpaid(string $lazadaStatus, string $expectedChannelStatus): void
     {
         $internal = $this->mapWithStatus($lazadaStatus);

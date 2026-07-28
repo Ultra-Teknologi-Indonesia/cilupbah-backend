@@ -395,7 +395,7 @@ class ShopeeProductService
             (string) ($item['item_id'] ?? ''),
             'synced',
             null,
-            (bool) $matchedExisting
+            false
         );
 
         $models = $item['model_list'] ?? [];

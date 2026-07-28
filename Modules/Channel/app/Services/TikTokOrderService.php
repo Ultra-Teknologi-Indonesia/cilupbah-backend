@@ -681,7 +681,7 @@ class TikTokOrderService
             throw new \Exception('Pesanan tidak ditemukan di sistem lokal');
         }
 
-        if (! in_array($order->channel_status, ['ON_HOLD', 'AWAITING_SHIPMENT'])) {
+        if (! in_array($order->channel_status, ['ON_HOLD', 'AWAITING_SHIPMENT', 'READY_TO_SHIP'])) {
             throw new \Exception("Pembatalan ditolak. Status pesanan saat ini adalah {$order->channel_status}. Hanya berlaku untuk ON_HOLD dan AWAITING_SHIPMENT.");
         }
 

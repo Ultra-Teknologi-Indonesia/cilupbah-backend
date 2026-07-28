@@ -20,6 +20,7 @@ class ChannelShopResource extends JsonResource
             'location_name' => $this->stock_source_mode === 'total' ? null : optional($this->stockSourceLocation)->location_name,
             'location_code' => $this->stock_source_mode === 'total' ? null : optional($this->stockSourceLocation)->location_code,
             'integration' => $this->integrationStatus(),
+            'token_status' => $this->tokenStatus(),
             'token_expires_at' => $this->token_expires_at,
             'last_synced_at' => $this->last_synced_at,
             'channel' => $this->whenLoaded('channel', fn () => $this->channel ? [
@@ -30,6 +31,27 @@ class ChannelShopResource extends JsonResource
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];
+    }
+
+    protected function tokenStatus(): string
+    {
+        if (! $this->is_active || ! $this->access_token) {
+            return 'disconnected';
+        }
+
+        if (! $this->token_expires_at) {
+            return 'active';
+        }
+
+        if ($this->token_expires_at->isPast()) {
+            return 'expired';
+        }
+
+        if ($this->token_expires_at->lt(now()->addHours(24))) {
+            return 'expiring_soon';
+        }
+
+        return 'active';
     }
 
     protected function integrationStatus(): array

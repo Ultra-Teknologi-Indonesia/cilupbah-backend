@@ -80,6 +80,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         })->all();
 
         $config = $this->productService->buildUploadConfig($product, $shop, null, $attributeMapping);
+        $config['warehouse_id'] = $this->resolveWarehouseId($shop);
 
         $payload = $this->outboundMapper->map($internalProductArray, $imageUris, $config);
 
@@ -136,6 +137,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
 
         $config = $this->productService->buildUploadConfig($product, $shop);
         $config['mode'] = 'update';
+        $config['warehouse_id'] = $this->resolveWarehouseId($shop);
         $payload = $this->outboundMapper->map($internalProductArray, $imageUris, $config);
         $payload['product_id'] = $externalProductId;
 
@@ -367,7 +369,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         return $this->inboundMapper->map($channelData, $shopId);
     }
 
-    private function resolveTikTokWarehouseId(ChannelShop $shop): string
+    protected function resolveWarehouseId(ChannelShop $shop): string
     {
         $warehouseId = DB::table('channel_warehouses')
             ->where('store_id', $shop->shop_id)
@@ -378,24 +380,43 @@ class TikTokAdapter implements MarketplaceAdapterInterface
             return $warehouseId;
         }
 
-        $result = $this->client->request(
-            'GET',
-            '/logistics/202309/warehouses',
-            ['shop_cipher' => $shop->shop_cipher ?? ''],
-            [],
-            $shop->access_token
-        );
+        try {
+            $result = $this->client->request(
+                'GET',
+                '/logistics/202309/warehouses',
+                ['shop_cipher' => $shop->shop_cipher ?? ''],
+                [],
+                $shop->access_token
+            );
 
-        $warehouses = $result['data']['warehouses'] ?? [];
-        $sales = collect($warehouses)->firstWhere('type', 'SALES_WAREHOUSE');
-        $resolved = $sales['id'] ?? ($warehouses[0]['id'] ?? null);
+            $warehouses = $result['data']['warehouses'] ?? $result['warehouses'] ?? [];
+            if (!empty($warehouses)) {
+                foreach ($warehouses as $wh) {
+                    if (($wh['warehouse_type'] ?? $wh['type'] ?? '') === 'SALES_WAREHOUSE') {
+                        $resolved = (string) ($wh['warehouse_id'] ?? $wh['id'] ?? '');
+                        break;
+                    }
+                }
+                if (empty($resolved)) {
+                    $resolved = (string) ($warehouses[0]['warehouse_id'] ?? $warehouses[0]['id'] ?? '');
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::error('TikTok resolveWarehouseId error: ' . $e->getMessage());
+        }
 
-        if ($resolved) {
+        if (!empty($resolved)) {
             DB::table('channel_warehouses')
                 ->where('store_id', $shop->shop_id)
                 ->update(['channel_location_id' => $resolved, 'channel_location_type' => 'SALES_WAREHOUSE']);
+            return (string) $resolved;
         }
 
-        return $resolved ?? '';
+        throw new \RuntimeException("Gagal mendapatkan daftar Warehouse dari toko TikTok ini.");
+    }
+
+    private function resolveTikTokWarehouseId(ChannelShop $shop): string
+    {
+        return $this->resolveWarehouseId($shop);
     }
 }

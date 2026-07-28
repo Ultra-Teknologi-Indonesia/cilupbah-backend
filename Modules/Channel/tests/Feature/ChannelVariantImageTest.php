@@ -52,7 +52,7 @@ class ChannelVariantImageTest extends TestCase
 
         $this->assertSame(['main-img-id'], $payload['image']['image_id_list']);
 
-        $optionList = $payload['tier_variation'][0]['option_list'];
+        $optionList = $payload['_tier_variation'][0]['option_list'];
         $this->assertSame(['image_id' => 'shp-img-1'], $optionList[0]['image']);
         $this->assertArrayNotHasKey('image', $optionList[1]);
     }

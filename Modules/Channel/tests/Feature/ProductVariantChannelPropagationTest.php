@@ -38,6 +38,7 @@ class ProductVariantChannelPropagationTest extends TestCase
     {
         $user = $this->createPrivilegedUser();
         $this->actingAs($user);
+        config(['channel.auto_push_product_content' => true]);
 
         $category = Category::create(['name' => 'Handphone']);
         $warna = Attribute::firstOrCreate(['name' => 'Warna'], ['type' => 'sales']);

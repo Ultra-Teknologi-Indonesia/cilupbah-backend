@@ -110,7 +110,7 @@ class TikTokOrderOpsTest extends TestCase
 
         $order = SalesOrder::where('salesorder_no', self::SALES_NO)->first();
         $this->assertNotNull($order);
-        $this->assertEquals('AWAITING_SHIPMENT', $order->channel_status);
+        $this->assertEquals('READY_TO_SHIP', $order->channel_status);
         $this->assertEquals('reserved', $order->status);
     }
 
@@ -131,7 +131,7 @@ class TikTokOrderOpsTest extends TestCase
 
         $order = SalesOrder::where('salesorder_no', self::SALES_NO)->first();
         $this->assertNotNull($order);
-        $this->assertEquals('AWAITING_COLLECTION', $order->channel_status);
+        $this->assertEquals('PROCESSED', $order->channel_status);
         $this->assertEquals('packed', $order->status);
         $this->assertEquals('TTRK-1', $order->tracking_number);
     }

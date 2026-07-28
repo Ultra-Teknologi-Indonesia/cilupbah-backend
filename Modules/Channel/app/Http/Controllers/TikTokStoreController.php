@@ -26,7 +26,7 @@ class TikTokStoreController extends Controller
     {
         try {
             return $this->successPaginatedResponse(
-                ChannelShopResource::collection($this->shopRepository->getPaginatedShops()),
+                ChannelShopResource::collection($this->shopRepository->getPaginatedShops('tiktok')),
                 'Daftar toko berhasil diambil'
             );
         } catch (\Exception $e) {

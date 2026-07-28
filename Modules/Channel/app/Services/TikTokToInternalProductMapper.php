@@ -116,7 +116,7 @@ class TikTokToInternalProductMapper
                         'sort_order' => 0,
                     ]];
                 } elseif (! $skuImg) {
-                    Log::channel('warning')->info('TikTok SKU image not found', [
+                    Log::warning('TikTok SKU image not found', [
                         'sku' => $sku,
                         'product_title' => $tiktokProduct['title'] ?? null,
                         'sales_attributes_keys' => array_map(

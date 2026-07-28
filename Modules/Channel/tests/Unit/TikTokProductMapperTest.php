@@ -17,6 +17,23 @@ class TikTokProductMapperTest extends TestCase
         ];
     }
 
+    private function cfg(array $overrides = []): array
+    {
+        return array_merge(['warehouse_id' => '7646426075561690887'], $overrides);
+    }
+
+    public function test_map_throws_when_warehouse_id_missing(): void
+    {
+        $mapper = new TikTokProductMapper();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("Warehouse ID wajib disertakan untuk mapping produk TikTok.");
+
+        $mapper->map($this->product([
+            ['sku' => 'A', 'sell_price' => 1000],
+        ]), [], ['mode' => 'create']);
+    }
+
     public function test_create_synthesizes_named_sale_attribute_for_multivariant_without_options(): void
     {
         $mapper = new TikTokProductMapper();
@@ -24,7 +41,7 @@ class TikTokProductMapperTest extends TestCase
         $payload = $mapper->map($this->product([
             ['sku' => 'ZB14-I5-512', 'sell_price' => 12000000, 'stock' => 5, 'options' => []],
             ['sku' => 'ZB14-I7-1TB', 'sell_price' => 15000000, 'stock' => 5, 'options' => []],
-        ]), [], ['mode' => 'create']);
+        ]), [], $this->cfg(['mode' => 'create']));
 
         $this->assertCount(2, $payload['skus']);
         $attr = $payload['skus'][0]['sales_attributes'][0];
@@ -41,7 +58,7 @@ class TikTokProductMapperTest extends TestCase
         $mapper->map($this->product([
             ['sku' => 'ZB14-I5-512', 'sell_price' => 12000000, 'stock' => 5, 'options' => []],
             ['sku' => 'ZB14-I7-1TB', 'sell_price' => 15000000, 'stock' => 5, 'options' => []],
-        ]), [], ['mode' => 'update']);
+        ]), [], $this->cfg(['mode' => 'update']));
     }
 
     public function test_update_reuses_pre_resolved_sale_attribute_id_and_sku_id(): void
@@ -56,7 +73,7 @@ class TikTokProductMapperTest extends TestCase
                     'attribute_id' => '100000', 'attribute_name' => 'Tipe', 'custom_value' => 'ZB14-I5-512',
                 ]],
             ],
-        ]), [], ['mode' => 'update']);
+        ]), [], $this->cfg(['mode' => 'update']));
 
         $sku = $payload['skus'][0];
         $this->assertSame('TT-SKU-1', $sku['id']);
@@ -74,7 +91,7 @@ class TikTokProductMapperTest extends TestCase
         $mapper->map([
             'name' => 'Erigo Hoodie',
             'variants' => [['sku' => 'A', 'sell_price' => 1000]],
-        ], [], ['mode' => 'create']);
+        ], [], $this->cfg(['mode' => 'create', 'enforce_title_length' => true]));
     }
 
     public function test_map_accepts_title_within_25_and_255_chars(): void
@@ -84,7 +101,7 @@ class TikTokProductMapperTest extends TestCase
         $payload = $mapper->map([
             'name' => 'Erigo Hoodie Original Premium Unisex',
             'variants' => [['sku' => 'A', 'sell_price' => 1000]],
-        ], [], ['mode' => 'create']);
+        ], [], $this->cfg(['mode' => 'create']));
 
         $this->assertSame('Erigo Hoodie Original Premium Unisex', $payload['title']);
     }
@@ -108,10 +125,10 @@ class TikTokProductMapperTest extends TestCase
                     ['attribute_id' => 12, 'attribute_name' => 'Display Size', 'value' => '14'],
                 ],
             ],
-        ]), [], [
+        ]), [], $this->cfg([
             'mode' => 'create',
             'sales_attribute_map' => [32 => '200001', 12 => '200002'],
-        ]);
+        ]));
 
         $this->assertCount(2, $payload['skus']);
         $attrs = $payload['skus'][0]['sales_attributes'];
@@ -134,11 +151,11 @@ class TikTokProductMapperTest extends TestCase
                     ['attribute_id' => 12, 'attribute_name' => 'Display Size', 'value' => '14'],
                 ],
             ],
-        ]), [], [
+        ]), [], $this->cfg([
             'mode' => 'create',
             'sales_attribute_map' => [32 => '100090', 12 => '100000'],
             'sales_attribute_id_to_name' => ['100090' => 'Kapasitas', '100000' => 'Warna'],
-        ]);
+        ]));
 
         $attrs = $payload['skus'][0]['sales_attributes'];
         $this->assertSame('Kapasitas', $attrs[0]['name']);
@@ -158,10 +175,10 @@ class TikTokProductMapperTest extends TestCase
                     ['attribute_id' => 99, 'attribute_name' => 'Warna', 'value' => 'Merah'],
                 ],
             ],
-        ]), [], [
+        ]), [], $this->cfg([
             'mode' => 'create',
             'sales_attribute_name_map' => ['warna' => '300001'],
-        ]);
+        ]));
 
         $attr = $payload['skus'][0]['sales_attributes'][0];
         $this->assertSame('300001', $attr['id']);
@@ -179,7 +196,7 @@ class TikTokProductMapperTest extends TestCase
                     ['attribute_id' => 777, 'attribute_name' => 'Bahan', 'value' => 'Katun'],
                 ],
             ],
-        ]), [], ['mode' => 'create']);
+        ]), [], $this->cfg(['mode' => 'create']));
 
         $attr = $payload['skus'][0]['sales_attributes'][0];
         $this->assertArrayNotHasKey('id', $attr);
@@ -196,7 +213,7 @@ class TikTokProductMapperTest extends TestCase
                 'sku' => 'ZB14-I5-512', 'sell_price' => 12000000, 'stock' => 5, 'options' => [],
                 'sales_attributes' => [['custom_value' => 'ZB14-I5-512']],
             ],
-        ]), [], ['mode' => 'create']);
+        ]), [], $this->cfg(['mode' => 'create']));
 
         $this->assertArrayNotHasKey('sales_attributes', $payload['skus'][0]);
     }
@@ -212,7 +229,7 @@ class TikTokProductMapperTest extends TestCase
                     ['attribute_id' => null, 'attribute_name' => null, 'value' => 'some-val'],
                 ],
             ],
-        ]), [], ['mode' => 'create']);
+        ]), [], $this->cfg(['mode' => 'create']));
 
         $this->assertArrayNotHasKey('sales_attributes', $payload['skus'][0]);
     }

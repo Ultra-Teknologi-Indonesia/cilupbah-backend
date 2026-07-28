@@ -31,11 +31,17 @@ class ChannelShopRepository
         ]);
     }
 
-    public function getPaginatedShops()
+    public function getPaginatedShops(?string $channelCode = null)
     {
-        return QueryBuilder::for(ChannelShop::class)
+        $query = QueryBuilder::for(ChannelShop::class)
             ->with('channel')
-            ->whereNull('disconnected_at')
+            ->whereNull('disconnected_at');
+
+        if ($channelCode !== null) {
+            $query->whereHas('channel', fn ($q) => $q->where('code', $channelCode));
+        }
+
+        return $query
             ->allowedSearch('shop_name')
             ->allowedFilters(
                 'channel_id',
@@ -62,7 +68,7 @@ class ChannelShopRepository
 
     public function findByShopId(string $shopId)
     {
-        return DB::table('channel_shops')->where('shop_id', $shopId)->first();
+        return ChannelShop::where('shop_id', $shopId)->first();
     }
 
     public function findConnectedByShopId(string $shopId): ?ChannelShop

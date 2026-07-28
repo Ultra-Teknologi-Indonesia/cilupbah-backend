@@ -188,7 +188,7 @@ class ChannelStockTest extends TestCase
                 return false;
             }
 
-            return ($request['stock_info_v2'][0]['stock'] ?? null) === 7;
+            return ($request['seller_stock'][0]['stock'] ?? null) === 7;
         });
     }
 

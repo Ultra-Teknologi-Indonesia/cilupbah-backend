@@ -8,6 +8,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
+use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\ChannelMediaResolver;
@@ -167,7 +168,7 @@ class TikTokImageUploadTest extends TestCase
 
     public function test_push_product_throws_clear_error_when_all_images_fail(): void
     {
-        $shop = (object) ['access_token' => 'tok', 'shop_cipher' => 'cipher', 'id' => 'shop-uuid', 'channel_id' => 'chan'];
+        $shop = new ChannelShop(['access_token' => 'tok', 'shop_cipher' => 'cipher', 'id' => 'shop-uuid', 'channel_id' => 'chan']);
         $product = (object) ['id' => 'p1', 'name' => 'Produk', 'category_id' => null];
 
         $client = Mockery::mock(TikTokClient::class);
@@ -215,14 +216,16 @@ class TikTokImageUploadTest extends TestCase
 
     public function test_push_product_sends_images_video_and_sku_img(): void
     {
-        $shop = (object) ['access_token' => 'tok', 'shop_cipher' => 'cipher', 'id' => 'shop-uuid', 'channel_id' => 'chan'];
-        $product = (object) ['id' => 'p1', 'name' => 'Produk', 'category_id' => null];
-        $variant = (object) ['id' => 'v1', 'sku' => 'V1-SKU', 'sell_price' => 1000];
-
+        $shop = new ChannelShop(['access_token' => 'tok', 'shop_cipher' => 'cipher', 'id' => 'shop-uuid', 'channel_id' => 'chan']);
+        $product = (object) ['id' => '11111111-1111-4111-8111-000000000001', 'name' => 'Produk', 'category_id' => null];
+        $variant = (object) [
+            'id' => '11111111-1111-4111-8111-111111111111', 'sku' => 'V1', 'sell_price' => 1000,
+            'options' => [(object) ['attribute_name' => 'Warna', 'value' => 'Merah']],
+        ];
         $media = [
             (object) ['variant_id' => null, 'media_type' => 'image', 'url' => 'https://x/main.jpg'],
             (object) ['variant_id' => null, 'media_type' => 'video', 'url' => 'https://x/clip.mp4'],
-            (object) ['variant_id' => 'v1', 'media_type' => 'image', 'url' => 'https://x/var.jpg'],
+            (object) ['variant_id' => '11111111-1111-4111-8111-111111111111', 'media_type' => 'image', 'url' => 'https://x/var.jpg'],
         ];
 
         $captured = null;
@@ -242,7 +245,7 @@ class TikTokImageUploadTest extends TestCase
         $productRepo->shouldReceive('findById')->andReturn($product);
         $productRepo->shouldReceive('getVariantsByProductId')->andReturn(collect([$variant]));
         $productRepo->shouldReceive('getMediaByProductId')->andReturn($media);
-        $productRepo->shouldReceive('getVariantOptions')->with('v1')
+        $productRepo->shouldReceive('getVariantOptions')->with('11111111-1111-4111-8111-111111111111')
             ->andReturn([(object) ['attribute_name' => 'Warna', 'value' => 'Merah']]);
         $productRepo->shouldReceive('getProductSpecifications')->andReturn([]);
         $productRepo->shouldReceive('upsertChannelMapping')->andReturn('pcm-1');
@@ -256,7 +259,7 @@ class TikTokImageUploadTest extends TestCase
         $uploader->shouldReceive('uploadVideo')->with('https://x/clip.mp4', 'tok')->andReturn('vid-1');
 
         $service = new TikTokProductService($client, new TikTokProductMapper(), $shopRepo, $productRepo, $uploader);
-        $service->pushProduct('p1', 'SHOP');
+        $service->pushProduct('11111111-1111-4111-8111-000000000001', 'SHOP');
 
         $this->assertSame([['uri' => 'main-uri']], $captured['main_images']);
         $this->assertSame(['id' => 'vid-1'], $captured['video']);
@@ -265,7 +268,7 @@ class TikTokImageUploadTest extends TestCase
 
     public function test_push_product_throws_when_product_has_no_image(): void
     {
-        $shop = (object) ['access_token' => 'tok', 'shop_cipher' => 'cipher', 'id' => 'shop-uuid', 'channel_id' => 'chan'];
+        $shop = new ChannelShop(['access_token' => 'tok', 'shop_cipher' => 'cipher', 'id' => 'shop-uuid', 'channel_id' => 'chan']);
         $product = (object) ['id' => 'p1', 'name' => 'Produk', 'category_id' => null];
 
         $client = Mockery::mock(TikTokClient::class);

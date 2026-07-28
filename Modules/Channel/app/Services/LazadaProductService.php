@@ -377,7 +377,7 @@ class LazadaProductService
             (string) ($item['item_id'] ?? $itemId),
             'synced',
             null,
-            (bool) $matchedExisting
+            false
         );
 
         return true;
@@ -487,7 +487,7 @@ class LazadaProductService
                             (string) ($item['item_id'] ?? ''),
                             'synced',
                             (! empty($item['attributes']) && is_array($item['attributes'])) ? $item['attributes'] : null,
-                            (bool) $matchedExisting
+                            false
                         );
 
                         foreach ($item['skus'] ?? [] as $idx => $skuData) {
