@@ -143,9 +143,6 @@ class TikTokImageUploader
         $ok = imagejpeg($canvas, null, 90);
         $jpeg = ob_get_clean();
 
-        imagedestroy($img);
-        imagedestroy($canvas);
-
         return ($ok && $jpeg !== false && $jpeg !== '') ? [$jpeg, 'jpg'] : null;
     }
 }
