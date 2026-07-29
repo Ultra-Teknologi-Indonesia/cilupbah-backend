@@ -6,9 +6,6 @@ return [
 
     'auto_push_product_content' => (bool) env('CHANNEL_AUTO_PUSH_PRODUCT_CONTENT', false),
 
-    // Video Lazada: ON. Endpoint /media/video/block/{create,upload,commit} (sesuai SDK resmi).
-    // Aman: non-blocking + jaring pengaman retry-tanpa-video di LazadaAdapter, jadi kegagalan
-    // video tidak pernah menggagalkan upload produk. Set LAZADA_VIDEO_ENABLED=false untuk mematikan.
     'lazada_video_enabled' => (bool) env('LAZADA_VIDEO_ENABLED', true),
 
     'lazada_defaults' => [

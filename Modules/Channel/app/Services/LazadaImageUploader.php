@@ -62,7 +62,6 @@ class LazadaImageUploader
 
             $fileName = 'product_video_' . substr(md5($url), 0, 8) . '.mp4';
 
-            // 1. InitCreateVideo
             $init = $this->client->request('POST', '/media/video/block/create', [
                 'fileName' => $fileName,
                 'fileBytes' => strlen($bytes),
@@ -74,7 +73,6 @@ class LazadaImageUploader
                 return null;
             }
 
-            // 2. UploadVideoBlock (blok ≤10MB)
             $blocks = str_split($bytes, 10 * 1024 * 1024);
             $blockCount = count($blocks);
             $parts = [];
@@ -95,7 +93,6 @@ class LazadaImageUploader
                 $parts[] = ['blockNo' => (string) $blockNo, 'eTag' => $etag];
             }
 
-            // 3. CompleteCreateVideo -> VideoID
             $complete = $this->client->request('POST', '/media/video/block/commit', array_filter([
                 'uploadId' => $uploadId,
                 'parts' => json_encode($parts),

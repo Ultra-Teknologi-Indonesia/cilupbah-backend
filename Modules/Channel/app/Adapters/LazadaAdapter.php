@@ -178,11 +178,6 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         return $this->inboundMapper->map($channelData, $shopId);
     }
 
-    /**
-     * Kirim payload create/update ke Lazada. Jaring pengaman: bila gagal DAN payload
-     * memuat video (Attributes.video), coba ulang SEKALI tanpa video — supaya field
-     * video yang belum terverifikasi tidak pernah menggagalkan upload produk itu sendiri.
-     */
     protected function sendProductPayload(string $path, array $payload, ChannelShop $shop): array
     {
         try {
