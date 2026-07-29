@@ -33,9 +33,9 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         try {
             $payload = $this->buildProductPayload($product, $shop);
 
-            $tierVariation = $payload['_tier_variation'] ?? null;
+            $standardiseTierVariation = $payload['_standardise_tier_variation'] ?? null;
             $modelList = $payload['_model_list'] ?? null;
-            unset($payload['_tier_variation'], $payload['_model_list']);
+            unset($payload['_standardise_tier_variation'], $payload['_model_list']);
 
             $res = $this->client->request('POST', '/api/v2/product/add_item', $payload, $shop->access_token, $shop->shop_id);
 
@@ -44,11 +44,11 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
             if ($itemId) {
                 $skus = [];
 
-                if ($tierVariation && $modelList) {
+                if ($standardiseTierVariation && $modelList) {
                     try {
                         $initRes = $this->client->request('POST', '/api/v2/product/init_tier_variation', [
                             'item_id' => $itemId,
-                            'tier_variation' => $tierVariation,
+                            'standardise_tier_variation' => $standardiseTierVariation,
                             'model' => $modelList,
                         ], $shop->access_token, $shop->shop_id);
 
@@ -89,7 +89,7 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
     {
         try {
             $payload = $this->buildProductPayload($product, $shop);
-            unset($payload['_model_list'], $payload['_tier_variation']);
+            unset($payload['_model_list'], $payload['_standardise_tier_variation']);
             $payload['item_id'] = (int) $externalProductId;
 
             $res = $this->client->request('POST', '/api/v2/product/update_item', $payload, $shop->access_token, $shop->shop_id);
@@ -268,10 +268,17 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
             $config['logistic_info'] = $this->resolveLogistics($shop, $product);
         }
 
+        Log::debug('Shopee add_item logistic_info', [
+            'shop_id' => $shop->shop_id,
+            'product_id' => $product->id,
+            'logistic_info' => $config['logistic_info'],
+        ]);
+
         $channelCategoryUuid = $this->resolveChannelCategoryUuid($product);
         if ($channelCategoryUuid) {
             $config['attribute_list'] = $this->buildAttributeList($product, $channelCategoryUuid);
             $config['tier_variation_name'] = $this->resolveTierVariationName($product, $channelCategoryUuid);
+            $config['tier_variation_names'] = $this->resolveTierVariationNames($product, $channelCategoryUuid);
         }
 
         return $this->outboundMapper->map($internal, $imageIds, $config);
@@ -445,6 +452,36 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
             ->value('ca.name');
 
         return $channelAttr;
+    }
+
+    /**
+     * Peta attribute_id internal -> nama variasi Shopee (sale prop), dipakai untuk
+     * memberi label tiap tingkat pada standardise_tier_variation (mis. Warna, Tipe).
+     */
+    protected function resolveTierVariationNames(Product $product, string $channelCategoryUuid): array
+    {
+        $attrIds = DB::table('product_variants as pv')
+            ->join('variant_options as pvo', 'pvo.variant_id', '=', 'pv.id')
+            ->where('pv.product_id', $product->id)
+            ->whereNotNull('pvo.attribute_id')
+            ->distinct()
+            ->pluck('pvo.attribute_id');
+
+        $names = [];
+        foreach ($attrIds as $attrId) {
+            $name = DB::table('attribute_channel_mappings as acm')
+                ->join('channel_attributes as ca', 'ca.id', '=', 'acm.channel_attribute_id')
+                ->where('acm.attribute_id', $attrId)
+                ->where('ca.channel_category_id', $channelCategoryUuid)
+                ->where('ca.is_sale_prop', true)
+                ->value('ca.name');
+
+            if ($name) {
+                $names[$attrId] = $name;
+            }
+        }
+
+        return $names;
     }
 
     protected function normalizeSkus(array $modelList): array

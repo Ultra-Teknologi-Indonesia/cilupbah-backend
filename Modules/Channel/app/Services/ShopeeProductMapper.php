@@ -57,8 +57,15 @@ class ShopeeProductMapper
             fn ($v) => ! empty($v['sku']) && (! array_key_exists('is_active', $v) || $v['is_active'])
         ));
 
+        $standardiseTierVariation = null;
+        $modelList = null;
+
         if (count($variants) > 1) {
-            [$tierVariation, $modelList] = $this->buildVariations($variants, $config['tier_variation_name'] ?? null);
+            [$standardiseTierVariation, $modelList] = $this->buildVariations(
+                $variants,
+                $config['tier_variation_name'] ?? null,
+                $config['tier_variation_names'] ?? []
+            );
 
             $prices = array_column($variants, 'sell_price');
             $payload['original_price'] = (float) (min($prices) ?: 0);
@@ -71,15 +78,106 @@ class ShopeeProductMapper
 
         $result = array_filter($payload, fn ($v) => $v !== null);
 
-        if (! empty($tierVariation)) {
-            $result['_tier_variation'] = $tierVariation;
+        if (! empty($standardiseTierVariation)) {
+            $result['_standardise_tier_variation'] = $standardiseTierVariation;
             $result['_model_list'] = $modelList;
         }
 
         return $result;
     }
 
-    protected function buildVariations(array $variants, ?string $tierName = null): array
+    /**
+     * Bangun struktur variasi `standardise_tier_variation` (format baru; `tier_variation`
+     * lama sudah di-deprecate Shopee sejak 2025-09-12). Bila varian punya attribute_id
+     * terstruktur, dibangun hingga 2 tingkat (mis. Warna × Tipe) agar tidak melanggar
+     * batas 20 pilihan/tingkat; bila tidak, jatuh ke 1 tingkat berdasar nama gabungan.
+     *
+     * @return array{0: array<int, array>, 1: array<int, array>} [standardise_tier_variation, model_list]
+     */
+    protected function buildVariations(array $variants, ?string $primaryName = null, array $namesByAttr = []): array
+    {
+        $attrOrder = [];
+        foreach ($variants as $variant) {
+            foreach ($variant['options'] ?? [] as $opt) {
+                $attrId = $opt['attribute_id'] ?? null;
+                $value = trim((string) ($opt['value'] ?? ''));
+                if ($attrId === null || $value === '') {
+                    continue;
+                }
+                if (! array_key_exists($attrId, $attrOrder)) {
+                    $attrOrder[$attrId] = count($attrOrder);
+                }
+            }
+        }
+
+        $tierAttrIds = array_slice(array_keys($attrOrder), 0, 2);
+
+        if (empty($tierAttrIds)) {
+            return $this->buildSingleTier($variants, $primaryName);
+        }
+
+        $tierOptions = array_fill(0, count($tierAttrIds), []);
+        $tierOptionImages = [];
+        $models = [];
+
+        foreach ($variants as $variant) {
+            $valuesByAttr = [];
+            foreach ($variant['options'] ?? [] as $opt) {
+                $aId = $opt['attribute_id'] ?? null;
+                $v = trim((string) ($opt['value'] ?? ''));
+                if ($aId !== null && $v !== '') {
+                    $valuesByAttr[$aId] = $v;
+                }
+            }
+
+            $tierIndex = [];
+            foreach ($tierAttrIds as $tierPos => $attrId) {
+                $value = $valuesByAttr[$attrId] ?? '-';
+                if (! array_key_exists($value, $tierOptions[$tierPos])) {
+                    $tierOptions[$tierPos][$value] = count($tierOptions[$tierPos]);
+                }
+                $tierIndex[] = $tierOptions[$tierPos][$value];
+
+                if ($tierPos === 0 && ! isset($tierOptionImages[$value]) && ! empty($variant['image_id'])) {
+                    $tierOptionImages[$value] = $variant['image_id'];
+                }
+            }
+
+            $models[] = [
+                'tier_index' => $tierIndex,
+                'model_sku' => $variant['sku'],
+                'original_price' => (float) ($variant['sell_price'] ?? 0),
+                'seller_stock' => [['stock' => (int) ($variant['stock'] ?? 0)]],
+            ];
+        }
+
+        $standardise = [];
+        foreach ($tierAttrIds as $tierPos => $attrId) {
+            $optionList = [];
+            foreach (array_keys($tierOptions[$tierPos]) as $value) {
+                $option = ['variation_option_id' => 0, 'variation_option_name' => (string) $value];
+                if ($tierPos === 0 && ! empty($tierOptionImages[$value])) {
+                    $option['image_id'] = $tierOptionImages[$value];
+                }
+                $optionList[] = $option;
+            }
+
+            $name = $namesByAttr[$attrId]
+                ?? ($tierPos === 0 ? ($primaryName ?: 'Variasi') : 'Variasi ' . ($tierPos + 1));
+
+            $standardise[] = [
+                'variation_id' => 0,
+                'variation_name' => $name,
+                'variation_option_list' => $optionList,
+            ];
+        }
+
+        $this->guardVariationLimits($standardise, $models);
+
+        return [$standardise, $models];
+    }
+
+    protected function buildSingleTier(array $variants, ?string $tierName = null): array
     {
         $optionNames = [];
         $optionImages = [];
@@ -101,19 +199,46 @@ class ShopeeProductMapper
             ];
         }
 
-        $tierVariation = [[
-            'name' => $tierName ?: 'Variasi',
-            'option_list' => array_map(function ($name) use ($optionImages) {
-                $option = ['option' => $name];
+        $standardise = [[
+            'variation_id' => 0,
+            'variation_name' => $tierName ?: 'Variasi',
+            'variation_option_list' => array_map(function ($name) use ($optionImages) {
+                $option = ['variation_option_id' => 0, 'variation_option_name' => (string) $name];
                 if (! empty($optionImages[$name])) {
-                    $option['image'] = ['image_id' => $optionImages[$name]];
+                    $option['image_id'] = $optionImages[$name];
                 }
 
                 return $option;
             }, array_keys($optionNames)),
         ]];
 
-        return [$tierVariation, $models];
+        $this->guardVariationLimits($standardise, $models);
+
+        return [$standardise, $models];
+    }
+
+    /**
+     * Cegah kegagalan misterius di sisi Shopee (error_tier_opt_too_many /
+     * error_model_count_over_limit) dengan menolak lebih awal saat batas dilanggar.
+     */
+    protected function guardVariationLimits(array $standardise, array $models): void
+    {
+        foreach ($standardise as $i => $tier) {
+            $count = count($tier['variation_option_list']);
+            if ($count > 20) {
+                throw new \RuntimeException(
+                    'Variasi Shopee tingkat ' . ($i + 1) . " memiliki {$count} pilihan, melebihi batas maksimal 20 pilihan per tingkat. "
+                    . 'Susun variasi menjadi 2 tingkat (mis. Warna × Tipe) atau pecah produk.'
+                );
+            }
+        }
+
+        if (count($models) > 50) {
+            throw new \RuntimeException(
+                'Produk memiliki ' . count($models) . ' varian, melebihi batas maksimal 50 varian per produk Shopee. '
+                . 'Pecah menjadi beberapa produk terpisah.'
+            );
+        }
     }
 
     protected function variantOptionName(array $variant): string

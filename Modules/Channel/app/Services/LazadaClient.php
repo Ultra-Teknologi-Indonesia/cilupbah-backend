@@ -53,20 +53,70 @@ class LazadaClient
         $data = $response->json() ?? [];
 
         if (($data['code'] ?? '0') !== '0') {
+            $detail = $this->formatErrorDetail($data['detail'] ?? $data['error_detail'] ?? null);
+
             Log::error('Lazada API Error', [
                 'path' => $apiPath,
                 'code' => $data['code'] ?? null,
                 'message' => $data['message'] ?? null,
+                'detail' => $detail !== '' ? $detail : null,
+                'request_id' => $data['request_id'] ?? null,
             ]);
 
             if (in_array((string) ($data['code'] ?? ''), self::TOKEN_ERROR_CODES, true)) {
                 throw new TokenExpiredException('lazada', $data['message'] ?? 'Lazada access token expired');
             }
 
-            throw new \Exception('Lazada API Error: ' . ($data['message'] ?? ($data['code'] ?? 'Unknown error')));
+            $reason = trim((string) ($data['message'] ?? $data['code'] ?? 'Unknown error'));
+            if ($detail !== '' && ! str_contains($reason, $detail)) {
+                $reason = $reason !== '' ? $reason . ' — ' . $detail : $detail;
+            }
+
+            throw new \Exception('Lazada API Error: ' . $reason);
         }
 
         return $data;
+    }
+
+    /**
+     * Lazada mengembalikan penyebab kegagalan sebenarnya (mis. brand wajib, dimensi
+     * kosong, resolusi gambar) di dalam array `detail` (Field + Message). Tanpa
+     * memunculkannya, error seperti "E500: Create product failed" jadi buta.
+     */
+    protected function formatErrorDetail($detail): string
+    {
+        if (empty($detail)) {
+            return '';
+        }
+
+        if (is_string($detail)) {
+            return trim($detail);
+        }
+
+        if (! is_array($detail)) {
+            return '';
+        }
+
+        $parts = [];
+        foreach ($detail as $item) {
+            if (! is_array($item)) {
+                $parts[] = trim((string) $item);
+                continue;
+            }
+
+            $field = $item['field'] ?? $item['Field'] ?? null;
+            $message = $item['message'] ?? $item['Message'] ?? null;
+
+            if ($field !== null && $message !== null) {
+                $parts[] = "{$field}: {$message}";
+            } elseif ($message !== null) {
+                $parts[] = (string) $message;
+            } else {
+                $parts[] = json_encode($item, JSON_UNESCAPED_UNICODE);
+            }
+        }
+
+        return trim(implode('; ', array_filter($parts, fn ($p) => $p !== '')));
     }
 
     protected function throttle(): void

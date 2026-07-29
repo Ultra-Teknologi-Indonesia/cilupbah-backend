@@ -25,6 +25,20 @@ class ChannelListingValidator
             );
         }
 
+        if ($channelCode === 'shopee') {
+            $variantCount = DB::table('product_variants')
+                ->where('product_id', $product->id)
+                ->count();
+
+            if ($variantCount > 50) {
+                $issues[] = $this->issue(
+                    'variant_limit_exceeded',
+                    null,
+                    "Produk memiliki {$variantCount} varian. Shopee membatasi maksimal 50 varian per produk — pecah menjadi beberapa produk terpisah."
+                );
+            }
+        }
+
         $channelId = DB::table('channels')->where('code', $channelCode)->value('id');
         if (! $channelId) {
             return array_merge($issues, [$this->issue('category_unmapped', null, "Channel {$channelCode} belum tersedia.")]);

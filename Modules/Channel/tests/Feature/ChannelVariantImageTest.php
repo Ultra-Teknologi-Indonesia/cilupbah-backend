@@ -52,9 +52,63 @@ class ChannelVariantImageTest extends TestCase
 
         $this->assertSame(['main-img-id'], $payload['image']['image_id_list']);
 
-        $optionList = $payload['_tier_variation'][0]['option_list'];
-        $this->assertSame(['image_id' => 'shp-img-1'], $optionList[0]['image']);
-        $this->assertArrayNotHasKey('image', $optionList[1]);
+        $tier = $payload['_standardise_tier_variation'][0];
+        $this->assertSame(0, $tier['variation_id']);
+
+        $optionList = $tier['variation_option_list'];
+        $this->assertSame(0, $optionList[0]['variation_option_id']);
+        $this->assertSame('Merah', $optionList[0]['variation_option_name']);
+        $this->assertSame('shp-img-1', $optionList[0]['image_id']);
+        $this->assertArrayNotHasKey('image_id', $optionList[1]);
+    }
+
+    public function test_shopee_mapper_builds_two_tier_variation_from_attributes(): void
+    {
+        $product = [
+            'name' => 'Case',
+            'category_id' => null,
+            'variants' => [
+                ['sku' => 'BL-13', 'sell_price' => 1000, 'stock' => 3, 'image_id' => 'img-biru', 'options' => [
+                    ['attribute_id' => 'attr-warna', 'value' => 'Biru'],
+                    ['attribute_id' => 'attr-tipe', 'value' => 'iPhone 13'],
+                ]],
+                ['sku' => 'BL-14', 'sell_price' => 1000, 'stock' => 4, 'options' => [
+                    ['attribute_id' => 'attr-warna', 'value' => 'Biru'],
+                    ['attribute_id' => 'attr-tipe', 'value' => 'iPhone 14'],
+                ]],
+                ['sku' => 'MR-13', 'sell_price' => 1000, 'stock' => 5, 'options' => [
+                    ['attribute_id' => 'attr-warna', 'value' => 'Merah'],
+                    ['attribute_id' => 'attr-tipe', 'value' => 'iPhone 13'],
+                ]],
+            ],
+        ];
+
+        $payload = app(ShopeeProductMapper::class)->map($product, ['main']);
+
+        $std = $payload['_standardise_tier_variation'];
+        $this->assertCount(2, $std);
+        $this->assertSame(['Biru', 'Merah'], array_column($std[0]['variation_option_list'], 'variation_option_name'));
+        $this->assertSame(['iPhone 13', 'iPhone 14'], array_column($std[1]['variation_option_list'], 'variation_option_name'));
+
+        // Gambar varian hanya menempel pada tingkat pertama (Warna).
+        $this->assertSame('img-biru', $std[0]['variation_option_list'][0]['image_id']);
+        $this->assertArrayNotHasKey('image_id', $std[1]['variation_option_list'][0]);
+
+        // tier_index MR-13 = [Merah=1, iPhone 13=0]
+        $mr13 = collect($payload['_model_list'])->firstWhere('model_sku', 'MR-13');
+        $this->assertSame([1, 0], $mr13['tier_index']);
+    }
+
+    public function test_shopee_mapper_rejects_variation_over_shopee_limit(): void
+    {
+        $variants = [];
+        for ($i = 0; $i < 21; $i++) {
+            $variants[] = ['sku' => "V{$i}", 'sell_price' => 1000, 'stock' => 1, 'options' => [['value' => "Opsi {$i}"]]];
+        }
+
+        $this->expectException(\RuntimeException::class);
+
+        app(ShopeeProductMapper::class)->map(['name' => 'X', 'category_id' => null, 'variants' => $variants], ['main']);
     }
 
     public function test_shopee_inbound_maps_per_variant_image_from_tier_option(): void
