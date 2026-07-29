@@ -1,25 +1,33 @@
 name: CI/CD Pipeline
 
 permissions:
-  contents: read
+  contents: write # perlu write karena workflow ini membuat & push git tag versi
   packages: write
 
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
-    types: [closed]
+    branches:
+      [main] # default types: opened, synchronize, reopened
+      # -> ini CI gate SEBELUM merge, bukan setelah PR ditutup
   workflow_dispatch:
 
 concurrency:
-  group: staging-deployment
-  cancel-in-progress: true
+  # PR checks boleh saling cancel (perilaku CI normal),
+  # tapi run menuju main HARUS antre (tidak boleh cancel-in-progress)
+  # supaya tidak ada 2 run yang rebutan bikin versi/tag yang sama.
+  group: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'release-main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  IMAGE_NAME: ghcr.io/ultra-teknologi-indonesia/cilupbah:staging
+  IMAGE_BASE: ghcr.io/ultra-teknologi-indonesia/cilupbah
 
 jobs:
+  # ─────────────────────────────────────────────
+  # CI — jalan di semua trigger, tapi ini gate untuk PR.
+  # Tidak melakukan docker build / push / deploy sama sekali.
+  # ─────────────────────────────────────────────
   validate:
     name: Validate Code
     runs-on: ubuntu-latest
@@ -43,22 +51,76 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-composer-
 
-      - name: Install Composer Dependencies
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader
-
       - name: Validate Composer
         run: composer validate --strict
 
+      - name: Install Composer Dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: npm ci
+        run: npm ci
+
+      - name: npm run build
+        run: npm run build
+
+      - name: Run Tests (optional)
+        run: php artisan test
+        continue-on-error: true
+
+  # ─────────────────────────────────────────────
+  # CD — hanya jalan untuk push ke main / workflow_dispatch.
+  # Auto version -> git tag -> buildx multi-tag -> push GHCR.
+  # ─────────────────────────────────────────────
   build:
     name: Build & Push Docker Image
     needs: validate
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
 
     outputs:
-      image: ${{ env.IMAGE_NAME }}
+      version_tag: ${{ steps.version.outputs.new_tag }}
+      short_sha: ${{ steps.vars.outputs.short_sha }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # perlu full history supaya bisa baca tag terakhir
+
+      - name: Set short SHA
+        id: vars
+        run: echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Determine Next Patch Version
+        id: version
+        run: |
+          LAST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+          if [ -z "$LAST_TAG" ]; then
+            NEW_TAG="v1.0.0"
+          else
+            BASE=${LAST_TAG#v}
+            MAJOR=$(echo "$BASE" | cut -d. -f1)
+            MINOR=$(echo "$BASE" | cut -d. -f2)
+            PATCH=$(echo "$BASE" | cut -d. -f3)
+            NEW_TAG="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
+          echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create & Push Git Tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ steps.version.outputs.new_tag }}
+          git push origin ${{ steps.version.outputs.new_tag }}
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -67,26 +129,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build Image
-        run: |
-          docker build \
-            -t $IMAGE_NAME \
-            -t $IMAGE_NAME-${{ github.sha }} \
-            .
-
-      - name: Push Latest
-        run: |
-          docker push $IMAGE_NAME
-
-      - name: Push SHA
-        run: |
-          docker push $IMAGE_NAME-${{ github.sha }}
+      - name: Build & Push Image (multi-tag)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: |
+            ${{ env.IMAGE_BASE }}:staging
+            ${{ env.IMAGE_BASE }}:${{ steps.version.outputs.new_tag }}
+            ${{ env.IMAGE_BASE }}:sha-${{ steps.vars.outputs.short_sha }}
 
   deploy:
     name: Deploy Staging
     needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
 
     steps:
       - name: Deploy to VPS
