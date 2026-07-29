@@ -41,6 +41,11 @@ class OutboundFulfillmentService
                 continue;
             }
 
+            if ($skip = $this->alreadyHandledMessage((string) $order->channel_status)) {
+                $results[] = $this->result($order, 'skipped', $skip);
+                continue;
+            }
+
             try {
                 $adapter = $this->logisticsGateway->for($order->source);
                 $outcome = $adapter->readyToShip($order);
@@ -116,6 +121,25 @@ class OutboundFulfillmentService
         if ($shopId === '' || $channelOrderNo === '') {
             throw new \Exception(ucfirst($source) . ': channel_shop_id atau channel_order_no kosong, tidak bisa kirim ke marketplace.');
         }
+    }
+
+    /**
+     * Guard idempoten: jangan panggil ulang pengaturan pengiriman untuk order yang
+     * sudah dikirim/terminal di marketplace (mencegah double-call & status "failed"
+     * palsu saat readyToShip terpicu dua kali: tombol Siap Kirim + otomatis saat masuk
+     * manifest). Sejajar dengan AbstractLogisticsService::guardCallable pada jalur driver.
+     * RETRY_SHIP sengaja TIDAK di-skip agar retry pickup Shopee tetap berjalan.
+     */
+    private function alreadyHandledMessage(string $channelStatus): ?string
+    {
+        $cs = strtoupper(trim($channelStatus));
+
+        return match (true) {
+            in_array($cs, ['CANCELLED', 'IN_CANCEL'], true) => 'Pesanan dibatalkan — pengiriman tidak dipanggil ulang.',
+            in_array($cs, ['RETURN_REQUESTED', 'RETURNED'], true) => 'Pesanan dalam proses retur — pengiriman tidak dipanggil ulang.',
+            in_array($cs, ['SHIPPED', 'IN_TRANSIT', 'TO_CONFIRM_RECEIVE', 'DELIVERED', 'COMPLETED'], true) => 'Pesanan sudah dikirim/diproses — pengiriman tidak dipanggil ulang.',
+            default => null,
+        };
     }
 
     private function result(Order $order, string $status, string $message): array
