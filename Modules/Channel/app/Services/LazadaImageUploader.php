@@ -50,6 +50,67 @@ class LazadaImageUploader
         return ['urls' => array_values($migrated), 'map' => $migrated, 'errors' => $errors];
     }
 
+    public function uploadVideo(string $url, string $accessToken, ?string $coverUrl = null): ?string
+    {
+        try {
+            $bytes = app(ChannelMediaResolver::class)->bytes($url);
+            if ($bytes === null || $bytes === '') {
+                Log::warning("Lazada upload video: byte tidak tersedia, dilewati: {$url}");
+
+                return null;
+            }
+
+            $fileName = 'product_video_' . substr(md5($url), 0, 8) . '.mp4';
+
+            // 1. InitCreateVideo
+            $init = $this->client->request('POST', '/media/video/block/create', [
+                'fileName' => $fileName,
+                'fileBytes' => strlen($bytes),
+            ], $accessToken);
+            $uploadId = $init['data']['upload_id'] ?? $init['data']['uploadId'] ?? $init['upload_id'] ?? null;
+            if (! $uploadId) {
+                Log::warning('Lazada InitCreateVideo respons tak terduga: ' . json_encode($init));
+
+                return null;
+            }
+
+            // 2. UploadVideoBlock (blok ≤10MB)
+            $blocks = str_split($bytes, 10 * 1024 * 1024);
+            $blockCount = count($blocks);
+            $parts = [];
+            foreach ($blocks as $seq => $block) {
+                $blockNo = $seq + 1;
+                $res = $this->client->uploadMultipart('/media/video/block/upload', [
+                    'uploadId' => $uploadId,
+                    'blockNo' => (string) $blockNo,
+                    'blockCount' => (string) $blockCount,
+                ], 'file', $block, $fileName, $accessToken);
+
+                $etag = $res['data']['etag'] ?? $res['data']['eTag'] ?? $res['etag'] ?? null;
+                if (! $etag) {
+                    Log::warning('Lazada UploadVideoBlock tanpa eTag: ' . json_encode($res));
+
+                    return null;
+                }
+                $parts[] = ['blockNo' => (string) $blockNo, 'eTag' => $etag];
+            }
+
+            // 3. CompleteCreateVideo -> VideoID
+            $complete = $this->client->request('POST', '/media/video/block/commit', array_filter([
+                'uploadId' => $uploadId,
+                'parts' => json_encode($parts),
+                'title' => 'Product Video',
+                'coverUrl' => $coverUrl,
+            ], fn ($v) => $v !== null), $accessToken);
+
+            return $complete['data']['video_id'] ?? $complete['data']['videoId'] ?? $complete['video_id'] ?? null;
+        } catch (\Throwable $e) {
+            Log::error("Lazada upload video gagal untuk {$url}: {$e->getMessage()}");
+
+            return null;
+        }
+    }
+
     protected function isSupportedFormat(string $url): bool
     {
         $ext = strtolower(pathinfo(parse_url($url, PHP_URL_PATH) ?? '', PATHINFO_EXTENSION));

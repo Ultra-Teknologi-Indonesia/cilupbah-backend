@@ -33,9 +33,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         $payload = $this->buildProductPayload($product, $shop);
 
         try {
-            $res = $this->client->request('POST', '/product/create', [
-                'payload' => json_encode($payload),
-            ], $shop->access_token);
+            $res = $this->sendProductPayload('/product/create', $payload, $shop);
 
             $itemId = $res['data']['item_id'] ?? null;
 
@@ -61,9 +59,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         $payload = $this->buildProductPayload($product, $shop);
 
         try {
-            $res = $this->client->request('POST', '/product/update', [
-                'payload' => json_encode($payload),
-            ], $shop->access_token);
+            $res = $this->sendProductPayload('/product/update', $payload, $shop);
 
             return [
                 'success' => true,
@@ -182,6 +178,27 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         return $this->inboundMapper->map($channelData, $shopId);
     }
 
+    /**
+     * Kirim payload create/update ke Lazada. Jaring pengaman: bila gagal DAN payload
+     * memuat video (Attributes.video), coba ulang SEKALI tanpa video — supaya field
+     * video yang belum terverifikasi tidak pernah menggagalkan upload produk itu sendiri.
+     */
+    protected function sendProductPayload(string $path, array $payload, ChannelShop $shop): array
+    {
+        try {
+            return $this->client->request('POST', $path, ['payload' => json_encode($payload)], $shop->access_token);
+        } catch (\Throwable $e) {
+            if (isset($payload['Request']['Product']['Attributes']['video'])) {
+                unset($payload['Request']['Product']['Attributes']['video']);
+                Log::warning('Lazada: upload dengan video gagal, mencoba ulang tanpa video: ' . $e->getMessage());
+
+                return $this->client->request('POST', $path, ['payload' => json_encode($payload)], $shop->access_token);
+            }
+
+            throw $e;
+        }
+    }
+
     protected function buildProductPayload(Product $product, ChannelShop $shop): array
     {
 
@@ -228,7 +245,19 @@ class LazadaAdapter implements MarketplaceAdapterInterface
             return $arr;
         })->all();
 
-        return $this->outboundMapper->map($internal, $imageUrls, config('channel.lazada_defaults', []));
+        $config = config('channel.lazada_defaults', []);
+
+        if (config('channel.lazada_video_enabled', false)) {
+            $video = $product->media->firstWhere('media_type', 'video');
+            if ($video && ! empty($video->url)) {
+                $videoId = $this->imageUploader->uploadVideo($video->url, $shop->access_token, $imageUrls[0] ?? null);
+                if ($videoId) {
+                    $config['video_id'] = $videoId;
+                }
+            }
+        }
+
+        return $this->outboundMapper->map($internal, $imageUrls, $config);
     }
 
     protected function normalizeSkus(array $skuList): array

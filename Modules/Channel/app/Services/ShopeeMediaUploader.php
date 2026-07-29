@@ -27,6 +27,46 @@ class ShopeeMediaUploader
         return $ids;
     }
 
+    public function uploadVideo(string $url): ?string
+    {
+        $bytes = $this->resolver->bytes($url);
+        if ($bytes === null || $bytes === '') {
+            Log::warning("Shopee upload video: byte tidak tersedia, dilewati: {$url}");
+
+            return null;
+        }
+
+        try {
+            $init = $this->client->initVideoUpload(md5($bytes), strlen($bytes));
+            $videoUploadId = $init['response']['video_upload_id'] ?? null;
+
+            if (empty($videoUploadId) || ! empty($init['error'])) {
+                Log::warning('Shopee init_video_upload gagal: ' . json_encode($init));
+
+                return null;
+            }
+
+            $partSeqList = [];
+            foreach (str_split($bytes, 4 * 1024 * 1024) as $seq => $part) {
+                $this->client->uploadVideoPart($videoUploadId, $seq, md5($part), $part);
+                $partSeqList[] = $seq;
+            }
+
+            $complete = $this->client->completeVideoUpload($videoUploadId, $partSeqList);
+            if (! empty($complete['error'])) {
+                Log::warning('Shopee complete_video_upload gagal: ' . json_encode($complete));
+
+                return null;
+            }
+
+            return (string) $videoUploadId;
+        } catch (\Throwable $e) {
+            Log::error("Shopee upload video gagal untuk {$url}: {$e->getMessage()}");
+
+            return null;
+        }
+    }
+
     public function uploadOne(string $url): ?string
     {
         if (array_key_exists($url, $this->cache)) {

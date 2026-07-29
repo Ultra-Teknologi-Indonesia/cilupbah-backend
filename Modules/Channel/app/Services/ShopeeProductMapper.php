@@ -52,6 +52,10 @@ class ShopeeProductMapper
             ? ['brand_id' => $brandId]
             : ['brand_id' => 0, 'original_brand_name' => 'No Brand'];
 
+        if (! empty($config['video_upload_id'])) {
+            $payload['video_upload_id'] = array_values((array) $config['video_upload_id']);
+        }
+
         $variants = array_values(array_filter(
             $product['variants'] ?? [],
             fn ($v) => ! empty($v['sku']) && (! array_key_exists('is_active', $v) || $v['is_active'])
@@ -86,14 +90,6 @@ class ShopeeProductMapper
         return $result;
     }
 
-    /**
-     * Bangun struktur variasi `standardise_tier_variation` (format baru; `tier_variation`
-     * lama sudah di-deprecate Shopee sejak 2025-09-12). Bila varian punya attribute_id
-     * terstruktur, dibangun hingga 2 tingkat (mis. Warna × Tipe) agar tidak melanggar
-     * batas 20 pilihan/tingkat; bila tidak, jatuh ke 1 tingkat berdasar nama gabungan.
-     *
-     * @return array{0: array<int, array>, 1: array<int, array>} [standardise_tier_variation, model_list]
-     */
     protected function buildVariations(array $variants, ?string $primaryName = null, array $namesByAttr = []): array
     {
         $attrOrder = [];
@@ -217,10 +213,6 @@ class ShopeeProductMapper
         return [$standardise, $models];
     }
 
-    /**
-     * Cegah kegagalan misterius di sisi Shopee (error_tier_opt_too_many /
-     * error_model_count_over_limit) dengan menolak lebih awal saat batas dilanggar.
-     */
     protected function guardVariationLimits(array $standardise, array $models): void
     {
         foreach ($standardise as $i => $tier) {

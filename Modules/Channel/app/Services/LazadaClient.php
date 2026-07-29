@@ -78,11 +78,6 @@ class LazadaClient
         return $data;
     }
 
-    /**
-     * Lazada mengembalikan penyebab kegagalan sebenarnya (mis. brand wajib, dimensi
-     * kosong, resolusi gambar) di dalam array `detail` (Field + Message). Tanpa
-     * memunculkannya, error seperti "E500: Create product failed" jadi buta.
-     */
     protected function formatErrorDetail($detail): string
     {
         if (empty($detail)) {
@@ -117,6 +112,32 @@ class LazadaClient
         }
 
         return trim(implode('; ', array_filter($parts, fn ($p) => $p !== '')));
+    }
+
+    public function uploadMultipart(string $apiPath, array $params, string $fileField, string $fileContents, string $filename, ?string $accessToken = null): array
+    {
+        $params = array_merge($params, [
+            'app_key' => $this->appKey,
+            'sign_method' => 'sha256',
+            'timestamp' => (string) (int) (microtime(true) * 1000),
+        ]);
+
+        if ($accessToken) {
+            $params['access_token'] = $accessToken;
+        }
+
+        $params['sign'] = $this->generateSign($apiPath, $params);
+
+        $this->throttle();
+
+        $response = Http::attach($fileField, $fileContents, $filename)->post($this->baseUrl . $apiPath, $params);
+        $data = $response->json() ?? [];
+
+        if (($data['code'] ?? '0') !== '0') {
+            throw new \Exception('Lazada API Error: ' . ($data['message'] ?? $data['code'] ?? 'Unknown error'));
+        }
+
+        return $data;
     }
 
     protected function throttle(): void

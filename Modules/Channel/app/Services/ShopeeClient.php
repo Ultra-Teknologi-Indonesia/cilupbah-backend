@@ -207,6 +207,52 @@ class ShopeeClient
             ?? null;
     }
 
+    public function initVideoUpload(string $fileMd5, int $fileSize): array
+    {
+        return $this->publicPost('/api/v2/media_space/init_video_upload', [
+            'file_md5' => $fileMd5,
+            'file_size' => $fileSize,
+        ]);
+    }
+
+    public function uploadVideoPart(string $videoUploadId, int $partSeq, string $contentMd5, string $partContent): array
+    {
+        $path = '/api/v2/media_space/upload_video_part';
+        $timestamp = time();
+        $sign = ShopeeSignature::publicSign($this->partnerId, $path, $timestamp, $this->partnerKey);
+
+        $this->throttle();
+
+        $url = $this->host . $path . '?' . http_build_query([
+            'partner_id' => $this->partnerId,
+            'timestamp' => $timestamp,
+            'sign' => $sign,
+        ]);
+
+        $response = Http::attach('part_content', $partContent, 'part')->post($url, [
+            'video_upload_id' => $videoUploadId,
+            'part_seq' => $partSeq,
+            'content_md5' => $contentMd5,
+        ]);
+
+        $data = $response->json() ?? [];
+
+        if (! empty($data['error'])) {
+            throw new \RuntimeException('Shopee upload_video_part error: ' . ($data['message'] ?? $data['error']));
+        }
+
+        return $data;
+    }
+
+    public function completeVideoUpload(string $videoUploadId, array $partSeqList, int $uploadCostMs = 1000): array
+    {
+        return $this->publicPost('/api/v2/media_space/complete_video_upload', [
+            'video_upload_id' => $videoUploadId,
+            'part_seq_list' => array_values($partSeqList),
+            'report_data' => ['upload_cost' => $uploadCostMs],
+        ]);
+    }
+
     protected function publicPost(string $path, array $body): array
     {
         $timestamp = time();

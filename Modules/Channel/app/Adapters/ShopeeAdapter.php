@@ -251,6 +251,11 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
             }
         }
 
+        $video = $product->media->firstWhere('media_type', 'video');
+        $videoUploadId = ($video && ! empty($video->url))
+            ? $this->mediaUploader->uploadVideo($video->url)
+            : null;
+
         $internal = $product->toArray();
         $internal['variants'] = $product->variants->map(function ($variant) use ($variantImageIdById, $stockByVariant) {
             $arr = $variant->toArray();
@@ -273,6 +278,10 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
             'product_id' => $product->id,
             'logistic_info' => $config['logistic_info'],
         ]);
+
+        if ($videoUploadId) {
+            $config['video_upload_id'] = $videoUploadId;
+        }
 
         $channelCategoryUuid = $this->resolveChannelCategoryUuid($product);
         if ($channelCategoryUuid) {
@@ -454,10 +463,6 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         return $channelAttr;
     }
 
-    /**
-     * Peta attribute_id internal -> nama variasi Shopee (sale prop), dipakai untuk
-     * memberi label tiap tingkat pada standardise_tier_variation (mis. Warna, Tipe).
-     */
     protected function resolveTierVariationNames(Product $product, string $channelCategoryUuid): array
     {
         $attrIds = DB::table('product_variants as pv')

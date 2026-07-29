@@ -42,11 +42,12 @@ class LazadaProductMapper
                 'Product' => array_filter([
                     'PrimaryCategory' => $this->resolveChannelCategoryId($product['category_id'] ?? null, $config),
                     'Images' => $imageUrls ? ['Image' => array_values($imageUrls)] : null,
-                    'Attributes' => [
+                    'Attributes' => array_filter([
                         'name' => $product['name'] ?? 'Produk',
                         'description' => DescriptionFormatter::toHtml($product['description'] ?? '') ?: ($product['name'] ?? ''),
                         'brand' => $config['brand'] ?? 'No Brand',
-                    ],
+                        'video' => $config['video_id'] ?? null,
+                    ], fn ($v) => $v !== null),
                     'Skus' => ['Sku' => $skus],
                 ], fn ($v) => $v !== null),
             ],

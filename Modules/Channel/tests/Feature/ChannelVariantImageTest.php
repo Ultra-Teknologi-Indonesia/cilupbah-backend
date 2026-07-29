@@ -90,11 +90,9 @@ class ChannelVariantImageTest extends TestCase
         $this->assertSame(['Biru', 'Merah'], array_column($std[0]['variation_option_list'], 'variation_option_name'));
         $this->assertSame(['iPhone 13', 'iPhone 14'], array_column($std[1]['variation_option_list'], 'variation_option_name'));
 
-        // Gambar varian hanya menempel pada tingkat pertama (Warna).
         $this->assertSame('img-biru', $std[0]['variation_option_list'][0]['image_id']);
         $this->assertArrayNotHasKey('image_id', $std[1]['variation_option_list'][0]);
 
-        // tier_index MR-13 = [Merah=1, iPhone 13=0]
         $mr13 = collect($payload['_model_list'])->firstWhere('model_sku', 'MR-13');
         $this->assertSame([1, 0], $mr13['tier_index']);
     }
@@ -210,6 +208,28 @@ class ChannelVariantImageTest extends TestCase
         $v1 = collect($internal['variants'])->firstWhere('sku', 'V1');
 
         $this->assertSame('https://img/full-v1.jpg', $v1['media'][0]['url']);
+    }
+
+    public function test_shopee_mapper_includes_video_upload_id_when_present(): void
+    {
+        $product = ['name' => 'Kaos', 'category_id' => null, 'variants' => [['sku' => 'V1', 'sell_price' => 1000]]];
+
+        $with = app(ShopeeProductMapper::class)->map($product, ['img'], ['video_upload_id' => 'vid-123']);
+        $this->assertSame(['vid-123'], $with['video_upload_id']);
+
+        $without = app(ShopeeProductMapper::class)->map($product, ['img']);
+        $this->assertArrayNotHasKey('video_upload_id', $without);
+    }
+
+    public function test_lazada_mapper_includes_video_only_when_present(): void
+    {
+        $product = ['name' => 'Kaos', 'category_id' => null, 'variants' => [['sku' => 'V1', 'sell_price' => 1000]]];
+
+        $with = app(LazadaProductMapper::class)->map($product, ['https://img/main.jpg'], ['video_id' => 'lzd-vid-9']);
+        $this->assertSame('lzd-vid-9', $with['Request']['Product']['Attributes']['video']);
+
+        $without = app(LazadaProductMapper::class)->map($product, ['https://img/main.jpg']);
+        $this->assertArrayNotHasKey('video', $without['Request']['Product']['Attributes']);
     }
 
     public function test_shopee_media_uploader_uploads_once_and_caches(): void
