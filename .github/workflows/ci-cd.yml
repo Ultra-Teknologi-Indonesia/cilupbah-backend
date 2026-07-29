@@ -137,7 +137,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           tags: |
-            ${{ env.IMAGE_BASE }}:staging
+            ${{ env.IMAGE_BASE }}:latest
             ${{ env.IMAGE_BASE }}:${{ steps.version.outputs.new_tag }}
             ${{ env.IMAGE_BASE }}:sha-${{ steps.vars.outputs.short_sha }}
 
