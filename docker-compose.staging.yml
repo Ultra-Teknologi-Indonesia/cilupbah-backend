@@ -2,7 +2,7 @@ version: "3.8"
 
 # Menggunakan fitur YAML Anchor agar config tidak ditulis berulang-ulang
 x-app-config: &app-config
-  image: ghcr.io/ultra-teknologi-indonesia/cilupbah:staging
+  image: ghcr.io/ultra-teknologi-indonesia/cilupbah:latest
   restart: unless-stopped
   environment:
     - APP_ENV=staging
