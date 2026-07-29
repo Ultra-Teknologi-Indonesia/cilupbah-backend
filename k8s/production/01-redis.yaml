@@ -43,7 +43,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: cilupbah-redis
+  name: redis
   namespace: cilupbah
 spec:
   selector:
