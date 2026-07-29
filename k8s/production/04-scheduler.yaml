@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cilupbah-scheduler
+  namespace: cilupbah
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cilupbah-scheduler
+  template:
+    metadata:
+      labels:
+        app: cilupbah-scheduler
+    spec:
+      imagePullSecrets:
+        - name: ghcr-creds
+      containers:
+        - name: scheduler
+          image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
+          command: ["php", "artisan", "schedule:work"]
+          envFrom:
+            - secretRef:
+                name: cilupbah-env

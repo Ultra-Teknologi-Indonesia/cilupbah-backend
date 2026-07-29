@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cilupbah-ingress
+  namespace: cilupbah
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod # hapus baris ini kalau belum pakai cert-manager
+spec:
+  ingressClassName: traefik # bawaan default k3s; ganti kalau clustermu pakai nginx/lainnya
+  tls:
+    - hosts:
+        - backend.ultra-fit.id
+      secretName: cilupbah-tl
+  rules:
+    - host: backend.ultra-fit.id
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cilupbah-app
+                port:
+                  number: 80
