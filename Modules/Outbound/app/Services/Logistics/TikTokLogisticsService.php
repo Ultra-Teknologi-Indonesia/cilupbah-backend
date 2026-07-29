@@ -25,8 +25,23 @@ class TikTokLogisticsService extends AbstractLogisticsService
             ];
         }
 
+        $handover = null;
+        if (strtoupper((string) $order->shipping_type) === 'SELLER') {
+            $tracking = $order->tracking_number ?: null;
+            $providerId = $order->channel_shipping_provider_code ?? $order->shipping_provider ?? null;
+
+            if (! $tracking || ! $providerId) {
+                return [
+                    'status' => DriverCallResult::STATUS_FAILED,
+                    'message' => 'Order TikTok mode Seller-shipping: butuh nomor resi + shipping provider sebelum dikirim (bukan panggil driver instan).',
+                ];
+            }
+
+            $handover = ['tracking_number' => $tracking, 'shipping_provider_id' => $providerId];
+        }
+
         $service = app(\Modules\Channel\Services\TikTokOrderService::class);
-        $result = $service->readyToShip((string) $shopId, (string) $orderId, null);
+        $result = $service->readyToShip((string) $shopId, (string) $orderId, $handover);
 
         if (empty($result['shipped'])) {
             return [

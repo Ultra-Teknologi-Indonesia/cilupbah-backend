@@ -27,16 +27,25 @@ class LazadaLogisticsService extends AbstractLogisticsService
         }
 
         $service = app(\Modules\Channel\Services\LazadaOrderService::class);
+        $tracking = $order->tracking_number ?: null;
+
         try {
             try {
-                $service->fulfillPack((string) $shopId, (string) $orderId, (string) $shippingProviderId, 'pickup');
+                $pack = $service->fulfillPack((string) $shopId, (string) $orderId, (string) $shippingProviderId, 'dropship');
+                $tracking = $this->extractTracking($pack['pack'] ?? []) ?? $tracking;
             } catch (\Throwable $packErr) {
                 if (! str_contains($packErr->getMessage(), 'tidak punya item berstatus pending')) {
                     throw $packErr;
                 }
             }
 
-            $rts = $service->readyToShip((string) $shopId, (string) $orderId, null, null, 'pickup');
+            try {
+                $service->printAwb((string) $shopId, (string) $orderId, 2, 500_000);
+            } catch (\Throwable $awbErr) {
+                \Illuminate\Support\Facades\Log::warning('Lazada printAwb belum siap saat panggil driver: ' . $awbErr->getMessage());
+            }
+
+            $rts = $service->readyToShip((string) $shopId, (string) $orderId, $tracking, null, 'dropship');
         } catch (\Throwable $e) {
             return [
                 'status' => DriverCallResult::STATUS_FAILED,
@@ -46,12 +55,21 @@ class LazadaLogisticsService extends AbstractLogisticsService
 
         $trackingNumber = $rts['rts']['tracking_number']
             ?? $rts['tracking_number']
+            ?? $tracking
             ?? null;
 
         return [
             'status' => DriverCallResult::STATUS_SUCCESS,
             'tracking_number' => $trackingNumber,
         ];
+    }
+
+    private function extractTracking(array $packData): ?string
+    {
+        return $packData['tracking_number']
+            ?? $packData['order_items'][0]['tracking_number']
+            ?? $packData['packages'][0]['tracking_number']
+            ?? null;
     }
 
     public function readyToShip(SalesOrder $order): array

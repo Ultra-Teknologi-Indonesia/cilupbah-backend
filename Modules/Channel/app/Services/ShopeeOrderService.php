@@ -482,7 +482,15 @@ class ShopeeOrderService
                         }
                     }
                 }
-                $pickupTimeId = $chosenAddress['time_slot_list'][0]['pickup_time_id'] ?? null;
+                $slots = $chosenAddress['time_slot_list'] ?? [];
+                $recommended = null;
+                foreach ($slots as $slot) {
+                    if (in_array('recommended', (array) ($slot['flags'] ?? []), true)) {
+                        $recommended = $slot;
+                        break;
+                    }
+                }
+                $pickupTimeId = $recommended['pickup_time_id'] ?? ($slots[0]['pickup_time_id'] ?? null);
             }
 
             $required = is_array($infoNeeded['pickup'] ?? null) ? $infoNeeded['pickup'] : [];
