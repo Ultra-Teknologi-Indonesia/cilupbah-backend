@@ -149,7 +149,21 @@ class InventoryMovementRepository
                 }),
 
                 \Spatie\QueryBuilder\AllowedFilter::callback('drill', function ($query, $value) {
-                    $sources = InventoryMovementSourceMap::DRILL_SCOPES[(string) $value] ?? null;
+                    $value = (string) $value;
+
+                    if ($value === 'order_active') {
+                        $query->where('inventory_movements.source', 'ORDER_RESERVE')
+                            ->whereExists(function ($sub) {
+                                $sub->select(\Illuminate\Support\Facades\DB::raw(1))
+                                    ->from('sales_orders')
+                                    ->whereColumn('sales_orders.salesorder_no', 'inventory_movements.transaction_number')
+                                    ->where('sales_orders.status', 'reserved');
+                            });
+
+                        return;
+                    }
+
+                    $sources = InventoryMovementSourceMap::DRILL_SCOPES[$value] ?? null;
                     if ($sources !== null) {
                         $query->whereIn('source', $sources);
                     }
