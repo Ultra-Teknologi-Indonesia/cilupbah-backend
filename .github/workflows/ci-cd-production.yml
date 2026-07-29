@@ -1,170 +1,91 @@
-name: CI/CD Pipeline (Production)
-on:
-  push:
-    branches: [production]
-  pull_request:
-    branches: [production]
-    types: [closed]
-  workflow_dispatch:
+name: Production Deploy
 
-concurrency:
-  group: production-deployment
-  cancel-in-progress: true
+permissions:
+  contents: read
+  packages: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versi image yang mau di-deploy, contoh: v1.0.5 (lihat di tab Packages repo)"
+        required: true
+        type: string
 
 jobs:
-  validate:
-    name: Validate Code
+  # ─────────────────────────────────────────────
+  # Sanity check dulu SEBELUM nyentuh production:
+  # - format versi harus vX.Y.Z (hindari typo)
+  # - image dengan tag itu harus benar-benar ada di GHCR
+  # ─────────────────────────────────────────────
+  validate-input:
+    name: Validate Version Input
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Cek format versi
+        run: |
+          VERSION="${{ inputs.version }}"
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Format versi salah. Harus seperti v1.0.5"
+            exit 1
+          fi
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+      - name: Login GHCR (read-only)
+        uses: docker/login-action@v3
         with:
-          php-version: "8.4"
-          extensions: pdo, pdo_pgsql, pgsql, zip, gd, bcmath, exif, intl
-          coverage: none
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Cache Composer dependencies
-        uses: actions/cache@v3
-        with:
-          path: vendor
-          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
-          restore-keys: ${{ runner.os }}-composer-
+      - name: Cek image ada di GHCR
+        run: |
+          docker manifest inspect ghcr.io/ultra-teknologi-indonesia/cilupbah:${{ inputs.version }} > /dev/null
+          echo "Image ${{ inputs.version }} ditemukan di GHCR, lanjut deploy."
 
-      - name: Install dependencies
-        run: composer install --no-interaction --no-progress --prefer-dist --optimize-autoloader
-        env:
-          COMPOSER_PROCESS_TIMEOUT: 0
-          COMPOSER_NO_INTERACTION: 1
-          COMPOSER_NO_AUDIT: 1
-
-      - name: Validate composer.json
-        run: composer validate --strict
-
+  # ─────────────────────────────────────────────
+  # Job ini pakai `environment: production`.
+  # WAJIB dibuat dulu manual di:
+  # Settings > Environments > New environment > "production"
+  # -> centang "Required reviewers", tambahkan reviewer
+  # Kalau environment ini belum dibuat, job akan tetap jalan
+  # TANPA approval gate (jadi jangan lupa setup-nya).
+  # ─────────────────────────────────────────────
   deploy:
-    name: Deploy to Production VPS
-    needs: validate
+    name: Deploy to Production
+    needs: validate-input
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+    environment: production
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Deploy to VPS via SSH
+      - name: Deploy via SSH ke server production
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ secrets.PROD_DEPLOY_SERVER }}
-          username: ${{ secrets.PROD_DEPLOY_USER }}
-          key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
-          timeout: 60m
-          command_timeout: 60m
+          host: ${{ secrets.PROD_SERVER }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          timeout: 30m
+          command_timeout: 30m
           script: |
             set -e
-            cd ${{ secrets.PROD_DEPLOY_PATH }}
 
-            # ── Save current commit before pulling ────────────────────────────
-            PREVIOUS_COMMIT=$(git rev-parse HEAD)
-            echo "Previous commit: $PREVIOUS_COMMIT"
+            VERSION="${{ inputs.version }}"
+            IMAGE="ghcr.io/ultra-teknologi-indonesia/cilupbah:${VERSION}"
 
-            # ── Pull latest code (volume-mounted, instantly live) ─────────────
-            git fetch origin production
-            git reset --hard origin/production
+            echo "Deploying $IMAGE ke production..."
 
-            CURRENT_COMMIT=$(git rev-parse HEAD)
-            echo "Current commit: $CURRENT_COMMIT"
+            # Kalau kubectl "permission denied" / context tidak ketemu,
+            # coba salah satu ini dulu (khusus k3s):
+            # export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+            # atau jalankan semua kubectl di bawah pakai: sudo k3s kubectl ...
 
-            # ── Detect what changed ───────────────────────────────────────────
-            CHANGED_FILES=$(git diff --name-only "$PREVIOUS_COMMIT" "$CURRENT_COMMIT")
-            HAS_COMPOSER_CHANGE=$(echo "$CHANGED_FILES" | grep -c 'composer.lock' || true)
-            # A new/removed module changes Modules/*/composer.json (merged into the
-            # root autoloader by composer-merge-plugin) WITHOUT touching composer.lock,
-            # so the PSR-4 map must be regenerated or its classes won't be found.
-            HAS_MODULE_CHANGE=$(echo "$CHANGED_FILES" | grep -cE 'Modules/[^/]+/composer\.json' || true)
-            HAS_NPM_CHANGE=$(echo "$CHANGED_FILES" | grep -c 'package-lock.json' || true)
-            HAS_DOCKER_CHANGE=$(echo "$CHANGED_FILES" | grep -cE 'Dockerfile|docker-compose|start\.(production\.)?sh' || true)
-            HAS_MIGRATION_CHANGE=$(echo "$CHANGED_FILES" | grep -c '/migrations/' || true)
-            HAS_SEEDER_CHANGE=$(echo "$CHANGED_FILES" | grep -ci '/seeders/' || true)
+            NAMESPACE="cilupbah"
 
-            # ── Compose files ─────────────────────────────────────────────────
-            # Sertakan override lokal `docker-compose.prod-local.yml` bila ada di
-            # server (mis. server bersama: menambah service `db` Postgres container
-            # terisolasi — lihat DEPLOY-DOCKER-VPS.md §5.3). File ini sengaja TIDAK
-            # di-commit (berisi password DB) & tidak terhapus git reset (untracked).
-            # Tanpa override, deploy jalan apa adanya (Postgres native host).
-            COMPOSE="docker compose -f docker-compose.production.yml"
-            if [ -f docker-compose.prod-local.yml ]; then
-              COMPOSE="$COMPOSE -f docker-compose.prod-local.yml"
-              echo "Override docker-compose.prod-local.yml terdeteksi — disertakan."
-            fi
+            kubectl set image deployment/cilupbah-app app=$IMAGE -n $NAMESPACE
+            kubectl set image deployment/cilupbah-horizon horizon=$IMAGE -n $NAMESPACE
+            kubectl set image deployment/cilupbah-scheduler scheduler=$IMAGE -n $NAMESPACE
 
-            # ── Rollback handler ──────────────────────────────────────────────
-            rollback() {
-              echo "⚠️  Deployment failed — rolling back to $PREVIOUS_COMMIT"
-              git reset --hard "$PREVIOUS_COMMIT"
-              # Restart containers to pick up rolled-back code
-              $COMPOSE restart app horizon scheduler
-              echo "✅ Rollback complete"
-              exit 1
-            }
-            trap rollback ERR
+            kubectl rollout status deployment/cilupbah-app -n $NAMESPACE --timeout=180s
+            kubectl rollout status deployment/cilupbah-horizon -n $NAMESPACE --timeout=180s
+            kubectl rollout status deployment/cilupbah-scheduler -n $NAMESPACE --timeout=180s
 
-            # ── Rebuild containers ONLY if Docker config changed ──────────────
-            if [ "$HAS_DOCKER_CHANGE" -gt 0 ]; then
-              echo "Docker config changed — rebuilding containers..."
-              $COMPOSE up -d --build --remove-orphans
-              echo "Waiting for containers to be ready..."
-              sleep 10
-            else
-              echo "No Docker config changes — containers stay running."
-            fi
-
-            # ── Install dependencies inside running container (if changed) ────
-            if [ "$HAS_COMPOSER_CHANGE" -gt 0 ]; then
-              echo "composer.lock changed — installing PHP dependencies..."
-              docker exec cilupbah-production composer install --no-dev --optimize-autoloader --no-interaction
-            elif [ "$HAS_MODULE_CHANGE" -gt 0 ]; then
-              # No dependency change, but a module was added/removed — regenerate the
-              # merged PSR-4 autoloader (offline, fast) so new module classes resolve.
-              echo "Module composer.json changed — regenerating autoloader..."
-              docker exec cilupbah-production composer dump-autoload --optimize --no-interaction
-            fi
-
-            if [ "$HAS_NPM_CHANGE" -gt 0 ]; then
-              echo "package-lock.json changed — installing & building frontend..."
-              docker exec cilupbah-production npm ci
-              docker exec cilupbah-production npm run build
-            fi
-
-            # ── Refresh caches (always, fast & safe) ──────────────────────────
-            echo "Refreshing Laravel caches..."
-            docker exec cilupbah-production php artisan config:cache
-            docker exec cilupbah-production php artisan route:cache
-            docker exec cilupbah-production php artisan view:cache
-
-            # ── Run Migrations (only if migration files changed) ──────────────
-            if [ "$HAS_MIGRATION_CHANGE" -gt 0 ]; then
-              echo "Running database migrations..."
-              docker exec cilupbah-production php artisan migrate --force || { echo "❌ Migration failed!"; exit 1; }
-            else
-              echo "No migration changes — skipping."
-            fi
-
-            # ── Run Seeders (only if seeder files changed) ────────────────────
-            if [ "$HAS_SEEDER_CHANGE" -gt 0 ]; then
-              echo "Running database seeders..."
-              docker exec cilupbah-production php artisan db:seed --force \
-                || echo "⚠️  Seeding reported issues — review logs above (deploy continues)."
-            else
-              echo "No seeder changes — skipping."
-            fi
-
-            # ── Restart queue workers to pick up new code ─────────────────────
-            echo "Restarting Horizon workers..."
-            docker exec cilupbah-production php artisan horizon:terminate 2>/dev/null || true
-
-            trap - ERR
-            echo "✅ Deployment successful (zero-downtime)"
+            echo "Production deployment success: $VERSION"
