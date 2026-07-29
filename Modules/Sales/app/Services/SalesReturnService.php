@@ -114,7 +114,7 @@ class SalesReturnService
         $skuCount = $return->items->count();
         $sourceLabel = $return->source === SalesReturn::SOURCE_MARKETPLACE
             ? 'marketplace'
-            : ($return->source === SalesReturn::SOURCE_CANCELLED_SHIPPED ? 'cancel-shipped' : 'manual');
+            : ($return->reason_category === SalesReturn::REASON_CATEGORY_CANCEL_SHIPPED ? 'cancel-shipped' : 'manual');
         $this->notifications->toPermission(self::NOTIF_PERMISSION, [
             'type' => 'sales_return_new',
             'title' => 'Retur baru masuk',
@@ -263,33 +263,64 @@ class SalesReturnService
 
             $this->returnRepository->updateStatus($return, SalesReturn::STATUS_ACCEPTED, $data['processed_by']);
 
-            $inboundItems = $return->items->map(fn ($item) => [
-                'item_id'      => $item->item_id,
-                'expected_qty' => $item->qty,
-            ])->toArray();
+            // Qty yang disetujui per item (opsional dari $data['items']); default = qty retur penuh.
+            // Clamp ke rentang [0, qty] lalu simpan sebagai approved_qty.
+            $approvedByItemId = [];
+            foreach (($data['items'] ?? []) as $line) {
+                if (isset($line['item_id']) && array_key_exists('approved_qty', $line) && $line['approved_qty'] !== null) {
+                    $approvedByItemId[$line['item_id']] = (int) $line['approved_qty'];
+                }
+            }
 
-            $inbound = $this->inboundService->receiveFromSalesReturn([
-                'location_id'      => $this->settings->restockLocationId() ?? $return->location_id,
-                'reference_number' => $return->return_number,
-                'source_id'        => $return->id,
-                'expected_date'    => now()->toDateString(),
-                'created_by'       => $data['processed_by'],
-                'items'            => $inboundItems,
-            ]);
+            foreach ($return->items as $item) {
+                $requested = $approvedByItemId[$item->item_id] ?? (int) $item->qty;
+                $approved = max(0, min($requested, (int) $item->qty));
 
-            if ($this->settings->autoReceive()) {
-                $conditionByItem = $return->items->keyBy('item_id');
+                if ((int) ($item->approved_qty ?? -1) !== $approved) {
+                    $item->approved_qty = $approved;
+                    $item->save();
+                }
+            }
 
-                $receiveItems = $inbound->items->map(fn ($item) => [
-                    'inbound_item_id' => $item->id,
-                    'qty'             => $item->expected_qty,
-                    'condition'       => $conditionByItem[$item->item_id]->condition ?? 'GOOD',
-                ])->toArray();
+            // Hanya baris dengan approved_qty > 0 yang masuk Inbound retur (restock).
+            $inboundItems = $return->items
+                ->filter(fn ($item) => $item->approvedQty() > 0)
+                ->map(fn ($item) => [
+                    'item_id'      => $item->item_id,
+                    'expected_qty' => $item->approvedQty(),
+                ])->values()->toArray();
 
-                $this->inboundService->receive($inbound->id, [
-                    'received_by' => $data['processed_by'],
-                    'items'       => $receiveItems,
+            if (! empty($inboundItems)) {
+                $inbound = $this->inboundService->receiveFromSalesReturn([
+                    'location_id'      => $this->settings->restockLocationId() ?? $return->location_id,
+                    'reference_number' => $return->return_number,
+                    'source_id'        => $return->id,
+                    'expected_date'    => now()->toDateString(),
+                    'created_by'       => $data['processed_by'],
+                    'items'            => $inboundItems,
                 ]);
+
+                // Auto-receive butuh user penerima valid (inbound_receipts.received_by_user_id NOT NULL).
+                // Di web, auth()->id() tersedia; bila accept dipicu sistem tanpa auth (mis. auto-accept
+                // webhook, processed_by='system:...') lewati auto-receive agar tidak gagal — inbound tetap
+                // DRAFT dan bisa diterima manual.
+                $receiverId = auth()->id()
+                    ?? (Str::isUuid((string) ($data['processed_by'] ?? '')) ? $data['processed_by'] : null);
+
+                if ($this->settings->autoReceive() && $receiverId) {
+                    $conditionByItem = $return->items->keyBy('item_id');
+
+                    $receiveItems = $inbound->items->map(fn ($item) => [
+                        'inbound_item_id' => $item->id,
+                        'qty'             => $item->expected_qty,
+                        'condition'       => $conditionByItem[$item->item_id]->condition ?? 'GOOD',
+                    ])->toArray();
+
+                    $this->inboundService->receive($inbound->id, [
+                        'received_by' => $receiverId,
+                        'items'       => $receiveItems,
+                    ]);
+                }
             }
 
             return $this->getById($id);

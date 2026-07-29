@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Tests\Feature;
 
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -60,22 +61,25 @@ class SalesReturnKronologiStokTest extends TestCase
             'updated_at' => now(),
         ]);
 
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
         $service = app(SalesReturnService::class);
 
         $return = $service->create([
             'location_id' => $locationId,
-            'created_by'  => 'tester',
+            'created_by'  => (string) $user->id,
             'items'       => [['item_id' => $variantId, 'qty' => 2, 'condition' => 'GOOD']],
         ]);
 
-        $service->accept($return->id, ['processed_by' => 'tester']);
+        $service->accept($return->id, ['processed_by' => (string) $user->id]);
 
         $inbound = Inbound::where('source_type', 'sales_return')
             ->where('source_id', $return->id)
             ->firstOrFail();
 
         app(InboundService::class)->receive($inbound->id, [
-            'received_by' => 'tester',
+            'received_by' => (string) $user->id,
             'items' => $inbound->items->map(fn ($item) => [
                 'inbound_item_id' => $item->id,
                 'qty' => $item->expected_qty,

@@ -151,9 +151,14 @@ class SalesReturnController extends Controller
     )]
     public function accept(string $id, Request $request): JsonResponse
     {
-        $request->validate(['processed_by' => 'required|string|max:100']);
+        $request->validate([
+            'processed_by'         => 'required|string|max:100',
+            'items'                => 'sometimes|array',
+            'items.*.item_id'      => 'required_with:items|string',
+            'items.*.approved_qty' => 'nullable|integer|min:0',
+        ]);
 
-        $return = $this->returnService->accept($id, $request->only('processed_by'));
+        $return = $this->returnService->accept($id, $request->only('processed_by', 'items'));
 
         return $this->successResponse($return, 'Return diterima, Inbound GRN dibuat');
     }

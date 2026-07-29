@@ -14,9 +14,23 @@ class SalesReturnItem extends Model
         'sales_return_id',
         'item_id',
         'qty',
+        'approved_qty',
         'condition',
         'notes',
     ];
+
+    protected $casts = [
+        'qty' => 'integer',
+        'approved_qty' => 'integer',
+    ];
+
+    /**
+     * Qty yang disetujui untuk restock; fallback ke qty bila belum di-set (data lama / belum diproses).
+     */
+    public function approvedQty(): int
+    {
+        return $this->approved_qty ?? (int) $this->qty;
+    }
 
     public function salesReturn(): BelongsTo
     {
