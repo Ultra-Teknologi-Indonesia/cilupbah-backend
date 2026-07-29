@@ -123,13 +123,6 @@ class OutboundFulfillmentService
         }
     }
 
-    /**
-     * Guard idempoten: jangan panggil ulang pengaturan pengiriman untuk order yang
-     * sudah dikirim/terminal di marketplace (mencegah double-call & status "failed"
-     * palsu saat readyToShip terpicu dua kali: tombol Siap Kirim + otomatis saat masuk
-     * manifest). Sejajar dengan AbstractLogisticsService::guardCallable pada jalur driver.
-     * RETRY_SHIP sengaja TIDAK di-skip agar retry pickup Shopee tetap berjalan.
-     */
     private function alreadyHandledMessage(string $channelStatus): ?string
     {
         $cs = strtoupper(trim($channelStatus));
