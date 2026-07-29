@@ -470,7 +470,7 @@ class InventorySettingImportService
         [$title, $headers, $examples] = match ($type) {
             self::TYPE_SAFE_STOCK => ['Batas Stok Aman', ['Kode_Produk', 'Batas_Stok_Aman'], [['SKU-CONTOH-1', 100]]],
             self::TYPE_MIN_STOCK  => ['Batas Stok Menipis', ['Kode_Produk', 'Batas_Stok_Menipis'], [['SKU-CONTOH-1', 50]]],
-            self::TYPE_RACK       => ['Alokasi Rak', ['item_code', 'location_name', 'bin_final_code'], [['SKU-CONTOH-1', 'Gudang Kecil', 'O-C3-K1-X4']]],
+            self::TYPE_RACK       => ['Alokasi Rak', ['SKU', 'Lokasi', 'Rak'], [['SKU-CONTOH-1', 'Gudang Kecil', 'O-C3-K1-X4']]],
             default               => throw new \Exception('Jenis template tidak dikenali.'),
         };
 

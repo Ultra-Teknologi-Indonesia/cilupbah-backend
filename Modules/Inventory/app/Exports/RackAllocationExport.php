@@ -48,7 +48,7 @@ class RackAllocationExport implements FromCollection, WithHeadings, WithMapping,
 
     public function headings(): array
     {
-        return ['item_code', 'location_name', 'bin_final_code'];
+        return ['SKU', 'Lokasi', 'Rak'];
     }
 
     public function map($row): array
