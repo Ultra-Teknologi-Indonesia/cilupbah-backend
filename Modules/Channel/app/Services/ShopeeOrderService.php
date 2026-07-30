@@ -962,9 +962,21 @@ class ShopeeOrderService
             'item_list' => $itemList,
         ], $token, $shop->shop_id));
 
+        if (! empty($res['error'])) {
+            $code = (string) $res['error'];
+            $message = $res['message'] ?? $code;
+            $transient = (bool) preg_match('/server|network|timeout|inner http/i', $code . ' ' . $message);
+
+            throw new \Modules\Channel\Exceptions\ChannelCancelException(
+                "Shopee menolak pembatalan {$orderSn}: {$message}",
+                retryable: $transient,
+                channelCode: $code,
+            );
+        }
+
         $this->resyncLocalOrder($shopId, $orderSn);
 
-        return ['order_sn' => $orderSn, 'cancelled' => empty($res['error']), 'response' => $res['response'] ?? []];
+        return ['order_sn' => $orderSn, 'cancelled' => true, 'response' => $res['response'] ?? []];
     }
 
     protected function orderItemList(object $shop, string $orderSn): array

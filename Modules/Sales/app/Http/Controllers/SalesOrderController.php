@@ -800,6 +800,40 @@ class SalesOrderController extends Controller
         return $this->successResponse(new SalesOrderResource($order), 'Permintaan pembatalan ditolak');
     }
 
+    #[OA\Post(
+        path: '/api/v1/sales/{id}/request-cancel',
+        summary: 'Seller mengajukan pembatalan order ke marketplace (TikTok/Shopee/Lazada)',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['reason'],
+                properties: [
+                    new OA\Property(property: 'reason', type: 'string', description: 'Shopee/TikTok: reason key; Lazada: reason_id numerik (live)'),
+                ],
+            ),
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Permintaan pembatalan dikirim'),
+            new OA\Response(response: 404, description: 'Order not found'),
+            new OA\Response(response: 422, description: 'Status/alasan tidak valid'),
+        ]
+    )]
+    public function requestChannelCancel(string $id, Request $request)
+    {
+        $validated = $request->validate([
+            'reason' => 'required|string|max:255',
+        ]);
+
+        $order = $this->orderService->requestChannelCancel($id, $validated['reason']);
+
+        return $this->successResponse(new SalesOrderResource($order), 'Permintaan pembatalan dikirim ke marketplace');
+    }
+
     #[OA\Get(
         path: '/api/v1/sales/{id}/shipping-label',
         summary: 'Get shipping label / AWB document from marketplace channel',

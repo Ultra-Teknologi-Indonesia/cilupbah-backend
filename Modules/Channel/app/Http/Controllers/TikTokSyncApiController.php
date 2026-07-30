@@ -216,6 +216,14 @@ class TikTokSyncApiController extends Controller
         try {
             $res = $orderService->cancelProduct($request->order_id, $request->cancel_reason);
             return $this->successResponse($res, 'Order TikTok berhasil dibatalkan.');
+        } catch (\Modules\Channel\Exceptions\ChannelCancelException $e) {
+            // Error final (status tak valid / ditolak MP) = 422; transien = 503.
+            return $this->errorResponse(
+                'Gagal membatalkan order.',
+                $e->retryable ? 503 : 422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         } catch (\Exception $e) {
             $status = strpos($e->getMessage(), 'Hanya berlaku') !== false || strpos($e->getMessage(), 'tidak ditemukan') !== false ? 422 : 500;
             return $this->errorResponse(

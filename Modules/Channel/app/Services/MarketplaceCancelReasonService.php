@@ -10,28 +10,38 @@ class MarketplaceCancelReasonService
 
     public const SUPPORTED = [self::TIKTOK, self::LAZADA, self::SHOPEE];
 
-    public const LIVE_CAPABLE = [self::TIKTOK, self::LAZADA];
+    /**
+     * Channel yang WAJIB memakai daftar alasan live dari API (reason_id numerik).
+     * Katalog statis tidak boleh dikirim ke API cancel untuk channel ini.
+     */
+    public const LIVE_ONLY = [self::LAZADA];
 
-    private const CATALOG = [
-        self::TIKTOK => [
-            ['key' => 'seller_cancel_reason_out_of_stock', 'label' => 'Stok habis'],
-            ['key' => 'seller_cancel_reason_wrong_price', 'label' => 'Kesalahan harga'],
-            ['key' => 'seller_cancel_paid_reason_address_not_deliver', 'label' => 'Alamat pembeli tidak terjangkau'],
-        ],
-        self::LAZADA => [
-            ['key' => 'out_of_stock', 'label' => 'Stok habis'],
-            ['key' => 'pricing_error', 'label' => 'Kesalahan harga'],
-            ['key' => 'duplicate_order', 'label' => 'Pesanan ganda'],
-            ['key' => 'system_error', 'label' => 'Kesalahan sistem'],
-            ['key' => 'customer_request', 'label' => 'Permintaan pembeli'],
-        ],
-        self::SHOPEE => [
-            ['key' => 'OUT_OF_STOCK', 'label' => 'Stok habis'],
-            ['key' => 'CUSTOMER_REQUEST', 'label' => 'Permintaan pembeli'],
-            ['key' => 'UNDELIVERABLE_AREA', 'label' => 'Area tidak terjangkau'],
-            ['key' => 'COD_NOT_SUPPORTED', 'label' => 'COD tidak didukung'],
-            ['key' => 'OTHERS', 'label' => 'Lainnya'],
-        ],
+    /**
+     * TikTok — Seller Initiates Cancel, ID market. Daftar alasan berbeda per status:
+     *  - UNPAID
+     *  - ON_HOLD / AWAITING_SHIPMENT (sudah dibayar)
+     * Salah pasang -> error 25001021 "Reason not match order status".
+     */
+    private const TIKTOK_UNPAID = [
+        ['key' => 'seller_cancel_unpaid_reason_out_of_stock', 'label' => 'Stok habis'],
+        ['key' => 'seller_cancel_unpaid_reason_wrong_price', 'label' => 'Kesalahan harga'],
+        ['key' => 'seller_cancel_unpaid_reason_buyer_hasnt_paid_within_time_allowed', 'label' => 'Pembeli belum membayar tepat waktu'],
+    ];
+
+    private const TIKTOK_PAID = [
+        ['key' => 'seller_cancel_reason_out_of_stock', 'label' => 'Stok habis'],
+        ['key' => 'seller_cancel_reason_wrong_price', 'label' => 'Kesalahan harga'],
+        ['key' => 'seller_cancel_paid_reason_address_not_deliver', 'label' => 'Alamat pembeli tidak terjangkau'],
+    ];
+
+    /**
+     * Shopee — hanya nilai yang valid untuk market ID.
+     * UNDELIVERABLE_AREA (TW/MY only) & OTHERS (tidak ada di dokumen) dikeluarkan.
+     */
+    private const SHOPEE_REASONS = [
+        ['key' => 'OUT_OF_STOCK', 'label' => 'Stok habis'],
+        ['key' => 'CUSTOMER_REQUEST', 'label' => 'Permintaan pembeli'],
+        ['key' => 'COD_NOT_SUPPORTED', 'label' => 'COD tidak didukung'],
     ];
 
     public function supports(string $marketplace): bool
@@ -39,29 +49,62 @@ class MarketplaceCancelReasonService
         return in_array(strtolower($marketplace), self::SUPPORTED, true);
     }
 
-    public function for(string $marketplace): array
+    public function isLiveOnly(string $marketplace): bool
     {
-        return self::CATALOG[strtolower($marketplace)] ?? [];
+        return in_array(strtolower($marketplace), self::LIVE_ONLY, true);
+    }
+
+    /**
+     * Kelompok status TikTok untuk pemilihan set alasan.
+     * Terima status MENTAH (channel_status_raw) TikTok.
+     */
+    public function tiktokStatusGroup(?string $rawStatus): string
+    {
+        return strtoupper((string) $rawStatus) === 'UNPAID' ? 'unpaid' : 'paid';
+    }
+
+    /**
+     * Daftar alasan untuk sebuah marketplace.
+     * TikTok: $context = status mentah (channel_status_raw) untuk pilih set unpaid/paid.
+     * Lazada: dikembalikan [] (harus live) kecuali dipanggil untuk display fallback.
+     */
+    public function for(string $marketplace, ?string $context = null): array
+    {
+        return match (strtolower($marketplace)) {
+            self::TIKTOK => $this->tiktokStatusGroup($context) === 'unpaid'
+                ? self::TIKTOK_UNPAID
+                : self::TIKTOK_PAID,
+            self::SHOPEE => self::SHOPEE_REASONS,
+            self::LAZADA => [], // Lazada wajib live (reason_id numerik)
+            default      => [],
+        };
     }
 
     public function all(): array
     {
-        return self::CATALOG;
+        return [
+            self::TIKTOK => ['unpaid' => self::TIKTOK_UNPAID, 'paid' => self::TIKTOK_PAID],
+            self::SHOPEE => self::SHOPEE_REASONS,
+            self::LAZADA => [], // live-only
+        ];
     }
 
-    public function keys(string $marketplace): array
+    public function keys(string $marketplace, ?string $context = null): array
     {
-        return array_column($this->for($marketplace), 'key');
+        return array_column($this->for($marketplace, $context), 'key');
     }
 
-    public function isValidReason(string $marketplace, string $key): bool
+    /**
+     * Validasi alasan untuk Shopee & TikTok (katalog statis).
+     * Lazada TIDAK divalidasi di sini (harus divalidasi terhadap daftar live).
+     */
+    public function isValidReason(string $marketplace, string $key, ?string $context = null): bool
     {
-        return in_array($key, $this->keys($marketplace), true);
-    }
+        if ($this->isLiveOnly($marketplace)) {
+            return false;
+        }
 
-    public function isLiveCapable(string $marketplace): bool
-    {
-        return in_array(strtolower($marketplace), self::LIVE_CAPABLE, true);
+        return in_array($key, $this->keys($marketplace, $context), true);
     }
 
     public function normalize(array $raw): array

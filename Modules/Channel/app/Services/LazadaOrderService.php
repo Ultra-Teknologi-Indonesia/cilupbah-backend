@@ -187,7 +187,21 @@ class LazadaOrderService
                 $params['reason_detail'] = $reasonDetail;
             }
 
-            $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/order/cancel', $params, $token));
+            $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/order/cancel', $params, $token));
+
+            $code = (string) ($res['code'] ?? '0');
+            if ($code !== '0' && $code !== '') {
+                $message = $res['message'] ?? $code;
+                // Status sudah maju (RTS/shipped) / aksi reverse ditolak = final.
+                $final = (bool) preg_match('/status|not[_ ]?allowed|reverse|invalid[_ ]?order/i', $code . ' ' . $message);
+
+                throw new \Modules\Channel\Exceptions\ChannelCancelException(
+                    "Lazada menolak pembatalan {$orderId} (item {$itemId}): {$message}",
+                    retryable: ! $final,
+                    channelCode: $code,
+                );
+            }
+
             $cancelled[] = $itemId;
         }
 

@@ -33,76 +33,131 @@ class CancelChannelOrderJob implements ShouldQueue
         }
 
         try {
-            match ($order->source) {
+            $result = match ($order->source) {
                 'tiktok'    => $this->cancelOnTikTok($order),
                 'shopee'    => $this->cancelOnShopee($order),
                 'lazada'    => $this->cancelOnLazada($order),
                 'tokopedia' => $this->cancelOnTokopedia($order),
-                default     => Log::info("CancelChannelOrderJob: no handler for source '{$order->source}'"),
+                default     => null,
             };
-        } catch (\Throwable $e) {
-            Log::error("CancelChannelOrderJob: failed to cancel on {$order->source}", [
-                'order_id'       => $this->orderId,
-                'salesorder_no'  => $order->salesorder_no,
-                'exception'      => $e->getMessage(),
+
+            // Sukses. TikTok bisa async (menunggu konfirmasi TikTok) -> biarkan
+            // resync/webhook yang men-finalisasi ke 'cancelled'.
+            $status = ($order->source === 'tiktok' && ($result['async'] ?? false))
+                ? 'pending'
+                : 'accepted';
+
+            $order->forceFill([
+                'channel_cancel_status' => $status,
+                'channel_cancel_error'  => null,
+            ])->saveQuietly();
+        } catch (\Modules\Channel\Exceptions\ChannelCancelException $e) {
+            if ($e->retryable) {
+                throw $e; // transien -> biarkan job retry
+            }
+
+            // Error final: JANGAN retry. Tandai gagal + beri tahu seller.
+            Log::warning("CancelChannelOrderJob: penolakan final dari {$order->source}", [
+                'order_id'      => $this->orderId,
+                'salesorder_no' => $order->salesorder_no,
+                'channel_code'  => $e->channelCode,
+                'message'       => $e->getMessage(),
             ]);
-            throw $e;
+
+            $order->forceFill([
+                'channel_cancel_status' => 'failed',
+                'channel_cancel_error'  => \Illuminate\Support\Str::limit($e->getMessage(), 240),
+            ])->saveQuietly();
+
+            $this->notifyFailure($order, $e->getMessage());
+
+            return; // final: selesai tanpa retry
+        } catch (\Throwable $e) {
+            Log::error("CancelChannelOrderJob: gagal cancel di {$order->source}", [
+                'order_id'      => $this->orderId,
+                'salesorder_no' => $order->salesorder_no,
+                'exception'     => $e->getMessage(),
+            ]);
+            throw $e; // transien -> retry
         }
     }
 
-    private function cancelOnTikTok(SalesOrder $order): void
+    private function cancelOnTikTok(SalesOrder $order): array
     {
-        $tikTokOrderService = app(\Modules\Channel\Services\TikTokOrderService::class);
+        $result = app(\Modules\Channel\Services\TikTokOrderService::class)
+            ->cancelProduct($order->salesorder_no, $this->cancelReason);
 
-        $tikTokOrderService->cancelProduct($order->salesorder_no, $this->cancelReason);
-
-        Log::info("CancelChannelOrderJob: cancelled on TikTok", [
+        Log::info('CancelChannelOrderJob: cancel TikTok terkirim', [
             'salesorder_no' => $order->salesorder_no,
             'shop_id'       => $order->channel_shop_id,
-            'reason'        => $this->cancelReason,
+            'cancel_status' => $result['cancel_status'] ?? null,
         ]);
+
+        return $result;
     }
 
-    private function cancelOnShopee(SalesOrder $order): void
+    private function cancelOnShopee(SalesOrder $order): array
     {
-        $shopeeOrderService = app(\Modules\Channel\Services\ShopeeOrderService::class);
-
-        $shopeeOrderService->cancelOrder(
+        $result = app(\Modules\Channel\Services\ShopeeOrderService::class)->cancelOrder(
             $order->channel_shop_id,
             $order->salesorder_no,
             $this->cancelReason,
         );
 
-        Log::info("CancelChannelOrderJob: cancelled on Shopee", [
+        Log::info('CancelChannelOrderJob: cancelled on Shopee', [
             'salesorder_no' => $order->salesorder_no,
             'shop_id'       => $order->channel_shop_id,
-            'reason'        => $this->cancelReason,
         ]);
+
+        return $result;
     }
 
-    private function cancelOnLazada(SalesOrder $order): void
+    private function cancelOnLazada(SalesOrder $order): array
     {
-        $lazadaOrderService = app(\Modules\Channel\Services\LazadaOrderService::class);
-
-        $lazadaOrderService->cancelOrder(
+        // $this->cancelReason = reason_id numerik (live) dari /order/failure_reason/get.
+        $result = app(\Modules\Channel\Services\LazadaOrderService::class)->cancelOrder(
             $order->channel_shop_id,
             $order->salesorder_no,
             $this->cancelReason,
         );
 
-        Log::info("CancelChannelOrderJob: cancelled on Lazada", [
+        Log::info('CancelChannelOrderJob: cancelled on Lazada', [
             'salesorder_no' => $order->salesorder_no,
             'shop_id'       => $order->channel_shop_id,
-            'reason'        => $this->cancelReason,
         ]);
+
+        return $result;
     }
 
-    private function cancelOnTokopedia(SalesOrder $order): void
+    private function cancelOnTokopedia(SalesOrder $order): array
     {
-
-        Log::info("CancelChannelOrderJob: Tokopedia cancel not implemented yet", [
+        Log::info('CancelChannelOrderJob: Tokopedia cancel belum diimplementasi', [
             'salesorder_no' => $order->salesorder_no,
         ]);
+
+        return [];
+    }
+
+    private function notifyFailure(SalesOrder $order, string $reason): void
+    {
+        try {
+            app(\Modules\Notification\Services\NotificationDispatcher::class)->toPermission(
+                \Modules\Sales\Services\SalesOrderService::NOTIF_ORDER_PERMISSION,
+                [
+                    'type'    => 'channel_cancel_failed',
+                    'title'   => 'Pembatalan ke marketplace gagal',
+                    'message' => "Pembatalan pesanan {$order->salesorder_no} ditolak {$order->source}: {$reason}",
+                    'data'    => [
+                        'sales_order_id' => $order->id,
+                        'salesorder_no'  => $order->salesorder_no,
+                        'source'         => $order->source,
+                        'reason'         => $reason,
+                    ],
+                ],
+            );
+        } catch (\Throwable $e) {
+            Log::warning('CancelChannelOrderJob: gagal kirim notifikasi kegagalan: ' . $e->getMessage());
+        }
     }
 
     public function failed(\Throwable $exception): void

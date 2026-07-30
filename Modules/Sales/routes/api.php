@@ -220,6 +220,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('sales/orders/set-as-paid', [SalesOrderController::class, 'setAsPaid'])->name('sales.orders.set-as-paid');
         Route::post('sales/orders/{id}/accept-cancel', [SalesOrderController::class, 'acceptCancelRequest'])->whereUuid('id')->name('sales.orders.accept-cancel');
         Route::post('sales/orders/{id}/reject-cancel', [SalesOrderController::class, 'rejectCancelRequest'])->whereUuid('id')->name('sales.orders.reject-cancel');
+        Route::post('sales/orders/{id}/request-cancel', [SalesOrderController::class, 'requestChannelCancel'])->whereUuid('id')->name('sales.orders.request-cancel');
         Route::post('sales/orders/bulk-mark-contacted', [SalesOrderController::class, 'bulkMarkContacted'])->name('sales.orders.bulk-mark-contacted');
         Route::post('sales/orders/{id}/mark-contacted', [SalesOrderController::class, 'markContacted'])->whereUuid('id')->name('sales.orders.mark-contacted');
         Route::post('sales/orders/{id}/customer-decision', [SalesOrderController::class, 'setCustomerDecision'])->whereUuid('id')->name('sales.orders.customer-decision');

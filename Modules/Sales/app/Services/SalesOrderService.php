@@ -43,6 +43,16 @@ class SalesOrderService
         'cancelled' => [],
     ];
 
+    /**
+     * Status channel (ternormalisasi ChannelStatus) yang boleh di-request-cancel seller.
+     * Lazada KONSERVATIF: READY_TO_SHIP (RTS) di-block by default — lihat PLANNING §9b/D2.
+     */
+    private const CHANNEL_CANCELLABLE_STATUSES = [
+        'shopee' => ['UNPAID', 'READY_TO_SHIP', 'PROCESSED'],
+        'tiktok' => ['UNPAID', 'READY_TO_SHIP'],
+        'lazada' => ['UNPAID', 'PROCESSED'],
+    ];
+
     private const STATUS_HISTORY_ACTIONS = [
         'reserved'  => 'PROCESS',
         'picked'    => 'FINISH_PICK',
@@ -86,7 +96,7 @@ class SalesOrderService
         'blibli'     => 'BL',
     ];
 
-    private const NOTIF_ORDER_PERMISSION = 'manage-pesanan';
+    public const NOTIF_ORDER_PERMISSION = 'view-pesanan';
 
     public function __construct(
         protected SalesOrderRepository $orderRepository,
@@ -319,7 +329,7 @@ class SalesOrderService
             Cache::forget($this->idempotencyKey($order->source, $order->salesorder_no));
 
             if ($order->source) {
-                CancelChannelOrderJob::dispatch($order->id)->onQueue(config('queue.names.channel_sync'));
+                CancelChannelOrderJob::dispatch($order->id, $finalReason)->onQueue(config('queue.names.channel_sync'));
             }
 
             SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
@@ -397,6 +407,112 @@ class SalesOrderService
         return ShipmentOrder::where('order_id', $order->id)
             ->whereHas('shipment', fn ($q) => $q->where('status', Shipment::STATUS_SCHEDULED))
             ->exists();
+    }
+
+    /**
+     * Seller mengajukan pembatalan order ke marketplace (TikTok/Shopee/Lazada).
+     * Berbeda dari accept/rejectCancelRequest (itu merespons permintaan dari buyer).
+     * Status lokal TIDAK langsung 'cancelled' — finalisasi via resync/webhook channel.
+     */
+    public function requestChannelCancel(string $orderId, string $reason): SalesOrder
+    {
+        $order = SalesOrder::findOrFail($orderId);
+        $source = strtolower((string) $order->source);
+
+        if (! in_array($source, ['tiktok', 'shopee', 'lazada'], true)) {
+            throw new \App\Exceptions\UserFacingException('Tidak dapat membatalkan', 'Request cancel ke marketplace hanya untuk pesanan TikTok, Shopee, atau Lazada.');
+        }
+
+        if ($order->status === 'cancelled' || $order->is_canceled) {
+            throw new InvalidStatusTransitionException((string) $order->status, 'cancelled');
+        }
+
+        $fromStatus = SalesOrderStatus::tryFrom((string) $order->status);
+        if ($fromStatus === null || ! $fromStatus->canTransitionTo(SalesOrderStatus::CANCELLED)) {
+            throw new \App\Exceptions\UserFacingException('Tidak dapat membatalkan', "Pesanan berstatus {$order->status} tidak dapat dibatalkan.");
+        }
+
+        if ($order->channel_cancel_status === 'pending') {
+            throw new \App\Exceptions\UserFacingException('Sedang diproses', 'Permintaan pembatalan untuk pesanan ini sedang diproses.');
+        }
+
+        // TikTok butuh status MENTAH untuk memilih set alasan (UNPAID vs paid).
+        // Order lama tanpa channel_status_raw -> live-fetch (PLANNING §9b/D1).
+        if ($source === 'tiktok' && empty($order->channel_status_raw)) {
+            $this->refreshChannelStatusRaw($order);
+            $order->refresh();
+        }
+
+        $this->assertChannelCancellable($order, $source);
+        $this->assertValidCancelReason($order, $source, $reason);
+
+        $order->forceFill([
+            'channel_cancel_requested_at' => now(),
+            'channel_cancel_requested_by' => Auth::id() ?: null,
+            'channel_cancel_status'       => 'pending',
+            'channel_cancel_error'        => null,
+            'cancel_reason'               => $reason,
+        ])->save();
+
+        CancelChannelOrderJob::dispatch($order->id, $reason)
+            ->onQueue(config('queue.names.channel_sync'));
+
+        return $order->fresh();
+    }
+
+    private function assertChannelCancellable(SalesOrder $order, string $source): void
+    {
+        $eligible = self::CHANNEL_CANCELLABLE_STATUSES[$source] ?? [];
+
+        if (! in_array((string) $order->channel_status, $eligible, true)) {
+            throw new \App\Exceptions\UserFacingException(
+                'Status tidak dapat dibatalkan',
+                "Pesanan {$source} berstatus {$order->channel_status} tidak dapat dibatalkan seller. "
+                . 'Diizinkan: ' . implode(', ', $eligible) . '.'
+            );
+        }
+    }
+
+    private function assertValidCancelReason(SalesOrder $order, string $source, string $reason): void
+    {
+        $reasonService = app(\Modules\Channel\Services\MarketplaceCancelReasonService::class);
+
+        // Lazada: validasi reason_id numerik terhadap daftar LIVE.
+        if ($reasonService->isLiveOnly($source)) {
+            try {
+                $live = $reasonService->normalize(
+                    app(\Modules\Channel\Services\LazadaOrderService::class)->getCancelReasons($order->channel_shop_id)
+                );
+            } catch (\Throwable $e) {
+                throw new \App\Exceptions\UserFacingException('Gagal memuat alasan', 'Gagal memuat daftar alasan pembatalan Lazada. Coba lagi.', 502);
+            }
+
+            $validKeys = array_column($live, 'key');
+            if (! in_array($reason, $validKeys, true)) {
+                throw new \App\Exceptions\UserFacingException('Alasan tidak valid', 'reason_id tidak valid untuk pembatalan Lazada.');
+            }
+
+            return;
+        }
+
+        // TikTok: set alasan tergantung status mentah.
+        $context = $source === 'tiktok' ? $order->channel_status_raw : null;
+
+        if (! $reasonService->isValidReason($source, $reason, $context)) {
+            throw new \App\Exceptions\UserFacingException('Alasan tidak valid', "Alasan pembatalan tidak valid untuk {$source}.");
+        }
+    }
+
+    private function refreshChannelStatusRaw(SalesOrder $order): void
+    {
+        try {
+            if (strtolower((string) $order->source) === 'tiktok') {
+                app(\Modules\Channel\Services\TikTokOrderService::class)
+                    ->pullOrderById($order->channel_shop_id, $order->salesorder_no);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('requestChannelCancel: gagal refresh status mentah TikTok: ' . $e->getMessage());
+        }
     }
 
     public function markAsComplete(array $orderIds): int
@@ -977,8 +1093,19 @@ class SalesOrderService
             $this->validateTransition($order->status, $newStatus);
             $previousStatus = $order->status;
 
+            // Order marketplace TIDAK boleh di-cancel via update generic: reason &
+            // gating status berbeda per channel. Arahkan ke requestChannelCancel().
+            // (Order 'manual'/null tetap boleh dibatalkan lewat jalur ini.)
+            if ($newStatus === 'cancelled'
+                && in_array(strtolower((string) $order->source), ['tiktok', 'shopee', 'lazada', 'tokopedia', 'woocommerce'], true)) {
+                throw new \App\Exceptions\UserFacingException(
+                    'Gunakan Ajukan Pembatalan',
+                    'Pembatalan pesanan marketplace harus melalui aksi Ajukan Pembatalan (request-cancel), bukan ubah status.'
+                );
+            }
+
             $cancelReason = $newStatus === 'cancelled'
-                ? ($validated['cancel_reason'] ?? 'seller_cancel_reason_out_of_stock')
+                ? ($validated['cancel_reason'] ?? null)
                 : null;
 
             DB::transaction(function () use ($order, $newStatus, $cancelReason) {
@@ -1009,10 +1136,9 @@ class SalesOrderService
                 Cache::forget($this->idempotencyKey($order->source, $order->salesorder_no));
             }
 
-            if ($newStatus === 'cancelled' && $order->source) {
-                CancelChannelOrderJob::dispatch($order->id, $cancelReason)
-                    ->onQueue(config('queue.names.orders'));
-            }
+            // Cancel ke marketplace tidak lagi lewat sini — order marketplace sudah
+            // diblokir di atas & diarahkan ke requestChannelCancel(). Order manual/null
+            // tidak punya channel untuk dibatalkan.
 
             if ($newStatus === 'cancelled') {
                 $actorId = null;
@@ -1248,6 +1374,12 @@ class SalesOrderService
         $channelStatus = $orderData['channel_status'] ?? 'UNKNOWN';
         $mappedStatus = $this->mapChannelStatusToInternal($channelStatus);
         $source = $orderData['source'] ?? null;
+
+        // Simpan status channel MENTAH (channel_status disimpan ternormalisasi via
+        // model mutator, kehilangan beda TikTok UNPAID vs ON_HOLD/AWAITING_SHIPMENT).
+        if (array_key_exists('channel_status', $orderData) && $orderData['channel_status'] !== null && $orderData['channel_status'] !== '') {
+            $orderData['channel_status_raw'] = $orderData['channel_status'];
+        }
 
         if (! empty($orderData['channel_order_no']) && empty($orderData['salesorder_no'])) {
             $numbering = $this->generateSalesOrderNo(

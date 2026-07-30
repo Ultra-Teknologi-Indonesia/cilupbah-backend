@@ -8,7 +8,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\MarketplaceCancelReasonService;
-use Modules\Channel\Services\TikTokOrderService;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Marketplace', description: 'Cross-marketplace endpoints')]
@@ -35,12 +34,13 @@ class MarketplaceCancelReasonController extends Controller
 
     #[OA\Get(
         path: '/api/v1/marketplace/cancel-reasons/{marketplace}',
-        summary: 'Get cancellation reasons for a specific marketplace',
+        summary: 'Get seller-initiated cancellation reasons for a specific marketplace',
         security: [['bearerAuth' => []]],
         tags: ['Marketplace'],
         parameters: [
             new OA\Parameter(name: 'marketplace', in: 'path', required: true, schema: new OA\Schema(type: 'string', enum: ['tiktok', 'lazada', 'shopee'])),
-            new OA\Parameter(name: 'shop_id', in: 'query', required: false, description: 'Fetch live reasons from the marketplace for this shop (tiktok/lazada)', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'shop_id', in: 'query', required: false, description: 'Wajib untuk lazada — ambil reason_id numerik live', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'status', in: 'query', required: false, description: 'TikTok: status channel MENTAH (UNPAID / ON_HOLD / AWAITING_SHIPMENT) untuk memilih set alasan', schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'OK'),
@@ -58,31 +58,38 @@ class MarketplaceCancelReasonController extends Controller
             );
         }
 
-        $shopId = $request->query('shop_id');
+        // Lazada: WAJIB reason_id numerik live (katalog statis tidak valid untuk API cancel).
+        if ($mp === MarketplaceCancelReasonService::LAZADA) {
+            $shopId = $request->query('shop_id');
 
-        if ($shopId && $this->service->isLiveCapable($mp)) {
+            if (! $shopId) {
+                return $this->errorResponse('Parameter shop_id wajib untuk alasan pembatalan Lazada.', 422);
+            }
+
             try {
-                $raw = $mp === MarketplaceCancelReasonService::LAZADA
-                    ? app(LazadaOrderService::class)->getCancelReasons($shopId)
-                    : app(TikTokOrderService::class)->getCancelReasonsLive($shopId);
-
+                $raw = app(LazadaOrderService::class)->getCancelReasons($shopId);
                 $reasons = $this->service->normalize($raw);
 
-                if (! empty($reasons)) {
-                    return $this->successResponse(
-                        $reasons,
-                        "Daftar alasan pembatalan {$mp} (live)",
-                        200,
-                        ['source' => 'live', 'marketplace' => $mp]
-                    );
-                }
+                return $this->successResponse(
+                    $reasons,
+                    'Daftar alasan pembatalan lazada (live)',
+                    200,
+                    ['source' => 'live', 'marketplace' => $mp]
+                );
             } catch (\Throwable $e) {
-                Log::warning("Live cancel reasons fetch failed for {$mp}: {$e->getMessage()}");
+                Log::warning("Live cancel reasons fetch failed for lazada: {$e->getMessage()}");
+
+                return $this->errorResponse('Gagal memuat alasan pembatalan Lazada. Coba lagi.', 502);
             }
         }
 
+        // TikTok: status-aware; Shopee: statis.
+        $context = $mp === MarketplaceCancelReasonService::TIKTOK
+            ? $request->query('status')
+            : null;
+
         return $this->successResponse(
-            $this->service->for($mp),
+            $this->service->for($mp, $context),
             "Daftar alasan pembatalan {$mp}",
             200,
             ['source' => 'default', 'marketplace' => $mp]

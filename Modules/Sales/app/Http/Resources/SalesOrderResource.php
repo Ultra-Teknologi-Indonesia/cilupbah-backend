@@ -90,9 +90,13 @@ class SalesOrderResource extends JsonResource
 
             'status'              => $this->status,
             'channel_status'      => $this->channel_status,
+            'channel_status_raw'  => $this->channel_status_raw,
             'is_paid'             => (bool) $this->is_paid,
             'is_canceled'         => (bool) $this->is_canceled,
             'cancel_reason'       => $this->cancel_reason,
+            'channel_cancel_status'       => $this->channel_cancel_status,
+            'channel_cancel_error'        => $this->channel_cancel_error,
+            'channel_cancel_requested_at' => $this->channel_cancel_requested_at,
             'payment_method'      => $this->payment_method,
             'payment_method_name' => $this->payment_method_name,
             'paid_time'           => $this->paid_time,

@@ -681,8 +681,19 @@ class TikTokOrderService
             throw new \Exception('Pesanan tidak ditemukan di sistem lokal');
         }
 
-        if (! in_array($order->channel_status, ['ON_HOLD', 'AWAITING_SHIPMENT', 'READY_TO_SHIP'])) {
-            throw new \Exception("Pembatalan ditolak. Status pesanan saat ini adalah {$order->channel_status}. Hanya berlaku untuk ON_HOLD dan AWAITING_SHIPMENT.");
+        // Guard status. Utamakan status MENTAH (channel_status_raw); bila kosong,
+        // fallback ke channel_status ternormalisasi (UNPAID/READY_TO_SHIP).
+        $rawStatus = strtoupper((string) ($order->channel_status_raw ?? ''));
+        $normalized = strtoupper((string) ($order->channel_status ?? ''));
+        $cancelable = $rawStatus !== ''
+            ? in_array($rawStatus, ['UNPAID', 'ON_HOLD', 'AWAITING_SHIPMENT'], true)
+            : in_array($normalized, ['UNPAID', 'READY_TO_SHIP'], true);
+
+        if (! $cancelable) {
+            $shown = $rawStatus !== '' ? $rawStatus : $normalized;
+            throw \Modules\Channel\Exceptions\ChannelCancelException::final(
+                "TikTok menolak pembatalan {$orderId}: status {$shown} tidak dapat dibatalkan seller.",
+            );
         }
 
         $shop = $this->shopRepository->findByShopId($order->channel_shop_id);
@@ -692,21 +703,43 @@ class TikTokOrderService
 
         $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
         $body = [
-            'order_id'           => $orderId,
-            'cancel_reason_key'  => $reason,
-            'cancel_reason'      => $reason,
+            'order_id'      => $orderId,
+            'cancel_reason' => $reason,
         ];
 
         $res = $this->client->request('POST', '/return_refund/202309/cancellations', $queries, $body, $shop->access_token);
 
+        $code = (int) ($res['code'] ?? 0);
+        if ($code !== 0) {
+            $message = $res['message'] ?? "code {$code}";
+            // 36009003 = internal error (transien). Sisanya diperlakukan final.
+            throw new \Modules\Channel\Exceptions\ChannelCancelException(
+                "TikTok menolak pembatalan {$orderId}: {$message}",
+                retryable: $code === 36009003,
+                channelCode: (string) $code,
+            );
+        }
+
+        $cancelStatus = $res['data']['cancel_status'] ?? null;
+        if ($cancelStatus === 'CANCELLATION_REQUEST_CANCEL') {
+            throw \Modules\Channel\Exceptions\ChannelCancelException::final(
+                "TikTok membatalkan permintaan pembatalan {$orderId} (CANCELLATION_REQUEST_CANCEL).",
+            );
+        }
+
         $this->resyncLocalOrder($order->channel_shop_id, $orderId);
 
-        return $res;
+        return [
+            'cancel_id'     => $res['data']['cancel_id'] ?? null,
+            'cancel_status' => $cancelStatus,
+            'async'         => $cancelStatus !== 'CANCELLATION_REQUEST_COMPLETE',
+            'raw'           => $res,
+        ];
     }
 
-    public function getCancelReasons(): array
+    public function getCancelReasons(?string $status = null): array
     {
-        return collect(app(MarketplaceCancelReasonService::class)->for(MarketplaceCancelReasonService::TIKTOK))
+        return collect(app(MarketplaceCancelReasonService::class)->for(MarketplaceCancelReasonService::TIKTOK, $status))
             ->pluck('label', 'key')
             ->all();
     }

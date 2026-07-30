@@ -31,8 +31,10 @@ class MarketplaceCancelReasonApiTest extends TestCase
             ->assertStatus(200)
             ->assertJsonStructure([
                 'data' => [
-                    'tiktok' => [['key', 'label']],
-                    'lazada' => [['key', 'label']],
+                    'tiktok' => [
+                        'unpaid' => [['key', 'label']],
+                        'paid'   => [['key', 'label']],
+                    ],
                     'shopee' => [['key', 'label']],
                 ],
             ]);
@@ -57,7 +59,7 @@ class MarketplaceCancelReasonApiTest extends TestCase
         $this->actingAs($this->user, 'sanctum')
             ->getJson('/api/v1/marketplace/cancel-reasons/Shopee')
             ->assertStatus(200)
-            ->assertJsonFragment(['key' => 'OTHERS']);
+            ->assertJsonFragment(['key' => 'CUSTOMER_REQUEST']);
     }
 
     public function test_unsupported_marketplace_returns_422(): void
@@ -90,40 +92,38 @@ class MarketplaceCancelReasonApiTest extends TestCase
             ->assertJsonFragment(['key' => '101', 'label' => 'Out of stock (live)']);
     }
 
-    public function test_tiktok_fetches_live_reasons_with_shop_id(): void
+    public function test_tiktok_reasons_are_status_aware(): void
     {
-        $this->mock(\Modules\Channel\Services\TikTokOrderService::class, function ($m) {
-            $m->shouldReceive('getCancelReasonsLive')->with('SHOP-2')->once()
-                ->andReturn([['reason_key' => 'tt_live_key', 'reason' => 'Habis (live)']]);
-        });
-
+        // Default (tanpa status) = set 'paid'.
         $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/v1/marketplace/cancel-reasons/tiktok?shop_id=SHOP-2')
-            ->assertStatus(200)
-            ->assertJsonPath('meta.source', 'live')
-            ->assertJsonFragment(['key' => 'tt_live_key', 'label' => 'Habis (live)']);
-    }
-
-    public function test_live_fetch_failure_falls_back_to_default_catalog(): void
-    {
-        $this->mock(\Modules\Channel\Services\TikTokOrderService::class, function ($m) {
-            $m->shouldReceive('getCancelReasonsLive')->andThrow(new \RuntimeException('tiktok api down'));
-        });
-
-        $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/v1/marketplace/cancel-reasons/tiktok?shop_id=SHOP-3')
+            ->getJson('/api/v1/marketplace/cancel-reasons/tiktok')
             ->assertStatus(200)
             ->assertJsonPath('meta.source', 'default')
             ->assertJsonFragment(['key' => 'seller_cancel_reason_out_of_stock']);
+
+        // status=UNPAID -> set 'unpaid'.
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/marketplace/cancel-reasons/tiktok?status=UNPAID')
+            ->assertStatus(200)
+            ->assertJsonFragment(['key' => 'seller_cancel_unpaid_reason_out_of_stock']);
     }
 
-    public function test_without_shop_id_returns_default_catalog(): void
+    public function test_lazada_requires_shop_id(): void
     {
         $this->actingAs($this->user, 'sanctum')
             ->getJson('/api/v1/marketplace/cancel-reasons/lazada')
-            ->assertStatus(200)
-            ->assertJsonPath('meta.source', 'default')
-            ->assertJsonFragment(['key' => 'out_of_stock']);
+            ->assertStatus(422);
+    }
+
+    public function test_lazada_live_fetch_failure_returns_502(): void
+    {
+        $this->mock(\Modules\Channel\Services\LazadaOrderService::class, function ($m) {
+            $m->shouldReceive('getCancelReasons')->andThrow(new \RuntimeException('lazada api down'));
+        });
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/marketplace/cancel-reasons/lazada?shop_id=SHOP-3')
+            ->assertStatus(502);
     }
 
     public function test_tiktok_live_parses_reject_reasons_payload(): void
