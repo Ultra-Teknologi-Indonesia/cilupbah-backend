@@ -42,7 +42,7 @@ class StockService
         });
 
         foreach ($components as $component) {
-            SyncStockToChannelsJob::dispatch($component['variant_id']);
+            SyncStockToChannelsJob::dispatch($component['variant_id'])->afterCommit();
         }
 
         return true;
