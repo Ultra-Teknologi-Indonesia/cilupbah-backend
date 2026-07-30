@@ -504,6 +504,9 @@ class InventoryService
             throw new \Exception('Minimal 1 produk harus ditransfer.');
         }
 
+        app(\Modules\Product\Services\BundleGuardService::class)
+            ->assertNotBundle(array_column($items, 'item_id'), 'transfer antar rak');
+
         foreach ($items as $idx => $it) {
             if (empty($it['source_bin_id'])) {
                 throw new \Exception('Setiap baris produk wajib punya rak asal pada baris ke-' . ($idx + 1) . '.');
@@ -1171,6 +1174,9 @@ class InventoryService
 
     public function transferOut(array $data): InventoryTransfer
     {
+        app(\Modules\Product\Services\BundleGuardService::class)
+            ->assertNotBundle(array_column($data['items'] ?? [], 'item_id'), 'transfer stok');
+
         $transfer = DB::transaction(function () use ($data) {
             [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
             $transferNumber = $this->generateTransferNumber();
