@@ -418,12 +418,11 @@ class ShopeeOrderService
 
     public function getCancelReasons(): array
     {
-        return [
-            ['id' => 'OUT_OF_STOCK', 'text' => 'Stok habis'],
-            ['id' => 'CUSTOMER_REQUEST', 'text' => 'Permintaan pembeli'],
-            ['id' => 'UNDELIVERABLE_AREA', 'text' => 'Area tidak terjangkau'],
-            ['id' => 'COD_NOT_SUPPORTED', 'text' => 'COD tidak didukung'],
-        ];
+        // Satu sumber (config, fallback konstanta) — Shopee tak punya API daftar alasan.
+        return array_map(
+            fn ($r) => ['id' => $r['key'], 'text' => $r['label']],
+            app(\Modules\Channel\Services\MarketplaceCancelReasonService::class)->for('shopee'),
+        );
     }
 
     public function getLogistics(string $shopId): array

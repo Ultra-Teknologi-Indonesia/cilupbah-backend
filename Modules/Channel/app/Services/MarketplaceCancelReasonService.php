@@ -46,14 +46,25 @@ class MarketplaceCancelReasonService
         return strtoupper((string) $rawStatus) === 'UNPAID' ? 'unpaid' : 'paid';
     }
 
+    // Shopee/TikTok tak punya API daftar alasan (enum platform). Diambil dari config
+    // agar bisa dikoreksi tanpa deploy; konstanta di atas jadi fallback. Lazada live.
+    private function shopeeReasons(): array
+    {
+        return config('cancel_reasons.shopee') ?: self::SHOPEE_REASONS;
+    }
+
+    private function tiktokReasons(string $group): array
+    {
+        return config("cancel_reasons.tiktok.{$group}")
+            ?: ($group === 'unpaid' ? self::TIKTOK_UNPAID : self::TIKTOK_PAID);
+    }
+
     public function for(string $marketplace, ?string $context = null): array
     {
         return match (strtolower($marketplace)) {
-            self::TIKTOK => $this->tiktokStatusGroup($context) === 'unpaid'
-                ? self::TIKTOK_UNPAID
-                : self::TIKTOK_PAID,
-            self::SHOPEE => self::SHOPEE_REASONS,
-            self::LAZADA => [], 
+            self::TIKTOK => $this->tiktokReasons($this->tiktokStatusGroup($context)),
+            self::SHOPEE => $this->shopeeReasons(),
+            self::LAZADA => [],
             default      => [],
         };
     }
@@ -61,9 +72,9 @@ class MarketplaceCancelReasonService
     public function all(): array
     {
         return [
-            self::TIKTOK => ['unpaid' => self::TIKTOK_UNPAID, 'paid' => self::TIKTOK_PAID],
-            self::SHOPEE => self::SHOPEE_REASONS,
-            self::LAZADA => [], 
+            self::TIKTOK => ['unpaid' => $this->tiktokReasons('unpaid'), 'paid' => $this->tiktokReasons('paid')],
+            self::SHOPEE => $this->shopeeReasons(),
+            self::LAZADA => [],
         ];
     }
 
