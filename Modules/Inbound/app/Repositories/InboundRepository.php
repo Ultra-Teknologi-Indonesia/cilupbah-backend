@@ -150,6 +150,13 @@ class InboundRepository
         return $item->save();
     }
 
+    public function updateItemDiscrepancyNote(string $itemId, ?string $note): bool
+    {
+        $item = InboundItem::findOrFail($itemId);
+        $item->discrepancy_note = $note;
+        return $item->save();
+    }
+
     public function createReceipt(array $data): InboundReceipt
     {
         return InboundReceipt::create($data);

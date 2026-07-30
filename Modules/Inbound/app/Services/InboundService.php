@@ -1624,6 +1624,32 @@ class InboundService
         });
     }
 
+    public function setDiscrepancyNote(string $inboundId, string $inboundItemId, ?string $note, string $userId): Inbound
+    {
+        $note = trim((string) $note);
+
+        return DB::transaction(function () use ($inboundId, $inboundItemId, $note) {
+            $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
+            if (! $inbound) {
+                throw new \Exception('Dokumen Inbound tidak ditemukan.');
+            }
+            if ($inbound->status === Inbound::STATUS_CANCELLED) {
+                throw new \Exception('Inbound sudah dibatalkan.');
+            }
+
+            $this->assertWebCanMutate($inbound);
+
+            $item = $this->inboundRepository->findItemByUuidForUpdate($inboundItemId);
+            if (! $item || $item->inbound_id !== $inbound->id) {
+                throw new \Exception('Item inbound tidak ditemukan.');
+            }
+
+            $this->inboundRepository->updateItemDiscrepancyNote($item->id, $note === '' ? null : $note);
+
+            return $this->getById($inboundId);
+        });
+    }
+
     private function buildQtyCorrectionNote(Inbound $inbound, InboundItem $item, int $before, int $after, string $userId): string
     {
         $delta = $after - $before;

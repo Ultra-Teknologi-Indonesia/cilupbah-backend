@@ -548,6 +548,52 @@ class InboundController extends Controller
         }
     }
 
+    #[OA\Patch(
+        path: '/api/v1/inbounds/{id}/items/{itemId}/note',
+        summary: 'Perbarui catatan (discrepancy note) baris penerimaan',
+        security: [['bearerAuth' => []]],
+        tags: ['Inbounds'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                properties: [
+                    new OA\Property(property: 'note', type: 'string', nullable: true, description: 'Catatan bebas. Kosongkan untuk menghapus catatan.'),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Catatan diperbarui'),
+            new OA\Response(response: 422, description: 'Validasi gagal'),
+        ]
+    )]
+    public function setDiscrepancyNote(string $id, string $itemId, Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'note' => 'nullable|string|max:1000',
+        ]);
+
+        try {
+            $userId = (string) ($request->user()->id ?? 'system');
+            $inbound = $this->inboundService->setDiscrepancyNote(
+                $id,
+                $itemId,
+                $validated['note'] ?? null,
+                $userId,
+            );
+
+            return $this->successResponse($inbound, 'Catatan diperbarui.');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
+        } catch (\Exception $e) {
+            return $this->errorResponse(
+                'Gagal menyimpan catatan.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
+        }
+    }
+
     #[OA\Post(
         path: '/api/v1/inbounds/bulk-cancel',
         summary: 'Batalkan (hapus) beberapa penerimaan sekaligus',

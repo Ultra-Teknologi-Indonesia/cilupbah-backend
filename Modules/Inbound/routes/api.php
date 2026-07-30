@@ -50,6 +50,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
         Route::post('inbounds/{id}/join', [InboundController::class, 'joinSession'])->name('inbounds.join');
         Route::patch('inbounds/{id}/items/{itemId}/received-qty', [InboundController::class, 'setReceivedQty'])->name('inbounds.setReceivedQty');
+        Route::patch('inbounds/{id}/items/{itemId}/note', [InboundController::class, 'setDiscrepancyNote'])->name('inbounds.setDiscrepancyNote');
     });
 
     Route::middleware('role_or_permission:owner|edit-barang-masuk')->group(function () {
