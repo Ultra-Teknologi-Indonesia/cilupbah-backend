@@ -100,12 +100,13 @@ class SalesOrderRepository
                 ->count(),
             'unpaid'           => $this->visibleOrders()->where('status', 'pending')->where('is_paid', false)->count(),
             'failed'           => $this->scopeFailedDownload(SalesOrder::query())->count(),
-            'ready-to-process' => $this->visibleOrders()->where('status', 'reserved')
-                ->whereNull('pick_failed_at')
-                ->whereDoesntHave('picklistItems')
-                ->whereDoesntHave('items', $this->unmappedItemsConstraint())
-                ->whereDoesntHave('items', $emptyStockItemConstraint)
-                ->count(),
+            'ready-to-process' => $this->excludeChannelCancelPending(
+                $this->visibleOrders()->where('status', 'reserved')
+                    ->whereNull('pick_failed_at')
+                    ->whereDoesntHave('picklistItems')
+                    ->whereDoesntHave('items', $this->unmappedItemsConstraint())
+                    ->whereDoesntHave('items', $emptyStockItemConstraint)
+            )->count(),
             'in-transit'       => $this->visibleOrders()->where('status', 'shipped')
                 ->whereNull('received_date')->count(),
             'completed'        => $this->visibleOrders()->where('status', 'shipped')
@@ -173,11 +174,13 @@ class SalesOrderRepository
         return match ($tab) {
             'unpaid'           => $query->where('status', 'pending')->where('is_paid', false),
             'failed'           => $this->scopeFailedDownload($query),
-            'ready-to-process' => $query->where('status', 'reserved')
-                ->whereNull('pick_failed_at')
-                ->whereDoesntHave('picklistItems')
-                ->whereDoesntHave('items', $this->unmappedItemsConstraint())
-                ->whereDoesntHave('items', fn ($q) => $q->whereRaw(SalesOrder::shortfallItemWhereRaw())),
+            'ready-to-process' => $this->excludeChannelCancelPending(
+                $query->where('status', 'reserved')
+                    ->whereNull('pick_failed_at')
+                    ->whereDoesntHave('picklistItems')
+                    ->whereDoesntHave('items', $this->unmappedItemsConstraint())
+                    ->whereDoesntHave('items', fn ($q) => $q->whereRaw(SalesOrder::shortfallItemWhereRaw()))
+            ),
             'in-transit'       => $query->where('status', 'shipped')->whereNull('received_date'),
             'completed'        => $query->where('status', 'shipped')->whereNotNull('received_date'),
             'empty-stock'      => $this->applyEmptyStockSubScope($query, $sub),
@@ -205,6 +208,13 @@ class SalesOrderRepository
             'confirmed' => $baseQuery->whereNotNull('contacted_at'),
             default     => $baseQuery,
         };
+    }
+
+    protected function excludeChannelCancelPending($query)
+    {
+        return $query->where(fn ($q) => $q
+            ->whereNull('channel_cancel_status')
+            ->orWhere('channel_cancel_status', '!=', 'pending'));
     }
 
     protected function applyChannelCancelSubScope($query, ?string $sub)
