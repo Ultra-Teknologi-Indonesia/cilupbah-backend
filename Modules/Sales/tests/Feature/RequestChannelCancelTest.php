@@ -60,7 +60,7 @@ class RequestChannelCancelTest extends TestCase
         $this->assertSame('pending', $order->channel_cancel_status);
         $this->assertSame('OUT_OF_STOCK', $order->cancel_reason);
         $this->assertNotNull($order->channel_cancel_requested_at);
-        // status lokal TIDAK langsung cancelled (finalisasi via resync/webhook)
+
         $this->assertSame('reserved', $order->status);
 
         Bus::assertDispatched(CancelChannelOrderJob::class,
@@ -82,7 +82,6 @@ class RequestChannelCancelTest extends TestCase
         Bus::fake();
         $orderId = $this->seedOrder(['status' => 'shipped', 'channel_status' => 'SHIPPED', 'channel_status_raw' => 'SHIPPED']);
 
-        // shipped tidak bisa transisi ke cancelled -> UserFacingException (422)
         $this->expectException(UserFacingException::class);
         app(SalesOrderService::class)->requestChannelCancel($orderId, 'OUT_OF_STOCK');
     }
@@ -90,7 +89,7 @@ class RequestChannelCancelTest extends TestCase
     public function test_ineligible_channel_status_blocked(): void
     {
         Bus::fake();
-        // Lazada konservatif: READY_TO_SHIP tidak diizinkan.
+
         $orderId = $this->seedOrder([
             'source' => 'lazada',
             'status' => 'reserved',
@@ -106,7 +105,6 @@ class RequestChannelCancelTest extends TestCase
     {
         Bus::fake();
 
-        // TikTok paid (ON_HOLD) -> reason set 'paid'
         $paidOrder = $this->seedOrder([
             'source' => 'tiktok',
             'status' => 'reserved',
@@ -116,7 +114,6 @@ class RequestChannelCancelTest extends TestCase
         $order = app(SalesOrderService::class)->requestChannelCancel($paidOrder, 'seller_cancel_reason_out_of_stock');
         $this->assertSame('pending', $order->channel_cancel_status);
 
-        // Reason unpaid dipakai di order paid -> ditolak
         $paidOrder2 = $this->seedOrder([
             'source' => 'tiktok',
             'status' => 'reserved',
@@ -131,8 +128,6 @@ class RequestChannelCancelTest extends TestCase
     {
         Bus::fake();
 
-        // Order lama: channel_status_raw null, channel_status UNPAID (ON_HOLD ternormalisasi),
-        // tapi is_paid=true -> harus divalidasi dengan set PAID.
         $paidNoRaw = $this->seedOrder([
             'source' => 'tiktok',
             'status' => 'reserved',
@@ -143,7 +138,6 @@ class RequestChannelCancelTest extends TestCase
         $order = app(SalesOrderService::class)->requestChannelCancel($paidNoRaw, 'seller_cancel_reason_out_of_stock');
         $this->assertSame('pending', $order->channel_cancel_status);
 
-        // Alasan UNPAID untuk order paid (raw null) -> ditolak.
         $paidNoRaw2 = $this->seedOrder([
             'source' => 'tiktok',
             'status' => 'reserved',
@@ -178,7 +172,7 @@ class RequestChannelCancelTest extends TestCase
 
     public function test_failed_cancel_is_not_held_from_processing(): void
     {
-        // channel_cancel_status='failed' (ditolak) TIDAK boleh di-hold.
+
         $orderId = $this->seedOrder([
             'source' => 'tiktok',
             'status' => 'reserved',
@@ -190,6 +184,40 @@ class RequestChannelCancelTest extends TestCase
             ->where('channel_cancel_status', 'pending')
             ->exists();
         $this->assertFalse($held);
+    }
+
+    public function test_unknown_channel_status_allowed_when_local_pre_ship(): void
+    {
+        Bus::fake();
+
+        $orderId = $this->seedOrder([
+            'source' => 'shopee',
+            'status' => 'reserved',
+            'channel_status' => 'UNKNOWN',
+            'channel_status_raw' => null,
+            'is_paid' => true,
+        ]);
+
+        $order = app(SalesOrderService::class)->requestChannelCancel($orderId, 'OUT_OF_STOCK');
+        $this->assertSame('pending', $order->channel_cancel_status);
+    }
+
+    public function test_mark_channel_cancel_rejected_flips_pending_to_failed(): void
+    {
+        $orderId = $this->seedOrder([
+            'source' => 'tiktok',
+            'status' => 'reserved',
+            'channel_status' => 'READY_TO_SHIP',
+            'channel_cancel_status' => 'pending',
+            'channel_cancel_requested_at' => now(),
+        ]);
+        $no = SalesOrder::find($orderId)->salesorder_no;
+
+        app(SalesOrderService::class)->markChannelCancelRejected($no, 'ditolak');
+
+        $order = SalesOrder::find($orderId);
+        $this->assertSame('failed', $order->channel_cancel_status);
+        $this->assertSame('ditolak', $order->channel_cancel_error);
     }
 
     public function test_double_request_blocked(): void
