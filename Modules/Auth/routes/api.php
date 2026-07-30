@@ -30,7 +30,7 @@ Route::prefix('v1/auth')->group(function () {
             ->name('auth.refresh');
 
         Route::post('/unlock', [AuthController::class, 'unlock'])
-            ->middleware('throttle:5,1')
+            ->middleware('throttle:10,1')
             ->name('auth.unlock');
     });
 });
