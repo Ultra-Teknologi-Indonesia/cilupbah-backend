@@ -8,7 +8,6 @@ use Illuminate\Support\Facades\Queue;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\Promotion;
-use Modules\Product\Models\ProductBundle;
 use Modules\Product\Models\ProductWholesalePrice;
 use Modules\Inventory\Models\Inventory;
 use Modules\Product\Models\Category;
@@ -192,8 +191,7 @@ class InventoryExtendedTest extends TestCase
             'sell_price' => 200000,
             'is_active' => true,
         ]);
-        ProductBundle::create([
-            'bundle_variant_id' => $bundleVariant->id,
+        $bundle->bundleItems()->create([
             'component_variant_id' => $this->variant->id,
             'qty' => 2,
         ]);

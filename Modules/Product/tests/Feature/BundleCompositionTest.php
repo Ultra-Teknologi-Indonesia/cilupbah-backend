@@ -111,11 +111,20 @@ class BundleCompositionTest extends TestCase
             'updated_at' => now(),
         ]);
         $locationId = DB::table('locations')->value('id');
+        $binId = \Illuminate\Support\Str::uuid()->toString();
+        DB::table('location_bins')->insert([
+            'id' => $binId,
+            'location_id' => $locationId,
+            'bin_final_code' => 'BIN-A1',
+            'is_inbound' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         DB::table('inventories')->insert([
             'id' => \Illuminate\Support\Str::uuid()->toString(),
             'item_id' => $aBiru->id,
             'location_id' => $locationId,
-            'bin_id' => null,
+            'bin_id' => $binId,
             'on_hand' => 7,
             'on_order' => 0,
             'available' => 7,

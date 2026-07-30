@@ -22,11 +22,14 @@ class BundleOutboundExplosionTest extends TestCase
 
     private string $locationId;
 
+    private string $actorId;
+
     protected function setUp(): void
     {
         parent::setUp();
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Umum']);
         $this->locationId = $this->makeLocation();
+        $this->actorId = \App\Models\User::factory()->create()->id;
     }
 
     private function makeLocation(): string
@@ -101,7 +104,7 @@ class BundleOutboundExplosionTest extends TestCase
         $picklist = app(PicklistService::class)->create([
             'order_ids' => [$order->id],
             'location_id' => $this->locationId,
-            'created_by' => 'system:test',
+            'created_by' => $this->actorId,
         ]);
 
         $items = PicklistItem::where('picklist_id', $picklist->id)->get();
@@ -120,7 +123,7 @@ class BundleOutboundExplosionTest extends TestCase
         $packlist = app(PacklistService::class)->create([
             'order_id' => $order->id,
             'location_id' => $this->locationId,
-            'created_by' => 'system:test',
+            'created_by' => $this->actorId,
         ]);
 
         $items = PacklistItem::where('packlist_id', $packlist->id)->get();
@@ -140,7 +143,7 @@ class BundleOutboundExplosionTest extends TestCase
         $picklist = app(PicklistService::class)->create([
             'order_ids' => [$order->id],
             'location_id' => $this->locationId,
-            'created_by' => 'system:test',
+            'created_by' => $this->actorId,
         ]);
         $pickItems = PicklistItem::where('picklist_id', $picklist->id)->get();
         $this->assertCount(1, $pickItems);
@@ -151,7 +154,7 @@ class BundleOutboundExplosionTest extends TestCase
         $packlist = app(PacklistService::class)->create([
             'order_id' => $order->id,
             'location_id' => $this->locationId,
-            'created_by' => 'system:test',
+            'created_by' => $this->actorId,
         ]);
         $packItems = PacklistItem::where('packlist_id', $packlist->id)->get();
         $this->assertCount(1, $packItems);
