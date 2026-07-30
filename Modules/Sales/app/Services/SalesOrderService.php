@@ -157,15 +157,26 @@ class SalesOrderService
     public function moveToReadyToProcess(array $orderIds, $actor = null): array
     {
 
-        $skippedIds = SalesOrder::whereIn('id', $orderIds)
+        // Hold order yang sedang menunggu konfirmasi pembatalan dari marketplace
+        // (hanya 'pending' — order yang ditolak/failed tetap bisa diproses).
+        $pendingCancelIds = SalesOrder::whereIn('id', $orderIds)
+            ->where('channel_cancel_status', 'pending')
+            ->pluck('salesorder_no', 'id')
+            ->all();
+
+        $stockShortIds = SalesOrder::whereIn('id', $orderIds)
+            ->whereNotIn('id', array_keys($pendingCancelIds))
             ->where('status', 'reserved')
             ->hasStockShortfall()
             ->pluck('salesorder_no', 'id')
             ->all();
 
         $skipped = [];
-        foreach ($skippedIds as $id => $orderNo) {
-            $skipped[] = ['id' => (string) $id, 'salesorder_no' => $orderNo];
+        foreach ($pendingCancelIds as $id => $orderNo) {
+            $skipped[] = ['id' => (string) $id, 'salesorder_no' => $orderNo, 'reason' => 'cancel_pending'];
+        }
+        foreach ($stockShortIds as $id => $orderNo) {
+            $skipped[] = ['id' => (string) $id, 'salesorder_no' => $orderNo, 'reason' => 'empty_stock'];
         }
 
         if (! empty($skipped)) {
@@ -177,10 +188,15 @@ class SalesOrderService
             }
 
             foreach ($skipped as $s) {
+                $isCancel = $s['reason'] === 'cancel_pending';
                 $this->notifications->toPermission(self::NOTIF_ORDER_PERMISSION, [
-                    'type' => 'order_empty_stock',
-                    'title' => 'Pesanan tidak bisa diproses (stok kosong)',
-                    'message' => "Pesanan {$s['salesorder_no']} di-skip karena ada SKU stok kosong.",
+                    'type' => $isCancel ? 'order_cancel_pending' : 'order_empty_stock',
+                    'title' => $isCancel
+                        ? 'Pesanan ditahan (pembatalan diproses)'
+                        : 'Pesanan tidak bisa diproses (stok kosong)',
+                    'message' => $isCancel
+                        ? "Pesanan {$s['salesorder_no']} di-skip: menunggu konfirmasi pembatalan marketplace."
+                        : "Pesanan {$s['salesorder_no']} di-skip karena ada SKU stok kosong.",
                     'data' => [
                         'sales_order_id' => $s['id'],
                         'salesorder_no' => $s['salesorder_no'],
@@ -190,7 +206,8 @@ class SalesOrderService
             }
         }
 
-        $eligibleIds = array_values(array_diff($orderIds, array_keys($skippedIds)));
+        $skippedDbIds = array_merge(array_keys($pendingCancelIds), array_keys($stockShortIds));
+        $eligibleIds = array_values(array_diff($orderIds, $skippedDbIds));
 
         if (empty($eligibleIds)) {
             return ['moved' => 0, 'skipped' => $skipped];
@@ -460,6 +477,29 @@ class SalesOrderService
         return $order->fresh();
     }
 
+    /**
+     * Lepas hold pembatalan marketplace (mis. marketplace menolak / tak kunjung
+     * memfinalisasi) sehingga order bisa kembali diproses gudang.
+     */
+    public function releaseChannelCancel(string $orderId): SalesOrder
+    {
+        $order = SalesOrder::findOrFail($orderId);
+
+        if ($order->status === 'cancelled' || $order->is_canceled) {
+            throw new \App\Exceptions\UserFacingException('Sudah dibatalkan', 'Pesanan sudah dibatalkan, tidak bisa dilanjutkan.');
+        }
+
+        if ($order->channel_cancel_status !== null) {
+            $order->forceFill([
+                'channel_cancel_status'       => null,
+                'channel_cancel_error'        => null,
+                'channel_cancel_requested_at' => null,
+            ])->save();
+        }
+
+        return $order->fresh();
+    }
+
     private function assertChannelCancellable(SalesOrder $order, string $source): void
     {
         $eligible = self::CHANNEL_CANCELLABLE_STATUSES[$source] ?? [];
@@ -539,6 +579,9 @@ class SalesOrderService
             $orders = SalesOrder::with('items')
                 ->whereIn('id', $orderIds)
                 ->whereIn('status', ['packed', 'reserved'])
+                // Jangan kirim order yang pembatalannya sedang diproses marketplace.
+                ->where(fn ($q) => $q->whereNull('channel_cancel_status')
+                    ->orWhere('channel_cancel_status', '!=', 'pending'))
                 ->get();
 
             foreach ($orders as $order) {
@@ -1442,6 +1485,13 @@ class SalesOrderService
 
             $finalStatus = $this->resolveInternalStatus($previousStatus, $mappedStatus);
             $orderData['status'] = $finalStatus;
+
+            // Finalisasi request-cancel seller: saat channel mengonfirmasi cancelled,
+            // tandai 'accepted'. Guard fulfillment (pending) otomatis lepas.
+            if ($finalStatus === 'cancelled' && ($existing->channel_cancel_status ?? null) === 'pending') {
+                $orderData['channel_cancel_status'] = 'accepted';
+                $orderData['channel_cancel_error'] = null;
+            }
 
             $order = $this->orderRepository->upsertOrderBySalesOrderNo($orderData['salesorder_no'], $orderData);
 

@@ -855,6 +855,26 @@ class SalesOrderController extends Controller
         );
     }
 
+    #[OA\Post(
+        path: '/api/v1/sales/orders/{id}/release-cancel',
+        summary: 'Lepas hold pembatalan marketplace agar order bisa diproses lagi',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Hold pembatalan dilepas'),
+            new OA\Response(response: 422, description: 'Pesanan sudah dibatalkan'),
+        ]
+    )]
+    public function releaseChannelCancel(string $id)
+    {
+        $order = $this->orderService->releaseChannelCancel($id);
+
+        return $this->successResponse(new SalesOrderResource($order), 'Hold pembatalan dilepas, pesanan bisa diproses');
+    }
+
     #[OA\Get(
         path: '/api/v1/sales/{id}/shipping-label',
         summary: 'Get shipping label / AWB document from marketplace channel',

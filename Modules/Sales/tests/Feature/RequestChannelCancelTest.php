@@ -155,6 +155,43 @@ class RequestChannelCancelTest extends TestCase
         app(SalesOrderService::class)->requestChannelCancel($paidNoRaw2, 'seller_cancel_unpaid_reason_out_of_stock');
     }
 
+    public function test_move_to_ready_holds_pending_cancel_and_release_unblocks(): void
+    {
+        Bus::fake();
+        $orderId = $this->seedOrder([
+            'source' => 'tiktok',
+            'status' => 'reserved',
+            'channel_status' => 'READY_TO_SHIP',
+            'channel_cancel_status' => 'pending',
+            'channel_cancel_requested_at' => now(),
+        ]);
+
+        $res = app(SalesOrderService::class)->moveToReadyToProcess([$orderId]);
+        $this->assertSame(0, $res['moved']);
+        $this->assertCount(1, $res['skipped']);
+        $this->assertSame('cancel_pending', $res['skipped'][0]['reason']);
+
+        $order = app(SalesOrderService::class)->releaseChannelCancel($orderId);
+        $this->assertNull($order->channel_cancel_status);
+        $this->assertNull($order->channel_cancel_requested_at);
+    }
+
+    public function test_failed_cancel_is_not_held_from_processing(): void
+    {
+        // channel_cancel_status='failed' (ditolak) TIDAK boleh di-hold.
+        $orderId = $this->seedOrder([
+            'source' => 'tiktok',
+            'status' => 'reserved',
+            'channel_status' => 'READY_TO_SHIP',
+            'channel_cancel_status' => 'failed',
+        ]);
+
+        $held = SalesOrder::whereIn('id', [$orderId])
+            ->where('channel_cancel_status', 'pending')
+            ->exists();
+        $this->assertFalse($held);
+    }
+
     public function test_double_request_blocked(): void
     {
         Bus::fake();

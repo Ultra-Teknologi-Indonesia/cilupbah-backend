@@ -127,6 +127,8 @@ class SalesOrderRepository
                     ->where('is_canceled', true)
                     ->orWhereNotNull('cancel_requested_at')
                 )->count(),
+            'channel-cancel'   => $this->visibleOrders()
+                ->whereIn('channel_cancel_status', ['pending', 'failed'])->count(),
             'returned'         => $this->visibleOrders()->whereHas('returns')->count(),
         ];
     }
@@ -182,6 +184,7 @@ class SalesOrderRepository
             'failed-pick'      => $query->where('status', 'reserved')
                 ->whereNotNull('pick_failed_at'),
             'cancellation'     => $this->applyCancellationSubScope($query, $sub),
+            'channel-cancel'   => $this->applyChannelCancelSubScope($query, $sub),
             'returned'         => $this->applyReturnSubScope($query, $sub),
             'all'              => $query->whereNull('pick_failed_at')->where(fn ($q) => $q
                 ->where('status', '!=', 'reserved')
@@ -201,6 +204,16 @@ class SalesOrderRepository
             'waiting'   => $baseQuery->whereNull('contacted_at'),
             'confirmed' => $baseQuery->whereNotNull('contacted_at'),
             default     => $baseQuery,
+        };
+    }
+
+    protected function applyChannelCancelSubScope($query, ?string $sub)
+    {
+        return match ($sub) {
+            'pending'  => $query->where('channel_cancel_status', 'pending'),
+            'failed'   => $query->where('channel_cancel_status', 'failed'),
+            'accepted' => $query->where('channel_cancel_status', 'accepted'),
+            default    => $query->whereIn('channel_cancel_status', ['pending', 'failed']),
         };
     }
 
