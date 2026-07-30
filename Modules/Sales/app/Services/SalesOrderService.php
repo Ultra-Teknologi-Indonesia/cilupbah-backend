@@ -475,36 +475,49 @@ class SalesOrderService
 
     private function assertValidCancelReason(SalesOrder $order, string $source, string $reason): void
     {
-        $reasonService = app(\Modules\Channel\Services\MarketplaceCancelReasonService::class);
-
-        // Lazada: validasi reason_id numerik terhadap daftar LIVE.
-        if ($reasonService->isLiveOnly($source)) {
-            try {
-                $live = $reasonService->normalize(
-                    app(\Modules\Channel\Services\LazadaOrderService::class)->getCancelReasons($order->channel_shop_id)
-                );
-            } catch (\Throwable $e) {
-                throw new \App\Exceptions\UserFacingException('Gagal memuat alasan', 'Gagal memuat daftar alasan pembatalan Lazada. Coba lagi.', 502);
-            }
-
-            $validKeys = array_column($live, 'key');
-            if (! in_array($reason, $validKeys, true)) {
-                throw new \App\Exceptions\UserFacingException('Alasan tidak valid', 'reason_id tidak valid untuk pembatalan Lazada.');
-            }
-
-            return;
+        try {
+            $validKeys = array_column($this->cancelReasonsForOrder($order), 'key');
+        } catch (\Throwable $e) {
+            throw new \App\Exceptions\UserFacingException('Gagal memuat alasan', 'Gagal memuat daftar alasan pembatalan. Coba lagi.', 502);
         }
 
-        // TikTok: set alasan tergantung status mentah. Bila channel_status_raw kosong
-        // (order lama), pakai is_paid sebagai penentu: paid -> ON_HOLD, unpaid -> UNPAID.
-        // Harus konsisten dengan derivasi di FE (RequestCancelDialog).
+        if (! in_array($reason, $validKeys, true)) {
+            throw new \App\Exceptions\UserFacingException('Alasan tidak valid', "Alasan pembatalan tidak valid untuk {$source}.");
+        }
+    }
+
+    /**
+     * Sumber kebenaran TUNGGAL daftar alasan pembatalan untuk satu order.
+     * Dipakai endpoint tampilan (FE) DAN validasi -> FE tak pernah menebak konteks,
+     * daftar yang ditampilkan = daftar yang divalidasi (berlaku semua channel).
+     * TikTok: grup unpaid/paid dari channel_status_raw (fallback is_paid).
+     * Shopee: katalog datar. Lazada: live per-shop (reason_id numerik).
+     */
+    public function cancelReasonsForOrder(SalesOrder $order): array
+    {
+        $source = strtolower((string) $order->source);
+        $reasonService = app(\Modules\Channel\Services\MarketplaceCancelReasonService::class);
+
+        if (! in_array($source, ['tiktok', 'shopee', 'lazada'], true)) {
+            return [];
+        }
+
+        if ($source === 'lazada') {
+            return $reasonService->normalize(
+                app(\Modules\Channel\Services\LazadaOrderService::class)->getCancelReasons($order->channel_shop_id)
+            );
+        }
+
         $context = $source === 'tiktok'
             ? ($order->channel_status_raw ?: ($order->is_paid ? 'ON_HOLD' : 'UNPAID'))
             : null;
 
-        if (! $reasonService->isValidReason($source, $reason, $context)) {
-            throw new \App\Exceptions\UserFacingException('Alasan tidak valid', "Alasan pembatalan tidak valid untuk {$source}.");
-        }
+        return $reasonService->for($source, $context);
+    }
+
+    public function cancelReasonsForOrderId(string $orderId): array
+    {
+        return $this->cancelReasonsForOrder(SalesOrder::findOrFail($orderId));
     }
 
     private function refreshChannelStatusRaw(SalesOrder $order): void

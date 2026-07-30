@@ -835,6 +835,27 @@ class SalesOrderController extends Controller
     }
 
     #[OA\Get(
+        path: '/api/v1/sales/orders/{id}/cancel-reasons',
+        summary: 'Daftar alasan pembatalan yang valid untuk order ini (sumber kebenaran tunggal)',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'OK'),
+            new OA\Response(response: 404, description: 'Order not found'),
+        ]
+    )]
+    public function cancelReasons(string $id)
+    {
+        return $this->successResponse(
+            $this->orderService->cancelReasonsForOrderId($id),
+            'Daftar alasan pembatalan',
+        );
+    }
+
+    #[OA\Get(
         path: '/api/v1/sales/{id}/shipping-label',
         summary: 'Get shipping label / AWB document from marketplace channel',
         security: [['bearerAuth' => []]],
