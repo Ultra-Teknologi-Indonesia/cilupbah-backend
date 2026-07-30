@@ -241,6 +241,9 @@ class InventoryService
 
     public function adjust(array $data): Inventory
     {
+        app(\Modules\Product\Services\BundleGuardService::class)
+            ->assertNotBundle([$data['item_id'] ?? null], 'operasi stok fisik');
+
         $inventory = DB::transaction(function () use ($data) {
             if (! empty($data['bin_id']) && (int) $data['qty'] > 0) {
                 app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
@@ -288,6 +291,9 @@ class InventoryService
 
     public function putaway(array $data): Inventory
     {
+        app(\Modules\Product\Services\BundleGuardService::class)
+            ->assertNotBundle([$data['item_id'] ?? null], 'penempatan (putaway)');
+
         return DB::transaction(function () use ($data) {
             $transactionNumber = 'PUT-' . Str::upper(Str::random(8));
 
