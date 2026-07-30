@@ -22,5 +22,7 @@ interface MarketplaceAdapterInterface
 
     public function syncPriceAndStock(Product $product, ChannelShop $shop, string $externalProductId): array;
 
+    public function syncStock(Product $product, ChannelShop $shop, string $externalProductId): array;
+
     public function mapInboundProduct(array $channelData, string $shopId): array;
 }

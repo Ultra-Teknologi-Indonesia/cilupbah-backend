@@ -163,6 +163,11 @@ class SyncProductToChannelJob implements ShouldQueue
                         $result = $adapter->pushProduct($product, $shop);
                     }
                     break;
+                case 'sync_stock':
+                    if ($externalId) {
+                        $result = $adapter->syncStock($product, $shop, $externalId);
+                    }
+                    break;
             }
 
             if ($result['success']) {

@@ -180,6 +180,63 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
         }
     }
 
+    public function syncStock(Product $product, ChannelShop $shop, string $externalProductId): array
+    {
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
+
+        $variationUpdates = [];
+        $simplePayload = null;
+
+        $isVariable = $product->variants->count() > 1;
+
+        foreach ($product->variants as $variant) {
+            $mapping = $variant->channelMappings()->whereHas('channelMapping', function ($q) use ($shop) {
+                $q->where('channel_shop_id', $shop->id);
+            })->first();
+
+            if (! $mapping || ! $mapping->sync_enabled || empty($variant->sku)) {
+                continue;
+            }
+
+            $availableQty = max(0, (int) ($stockByVariant[$variant->id] ?? 0));
+
+            if (! empty($mapping->external_sku_id)) {
+                $variationUpdates[] = [
+                    'id' => (int) $mapping->external_sku_id,
+                    'manage_stock' => true,
+                    'stock_quantity' => $availableQty,
+                ];
+            } elseif (! $isVariable) {
+                $simplePayload = [
+                    'manage_stock' => true,
+                    'stock_quantity' => $availableQty,
+                ];
+            }
+        }
+
+        if (empty($variationUpdates) && $simplePayload === null) {
+            return ['success' => false, 'message' => 'Tidak ada SKU yang terhubung untuk diperbarui'];
+        }
+
+        try {
+            if (! empty($variationUpdates)) {
+                $this->client->post($shop, "products/{$externalProductId}/variations/batch", [
+                    'update' => $variationUpdates,
+                ]);
+            }
+
+            if ($simplePayload !== null) {
+                $this->client->put($shop, "products/{$externalProductId}", $simplePayload);
+            }
+
+            return ['success' => true, 'message' => 'Stok berhasil disinkronisasi ke WooCommerce'];
+        } catch (\Exception $e) {
+            Log::error('WooCommerce syncStock error: ' . $e->getMessage());
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
     public function mapInboundProduct(array $channelData, string $shopId): array
     {
         return $this->inboundMapper->map($channelData, $shopId);

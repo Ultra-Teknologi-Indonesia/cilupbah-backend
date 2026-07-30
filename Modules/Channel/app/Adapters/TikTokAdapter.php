@@ -381,6 +381,56 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         }
     }
 
+    public function syncStock(Product $product, ChannelShop $shop, string $externalProductId): array
+    {
+        $product->loadMissing('variants');
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
+
+        $inventorySkus = [];
+
+        foreach ($product->variants as $variant) {
+            $mapping = $variant->channelMappings()->whereHas('channelMapping', function($q) use($shop) {
+                $q->where('channel_shop_id', $shop->id);
+            })->first();
+
+            if ($mapping && $mapping->external_sku_id && $mapping->sync_enabled) {
+                $availableQty = (int) ($stockByVariant[$variant->id] ?? 0);
+
+                $inventorySkus[] = [
+                    'id' => $mapping->external_sku_id,
+                    'inventory' => [
+                        [
+                            'warehouse_id' => $this->resolveTikTokWarehouseId($shop),
+                            'quantity' => max(0, $availableQty),
+                        ]
+                    ]
+                ];
+            }
+        }
+
+        if (empty($inventorySkus)) {
+            return ['success' => false, 'message' => 'Tidak ada SKU yang terhubung untuk diperbarui'];
+        }
+
+        try {
+            $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
+
+            $invPayload = ['skus' => $inventorySkus];
+            $this->client->request('POST', "/product/202309/products/{$externalProductId}/inventory/update", $queries, $invPayload, $shop->access_token);
+
+            return [
+                'success' => true,
+                'message' => 'Stok berhasil disinkronisasi ke TikTok',
+            ];
+        } catch (\Exception $e) {
+            Log::error("TikTok syncStock error: " . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
+    }
+
     public function mapInboundProduct(array $channelData, string $shopId): array
     {
         return $this->inboundMapper->map($channelData, $shopId);

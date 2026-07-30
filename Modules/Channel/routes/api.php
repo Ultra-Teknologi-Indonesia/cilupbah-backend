@@ -2,8 +2,14 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\Channel\Http\Controllers\ChannelController;
+use Modules\Channel\Http\Controllers\ProductStockSyncController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
+
+    // Trigger manual sinkronisasi STOK-SAJA ke channel (single/bulk/all).
+    Route::post('products/sync-stock', [ProductStockSyncController::class, 'syncStock'])
+        ->name('products.sync-stock')
+        ->middleware('role_or_permission:owner|edit-produk');
 
     Route::get('marketplace/cancel-reasons', [\Modules\Channel\Http\Controllers\MarketplaceCancelReasonController::class, 'index'])->name('marketplace.cancel-reasons.index')->middleware('role_or_permission:owner|view-pesanan');
     Route::get('marketplace/cancel-reasons/{marketplace}', [\Modules\Channel\Http\Controllers\MarketplaceCancelReasonController::class, 'show'])->name('marketplace.cancel-reasons.show')->middleware('role_or_permission:owner|view-pesanan');

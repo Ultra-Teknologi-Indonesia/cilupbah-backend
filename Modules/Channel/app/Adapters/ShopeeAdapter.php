@@ -205,6 +205,58 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         }
     }
 
+    public function syncStock(Product $product, ChannelShop $shop, string $externalProductId): array
+    {
+        $product->loadMissing('variants');
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
+
+        $channelLocationId = DB::table('channel_warehouses')
+            ->where('store_id', $shop->shop_id)
+            ->value('channel_location_id');
+
+        $stockList = [];
+
+        foreach ($product->variants as $variant) {
+            $mapping = $variant->channelMappings()->whereHas('channelMapping', function ($q) use ($shop) {
+                $q->where('channel_shop_id', $shop->id);
+            })->first();
+
+            if (! $mapping || ! $mapping->sync_enabled) {
+                continue;
+            }
+
+            $modelId = (int) ($mapping->external_sku_id ?? 0);
+            $availableQty = max(0, (int) ($stockByVariant[$variant->id] ?? 0));
+
+            $sellerStockEntry = ['stock' => $availableQty];
+            if ($channelLocationId) {
+                $sellerStockEntry['location_id'] = (string) $channelLocationId;
+            }
+
+            $stockList[] = [
+                'model_id' => $modelId,
+                'seller_stock' => [$sellerStockEntry],
+            ];
+        }
+
+        if (empty($stockList)) {
+            return ['success' => false, 'message' => 'Tidak ada SKU yang terhubung untuk diperbarui'];
+        }
+
+        try {
+            $this->client->request('POST', '/api/v2/product/update_stock', [
+                'item_id' => (int) $externalProductId,
+                'stock_list' => $stockList,
+            ], $shop->access_token, $shop->shop_id);
+
+            return ['success' => true, 'message' => 'Stok berhasil disinkronisasi ke Shopee'];
+        } catch (\Exception $e) {
+            Log::error('Shopee syncStock error: ' . $e->getMessage());
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
     public function mapInboundProduct(array $channelData, string $shopId): array
     {
         return $this->inboundMapper->map($channelData, $shopId);

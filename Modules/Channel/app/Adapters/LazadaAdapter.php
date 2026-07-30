@@ -176,6 +176,49 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         }
     }
 
+    public function syncStock(Product $product, ChannelShop $shop, string $externalProductId): array
+    {
+
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
+
+        $skuPayloads = [];
+
+        foreach ($product->variants as $variant) {
+            $mapping = $variant->channelMappings()->whereHas('channelMapping', function ($q) use ($shop) {
+                $q->where('channel_shop_id', $shop->id);
+            })->first();
+
+            if (! $mapping || ! $mapping->sync_enabled || empty($variant->sku)) {
+                continue;
+            }
+
+            $availableQty = $stockByVariant[$variant->id] ?? 0;
+
+            $skuPayloads[] = [
+                'SellerSku' => $variant->sku,
+                'Quantity' => (string) max(0, $availableQty),
+            ];
+        }
+
+        if (empty($skuPayloads)) {
+            return ['success' => false, 'message' => 'Tidak ada SKU yang terhubung untuk diperbarui'];
+        }
+
+        $payload = ['Request' => ['Product' => ['Skus' => ['Sku' => $skuPayloads]]]];
+
+        try {
+            $this->withTokenRefresh($shop, fn ($token) => $this->client->request('POST', '/product/price_quantity/update', [
+                'payload' => json_encode($payload),
+            ], $token));
+
+            return ['success' => true, 'message' => 'Stok berhasil disinkronisasi ke Lazada'];
+        } catch (\Exception $e) {
+            Log::error('Lazada syncStock error: ' . $e->getMessage());
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
     public function mapInboundProduct(array $channelData, string $shopId): array
     {
         return $this->inboundMapper->map($channelData, $shopId);
