@@ -44,6 +44,7 @@ metadata:
   name: cilupbah-app
   namespace: cilupbah
 spec:
+  type: NodePort
   selector:
     app: cilupbah-app
   ports:
