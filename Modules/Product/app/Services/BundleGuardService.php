@@ -32,6 +32,32 @@ class BundleGuardService
         }
     }
 
+    public function assertNotBundle(array $variantIds, string $action = 'operasi stok'): void
+    {
+        $ids = array_values(array_filter($variantIds));
+
+        if (empty($ids)) {
+            return;
+        }
+
+        $bundleVariantIds = app(\Modules\Product\Repositories\ProductRepository::class)
+            ->variantIdsFromBundleProducts($ids);
+
+        if (empty($bundleVariantIds)) {
+            return;
+        }
+
+        $skus = \Modules\Product\Models\ProductVariant::whereIn('id', $bundleVariantIds)
+            ->pluck('sku')
+            ->all();
+
+        throw new \App\Exceptions\UserFacingException(
+            'Operasi tidak berlaku untuk bundle',
+            "SKU bundle tidak menyimpan stok fisik (stok mengikuti komponen) sehingga tidak bisa dikenai {$action}: "
+            . implode(', ', $skus) . '.'
+        );
+    }
+
     public function assertConvertibleToBundle(?string $productId): void
     {
         if ($productId === null) {

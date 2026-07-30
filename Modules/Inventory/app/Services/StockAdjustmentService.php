@@ -54,6 +54,11 @@ class StockAdjustmentService
 
     public function create(array $data): StockAdjustment
     {
+        app(\Modules\Product\Services\BundleGuardService::class)->assertNotBundle(
+            array_column($data['items'] ?? [], 'item_id'),
+            'penyesuaian stok',
+        );
+
         $adjustment = DB::transaction(function () use ($data) {
             $adjustmentNo = ! empty($data['adjustment_no'])
                 ? $data['adjustment_no']

@@ -160,6 +160,17 @@ class ProductService
             );
         }
 
+        $bundleProductIds = \Modules\Product\Models\ProductBundleItem::whereIn('component_variant_id', $variantIds)
+            ->distinct()
+            ->pluck('bundle_product_id');
+
+        if ($bundleProductIds->isNotEmpty()) {
+            $bundleSkus = Product::whereIn('id', $bundleProductIds)->pluck('sku')->implode(', ');
+            throw new DomainException(
+                "Produk ini dipakai sebagai komponen bundle ({$bundleSkus}). Lepaskan dari bundle terkait sebelum menghapus."
+            );
+        }
+
         DB::transaction(function () use ($product) {
             $product->variants()->delete();
             $product->delete();
