@@ -681,8 +681,9 @@ class TikTokOrderService
             throw new \Exception('Pesanan tidak ditemukan di sistem lokal');
         }
 
-        // Guard status. Utamakan status MENTAH (channel_status_raw); bila kosong,
-        // fallback ke channel_status ternormalisasi (UNPAID/READY_TO_SHIP).
+        // API TikTok butuh order id CHANNEL (tanpa prefix), bukan salesorder_no lokal.
+        $tiktokOrderId = $order->channel_order_no ?: $orderId;
+
         $rawStatus = strtoupper((string) ($order->channel_status_raw ?? ''));
         $normalized = strtoupper((string) ($order->channel_status ?? ''));
         $cancelable = $rawStatus !== ''
@@ -703,7 +704,7 @@ class TikTokOrderService
 
         $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
         $body = [
-            'order_id'      => $orderId,
+            'order_id'      => $tiktokOrderId,
             'cancel_reason' => $reason,
         ];
 
@@ -712,7 +713,7 @@ class TikTokOrderService
         $code = (int) ($res['code'] ?? 0);
         if ($code !== 0) {
             $message = $res['message'] ?? "code {$code}";
-            // 36009003 = internal error (transien). Sisanya diperlakukan final.
+
             throw new \Modules\Channel\Exceptions\ChannelCancelException(
                 "TikTok menolak pembatalan {$orderId}: {$message}",
                 retryable: $code === 36009003,
@@ -727,7 +728,7 @@ class TikTokOrderService
             );
         }
 
-        $this->resyncLocalOrder($order->channel_shop_id, $orderId);
+        $this->resyncLocalOrder($order->channel_shop_id, $tiktokOrderId);
 
         return [
             'cancel_id'     => $res['data']['cancel_id'] ?? null,

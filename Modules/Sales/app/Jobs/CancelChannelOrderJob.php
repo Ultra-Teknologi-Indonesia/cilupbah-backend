@@ -41,8 +41,6 @@ class CancelChannelOrderJob implements ShouldQueue
                 default     => null,
             };
 
-            // Sukses. TikTok bisa async (menunggu konfirmasi TikTok) -> biarkan
-            // resync/webhook yang men-finalisasi ke 'cancelled'.
             $status = ($order->source === 'tiktok' && ($result['async'] ?? false))
                 ? 'pending'
                 : 'accepted';
@@ -53,10 +51,9 @@ class CancelChannelOrderJob implements ShouldQueue
             ])->saveQuietly();
         } catch (\Modules\Channel\Exceptions\ChannelCancelException $e) {
             if ($e->retryable) {
-                throw $e; // transien -> biarkan job retry
+                throw $e; 
             }
 
-            // Error final: JANGAN retry. Tandai gagal + beri tahu seller.
             Log::warning("CancelChannelOrderJob: penolakan final dari {$order->source}", [
                 'order_id'      => $this->orderId,
                 'salesorder_no' => $order->salesorder_no,
@@ -71,14 +68,14 @@ class CancelChannelOrderJob implements ShouldQueue
 
             $this->notifyFailure($order, $e->getMessage());
 
-            return; // final: selesai tanpa retry
+            return; 
         } catch (\Throwable $e) {
             Log::error("CancelChannelOrderJob: gagal cancel di {$order->source}", [
                 'order_id'      => $this->orderId,
                 'salesorder_no' => $order->salesorder_no,
                 'exception'     => $e->getMessage(),
             ]);
-            throw $e; // transien -> retry
+            throw $e; 
         }
     }
 
@@ -98,9 +95,10 @@ class CancelChannelOrderJob implements ShouldQueue
 
     private function cancelOnShopee(SalesOrder $order): array
     {
+        // API MP pakai order id CHANNEL (tanpa prefix), bukan salesorder_no lokal.
         $result = app(\Modules\Channel\Services\ShopeeOrderService::class)->cancelOrder(
             $order->channel_shop_id,
-            $order->salesorder_no,
+            $order->channel_order_no ?: $order->salesorder_no,
             $this->cancelReason,
         );
 
@@ -114,10 +112,10 @@ class CancelChannelOrderJob implements ShouldQueue
 
     private function cancelOnLazada(SalesOrder $order): array
     {
-        // $this->cancelReason = reason_id numerik (live) dari /order/failure_reason/get.
+
         $result = app(\Modules\Channel\Services\LazadaOrderService::class)->cancelOrder(
             $order->channel_shop_id,
-            $order->salesorder_no,
+            $order->channel_order_no ?: $order->salesorder_no,
             $this->cancelReason,
         );
 
@@ -167,6 +165,17 @@ class CancelChannelOrderJob implements ShouldQueue
             'reason'    => $this->cancelReason,
             'exception' => $exception->getMessage(),
         ]);
+
+        // Jangan biarkan order nyangkut 'pending' selamanya: tandai 'failed' agar guard
+        // fulfillment lepas & seller lihat di tab Batal ke Marketplace (Ditolak).
+        $order = SalesOrder::find($this->orderId);
+        if ($order && $order->channel_cancel_status === 'pending'
+            && $order->status !== 'cancelled' && ! $order->is_canceled) {
+            $order->forceFill([
+                'channel_cancel_status' => 'failed',
+                'channel_cancel_error'  => \Illuminate\Support\Str::limit($exception->getMessage(), 240),
+            ])->saveQuietly();
+        }
 
         AdminAlertJob::dispatch(
             "CancelChannelOrderJob failed: order #{$this->orderId}",
