@@ -16,7 +16,7 @@ use Illuminate\Support\Str;
 
 class SalesReturnService
 {
-    private const NOTIF_PERMISSION = 'manage-retur-penjualan';
+    public const NOTIF_PERMISSION = 'view-retur-penjualan';
 
     public function __construct(
         protected SalesReturnRepository $returnRepository,
@@ -263,8 +263,6 @@ class SalesReturnService
 
             $this->returnRepository->updateStatus($return, SalesReturn::STATUS_ACCEPTED, $data['processed_by']);
 
-            // Qty yang disetujui per item (opsional dari $data['items']); default = qty retur penuh.
-            // Clamp ke rentang [0, qty] lalu simpan sebagai approved_qty.
             $approvedByItemId = [];
             foreach (($data['items'] ?? []) as $line) {
                 if (isset($line['item_id']) && array_key_exists('approved_qty', $line) && $line['approved_qty'] !== null) {
@@ -282,13 +280,28 @@ class SalesReturnService
                 }
             }
 
-            // Hanya baris dengan approved_qty > 0 yang masuk Inbound retur (restock).
-            $inboundItems = $return->items
-                ->filter(fn ($item) => $item->approvedQty() > 0)
-                ->map(fn ($item) => [
-                    'item_id'      => $item->item_id,
-                    'expected_qty' => $item->approvedQty(),
-                ])->values()->toArray();
+            // Bundle tak menyimpan stok fisik: restock diarahkan ke KOMPONEN
+            // (qty x qty-komponen). Non-bundle tetap 1:1. Cegah baris inventory
+            // hantu untuk SKU bundle + memastikan komponen benar-benar di-restock.
+            $productRepo = app(\Modules\Product\Repositories\ProductRepository::class);
+            $qtyByItem = [];
+            $conditionByItem = [];
+
+            foreach ($return->items->filter(fn ($item) => $item->approvedQty() > 0) as $item) {
+                $components = $productRepo->bundleComponentsForVariant($item->item_id);
+                $lines = $components ?? [['variant_id' => $item->item_id, 'qty' => 1]];
+
+                foreach ($lines as $line) {
+                    $vid = $line['variant_id'];
+                    $qtyByItem[$vid] = ($qtyByItem[$vid] ?? 0) + $item->approvedQty() * (int) $line['qty'];
+                    $conditionByItem[$vid] ??= ($item->condition ?? 'GOOD');
+                }
+            }
+
+            $inboundItems = [];
+            foreach ($qtyByItem as $vid => $qty) {
+                $inboundItems[] = ['item_id' => $vid, 'expected_qty' => $qty];
+            }
 
             if (! empty($inboundItems)) {
                 $inbound = $this->inboundService->receiveFromSalesReturn([
@@ -300,20 +313,14 @@ class SalesReturnService
                     'items'            => $inboundItems,
                 ]);
 
-                // Auto-receive butuh user penerima valid (inbound_receipts.received_by_user_id NOT NULL).
-                // Di web, auth()->id() tersedia; bila accept dipicu sistem tanpa auth (mis. auto-accept
-                // webhook, processed_by='system:...') lewati auto-receive agar tidak gagal — inbound tetap
-                // DRAFT dan bisa diterima manual.
                 $receiverId = auth()->id()
                     ?? (Str::isUuid((string) ($data['processed_by'] ?? '')) ? $data['processed_by'] : null);
 
                 if ($this->settings->autoReceive() && $receiverId) {
-                    $conditionByItem = $return->items->keyBy('item_id');
-
                     $receiveItems = $inbound->items->map(fn ($item) => [
                         'inbound_item_id' => $item->id,
                         'qty'             => $item->expected_qty,
-                        'condition'       => $conditionByItem[$item->item_id]->condition ?? 'GOOD',
+                        'condition'       => $conditionByItem[$item->item_id] ?? 'GOOD',
                     ])->toArray();
 
                     $this->inboundService->receive($inbound->id, [
