@@ -233,6 +233,11 @@ class ProcessPutawayItemJob implements ShouldQueue
                 Putaway::where('id', $this->putawayId)->update(['updated_version_at' => now()]);
             });
         });
+
+        // Putaway memindahkan stok dari bin inbound (tak terlihat channel) ke bin
+        // final (terlihat channel) -> available naik. Dorong ulang stok item ini +
+        // bundle yang memakainya (reverse lookup di dalam job), agar tak basi.
+        \Modules\Channel\Jobs\SyncStockToChannelsJob::dispatch($this->itemId)->afterCommit();
     }
 
     private function recomputeInboundStatus(string $inboundId): void

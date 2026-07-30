@@ -37,6 +37,7 @@ class MonitorStockRepository
             ->join('products', 'products.id', '=', 'product_variants.product_id')
             ->leftJoinSub($inv, 'inv', 'inv.item_id', '=', 'product_variants.id')
             ->where('products.is_stored', true)
+            ->where('products.is_bundle', false)
             ->select('product_variants.*')
             ->selectRaw('products.name as product_name')
             ->selectRaw('COALESCE(inv.on_hand, 0) as total_on_hand')
