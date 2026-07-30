@@ -59,7 +59,7 @@ class MarketplaceCancelReasonApiTest extends TestCase
         $this->actingAs($this->user, 'sanctum')
             ->getJson('/api/v1/marketplace/cancel-reasons/Shopee')
             ->assertStatus(200)
-            ->assertJsonFragment(['key' => 'CUSTOMER_REQUEST']);
+            ->assertJsonFragment(['key' => 'COD_NOT_SUPPORTED']);
     }
 
     public function test_unsupported_marketplace_returns_422(): void
@@ -94,14 +94,13 @@ class MarketplaceCancelReasonApiTest extends TestCase
 
     public function test_tiktok_reasons_are_status_aware(): void
     {
-        // Default (tanpa status) = set 'paid'.
+
         $this->actingAs($this->user, 'sanctum')
             ->getJson('/api/v1/marketplace/cancel-reasons/tiktok')
             ->assertStatus(200)
             ->assertJsonPath('meta.source', 'default')
             ->assertJsonFragment(['key' => 'seller_cancel_reason_out_of_stock']);
 
-        // status=UNPAID -> set 'unpaid'.
         $this->actingAs($this->user, 'sanctum')
             ->getJson('/api/v1/marketplace/cancel-reasons/tiktok?status=UNPAID')
             ->assertStatus(200)
