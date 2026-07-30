@@ -41,6 +41,14 @@ class CancelChannelOrderJob implements ShouldQueue
                 default     => null,
             };
 
+            // Resync pasca-cancel (TikTok) bisa sudah memfinalisasi order jadi
+            // cancelled/accepted; jangan turunkan balik ke 'pending'.
+            $order->refresh();
+
+            if ($order->channel_cancel_status === 'accepted' || $order->status === 'cancelled') {
+                return;
+            }
+
             $status = ($order->source === 'tiktok' && ($result['async'] ?? false))
                 ? 'pending'
                 : 'accepted';
