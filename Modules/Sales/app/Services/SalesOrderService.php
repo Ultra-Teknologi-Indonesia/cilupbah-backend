@@ -495,8 +495,12 @@ class SalesOrderService
             return;
         }
 
-        // TikTok: set alasan tergantung status mentah.
-        $context = $source === 'tiktok' ? $order->channel_status_raw : null;
+        // TikTok: set alasan tergantung status mentah. Bila channel_status_raw kosong
+        // (order lama), pakai is_paid sebagai penentu: paid -> ON_HOLD, unpaid -> UNPAID.
+        // Harus konsisten dengan derivasi di FE (RequestCancelDialog).
+        $context = $source === 'tiktok'
+            ? ($order->channel_status_raw ?: ($order->is_paid ? 'ON_HOLD' : 'UNPAID'))
+            : null;
 
         if (! $reasonService->isValidReason($source, $reason, $context)) {
             throw new \App\Exceptions\UserFacingException('Alasan tidak valid', "Alasan pembatalan tidak valid untuk {$source}.");

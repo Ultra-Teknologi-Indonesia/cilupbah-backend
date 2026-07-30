@@ -127,6 +127,34 @@ class RequestChannelCancelTest extends TestCase
         app(SalesOrderService::class)->requestChannelCancel($paidOrder2, 'seller_cancel_unpaid_reason_out_of_stock');
     }
 
+    public function test_tiktok_paid_order_without_raw_uses_is_paid_for_reason_group(): void
+    {
+        Bus::fake();
+
+        // Order lama: channel_status_raw null, channel_status UNPAID (ON_HOLD ternormalisasi),
+        // tapi is_paid=true -> harus divalidasi dengan set PAID.
+        $paidNoRaw = $this->seedOrder([
+            'source' => 'tiktok',
+            'status' => 'reserved',
+            'channel_status' => 'UNPAID',
+            'channel_status_raw' => null,
+            'is_paid' => true,
+        ]);
+        $order = app(SalesOrderService::class)->requestChannelCancel($paidNoRaw, 'seller_cancel_reason_out_of_stock');
+        $this->assertSame('pending', $order->channel_cancel_status);
+
+        // Alasan UNPAID untuk order paid (raw null) -> ditolak.
+        $paidNoRaw2 = $this->seedOrder([
+            'source' => 'tiktok',
+            'status' => 'reserved',
+            'channel_status' => 'UNPAID',
+            'channel_status_raw' => null,
+            'is_paid' => true,
+        ]);
+        $this->expectException(UserFacingException::class);
+        app(SalesOrderService::class)->requestChannelCancel($paidNoRaw2, 'seller_cancel_unpaid_reason_out_of_stock');
+    }
+
     public function test_double_request_blocked(): void
     {
         Bus::fake();
