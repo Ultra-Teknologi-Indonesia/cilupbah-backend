@@ -37,6 +37,8 @@ return [
         'finance_statement_path' => env('TIKTOK_FINANCE_STATEMENT_PATH', '/finance/202309/orders/{order_id}/statement_transactions'),
 
         'dump_instant_payload' => env('TIKTOK_DUMP_INSTANT_PAYLOAD', false),
+
+        'webhook_type_overrides' => json_decode((string) env('TIKTOK_WEBHOOK_TYPE_OVERRIDES', '{}'), true) ?: [],
     ],
 
     'lazada' => [

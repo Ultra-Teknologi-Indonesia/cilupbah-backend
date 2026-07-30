@@ -15,7 +15,6 @@ class WebhookProductHandler
     public function handleProductStatusChange(array $data, string $shopId): void
     {
         $externalProductId = $data['product_id'] ?? null;
-        $status = $data['status'] ?? null;
 
         if (!$externalProductId) {
             return;
@@ -30,16 +29,32 @@ class WebhookProductHandler
             return;
         }
 
-        if (in_array((string) $status, ['5', '6'], true)) {
-            $mapping->update(['sync_status' => ProductChannelMapping::STATUS_DEACTIVATED]);
-        } elseif ((string) $status === '4') {
-            $mapping->markApproved();
-        } elseif ((string) $status === '3') {
-            $reason = $data['suspend_reason'] ?? $data['audit_failed_reasons'] ?? 'Ditolak platform';
-            $mapping->markRejected(is_array($reason) ? json_encode($reason) : (string) $reason);
-        } elseif ((string) $status === '2') {
-            $mapping->markInReview();
+        $status = strtoupper((string) ($data['status'] ?? ($data['audit']['status'] ?? '')));
+
+        match (true) {
+            in_array($status, ['APPROVED', 'PRODUCT_FIRST_PASS_REVIEW'], true) => $mapping->markApproved(),
+            in_array($status, ['FAILED', 'PRODUCT_AUDIT_FAILURE'], true)
+                => $mapping->markRejected($this->rejectionReason($data)),
+            in_array($status, ['AUDITING', 'PRE_APPROVED'], true) => $mapping->markInReview(),
+            $status === 'NONE' => $mapping->update(['sync_status' => ProductChannelMapping::STATUS_DEACTIVATED]),
+            default => null, 
+        };
+
+        try {
+            $this->downloadService->downloadProductDebounced('tiktok', $shopId, (string) $externalProductId);
+        } catch (\Throwable $e) {
+            Log::warning('TikTok product status re-sync gagal: ' . $e->getMessage(), ['product_id' => $externalProductId]);
         }
+    }
+
+    private function rejectionReason(array $data): string
+    {
+        $reason = $data['suspended_reason']
+            ?? $data['suspend_reason']
+            ?? $data['audit_failed_reasons']
+            ?? 'Ditolak platform';
+
+        return is_array($reason) ? json_encode($reason) : (string) $reason;
     }
 
     public function handleProductUpdate(array $data, string $shopId): void

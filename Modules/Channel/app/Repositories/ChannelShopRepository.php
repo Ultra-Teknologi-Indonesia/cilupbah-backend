@@ -17,7 +17,7 @@ class ChannelShopRepository
         if (! $shop) {
             return;
         }
-        app(NotificationDispatcher::class)->toPermission('manage-integrasi-channel', [
+        app(NotificationDispatcher::class)->toPermission('view-integrasi-channel', [
             'type' => $type,
             'title' => $title,
             'message' => $message,
@@ -160,6 +160,27 @@ class ChannelShopRepository
                 'Integrasi marketplace bermasalah',
                 'Koneksi ke marketplace terputus, sinkronisasi berhenti.',
                 $message,
+            );
+        }
+    }
+
+    public function markDeauthorized(string $id, ?string $reason = null): void
+    {
+        $previousStatus = ChannelShop::where('id', $id)->value('integration_status');
+
+        ChannelShop::where('id', $id)->update([
+            'is_active' => false,
+            'integration_status' => 'error',
+            'last_error' => $reason,
+        ]);
+
+        if ($previousStatus !== 'error') {
+            $this->notifyChannelDisconnected(
+                $id,
+                'channel_disconnected',
+                'Otorisasi marketplace dicabut',
+                'Penjual mencabut otorisasi aplikasi — sinkronisasi berhenti. Hubungkan ulang toko.',
+                $reason,
             );
         }
     }
