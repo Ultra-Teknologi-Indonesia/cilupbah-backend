@@ -47,10 +47,22 @@ class LazadaClient
 
         $url = $this->baseUrl . $apiPath;
         $response = strtoupper($method) === 'GET'
-            ? Http::get($url, $params)
-            : Http::asForm()->post($url, $params);
+            ? Http::timeout(30)->connectTimeout(15)->get($url, $params)
+            : Http::asForm()->timeout(30)->connectTimeout(15)->post($url, $params);
 
         $data = $response->json() ?? [];
+
+        if ($response->failed()) {
+            $message = is_array($data) ? ($data['message'] ?? $response->body()) : $response->body();
+
+            Log::error('Lazada API HTTP Error', [
+                'path' => $apiPath,
+                'status' => $response->status(),
+                'message' => $message,
+            ]);
+
+            throw new \Exception('Lazada API Error: ' . $message);
+        }
 
         if (($data['code'] ?? '0') !== '0') {
             $detail = $this->formatErrorDetail($data['detail'] ?? $data['error_detail'] ?? null);
@@ -130,7 +142,7 @@ class LazadaClient
 
         $this->throttle();
 
-        $response = Http::attach($fileField, $fileContents, $filename)->post($this->baseUrl . $apiPath, $params);
+        $response = Http::attach($fileField, $fileContents, $filename)->timeout(30)->connectTimeout(15)->post($this->baseUrl . $apiPath, $params);
         $data = $response->json() ?? [];
 
         if (($data['code'] ?? '0') !== '0') {
@@ -144,7 +156,11 @@ class LazadaClient
     {
         $limit = config('channel.api_rate_limit_per_second', 8);
 
-        if (! RateLimiter::attempt('lazada-api', $limit, fn () => null, 1)) {
+        for ($attempt = 0; $attempt < 10; $attempt++) {
+            if (RateLimiter::attempt('lazada-api', $limit, fn () => null, 1)) {
+                return;
+            }
+
             $wait = RateLimiter::availableIn('lazada-api');
             usleep((int) ($wait * 1_000_000) + 50_000);
         }
@@ -193,7 +209,7 @@ class LazadaClient
 
         $params['sign'] = $this->generateSign($apiPath, $params);
 
-        $response = Http::asForm()->get($this->authUrl . '/rest' . $apiPath, $params);
+        $response = Http::asForm()->timeout(30)->connectTimeout(15)->get($this->authUrl . '/rest' . $apiPath, $params);
 
         return $response->json() ?? [];
     }

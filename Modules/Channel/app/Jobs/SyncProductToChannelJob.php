@@ -27,19 +27,22 @@ class SyncProductToChannelJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
-    public array $backoff = [30, 120, 300]; 
+    public int $timeout = 300;
+    public array $backoff = [30, 120, 300];
 
     public string $productId;
     public string $channelShopId;
     public string $action;
     public ?array $attributeMapping;
+    public ?string $draftId;
 
-    public function __construct(string $productId, string $channelShopId, string $action, ?array $attributeMapping = null)
+    public function __construct(string $productId, string $channelShopId, string $action, ?array $attributeMapping = null, ?string $draftId = null)
     {
         $this->productId = $productId;
         $this->channelShopId = $channelShopId;
         $this->action = $action;
         $this->attributeMapping = $attributeMapping;
+        $this->draftId = $draftId;
 
         $this->onQueue(config('queue.names.channel_sync'));
     }
@@ -47,9 +50,14 @@ class SyncProductToChannelJob implements ShouldQueue
     public function middleware(): array
     {
         return [
-            new RateLimited('channel_api_' . $this->channelShopId),
+            new RateLimited('channel_api'),
             (new WithoutOverlapping("product_sync:{$this->productId}:{$this->channelShopId}"))->releaseAfter(60),
         ];
+    }
+
+    public function retryUntil(): \DateTime
+    {
+        return now()->addHour();
     }
 
     public function handle(AdapterFactory $factory): void
@@ -107,7 +115,10 @@ class SyncProductToChannelJob implements ShouldQueue
         try {
             $adapter = $factory->make($channelCode);
         } catch (\Exception $e) {
-            $mapping->markAsFailed("Adapter not found for channel {$channelCode}");
+            $message = "Adapter not found for channel {$channelCode}";
+            $mapping->markAsFailed($message);
+            $this->recordUploadResult(false, $message);
+            $this->refreshChannelValidation();
             return;
         }
 
@@ -172,9 +183,26 @@ class SyncProductToChannelJob implements ShouldQueue
                     $mapping->delete();
                 }
 
+                // Draft hanya dihapus setelah upload benar-benar sukses (bukan saat dispatch),
+                // sehingga kegagalan permanen tetap menyisakan draft untuk retry.
+                if ($this->draftId && in_array($this->action, ['push', 'update'], true)) {
+                    try {
+                        \Modules\Product\Models\ProductChannelDraft::whereKey($this->draftId)->delete();
+                    } catch (\Throwable $e) {
+                        Log::warning('Gagal menghapus draft setelah upload sukses: ' . $e->getMessage(), [
+                            'draft_id' => $this->draftId,
+                        ]);
+                    }
+                }
+
                 $this->refreshChannelValidation();
             } else {
                 $message = $result['message'] ?? 'Gagal mengeksekusi aksi';
+
+                if (empty($externalId) && ! empty($result['external_product_id'])) {
+                    $mapping->update(['external_product_id' => (string) $result['external_product_id']]);
+                }
+
                 $mapping->markAsFailed($message);
                 $this->recordUploadResult(false, $message, $result);
                 $this->handleFailure($channelCode);

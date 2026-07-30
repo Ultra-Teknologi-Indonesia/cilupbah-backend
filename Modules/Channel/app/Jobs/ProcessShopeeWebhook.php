@@ -7,6 +7,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ChannelDownloadService;
@@ -37,6 +38,19 @@ class ProcessShopeeWebhook implements ShouldQueue
         public array $payload,
     ) {
         $this->onQueue('default');
+    }
+
+    public static function idempotencyKey(array $payload): string
+    {
+        $data = $payload['data'] ?? [];
+
+        return 'shopee:webhook:' . md5(json_encode([
+            $payload['shop_id'] ?? '',
+            $payload['code'] ?? '',
+            $payload['timestamp'] ?? '',
+            $data['ordersn'] ?? $data['order_sn'] ?? $data['item_id'] ?? '',
+            $data['status'] ?? '',
+        ]));
     }
 
     public function handle(ShopeeOrderService $orderService, ChannelDownloadService $downloadService): void
@@ -100,6 +114,13 @@ class ProcessShopeeWebhook implements ShouldQueue
             self::PUSH_COURIER_DELIVERY_BINDING => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_DRIVER_ARRIVED,
             default => 'shopee_event_' . $code,
         };
+
+        $exists = \Modules\Outbound\Models\ShipmentTrackingEvent::query()
+            ->where('shipment_id', $shipment->id)
+            ->where('source', 'shopee')
+            ->where('event_type', $eventType)
+            ->exists();
+        if ($exists) return;
 
         \Modules\Outbound\Models\ShipmentTrackingEvent::create([
             'shipment_id' => $shipment->id,
@@ -279,6 +300,9 @@ class ProcessShopeeWebhook implements ShouldQueue
 
     public function failed(\Throwable $e): void
     {
+
+        Cache::forget(self::idempotencyKey($this->payload));
+
         Log::error('ProcessShopeeWebhook gagal permanen: ' . $e->getMessage(), ['payload' => $this->payload]);
     }
 }

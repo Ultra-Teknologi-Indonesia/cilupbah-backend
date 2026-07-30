@@ -38,18 +38,30 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
             if (! $externalId) {
                 return ['success' => false, 'message' => 'Gagal mendorong produk: ' . json_encode($res)];
             }
-
-            return [
-                'success' => true,
-                'external_product_id' => (string) $externalId,
-                'message' => 'Produk berhasil didorong ke WooCommerce',
-                'skus' => $this->syncVariations($shop, (string) $externalId, $variations, $res),
-            ];
         } catch (\Exception $e) {
             Log::error('WooCommerce pushProduct error: ' . $e->getMessage());
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
+
+        try {
+            $skus = $this->syncVariations($shop, (string) $externalId, $variations, $res);
+        } catch (\Exception $e) {
+            Log::error('WooCommerce pushProduct variations error: ' . $e->getMessage());
+
+            return [
+                'success' => false,
+                'external_product_id' => (string) $externalId,
+                'message' => 'Produk berhasil dibuat namun sinkronisasi variasi gagal: ' . $e->getMessage(),
+            ];
+        }
+
+        return [
+            'success' => true,
+            'external_product_id' => (string) $externalId,
+            'message' => 'Produk berhasil didorong ke WooCommerce',
+            'skus' => $skus,
+        ];
     }
 
     public function updateProduct(Product $product, ChannelShop $shop, string $externalProductId): array

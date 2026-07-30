@@ -47,6 +47,12 @@ return [
         ],
     ],
 
+    'notifications' => [
+        'slack_webhook' => env('HORIZON_SLACK_WEBHOOK'),
+        'slack_channel' => env('HORIZON_SLACK_CHANNEL'),
+        'mail' => env('HORIZON_MAIL_TO'),
+    ],
+
     'fast_termination' => false,
 
     'memory_limit' => 64,
@@ -55,7 +61,7 @@ return [
         'supervisor-default' => [
             'connection' => 'redis',
 
-            'queue' => ['default', 'notifications', env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks'), env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'), env('QUEUE_NAME_PRODUCT', 'product'), env('WEBHOOK_QUEUE', 'webhooks')],
+            'queue' => ['default', 'notifications', env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks'), env('WEBHOOK_QUEUE', 'webhooks')],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 1,
@@ -96,6 +102,18 @@ return [
             'balance' => 'auto',
             'minProcesses' => 2,
             'maxProcesses' => 10,
+            'timeout' => 60,
+            'tries' => 3,
+            'backoff' => [5, 15, 30],
+            'memory' => 128,
+            'nice' => 0,
+        ],
+        'supervisor-channel-sync' => [
+            'connection' => 'redis',
+            'queue' => [env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'), env('QUEUE_NAME_PRODUCT', 'product')],
+            'balance' => 'auto',
+            'minProcesses' => 1,
+            'maxProcesses' => 5,
             'timeout' => 60,
             'tries' => 3,
             'backoff' => [5, 15, 30],
@@ -169,6 +187,10 @@ return [
                 'minProcesses' => 2,
                 'maxProcesses' => 10,
             ],
+            'supervisor-channel-sync' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 5,
+            ],
             'supervisor-failed-jobs' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 3,
@@ -205,6 +227,10 @@ return [
                 'minProcesses' => 1,
                 'maxProcesses' => 1,
             ],
+            'supervisor-channel-sync' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 1,
+            ],
             'supervisor-failed-jobs' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 1,
@@ -236,6 +262,10 @@ return [
                 'maxProcesses' => 2,
             ],
             'supervisor-stock-sync' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 2,
+            ],
+            'supervisor-channel-sync' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 2,
             ],

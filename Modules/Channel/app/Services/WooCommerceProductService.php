@@ -22,35 +22,39 @@ class WooCommerceProductService
         $shop = $this->requireShop($shopId);
         $productService = app(\Modules\Product\Services\ProductService::class);
 
-        $products = $this->client->paginate($shop, 'products');
-        $total = count($products);
+        $total = 0;
         $count = 0;
 
-        foreach ($products as $item) {
-            try {
-                $item = $this->hydrateVariations($shop, $item);
+        // Streaming: proses tiap halaman lalu lepas, jangan tumpuk seluruh katalog ke memori.
+        $this->client->paginate($shop, 'products', [], 100, 100, function (array $chunk) use ($shop, $shopId, $productService, $onProgress, &$total, &$count) {
+            $total += count($chunk);
 
-                if ($this->persistItem($shop, $shopId, $item, $productService)) {
-                    $count++;
-                    if ($onProgress) {
-                        $onProgress($count, max($total, $count));
+            foreach ($chunk as $item) {
+                try {
+                    $item = $this->hydrateVariations($shop, $item);
+
+                    if ($this->persistItem($shop, $shopId, $item, $productService)) {
+                        $count++;
+                        if ($onProgress) {
+                            $onProgress($count, max($total, $count));
+                        }
                     }
-                }
-            } catch (\Throwable $e) {
-                Log::error('WooCommerce: gagal pull produk ' . ($item['id'] ?? '?') . ': ' . $e->getMessage());
+                } catch (\Throwable $e) {
+                    Log::error('WooCommerce: gagal pull produk ' . ($item['id'] ?? '?') . ': ' . $e->getMessage());
 
-                ProductSyncLog::record([
-                    'channel_shop_id' => $shop->id,
-                    'action' => ProductSyncLog::ACTION_DOWNLOAD,
-                    'status' => ProductSyncLog::STATUS_FAILED,
-                    'payload' => [
-                        'external_product_id' => $item['id'] ?? null,
-                        'title' => $item['name'] ?? null,
-                    ],
-                    'error_message' => $e->getMessage(),
-                ]);
+                    ProductSyncLog::record([
+                        'channel_shop_id' => $shop->id,
+                        'action' => ProductSyncLog::ACTION_DOWNLOAD,
+                        'status' => ProductSyncLog::STATUS_FAILED,
+                        'payload' => [
+                            'external_product_id' => $item['id'] ?? null,
+                            'title' => $item['name'] ?? null,
+                        ],
+                        'error_message' => $e->getMessage(),
+                    ]);
+                }
             }
-        }
+        });
 
         return $count;
     }
@@ -119,53 +123,55 @@ class WooCommerceProductService
         $shop = $this->requireShop($shopId);
         $channelShopId = $shop->id;
 
-        $products = $this->client->paginate($shop, 'products');
         $updated = 0;
 
-        foreach ($products as $item) {
-            $mapping = ProductChannelMapping::where('external_product_id', (string) ($item['id'] ?? ''))
-                ->where('channel_shop_id', $channelShopId)
-                ->first();
+        // Streaming: proses tiap halaman lalu lepas, jangan tumpuk seluruh katalog ke memori.
+        $this->client->paginate($shop, 'products', [], 100, 100, function (array $chunk) use ($shop, $channelShopId, &$updated) {
+            foreach ($chunk as $item) {
+                $mapping = ProductChannelMapping::where('external_product_id', (string) ($item['id'] ?? ''))
+                    ->where('channel_shop_id', $channelShopId)
+                    ->first();
 
-            if (! $mapping) {
-                continue;
-            }
+                if (! $mapping) {
+                    continue;
+                }
 
-            if (strtolower((string) ($item['type'] ?? 'simple')) === 'variable') {
-                foreach ($this->fetchVariations($shop, (string) ($item['id'] ?? '')) as $variation) {
-                    if (empty($variation['id'])) {
-                        continue;
+                if (strtolower((string) ($item['type'] ?? 'simple')) === 'variable') {
+                    foreach ($this->fetchVariations($shop, (string) ($item['id'] ?? '')) as $variation) {
+                        if (empty($variation['id'])) {
+                            continue;
+                        }
+
+                        $vm = ProductVariantChannelMapping::where('product_channel_mapping_id', $mapping->id)
+                            ->where('external_sku_id', (string) $variation['id'])
+                            ->first();
+                        if (! $vm) {
+                            continue;
+                        }
+
+                        $vmUpdate = [];
+                        if (! empty($variation['sku'])) {
+                            $vmUpdate['channel_seller_sku'] = $variation['sku'];
+                        }
+                        $price = $variation['regular_price'] ?? $variation['price'] ?? null;
+                        if ($price !== null && $price !== '') {
+                            $vmUpdate['synced_price'] = $price;
+                        }
+                        if ($vmUpdate) {
+                            $vm->update($vmUpdate);
+                        }
                     }
-
-                    $vm = ProductVariantChannelMapping::where('product_channel_mapping_id', $mapping->id)
-                        ->where('external_sku_id', (string) $variation['id'])
-                        ->first();
-                    if (! $vm) {
-                        continue;
-                    }
-
-                    $vmUpdate = [];
-                    if (! empty($variation['sku'])) {
-                        $vmUpdate['channel_seller_sku'] = $variation['sku'];
-                    }
-                    $price = $variation['regular_price'] ?? $variation['price'] ?? null;
+                } else {
+                    $price = $item['regular_price'] ?? $item['price'] ?? null;
                     if ($price !== null && $price !== '') {
-                        $vmUpdate['synced_price'] = $price;
-                    }
-                    if ($vmUpdate) {
-                        $vm->update($vmUpdate);
+                        ProductVariantChannelMapping::where('product_channel_mapping_id', $mapping->id)
+                            ->update(['synced_price' => $price]);
                     }
                 }
-            } else {
-                $price = $item['regular_price'] ?? $item['price'] ?? null;
-                if ($price !== null && $price !== '') {
-                    ProductVariantChannelMapping::where('product_channel_mapping_id', $mapping->id)
-                        ->update(['synced_price' => $price]);
-                }
-            }
 
-            $updated++;
-        }
+                $updated++;
+            }
+        });
 
         return $updated;
     }

@@ -63,7 +63,7 @@ class TikTokClient
             $headers['x-tts-access-token'] = $accessToken;
         }
 
-        $http = Http::withHeaders($headers);
+        $http = Http::withHeaders($headers)->timeout(30)->connectTimeout(15);
 
         if ($isMultipart) {
             foreach ($files as $name => $fileData) {
@@ -84,6 +84,18 @@ class TikTokClient
         }
 
         $data = $response->json();
+
+        if ($response->failed()) {
+            $message = is_array($data) ? ($data['message'] ?? $response->body()) : $response->body();
+
+            Log::error('TikTok API HTTP Error', [
+                'path' => $path,
+                'status' => $response->status(),
+                'message' => $message,
+            ]);
+
+            throw new \RuntimeException('TikTok API HTTP Error [' . $response->status() . ']: ' . $message);
+        }
 
         if (isset($data['code']) && $data['code'] !== 0) {
             $shopId = $queries['shop_cipher'] ?? 'unknown';
@@ -151,7 +163,7 @@ class TikTokClient
         $authBaseUrl = 'https://auth.tiktok-shops.com';
         $url = $authBaseUrl . $path . '?' . http_build_query($queries);
 
-        $response = Http::get($url);
+        $response = Http::timeout(30)->connectTimeout(15)->get($url);
 
         return $response->json();
     }
@@ -177,7 +189,7 @@ class TikTokClient
         $authBaseUrl = 'https://auth.tiktok-shops.com';
         $url = $authBaseUrl . $path . '?' . http_build_query($queries);
 
-        $response = Http::get($url);
+        $response = Http::timeout(30)->connectTimeout(15)->get($url);
 
         return $response->json();
     }
@@ -209,6 +221,8 @@ class TikTokClient
 
                     $requests[] = $pool->as($pid)
                         ->withHeaders(['x-tts-access-token' => $accessToken])
+                        ->timeout(30)
+                        ->connectTimeout(15)
                         ->get($url);
                 }
 

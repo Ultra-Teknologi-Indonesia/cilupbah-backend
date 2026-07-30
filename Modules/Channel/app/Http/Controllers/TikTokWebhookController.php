@@ -19,9 +19,16 @@ class TikTokWebhookController extends Controller
             'shop_id' => $request->input('shop_id'),
         ]);
 
-        $appKey = config('services.tiktok.app_key');
-        $appSecret = config('services.tiktok.app_secret');
+        $appKey = (string) config('services.tiktok.app_key');
+        $appSecret = (string) config('services.tiktok.app_secret');
         $signature = $request->header('authorization') ?? $request->header('x-tts-webhook-signature');
+
+        if ($appKey === '' || $appSecret === '') {
+            Log::warning('TikTok Webhook app_key/app_secret kosong — ditolak.', [
+                'shop_id' => $request->input('shop_id'),
+            ]);
+            return $this->errorResponse('Tidak diizinkan', 401);
+        }
 
         $calculatedSignature = \Modules\Channel\Helpers\TikTokSignature::generateWebhookSignature($appKey, $rawBody, $appSecret);
 
@@ -30,6 +37,21 @@ class TikTokWebhookController extends Controller
                 'shop_id' => $request->input('shop_id'),
             ]);
             return $this->errorResponse('Tidak diizinkan', 401);
+        }
+
+        $timestampHeader = $request->header('x-tts-webhook-timestamp')
+            ?? $request->header('x-tts-timestamp');
+
+        if ($timestampHeader !== null && $timestampHeader !== '') {
+            $ts = (int) $timestampHeader;
+
+            if ($ts > 0 && abs(now()->getTimestamp() - $ts) > 300) {
+                Log::warning('TikTok Webhook timestamp kadaluarsa (kemungkinan replay)', [
+                    'shop_id' => $request->input('shop_id'),
+                    'timestamp' => $ts,
+                ]);
+                return $this->errorResponse('Timestamp kadaluarsa', 401);
+            }
         }
 
         $payload = $request->all();

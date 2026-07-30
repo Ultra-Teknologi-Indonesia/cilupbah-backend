@@ -337,6 +337,10 @@ class TikTokProductService
             }
 
             if (!isset($res['data']['products'])) {
+                Log::warning("TikTok pullProducts: respons tanpa 'data.products' untuk shop {$shopId}, pagination dihentikan.", [
+                    'shop_id'    => $shopId,
+                    'page_token' => $pageToken,
+                ]);
                 break;
             }
 
@@ -388,7 +392,7 @@ class TikTokProductService
                             $onProgress($count, max($total, $count));
                         }
                     }
-                } catch (\Exception $e) {
+                } catch (\Throwable $e) {
                     Log::error("Failed to pull product {$item['id']}: " . $e->getMessage());
 
                     ProductSyncLog::record([

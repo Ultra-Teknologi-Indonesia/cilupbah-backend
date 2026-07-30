@@ -13,6 +13,16 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
     {
         parent::boot();
 
+        if ($slackWebhook = config('horizon.notifications.slack_webhook')) {
+            Horizon::routeSlackNotificationsTo(
+                $slackWebhook,
+                config('horizon.notifications.slack_channel'),
+            );
+        }
+
+        if ($mailTo = config('horizon.notifications.mail')) {
+            Horizon::routeMailNotificationsTo($mailTo);
+        }
     }
 
     protected function gate(): void

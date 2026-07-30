@@ -235,6 +235,15 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         $productImageUrls = array_slice(array_unique(array_filter($productImageUrls)), 0, 9);
         $imageIds = $this->mediaUploader->uploadFromUrls($productImageUrls);
 
+        if (count($imageIds) < count($productImageUrls)) {
+            Log::warning('Shopee: sebagian gambar produk gagal diunggah, lanjut dengan gambar berkurang.', [
+                'shop_id' => $shop->shop_id,
+                'product_id' => $product->id,
+                'expected' => count($productImageUrls),
+                'uploaded' => count($imageIds),
+            ]);
+        }
+
         if (empty($imageIds) && ! app()->runningUnitTests()) {
             throw new \RuntimeException('Gagal mengunggah gambar produk ke Shopee (minimal 1 gambar produk diperlukan untuk Shopee).');
         }
@@ -435,6 +444,34 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
 
             if (! empty($attrData['attribute_value_list'])) {
                 $attributes[] = $attrData;
+            }
+        }
+
+        // Validasi proaktif: pastikan seluruh atribut WAJIB (non-sale-prop) untuk kategori
+        // ini benar-benar terisi. Sebelumnya atribut wajib yang tak terpetakan hanya
+        // di-skip diam-diam sehingga payload dikirim cacat lalu ditolak Shopee dengan
+        // pesan opaque. Di sini kita gagal lebih awal dengan pesan yang jelas.
+        if (! app()->runningUnitTests()) {
+            $providedExternalIds = array_map(fn ($attr) => (int) $attr['attribute_id'], $attributes);
+
+            $requiredAttrs = DB::table('channel_attributes')
+                ->where('channel_category_id', $channelCategoryUuid)
+                ->where('is_required', true)
+                ->where('is_sale_prop', false)
+                ->get(['external_id', 'name']);
+
+            $missing = [];
+            foreach ($requiredAttrs as $required) {
+                if (! in_array((int) $required->external_id, $providedExternalIds, true)) {
+                    $missing[] = $required->name;
+                }
+            }
+
+            if (! empty($missing)) {
+                throw new \RuntimeException(
+                    'Atribut wajib Shopee belum dipetakan/diisi: ' . implode(', ', $missing)
+                        . '. Lengkapi atribut tersebut pada produk sebelum mengunggah ke Shopee.'
+                );
             }
         }
 

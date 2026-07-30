@@ -84,13 +84,26 @@ class ShopeeClient
 
         if (strtoupper($method) === 'GET') {
             $url = $this->host . $apiPath . '?' . http_build_query(array_merge($common, $params));
-            $response = Http::get($url);
+            $response = Http::timeout(30)->connectTimeout(15)->get($url);
         } else {
             $url = $this->host . $apiPath . '?' . http_build_query($common);
-            $response = Http::asJson()->post($url, $params);
+            $response = Http::asJson()->timeout(30)->connectTimeout(15)->post($url, $params);
         }
 
         $data = $response->json() ?? [];
+
+        if ($response->failed()) {
+            $message = is_array($data) ? ($data['message'] ?? $response->body()) : $response->body();
+
+            Log::error('Shopee API HTTP Error', [
+                'path' => $apiPath,
+                'status' => $response->status(),
+                'message' => $message,
+            ]);
+
+            throw new \RuntimeException('Shopee API HTTP Error [' . $response->status() . ']: ' . $message);
+        }
+
         $error = (string) ($data['error'] ?? '');
 
         if ($error !== '') {
@@ -149,7 +162,7 @@ class ShopeeClient
         $this->throttle();
 
         $url = $this->host . $apiPath . '?' . http_build_query($common);
-        $response = Http::asJson()->post($url, $params);
+        $response = Http::asJson()->timeout(30)->connectTimeout(15)->post($url, $params);
 
         $contentType = strtolower((string) $response->header('Content-Type'));
         $rawBody = (string) $response->body();
@@ -190,7 +203,7 @@ class ShopeeClient
             'sign' => $sign,
         ]);
 
-        $response = Http::attach('image', $contents, $filename)->post($url);
+        $response = Http::attach('image', $contents, $filename)->timeout(30)->connectTimeout(15)->post($url);
         $data = $response->json() ?? [];
 
         if (! empty($data['error'])) {
@@ -229,7 +242,7 @@ class ShopeeClient
             'sign' => $sign,
         ]);
 
-        $response = Http::attach('part_content', $partContent, 'part')->post($url, [
+        $response = Http::attach('part_content', $partContent, 'part')->timeout(30)->connectTimeout(15)->post($url, [
             'video_upload_id' => $videoUploadId,
             'part_seq' => $partSeq,
             'content_md5' => $contentMd5,
@@ -266,7 +279,7 @@ class ShopeeClient
             'sign' => $sign,
         ]);
 
-        $response = Http::asJson()->post($url, $body);
+        $response = Http::asJson()->timeout(30)->connectTimeout(15)->post($url, $body);
         $data = $response->json() ?? [];
 
         if (! empty($data['error'])) {

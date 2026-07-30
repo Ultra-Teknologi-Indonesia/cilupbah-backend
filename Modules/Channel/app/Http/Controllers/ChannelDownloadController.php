@@ -88,6 +88,13 @@ class ChannelDownloadController extends Controller
                 ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
+        } catch (\Throwable $e) {
+            return $this->errorResponse(
+                'Gagal memulai download massal.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
 
         $collection = collect($transactions)->map(

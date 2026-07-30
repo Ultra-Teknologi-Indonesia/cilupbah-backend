@@ -11,6 +11,13 @@ use Modules\Product\Services\ProductImportService;
 
 abstract class BaseRowsImport implements OnEachRow, WithHeadingRow, WithChunkReading
 {
+    /**
+     * Batas jumlah detail error yang disimpan di memori. Total kegagalan tetap
+     * dihitung penuh via $failed; sisanya cukup dilaporkan sebagai truncated agar
+     * file dengan sangat banyak baris gagal tidak membengkakkan memori (OOM).
+     */
+    protected const MAX_ERROR_DETAILS = 500;
+
     protected int $total = 0;
     protected int $success = 0;
     protected int $failed = 0;
@@ -33,12 +40,12 @@ abstract class BaseRowsImport implements OnEachRow, WithHeadingRow, WithChunkRea
         $validator = Validator::make($data, $this->rules());
         if ($validator->fails()) {
             $this->failed++;
-            $this->errors[] = [
+            $this->recordError([
                 'row_number' => $index,
                 'attribute' => $validator->errors()->keys()[0] ?? null,
                 'message' => $validator->errors()->first(),
                 'row_snapshot' => $data,
-            ];
+            ]);
 
             return;
         }
@@ -48,12 +55,23 @@ abstract class BaseRowsImport implements OnEachRow, WithHeadingRow, WithChunkRea
             $this->success++;
         } catch (\Throwable $e) {
             $this->failed++;
-            $this->errors[] = [
+            $this->recordError([
                 'row_number' => $index,
                 'attribute' => null,
                 'message' => $e->getMessage(),
                 'row_snapshot' => $data,
-            ];
+            ]);
+        }
+    }
+
+    /**
+     * Simpan detail error hanya sampai batas MAX_ERROR_DETAILS untuk mencegah
+     * akumulasi memori tak terbatas pada file dengan banyak baris gagal.
+     */
+    protected function recordError(array $error): void
+    {
+        if (count($this->errors) < self::MAX_ERROR_DETAILS) {
+            $this->errors[] = $error;
         }
     }
 
@@ -69,6 +87,7 @@ abstract class BaseRowsImport implements OnEachRow, WithHeadingRow, WithChunkRea
             'success' => $this->success,
             'failed' => $this->failed,
             'errors' => $this->errors,
+            'errors_truncated' => max(0, $this->failed - count($this->errors)),
         ];
     }
 

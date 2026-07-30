@@ -54,6 +54,15 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         }
         $imageUris = empty($productImageUrls) ? [] : $this->imageUploader->uploadFromUrls($productImageUrls, $shop->access_token);
 
+        if (count($imageUris) < count($productImageUrls)) {
+            Log::warning('TikTok: sebagian gambar produk gagal diunggah, lanjut dengan gambar berkurang.', [
+                'shop_id' => $shop->shop_id,
+                'product_id' => $product->id,
+                'expected' => count($productImageUrls),
+                'uploaded' => count($imageUris),
+            ]);
+        }
+
         $variantUriById = [];
         foreach ($images->whereNotNull('variant_id')->sortBy('sort_order')->groupBy('variant_id') as $variantId => $group) {
             $url = $group->first()->url ?? null;
@@ -119,6 +128,15 @@ class TikTokAdapter implements MarketplaceAdapterInterface
             $productImageUrls = $images->sortBy('sort_order')->pluck('url')->values()->all();
         }
         $imageUris = empty($productImageUrls) ? [] : $this->imageUploader->uploadFromUrls($productImageUrls, $shop->access_token);
+
+        if (count($imageUris) < count($productImageUrls)) {
+            Log::warning('TikTok: sebagian gambar produk gagal diunggah, lanjut dengan gambar berkurang.', [
+                'shop_id' => $shop->shop_id,
+                'product_id' => $product->id,
+                'expected' => count($productImageUrls),
+                'uploaded' => count($imageUris),
+            ]);
+        }
 
         $variantUriById = [];
         foreach ($images->whereNotNull('variant_id')->sortBy('sort_order')->groupBy('variant_id') as $variantId => $group) {

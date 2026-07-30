@@ -7,6 +7,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ChannelDownloadService;
 use Modules\Channel\Services\WooCommerceOrderService;
@@ -25,6 +26,16 @@ class ProcessWooCommerceWebhook implements ShouldQueue
         public array $payload = [],
     ) {
         $this->onQueue('default');
+    }
+
+    public static function idempotencyKey(string $shopId, string $topic, array $payload): string
+    {
+        return 'woocommerce:webhook:' . md5(json_encode([
+            $shopId,
+            $topic,
+            $payload['id'] ?? '',
+            $payload['date_modified'] ?? ($payload['status'] ?? ''),
+        ]));
     }
 
     public function handle(WooCommerceOrderService $orderService, ChannelDownloadService $downloadService): void
@@ -118,6 +129,9 @@ class ProcessWooCommerceWebhook implements ShouldQueue
 
     public function failed(\Throwable $e): void
     {
+
+        Cache::forget(self::idempotencyKey($this->shopId, $this->topic, $this->payload));
+
         Log::error('ProcessWooCommerceWebhook gagal permanen: ' . $e->getMessage(), [
             'shop_id' => $this->shopId,
             'topic' => $this->topic,

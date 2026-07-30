@@ -49,10 +49,25 @@ class WooCommerceWebhookController extends Controller
             return response('', 200);
         }
 
-        if (config('services.woocommerce.verify_webhook_signature', true)) {
+        $secret = (string) $shop->webhook_secret;
+
+        $mustVerify = config('services.woocommerce.verify_webhook_signature', true)
+            || app()->environment('production')
+            || $secret === '';
+
+        if ($mustVerify) {
+            if ($secret === '') {
+                Log::warning('WooCommerce webhook secret kosong — ditolak.', [
+                    'source' => $source,
+                    'topic' => $topic,
+                ]);
+
+                return response('', 401);
+            }
+
             $provided = (string) $request->header('x-wc-webhook-signature', '');
 
-            if (! WooCommerceSignature::verify($rawBody, (string) $shop->webhook_secret, $provided)) {
+            if (! WooCommerceSignature::verify($rawBody, $secret, $provided)) {
                 Log::warning('WooCommerce webhook signature tidak valid', [
                     'source' => $source,
                     'topic' => $topic,
@@ -68,7 +83,7 @@ class WooCommerceWebhookController extends Controller
             return response('', 200);
         }
 
-        if (! $this->isFirstDelivery($request, $payload)) {
+        if (! $this->isFirstDelivery($shop->shop_id, $topic, $payload)) {
             return response('', 200);
         }
 
@@ -82,16 +97,11 @@ class WooCommerceWebhookController extends Controller
         return response('', 200);
     }
 
-    protected function isFirstDelivery(Request $request, array $payload): bool
+    protected function isFirstDelivery(string $shopId, string $topic, array $payload): bool
     {
-        $key = 'woocommerce:webhook:' . md5(json_encode([
-            $request->header('x-wc-webhook-id'),
-            $request->header('x-wc-webhook-delivery-id'),
-            $request->header('x-wc-webhook-topic'),
-            $payload['id'] ?? '',
-            $payload['date_modified'] ?? ($payload['status'] ?? ''),
-        ]));
 
-        return Cache::add($key, 1, now()->addDay());
+        $key = ProcessWooCommerceWebhook::idempotencyKey($shopId, $topic, $payload);
+
+        return Cache::add($key, 1, now()->addMinutes(10));
     }
 }

@@ -165,9 +165,11 @@ class ProductChannelDraftService
 
             $attributeMapping = $draft->attribute_mapping;
 
-            SyncProductToChannelJob::dispatch($draft->product_id, $draft->channel_shop_id, 'push', $attributeMapping)->afterCommit();
-
-            $draft->delete();
+            // draftId diteruskan ke job: draft baru dihapus SETELAH upload sukses, bukan saat
+            // dispatch. Job async bisa gagal permanen — bila dihapus saat dispatch, user
+            // kehilangan seluruh konfigurasi dan harus membuat ulang untuk retry. Dengan cara
+            // ini, gagal = draft tetap ada (retry aman), sukses = draft dibersihkan otomatis.
+            SyncProductToChannelJob::dispatch($draft->product_id, $draft->channel_shop_id, 'push', $attributeMapping, $draft->id)->afterCommit();
 
             return $log;
         });

@@ -24,8 +24,12 @@ class AppServiceProvider extends ServiceProvider
             \Illuminate\Support\Facades\URL::forceScheme('https');
         }
 
-        \Illuminate\Support\Facades\RateLimiter::for('tiktok_api', function ($job) {
-            return \Illuminate\Cache\RateLimiting\Limit::perSecond(20);
+        \Illuminate\Support\Facades\RateLimiter::for('tiktok_api', function (object $job) {
+
+            $shopId = (property_exists($job, 'payload') && is_array($job->payload))
+                ? ($job->payload['shop_id'] ?? 'default')
+                : 'default';
+            return \Illuminate\Cache\RateLimiting\Limit::perSecond(20)->by($shopId);
         });
 
         \Illuminate\Support\Facades\RateLimiter::for('channel_api', function (object $job) {

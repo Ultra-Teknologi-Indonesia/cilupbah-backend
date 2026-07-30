@@ -9,6 +9,9 @@ use Illuminate\Support\Facades\Storage;
 
 class ChannelMediaResolver
 {
+
+    private const MAX_BYTES = 10 * 1024 * 1024;
+
     public function __construct(
         protected UploadService $uploads,
     ) {}
@@ -33,6 +36,12 @@ class ChannelMediaResolver
         if ($path !== null) {
             try {
                 if (Storage::disk($disk)->exists($path)) {
+                    if (Storage::disk($disk)->size($path) > self::MAX_BYTES) {
+                        Log::warning("ChannelMediaResolver: media {$reference} melebihi batas " . self::MAX_BYTES . ' byte, dilewati.');
+
+                        return null;
+                    }
+
                     return Storage::disk($disk)->get($path);
                 }
             } catch (\Throwable $e) {
@@ -60,7 +69,16 @@ class ChannelMediaResolver
                 return null;
             }
 
-            return Storage::disk($media->disk)->get($media->getPathRelativeToRoot());
+            $disk = Storage::disk($media->disk);
+            $mediaPath = $media->getPathRelativeToRoot();
+
+            if ($disk->size($mediaPath) > self::MAX_BYTES) {
+                Log::warning("ChannelMediaResolver: media UUID {$uuid} melebihi batas " . self::MAX_BYTES . ' byte, dilewati.');
+
+                return null;
+            }
+
+            return $disk->get($mediaPath);
         } catch (\Throwable $e) {
             Log::warning("ChannelMediaResolver gagal baca media UUID {$uuid}: {$e->getMessage()}");
 
@@ -89,14 +107,41 @@ class ChannelMediaResolver
             return null;
         }
 
+        $headers = [
+            'User-Agent' => 'Mozilla/5.0 (compatible; CilupbahBot/1.0; +https://cilupbah.com)',
+            'Accept' => 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+        ];
+
         try {
 
-            $response = Http::withHeaders([
-                'User-Agent' => 'Mozilla/5.0 (compatible; CilupbahBot/1.0; +https://cilupbah.com)',
-                'Accept' => 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
-            ])->timeout(15)->retry(2, 200, throw: false)->get($url);
+            try {
+                $head = Http::withHeaders($headers)->timeout(10)->head($url);
+                $declared = (int) $head->header('Content-Length');
 
-            return $response->successful() ? $response->body() : null;
+                if ($declared > self::MAX_BYTES) {
+                    Log::warning("ChannelMediaResolver: gambar {$url} melebihi batas " . self::MAX_BYTES . " byte (Content-Length={$declared}), dilewati.");
+
+                    return null;
+                }
+            } catch (\Throwable $e) {
+
+            }
+
+            $response = Http::withHeaders($headers)
+                ->timeout(15)->retry(2, 200, throw: false)->get($url);
+
+            if (! $response->successful()) {
+                return null;
+            }
+
+            $body = $response->body();
+            if (strlen($body) > self::MAX_BYTES) {
+                Log::warning("ChannelMediaResolver: gambar {$url} melebihi batas " . self::MAX_BYTES . ' byte, dilewati.');
+
+                return null;
+            }
+
+            return $body;
         } catch (\Throwable $e) {
             Log::warning("ChannelMediaResolver gagal fetch HTTP untuk {$url}: {$e->getMessage()}");
 

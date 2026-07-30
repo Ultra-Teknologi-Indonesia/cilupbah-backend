@@ -21,6 +21,18 @@ class ChannelDownloadService
         $this->assertSupported($channel);
         $channelShopId = $this->requireChannelShopId($shopId);
 
+        $debounceKey = 'channel_full_pull_debounce:' . strtolower($channel) . ":{$shopId}";
+        if (! Cache::add($debounceKey, true, 10)) {
+            $recent = DownloadTransaction::where('channel_shop_id', $channelShopId)
+                ->whereIn('state', [DownloadTransaction::STATE_QUEUED, DownloadTransaction::STATE_DOWNLOADING])
+                ->latest('created_at')
+                ->first();
+
+            if ($recent) {
+                return $recent;
+            }
+        }
+
         $transaction = DownloadTransaction::create([
             'channel_shop_id' => $channelShopId,
             'executed_by' => $executedBy,

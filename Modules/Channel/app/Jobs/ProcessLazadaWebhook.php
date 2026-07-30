@@ -7,6 +7,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ChannelDownloadService;
@@ -30,6 +31,17 @@ class ProcessLazadaWebhook implements ShouldQueue
         public array $payload,
     ) {
         $this->onQueue('default');
+    }
+
+    public static function idempotencyKey(array $payload): string
+    {
+        return 'lazada:webhook:' . md5(json_encode([
+            $payload['seller_id'] ?? '',
+            $payload['message_type'] ?? '',
+            $payload['timestamp'] ?? '',
+            $payload['data']['trade_order_id'] ?? $payload['data']['item_id'] ?? '',
+            $payload['data']['order_status'] ?? $payload['data']['status'] ?? '',
+        ]));
     }
 
     public function handle(
@@ -231,6 +243,9 @@ class ProcessLazadaWebhook implements ShouldQueue
 
     public function failed(\Throwable $e): void
     {
+
+        Cache::forget(self::idempotencyKey($this->payload));
+
         Log::error('ProcessLazadaWebhook gagal permanen: ' . $e->getMessage(), ['payload' => $this->payload]);
     }
 }

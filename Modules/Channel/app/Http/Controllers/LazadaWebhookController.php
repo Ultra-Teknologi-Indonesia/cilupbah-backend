@@ -75,14 +75,9 @@ class LazadaWebhookController extends Controller
 
     protected function isFirstDelivery(array $payload): bool
     {
-        $key = 'lazada:webhook:' . md5(json_encode([
-            $payload['seller_id'] ?? '',
-            $payload['message_type'] ?? '',
-            $payload['timestamp'] ?? '',
-            $payload['data']['trade_order_id'] ?? $payload['data']['item_id'] ?? '',
-            $payload['data']['order_status'] ?? $payload['data']['status'] ?? '',
-        ]));
 
-        return Cache::add($key, 1, now()->addDay());
+        $key = \Modules\Channel\Jobs\ProcessLazadaWebhook::idempotencyKey($payload);
+
+        return Cache::add($key, 1, now()->addMinutes(10));
     }
 }

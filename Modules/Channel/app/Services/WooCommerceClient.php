@@ -30,7 +30,7 @@ class WooCommerceClient
         return $this->decode($this->send($shop, 'DELETE', $path, $query), $shop, $path);
     }
 
-    public function paginate(ChannelShop $shop, string $path, array $query = [], int $perPage = 100, int $maxPages = 100): array
+    public function paginate(ChannelShop $shop, string $path, array $query = [], int $perPage = 100, int $maxPages = 100, ?callable $onPage = null): array
     {
         $items = [];
         $page = 1;
@@ -47,8 +47,13 @@ class WooCommerceClient
                 break;
             }
 
-            foreach ($chunk as $row) {
-                $items[] = $row;
+            if ($onPage !== null) {
+
+                $onPage($chunk, $page);
+            } else {
+                foreach ($chunk as $row) {
+                    $items[] = $row;
+                }
             }
 
             $totalPages = (int) ($response->header('X-WP-TotalPages') ?: 0);
@@ -67,7 +72,8 @@ class WooCommerceClient
 
         $request = Http::withBasicAuth((string) $shop->consumer_key, (string) $shop->consumer_secret)
             ->acceptJson()
-            ->timeout(30);
+            ->timeout(30)
+            ->connectTimeout(15);
 
         if (! empty($query)) {
             $request = $request->withQueryParameters($query);

@@ -5,8 +5,10 @@ namespace Modules\Channel\Adapters;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Contracts\MarketplaceAdapterInterface;
+use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ChannelStockResolver;
+use Modules\Channel\Services\LazadaAuthService;
 use Modules\Channel\Services\LazadaClient;
 use Modules\Channel\Services\LazadaImageUploader;
 use Modules\Channel\Services\LazadaProductMapper;
@@ -21,6 +23,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         protected LazadaToInternalProductMapper $inboundMapper,
         protected ChannelStockResolver $stockResolver,
         protected LazadaImageUploader $imageUploader,
+        protected LazadaAuthService $authService,
     ) {}
 
     public function getChannelCode(): string
@@ -83,9 +86,9 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         }
 
         try {
-            $this->client->request('POST', '/product/remove', [
+            $this->withTokenRefresh($shop, fn ($token) => $this->client->request('POST', '/product/remove', [
                 'seller_sku_list' => json_encode($skus),
-            ], $shop->access_token);
+            ], $token));
 
             return ['success' => true, 'message' => 'Produk berhasil dihapus dari Lazada'];
         } catch (\Exception $e) {
@@ -117,9 +120,9 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         ];
 
         try {
-            $this->client->request('POST', '/product/update', [
+            $this->withTokenRefresh($shop, fn ($token) => $this->client->request('POST', '/product/update', [
                 'payload' => json_encode($payload),
-            ], $shop->access_token);
+            ], $token));
 
             return ['success' => true, 'message' => $successMessage];
         } catch (\Exception $e) {
@@ -161,9 +164,9 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         $payload = ['Request' => ['Product' => ['Skus' => ['Sku' => $skuPayloads]]]];
 
         try {
-            $this->client->request('POST', '/product/price_quantity/update', [
+            $this->withTokenRefresh($shop, fn ($token) => $this->client->request('POST', '/product/price_quantity/update', [
                 'payload' => json_encode($payload),
-            ], $shop->access_token);
+            ], $token));
 
             return ['success' => true, 'message' => 'Harga dan stok berhasil disinkronisasi ke Lazada'];
         } catch (\Exception $e) {
@@ -180,18 +183,44 @@ class LazadaAdapter implements MarketplaceAdapterInterface
 
     protected function sendProductPayload(string $path, array $payload, ChannelShop $shop): array
     {
+        $send = fn (array $body) => $this->withTokenRefresh(
+            $shop,
+            fn ($token) => $this->client->request('POST', $path, ['payload' => json_encode($body)], $token)
+        );
+
         try {
-            return $this->client->request('POST', $path, ['payload' => json_encode($payload)], $shop->access_token);
+            return $send($payload);
         } catch (\Throwable $e) {
-            if (isset($payload['Request']['Product']['Attributes']['video'])) {
+            if ($this->isVideoRelatedError($e) && isset($payload['Request']['Product']['Attributes']['video'])) {
                 unset($payload['Request']['Product']['Attributes']['video']);
                 Log::warning('Lazada: upload dengan video gagal, mencoba ulang tanpa video: ' . $e->getMessage());
 
-                return $this->client->request('POST', $path, ['payload' => json_encode($payload)], $shop->access_token);
+                return $send($payload);
             }
 
             throw $e;
         }
+    }
+
+    protected function withTokenRefresh(ChannelShop $shop, \Closure $callback): array
+    {
+        try {
+            return $callback($shop->access_token);
+        } catch (TokenExpiredException $e) {
+            $this->authService->refreshStoreToken((string) $shop->id);
+            $shop->refresh();
+
+            return $callback($shop->access_token);
+        }
+    }
+
+    protected function isVideoRelatedError(\Throwable $e): bool
+    {
+        if ($e instanceof TokenExpiredException) {
+            return false;
+        }
+
+        return stripos($e->getMessage(), 'video') !== false;
     }
 
     protected function buildProductPayload(Product $product, ChannelShop $shop): array
@@ -219,10 +248,20 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         $urlsToMigrate = array_values(array_unique(array_merge($imageUrls, array_values($variantImageById))));
         $migratedMap = $this->imageUploader->upload($urlsToMigrate, $shop->access_token)['map'];
 
+        $originalImageCount = count($imageUrls);
         $imageUrls = array_values(array_filter(array_map(
             fn ($url) => $migratedMap[$url] ?? null,
             $imageUrls
         )));
+
+        if (count($imageUrls) < $originalImageCount) {
+            Log::warning('Lazada: sebagian gambar produk gagal dimigrasikan, lanjut dengan gambar berkurang.', [
+                'shop_id' => $shop->shop_id,
+                'product_id' => $product->id,
+                'expected' => $originalImageCount,
+                'uploaded' => count($imageUrls),
+            ]);
+        }
 
         $variantImageById = array_filter(array_map(
             fn ($url) => $migratedMap[$url] ?? null,

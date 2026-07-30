@@ -2,6 +2,7 @@
 
 namespace Modules\Channel\Repositories;
 
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Inventory\Support\StockSummary;
@@ -228,12 +229,7 @@ class ChannelProductRepository
         $now = now();
         $attributesJson = self::canonicalAttributes($channelAttributes);
 
-        $existing = DB::table('product_channel_mappings')
-            ->where('product_id', $productId)
-            ->where('channel_shop_id', $channelShop->id)
-            ->first();
-
-        if ($existing) {
+        $applyUpdate = function (string $existingId) use ($syncStatus, $now, $externalProductId, $attributesJson): string {
             $update = [
                 'sync_status'    => $syncStatus,
                 'last_synced_at' => $now,
@@ -248,24 +244,51 @@ class ChannelProductRepository
             }
 
             DB::table('product_channel_mappings')
-                ->where('id', $existing->id)
+                ->where('id', $existingId)
                 ->update($update);
 
-            return $existing->id;
+            return $existingId;
+        };
+
+        $existing = DB::table('product_channel_mappings')
+            ->where('product_id', $productId)
+            ->where('channel_shop_id', $channelShop->id)
+            ->first();
+
+        if ($existing) {
+            return $applyUpdate($existing->id);
         }
 
         $pcmId = Uuid::uuid7()->getHex()->toString();
-        DB::table('product_channel_mappings')->insert([
-            'id'                  => $pcmId,
-            'product_id'          => $productId,
-            'channel_shop_id'     => $channelShop->id,
-            'external_product_id' => $externalProductId,
-            'channel_attributes'  => $attributesJson,
-            'sync_status'         => $syncStatus,
-            'last_synced_at'      => $now,
-            'created_at'          => $now,
-            'updated_at'          => $now,
-        ]);
+        try {
+            DB::table('product_channel_mappings')->insert([
+                'id'                  => $pcmId,
+                'product_id'          => $productId,
+                'channel_shop_id'     => $channelShop->id,
+                'external_product_id' => $externalProductId,
+                'channel_attributes'  => $attributesJson,
+                'sync_status'         => $syncStatus,
+                'last_synced_at'      => $now,
+                'created_at'          => $now,
+                'updated_at'          => $now,
+            ]);
+        } catch (QueryException $e) {
+
+            if (! self::isUniqueViolation($e)) {
+                throw $e;
+            }
+
+            $raced = DB::table('product_channel_mappings')
+                ->where('product_id', $productId)
+                ->where('channel_shop_id', $channelShop->id)
+                ->first();
+
+            if ($raced) {
+                return $applyUpdate($raced->id);
+            }
+
+            throw $e;
+        }
 
         if ($pushInitialStock) {
             SyncProductToChannelJob::dispatch($productId, $channelShop->id, 'sync_price_stock')
@@ -301,12 +324,7 @@ class ChannelProductRepository
     ): void {
         $now = now();
 
-        $existing = DB::table('product_variant_channel_mappings')
-            ->where('product_channel_mapping_id', $pcmId)
-            ->where('variant_id', $variantId)
-            ->first();
-
-        if ($existing) {
+        $applyUpdate = function (string $existingId) use ($now, $externalSkuId, $channelSellerSku, $syncedPrice, $salesAttributeId, $salesAttributeName): void {
             $update = ['updated_at' => $now];
             if ($externalSkuId !== null) {
                 $update['external_sku_id'] = $externalSkuId;
@@ -324,23 +342,57 @@ class ChannelProductRepository
                 $update['sales_attribute_name'] = $salesAttributeName;
             }
             DB::table('product_variant_channel_mappings')
-                ->where('id', $existing->id)
+                ->where('id', $existingId)
                 ->update($update);
+        };
+
+        $existing = DB::table('product_variant_channel_mappings')
+            ->where('product_channel_mapping_id', $pcmId)
+            ->where('variant_id', $variantId)
+            ->first();
+
+        if ($existing) {
+            $applyUpdate($existing->id);
             return;
         }
 
-        DB::table('product_variant_channel_mappings')->insert([
-            'id'                         => Uuid::uuid7()->getHex()->toString(),
-            'product_channel_mapping_id' => $pcmId,
-            'variant_id'                 => $variantId,
-            'external_sku_id'            => $externalSkuId,
-            'channel_seller_sku'         => $channelSellerSku,
-            'synced_price'               => $syncedPrice,
-            'sales_attribute_id'         => $salesAttributeId,
-            'sales_attribute_name'       => $salesAttributeName,
-            'created_at'                 => $now,
-            'updated_at'                 => $now,
-        ]);
+        try {
+            DB::table('product_variant_channel_mappings')->insert([
+                'id'                         => Uuid::uuid7()->getHex()->toString(),
+                'product_channel_mapping_id' => $pcmId,
+                'variant_id'                 => $variantId,
+                'external_sku_id'            => $externalSkuId,
+                'channel_seller_sku'         => $channelSellerSku,
+                'synced_price'               => $syncedPrice,
+                'sales_attribute_id'         => $salesAttributeId,
+                'sales_attribute_name'       => $salesAttributeName,
+                'created_at'                 => $now,
+                'updated_at'                 => $now,
+            ]);
+        } catch (QueryException $e) {
+
+            if (! self::isUniqueViolation($e)) {
+                throw $e;
+            }
+
+            $raced = DB::table('product_variant_channel_mappings')
+                ->where('product_channel_mapping_id', $pcmId)
+                ->where('variant_id', $variantId)
+                ->first();
+
+            if ($raced) {
+                $applyUpdate($raced->id);
+                return;
+            }
+
+            throw $e;
+        }
+    }
+
+    protected static function isUniqueViolation(QueryException $e): bool
+    {
+
+        return $e->getCode() === '23505';
     }
 
     public function getVariantChannelMappings(string $productId, string $shopId): array
