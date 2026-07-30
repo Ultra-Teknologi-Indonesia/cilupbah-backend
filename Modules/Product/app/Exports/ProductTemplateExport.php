@@ -2,10 +2,7 @@
 
 namespace Modules\Product\Exports;
 
-use Maatwebsite\Excel\Concerns\FromArray;
-use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;
-use Maatwebsite\Excel\Concerns\WithTitle;
 
 class ProductTemplateExport implements WithMultipleSheets
 {
@@ -48,40 +45,5 @@ class ProductTemplateExport implements WithMultipleSheets
             new TemplateDataSheet('Pengisian Import Produk', self::COLUMNS, $example),
             new TemplateInstructionSheet('Petunjuk', $instructions),
         ];
-    }
-}
-
-class TemplateDataSheet implements FromArray, WithHeadings, WithTitle
-{
-    public function __construct(private string $title, private array $headings, private array $rows) {}
-
-    public function array(): array
-    {
-        return $this->rows;
-    }
-
-    public function headings(): array
-    {
-        return $this->headings;
-    }
-
-    public function title(): string
-    {
-        return $this->title;
-    }
-}
-
-class TemplateInstructionSheet implements FromArray, WithTitle
-{
-    public function __construct(private string $title, private array $rows) {}
-
-    public function array(): array
-    {
-        return $this->rows;
-    }
-
-    public function title(): string
-    {
-        return $this->title;
     }
 }
