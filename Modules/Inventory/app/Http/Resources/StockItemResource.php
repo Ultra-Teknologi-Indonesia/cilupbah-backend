@@ -12,6 +12,14 @@ class StockItemResource extends JsonResource
     {
         $inventories = $this->relationLoaded('inventories') ? $this->inventories : collect();
 
+        // Bundle tak punya baris inventory sendiri: stok diturunkan dari komponen
+        // (min-floor). Tanpa ini, listing menampilkan 0 untuk bundle.
+        $bundleDerived = ($this->relationLoaded('product')
+            && (bool) $this->product?->is_bundle
+            && $this->product?->relationLoaded('bundleItems'))
+            ? \Modules\Product\Support\BundleStock::derive($this->product)
+            : null;
+
         return [
             'item_id' => $this->id,
             'item_code' => $this->sku,
@@ -21,8 +29,16 @@ class StockItemResource extends JsonResource
             'variation_values' => $this->variationValues(),
             'stock_this' => $this->whenLoaded('product', fn () => (bool) $this->product?->is_stored, true),
             'average_cost' => $this->weightedAverageCost($inventories),
-            'location_stocks' => $this->locationStocks($inventories),
-            'total_stocks' => $this->totalStocks($inventories),
+            'location_stocks' => $bundleDerived ? [] : $this->locationStocks($inventories),
+            'total_stocks' => $bundleDerived
+                ? [
+                    'on_hand' => $bundleDerived['on_hand'],
+                    'pending_placement' => 0,
+                    'on_order' => 0,
+                    'transit' => 0,
+                    'available' => $bundleDerived['available'],
+                ]
+                : $this->totalStocks($inventories),
             'thumbnail' => $this->resolveThumbnail(),
         ];
     }

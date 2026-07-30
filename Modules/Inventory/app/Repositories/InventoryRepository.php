@@ -257,6 +257,9 @@ class InventoryRepository
                 'product.media' => fn ($q) => $q->whereNull('variant_id')->orderBy('sort_order'),
                 'media' => fn ($q) => $q->orderBy('sort_order'),
                 'options.attribute:id,name',
+                'product.bundleItems.component:id,sku,product_id',
+                'product.bundleItems.component.inventories',
+                'product.bundleItems.component.inventories.bin:id,is_inbound',
                 'inventories' => function ($q) use ($locationFilter, $transitLocationId) {
                     if ($transitLocationId) {
                         $q->where('location_id', '!=', $transitLocationId);
