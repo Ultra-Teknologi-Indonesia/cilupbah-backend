@@ -147,6 +147,13 @@ class ProcessLazadaWebhook implements ShouldQueue
             default => 'lazada_' . strtolower($status),
         };
 
+        $exists = \Modules\Outbound\Models\ShipmentTrackingEvent::query()
+            ->where('shipment_id', $shipment->id)
+            ->where('source', 'lazada')
+            ->where('event_type', $eventType)
+            ->exists();
+        if ($exists) return;
+
         \Modules\Outbound\Models\ShipmentTrackingEvent::create([
             'shipment_id' => $shipment->id,
             'source' => 'lazada',
