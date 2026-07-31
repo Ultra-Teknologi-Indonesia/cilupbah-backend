@@ -340,7 +340,15 @@ class SalesOrderService
             Cache::forget($this->idempotencyKey($order->source, $order->salesorder_no));
 
             if ($order->source) {
-                CancelChannelOrderJob::dispatch($order->id, $finalReason)->onQueue(config('queue.names.channel_sync'));
+                if (in_array(strtolower((string) $order->source), ['shopee', 'tiktok'], true)) {
+
+                    \Modules\Sales\Jobs\RespondBuyerCancellationJob::dispatch(
+                        $order->id,
+                        \Modules\Sales\Jobs\RespondBuyerCancellationJob::ACCEPT,
+                    )->onQueue(config('queue.names.channel_sync'));
+                } else {
+                    CancelChannelOrderJob::dispatch($order->id, $finalReason)->onQueue(config('queue.names.channel_sync'));
+                }
             }
 
             SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
@@ -390,6 +398,14 @@ class SalesOrderService
             'cancel_rejected_by'    => $actorId,
             'cancel_reject_reason'  => $reason,
         ]);
+
+        if (in_array(strtolower((string) $order->source), ['shopee', 'tiktok'], true)) {
+
+            \Modules\Sales\Jobs\RespondBuyerCancellationJob::dispatch(
+                $order->id,
+                \Modules\Sales\Jobs\RespondBuyerCancellationJob::REJECT,
+            )->onQueue(config('queue.names.channel_sync'));
+        }
 
         return $order->fresh();
     }

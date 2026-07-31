@@ -230,7 +230,11 @@ class SalesOrderRepository
     protected function applyCancellationSubScope($query, ?string $sub)
     {
         return match ($sub) {
+            // Belum di-action: pembeli minta batal, seller belum terima/tolak.
             'pending'   => $query->whereNotNull('cancel_requested_at')->where('status', '!=', 'cancelled'),
+            // Sudah di-action oleh seller atas permintaan pembatalan pembeli.
+            'accepted'  => $query->whereNotNull('cancel_accepted_at'),
+            'rejected'  => $query->whereNotNull('cancel_rejected_at'),
             'cancelled' => $query->where('status', 'cancelled'),
             'post_pack' => $query->whereNotNull('handed_to_warehouse_at')
                 ->where(fn ($q) => $q
@@ -473,8 +477,6 @@ class SalesOrderRepository
     {
         $existing = DB::table('sales_orders')->where('salesorder_no', $salesOrderNo)->lockForUpdate()->first();
 
-        // Turunkan kurir master + tipe kirim kanonik dari nama provider (sekali,
-        // saat masuk). Tak membuat kurir baru; null bila tak ada kecocokan yakin.
         $shippingProvider = $orderData['shipping_provider'] ?? ($existing->shipping_provider ?? null);
         $courierMapper = app(\Modules\Outbound\Services\CourierMappingService::class);
         $resolvedCourierId = $shippingProvider
