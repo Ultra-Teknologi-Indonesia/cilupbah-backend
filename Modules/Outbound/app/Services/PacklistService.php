@@ -46,6 +46,10 @@ class PacklistService
             return null;
         }
 
+        if ($order->is_canceled) {
+            throw new \Exception("Pesanan {$order->salesorder_no} sudah DIBATALKAN — tidak bisa dipacking.");
+        }
+
         $packlist = Packlist::where('order_id', $order->id)
             ->whereIn('status', [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS])
             ->first();
@@ -226,6 +230,11 @@ class PacklistService
 
         if (!in_array($packlist->status, [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS])) {
             throw new \Exception("Packlist tidak bisa di-pack (status saat ini: {$packlist->status}).");
+        }
+
+        $packOrder = Order::find($packlist->order_id);
+        if ($packOrder && $packOrder->is_canceled) {
+            throw new \Exception("Pesanan {$packOrder->salesorder_no} sudah DIBATALKAN — tidak bisa dipacking.");
         }
 
         $item = $packlist->items->firstWhere('id', $itemId);

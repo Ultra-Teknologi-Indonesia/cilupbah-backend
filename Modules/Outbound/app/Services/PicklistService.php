@@ -322,6 +322,13 @@ class PicklistService
                 throw new OutboundValidationException('Item picklist tidak ditemukan.');
             }
 
+            $pickOrder = Order::find($item->order_id);
+            if ($pickOrder && $pickOrder->is_canceled) {
+                throw new OutboundValidationException(
+                    "Pesanan {$pickOrder->salesorder_no} sudah DIBATALKAN — jangan dipick, pisahkan barangnya."
+                );
+            }
+
             $current = (int) $item->qty_picked;
             $ordered = (int) $item->qty_ordered;
 

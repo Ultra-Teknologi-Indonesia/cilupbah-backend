@@ -7,37 +7,27 @@ use PHPUnit\Framework\TestCase;
 
 class CourierNameNormalizerTest extends TestCase
 {
-    /**
-     * @dataProvider realWorldStrings
-     */
-    public function test_cleans_real_marketplace_strings(string $raw, string $expected): void
+    public function test_cleans_real_marketplace_strings(): void
     {
-        $this->assertSame($expected, CourierNameNormalizer::clean($raw));
-    }
-
-    public static function realWorldStrings(): array
-    {
-        return [
-            // Lazada majemuk -> ambil kurir pengantar (Delivery:)
-            'lazada drop-off + delivery beda kurir' => ['Drop-off: LEX ID, Delivery: J&T', 'J&T'],
-            'lazada drop-off + delivery sama'       => ['Drop-off: JNE Cashless, Delivery: JNE Cashless', 'JNE Cashless'],
-            'lazada pickup + delivery'              => ['Pickup: J&T CARGO, Delivery: J&T CARGO', 'J&T CARGO'],
-            'lazada grab'                           => ['Drop-off: Grab-ID, Delivery: Grab-ID', 'Grab-ID'],
-
-            // TikTok virtual prefix
-            'tiktok virtual jnt'   => ['TT Virtual# JNT express', 'JNT express'],
-            'tiktok virtual ninja' => ['TT Virtual# Ninja Van Malaysia', 'Ninja Van Malaysia'],
-
-            // Shopee sandbox + penanda uji
-            'shopee sandbox cargo'   => ["Sandbox-J&T Cargo(Don't modify)", 'J&T Cargo'],
-            'shopee sandbox express' => ["Sandbox-J&T Express(Don't modify)", 'J&T Express'],
-            'tiktok test suffix'     => ['Global Standard Shipping(Test)', 'Global Standard Shipping'],
-
-            // Yang sudah bersih tetap apa adanya
-            'sudah bersih spx'   => ['SPX Instant', 'SPX Instant'],
-            'delivered by seller' => ['Delivered by Seller', 'Delivered by Seller'],
-            'kosong'             => ['', ''],
+        // Tanpa @dataProvider: proyek memakai strip-comments yang membuang docblock.
+        $cases = [
+            ['Drop-off: LEX ID, Delivery: J&T', 'J&T'],
+            ['Drop-off: JNE Cashless, Delivery: JNE Cashless', 'JNE Cashless'],
+            ['Pickup: J&T CARGO, Delivery: J&T CARGO', 'J&T CARGO'],
+            ['Drop-off: Grab-ID, Delivery: Grab-ID', 'Grab-ID'],
+            ['TT Virtual# JNT express', 'JNT express'],
+            ['TT Virtual# Ninja Van Malaysia', 'Ninja Van Malaysia'],
+            ["Sandbox-J&T Cargo(Don't modify)", 'J&T Cargo'],
+            ["Sandbox-J&T Express(Don't modify)", 'J&T Express'],
+            ['Global Standard Shipping(Test)', 'Global Standard Shipping'],
+            ['SPX Instant', 'SPX Instant'],
+            ['Delivered by Seller', 'Delivered by Seller'],
+            ['', ''],
         ];
+
+        foreach ($cases as [$raw, $expected]) {
+            $this->assertSame($expected, CourierNameNormalizer::clean($raw), "clean({$raw})");
+        }
     }
 
     public function test_null_returns_empty_string(): void
