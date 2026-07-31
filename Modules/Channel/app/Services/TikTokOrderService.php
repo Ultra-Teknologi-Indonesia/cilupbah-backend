@@ -406,8 +406,10 @@ class TikTokOrderService
             return $empty;
         }
 
-        $queries = ['shop_cipher' => $shop->shop_cipher ?? '', 'page_size' => 20];
-        $body = ['order_ids' => [$orderId]];
+        $queries = ['shop_cipher' => $shop->shop_cipher ?? '', 'page_size' => 50];
+        // Field filter yang benar = main_order_id_list (dikonfirmasi live; `order_ids`
+        // diabaikan TikTok dan mengembalikan 0).
+        $body = ['main_order_id_list' => [$orderId]];
 
         $res = $this->client->request(
             'POST',
@@ -419,9 +421,16 @@ class TikTokOrderService
 
         $list = $res['data']['cancellations']
             ?? $res['data']['cancellation_orders']
-            ?? $res['data']['orders']
             ?? [];
-        $c = $list[0] ?? [];
+
+        // Cocokkan tepat berdasarkan order_id (filter server bisa mengembalikan lebih).
+        $c = null;
+        foreach ($list as $row) {
+            if ((string) ($row['order_id'] ?? '') === (string) $orderId) {
+                $c = $row;
+                break;
+            }
+        }
         if (! $c) {
             return $empty;
         }
