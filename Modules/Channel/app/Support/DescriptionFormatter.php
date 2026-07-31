@@ -15,8 +15,6 @@ class DescriptionFormatter
             return '';
         }
 
-        // Cap panjang input (guard) supaya output HTML tetap wajar & tidak
-        // memotong tag di tengah. Cap kanal berlaku pada string input Markdown.
         if ($maxLength !== null && mb_strlen($markdown) > $maxLength) {
             $markdown = mb_substr($markdown, 0, $maxLength);
         }

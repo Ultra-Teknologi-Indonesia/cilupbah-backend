@@ -18,8 +18,7 @@ class ShopeeProductMapper
         $itemSku = $product['sku'] ?? ($product['variants'][0]['sku'] ?? null);
 
         $itemName = mb_substr(trim((string) ($product['name'] ?? 'Produk')), 0, 255);
-        // Shopee menampilkan deskripsi sebagai teks polos: markdown/HTML harus
-        // dibersihkan agar simbol (**, ##, -, [](url)) tidak bocor ke listing.
+
         $description = \Modules\Channel\Support\DescriptionFormatter::toPlainText(
             (string) ($product['description'] ?? ''),
             3000,

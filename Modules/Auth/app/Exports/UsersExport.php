@@ -26,7 +26,8 @@ class UsersExport implements FromQuery, WithHeadings, WithMapping
             'Email',
             'NIK',
             'Peran (Role)',
-            'Gudang (Location ID)',
+            'Gudang Default (Location ID)',
+            'Gudang Ditugaskan',
             'Terakhir Login',
             'Tanggal Dibuat',
         ];
@@ -34,6 +35,8 @@ class UsersExport implements FromQuery, WithHeadings, WithMapping
 
     public function map($user): array
     {
+        $assigned = $user->locations->pluck('location_name')->implode(', ');
+
         return [
             $user->id,
             $user->name,
@@ -41,6 +44,7 @@ class UsersExport implements FromQuery, WithHeadings, WithMapping
             $user->nik,
             $user->roles->pluck('name')->implode(', '),
             $user->warehouse_id,
+            $assigned !== '' ? $assigned : 'Semua gudang',
             $user->last_login_at ? $user->last_login_at->format('Y-m-d H:i:s') : 'Belum pernah login',
             $user->created_at ? $user->created_at->format('Y-m-d H:i:s') : '',
         ];

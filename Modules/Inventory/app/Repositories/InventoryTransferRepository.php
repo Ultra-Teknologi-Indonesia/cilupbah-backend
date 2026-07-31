@@ -52,6 +52,14 @@ class InventoryTransferRepository
             $query->where('destination_location_id', $filters['destination_location_id']);
         }
 
+        $allowedLocationIds = \App\Support\WarehouseAccess::allowedIds();
+        if ($allowedLocationIds !== null) {
+            $query->where(function ($q) use ($allowedLocationIds) {
+                $q->whereIn('inventory_transfers.source_location_id', $allowedLocationIds)
+                  ->orWhereIn('inventory_transfers.destination_location_id', $allowedLocationIds);
+            });
+        }
+
         $paginator = $query->paginate(request('per_page', $limit))->appends(request()->query());
 
         $userIds = [];

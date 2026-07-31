@@ -2,6 +2,7 @@
 
 namespace Modules\Inventory\Repositories;
 
+use App\Support\WarehouseAccess;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -30,6 +31,7 @@ class MonitorStockRepository
             ->selectRaw(StockSummary::placedOnHandSql() . ' as on_hand')
             ->selectRaw(StockSummary::availableSql() . ' as available')
             ->selectRaw(StockSummary::onOrderSql() . ' as on_order')
+            ->tap(fn ($q) => WarehouseAccess::apply($q, 'inventories.location_id'))
             ->when($locationId, fn ($q) => $q->where('inventories.location_id', $locationId))
             ->groupBy('inventories.item_id');
 
@@ -121,6 +123,7 @@ class MonitorStockRepository
             ->selectRaw('MAX(transaction_date) as last_sold')
             ->selectRaw('COALESCE(SUM(ABS(qty)), 0) as qty_sold')
             ->where('source', self::SALE_SOURCE)
+            ->tap(fn ($q) => WarehouseAccess::apply($q, 'inventory_movements.location_id'))
             ->when($locationId, fn ($q) => $q->where('location_id', $locationId))
             ->when($from, fn ($q) => $q->where('transaction_date', '>=', $from))
             ->groupBy('item_id');

@@ -25,7 +25,6 @@ class WooCommerceProductService
         $total = 0;
         $count = 0;
 
-        // Streaming: proses tiap halaman lalu lepas, jangan tumpuk seluruh katalog ke memori.
         $this->client->paginate($shop, 'products', [], 100, 100, function (array $chunk) use ($shop, $shopId, $productService, $onProgress, &$total, &$count) {
             $total += count($chunk);
 
@@ -125,7 +124,6 @@ class WooCommerceProductService
 
         $updated = 0;
 
-        // Streaming: proses tiap halaman lalu lepas, jangan tumpuk seluruh katalog ke memori.
         $this->client->paginate($shop, 'products', [], 100, 100, function (array $chunk) use ($shop, $channelShopId, &$updated) {
             foreach ($chunk as $item) {
                 $mapping = ProductChannelMapping::where('external_product_id', (string) ($item['id'] ?? ''))

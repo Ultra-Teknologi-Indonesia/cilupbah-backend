@@ -47,7 +47,20 @@ class UpdateUserRequest extends FormRequest
             'permissions' => ['sometimes', 'array'],
             'permissions.*' => ['string', 'distinct', 'exists:permissions,name'],
             'nik' => ['nullable', 'string', 'max:255'],
-            'warehouse_id' => ['nullable', 'bail', 'uuid', 'exists:locations,id'],
+            'warehouse_id' => [
+                'nullable',
+                'bail',
+                'uuid',
+                'exists:locations,id',
+                function ($attribute, $value, $fail) {
+                    $assigned = $this->input('location_ids');
+                    if ($value && is_array($assigned) && $assigned !== [] && ! in_array($value, $assigned, true)) {
+                        $fail('Gudang default harus termasuk gudang yang ditugaskan.');
+                    }
+                },
+            ],
+            'location_ids' => ['sometimes', 'array'],
+            'location_ids.*' => ['uuid', 'distinct', 'exists:locations,id'],
             'avatar_media_id' => ['nullable', 'bail', 'uuid', 'exists:media,uuid'],
         ];
     }

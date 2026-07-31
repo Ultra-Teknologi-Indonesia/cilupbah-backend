@@ -577,6 +577,9 @@ class InventoryTransactionController extends Controller
 
     public function createDraft(\Illuminate\Http\Request $request): JsonResponse
     {
+        \App\Support\WarehouseAccess::assert($request->input('source_location_id'));
+        \App\Support\WarehouseAccess::assert($request->input('destination_location_id'));
+
         try {
             $validated = $request->validate([
                 'created_by' => 'required|string|max:100',

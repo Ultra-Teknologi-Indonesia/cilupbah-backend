@@ -45,7 +45,7 @@ class InboundService
 {
     use EnforcesAssignmentChannel;
 
-    private const NOTIF_PENEMPATAN = 'manage-penempatan';
+    public const NOTIF_PENEMPATAN = 'view-penempatan';
 
     public function __construct(
         protected InboundRepository $inboundRepository,

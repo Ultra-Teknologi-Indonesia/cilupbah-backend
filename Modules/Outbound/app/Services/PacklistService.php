@@ -93,6 +93,8 @@ class PacklistService
 
     public function create(array $data): Packlist
     {
+        \App\Support\WarehouseAccess::assert($data['location_id'] ?? null);
+
         return DB::transaction(function () use ($data) {
             $order = Order::with('items')->find($data['order_id']);
 

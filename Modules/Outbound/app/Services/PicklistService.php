@@ -180,6 +180,8 @@ class PicklistService
 
     public function create(array $data): Picklist
     {
+        \App\Support\WarehouseAccess::assert($data['location_id'] ?? null);
+
         return DB::transaction(function () use ($data) {
             $picklistNo = $this->picklistRepository->generatePicklistNo();
 

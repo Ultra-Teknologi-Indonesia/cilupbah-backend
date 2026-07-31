@@ -12,8 +12,6 @@ class StockItemResource extends JsonResource
     {
         $inventories = $this->relationLoaded('inventories') ? $this->inventories : collect();
 
-        // Bundle tak punya baris inventory sendiri: stok diturunkan dari komponen
-        // (min-floor). Tanpa ini, listing menampilkan 0 untuk bundle.
         $bundleDerived = ($this->relationLoaded('product')
             && (bool) $this->product?->is_bundle
             && $this->product?->relationLoaded('bundleItems'))

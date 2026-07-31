@@ -192,7 +192,7 @@ class LazadaOrderService
             $code = (string) ($res['code'] ?? '0');
             if ($code !== '0' && $code !== '') {
                 $message = $res['message'] ?? $code;
-                // Status sudah maju (RTS/shipped) / aksi reverse ditolak = final.
+
                 $final = (bool) preg_match('/status|not[_ ]?allowed|reverse|invalid[_ ]?order/i', $code . ' ' . $message);
 
                 throw new \Modules\Channel\Exceptions\ChannelCancelException(

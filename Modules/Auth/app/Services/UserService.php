@@ -93,6 +93,10 @@ class UserService
                 $user->syncPermissions($data['permissions'] ?? []);
             }
 
+            if (array_key_exists('location_ids', $data)) {
+                $user->syncLocations($data['location_ids'] ?? []);
+            }
+
             $this->historyRepository->createHistory([
                 'actor_id' => Auth::id(),
                 'target_user_id' => $user->id,
@@ -143,6 +147,10 @@ class UserService
 
             if (array_key_exists('permissions', $data)) {
                 $user->syncPermissions($data['permissions'] ?? []);
+            }
+
+            if (array_key_exists('location_ids', $data)) {
+                $user->syncLocations($data['location_ids'] ?? []);
             }
 
             $this->historyRepository->createHistory([

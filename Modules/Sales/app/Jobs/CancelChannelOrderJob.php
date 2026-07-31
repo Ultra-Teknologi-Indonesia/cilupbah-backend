@@ -41,8 +41,6 @@ class CancelChannelOrderJob implements ShouldQueue
                 default     => null,
             };
 
-            // Resync pasca-cancel (TikTok) bisa sudah memfinalisasi order jadi
-            // cancelled/accepted; jangan turunkan balik ke 'pending'.
             $order->refresh();
 
             if ($order->channel_cancel_status === 'accepted' || $order->status === 'cancelled') {
@@ -103,7 +101,7 @@ class CancelChannelOrderJob implements ShouldQueue
 
     private function cancelOnShopee(SalesOrder $order): array
     {
-        // API MP pakai order id CHANNEL (tanpa prefix), bukan salesorder_no lokal.
+
         $result = app(\Modules\Channel\Services\ShopeeOrderService::class)->cancelOrder(
             $order->channel_shop_id,
             $order->channel_order_no ?: $order->salesorder_no,
@@ -174,8 +172,6 @@ class CancelChannelOrderJob implements ShouldQueue
             'exception' => $exception->getMessage(),
         ]);
 
-        // Jangan biarkan order nyangkut 'pending' selamanya: tandai 'failed' agar guard
-        // fulfillment lepas & seller lihat di tab Batal ke Marketplace (Ditolak).
         $order = SalesOrder::find($this->orderId);
         if ($order && $order->channel_cancel_status === 'pending'
             && $order->status !== 'cancelled' && ! $order->is_canceled) {

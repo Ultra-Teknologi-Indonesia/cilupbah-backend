@@ -99,7 +99,7 @@ class ProcessStockOpnameFinalizeJob implements ShouldQueue
 
         if ($itemsWithDifference->isNotEmpty()) {
             $varianceCount = $itemsWithDifference->count();
-            $notifications->toPermission('manage-stock-opname', [
+            $notifications->toPermission('view-stok-opname', [
                 'type' => 'stock_opname_variance',
                 'title' => 'Opname punya selisih stok',
                 'message' => "Opname {$opname->opname_no} mencatat {$varianceCount} SKU selisih.",

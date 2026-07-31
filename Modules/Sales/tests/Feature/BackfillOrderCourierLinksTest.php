@@ -50,8 +50,8 @@ class BackfillOrderCourierLinksTest extends TestCase
         $loc = $this->seedLocation();
 
         $matched = $this->seedOrder($loc, 'Drop-off: JNE Cashless, Delivery: JNE Cashless');
-        $noMaster = $this->seedOrder($loc, 'SPX Instant'); // tak ada SPX di master -> courier null, tipe INSTANT
-        $selfPickup = $this->seedOrder($loc, null);        // tanpa kurir -> dilewati
+        $noMaster = $this->seedOrder($loc, 'SPX Instant'); 
+        $selfPickup = $this->seedOrder($loc, null);        
 
         $this->artisan('couriers:backfill-order-links', ['--apply' => true])->assertSuccessful();
 

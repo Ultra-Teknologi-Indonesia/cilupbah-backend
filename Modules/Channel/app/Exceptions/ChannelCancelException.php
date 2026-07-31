@@ -4,13 +4,6 @@ namespace Modules\Channel\Exceptions;
 
 use RuntimeException;
 
-/**
- * Dilempar channel service saat pembatalan seller-initiated GAGAL di sisi marketplace.
- *
- * $retryable = false  -> error final (mis. status sudah RTS/shipped, reason tidak match
- *                        status, order sudah cancelled). Job JANGAN retry.
- * $retryable = true   -> error transien (network/5xx/timeout). Job boleh retry.
- */
 class ChannelCancelException extends RuntimeException
 {
     public function __construct(

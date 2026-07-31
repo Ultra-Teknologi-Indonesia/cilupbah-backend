@@ -11,11 +11,7 @@ use Modules\Product\Services\ProductImportService;
 
 abstract class BaseRowsImport implements OnEachRow, WithHeadingRow, WithChunkReading
 {
-    /**
-     * Batas jumlah detail error yang disimpan di memori. Total kegagalan tetap
-     * dihitung penuh via $failed; sisanya cukup dilaporkan sebagai truncated agar
-     * file dengan sangat banyak baris gagal tidak membengkakkan memori (OOM).
-     */
+
     protected const MAX_ERROR_DETAILS = 500;
 
     protected int $total = 0;
@@ -64,10 +60,6 @@ abstract class BaseRowsImport implements OnEachRow, WithHeadingRow, WithChunkRea
         }
     }
 
-    /**
-     * Simpan detail error hanya sampai batas MAX_ERROR_DETAILS untuk mencegah
-     * akumulasi memori tak terbatas pada file dengan banyak baris gagal.
-     */
     protected function recordError(array $error): void
     {
         if (count($this->errors) < self::MAX_ERROR_DETAILS) {

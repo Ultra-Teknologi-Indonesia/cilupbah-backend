@@ -418,7 +418,7 @@ class ShopeeOrderService
 
     public function getCancelReasons(): array
     {
-        // Satu sumber (config, fallback konstanta) — Shopee tak punya API daftar alasan.
+
         return array_map(
             fn ($r) => ['id' => $r['key'], 'text' => $r['label']],
             app(\Modules\Channel\Services\MarketplaceCancelReasonService::class)->for('shopee'),

@@ -188,8 +188,6 @@ class SyncProductToChannelJob implements ShouldQueue
                     $mapping->delete();
                 }
 
-                // Draft hanya dihapus setelah upload benar-benar sukses (bukan saat dispatch),
-                // sehingga kegagalan permanen tetap menyisakan draft untuk retry.
                 if ($this->draftId && in_array($this->action, ['push', 'update'], true)) {
                     try {
                         \Modules\Product\Models\ProductChannelDraft::whereKey($this->draftId)->delete();

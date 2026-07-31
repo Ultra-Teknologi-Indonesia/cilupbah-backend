@@ -6,7 +6,6 @@ use Modules\Channel\Http\Controllers\ProductStockSyncController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
-    // Trigger manual sinkronisasi STOK-SAJA ke channel (single/bulk/all).
     Route::post('products/sync-stock', [ProductStockSyncController::class, 'syncStock'])
         ->name('products.sync-stock')
         ->middleware('role_or_permission:owner|edit-produk');

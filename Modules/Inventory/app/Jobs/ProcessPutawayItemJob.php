@@ -234,9 +234,6 @@ class ProcessPutawayItemJob implements ShouldQueue
             });
         });
 
-        // Putaway memindahkan stok dari bin inbound (tak terlihat channel) ke bin
-        // final (terlihat channel) -> available naik. Dorong ulang stok item ini +
-        // bundle yang memakainya (reverse lookup di dalam job), agar tak basi.
         \Modules\Channel\Jobs\SyncStockToChannelsJob::dispatch($this->itemId)->afterCommit();
     }
 

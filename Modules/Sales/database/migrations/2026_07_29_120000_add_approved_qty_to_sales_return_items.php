@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('sales_return_items', function (Blueprint $table) {
-            // Qty yang disetujui untuk restock. NULL = perlakukan sebagai = qty (backward-compat).
+
             $table->integer('approved_qty')->nullable()->after('qty');
         });
     }

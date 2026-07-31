@@ -56,7 +56,6 @@ class ProductStockSyncController extends Controller
             );
         }
 
-        // Mode all: JANGAN dispatch ribuan job inline. Queue orchestrator saja.
         if ($data['mode'] === 'all') {
             try {
                 ManualStockResyncAllJob::dispatch($data['filters'] ?? []);
@@ -76,7 +75,6 @@ class ProductStockSyncController extends Controller
             );
         }
 
-        // Mode single/bulk: resolve mapping + dispatch per mapping, balas jumlah antrean.
         try {
             $result = $this->service->syncProducts(
                 $data['product_ids'],

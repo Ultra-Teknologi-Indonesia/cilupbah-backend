@@ -76,10 +76,10 @@ class CourierMappingServiceTest extends TestCase
 
     public function test_messy_channel_strings_resolve_to_correct_courier(): void
     {
-        // Lazada majemuk: kode diambil dari kurir pengantar (Delivery:), bukan drop-off.
+
         $this->assertSame('jnt', $this->service->resolveCode('Drop-off: LEX ID, Delivery: J&T'));
         $this->assertSame('jne', $this->service->resolveCode('Drop-off: JNE Cashless, Delivery: JNE Cashless'));
-        // TikTok virtual & Shopee sandbox prefix/suffix dibuang.
+
         $this->assertSame('jnt', $this->service->resolveCode('TT Virtual# JNT express'));
         $this->assertSame('jnt', $this->service->resolveCode("Sandbox-J&T Express(Don't modify)"));
         $this->assertSame('spx', $this->service->resolveCode('SPX Instant Prioritas'));
@@ -87,18 +87,18 @@ class CourierMappingServiceTest extends TestCase
 
     public function test_lazada_drop_off_courier_does_not_hijack_delivery_courier(): void
     {
-        // Drop-off LEX, tapi last-mile J&T -> harus jnt, bukan lex.
+
         $this->assertSame('jnt', $this->service->resolveCode('Drop-off: LEX ID, Delivery: J&T'));
         $this->assertNotSame('lex', $this->service->resolveCode('Drop-off: LEX ID, Delivery: J&T'));
     }
 
     public function test_instant_detected_by_brand_name_not_only_keyword(): void
     {
-        // Kurir instan bernama polos kini terdeteksi (satu sumber dgn InstantOrderClassifier).
+
         $this->assertSame('INSTANT', $this->service->resolveShipmentType('GrabExpress'));
         $this->assertSame('INSTANT', $this->service->resolveShipmentType('GoSend'));
         $this->assertSame('INSTANT', $this->service->resolveShipmentType('Drop-off: Grab-ID, Delivery: Grab-ID'));
-        // Nama "Express" biasa tetap reguler.
+
         $this->assertSame('REGULAR', $this->service->resolveShipmentType('J&T Express'));
     }
 
@@ -106,6 +106,34 @@ class CourierMappingServiceTest extends TestCase
     {
         $this->assertSame('', $this->service->resolveCode(''));
         $this->assertSame('', $this->service->resolveCode('   '));
+    }
+
+    public function test_resolve_courier_id_matches_master_regardless_of_code_scheme(): void
+    {
+
+        $jne = Courier::create(['name' => 'JNE', 'code' => 'JNE', 'is_active' => true]);
+        $jnt = Courier::create(['name' => 'J&T', 'code' => 'jnt', 'is_active' => true]);
+
+        $this->assertSame($jne->id, $this->service->resolveCourierId('Drop-off: JNE Cashless, Delivery: JNE Cashless'));
+        $this->assertSame($jnt->id, $this->service->resolveCourierId('Drop-off: LEX ID, Delivery: J&T'));
+        $this->assertSame($jnt->id, $this->service->resolveCourierId('TT Virtual# J&T Express'));
+    }
+
+    public function test_resolve_courier_id_returns_null_without_confident_match(): void
+    {
+        Courier::create(['name' => 'JNE', 'code' => 'JNE', 'is_active' => true]);
+
+        $this->assertNull($this->service->resolveCourierId('Delivered by Seller'));
+        $this->assertNull($this->service->resolveCourierId('AMBIL_SENDIRI'));
+        $this->assertNull($this->service->resolveCourierId(''));
+        $this->assertNull($this->service->resolveCourierId(null));
+    }
+
+    public function test_resolve_courier_id_ignores_inactive_master_courier(): void
+    {
+        Courier::create(['name' => 'JNE', 'code' => 'JNE', 'is_active' => false]);
+
+        $this->assertNull($this->service->resolveCourierId('JNE Cashless'));
     }
 
     public function test_groups_orders_across_channels_into_one_manifest_bucket(): void

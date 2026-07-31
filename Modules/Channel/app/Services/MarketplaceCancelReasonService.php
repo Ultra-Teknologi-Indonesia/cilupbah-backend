@@ -24,8 +24,6 @@ class MarketplaceCancelReasonService
         ['key' => 'seller_cancel_paid_reason_address_not_deliver', 'label' => 'Alamat pembeli tidak terjangkau'],
     ];
 
-    // Shopee: CUSTOMER_REQUEST ditolak API untuk seller-cancel ("cancel reason is
-    // invalid") — hanya reason seller ini yang diterima. UNDELIVERABLE_AREA = TW/MY only.
     private const SHOPEE_REASONS = [
         ['key' => 'OUT_OF_STOCK', 'label' => 'Stok habis'],
         ['key' => 'COD_NOT_SUPPORTED', 'label' => 'COD tidak didukung'],
@@ -46,8 +44,6 @@ class MarketplaceCancelReasonService
         return strtoupper((string) $rawStatus) === 'UNPAID' ? 'unpaid' : 'paid';
     }
 
-    // Shopee/TikTok tak punya API daftar alasan (enum platform). Diambil dari config
-    // agar bisa dikoreksi tanpa deploy; konstanta di atas jadi fallback. Lazada live.
     private function shopeeReasons(): array
     {
         return config('cancel_reasons.shopee') ?: self::SHOPEE_REASONS;

@@ -31,6 +31,8 @@ class StockOpnameService
 
     public function create(array $data): StockOpname
     {
+        \App\Support\WarehouseAccess::assert($data['location_id'] ?? null);
+
         return DB::transaction(function () use ($data) {
             $opnameNo = $this->opnameRepository->generateOpnameNo();
 
@@ -243,21 +245,29 @@ class StockOpnameService
 
     public function getBins(string $locationId, ?string $zoneId = null)
     {
+        \App\Support\WarehouseAccess::assert($locationId);
+
         return $this->opnameRepository->getBinsByLocation($locationId, $zoneId);
     }
 
     public function getFloors(string $locationId, ?string $zoneId = null)
     {
+        \App\Support\WarehouseAccess::assert($locationId);
+
         return $this->opnameRepository->getFloorsByLocation($locationId, $zoneId);
     }
 
     public function getRows(string $locationId, string $floorCode, ?string $zoneId = null)
     {
+        \App\Support\WarehouseAccess::assert($locationId);
+
         return $this->opnameRepository->getRowsByFloor($locationId, $floorCode, $zoneId);
     }
 
     public function getColumns(string $locationId, string $floorCode, string $rowCode, ?string $zoneId = null)
     {
+        \App\Support\WarehouseAccess::assert($locationId);
+
         return $this->opnameRepository->getColumnsByRow($locationId, $floorCode, $rowCode, $zoneId);
     }
 

@@ -146,6 +146,12 @@ class SalesOrderResource extends JsonResource
                 'tracking_number' => $this->tracking_number,
             ],
 
+            'shipping_label' => [
+                'status'      => $this->shipping_label_status,
+                'doc_type'    => $this->shipping_label_doc_type,
+                'prepared_at' => $this->shipping_label_prepared_at,
+            ],
+
             'courier_pickup' => [
                 'courier_name'  => $this->courier_name,
                 'courier_phone' => $this->courier_phone,

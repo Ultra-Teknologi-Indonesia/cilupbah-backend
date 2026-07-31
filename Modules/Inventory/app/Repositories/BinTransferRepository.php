@@ -19,6 +19,8 @@ class BinTransferRepository
             $query->where('location_id', $filters['location_id']);
         }
 
+        \App\Support\WarehouseAccess::apply($query);
+
         if (! empty($filters['status'])) {
             $statuses = is_array($filters['status']) ? $filters['status'] : [$filters['status']];
             $query->whereIn('status', $statuses);

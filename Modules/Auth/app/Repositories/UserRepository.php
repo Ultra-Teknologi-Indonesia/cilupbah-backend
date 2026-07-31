@@ -40,7 +40,7 @@ class UserRepository
 
     public function getExportUsersQuery(): Builder
     {
-        return $this->baseQuery()->getEloquentBuilder();
+        return $this->baseQuery()->getEloquentBuilder()->with('locations');
     }
 
     protected function baseQuery(): QueryBuilder

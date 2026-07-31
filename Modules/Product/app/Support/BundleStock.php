@@ -30,8 +30,6 @@ class BundleStock
             $variant = $item->relationLoaded('component') ? $item->component : null;
             $inventories = ($variant && $variant->relationLoaded('inventories')) ? $variant->inventories : null;
 
-            // Samakan scope dengan channel: kecualikan SYS-TRANSIT agar ERP tidak
-            // overstate stok bundle (partitionLoaded sudah placed-only).
             if ($inventories !== null) {
                 $transitLocationId = self::transitLocationId();
                 if ($transitLocationId !== null) {

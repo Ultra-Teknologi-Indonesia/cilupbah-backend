@@ -280,9 +280,6 @@ class SalesReturnService
                 }
             }
 
-            // Bundle tak menyimpan stok fisik: restock diarahkan ke KOMPONEN
-            // (qty x qty-komponen). Non-bundle tetap 1:1. Cegah baris inventory
-            // hantu untuk SKU bundle + memastikan komponen benar-benar di-restock.
             $productRepo = app(\Modules\Product\Repositories\ProductRepository::class);
             $qtyByItem = [];
             $conditionByItem = [];

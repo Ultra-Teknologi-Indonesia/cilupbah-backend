@@ -69,7 +69,7 @@ class ShipmentScanGuardTest extends TestCase
     {
         $loc = $this->seedLocation();
         $shipmentId = $this->seedShipment($loc, 'J&T', 'REGULAR');
-        // Kurir pengantar JNE (last-mile), beda dgn manifest J&T.
+
         [, $no] = $this->seedPackedOrder($loc, 'Drop-off: LEX ID, Delivery: JNE Cashless');
 
         $this->expectException(ScanRejectedException::class);
@@ -82,7 +82,7 @@ class ShipmentScanGuardTest extends TestCase
     {
         Bus::fake();
         $loc = $this->seedLocation();
-        // Manifest "Shopee Xpress" (spx) instan; pesanan "SPX Instant" (spx) instan.
+
         $shipmentId = $this->seedShipment($loc, 'Shopee Xpress', 'INSTANT');
         [$orderId, $no] = $this->seedPackedOrder($loc, 'SPX Instant');
 
@@ -97,7 +97,7 @@ class ShipmentScanGuardTest extends TestCase
     public function test_rejects_instant_order_into_regular_manifest(): void
     {
         $loc = $this->seedLocation();
-        // Kurir sama (spx) tapi manifest REGULAR sedangkan pesanan instan.
+
         $shipmentId = $this->seedShipment($loc, 'SPX', 'REGULAR');
         [, $no] = $this->seedPackedOrder($loc, 'SPX Instant');
 

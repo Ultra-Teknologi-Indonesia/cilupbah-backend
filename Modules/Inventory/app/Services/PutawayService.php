@@ -31,7 +31,7 @@ class PutawayService
 {
     use EnforcesAssignmentChannel;
 
-    private const NOTIF_PERMISSION = 'manage-penempatan';
+    public const NOTIF_PERMISSION = 'view-penempatan';
 
     protected function unlockedOnceColumn(Model $doc): string
     {
@@ -82,7 +82,10 @@ class PutawayService
     ): array {
         $query = Putaway::query();
         if ($locationId !== null && $locationId !== '') {
+            \App\Support\WarehouseAccess::assert($locationId);
             $query->where('location_id', $locationId);
+        } else {
+            \App\Support\WarehouseAccess::apply($query);
         }
         if ($assignedTo !== null && $assignedTo !== '') {
             $query->where('assigned_to', $assignedTo);
@@ -116,6 +119,8 @@ class PutawayService
 
     public function listBins(string $locationId, ?string $search = null): array
     {
+        \App\Support\WarehouseAccess::assert($locationId);
+
         $bins = $this->putawayRepository->getPutawayBins($locationId, $search);
 
         $binCurrentQty = $this->putawayRepository->currentQtyByBin($locationId, $bins->pluck('id')->all());
@@ -131,6 +136,8 @@ class PutawayService
 
     public function lookupBin(string $code, string $locationId): ?\Modules\Warehouse\Models\LocationBin
     {
+        \App\Support\WarehouseAccess::assert($locationId);
+
         $bin = $this->putawayRepository->lookupPutawayBin($locationId, $code);
 
         if (! $bin) {

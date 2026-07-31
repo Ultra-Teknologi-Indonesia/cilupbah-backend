@@ -12,7 +12,7 @@ use Modules\Warehouse\Models\Location;
 
 class StockReplenishmentService
 {
-    private const NOTIF_PERMISSION = 'manage-permintaan-restock';
+    public const NOTIF_PERMISSION = 'view-permintaan-restock';
 
     public function __construct(
         private InventoryService $inventoryService,

@@ -2,6 +2,7 @@
 
 namespace Modules\Report\Repositories;
 
+use App\Support\WarehouseAccess;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
@@ -40,6 +41,7 @@ class ReportRepository
     public function putaway(array $filters): Model|LengthAwarePaginator
     {
         $query = Putaway::with(['items.product:id,product_id,sku', 'items.product.product:id,name', 'location:id,location_name,location_code'])
+            ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
             ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
@@ -57,6 +59,7 @@ class ReportRepository
     {
         $query = Inbound::with(['items.variant:id,product_id,sku', 'items.variant.product:id,name', 'location:id,location_name,location_code'])
             ->where('type', Inbound::TYPE_PURCHASE_ORDER)
+            ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
             ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
@@ -73,6 +76,7 @@ class ReportRepository
     public function adjustment(array $filters): Model|LengthAwarePaginator
     {
         $query = StockAdjustment::with(['items.product:id,product_id,sku', 'items.product.product:id,name', 'location:id,location_name,location_code'])
+            ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
             ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('transaction_date', '>=', $v))
@@ -89,6 +93,7 @@ class ReportRepository
     public function stockOpname(array $filters): Model|LengthAwarePaginator
     {
         $query = StockOpname::with(['items.product:id,product_id,sku', 'items.product.product:id,name', 'location:id,location_name,location_code'])
+            ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
             ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
@@ -105,6 +110,7 @@ class ReportRepository
     public function purchaseOrder(array $filters): Model|LengthAwarePaginator
     {
         $query = PurchaseOrder::with(['items.product:id,product_id,sku', 'items.product.product:id,name', 'supplier:id,name,code', 'location:id,location_name,location_code'])
+            ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->when($filters['supplier_id'] ?? null, fn ($q, $v) => $q->where('supplier_id', $v))
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
@@ -124,6 +130,7 @@ class ReportRepository
         $orderIds = $filters['order_ids'] ?? null;
 
         $query = SalesInvoice::with(['items', 'order:id,salesorder_no,customer_name,shipping_full_name,shipping_address,shipping_city', 'location:id,location_name,location_code'])
+            ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
             ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('invoice_date', '>=', $v))
             ->when($filters['date_to'] ?? null, fn ($q, $v) => $q->whereDate('invoice_date', '<=', $v))
@@ -140,6 +147,7 @@ class ReportRepository
     public function invoiceFallbackOrders(array $orderIds): Collection
     {
         return SalesOrder::with('items:id,order_id,sku,description,qty_in_base,price,amount,disc_amount,tax_amount')
+            ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->whereIn('id', $orderIds)
             ->get();
     }
@@ -148,6 +156,7 @@ class ReportRepository
     {
         $query = Inbound::with(['items.variant:id,product_id,sku', 'items.variant.product:id,name', 'location:id,location_name,location_code'])
             ->where('type', Inbound::TYPE_CONSIGNMENT)
+            ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
             ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
@@ -166,6 +175,7 @@ class ReportRepository
         $query = Inbound::with(['items.variant:id,product_id,sku', 'items.variant.product:id,name', 'location:id,location_name,location_code'])
             ->whereIn('status', [Inbound::STATUS_RECEIVED, Inbound::STATUS_PUTAWAY_IN_PROGRESS])
             ->whereHas('items', fn ($q) => $q->whereColumn('putaway_qty', '<', 'received_qty'))
+            ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
             ->when($filters['date_to'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '<=', $v))
@@ -190,6 +200,7 @@ class ReportRepository
                 'location:id,location_name,location_code',
                 'picker:id,name,email',
             ])
+            ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
             ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
@@ -210,6 +221,7 @@ class ReportRepository
         $orderIds = $filters['order_ids'] ?? null;
 
         $query = Shipment::with(['orders.order:id,salesorder_no,customer_name,tracking_number,shipping_provider,shipping_full_name,shipping_address,shipping_city,order_weight_gram,status', 'location:id,location_name,location_code'])
+            ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
             ->when($filters['courier_code'] ?? null, fn ($q, $v) => $q->where('courier_code', $v))
@@ -236,6 +248,7 @@ class ReportRepository
             ->leftJoin('shipment_orders as sho', 'sho.order_id', '=', 'so.id')
             ->leftJoin('shipments as sh', 'sh.id', '=', 'sho.shipment_id')
 
+            ->tap(fn ($q) => WarehouseAccess::apply($q, 'so.location_id'))
             ->whereNotExists(fn ($q) => $q
                 ->select(DB::raw(1))
                 ->from('sales_order_items as soi')
@@ -279,7 +292,7 @@ class ReportRepository
     {
         $from = ($filters['from'] ?? null) ? $filters['from'] . ' 00:00:00' : null;
         $to = ($filters['to'] ?? null) ? $filters['to'] . ' 23:59:59' : null;
-        $locationIds = $filters['location_ids'] ?? [];
+        $locationIds = WarehouseAccess::constrain(empty($filters['location_ids']) ? null : $filters['location_ids']);
 
         $query = match ($type) {
             OrderPerformanceSpec::PICKER => $this->pickerPerformanceQuery(),
@@ -291,7 +304,7 @@ class ReportRepository
         return $query
             ->when($from, fn ($q, $v) => $q->where('tanggal_raw', '>=', $v))
             ->when($to, fn ($q, $v) => $q->where('tanggal_raw', '<=', $v))
-            ->when(! empty($locationIds), fn ($q) => $q->whereIn('location_id', $locationIds))
+            ->when($locationIds !== null, fn ($q) => $q->whereIn('location_id', $locationIds))
             ->orderBy('lokasi')
             ->orderBy('grup')
             ->orderByDesc('tanggal_raw')
@@ -475,6 +488,8 @@ class ReportRepository
 
     public function putawayItemRows(string $date, string $locationId, array $putawayIds = []): array
     {
+        WarehouseAccess::assert($locationId);
+
         $sumber = DB::table('putaway_item_sources as pis')
             ->join('inbound_items as ii', 'ii.id', '=', 'pis.inbound_item_id')
             ->join('inbounds as inb', 'inb.id', '=', 'ii.inbound_id')
@@ -994,6 +1009,7 @@ class ReportRepository
 
         return SalesInvoice::query()
             ->join('sales_orders', 'sales_orders.id', '=', 'sales_invoices.order_id')
+            ->tap(fn ($q) => WarehouseAccess::apply($q, 'sales_orders.location_id'))
             ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v . ' 00:00:00'))
             ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v . ' 23:59:59'))
             ->select('sales_invoices.id', 'sales_invoices.invoice_number as invoice_no')
@@ -1030,6 +1046,7 @@ class ReportRepository
         return SalesInvoiceItem::query()
             ->join('sales_invoices', 'sales_invoices.id', '=', 'sales_invoice_items.sales_invoice_id')
             ->join('sales_orders', 'sales_orders.id', '=', 'sales_invoices.order_id')
+            ->tap(fn ($q) => WarehouseAccess::apply($q, 'sales_orders.location_id'))
             ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v . ' 00:00:00'))
             ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v . ' 23:59:59'))
             ->when(! empty($itemIds), fn ($q) => $q->whereIn('sales_invoice_items.item_id', $itemIds))

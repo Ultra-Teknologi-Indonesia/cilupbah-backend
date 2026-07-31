@@ -13,7 +13,7 @@ class StockOpnameRepository
 {
     public function getAllPaginated(int $limit = 10)
     {
-        return QueryBuilder::for(StockOpname::class)
+        $query = QueryBuilder::for(StockOpname::class)
             ->with(['location:id,location_name,location_code', 'zone:id,zone_code,zone_name'])
             ->allowedSearch('opname_no')
             ->allowedFilters(
@@ -21,7 +21,11 @@ class StockOpnameRepository
                 AllowedFilter::exact('location_id'),
             )
             ->allowedSorts('created_at', 'opname_no', 'finalized_at')
-            ->defaultSort('-created_at')
+            ->defaultSort('-created_at');
+
+        \App\Support\WarehouseAccess::apply($query);
+
+        return $query
             ->paginate(request('per_page', $limit))
             ->appends(request()->query());
     }

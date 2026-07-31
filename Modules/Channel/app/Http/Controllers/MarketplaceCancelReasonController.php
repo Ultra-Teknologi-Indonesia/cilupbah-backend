@@ -58,7 +58,6 @@ class MarketplaceCancelReasonController extends Controller
             );
         }
 
-        // Lazada: WAJIB reason_id numerik live (katalog statis tidak valid untuk API cancel).
         if ($mp === MarketplaceCancelReasonService::LAZADA) {
             $shopId = $request->query('shop_id');
 
@@ -83,7 +82,6 @@ class MarketplaceCancelReasonController extends Controller
             }
         }
 
-        // TikTok: status-aware; Shopee: statis.
         $context = $mp === MarketplaceCancelReasonService::TIKTOK
             ? $request->query('status')
             : null;

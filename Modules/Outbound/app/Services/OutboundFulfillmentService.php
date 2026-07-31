@@ -169,6 +169,8 @@ class OutboundFulfillmentService
             default       => [],
         };
 
+        \App\Support\WarehouseAccess::apply($query, 'sales_orders.location_id');
+
         return $this->fulfillmentRepository->paginateStage($query, $limit, $extraSelects);
     }
 
@@ -278,6 +280,8 @@ class OutboundFulfillmentService
 
     public function changeLocation(string $orderId, string $locationId, string $changedBy): Order
     {
+        \App\Support\WarehouseAccess::assert($locationId);
+
         $order = Order::find($orderId);
 
         if (!$order) {
@@ -306,6 +310,8 @@ class OutboundFulfillmentService
 
     public function moveToReadyToPick(string $orderId, string $locationId, string $movedBy): Order
     {
+        \App\Support\WarehouseAccess::assert($locationId);
+
         $order = Order::find($orderId);
 
         if (!$order) {

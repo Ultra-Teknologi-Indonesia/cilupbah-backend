@@ -42,10 +42,15 @@ class InventoryRepository
 
     private function applyStockSourceScope($query, ?string $locationId)
     {
-        $locationId = $locationId ?: $this->kecilLocationId();
+        $allowed = \App\Support\WarehouseAccess::allowedIds();
 
         if ($locationId) {
+            \App\Support\WarehouseAccess::assert($locationId);
             $query->where('location_id', $locationId);
+        } elseif ($allowed !== null) {
+            $query->whereIn('location_id', $allowed);
+        } elseif ($default = $this->kecilLocationId()) {
+            $query->where('location_id', $default);
         }
 
         if ($transitId = $this->transitLocationId()) {
@@ -171,7 +176,7 @@ class InventoryRepository
 
     public function getAllPaginated(int $limit = 10)
     {
-        return \Spatie\QueryBuilder\QueryBuilder::for(Inventory::class)
+        $query = \Spatie\QueryBuilder\QueryBuilder::for(Inventory::class)
             ->with(['product:id,sku,product_id', 'location:id,location_name', 'bin:id,bin_final_code'])
             ->allowedFilters(
                 \Spatie\QueryBuilder\AllowedFilter::exact('item_id'),
@@ -179,7 +184,11 @@ class InventoryRepository
                 \Spatie\QueryBuilder\AllowedFilter::exact('bin_id')
             )
             ->allowedSorts('available', 'on_hand', 'created_at')
-            ->defaultSort('-created_at')
+            ->defaultSort('-created_at');
+
+        \App\Support\WarehouseAccess::apply($query);
+
+        return $query
             ->paginate(request('per_page', $limit))
             ->appends(request()->query());
     }
@@ -242,6 +251,8 @@ class InventoryRepository
 
         $locationFilter = request('filter.location_id');
 
+        $allowedLocationIds = \App\Support\WarehouseAccess::allowedIds();
+
         $transitLocationId = \Modules\Warehouse\Models\Location::query()
             ->where('location_code', \Modules\Warehouse\Models\Location::SYSTEM_TRANSIT_CODE)
             ->value('id');
@@ -260,9 +271,12 @@ class InventoryRepository
                 'product.bundleItems.component:id,sku,product_id',
                 'product.bundleItems.component.inventories',
                 'product.bundleItems.component.inventories.bin:id,is_inbound',
-                'inventories' => function ($q) use ($locationFilter, $transitLocationId) {
+                'inventories' => function ($q) use ($locationFilter, $transitLocationId, $allowedLocationIds) {
                     if ($transitLocationId) {
                         $q->where('location_id', '!=', $transitLocationId);
+                    }
+                    if ($allowedLocationIds !== null) {
+                        $q->whereIn('location_id', $allowedLocationIds);
                     }
                     if ($locationFilter) {
                         $q->where('location_id', $locationFilter);
@@ -291,6 +305,8 @@ class InventoryRepository
 
     public function getAvailableToSell(string $locationId, int $limit = 10)
     {
+        \App\Support\WarehouseAccess::assert($locationId);
+
         $sellableItemIds = DB::table('inventories')
             ->leftJoin('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
             ->where('inventories.location_id', $locationId)
@@ -340,13 +356,17 @@ class InventoryRepository
     public function getItemsOnStock(int $limit = 200)
     {
 
-        return QueryBuilder::for(Inventory::class)
+        $query = QueryBuilder::for(Inventory::class)
             ->with(['product:id,sku,product_id', 'product.product:id,name', 'bin:id,bin_final_code'])
             ->allowedFilters(
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::partial('sku', 'product.sku'),
             )
-            ->where('available', '>', 0)
+            ->where('available', '>', 0);
+
+        \App\Support\WarehouseAccess::apply($query);
+
+        return $query
             ->paginate(request('per_page', $limit))
             ->appends(request()->query());
     }
@@ -565,6 +585,8 @@ class InventoryRepository
 
     public function getStockedItems(string $locationId, string $search, int $perPage, bool $includeZero = false)
     {
+        \App\Support\WarehouseAccess::assert($locationId);
+
         $sub = DB::table('inventories')
             ->join('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
             ->select('inventories.item_id', DB::raw('SUM(inventories.on_hand) as total_on_hand'))

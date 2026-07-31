@@ -499,10 +499,6 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
             }
         }
 
-        // Validasi proaktif: pastikan seluruh atribut WAJIB (non-sale-prop) untuk kategori
-        // ini benar-benar terisi. Sebelumnya atribut wajib yang tak terpetakan hanya
-        // di-skip diam-diam sehingga payload dikirim cacat lalu ditolak Shopee dengan
-        // pesan opaque. Di sini kita gagal lebih awal dengan pesan yang jelas.
         if (! app()->runningUnitTests()) {
             $providedExternalIds = array_map(fn ($attr) => (int) $attr['attribute_id'], $attributes);
 

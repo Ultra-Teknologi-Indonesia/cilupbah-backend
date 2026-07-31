@@ -178,8 +178,7 @@ class LazadaAuthService
                     $this->shopRepository->markIntegrationError($shop->id, $e->getMessage());
                     Log::warning('Lazada refresh token gagal permanen', ['shop_id' => $shop->shop_id, 'error' => $e->getMessage()]);
                 } else {
-                    // Kegagalan transien (timeout/5xx/jaringan): jangan tandai toko error,
-                    // biarkan dicoba ulang pada jadwal berikutnya.
+
                     $summary['transient']++;
                     Log::warning('Lazada refresh token gagal sementara, akan dicoba ulang', ['shop_id' => $shop->shop_id, 'error' => $e->getMessage()]);
                 }
@@ -189,36 +188,27 @@ class LazadaAuthService
         return $summary;
     }
 
-    /**
-     * Bedakan kegagalan permanen (refresh token dicabut/invalid → butuh reconnect) dari
-     * kegagalan transien (timeout/5xx/jaringan). Bias ke transien agar blip sesaat tidak
-     * salah menandai toko sehat sebagai error.
-     */
     protected function isPermanentTokenFailure(\Throwable $e): bool
     {
-        // Kegagalan transport (timeout/connect/DNS) selalu transien.
+
         if ($e instanceof ConnectionException) {
             return false;
         }
 
         $message = strtolower($e->getMessage());
 
-        // Sinyal transien: kondisi server/jaringan sementara yang layak dicoba ulang.
         foreach (['timeout', 'timed out', 'curl', 'could not resolve', 'connection', 'temporar', 'server error', 'service unavailable', 'unknown error', 'try again'] as $needle) {
             if (str_contains($message, $needle)) {
                 return false;
             }
         }
 
-        // Sinyal permanen: token/grant sudah tidak valid dan butuh koneksi ulang.
         foreach (['invalid_grant', 'illegalrefreshtoken', 'invalidrefreshtoken', 'illegalaccesstoken', 'invalidaccesstoken', 'expired', 'revoke', 'tidak tersedia', 'unauthor'] as $needle) {
             if (str_contains($message, $needle)) {
                 return true;
             }
         }
 
-        // Default: perlakukan sebagai transien agar toko sehat tidak salah ditandai error
-        // pada galat yang tidak dikenali.
         return false;
     }
 

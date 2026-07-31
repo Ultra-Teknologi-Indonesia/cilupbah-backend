@@ -2,11 +2,6 @@
 
 namespace Modules\Product\Http\Requests;
 
-/**
- * Label field & pesan validasi Bahasa Indonesia untuk form produk.
- * Dipakai CreateProductRequest & UpdateProductRequest agar pesan validasi
- * user-facing (bukan "The variants.0.sku field is required").
- */
 class ProductFieldLabels
 {
     public static function attributes(): array
@@ -53,9 +48,6 @@ class ProductFieldLabels
         ];
     }
 
-    /**
-     * Pesan level-rule (berlaku untuk semua field) dalam Bahasa Indonesia.
-     */
     public static function ruleMessages(): array
     {
         return [

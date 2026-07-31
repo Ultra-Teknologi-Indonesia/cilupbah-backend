@@ -146,8 +146,6 @@ class ProductService
             );
         }
 
-        // Bundle wajib satu varian (bundleComponentsForVariant memetakan varian ->
-        // produk; >1 varian berbagi 1 komposisi = ambigu).
         if (\Modules\Product\Models\ProductVariant::where('product_id', $productId)->count() > 1) {
             throw new DomainException(
                 'Produk dengan lebih dari satu varian tidak dapat diubah menjadi bundle (bundle harus satu varian).'

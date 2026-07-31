@@ -84,12 +84,9 @@ class CourierMappingService
 
     public function resolveShipmentType(string $name): string
     {
-        // Kurir pengantar sebenarnya (bersih dari string majemuk/virtual).
+
         $clean = CourierNameNormalizer::clean($name);
 
-        // Instan/same-day: satu sumber kebenaran dengan InstantOrderClassifier
-        // (regex yang sama dipakai manifest/picklist/panggil-driver), jadi
-        // Grab/GoSend/Gojek/Lalamove ikut terdeteksi, bukan hanya kata "instant".
         if (InstantOrderClassifier::isInstant($clean)) {
             return 'INSTANT';
         }
@@ -103,12 +100,6 @@ class CourierMappingService
         };
     }
 
-    /**
-     * Kembalikan id Courier master untuk sebuah nama provider, tanpa membuat
-     * baris kurir baru (jaga master 141 tetap bersih). Null bila tak ada
-     * kecocokan yakin. Scheme-agnostic: master bisa berkode slug UPPERCASE
-     * (dari seeder) maupun alias lowercase (dari sync) — keduanya diindeks.
-     */
     public function resolveCourierId(?string $providerName): ?string
     {
         $code = $this->resolveCode((string) $providerName);
@@ -132,7 +123,7 @@ class CourierMappingService
         Courier::query()
             ->where('is_active', true)
             ->whereNull('tenant_id')
-            ->orderByRaw('length(name)') // nama terpendek = paling kanonik menang
+            ->orderByRaw('length(name)') 
             ->get(['id', 'name', 'code'])
             ->each(function (Courier $c) use (&$map) {
                 foreach ([$this->resolveCode((string) $c->name), strtolower(trim((string) $c->code))] as $key) {

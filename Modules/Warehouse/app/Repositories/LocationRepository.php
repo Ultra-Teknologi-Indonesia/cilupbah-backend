@@ -19,7 +19,7 @@ class LocationRepository
 
     public function getAllPaginated()
     {
-        return QueryBuilder::for(Location::class)
+        $query = QueryBuilder::for(Location::class)
             ->where('location_name', 'not like', '%Transit%')
             ->where('location_name', 'not like', '%Virtual%')
             ->with('village.district.city.province')
@@ -37,7 +37,11 @@ class LocationRepository
                 AllowedFilter::exact('village.district.city.province_id')
             )
             ->allowedSorts('location_name', 'created_at', 'location_code')
-            ->defaultSort('location_name')
+            ->defaultSort('location_name');
+
+        \App\Support\WarehouseAccess::apply($query, 'id');
+
+        return $query
             ->paginate($this->perPage())
             ->appends(request()->query());
     }

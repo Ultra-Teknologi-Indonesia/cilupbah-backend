@@ -66,9 +66,8 @@ class ShipmentService
 
         $locationId = $data['location_id'] ?? $this->resolveDefaultLocationId();
 
-        // Kode kurir selalu diturunkan kanonik dari nama supaya konsisten
-        // (mis. "SPX", "SPX Instant", "SPX Instant Prioritas" -> "spx"), tak
-        // bergantung pada apa yang diketik operator di layar.
+        \App\Support\WarehouseAccess::assert($locationId);
+
         $courierName = $data['courier_name'] ?? null;
         $courierCode = $courierName
             ? ($this->courierMapper->resolveCode($courierName) ?: ($data['courier_code'] ?? null))
@@ -328,9 +327,7 @@ class ShipmentService
         }
 
         if ($shipment->courier_name && $order->shipping_provider) {
-            // Banding kode kurir KANONIK (bukan cocok-substring mentah), sehingga
-            // varian nama ("SPX" vs "Shopee Xpress") & string majemuk Lazada
-            // ("Drop-off: LEX, Delivery: J&T" -> J&T) dikenali dengan benar.
+
             $shipmentCode = $this->courierMapper->resolveCode($shipment->courier_name);
             $orderCode = $this->courierMapper->resolveCode($order->shipping_provider);
 
@@ -343,8 +340,6 @@ class ShipmentService
             }
         }
 
-        // Jaga homogenitas tipe: manifest instan hanya untuk pesanan instan, dan
-        // sebaliknya. Instan wajib panggil driver — tak boleh nyelip ke batch reguler.
         $orderIsInstant = InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type);
         $shipmentIsInstant = in_array($shipment->shipment_type, ['INSTANT', 'SAME_DAY'], true);
         if ($orderIsInstant !== $shipmentIsInstant) {
