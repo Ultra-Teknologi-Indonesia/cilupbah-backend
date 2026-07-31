@@ -116,6 +116,7 @@ class TikTokToInternalOrderMapper
             'cancel_reason'        => $channelStatus === 'CANCELLED' ? ($tiktokOrder['cancel_reason'] ?? null) : null,
             'cancel_by'            => $cancelInitiator ? strtolower($cancelInitiator) : null,
             'cancel_requested_at'  => $isCancelRequested ? (string) now() : null,
+            'cancel_request_reason' => $isCancelRequested ? ($tiktokOrder['cancel_reason'] ?? null) : null,
             'fulfillment_flag'     => $fulfillmentType,
             'payment_method'       => $tiktokOrder['payment_method_code'] ?? null,
             'payment_method_name'  => $tiktokOrder['payment_method_name'] ?? null,

@@ -91,6 +91,9 @@ class ShopeeToInternalOrderMapper
                 : null,
             'cancel_by' => $shopeeOrder['cancel_by'] ?? null,
             'cancel_requested_at' => $isCancelOrReturn ? (string) now() : null,
+            'cancel_request_reason' => $isCancelOrReturn
+                ? ($shopeeOrder['buyer_cancel_reason'] ?? $shopeeOrder['cancel_reason'] ?? null)
+                : null,
             'channel_fulfillment_status' => $fulfillmentStatus,
             'fulfillment_flag' => $shopeeOrder['fulfillment_flag'] ?? null,
             'days_to_ship' => isset($shopeeOrder['days_to_ship']) ? (int) $shopeeOrder['days_to_ship'] : null,

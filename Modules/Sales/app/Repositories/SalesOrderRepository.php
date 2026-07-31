@@ -557,6 +557,7 @@ class SalesOrderRepository
             'cancel_reason'       => $orderData['cancel_reason'] ?? null,
             'cancel_by'           => $orderData['cancel_by'] ?? null,
             'cancel_requested_at' => $orderData['cancel_requested_at'] ?? ($existing->cancel_requested_at ?? null),
+            'cancel_request_reason' => $orderData['cancel_request_reason'] ?? ($existing->cancel_request_reason ?? null),
             'payment_method'      => $orderData['payment_method'],
             'payment_method_name' => $orderData['payment_method_name'] ?? null,
             'tracking_number'     => $orderData['tracking_number'] ?? ($existing->tracking_number ?? null),
