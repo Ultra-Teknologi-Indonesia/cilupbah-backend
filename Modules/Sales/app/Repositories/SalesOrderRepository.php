@@ -473,6 +473,17 @@ class SalesOrderRepository
     {
         $existing = DB::table('sales_orders')->where('salesorder_no', $salesOrderNo)->lockForUpdate()->first();
 
+        // Turunkan kurir master + tipe kirim kanonik dari nama provider (sekali,
+        // saat masuk). Tak membuat kurir baru; null bila tak ada kecocokan yakin.
+        $shippingProvider = $orderData['shipping_provider'] ?? ($existing->shipping_provider ?? null);
+        $courierMapper = app(\Modules\Outbound\Services\CourierMappingService::class);
+        $resolvedCourierId = $shippingProvider
+            ? ($courierMapper->resolveCourierId($shippingProvider) ?? ($existing->courier_id ?? null))
+            : ($existing->courier_id ?? null);
+        $resolvedShipmentType = $shippingProvider
+            ? ($courierMapper->resolveShipmentType((string) $shippingProvider) ?: ($existing->resolved_shipment_type ?? null))
+            : ($existing->resolved_shipment_type ?? null);
+
         $orderRow = [
             'salesorder_no'       => $orderData['salesorder_no'],
             'channel_order_no'    => $orderData['channel_order_no'] ?? null,
@@ -533,6 +544,7 @@ class SalesOrderRepository
             'fulfillment_type'    => $orderData['fulfillment_type'] ?? ($existing->fulfillment_type ?? null),
             'delivery_option_id'  => $orderData['delivery_option_id'] ?? ($existing->delivery_option_id ?? null),
             'shipping_type'       => $orderData['shipping_type'] ?? ($existing->shipping_type ?? null),
+            'resolved_shipment_type' => $resolvedShipmentType,
             'days_to_ship'        => $orderData['days_to_ship'] ?? null,
             'status'              => $orderData['status'],
             'is_paid'             => $orderData['is_paid'],
@@ -546,7 +558,8 @@ class SalesOrderRepository
             'payment_method'      => $orderData['payment_method'],
             'payment_method_name' => $orderData['payment_method_name'] ?? null,
             'tracking_number'     => $orderData['tracking_number'] ?? ($existing->tracking_number ?? null),
-            'shipping_provider'   => $orderData['shipping_provider'] ?? ($existing->shipping_provider ?? null),
+            'shipping_provider'   => $shippingProvider,
+            'courier_id'          => $resolvedCourierId,
             'buyer_message'       => $orderData['buyer_message'] ?? null,
             'seller_note'         => $orderData['seller_note'] ?? null,
             'paid_time'           => $orderData['paid_time'] ?? null,

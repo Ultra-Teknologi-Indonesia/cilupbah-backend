@@ -119,6 +119,7 @@ class SalesOrder extends Model implements HasMedia
         'fulfillment_type',
         'delivery_option_id',
         'shipping_type',
+        'resolved_shipment_type',
         'days_to_ship',
         'payment_method',
         'payment_method_name',

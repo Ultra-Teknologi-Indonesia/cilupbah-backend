@@ -155,6 +155,10 @@ class SalesOrderImportService
 
             'delivery_method' => $deliveryMethod,
             'shipping_provider' => $isSelfPickup ? null : $courier,
+            'courier_id' => $isSelfPickup ? null
+                : app(\Modules\Outbound\Services\CourierMappingService::class)->resolveCourierId($courier),
+            'resolved_shipment_type' => $isSelfPickup ? null
+                : (app(\Modules\Outbound\Services\CourierMappingService::class)->resolveShipmentType((string) $courier) ?: null),
             'tracking_number' => $header['no_resi'] ?? null,
             'order_weight_gram' => $this->parseNumeric($header['berat_gram'] ?? null),
 

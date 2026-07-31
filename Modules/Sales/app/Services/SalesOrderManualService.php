@@ -91,6 +91,12 @@ class SalesOrderManualService
 
                 'delivery_method'     => $payload['delivery_method'],
                 'shipping_provider'   => $payload['shipping_provider'] ?? null,
+                'courier_id'          => ($payload['shipping_provider'] ?? null)
+                    ? app(\Modules\Outbound\Services\CourierMappingService::class)->resolveCourierId($payload['shipping_provider'])
+                    : null,
+                'resolved_shipment_type' => ($payload['shipping_provider'] ?? null)
+                    ? app(\Modules\Outbound\Services\CourierMappingService::class)->resolveShipmentType((string) $payload['shipping_provider'])
+                    : null,
                 'tracking_number'     => $payload['tracking_number'] ?? null,
                 'order_weight_gram'   => $payload['order_weight_gram'] ?? null,
 

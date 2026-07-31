@@ -103,6 +103,48 @@ class CourierMappingService
         };
     }
 
+    /**
+     * Kembalikan id Courier master untuk sebuah nama provider, tanpa membuat
+     * baris kurir baru (jaga master 141 tetap bersih). Null bila tak ada
+     * kecocokan yakin. Scheme-agnostic: master bisa berkode slug UPPERCASE
+     * (dari seeder) maupun alias lowercase (dari sync) — keduanya diindeks.
+     */
+    public function resolveCourierId(?string $providerName): ?string
+    {
+        $code = $this->resolveCode((string) $providerName);
+        if ($code === '') {
+            return null;
+        }
+
+        return $this->activeCourierCodeMap()[$code] ?? null;
+    }
+
+    private ?array $courierCodeMap = null;
+
+    private function activeCourierCodeMap(): array
+    {
+        if ($this->courierCodeMap !== null) {
+            return $this->courierCodeMap;
+        }
+
+        $map = [];
+
+        Courier::query()
+            ->where('is_active', true)
+            ->whereNull('tenant_id')
+            ->orderByRaw('length(name)') // nama terpendek = paling kanonik menang
+            ->get(['id', 'name', 'code'])
+            ->each(function (Courier $c) use (&$map) {
+                foreach ([$this->resolveCode((string) $c->name), strtolower(trim((string) $c->code))] as $key) {
+                    if ($key !== '' && ! isset($map[$key])) {
+                        $map[$key] = $c->id;
+                    }
+                }
+            });
+
+        return $this->courierCodeMap = $map;
+    }
+
     public function record(string $channelCode, string $externalName, ?string $externalId = null, ?string $tenantId = null): ?CourierChannelMapping
     {
         $externalName = trim($externalName);

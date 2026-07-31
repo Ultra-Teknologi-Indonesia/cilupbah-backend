@@ -137,6 +137,12 @@ class SalesOrderResource extends JsonResource
                 'country'       => $this->shipping_country,
                 'coordinate'    => $this->shipping_coordinate,
                 'provider'      => $this->shipping_provider,
+                'resolved_shipment_type' => $this->resolved_shipment_type,
+                'courier'       => $this->whenLoaded('courier', fn () => $this->courier ? [
+                    'id'   => $this->courier->id,
+                    'code' => $this->courier->code,
+                    'name' => $this->courier->name,
+                ] : null),
                 'tracking_number' => $this->tracking_number,
             ],
 
