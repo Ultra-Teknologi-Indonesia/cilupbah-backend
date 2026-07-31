@@ -5,6 +5,8 @@ namespace Modules\Outbound\Services;
 use Illuminate\Support\Collection;
 use Modules\Outbound\Models\Courier;
 use Modules\Outbound\Models\CourierChannelMapping;
+use Modules\Outbound\Support\CourierNameNormalizer;
+use Modules\Outbound\Support\InstantOrderClassifier;
 
 class CourierMappingService
 {
@@ -58,7 +60,11 @@ class CourierMappingService
 
     public function resolveCode(string $name): string
     {
-        $lower = strtolower(trim($name));
+        $lower = strtolower(CourierNameNormalizer::clean($name));
+
+        if ($lower === '') {
+            return '';
+        }
 
         if (isset($this->codeAliases[$lower])) {
             return $this->codeAliases[$lower];
@@ -78,10 +84,19 @@ class CourierMappingService
 
     public function resolveShipmentType(string $name): string
     {
-        $lower = strtolower(trim($name));
+        // Kurir pengantar sebenarnya (bersih dari string majemuk/virtual).
+        $clean = CourierNameNormalizer::clean($name);
+
+        // Instan/same-day: satu sumber kebenaran dengan InstantOrderClassifier
+        // (regex yang sama dipakai manifest/picklist/panggil-driver), jadi
+        // Grab/GoSend/Gojek/Lalamove ikut terdeteksi, bukan hanya kata "instant".
+        if (InstantOrderClassifier::isInstant($clean)) {
+            return 'INSTANT';
+        }
+
+        $lower = strtolower($clean);
 
         return match (true) {
-            str_contains($lower, 'instant') || str_contains($lower, 'instan') || str_contains($lower, 'sameday') || str_contains($lower, 'same day') || str_contains($lower, 'same-day') => 'INSTANT',
             str_contains($lower, 'next day') || str_contains($lower, 'nextday') => 'EXPRESS',
             str_contains($lower, 'cargo') || str_contains($lower, 'trucking') || str_contains($lower, 'kargo') => 'CARGO',
             default => 'REGULAR',

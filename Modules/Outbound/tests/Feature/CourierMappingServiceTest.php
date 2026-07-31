@@ -74,6 +74,40 @@ class CourierMappingServiceTest extends TestCase
         $this->assertSame('spx', $this->service->resolveCode('SPX Standard'));
     }
 
+    public function test_messy_channel_strings_resolve_to_correct_courier(): void
+    {
+        // Lazada majemuk: kode diambil dari kurir pengantar (Delivery:), bukan drop-off.
+        $this->assertSame('jnt', $this->service->resolveCode('Drop-off: LEX ID, Delivery: J&T'));
+        $this->assertSame('jne', $this->service->resolveCode('Drop-off: JNE Cashless, Delivery: JNE Cashless'));
+        // TikTok virtual & Shopee sandbox prefix/suffix dibuang.
+        $this->assertSame('jnt', $this->service->resolveCode('TT Virtual# JNT express'));
+        $this->assertSame('jnt', $this->service->resolveCode("Sandbox-J&T Express(Don't modify)"));
+        $this->assertSame('spx', $this->service->resolveCode('SPX Instant Prioritas'));
+    }
+
+    public function test_lazada_drop_off_courier_does_not_hijack_delivery_courier(): void
+    {
+        // Drop-off LEX, tapi last-mile J&T -> harus jnt, bukan lex.
+        $this->assertSame('jnt', $this->service->resolveCode('Drop-off: LEX ID, Delivery: J&T'));
+        $this->assertNotSame('lex', $this->service->resolveCode('Drop-off: LEX ID, Delivery: J&T'));
+    }
+
+    public function test_instant_detected_by_brand_name_not_only_keyword(): void
+    {
+        // Kurir instan bernama polos kini terdeteksi (satu sumber dgn InstantOrderClassifier).
+        $this->assertSame('INSTANT', $this->service->resolveShipmentType('GrabExpress'));
+        $this->assertSame('INSTANT', $this->service->resolveShipmentType('GoSend'));
+        $this->assertSame('INSTANT', $this->service->resolveShipmentType('Drop-off: Grab-ID, Delivery: Grab-ID'));
+        // Nama "Express" biasa tetap reguler.
+        $this->assertSame('REGULAR', $this->service->resolveShipmentType('J&T Express'));
+    }
+
+    public function test_empty_provider_resolves_to_empty_code(): void
+    {
+        $this->assertSame('', $this->service->resolveCode(''));
+        $this->assertSame('', $this->service->resolveCode('   '));
+    }
+
     public function test_groups_orders_across_channels_into_one_manifest_bucket(): void
     {
         $orders = [

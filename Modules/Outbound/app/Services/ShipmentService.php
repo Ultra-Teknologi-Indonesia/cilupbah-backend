@@ -21,6 +21,7 @@ class ShipmentService
 {
     public function __construct(
         protected ShipmentRepository $shipmentRepository,
+        protected CourierMappingService $courierMapper,
     ) {}
 
     public function getAllPaginated(int $limit = 10)
@@ -65,11 +66,19 @@ class ShipmentService
 
         $locationId = $data['location_id'] ?? $this->resolveDefaultLocationId();
 
+        // Kode kurir selalu diturunkan kanonik dari nama supaya konsisten
+        // (mis. "SPX", "SPX Instant", "SPX Instant Prioritas" -> "spx"), tak
+        // bergantung pada apa yang diketik operator di layar.
+        $courierName = $data['courier_name'] ?? null;
+        $courierCode = $courierName
+            ? ($this->courierMapper->resolveCode($courierName) ?: ($data['courier_code'] ?? null))
+            : ($data['courier_code'] ?? null);
+
         return $this->shipmentRepository->create([
             'shipment_no' => $shipmentNo,
             'location_id' => $locationId,
-            'courier_name' => $data['courier_name'] ?? null,
-            'courier_code' => $data['courier_code'] ?? null,
+            'courier_name' => $courierName,
+            'courier_code' => $courierCode,
             'shipment_type' => $data['shipment_type'],
             'shipment_date' => $data['shipment_date'],
             'status' => Shipment::STATUS_SCHEDULED,
@@ -319,16 +328,34 @@ class ShipmentService
         }
 
         if ($shipment->courier_name && $order->shipping_provider) {
-            $normalize = fn(string $s) => strtolower(preg_replace('/[^a-z0-9]/i', '', $s));
-            $sc = $normalize($shipment->courier_name);
-            $oc = $normalize($order->shipping_provider);
-            if (! str_contains($oc, $sc) && ! str_contains($sc, $oc)) {
+            // Banding kode kurir KANONIK (bukan cocok-substring mentah), sehingga
+            // varian nama ("SPX" vs "Shopee Xpress") & string majemuk Lazada
+            // ("Drop-off: LEX, Delivery: J&T" -> J&T) dikenali dengan benar.
+            $shipmentCode = $this->courierMapper->resolveCode($shipment->courier_name);
+            $orderCode = $this->courierMapper->resolveCode($order->shipping_provider);
+
+            if ($shipmentCode !== '' && $orderCode !== '' && $shipmentCode !== $orderCode) {
                 throw new ScanRejectedException(
                     'courier_mismatch',
                     "Kurir tidak sesuai. Pengiriman ini '{$shipment->courier_name}', "
                     . "pesanan menggunakan '{$order->shipping_provider}'."
                 );
             }
+        }
+
+        // Jaga homogenitas tipe: manifest instan hanya untuk pesanan instan, dan
+        // sebaliknya. Instan wajib panggil driver — tak boleh nyelip ke batch reguler.
+        $orderIsInstant = InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type);
+        $shipmentIsInstant = in_array($shipment->shipment_type, ['INSTANT', 'SAME_DAY'], true);
+        if ($orderIsInstant !== $shipmentIsInstant) {
+            throw new ScanRejectedException(
+                'shipment_type_mismatch',
+                $orderIsInstant
+                    ? "Pesanan {$order->salesorder_no} adalah kurir INSTAN (panggil driver), "
+                        . "tidak bisa masuk manifest reguler '{$shipment->shipment_type}'."
+                    : "Pesanan {$order->salesorder_no} adalah kurir reguler, "
+                        . "tidak bisa masuk manifest instan '{$shipment->shipment_type}'."
+            );
         }
 
         if ($shipment->location_id && $order->location_id
