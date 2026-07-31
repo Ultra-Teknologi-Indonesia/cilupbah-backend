@@ -165,7 +165,8 @@ class SalesOrderResource extends JsonResource
             'total_sku'     => $this->whenLoaded('items', fn () => $this->items->count(), 0),
             'has_unmapped_items' => $this->whenLoaded('items', fn () => $this->items->contains(fn ($item) => $item->item_id === null), false),
             'cancel_requested_at'    => $this->cancel_requested_at,
-            'cancel_request_reason'  => \Modules\Sales\Support\BuyerCancelReasonHumanizer::humanize($this->cancel_request_reason),
+            'cancel_request_reason'  => \Modules\Sales\Support\CancelReasonHumanizer::buyer($this->cancel_request_reason),
+            'cancel_reject_reason'   => \Modules\Sales\Support\CancelReasonHumanizer::sellerReject($this->cancel_reject_reason),
             'handed_to_warehouse_at' => $this->handed_to_warehouse_at,
 
             'pick_failed_at'     => $this->pick_failed_at,
