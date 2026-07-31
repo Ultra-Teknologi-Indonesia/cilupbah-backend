@@ -370,16 +370,114 @@ class TikTokOrderService
             throw new \Exception("No access token found for shop: {$shopId}");
         }
 
-        $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
-        $body = [
-            'order_id' => $orderId,
-        ];
+        // API pakai cancel_id (bukan order_id) & path harus /{cancel_id}/approve.
+        $cancelId = $this->resolveCancellationId($shopId, $orderId);
+        if (! $cancelId) {
+            throw new \RuntimeException("Tidak ditemukan permintaan pembatalan aktif untuk order {$orderId} di TikTok.", 404);
+        }
 
-        $res = $this->client->request('POST', '/return_refund/202309/cancellations/approve', $queries, $body, $shop->access_token);
+        $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
+
+        $res = $this->client->request(
+            'POST',
+            "/return_refund/202309/cancellations/{$cancelId}/approve",
+            $queries,
+            [],
+            $shop->access_token,
+        );
 
         $this->resyncLocalOrder($shopId, $orderId);
 
         return $res;
+    }
+
+    /**
+     * Cari cancel_id (ID permintaan pembatalan) + alasan pembeli untuk sebuah
+     * order TikTok. Endpoint: POST /return_refund/202309/cancellations/search.
+     *
+     * @return array{cancel_id: ?string, reason_key: ?string, reason_text: ?string, status: ?string, raw: array}
+     */
+    public function searchBuyerCancellation(string $shopId, string $orderId): array
+    {
+        $empty = ['cancel_id' => null, 'reason_key' => null, 'reason_text' => null, 'status' => null, 'raw' => []];
+
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            return $empty;
+        }
+
+        $queries = ['shop_cipher' => $shop->shop_cipher ?? '', 'page_size' => 20];
+        $body = ['order_ids' => [$orderId]];
+
+        $res = $this->client->request(
+            'POST',
+            '/return_refund/202309/cancellations/search',
+            $queries,
+            $body,
+            $shop->access_token,
+        );
+
+        $list = $res['data']['cancellations']
+            ?? $res['data']['cancellation_orders']
+            ?? $res['data']['orders']
+            ?? [];
+        $c = $list[0] ?? [];
+        if (! $c) {
+            return $empty;
+        }
+
+        return [
+            'cancel_id'   => isset($c['cancel_id']) ? (string) $c['cancel_id'] : (isset($c['id']) ? (string) $c['id'] : null),
+            'reason_key'  => $c['cancel_reason_key'] ?? $c['cancel_reason'] ?? null,
+            'reason_text' => $c['cancel_reason_text'] ?? $c['reason_text'] ?? null,
+            'status'      => $c['cancel_status'] ?? $c['status'] ?? null,
+            'raw'         => $c,
+        ];
+    }
+
+    private function resolveCancellationId(string $shopId, string $orderId): ?string
+    {
+        return $this->searchBuyerCancellation($shopId, $orderId)['cancel_id'] ?? null;
+    }
+
+    /**
+     * Ambil nama alasan penolakan pembatalan yang valid dari Get Decision
+     * Eligibility (reject_reason WAJIB saat menolak pembatalan pembeli).
+     */
+    public function firstRejectCancelReason(string $shopId, string $cancelId): ?string
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            return null;
+        }
+
+        $queries = [
+            'shop_cipher'         => $shop->shop_cipher ?? '',
+            'return_or_cancel_id' => $cancelId,
+            'check_decisions'     => 'REJECT_REQUEST_CANCEL',
+            'locale'              => 'id-ID',
+        ];
+
+        $res = $this->client->request(
+            'GET',
+            '/return_refund/202601/decision_eligibility',
+            $queries,
+            [],
+            $shop->access_token,
+        );
+
+        foreach ($res['data']['decisions'] ?? [] as $d) {
+            if (($d['decision'] ?? null) !== 'REJECT_REQUEST_CANCEL') {
+                continue;
+            }
+            foreach ($d['available_reject_reasons'] ?? [] as $r) {
+                if (! empty($r['name'])) {
+                    return (string) $r['name'];
+                }
+            }
+        }
+
+        return null;
     }
 
     public function fetchReturnTracking(string $shopId, ?string $returnId, ?string $orderId = null): array
@@ -634,19 +732,34 @@ class TikTokOrderService
         }
     }
 
-    public function rejectBuyerCancellation(string $shopId, string $orderId): array
+    public function rejectBuyerCancellation(string $shopId, string $orderId, ?string $rejectReason = null): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);
         if (! $shop || ! $shop->access_token) {
             throw new \Exception("No access token found for shop: {$shopId}");
         }
 
-        $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
-        $body = [
-            'order_id' => $orderId,
-        ];
+        $cancelId = $this->resolveCancellationId($shopId, $orderId);
+        if (! $cancelId) {
+            throw new \RuntimeException("Tidak ditemukan permintaan pembatalan aktif untuk order {$orderId} di TikTok.", 404);
+        }
 
-        $res = $this->client->request('POST', '/return_refund/202309/cancellations/reject', $queries, $body, $shop->access_token);
+        // reject_reason WAJIB (nama alasan dari Get Decision Eligibility).
+        $reason = $rejectReason ?: $this->firstRejectCancelReason($shopId, $cancelId);
+        if (! $reason) {
+            throw new \RuntimeException("Tidak ada alasan penolakan pembatalan yang tersedia untuk order {$orderId} di TikTok.", 422);
+        }
+
+        $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
+        $body = ['reject_reason' => $reason];
+
+        $res = $this->client->request(
+            'POST',
+            "/return_refund/202309/cancellations/{$cancelId}/reject",
+            $queries,
+            $body,
+            $shop->access_token,
+        );
 
         $this->resyncLocalOrder($shopId, $orderId);
 
@@ -681,7 +794,6 @@ class TikTokOrderService
             throw new \Exception('Pesanan tidak ditemukan di sistem lokal');
         }
 
-        // API TikTok butuh order id CHANNEL (tanpa prefix), bukan salesorder_no lokal.
         $tiktokOrderId = $order->channel_order_no ?: $orderId;
 
         $rawStatus = strtoupper((string) ($order->channel_status_raw ?? ''));
