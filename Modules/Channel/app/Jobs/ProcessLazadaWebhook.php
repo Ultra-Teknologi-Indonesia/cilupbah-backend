@@ -134,6 +134,11 @@ class ProcessLazadaWebhook implements ShouldQueue
             ->first();
         if (! $order) return;
 
+        // Siap kirim = dokumen label tersedia → siapkan & cache proaktif ("selalu dapat").
+        if ($status === 'READY_TO_SHIP') {
+            \Modules\Sales\Jobs\PrepareLazadaShippingLabelJob::dispatch((string) $order->id);
+        }
+
         $shipment = \Modules\Outbound\Models\Shipment::query()
             ->whereHas('orders', fn ($q) => $q->where('order_id', $order->id))
             ->latest('id')

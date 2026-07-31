@@ -325,6 +325,20 @@ class TikTokOrderService
         }
     }
 
+    /**
+     * Package id(s) untuk sebuah order — read-only (tidak membuat package baru).
+     * Dipakai penyiapan label proaktif; kosong = paket belum ada / label belum siap.
+     */
+    public function packageIdsForOrder(string $shopId, string $orderId): array
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            return [];
+        }
+
+        return $this->fetchPackageIds($shop, $orderId, ['shop_cipher' => $shop->shop_cipher ?? '']);
+    }
+
     public function getShippingDocument(string $shopId, string $packageId, string $documentType = 'SHIPPING_LABEL', string $documentSize = 'A6'): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);

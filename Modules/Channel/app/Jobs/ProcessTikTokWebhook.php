@@ -211,6 +211,15 @@ class ProcessTikTokWebhook implements ShouldQueue
 
         foreach (array_keys($orderIds) as $orderId) {
             $orderService->pullOrderById($shopId, $orderId);
+
+            // Paket siap = dokumen label tersedia → siapkan & cache proaktif ("selalu dapat").
+            $localId = \Modules\Sales\Models\SalesOrder::query()
+                ->where('source', 'tiktok')
+                ->where('channel_order_no', (string) $orderId)
+                ->value('id');
+            if ($localId) {
+                \Modules\Sales\Jobs\PrepareTikTokShippingLabelJob::dispatch((string) $localId);
+            }
         }
     }
 
