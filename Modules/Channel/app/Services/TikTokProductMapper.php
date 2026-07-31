@@ -32,7 +32,7 @@ class TikTokProductMapper
         $payload = [
             'save_mode' => 'LISTING',
             'title' => $internalProduct['name'],
-            'description' => DescriptionFormatter::toHtml($internalProduct['description'] ?? ''),
+            'description' => DescriptionFormatter::toHtml($internalProduct['description'] ?? '', 10000),
             'category_version' => $config['category_version'] ?? 'v2',
             'category_id' => $categoryId,
             'package_weight' => [

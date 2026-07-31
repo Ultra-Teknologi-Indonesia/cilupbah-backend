@@ -18,11 +18,15 @@ class ShopeeProductMapper
         $itemSku = $product['sku'] ?? ($product['variants'][0]['sku'] ?? null);
 
         $itemName = mb_substr(trim((string) ($product['name'] ?? 'Produk')), 0, 255);
-        $description = trim(strip_tags((string) ($product['description'] ?? '')));
+        // Shopee menampilkan deskripsi sebagai teks polos: markdown/HTML harus
+        // dibersihkan agar simbol (**, ##, -, [](url)) tidak bocor ke listing.
+        $description = \Modules\Channel\Support\DescriptionFormatter::toPlainText(
+            (string) ($product['description'] ?? ''),
+            3000,
+        );
         if (mb_strlen($description) < 20) {
             $description = str_pad($description ?: $itemName, 20, ' - Deskripsi Produk');
         }
-        $description = mb_substr($description, 0, 3000);
 
         $payload = [
             'category_id' => $categoryId !== null ? (int) $categoryId : null,

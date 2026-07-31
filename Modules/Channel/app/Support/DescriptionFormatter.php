@@ -9,10 +9,16 @@ use League\CommonMark\MarkdownConverter;
 
 class DescriptionFormatter
 {
-    public static function toHtml(string $markdown): string
+    public static function toHtml(string $markdown, ?int $maxLength = null): string
     {
         if (trim($markdown) === '') {
             return '';
+        }
+
+        // Cap panjang input (guard) supaya output HTML tetap wajar & tidak
+        // memotong tag di tengah. Cap kanal berlaku pada string input Markdown.
+        if ($maxLength !== null && mb_strlen($markdown) > $maxLength) {
+            $markdown = mb_substr($markdown, 0, $maxLength);
         }
 
         $converter = new CommonMarkConverter([
@@ -23,7 +29,7 @@ class DescriptionFormatter
         return trim($converter->convert($markdown)->getContent());
     }
 
-    public static function toPlainText(string $markdown): string
+    public static function toPlainText(string $markdown, ?int $maxLength = null): string
     {
         if (trim($markdown) === '') {
             return '';
@@ -42,6 +48,12 @@ class DescriptionFormatter
         $text = preg_replace('/[ \t]+/', ' ', $text);
         $text = preg_replace('/\n{3,}/', "\n\n", $text);
 
-        return trim($text);
+        $text = trim($text);
+
+        if ($maxLength !== null && mb_strlen($text) > $maxLength) {
+            $text = rtrim(mb_substr($text, 0, $maxLength));
+        }
+
+        return $text;
     }
 }
