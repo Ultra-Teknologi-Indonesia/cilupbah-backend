@@ -337,6 +337,10 @@ class SalesOrderService
                 'cancel_channel'     => $channel,
             ]);
 
+            // Stok sudah dilepas di atas; sisakan baris picklist/packlist bersih.
+            app(\Modules\Outbound\Services\FulfillmentCleanupService::class)
+                ->detachCancelledOrder($order->id, $actorId ?: 'system:cancel-accept');
+
             Cache::forget($this->idempotencyKey($order->source, $order->salesorder_no));
 
             if ($order->source) {
@@ -1548,6 +1552,12 @@ class SalesOrderService
             }
 
             $stockMutated = $this->reconcileStockTransition($order, $previousStatus, $finalStatus);
+
+            if ($finalStatus === 'cancelled') {
+                // Channel konfirmasi batal: stok sudah dilepas di atas, bersihkan baris fulfillment.
+                app(\Modules\Outbound\Services\FulfillmentCleanupService::class)
+                    ->detachCancelledOrder($order->id, 'system:channel-cancel');
+            }
 
             DB::commit();
 
