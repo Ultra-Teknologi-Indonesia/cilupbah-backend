@@ -144,15 +144,14 @@ class ProductController extends Controller
                 'product_id' => $productId
             ], 'Product created successfully', 201);
         } catch (\DomainException $e) {
-
+            return $this->errorResponse($e->getMessage(), 422, null, 'Gagal menyimpan produk');
+        } catch (\Illuminate\Database\QueryException $e) {
             return $this->errorResponse(
-                'Gagal menyimpan.',
+                $this->humanizeDbError($e),
                 422,
-                ['detail' => $e->getMessage()],
-                'Aksi tidak dapat diproses',
+                null,
+                'Gagal menyimpan produk',
             );
-        } catch (\Exception $e) {
-            return $this->errorResponse('Gagal membuat produk', 500, ['error' => $e->getMessage()]);
         }
     }
 
@@ -200,13 +199,9 @@ class ProductController extends Controller
         try {
             $this->productService->updateProduct($id, $request->validated());
         } catch (\DomainException $e) {
-
-            return $this->errorResponse(
-                'Gagal memperbarui.',
-                422,
-                ['detail' => $e->getMessage()],
-                'Aksi tidak dapat diproses',
-            );
+            return $this->errorResponse($e->getMessage(), 422, null, 'Gagal memperbarui produk');
+        } catch (\Illuminate\Database\QueryException $e) {
+            return $this->errorResponse($this->humanizeDbError($e), 422, null, 'Gagal memperbarui produk');
         }
 
         return $this->successResponse(
@@ -344,18 +339,42 @@ class ProductController extends Controller
         try {
             $action($product);
         } catch (\DomainException $e) {
-            return $this->errorResponse(
-                'Gagal menghapus.',
-                422,
-                ['detail' => $e->getMessage()],
-                'Aksi tidak dapat diproses',
-            );
+            return $this->errorResponse($e->getMessage(), 422, null, 'Aksi tidak dapat diproses');
         }
 
         return $this->successResponse(
             new ProductResource($product->fresh(self::DETAIL_RELATIONS)),
             $message
         );
+    }
+
+    private function humanizeDbError(\Illuminate\Database\QueryException $e): string
+    {
+        $sqlState = $e->errorInfo[0] ?? null;
+        $detail = (string) ($e->errorInfo[2] ?? $e->getMessage());
+
+        if ($sqlState === '23505') {
+            if (stripos($detail, 'sku') !== false) {
+                return 'SKU sudah digunakan produk lain. Gunakan SKU yang berbeda.';
+            }
+
+            return 'Data yang Anda masukkan sudah ada (duplikat). Periksa kembali isian yang harus unik.';
+        }
+
+        if ($sqlState === '23502') {
+            return 'Ada isian wajib yang belum lengkap. Periksa kembali data produk (mis. foto atau field yang kosong).';
+        }
+
+        if ($sqlState === '23503') {
+            return 'Data yang dipilih tidak valid atau sudah tidak tersedia (mis. kategori/atribut). Muat ulang halaman lalu coba lagi.';
+        }
+
+        \Illuminate\Support\Facades\Log::error('Product save DB error', [
+            'sql_state' => $sqlState,
+            'detail'    => $detail,
+        ]);
+
+        return 'Terjadi kendala saat menyimpan produk. Periksa kembali isian Anda lalu coba lagi.';
     }
 
     public function showBySku(string $sku): JsonResponse

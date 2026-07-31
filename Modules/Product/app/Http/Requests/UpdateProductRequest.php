@@ -149,11 +149,19 @@ class UpdateProductRequest extends FormRequest
         });
     }
 
+    public function attributes(): array
+    {
+        return \Modules\Product\Http\Requests\ProductFieldLabels::attributes();
+    }
+
     public function messages(): array
     {
         return [
+            ...\Modules\Product\Http\Requests\ProductFieldLabels::ruleMessages(),
             'variation_types.max' => 'Maksimal 2 jenis varian per produk.',
             'variation_types.*.attribute_id.distinct' => 'Jenis varian tidak boleh duplikat.',
+            'variants.*.sku.unique' => 'SKU varian sudah digunakan.',
+            'variants.*.sku.distinct' => 'SKU varian tidak boleh sama antar varian.',
         ];
     }
 }
