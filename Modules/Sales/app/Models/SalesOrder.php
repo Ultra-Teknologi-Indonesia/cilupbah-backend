@@ -259,20 +259,6 @@ class SalesOrder extends Model implements HasMedia
         return $this->cancel_reason ? \Modules\Sales\Enums\SalesCancelReason::tryFrom($this->cancel_reason) : null;
     }
 
-    public function shippingLabelStatusEnum(): ?\Modules\Sales\Enums\ShippingLabelStatus
-    {
-        return $this->shipping_label_status
-            ? \Modules\Sales\Enums\ShippingLabelStatus::tryFrom($this->shipping_label_status)
-            : null;
-    }
-
-    public function shippingLabelDocTypeEnum(): ?\Modules\Sales\Enums\ShippingLabelDocType
-    {
-        return $this->shipping_label_doc_type
-            ? \Modules\Sales\Enums\ShippingLabelDocType::tryFrom($this->shipping_label_doc_type)
-            : null;
-    }
-
     public function driverCallStatusEnum(): ?\Modules\Sales\Enums\DriverCallStatus
     {
         return $this->driver_call_status
