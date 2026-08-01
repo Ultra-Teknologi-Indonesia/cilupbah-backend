@@ -68,12 +68,13 @@ class NotificationRepository
 
     public function updateOrCreateToken(string $userId, string $fcmToken, ?string $deviceId, ?string $platform): DeviceToken
     {
+
         return DeviceToken::updateOrCreate(
             [
-                'user_id' => $userId,
                 'fcm_token' => $fcmToken,
             ],
             [
+                'user_id' => $userId,
                 'device_id' => $deviceId,
                 'platform' => $platform ?? 'android',
             ],
