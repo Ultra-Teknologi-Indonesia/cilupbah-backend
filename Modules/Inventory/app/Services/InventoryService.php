@@ -2189,7 +2189,7 @@ class InventoryService
             'location_id'      => $transfer->destination_location_id,
             'reference_number' => $transfer->transfer_number,
             'source_id'        => $transfer->id,
-            'expected_date'    => now()->toDateString(),
+            'expected_date'    => $transfer->shipped_at ?? $transfer->created_at ?? now(),
             'created_by'       => $transfer->created_by,
             'items'            => $items,
         ]);
