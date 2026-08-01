@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Sentry\Laravel\Integration;
 use App\Exceptions\UserFacingException;
 use Modules\Sales\Exceptions\CannotDeleteActiveOrderException;
 use Modules\Sales\Exceptions\DuplicateOrderException;
@@ -36,6 +37,8 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        Integration::handles($exceptions);
+
         $exceptions->shouldRenderJsonWhen(function (\Illuminate\Http\Request $request, \Throwable $e) {
             return $request->is('api/*');
         });
@@ -75,6 +78,12 @@ return Application::configure(basePath: dirname(__DIR__))
                         ? (is_array($errors[$firstField]) ? $errors[$firstField][0] : $errors[$firstField])
                         : 'Mohon periksa kembali data yang Anda masukkan.';
 
+                    \App\Support\ErrorReporter::captureThrottled(
+                        $e,
+                        'validation:' . ($request->route()?->getName() ?: $request->path()) . ':' . (string) $firstField,
+                        ['http_status' => 422, 'error_kind' => 'validation'],
+                    );
+
                     return $responder->errorResponse($firstMessage, 422, $errors, 'Data belum lengkap');
                 }
 
@@ -108,6 +117,15 @@ return Application::configure(basePath: dirname(__DIR__))
 
                 if ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpException) {
                     $status = $e->getStatusCode();
+
+                    if ($status === 422) {
+                        \App\Support\ErrorReporter::captureThrottled(
+                            $e,
+                            'http422:' . $request->path(),
+                            ['http_status' => 422, 'error_kind' => 'http'],
+                        );
+                    }
+
                     $title = match (true) {
                         $status === 403 => 'Akses ditolak',
                         $status === 404 => 'Data tidak ditemukan',
