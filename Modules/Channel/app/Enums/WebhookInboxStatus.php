@@ -1,0 +1,15 @@
+<?php
+
+namespace Modules\Channel\Enums;
+
+enum WebhookInboxStatus: string
+{
+    case RECEIVED  = 'RECEIVED';
+    case PROCESSED = 'PROCESSED';
+    case FAILED    = 'FAILED';
+
+    public function isTerminal(): bool
+    {
+        return in_array($this, [self::PROCESSED, self::FAILED], true);
+    }
+}

@@ -5,16 +5,20 @@ namespace Modules\Channel\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Helpers\ShopeeSignature;
 use Modules\Channel\Jobs\ProcessShopeeWebhook;
+use Modules\Channel\Repositories\ChannelWebhookInboxRepository;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Shopee', description: 'Integrasi OAuth Shopee')]
 class ShopeeWebhookController extends Controller
 {
     use ApiResponse;
+
+    public function __construct(
+        protected ChannelWebhookInboxRepository $inbox,
+    ) {}
 
     public function verify()
     {
@@ -161,8 +165,13 @@ class ShopeeWebhookController extends Controller
 
     protected function isFirstDelivery(array $payload): bool
     {
-
-        return Cache::add(ProcessShopeeWebhook::idempotencyKey($payload), 1, now()->addMinutes(10));
+        return $this->inbox->recordFirstDelivery(
+            'shopee',
+            isset($payload['shop_id']) ? (string) $payload['shop_id'] : null,
+            ProcessShopeeWebhook::idempotencyKey($payload),
+            isset($payload['code']) ? (string) $payload['code'] : null,
+            $payload,
+        ) !== null;
     }
 
     protected function logPushRequest(Request $request, string $rawBody, string $result): void

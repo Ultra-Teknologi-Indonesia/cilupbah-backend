@@ -94,6 +94,7 @@ return [
         'stock_default'    => env('QUEUE_NAME_STOCK_DEFAULT', 'stock-default'),
         'channel_sync'     => env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'),
         'tiktok_webhooks'  => env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks'),
+        'webhook_downloads' => env('QUEUE_NAME_WEBHOOK_DOWNLOADS', 'webhook-downloads'),
         'failed_jobs'      => env('QUEUE_NAME_FAILED_JOBS', 'failed-jobs'),
         'product'          => env('QUEUE_NAME_PRODUCT', 'product'),
         'downloads'        => env('QUEUE_NAME_DOWNLOADS', 'downloads'),

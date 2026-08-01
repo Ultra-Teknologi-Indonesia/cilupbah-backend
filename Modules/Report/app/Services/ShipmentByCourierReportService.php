@@ -17,6 +17,16 @@ class ShipmentByCourierReportService
 
     public function build(bool $detail, array $filters)
     {
+        $payload = $this->pdfPayload($detail, $filters);
+
+        $pdf = Pdf::loadView($payload['view'], $payload['data']);
+        $pdf->setPaper('a4', 'portrait');
+
+        return $pdf;
+    }
+
+    public function pdfPayload(bool $detail, array $filters): array
+    {
         ini_set('memory_limit', '1024M');
         set_time_limit(300);
 
@@ -27,17 +37,17 @@ class ShipmentByCourierReportService
                 return $r;
             });
 
-        $pdf = Pdf::loadView('report::pdf.pengiriman-ekspedisi', [
-            'title' => 'Laporan Pengiriman Berdasarkan Ekspedisi' . ($detail ? ' - Detail' : ''),
-            'periode' => $this->periodeLabel($filters),
-            'detail' => $detail,
-            'groups' => $detail ? $this->detailGroups($rows) : null,
-            'summary' => $detail ? null : $this->summaryRows($rows),
-            'grandTotal' => $detail ? null : $this->total($rows),
-        ]);
-        $pdf->setPaper('a4', 'portrait');
-
-        return $pdf;
+        return [
+            'view' => 'report::pdf.pengiriman-ekspedisi',
+            'data' => [
+                'title' => 'Laporan Pengiriman Berdasarkan Ekspedisi' . ($detail ? ' - Detail' : ''),
+                'periode' => $this->periodeLabel($filters),
+                'detail' => $detail,
+                'groups' => $detail ? $this->detailGroups($rows) : null,
+                'summary' => $detail ? null : $this->summaryRows($rows),
+                'grandTotal' => $detail ? null : $this->total($rows),
+            ],
+        ];
     }
 
     public function sectioned(bool $detail, array $filters): SectionedReport

@@ -2,6 +2,7 @@
 
 namespace Modules\Warehouse\Jobs;
 
+use App\Services\QrCodeGenerator;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -14,7 +15,6 @@ use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Modules\Warehouse\Models\QrPrintJob;
 use Modules\Warehouse\Services\BinQrPrintService;
-use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Throwable;
 
 class GenerateBinQrPdfJob implements ShouldQueue
@@ -29,7 +29,7 @@ class GenerateBinQrPdfJob implements ShouldQueue
 
     public function __construct(public readonly string $jobId) {}
 
-    public function handle(): void
+    public function handle(QrCodeGenerator $qrCodeGenerator): void
     {
 
         ini_set('memory_limit', '-1');
@@ -80,7 +80,7 @@ class GenerateBinQrPdfJob implements ShouldQueue
             $items = [];
             $processed = 0;
 
-            $query->chunk(self::CHUNK_SIZE, function ($chunk) use (&$items, &$processed, $qrSize, $printJob) {
+            $query->chunk(self::CHUNK_SIZE, function ($chunk) use (&$items, &$processed, $qrSize, $printJob, $qrCodeGenerator) {
 
                 foreach ($chunk as $bin) {
                     $code = (string) $bin->bin_final_code;
@@ -89,7 +89,7 @@ class GenerateBinQrPdfJob implements ShouldQueue
                     }
                     $items[] = [
                         'bin_final_code' => $code,
-                        'qr_data_uri' => $this->generateQrDataUri($code, $qrSize),
+                        'qr_data_uri' => $qrCodeGenerator->svgDataUri($code, $qrSize),
                     ];
                     $processed++;
                 }
@@ -171,22 +171,5 @@ class GenerateBinQrPdfJob implements ShouldQueue
             'a4_multi' => 220,
             default => 200,
         };
-    }
-
-    private function generateQrDataUri(string $content, int $size): ?string
-    {
-        try {
-            $svg = QrCode::format('svg')
-                ->size($size)
-                ->margin(0)
-                ->errorCorrection('M')
-                ->generate($content);
-
-            return 'data:image/svg+xml;base64,'.base64_encode((string) $svg);
-        } catch (Throwable $e) {
-            report($e);
-
-            return null;
-        }
     }
 }

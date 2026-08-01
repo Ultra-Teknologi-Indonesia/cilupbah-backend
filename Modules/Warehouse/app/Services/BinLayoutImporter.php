@@ -5,9 +5,19 @@ namespace Modules\Warehouse\Services;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Modules\Warehouse\Models\LocationZone;
+use Modules\Warehouse\Repositories\LocationRepository;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use Throwable;
 
 class BinLayoutImporter
 {
+    public const IMPORT_SHEET_NAME = 'Pengisian Data';
+
+    public const RACK_CODE_ALIASES = ['kode_rak', 'rak', 'bin_final_code', 'no rak', 'no_rak', 'kode rak', 'kode final rak'];
+
+    public function __construct(
+        protected LocationRepository $locationRepository
+    ) {}
 
     public function import(Location $location, iterable $codes, bool $commit = true): array
     {
@@ -96,5 +106,54 @@ class BinLayoutImporter
     public static function isSpecialRak(string $code): bool
     {
         return ! preg_match('/-[A-Za-z]*[0-9]+$/', $code);
+    }
+
+    public function parseRackCodes(string $path): array
+    {
+        $spreadsheet = IOFactory::load($path);
+
+        $sheet = $spreadsheet->getSheetByName(self::IMPORT_SHEET_NAME) ?? $spreadsheet->getActiveSheet();
+        $rows = $sheet->toArray(null, true, false, false);
+        if (empty($rows)) {
+            return [];
+        }
+
+        $header = array_map(fn ($h) => mb_strtolower(trim((string) $h)), $rows[0]);
+        $idx = null;
+        foreach ($header as $i => $name) {
+            if (in_array($name, self::RACK_CODE_ALIASES, true)) {
+                $idx = $i;
+                break;
+            }
+        }
+        if ($idx === null) {
+            $idx = count($header) === 1 ? 0 : count($header) - 1;
+        }
+
+        $codes = [];
+        foreach (array_slice($rows, 1) as $row) {
+            $v = trim((string) ($row[$idx] ?? ''));
+            if ($v !== '' && mb_strtolower($v) !== 'tidak ada rak') {
+                $codes[] = $v;
+            }
+        }
+
+        return array_values(array_unique($codes));
+    }
+
+    public function resolveUpload(string $locationId, string $path): array
+    {
+        $location = $this->locationRepository->find($locationId);
+        if (! $location) {
+            return ['location' => null, 'codes' => [], 'error' => null];
+        }
+
+        try {
+            $codes = $this->parseRackCodes($path);
+        } catch (Throwable $e) {
+            return ['location' => $location, 'codes' => [], 'error' => $e->getMessage()];
+        }
+
+        return ['location' => $location, 'codes' => $codes, 'error' => null];
     }
 }

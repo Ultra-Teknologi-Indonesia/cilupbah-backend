@@ -997,6 +997,62 @@ class PutawayService
         return $this->putawayRepository->getManyWithDetails($ids);
     }
 
+    public function getManyForPdfOrFail(array $ids)
+    {
+        $putaways = $this->getManyForPdf($ids);
+
+        if ($putaways->count() !== count($ids)) {
+            $missing = array_values(array_diff($ids, $putaways->pluck('id')->all()));
+
+            throw new \App\Exceptions\UserFacingException(
+                'Data tidak ditemukan',
+                'Sebagian penempatan tidak ditemukan: ' . implode(', ', $missing),
+                404,
+            );
+        }
+
+        return $putaways;
+    }
+
+    public function messageForDeleteAction(?string $action): string
+    {
+        return match ($action) {
+            'unassigned' => 'Penempatan dihapus, penerimaan dikembalikan.',
+            'reset_not_started' => 'Penempatan direset ke Belum Mulai.',
+            'reset_in_progress' => 'Penempatan dikembalikan ke Sedang Diproses.',
+            default => 'Penempatan diperbarui.',
+        };
+    }
+
+    public function resolvePdfSourceLabel(Putaway $putaway): string
+    {
+        if ($putaway->source_type === 'INBOUND') {
+            if ($putaway->inbound) {
+                return $putaway->inbound->reference_number
+                    ?? $putaway->inbound->transaction_number
+                    ?? '-';
+            }
+
+            $sources = $putaway->relationLoaded('sources') ? $putaway->sources : collect();
+            if ($sources->isNotEmpty()) {
+                return $sources
+                    ->map(fn ($i) => $i->reference_number ?? $i->transaction_number)
+                    ->filter()
+                    ->implode(', ') ?: '-';
+            }
+        }
+
+        return '-';
+    }
+
+    public function loadForPdf(Putaway $putaway): Putaway
+    {
+        $putaway->load(['inbound', 'sources:id,reference_number,transaction_number', 'location']);
+        $this->attachRecommendedBins($putaway);
+
+        return $putaway;
+    }
+
     private function reverseOnePlacement(Putaway $putaway, array $entry, string $userId, bool $stayCompleted = false): void
     {
         $itemId = $entry['item_id'] ?? null;

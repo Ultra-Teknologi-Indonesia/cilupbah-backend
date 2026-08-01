@@ -100,6 +100,15 @@ class LocationBinRepository
         return LocationBin::with('location')->find($id);
     }
 
+    public function sampleFinalCodes(string $locationId, int $limit = 3): array
+    {
+        return LocationBin::where('location_id', $locationId)
+            ->orderBy('bin_final_code')
+            ->limit($limit)
+            ->pluck('bin_final_code')
+            ->all();
+    }
+
     public function findByFinalCode(string $finalCode, string $locationId): ?LocationBin
     {
         return LocationBin::where('bin_final_code', $finalCode)

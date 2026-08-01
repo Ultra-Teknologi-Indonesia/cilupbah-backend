@@ -9,6 +9,11 @@ use Modules\Outbound\Http\Resources\PacklistResource;
 use Modules\Outbound\Services\PacklistService;
 use Modules\Outbound\Http\Requests\CreatePacklistRequest;
 use Modules\Outbound\Http\Requests\PackItemRequest;
+use Modules\Outbound\Http\Requests\AssignPackerRequest;
+use Modules\Outbound\Http\Requests\ScanPacklistOrderRequest;
+use Modules\Outbound\Http\Requests\UnpackItemRequest;
+use Modules\Outbound\Http\Requests\UnpackItemsRequest;
+use Modules\Outbound\Http\Requests\VerifyPacklistBarcodeRequest;
 use OpenApi\Attributes as OA;
 use Throwable;
 
@@ -70,13 +75,8 @@ class PacklistController extends Controller
             new OA\Response(response: 404, description: 'Not Found'),
         ]
     )]
-    public function scanOrder(Request $request): JsonResponse
+    public function scanOrder(ScanPacklistOrderRequest $request): JsonResponse
     {
-        $request->validate([
-            'order_no' => 'required|string',
-            'packer_id' => 'nullable|string|exists:users,id',
-        ]);
-
         $packlist = $this->packlistService->scanOrder(
             $request->query('order_no'),
             $request->query('packer_id'),
@@ -199,10 +199,8 @@ class PacklistController extends Controller
             new OA\Response(response: 200, description: 'Success'),
         ]
     )]
-    public function assignPacker(string $id, Request $request): JsonResponse
+    public function assignPacker(string $id, AssignPackerRequest $request): JsonResponse
     {
-        $request->validate(['packer_id' => 'required|string|exists:users,id']);
-
         $packlist = $this->packlistService->assignPacker($id, $request->packer_id, auth()->user()->email);
 
         return $this->successResponse($packlist);
@@ -257,11 +255,9 @@ class PacklistController extends Controller
         return $this->successResponse(null, 'Item berhasil di-pack.');
     }
 
-    public function unpackItem(string $id, string $itemId, Request $request): JsonResponse
+    public function unpackItem(string $id, string $itemId, UnpackItemRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'qty' => 'nullable|integer|min:1',
-        ]);
+        $validated = $request->validated();
 
         try {
             $this->packlistService->unpackItem($id, $itemId, $validated['qty'] ?? null);
@@ -277,13 +273,9 @@ class PacklistController extends Controller
         return $this->successResponse(null, 'Pack berhasil dikoreksi.');
     }
 
-    public function unpackItems(string $id, Request $request): JsonResponse
+    public function unpackItems(string $id, UnpackItemsRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'items' => 'required|array|min:1',
-            'items.*.item_id' => 'required|string',
-            'items.*.qty' => 'nullable|integer|min:1',
-        ]);
+        $validated = $request->validated();
 
         try {
             $this->packlistService->unpackItems($id, $validated['items']);
@@ -320,10 +312,8 @@ class PacklistController extends Controller
             new OA\Response(response: 200, description: 'Success'),
         ]
     )]
-    public function verifyBarcode(string $id, Request $request): JsonResponse
+    public function verifyBarcode(string $id, VerifyPacklistBarcodeRequest $request): JsonResponse
     {
-        $request->validate(['barcode' => 'required|string']);
-
         $result = $this->packlistService->verifyBarcode($id, $request->barcode);
 
         return $this->successResponse($result);

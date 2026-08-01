@@ -81,11 +81,9 @@ class WarehouseAccessTest extends TestCase
     {
         Auth::setUser($this->member([$this->kecil->id]));
 
-        // Diizinkan → tidak melempar.
         WarehouseAccess::assert($this->kecil->id);
         WarehouseAccess::assert(null);
 
-        // Di luar akses → 403.
         $this->expectException(AuthorizationException::class);
         WarehouseAccess::assert($this->pusat->id);
     }
@@ -133,7 +131,7 @@ class WarehouseAccessTest extends TestCase
             'password' => 'StrongP@ss1',
             'password_confirmation' => 'StrongP@ss1',
             'roles' => ['picker'],
-            'warehouse_id' => $this->pusat->id,      // default di luar assigned set
+            'warehouse_id' => $this->pusat->id,      
             'location_ids' => [$this->kecil->id],
         ])->assertStatus(422)->assertJsonValidationErrors(['warehouse_id']);
     }

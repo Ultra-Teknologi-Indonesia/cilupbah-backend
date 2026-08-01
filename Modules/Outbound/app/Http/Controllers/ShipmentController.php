@@ -3,20 +3,30 @@
 namespace Modules\Outbound\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Services\PdfRenderer;
+use App\Services\QrCodeGenerator;
 use App\Traits\ApiResponse;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Outbound\Exports\ShipmentManifestExport;
+use Modules\Outbound\Http\Resources\CompletedShipmentOrderResource;
 use Modules\Outbound\Http\Resources\ShipmentResource;
 use Modules\Outbound\Repositories\ShipmentRepository;
 use Modules\Outbound\Services\ShipmentService;
 use Modules\Outbound\Exceptions\ScanRejectedException;
 use Modules\Outbound\Http\Requests\CreateShipmentRequest;
 use Modules\Outbound\Http\Requests\AddShipmentOrdersRequest;
+use Modules\Outbound\Http\Requests\BulkManifestPdfRequest;
+use Modules\Outbound\Http\Requests\DriverCallRequest;
+use Modules\Outbound\Http\Requests\RemoveShipmentOrdersRequest;
+use Modules\Outbound\Http\Requests\SaveAwbRequest;
+use Modules\Outbound\Http\Requests\ScanShipmentOrderRequest;
+use Modules\Outbound\Http\Requests\ScanShipmentRequest;
+use Modules\Outbound\Http\Requests\StoreInstantShipmentRequest;
+use Modules\Outbound\Http\Requests\UpdateDriverCallRequest;
+use Modules\Outbound\Http\Requests\UpdateHandoverQtyRequest;
 use OpenApi\Attributes as OA;
-use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Throwable;
 
 #[OA\Tag(name: 'Outbound - Shipment', description: 'API Endpoints for Shipment management')]
@@ -47,6 +57,8 @@ class ShipmentController extends Controller
     public function __construct(
         protected ShipmentService $shipmentService,
         protected ShipmentRepository $shipmentRepository,
+        protected QrCodeGenerator $qrCodeGenerator,
+        protected PdfRenderer $pdfRenderer,
     ) {}
 
     #[OA\Get(
@@ -166,7 +178,9 @@ class ShipmentController extends Controller
         $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $paginator = $this->shipmentService->getCompleted($type, $courierIds, $limit);
 
-        $items = collect($paginator->items())->map(fn ($so) => $this->mapCompletedOrderRow($so))->all();
+        $items = collect($paginator->items())
+            ->map(fn ($so) => (new CompletedShipmentOrderResource($so))->toArray($request))
+            ->all();
 
         return $this->successResponse([
             'data' => $items,
@@ -177,39 +191,6 @@ class ShipmentController extends Controller
                 'total'        => $paginator->total(),
             ],
         ]);
-    }
-
-    private function mapCompletedOrderRow($shipmentOrder): array
-    {
-        $order = $shipmentOrder->order;
-        $shipment = $shipmentOrder->shipment;
-        $packlist = $shipmentOrder->packlist;
-
-        return [
-            'order_id'          => $order?->id,
-            'salesorder_no'     => $order?->salesorder_no,
-            'customer_name'     => $order?->customer_name,
-            'tracking_number'   => $shipmentOrder->tracking_number ?? $order?->tracking_number,
-            'source'            => $order?->source,
-            'channel_status'    => $order?->channel_status,
-            'channel_order_no'  => $order?->channel_order_no,
-            'transaction_date'  => $order?->transaction_date,
-            'shipping_provider' => $order?->shipping_provider,
-            'courier_name'      => $shipment?->courier_name ?? $order?->courier_name,
-            'shipping_address'  => $order?->shipping_address,
-            'shipping_city'     => $order?->shipping_city,
-            'shipping_province' => $order?->shipping_province,
-            'shipment_id'       => $shipment?->id,
-            'shipment_no'       => $shipment?->shipment_no,
-            'shipment_type'     => $shipment?->shipment_type,
-            'shipment_status'   => $shipment?->status,
-            'shipment_date'     => $shipment?->shipment_date,
-            'handed_over_at'    => $shipment?->handed_over_at,
-            'location_name'    => $shipment?->location?->location_name,
-            'picklist_no'       => $packlist?->packlist_no,
-            'qty_given'         => $shipmentOrder->qty_given,
-            'pickup_code'       => $order?->pickup_code,
-        ];
     }
 
     #[OA\Get(
@@ -256,17 +237,8 @@ class ShipmentController extends Controller
             new OA\Response(response: 201, description: 'Created'),
         ]
     )]
-    public function storeInstant(Request $request): JsonResponse
+    public function storeInstant(StoreInstantShipmentRequest $request): JsonResponse
     {
-        $request->validate([
-            'location_id' => 'required|string|exists:locations,id',
-            'shipment_date' => 'required|date',
-            'courier_name' => 'nullable|string|max:100',
-            'courier_code' => 'nullable|string|max:50',
-            'notes' => 'nullable|string|max:500',
-            'shipper_id' => 'nullable|integer|exists:users,id',
-        ]);
-
         $data = $request->only(['location_id', 'shipment_date', 'courier_name', 'courier_code', 'notes', 'shipper_id']);
         $data['created_by'] = auth()->user()->email;
 
@@ -298,13 +270,8 @@ class ShipmentController extends Controller
             new OA\Response(response: 400, description: 'Bad Request'),
         ]
     )]
-    public function updateHandoverQty(string $id, Request $request): JsonResponse
+    public function updateHandoverQty(string $id, UpdateHandoverQtyRequest $request): JsonResponse
     {
-        $request->validate([
-            'order_id' => 'required|string|exists:sales_orders,id',
-            'qty_given' => 'required|integer|min:0',
-        ]);
-
         try {
             $this->shipmentService->updateHandoverQty($id, $request->order_id, $request->qty_given);
         } catch (\Exception $e) {
@@ -346,7 +313,6 @@ class ShipmentController extends Controller
     )]
     public function orders(string $id, Request $request): JsonResponse
     {
-
         $limit = (int) $request->query('per_page', $request->query('limit', 20));
         $data = $this->shipmentService->getOrdersPaginated($id, $limit);
 
@@ -402,10 +368,8 @@ class ShipmentController extends Controller
             new OA\Response(response: 200, description: 'Success'),
         ]
     )]
-    public function removeOrders(string $id, Request $request): JsonResponse
+    public function removeOrders(string $id, RemoveShipmentOrdersRequest $request): JsonResponse
     {
-        $request->validate(['order_ids' => 'required|array|min:1', 'order_ids.*' => 'string']);
-
         $shipment = $this->shipmentService->removeOrders($id, $request->order_ids);
 
         return $this->successResponse($shipment);
@@ -461,10 +425,8 @@ class ShipmentController extends Controller
             new OA\Response(response: 422, description: 'Validation error'),
         ]
     )]
-    public function scanOrder(string $id, Request $request): JsonResponse
+    public function scanOrder(string $id, ScanShipmentOrderRequest $request): JsonResponse
     {
-        $request->validate(['barcode' => 'required|string']);
-
         try {
             $shipment = $this->shipmentService->scanAndAddOrder($id, $request->barcode);
         } catch (ScanRejectedException $e) {
@@ -505,10 +467,8 @@ class ShipmentController extends Controller
             new OA\Response(response: 404, description: 'Not Found'),
         ]
     )]
-    public function scan(Request $request): JsonResponse
+    public function scan(ScanShipmentRequest $request): JsonResponse
     {
-        $request->validate(['barcode' => 'required|string']);
-
         try {
             $shipment = $this->shipmentService->scanShipment($request->barcode);
         } catch (\Exception $e) {
@@ -545,13 +505,8 @@ class ShipmentController extends Controller
             new OA\Response(response: 200, description: 'Success'),
         ]
     )]
-    public function saveAwb(string $id, Request $request): JsonResponse
+    public function saveAwb(string $id, SaveAwbRequest $request): JsonResponse
     {
-        $request->validate([
-            'order_id' => 'required|string|exists:sales_orders,id',
-            'tracking_number' => 'required|string|max:100',
-        ]);
-
         $this->shipmentService->updateTrackingNumber($id, $request->order_id, $request->tracking_number);
 
         return $this->successResponse(null, 'Tracking number berhasil disimpan.');
@@ -605,14 +560,12 @@ class ShipmentController extends Controller
             $shipmentNo = $shipment->shipment_no ?? 'SHP';
             $filename = "{$shipmentNo}-manifest.pdf";
 
-            $qrDataUri = $this->generateQrDataUri((string) $shipmentNo);
+            $qrDataUri = $this->qrCodeGenerator->svgDataUri((string) $shipmentNo);
 
-            $pdf = Pdf::loadView('outbound::pdf.manifest', [
+            return $this->pdfRenderer->stream('outbound::pdf.manifest', [
                 'shipment' => $shipment,
                 'qrDataUri' => $qrDataUri,
-            ])->setPaper('a4', 'portrait');
-
-            return $pdf->stream($filename);
+            ], $filename, 'a4', 'portrait');
         } catch (Throwable $e) {
             report($e);
             return $this->errorResponse(
@@ -682,15 +635,10 @@ class ShipmentController extends Controller
             new OA\Response(response: 422, description: 'Validation Error'),
         ]
     )]
-    public function bulkManifestPdf(Request $request)
+    public function bulkManifestPdf(BulkManifestPdfRequest $request)
     {
-        $validated = $request->validate([
-            'order_ids' => 'required|array|min:1|max:200',
-            'order_ids.*' => 'required|string',
-        ]);
-
         try {
-            $orderIds = $validated['order_ids'];
+            $orderIds = $request->validated()['order_ids'];
 
             $shipments = $this->shipmentRepository->getForBulkManifestPdf($orderIds);
 
@@ -698,18 +646,18 @@ class ShipmentController extends Controller
                 return $this->errorResponse('Tidak ada shipment ditemukan untuk pesanan yang dipilih.', 404);
             }
 
-            $qrMap = $shipments->mapWithKeys(
-                fn ($shipment) => [$shipment->id => $this->generateQrDataUri((string) ($shipment->shipment_no ?? ''))]
+            $qrMap = $this->qrCodeGenerator->mapDataUris(
+                $shipments,
+                fn ($shipment) => $shipment->id,
+                fn ($shipment) => (string) ($shipment->shipment_no ?? ''),
             );
 
             $filename = 'Manifest-Bulk-' . now()->format('Ymd-His') . '.pdf';
 
-            $pdf = Pdf::loadView('outbound::pdf.manifest-bulk', [
+            return $this->pdfRenderer->stream('outbound::pdf.manifest-bulk', [
                 'shipments' => $shipments,
                 'qrMap' => $qrMap,
-            ])->setPaper('a4', 'portrait');
-
-            return $pdf->stream($filename);
+            ], $filename, 'a4', 'portrait');
         } catch (Throwable $e) {
             report($e);
             return $this->errorResponse(
@@ -718,22 +666,6 @@ class ShipmentController extends Controller
                 ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
-        }
-    }
-
-    protected function generateQrDataUri(string $content): ?string
-    {
-        try {
-            $svg = QrCode::format('svg')
-                ->size(160)
-                ->margin(0)
-                ->errorCorrection('M')
-                ->generate($content);
-
-            return 'data:image/svg+xml;base64,' . base64_encode((string) $svg);
-        } catch (Throwable $e) {
-            report($e);
-            return null;
         }
     }
 
@@ -765,17 +697,8 @@ class ShipmentController extends Controller
             new OA\Response(response: 422, description: 'Not eligible'),
         ]
     )]
-    public function driverCall(string $id, Request $request): JsonResponse
+    public function driverCall(string $id, DriverCallRequest $request): JsonResponse
     {
-        $request->validate([
-            'driver_name'          => 'nullable|string|max:100',
-            'driver_phone'         => 'nullable|string|max:30',
-            'driver_vehicle_plate' => 'nullable|string|max:20',
-            'driver_booking_code'  => 'nullable|string|max:100',
-            'driver_id_card'       => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
-            'shipper_id'           => 'nullable|integer|exists:users,id',
-        ]);
-
         try {
             $shipment = $this->shipmentService->recordDriverCall(
                 $id,
@@ -806,18 +729,8 @@ class ShipmentController extends Controller
             new OA\Response(response: 200, description: 'Success'),
         ]
     )]
-    public function updateDriverCall(string $id, Request $request): JsonResponse
+    public function updateDriverCall(string $id, UpdateDriverCallRequest $request): JsonResponse
     {
-        $request->validate([
-            'driver_name'          => 'nullable|string|max:100',
-            'driver_phone'         => 'nullable|string|max:30',
-            'driver_vehicle_plate' => 'nullable|string|max:20',
-            'driver_booking_code'  => 'nullable|string|max:100',
-            'driver_call_status'   => 'nullable|string|in:CALLED,PICKED_UP,FAILED',
-            'driver_id_card'       => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
-            'shipper_id'           => 'nullable|integer|exists:users,id',
-        ]);
-
         try {
             $shipment = $this->shipmentService->updateDriverCall(
                 $id,
@@ -932,11 +845,7 @@ class ShipmentController extends Controller
 
     public function trackingEvents(string $id): JsonResponse
     {
-        $events = \Modules\Outbound\Models\ShipmentTrackingEvent::query()
-            ->where('shipment_id', $id)
-            ->orderByDesc('occurred_at')
-            ->limit(100)
-            ->get();
+        $events = $this->shipmentRepository->getTrackingEvents($id);
 
         return $this->successResponse($events, 'Timeline tracking shipment.');
     }

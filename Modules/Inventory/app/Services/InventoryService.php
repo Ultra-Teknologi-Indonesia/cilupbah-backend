@@ -1898,6 +1898,79 @@ class InventoryService
         return ['deleted' => $deleted, 'reverted' => $reverted, 'failed' => $failed];
     }
 
+    public function summarizeBulkTransferResult(array $result): string
+    {
+        $parts = [];
+
+        if (($result['deleted'] ?? 0) > 0) {
+            $parts[] = "{$result['deleted']} dihapus";
+        }
+        if (($result['reverted'] ?? 0) > 0) {
+            $parts[] = "{$result['reverted']} dikembalikan ke Baru Dibuat";
+        }
+        if (count($result['failed'] ?? []) > 0) {
+            $parts[] = count($result['failed']) . ' gagal';
+        }
+
+        return $parts ? implode(', ', $parts) : 'Tidak ada transfer diproses';
+    }
+
+    public function getTransfersForBulkPdf(array $ids): array
+    {
+        $transfers = array_values(array_filter(array_map(
+            fn (string $id) => $this->getTransferById($id),
+            $ids,
+        )));
+
+        if (count($transfers) !== count($ids)) {
+            $foundIds = array_map(fn ($t) => $t->id, $transfers);
+            $missing = array_values(array_diff($ids, $foundIds));
+
+            throw new \App\Exceptions\UserFacingException(
+                'Data tidak ditemukan',
+                'Sebagian dokumen tidak ditemukan: ' . implode(', ', $missing),
+                404,
+            );
+        }
+
+        return $transfers;
+    }
+
+    public function getIncomingTransfersPaginated(?string $statusFilter, ?string $locationId, int $limit = 10)
+    {
+        $filters = $statusFilter
+            ? ['status' => $statusFilter]
+            : ['statuses' => [InventoryTransfer::STATUS_IN_TRANSIT, InventoryTransfer::STATUS_RECEIVED]];
+
+        if (! empty($locationId)) {
+            $filters['destination_location_id'] = $locationId;
+        }
+
+        return $this->getTransfersPaginated($filters, $limit);
+    }
+
+    public function getOutgoingTransfersPaginated(?string $locationId, int $limit = 10)
+    {
+        $filters = ['status' => InventoryTransfer::STATUS_IN_TRANSIT];
+
+        if (! empty($locationId)) {
+            $filters['source_location_id'] = $locationId;
+        }
+
+        return $this->getTransfersPaginated($filters, $limit);
+    }
+
+    public function assertSkuHasStock(array $summary, ?string $locationId, bool $requireStock): void
+    {
+        if ($locationId && $requireStock && empty($summary['available_bins'])) {
+            throw new \App\Exceptions\UserFacingException(
+                'Stok tidak tersedia',
+                'SKU tidak punya stok di gudang ini.',
+                404,
+            );
+        }
+    }
+
     public function deleteTransfer(string $id): void
     {
         $itemIds = DB::transaction(function () use ($id) {

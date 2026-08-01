@@ -4,6 +4,7 @@ namespace Modules\Outbound\Repositories;
 
 use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Models\ShipmentOrder;
+use Modules\Outbound\Models\ShipmentTrackingEvent;
 use Modules\Outbound\Support\InstantOrderClassifier;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
@@ -188,6 +189,15 @@ class ShipmentRepository
     public function delete(string $id): bool
     {
         return Shipment::where('id', $id)->delete() > 0;
+    }
+
+    public function getTrackingEvents(string $shipmentId): \Illuminate\Support\Collection
+    {
+        return ShipmentTrackingEvent::query()
+            ->where('shipment_id', $shipmentId)
+            ->orderByDesc('occurred_at')
+            ->limit(100)
+            ->get();
     }
 
     public function generateShipmentNo(): string

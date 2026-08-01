@@ -2,10 +2,12 @@
 
 namespace Modules\Sales\Services;
 
+use App\Exceptions\UserFacingException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Modules\Sales\Enums\SalesOrderStatus;
 use Modules\Sales\Exceptions\CannotDeleteActiveOrderException;
@@ -204,7 +206,11 @@ class SalesOrderService
         $eligibleIds = array_values(array_diff($orderIds, $skippedDbIds));
 
         if (empty($eligibleIds)) {
-            return ['moved' => 0, 'skipped' => $skipped];
+            return [
+                'moved'   => 0,
+                'skipped' => $skipped,
+                'message' => $this->buildMoveToReadyMessage(0, $skipped),
+            ];
         }
 
         [$count, $awbOrderIds, $shopeeLabelOrderIds] = DB::transaction(function () use ($eligibleIds, $actor) {
@@ -281,7 +287,23 @@ class SalesOrderService
             }
         }
 
-        return ['moved' => $count, 'skipped' => $skipped];
+        return [
+            'moved'   => $count,
+            'skipped' => $skipped,
+            'message' => $this->buildMoveToReadyMessage($count, $skipped),
+        ];
+    }
+
+    private function buildMoveToReadyMessage(int $moved, array $skipped): string
+    {
+        $message = "{$moved} order berhasil dipindahkan ke siap proses";
+
+        if (! empty($skipped)) {
+            $skippedCount = count($skipped);
+            $message .= " · {$skippedCount} order dilewati karena stok kosong (cek tab Stok Kosong)";
+        }
+
+        return $message;
     }
 
     public function acceptCancelRequest(string $orderId, bool $auto = false, ?string $reason = null): SalesOrder
@@ -337,7 +359,6 @@ class SalesOrderService
                 'cancel_channel'     => $channel,
             ]);
 
-            // Stok sudah dilepas di atas; sisakan baris picklist/packlist bersih.
             app(\Modules\Outbound\Services\FulfillmentCleanupService::class)
                 ->detachCancelledOrder($order->id, $actorId ?: 'system:cancel-accept');
 
@@ -936,6 +957,129 @@ class SalesOrderService
 
         PrepareShopeeShippingLabelJob::dispatch($order->id)
             ->onQueue(config('queue.names.channel_sync'));
+    }
+
+    public function findOrderOrFail(string $id): SalesOrder
+    {
+        return $this->orderRepository->findOrFail($id);
+    }
+
+    public function getOrderForInvoice(string $id): ?SalesOrder
+    {
+        return $this->orderRepository->findForInvoice($id);
+    }
+
+    public function getOrderForBreakdown(string $id): ?SalesOrder
+    {
+        return $this->orderRepository->findForBreakdown($id);
+    }
+
+    public function prepareShippingLabelDocument(SalesOrder $order, ?string $requestedSize): array
+    {
+        if ($order->isManual()) {
+            throw new UserFacingException(
+                'Aksi tidak dapat diproses',
+                'Pesanan manual (Toko Internal) tidak menggunakan label marketplace. Input resi secara manual.',
+                422,
+            );
+        }
+
+        $source = strtolower((string) ($order->source ?? ''));
+        $bulkService = app(BulkShippingLabelService::class);
+
+        $canonical = $bulkService->resolveChannelOptions($source);
+        $options = array_filter($canonical, fn ($v) => $v !== null && $v !== '');
+
+        $sizeKey = in_array($requestedSize, [
+            BulkShippingLabelService::SIZE_100X150,
+            BulkShippingLabelService::SIZE_100X120,
+        ], true) ? $requestedSize : BulkShippingLabelService::DEFAULT_SIZE;
+
+        try {
+            $result = $this->getShippingLabel($order, $options);
+
+            $rawBytes = $this->extractLabelBytes($result);
+            if ($rawBytes === null) {
+                return $result;
+            }
+
+            $normalized = $bulkService->normalizeToTarget($rawBytes, $sizeKey, $source);
+
+            return [
+                'type'            => 'base64',
+                'content_type'    => 'application/pdf',
+                'document_base64' => base64_encode($normalized),
+                'source'          => $source,
+                'document_size'   => $sizeKey,
+            ];
+        } catch (ShippingLabelPreparingException $e) {
+            throw new UserFacingException('Aksi tidak dapat diproses', 'Gagal memproses pengiriman.', 202, ['detail' => $e->getMessage()]);
+        } catch (\InvalidArgumentException $e) {
+            throw new UserFacingException('Aksi tidak dapat diproses', 'Gagal memproses pengiriman.', 422, ['detail' => $e->getMessage()]);
+        } catch (\RuntimeException $e) {
+            throw new UserFacingException('Aksi tidak dapat diproses', 'Gagal memproses pengiriman.', 422, ['detail' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            Log::error('shippingLabel gagal', [
+                'order_id' => $order->id,
+                'source'   => $source,
+                'error'    => $e->getMessage(),
+            ]);
+
+            throw new UserFacingException(
+                'Aksi tidak dapat diproses',
+                'Gagal mengambil label pengiriman: ' . $e->getMessage(),
+                422,
+                ['detail' => $e->getMessage()],
+            );
+        }
+    }
+
+    private function extractLabelBytes(array $result): ?string
+    {
+        if (! empty($result['document_base64'])) {
+            $decoded = base64_decode((string) $result['document_base64'], true);
+
+            return $decoded === false ? null : $decoded;
+        }
+        if (! empty($result['bytes'])) {
+            return (string) $result['bytes'];
+        }
+        $url = $result['url'] ?? ($result['doc_url'] ?? null);
+        if (! empty($url)) {
+            try {
+                $response = Http::timeout(20)->retry(2, 500)->get($url);
+
+                return $response->successful() ? $response->body() : null;
+            } catch (\Throwable $e) {
+                Log::warning('extractLabelBytes: url fetch failed', ['error' => $e->getMessage()]);
+
+                return null;
+            }
+        }
+        if (! empty($result['data']) && is_string($result['data'])) {
+            $decoded = base64_decode((string) $result['data'], true);
+
+            return $decoded === false ? null : $decoded;
+        }
+
+        return null;
+    }
+
+    public function resendShippingLabel(SalesOrder $order): void
+    {
+        if ($order->isManual()) {
+            throw new UserFacingException(
+                'Aksi tidak dapat diproses',
+                'Pesanan manual tidak menggunakan label marketplace.',
+                422,
+            );
+        }
+
+        try {
+            $this->retryShippingLabel($order);
+        } catch (\InvalidArgumentException $e) {
+            throw new UserFacingException('Aksi tidak dapat diproses', 'Gagal memproses pengiriman.', 422, ['detail' => $e->getMessage()]);
+        }
     }
 
     private function idempotencyKey(?string $source, string $salesOrderNo): string
@@ -1554,7 +1698,7 @@ class SalesOrderService
             $stockMutated = $this->reconcileStockTransition($order, $previousStatus, $finalStatus);
 
             if ($finalStatus === 'cancelled') {
-                // Channel konfirmasi batal: stok sudah dilepas di atas, bersihkan baris fulfillment.
+
                 app(\Modules\Outbound\Services\FulfillmentCleanupService::class)
                     ->detachCancelledOrder($order->id, 'system:channel-cancel');
             }

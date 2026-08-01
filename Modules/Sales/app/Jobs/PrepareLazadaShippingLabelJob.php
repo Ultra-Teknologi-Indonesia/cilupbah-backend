@@ -11,12 +11,6 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Sales\Models\SalesOrder;
 
-/**
- * Siapkan dokumen label kirim Lazada secara proaktif ("selalu dapat"): saat order
- * READY_TO_SHIP, tarik dokumen shippingLabel lalu cache ke shipping_label_raw_data
- * supaya operator tak tergantung panggilan live saat cetak. Mirror konvensi status
- * PrepareShopeeShippingLabelJob.
- */
 class PrepareLazadaShippingLabelJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -65,7 +59,7 @@ class PrepareLazadaShippingLabelJob implements ShouldQueue
         try {
             $document = $lazada->getDocument($shopId, $orderSn, 'shippingLabel');
         } catch (\Throwable $e) {
-            // Dokumen belum siap — biarkan retry menangani.
+
             Log::info('PrepareLazadaShippingLabelJob: dokumen belum siap', [
                 'order_id'  => $order->id,
                 'order_sn'  => $orderSn,

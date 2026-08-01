@@ -6,8 +6,12 @@ use Modules\Sales\Repositories\SalesReturnRepository;
 use Modules\Sales\Models\SalesReturn;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Exceptions\InvalidReturnStateException;
+use Modules\Sales\Exports\ReturnChannelOnlineExport;
+use Modules\Sales\Exports\SalesReturnReportExport;
 use Modules\Sales\Jobs\AdminAlertJob;
 use Modules\Inbound\Services\InboundService;
+use Modules\Inventory\Models\ImpexActivity;
+use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Notification\Services\NotificationDispatcher;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +27,50 @@ class SalesReturnService
         protected InboundService $inboundService,
         protected SalesReturnSettingService $settings,
         protected NotificationDispatcher $notifications,
+        protected ImpexActivityService $activityService,
     ) {}
+
+    public function prepareExport(string $type, array $filters, $userId = null): array
+    {
+        if ($type === 'channel_online') {
+            $dateFrom = $filters['date_from'] ?? now()->toDateString();
+            $dateTo   = $filters['date_to'] ?? $dateFrom;
+
+            $export = new ReturnChannelOnlineExport(
+                dateFrom:   $dateFrom,
+                dateTo:     $dateTo,
+                locationId: $filters['location_id'] ?? null,
+            );
+
+            $filename = sprintf('retur-channel-online-%s-%s.xlsx', $dateFrom, $dateTo);
+            $label = 'Export Retur Channel Online';
+        } else {
+            $dateFrom = $filters['date_from'] ?? null;
+            $dateTo   = $filters['date_to'] ?? null;
+
+            $export = new SalesReturnReportExport(
+                dateFrom:            $dateFrom,
+                dateTo:              $dateTo,
+                locationId:          $filters['location_id'] ?? null,
+                channelShopId:       $filters['channel_shop_id'] ?? null,
+                status:              $filters['status'] ?? null,
+                source:              $filters['source'] ?? null,
+                reasonCategory:      $filters['reason_category'] ?? null,
+                marketplaceDecision: $filters['marketplace_decision'] ?? null,
+            );
+
+            $filename = sprintf('laporan-retur-%s-%s.xlsx', $dateFrom ?? 'semua', $dateTo ?? now()->toDateString());
+            $label = 'Export Laporan Retur';
+        }
+
+        $this->activityService->recordCompleted(
+            ImpexActivity::DIRECTION_EXPORT,
+            $label,
+            $userId,
+        );
+
+        return ['export' => $export, 'filename' => $filename];
+    }
 
     private function returnLink(string $id): string
     {

@@ -24,19 +24,29 @@ class PutawayListReportService
 
     public function build(string $date, string $locationId, array $putawayIds = [])
     {
+        $payload = $this->pdfPayload($date, $locationId, $putawayIds);
+
+        $pdf = Pdf::loadView($payload['view'], $payload['data']);
+        $pdf->setPaper('a4', 'portrait');
+
+        return $pdf;
+    }
+
+    public function pdfPayload(string $date, string $locationId, array $putawayIds = []): array
+    {
         ini_set('memory_limit', '1024M');
         set_time_limit(300);
 
         $rows = collect($this->repository->putawayItemRows($date, $locationId, $putawayIds));
 
-        $pdf = Pdf::loadView('report::pdf.putaway-list', [
-            'tanggal' => Carbon::parse($date)->format('d M Y'),
-            'lokasi' => Location::find($locationId)?->location_name ?? '-',
-            'documents' => $this->documents($rows),
-        ]);
-        $pdf->setPaper('a4', 'portrait');
-
-        return $pdf;
+        return [
+            'view' => 'report::pdf.putaway-list',
+            'data' => [
+                'tanggal' => Carbon::parse($date)->format('d M Y'),
+                'lokasi' => Location::find($locationId)?->location_name ?? '-',
+                'documents' => $this->documents($rows),
+            ],
+        ];
     }
 
     public function sectioned(string $date, string $locationId, array $putawayIds = []): SectionedReport

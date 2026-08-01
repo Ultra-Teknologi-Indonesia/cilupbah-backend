@@ -22,3 +22,10 @@ spec:
           envFrom:
             - secretRef:
                 name: cilupbah-env
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "php artisan horizon:status | grep -q running"]
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 15
+            failureThreshold: 3

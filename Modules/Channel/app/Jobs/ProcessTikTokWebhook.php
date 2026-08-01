@@ -10,6 +10,7 @@ use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\TikTokAuthService;
 use Modules\Channel\Services\TikTokOrderService;
@@ -21,6 +22,7 @@ class ProcessTikTokWebhook implements ShouldQueue
 
     public int $tries = 3;
     public array $backoff = [10, 60, 300];
+    public int $timeout = 120;
 
     private const EVENT_ORDER = 'order';
     private const EVENT_PACKAGE = 'package';
@@ -136,6 +138,8 @@ class ProcessTikTokWebhook implements ShouldQueue
                     'data_keys' => array_keys($data),
                 ]),
             };
+
+            ChannelWebhookInbox::markProcessedByKey($idempotencyKey);
         } catch (\Throwable $e) {
             Cache::forget($idempotencyKey);
             throw $e;
@@ -212,7 +216,6 @@ class ProcessTikTokWebhook implements ShouldQueue
         foreach (array_keys($orderIds) as $orderId) {
             $orderService->pullOrderById($shopId, $orderId);
 
-            // Paket siap = dokumen label tersedia → siapkan & cache proaktif ("selalu dapat").
             $localId = \Modules\Sales\Models\SalesOrder::query()
                 ->where('source', 'tiktok')
                 ->where('channel_order_no', (string) $orderId)

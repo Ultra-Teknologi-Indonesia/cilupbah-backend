@@ -2,9 +2,12 @@
 
 namespace Modules\Sales\Services;
 
+use App\Exceptions\UserFacingException;
 use Modules\Channel\Jobs\ProcessLazadaFulfillmentJob;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
+use Modules\Outbound\Support\InstantOrderClassifier;
+use Modules\Sales\Exceptions\ShippingLabelPreparingException;
 use Modules\Sales\Jobs\CallLazadaDriverJob;
 use Modules\Sales\Jobs\CallShopeeDriverJob;
 use Modules\Sales\Jobs\CallTikTokDriverJob;
@@ -13,15 +16,152 @@ use Modules\Sales\Repositories\SalesOrderRepository;
 
 class SalesOrderDriverCallService
 {
+    private const SUPPORTED_SOURCES = ['shopee', 'tiktok', 'lazada'];
+
     public function __construct(
         protected ShopeeOrderService $shopee,
         protected TikTokOrderService $tiktok,
         protected SalesOrderRepository $orderRepository,
+        protected SalesOrderService $orderService,
     ) {}
 
     public function findOrder(string $id): SalesOrder
     {
         return $this->orderRepository->findOrFail($id);
+    }
+
+    public function dispatchPrintWithDriverCall(SalesOrder $order, array $query): array
+    {
+        if ($order->isManual()) {
+            throw new UserFacingException(
+                'Aksi tidak dapat diproses',
+                'Pesanan manual tidak memicu panggilan driver marketplace.',
+                422,
+            );
+        }
+
+        $source = strtolower((string) $order->source);
+        if (! in_array($source, self::SUPPORTED_SOURCES, true)) {
+            throw new UserFacingException(
+                'Aksi tidak dapat diproses',
+                "Panggil driver belum didukung untuk source '{$source}'.",
+                422,
+            );
+        }
+
+        if (! InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type)) {
+            throw new UserFacingException(
+                'Aksi tidak dapat diproses',
+                'Endpoint ini hanya untuk pesanan Instant / Same Day (Shopee / TikTok / Lazada).',
+                422,
+            );
+        }
+
+        $shopId = (string) $order->channel_shop_id;
+        $orderSn = (string) $order->channel_order_no;
+        if ($shopId === '' || $orderSn === '') {
+            throw new UserFacingException(
+                'Aksi tidak dapat diproses',
+                'channel_shop_id / channel_order_no kosong pada pesanan.',
+                422,
+            );
+        }
+
+        $forceLabel = (bool) ($query['force_label'] ?? false);
+
+        $driverCallSuccess = $this->callDriver($order);
+
+        if (! $driverCallSuccess && ! $forceLabel) {
+            throw new UserFacingException(
+                'Aksi tidak dapat diproses',
+                'Panggilan driver marketplace gagal. Tambahkan ?force_label=1 untuk tetap mencetak label.',
+                422,
+                [
+                    'driver_call_status'       => $order->driver_call_status,
+                    'driver_call_message'      => $order->driver_call_message,
+                    'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
+                ],
+            );
+        }
+
+        $options = array_filter([
+            'doc_type'      => $query['doc_type'] ?? null,
+            'document_type' => $query['document_type'] ?? null,
+            'document_size' => $query['document_size'] ?? null,
+        ], fn ($v) => $v !== null && $v !== '');
+
+        try {
+            $labelResult = $this->orderService->getShippingLabel($order, $options);
+        } catch (ShippingLabelPreparingException $e) {
+            return [
+                'data' => [
+                    'driver_call_status'       => $order->driver_call_status,
+                    'driver_call_message'      => $order->driver_call_message,
+                    'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
+                    'label'           => null,
+                    'label_preparing' => true,
+                    'label_message'   => $e->getMessage(),
+                ],
+                'message' => 'Driver berhasil dipanggil, label masih disiapkan. Coba unduh dalam beberapa detik.',
+                'code'    => 202,
+            ];
+        } catch (\InvalidArgumentException|\RuntimeException $e) {
+            throw new UserFacingException(
+                'Aksi tidak dapat diproses',
+                'Driver berhasil dipanggil namun label gagal diambil.',
+                422,
+                [
+                    'success'                  => $driverCallSuccess,
+                    'driver_call_status'       => $order->driver_call_status,
+                    'driver_call_message'      => $order->driver_call_message,
+                    'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
+                    'label'       => null,
+                    'label_error' => $e->getMessage(),
+                    'detail'      => $e->getMessage(),
+                ],
+            );
+        }
+
+        return [
+            'data' => [
+                'driver_call_status'       => $order->driver_call_status,
+                'driver_call_message'      => $order->driver_call_message,
+                'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
+                'label' => $labelResult,
+            ],
+            'message' => $driverCallSuccess
+                ? 'Driver terpanggil dan label siap diunduh.'
+                : 'Label siap; panggilan driver gagal — silakan retry.',
+            'code' => 200,
+        ];
+    }
+
+    public function dispatchRetryDriverCall(SalesOrder $order): array
+    {
+        $source = strtolower((string) $order->source);
+        if (! in_array($source, self::SUPPORTED_SOURCES, true)) {
+            throw new UserFacingException(
+                'Aksi tidak dapat diproses',
+                "Retry driver belum didukung untuk source '{$source}'.",
+                422,
+            );
+        }
+
+        if (! InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type)) {
+            throw new UserFacingException(
+                'Aksi tidak dapat diproses',
+                'Endpoint ini hanya untuk pesanan Instant / Same Day (Shopee / TikTok / Lazada).',
+                422,
+            );
+        }
+
+        $this->retryDriverCall($order);
+
+        return [
+            'data'    => ['driver_call_status' => 'pending'],
+            'message' => 'Panggilan driver dicoba ulang. Status akan diperbarui dalam beberapa detik.',
+            'code'    => 202,
+        ];
     }
 
     private const NON_CALLABLE_CHANNEL_STATUSES = [

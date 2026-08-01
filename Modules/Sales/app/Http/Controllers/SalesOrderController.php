@@ -3,6 +3,7 @@
 namespace Modules\Sales\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Services\PdfRenderer;
 use Illuminate\Http\Request;
 use OpenApi\Attributes as OA;
 
@@ -12,11 +13,33 @@ use Modules\Inventory\Models\ImpexActivity;
 use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Sales\Exports\CancelledOrdersExport;
 use Modules\Sales\Exports\SalesOrdersExport;
-use Modules\Sales\Models\SalesOrder;
-use Modules\Sales\Services\SalesOrderService;
-use Modules\Sales\Services\SalesOrderDriverCallService;
+use Modules\Sales\Http\Requests\AcceptOrderCancelRequest;
+use Modules\Sales\Http\Requests\BulkMarkContactedRequest;
+use Modules\Sales\Http\Requests\DeleteCanceledOrdersRequest;
+use Modules\Sales\Http\Requests\DownloadOrderItemRequest;
+use Modules\Sales\Http\Requests\ExportCancelledOrdersRequest;
+use Modules\Sales\Http\Requests\ExportSalesOrdersRequest;
+use Modules\Sales\Http\Requests\MarkContactedRequest;
+use Modules\Sales\Http\Requests\MarkOrdersCompleteRequest;
+use Modules\Sales\Http\Requests\MoveToReadyToProcessRequest;
+use Modules\Sales\Http\Requests\RejectOrderCancelRequest;
+use Modules\Sales\Http\Requests\RelocateOrderRequest;
+use Modules\Sales\Http\Requests\RequestAwbRequest;
+use Modules\Sales\Http\Requests\RequestChannelCancelRequest;
+use Modules\Sales\Http\Requests\SaveAirwaybillRequest;
 use Modules\Sales\Http\Requests\SaveCourierPickupRequest;
+use Modules\Sales\Http\Requests\SaveReceivedDateRequest;
+use Modules\Sales\Http\Requests\SetCustomerDecisionRequest;
+use Modules\Sales\Http\Requests\SetOrderAsPaidRequest;
+use Modules\Sales\Http\Requests\StoreSalesOrderRequest;
+use Modules\Sales\Http\Requests\UpdateOrderItemRequest;
+use Modules\Sales\Http\Requests\UpdateSalesOrderRequest;
+use Modules\Sales\Http\Requests\UploadCourierIdPhotoRequest;
 use Modules\Sales\Http\Resources\SalesOrderResource;
+use Modules\Sales\Http\Resources\ShippingLabelResource;
+use Modules\Sales\Services\SalesOrderDriverCallService;
+use Modules\Sales\Services\SalesOrderService;
+use Modules\Sales\Support\OrderPdfPresenter;
 
 #[OA\Tag(name: 'Sales Orders', description: 'API Endpoints for Sales Orders')]
 #[OA\Schema(
@@ -77,12 +100,11 @@ class SalesOrderController extends Controller
 {
     use ApiResponse;
 
-    protected SalesOrderService $orderService;
-
-    public function __construct(SalesOrderService $orderService, protected ImpexActivityService $activityService)
-    {
-        $this->orderService = $orderService;
-    }
+    public function __construct(
+        protected SalesOrderService $orderService,
+        protected ImpexActivityService $activityService,
+        protected PdfRenderer $pdf,
+    ) {}
 
     #[OA\Get(
         path: '/api/v1/sales',
@@ -140,45 +162,9 @@ class SalesOrderController extends Controller
             new OA\Response(response: 422, description: 'Validation Error')
         ]
     )]
-    public function store(Request $request)
+    public function store(StoreSalesOrderRequest $request)
     {
-        $validated = $request->validate([
-            'salesorder_no'       => 'nullable|string',
-            'channel_order_no'    => 'nullable|string',
-            'channel_shop_id'     => 'nullable|string',
-            'customer_name'       => 'required|string|max:255',
-            'transaction_date'    => 'nullable|date',
-            'sub_total'           => 'nullable|numeric|min:0',
-            'total_disc'          => 'nullable|numeric|min:0',
-            'total_tax'           => 'nullable|numeric|min:0',
-            'shipping_cost'       => 'nullable|numeric|min:0',
-            'insurance_cost'      => 'nullable|numeric|min:0',
-            'grand_total'         => 'nullable|numeric|min:0',
-            'shipping_full_name'  => 'nullable|string|max:255',
-            'shipping_phone'      => 'nullable|string|max:50',
-            'shipping_address'    => 'nullable|string',
-            'shipping_area'       => 'nullable|string|max:255',
-            'shipping_city'       => 'nullable|string|max:255',
-            'shipping_province'   => 'nullable|string|max:255',
-            'shipping_post_code'  => 'nullable|string|max:20',
-            'shipping_country'    => 'nullable|string|max:100',
-            'payment_method'      => 'nullable|string|max:100',
-            'payment_method_name' => 'nullable|string|max:255',
-            'source'              => 'nullable|string|max:50',
-            'buyer_message'       => 'nullable|string',
-            'seller_note'         => 'nullable|string',
-            'items'               => 'required|array|min:1',
-            'items.*.sku'         => 'required|string',
-            'items.*.description' => 'nullable|string',
-            'items.*.qty_in_base' => 'required|integer|min:1',
-            'items.*.price'       => 'required|numeric|min:0',
-            'items.*.disc'        => 'nullable|numeric|min:0',
-            'items.*.disc_amount' => 'nullable|numeric|min:0',
-            'items.*.tax_amount'  => 'nullable|numeric|min:0',
-            'items.*.amount'      => 'nullable|numeric|min:0',
-        ]);
-
-        $order = $this->orderService->createOrder($validated);
+        $order = $this->orderService->createOrder($request->validated());
 
         return $this->successResponse(new SalesOrderResource($order), 'Sales order created', 201);
     }
@@ -242,19 +228,10 @@ class SalesOrderController extends Controller
             new OA\Response(response: 422, description: 'Validation Error')
         ]
     )]
-    public function update(Request $request, $id)
+    public function update(UpdateSalesOrderRequest $request, $id)
     {
-        $order = SalesOrder::findOrFail($id);
-
-        $validated = $request->validate([
-            'customer_name'    => 'sometimes|string|max:255',
-            'shipping_address' => 'sometimes|string',
-            'seller_note'      => 'sometimes|nullable|string',
-            'status'           => 'sometimes|string|in:pending,reserved,picked,packed,shipped,cancelled',
-            'cancel_reason'    => 'nullable|string|max:255',
-        ]);
-
-        $order = $this->orderService->updateOrder($order, $validated);
+        $order = $this->orderService->findOrderOrFail($id);
+        $order = $this->orderService->updateOrder($order, $request->validated());
 
         return $this->successResponse(new SalesOrderResource($order), 'Sales order updated');
     }
@@ -313,17 +290,9 @@ class SalesOrderController extends Controller
             new OA\Response(response: 200, description: 'XLSX file stream', content: new OA\MediaType(mediaType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')),
         ]
     )]
-    public function export(Request $request)
+    public function export(ExportSalesOrdersRequest $request)
     {
-        $validated = $request->validate([
-            'tab'         => 'nullable|string|max:30',
-            'date_from'   => 'nullable|date',
-            'date_to'     => 'nullable|date|after_or_equal:date_from',
-            'source'      => 'nullable|string|max:50',
-            'search'      => 'nullable|string|max:200',
-            'store_id'    => 'nullable|uuid',
-            'location_id' => 'nullable|uuid',
-        ]);
+        $validated = $request->validated();
 
         $export = new SalesOrdersExport(
             tab:        $validated['tab'] ?? null,
@@ -350,14 +319,9 @@ class SalesOrderController extends Controller
         return Excel::download($export, $filename);
     }
 
-    public function exportCancelled(Request $request)
+    public function exportCancelled(ExportCancelledOrdersRequest $request)
     {
-        $validated = $request->validate([
-            'date_from'      => 'nullable|date',
-            'date_to'        => 'nullable|date|after_or_equal:date_from',
-            'post_pack_only' => 'nullable|boolean',
-            'source'         => 'nullable|string|max:50',
-        ]);
+        $validated = $request->validated();
 
         $export = new CancelledOrdersExport(
             dateFrom:     $validated['date_from'] ?? null,
@@ -448,14 +412,9 @@ class SalesOrderController extends Controller
         )),
         responses: [new OA\Response(response: 200, description: 'Orders deleted')]
     )]
-    public function deleteCanceled(Request $request)
+    public function deleteCanceled(DeleteCanceledOrdersRequest $request)
     {
-        $validated = $request->validate([
-            'ids'   => 'required|array|min:1',
-            'ids.*' => 'required|bail|uuid|exists:sales_orders,id',
-        ]);
-
-        $count = $this->orderService->bulkDeleteCancelled($validated['ids']);
+        $count = $this->orderService->bulkDeleteCancelled($request->validated()['ids']);
 
         return $this->successResponse(['deleted' => $count], "{$count} order cancelled berhasil dihapus");
     }
@@ -473,27 +432,14 @@ class SalesOrderController extends Controller
         )),
         responses: [new OA\Response(response: 200, description: 'Orders moved to ready-to-process')]
     )]
-    public function moveToReadyToProcess(Request $request)
+    public function moveToReadyToProcess(MoveToReadyToProcessRequest $request)
     {
-        $validated = $request->validate([
-            'order_ids'   => 'required|array|min:1',
-            'order_ids.*' => 'required|bail|uuid|exists:sales_orders,id',
-        ]);
-
-        $result = $this->orderService->moveToReadyToProcess($validated['order_ids'], $request->user());
-        $moved = $result['moved'];
-        $skipped = $result['skipped'];
-
-        $message = "{$moved} order berhasil dipindahkan ke siap proses";
-        if (! empty($skipped)) {
-            $skippedCount = count($skipped);
-            $message .= " · {$skippedCount} order dilewati karena stok kosong (cek tab Stok Kosong)";
-        }
+        $result = $this->orderService->moveToReadyToProcess($request->validated()['order_ids'], $request->user());
 
         return $this->successResponse([
-            'moved'   => $moved,
-            'skipped' => $skipped,
-        ], $message);
+            'moved'   => $result['moved'],
+            'skipped' => $result['skipped'],
+        ], $result['message']);
     }
 
     #[OA\Post(
@@ -509,14 +455,9 @@ class SalesOrderController extends Controller
         )),
         responses: [new OA\Response(response: 200, description: 'Orders marked as complete')]
     )]
-    public function markAsComplete(Request $request)
+    public function markAsComplete(MarkOrdersCompleteRequest $request)
     {
-        $validated = $request->validate([
-            'order_ids'   => 'required|array|min:1',
-            'order_ids.*' => 'required|bail|uuid|exists:sales_orders,id',
-        ]);
-
-        $count = $this->orderService->markAsComplete($validated['order_ids']);
+        $count = $this->orderService->markAsComplete($request->validated()['order_ids']);
 
         return $this->successResponse(['completed' => $count], "{$count} order berhasil di-complete");
     }
@@ -536,15 +477,9 @@ class SalesOrderController extends Controller
         )),
         responses: [new OA\Response(response: 200, description: 'AWB berhasil disimpan')]
     )]
-    public function saveAirwaybill(Request $request)
+    public function saveAirwaybill(SaveAirwaybillRequest $request)
     {
-        $validated = $request->validate([
-            'order_id'         => 'required|bail|uuid|exists:sales_orders,id',
-            'tracking_number'  => 'required|string|max:255',
-            'shipping_provider' => 'nullable|string|max:255',
-        ]);
-
-        $order = $this->orderService->saveAirwaybill($validated);
+        $order = $this->orderService->saveAirwaybill($request->validated());
 
         return $this->successResponse(new SalesOrderResource($order), 'AWB berhasil disimpan');
     }
@@ -563,14 +498,9 @@ class SalesOrderController extends Controller
         )),
         responses: [new OA\Response(response: 200, description: 'Received date berhasil disimpan')]
     )]
-    public function saveReceivedDate(Request $request)
+    public function saveReceivedDate(SaveReceivedDateRequest $request)
     {
-        $validated = $request->validate([
-            'order_id'      => 'required|bail|uuid|exists:sales_orders,id',
-            'received_date' => 'nullable|date',
-        ]);
-
-        $order = $this->orderService->saveReceivedDate($validated);
+        $order = $this->orderService->saveReceivedDate($request->validated());
 
         return $this->successResponse(new SalesOrderResource($order), 'Received date berhasil disimpan');
     }
@@ -619,12 +549,8 @@ class SalesOrderController extends Controller
             new OA\Response(response: 422, description: 'Validation Error'),
         ]
     )]
-    public function uploadCourierIdPhoto(Request $request, string $id)
+    public function uploadCourierIdPhoto(UploadCourierIdPhotoRequest $request, string $id)
     {
-        $request->validate([
-            'photo' => ['required', 'file', 'image', 'max:4096'],
-        ]);
-
         $order = $this->orderService->replaceCourierIdPhoto($id, $request->file('photo'));
 
         return $this->successResponse(new SalesOrderResource($order), 'Foto identitas kurir berhasil diunggah');
@@ -665,15 +591,9 @@ class SalesOrderController extends Controller
         )),
         responses: [new OA\Response(response: 200, description: 'Order berhasil diset paid')]
     )]
-    public function setAsPaid(Request $request)
+    public function setAsPaid(SetOrderAsPaidRequest $request)
     {
-        $validated = $request->validate([
-            'order_id'       => 'required|bail|uuid|exists:sales_orders,id',
-            'payment_method' => 'nullable|string|max:100',
-            'paid_time'      => 'nullable|date',
-        ]);
-
-        $order = $this->orderService->setAsPaid($validated);
+        $order = $this->orderService->setAsPaid($request->validated());
 
         return $this->successResponse(new SalesOrderResource($order), 'Order berhasil diset paid');
     }
@@ -692,14 +612,9 @@ class SalesOrderController extends Controller
         )),
         responses: [new OA\Response(response: 200, description: 'AWB request submitted')]
     )]
-    public function requestAwb(Request $request)
+    public function requestAwb(RequestAwbRequest $request)
     {
-        $validated = $request->validate([
-            'order_id'     => 'required|bail|uuid|exists:sales_orders,id',
-            'courier_code' => 'nullable|string|max:50',
-        ]);
-
-        $result = $this->orderService->requestAwb($validated);
+        $result = $this->orderService->requestAwb($request->validated());
 
         return $this->successResponse($result, 'Request AWB berhasil dikirim');
     }
@@ -737,15 +652,10 @@ class SalesOrderController extends Controller
             new OA\Response(response: 422, description: 'Product not yet in Master Produk'),
         ]
     )]
-    public function downloadOrderItem(Request $request, $id, $itemId)
+    public function downloadOrderItem(DownloadOrderItemRequest $request, $id, $itemId)
     {
-        $order = SalesOrder::findOrFail($id);
-
-        $validated = $request->validate([
-            'variant_id' => 'nullable|uuid|exists:product_variants,id',
-        ]);
-
-        $order = $this->orderService->downloadOrderItem($order, $itemId, $validated['variant_id'] ?? null);
+        $order = $this->orderService->findOrderOrFail($id);
+        $order = $this->orderService->downloadOrderItem($order, $itemId, $request->validated()['variant_id'] ?? null);
 
         return $this->successResponse(new SalesOrderResource($order), 'Produk berhasil di-download dan dipetakan');
     }
@@ -764,13 +674,9 @@ class SalesOrderController extends Controller
             new OA\Response(response: 422, description: 'No pending cancel request'),
         ]
     )]
-    public function acceptCancelRequest(string $id, Request $request)
+    public function acceptCancelRequest(string $id, AcceptOrderCancelRequest $request)
     {
-        $validated = $request->validate([
-            'reason' => 'nullable|string|max:255',
-        ]);
-
-        $order = $this->orderService->acceptCancelRequest($id, auto: false, reason: $validated['reason'] ?? null);
+        $order = $this->orderService->acceptCancelRequest($id, auto: false, reason: $request->validated()['reason'] ?? null);
 
         return $this->successResponse(new SalesOrderResource($order), 'Pembatalan pesanan diterima');
     }
@@ -789,13 +695,9 @@ class SalesOrderController extends Controller
             new OA\Response(response: 422, description: 'No pending cancel request'),
         ]
     )]
-    public function rejectCancelRequest(string $id, Request $request)
+    public function rejectCancelRequest(string $id, RejectOrderCancelRequest $request)
     {
-        $validated = $request->validate([
-            'reason' => 'nullable|string|max:255',
-        ]);
-
-        $order = $this->orderService->rejectCancelRequest($id, reason: $validated['reason'] ?? null);
+        $order = $this->orderService->rejectCancelRequest($id, reason: $request->validated()['reason'] ?? null);
 
         return $this->successResponse(new SalesOrderResource($order), 'Permintaan pembatalan ditolak');
     }
@@ -823,13 +725,9 @@ class SalesOrderController extends Controller
             new OA\Response(response: 422, description: 'Status/alasan tidak valid'),
         ]
     )]
-    public function requestChannelCancel(string $id, Request $request)
+    public function requestChannelCancel(string $id, RequestChannelCancelRequest $request)
     {
-        $validated = $request->validate([
-            'reason' => 'required|string|max:255',
-        ]);
-
-        $order = $this->orderService->requestChannelCancel($id, $validated['reason']);
+        $order = $this->orderService->requestChannelCancel($id, $request->validated()['reason']);
 
         return $this->successResponse(new SalesOrderResource($order), 'Permintaan pembatalan dikirim ke marketplace');
     }
@@ -894,240 +792,38 @@ class SalesOrderController extends Controller
     )]
     public function getShippingLabel(string $id, Request $request)
     {
-        $order = SalesOrder::findOrFail($id);
+        $order = $this->orderService->findOrderOrFail($id);
 
-        if ($order->isManual()) {
-            return $this->errorResponse(
-                'Pesanan manual (Toko Internal) tidak menggunakan label marketplace. Input resi secara manual.',
-                422
-            );
-        }
+        $result = $this->orderService->prepareShippingLabelDocument($order, $request->query('document_size'));
 
-        $source = strtolower((string) ($order->source ?? ''));
-        $bulkService = app(\Modules\Sales\Services\BulkShippingLabelService::class);
-
-        $canonical = $bulkService->resolveChannelOptions($source);
-        $options = array_filter($canonical, fn ($v) => $v !== null && $v !== '');
-
-        $requestedSize = (string) $request->query('document_size', \Modules\Sales\Services\BulkShippingLabelService::DEFAULT_SIZE);
-        $sizeKey = in_array($requestedSize, [
-            \Modules\Sales\Services\BulkShippingLabelService::SIZE_100X150,
-            \Modules\Sales\Services\BulkShippingLabelService::SIZE_100X120,
-        ], true) ? $requestedSize : \Modules\Sales\Services\BulkShippingLabelService::DEFAULT_SIZE;
-
-        try {
-            $result = $this->orderService->getShippingLabel($order, $options);
-
-            $rawBytes = $this->extractLabelBytes($result);
-            if ($rawBytes === null) {
-                return $this->successResponse($result, 'Shipping label berhasil diambil');
-            }
-
-            $normalized = $bulkService->normalizeToTarget($rawBytes, $sizeKey, $source);
-            return $this->successResponse([
-                'type' => 'base64',
-                'content_type' => 'application/pdf',
-                'document_base64' => base64_encode($normalized),
-                'source' => $source,
-                'document_size' => $sizeKey,
-            ], 'Shipping label berhasil diambil');
-        } catch (\Modules\Sales\Exceptions\ShippingLabelPreparingException $e) {
-            return $this->errorResponse(
-                'Gagal memproses pengiriman.',
-                202,
-                ['detail' => $e->getMessage()],
-                'Aksi tidak dapat diproses',
-            );
-        } catch (\InvalidArgumentException $e) {
-            return $this->errorResponse(
-                'Gagal memproses pengiriman.',
-                422,
-                ['detail' => $e->getMessage()],
-                'Aksi tidak dapat diproses',
-            );
-        } catch (\RuntimeException $e) {
-            return $this->errorResponse(
-                'Gagal memproses pengiriman.',
-                422,
-                ['detail' => $e->getMessage()],
-                'Aksi tidak dapat diproses',
-            );
-        } catch (\Throwable $e) {
-
-            \Illuminate\Support\Facades\Log::error('shippingLabel gagal', [
-                'order_id' => $order->id,
-                'source' => $source,
-                'error' => $e->getMessage(),
-            ]);
-
-            return $this->errorResponse(
-                'Gagal mengambil label pengiriman: ' . $e->getMessage(),
-                422,
-                ['detail' => $e->getMessage()],
-                'Aksi tidak dapat diproses',
-            );
-        }
-    }
-
-    private function extractLabelBytes(array $result): ?string
-    {
-        if (! empty($result['document_base64'])) {
-            $decoded = base64_decode((string) $result['document_base64'], true);
-            return $decoded === false ? null : $decoded;
-        }
-        if (! empty($result['bytes'])) {
-            return (string) $result['bytes'];
-        }
-        $url = $result['url'] ?? ($result['doc_url'] ?? null);
-        if (! empty($url)) {
-            try {
-                $response = \Illuminate\Support\Facades\Http::timeout(20)->retry(2, 500)->get($url);
-                return $response->successful() ? $response->body() : null;
-            } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::warning('extractLabelBytes: url fetch failed', ['error' => $e->getMessage()]);
-                return null;
-            }
-        }
-        if (! empty($result['data']) && is_string($result['data'])) {
-            $decoded = base64_decode((string) $result['data'], true);
-            return $decoded === false ? null : $decoded;
-        }
-        return null;
+        return $this->successResponse(new ShippingLabelResource($result), 'Shipping label berhasil diambil');
     }
 
     public function retryShippingLabel(string $id)
     {
-        $order = SalesOrder::findOrFail($id);
+        $order = $this->orderService->findOrderOrFail($id);
 
-        if ($order->isManual()) {
-            return $this->errorResponse(
-                'Pesanan manual tidak menggunakan label marketplace.',
-                422
-            );
-        }
+        $this->orderService->resendShippingLabel($order);
 
-        try {
-            $this->orderService->retryShippingLabel($order);
-
-            return $this->successResponse(null, 'Label sedang disiapkan ulang. Coba unduh lagi dalam 1-2 menit.', 202);
-        } catch (\InvalidArgumentException $e) {
-            return $this->errorResponse(
-                'Gagal memproses pengiriman.',
-                422,
-                ['detail' => $e->getMessage()],
-                'Aksi tidak dapat diproses',
-            );
-        }
+        return $this->successResponse(null, 'Label sedang disiapkan ulang. Coba unduh lagi dalam 1-2 menit.', 202);
     }
 
     public function printWithDriverCall(string $id, Request $request, SalesOrderDriverCallService $driverCall)
     {
         $order = $driverCall->findOrder($id);
 
-        if ($order->isManual()) {
-            return $this->errorResponse(
-                'Pesanan manual tidak memicu panggilan driver marketplace.',
-                422
-            );
-        }
+        $result = $driverCall->dispatchPrintWithDriverCall($order, $request->query());
 
-        $source = strtolower((string) $order->source);
-        $supported = in_array($source, ['shopee', 'tiktok', 'lazada'], true);
-
-        if (! $supported) {
-            return $this->errorResponse(
-                "Panggil driver belum didukung untuk source '{$source}'.",
-                422
-            );
-        }
-
-        if (! \Modules\Outbound\Support\InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type)) {
-            return $this->errorResponse(
-                'Endpoint ini hanya untuk pesanan Instant / Same Day (Shopee / TikTok / Lazada).',
-                422
-            );
-        }
-
-        $shopId = (string) $order->channel_shop_id;
-        $orderSn = (string) $order->channel_order_no;
-        if ($shopId === '' || $orderSn === '') {
-            return $this->errorResponse('channel_shop_id / channel_order_no kosong pada pesanan.', 422);
-        }
-
-        $forceLabel = (bool) $request->query('force_label', false);
-
-        $driverCallSuccess = $driverCall->callDriver($order);
-
-        if (! $driverCallSuccess && ! $forceLabel) {
-            return $this->errorResponse('Panggilan driver marketplace gagal. Tambahkan ?force_label=1 untuk tetap mencetak label.', 422, [
-                'driver_call_status'       => $order->driver_call_status,
-                'driver_call_message'      => $order->driver_call_message,
-                'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
-            ]);
-        }
-
-        $options = array_filter([
-            'doc_type'      => $request->query('doc_type'),
-            'document_type' => $request->query('document_type'),
-            'document_size' => $request->query('document_size'),
-        ], fn ($v) => $v !== null && $v !== '');
-
-        try {
-            $labelResult = $this->orderService->getShippingLabel($order, $options);
-        } catch (\Modules\Sales\Exceptions\ShippingLabelPreparingException $e) {
-            return $this->successResponse([
-                'driver_call_status'       => $order->driver_call_status,
-                'driver_call_message'      => $order->driver_call_message,
-                'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
-                'label' => null,
-                'label_preparing' => true,
-                'label_message' => $e->getMessage(),
-            ], 'Driver berhasil dipanggil, label masih disiapkan. Coba unduh dalam beberapa detik.', 202);
-        } catch (\InvalidArgumentException|\RuntimeException $e) {
-            return $this->errorResponse(
-                'Driver berhasil dipanggil namun label gagal diambil.',
-                422,
-                [
-                    'success' => $driverCallSuccess,
-                    'driver_call_status'       => $order->driver_call_status,
-                    'driver_call_message'      => $order->driver_call_message,
-                    'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
-                    'label' => null,
-                    'label_error' => $e->getMessage(),
-                    'detail' => $e->getMessage(),
-                ],
-                'Aksi tidak dapat diproses',
-            );
-        }
-
-        return $this->successResponse([
-            'driver_call_status'       => $order->driver_call_status,
-            'driver_call_message'      => $order->driver_call_message,
-            'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
-            'label' => $labelResult,
-        ], $driverCallSuccess
-            ? 'Driver terpanggil dan label siap diunduh.'
-            : 'Label siap; panggilan driver gagal — silakan retry.');
+        return $this->successResponse($result['data'], $result['message'], $result['code']);
     }
 
     public function retryDriverCall(string $id, SalesOrderDriverCallService $driverCall)
     {
         $order = $driverCall->findOrder($id);
 
-        $source = strtolower((string) $order->source);
-        if (! in_array($source, ['shopee', 'tiktok', 'lazada'], true)) {
-            return $this->errorResponse("Retry driver belum didukung untuk source '{$source}'.", 422);
-        }
+        $result = $driverCall->dispatchRetryDriverCall($order);
 
-        if (! \Modules\Outbound\Support\InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type)) {
-            return $this->errorResponse('Endpoint ini hanya untuk pesanan Instant / Same Day (Shopee / TikTok / Lazada).', 422);
-        }
-
-        $driverCall->retryDriverCall($order);
-
-        return $this->successResponse([
-            'driver_call_status' => 'pending',
-        ], 'Panggilan driver dicoba ulang. Status akan diperbarui dalam beberapa detik.', 202);
+        return $this->successResponse($result['data'], $result['message'], $result['code']);
     }
 
     #[OA\Put(
@@ -1149,14 +845,10 @@ class SalesOrderController extends Controller
             new OA\Response(response: 404, description: 'Order not found'),
         ]
     )]
-    public function relocate(string $id, Request $request)
+    public function relocate(string $id, RelocateOrderRequest $request)
     {
-        $validated = $request->validate([
-            'location_id' => 'required|bail|uuid|exists:locations,id',
-        ]);
-
-        $order = SalesOrder::findOrFail($id);
-        $order = $this->orderService->relocateOrder($order, $validated['location_id']);
+        $order = $this->orderService->findOrderOrFail($id);
+        $order = $this->orderService->relocateOrder($order, $request->validated()['location_id']);
 
         return $this->successResponse(new SalesOrderResource($order), 'Lokasi pengambilan pesanan berhasil diubah');
     }
@@ -1190,12 +882,9 @@ class SalesOrderController extends Controller
         )),
         responses: [new OA\Response(response: 200, description: 'Pesanan berhasil ditandai sudah dihubungi')]
     )]
-    public function markContacted(string $id, Request $request)
+    public function markContacted(string $id, MarkContactedRequest $request)
     {
-        $validated = $request->validate([
-            'channel' => 'nullable|string|in:marketplace_chat,whatsapp,phone,other',
-            'note'    => 'nullable|string|max:500',
-        ]);
+        $validated = $request->validated();
 
         try {
             $order = $this->orderService->markContacted($id, $validated['channel'] ?? null, $validated['note'] ?? null);
@@ -1226,14 +915,9 @@ class SalesOrderController extends Controller
         )),
         responses: [new OA\Response(response: 200, description: 'Pesanan berhasil ditandai sudah dihubungi')]
     )]
-    public function bulkMarkContacted(Request $request)
+    public function bulkMarkContacted(BulkMarkContactedRequest $request)
     {
-        $validated = $request->validate([
-            'order_ids'   => 'required|array|min:1',
-            'order_ids.*' => 'required|bail|uuid|exists:sales_orders,id',
-            'channel'     => 'nullable|string|in:marketplace_chat,whatsapp,phone,other',
-            'note'        => 'nullable|string|max:500',
-        ]);
+        $validated = $request->validated();
 
         try {
             $count = $this->orderService->bulkMarkContacted(
@@ -1270,12 +954,9 @@ class SalesOrderController extends Controller
         )),
         responses: [new OA\Response(response: 200, description: 'Keputusan buyer tersimpan')]
     )]
-    public function setCustomerDecision(string $id, Request $request)
+    public function setCustomerDecision(string $id, SetCustomerDecisionRequest $request)
     {
-        $validated = $request->validate([
-            'decision' => 'required|string|in:waiting,cancel,replace',
-            'note'     => 'nullable|string|max:500',
-        ]);
+        $validated = $request->validated();
 
         try {
             $order = $this->orderService->setCustomerDecision($id, $validated['decision'], $validated['note'] ?? null);
@@ -1315,19 +996,10 @@ class SalesOrderController extends Controller
             new OA\Response(response: 422, description: 'Order tidak dapat diedit'),
         ]
     )]
-    public function updateItem(string $id, string $itemId, Request $request)
+    public function updateItem(string $id, string $itemId, UpdateOrderItemRequest $request)
     {
-        $validated = $request->validate([
-            'sku'         => 'nullable|string|max:100',
-            'description' => 'nullable|string|max:500',
-            'qty_in_base' => 'nullable|integer|min:1',
-            'price'       => 'nullable|numeric|min:0',
-            'disc_amount' => 'nullable|numeric|min:0',
-            'tax_amount'  => 'nullable|numeric|min:0',
-        ]);
-
         try {
-            $order = $this->orderService->updateOrderItem($id, $itemId, $validated);
+            $order = $this->orderService->updateOrderItem($id, $itemId, $request->validated());
 
             return $this->successResponse(new SalesOrderResource($order->load('items')), 'Item pesanan diperbarui (internal)');
         } catch (\InvalidArgumentException $e) {
@@ -1372,55 +1044,27 @@ class SalesOrderController extends Controller
 
     public function invoice(string $id)
     {
-        $order = SalesOrder::with('items')->find($id);
+        $order = $this->orderService->getOrderForInvoice($id);
 
         if (! $order) {
             return $this->errorResponse('Pesanan tidak ditemukan', 404);
         }
 
-        $shipping = (object) [
-            'full_name' => $order->shipping_full_name,
-            'phone'     => $order->shipping_phone,
-            'address'   => $order->shipping_address,
-            'city'      => $order->shipping_city,
-            'province'  => $order->shipping_province,
-            'post_code' => $order->shipping_post_code,
-        ];
-        $order->shipping = $shipping;
+        $order = OrderPdfPresenter::withShipping($order);
 
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('sales::pdf.invoice', [
-            'order' => $order,
-        ])->setPaper('a4', 'portrait');
-
-        $filename = "INV-{$order->salesorder_no}.pdf";
-
-        return $pdf->stream($filename);
+        return $this->pdf->stream('sales::pdf.invoice', ['order' => $order], "INV-{$order->salesorder_no}.pdf");
     }
 
     public function breakdown(string $id)
     {
-        $order = SalesOrder::with(['items', 'returns.settlement', 'invoices'])->find($id);
+        $order = $this->orderService->getOrderForBreakdown($id);
 
         if (! $order) {
             return $this->errorResponse('Pesanan tidak ditemukan', 404);
         }
 
-        $shipping = (object) [
-            'full_name' => $order->shipping_full_name,
-            'phone'     => $order->shipping_phone,
-            'address'   => $order->shipping_address,
-            'city'      => $order->shipping_city,
-            'province'  => $order->shipping_province,
-            'post_code' => $order->shipping_post_code,
-        ];
-        $order->shipping = $shipping;
+        $order = OrderPdfPresenter::withShipping($order);
 
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('sales::pdf.order-breakdown', [
-            'order' => $order,
-        ])->setPaper('a4', 'portrait');
-
-        $filename = "RINCIAN-{$order->salesorder_no}.pdf";
-
-        return $pdf->stream($filename);
+        return $this->pdf->stream('sales::pdf.order-breakdown', ['order' => $order], "RINCIAN-{$order->salesorder_no}.pdf");
     }
 }

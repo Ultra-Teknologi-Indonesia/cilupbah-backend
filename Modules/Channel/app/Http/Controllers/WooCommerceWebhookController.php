@@ -5,11 +5,11 @@ namespace Modules\Channel\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Helpers\WooCommerceSignature;
 use Modules\Channel\Jobs\ProcessWooCommerceWebhook;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Repositories\ChannelWebhookInboxRepository;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'WooCommerce', description: 'Integrasi WooCommerce')]
@@ -19,6 +19,7 @@ class WooCommerceWebhookController extends Controller
 
     public function __construct(
         protected ChannelShopRepository $shopRepository,
+        protected ChannelWebhookInboxRepository $inbox,
     ) {}
 
     public function verify()
@@ -99,9 +100,12 @@ class WooCommerceWebhookController extends Controller
 
     protected function isFirstDelivery(string $shopId, string $topic, array $payload): bool
     {
-
-        $key = ProcessWooCommerceWebhook::idempotencyKey($shopId, $topic, $payload);
-
-        return Cache::add($key, 1, now()->addMinutes(10));
+        return $this->inbox->recordFirstDelivery(
+            'woocommerce',
+            $shopId,
+            ProcessWooCommerceWebhook::idempotencyKey($shopId, $topic, $payload),
+            $topic,
+            $payload,
+        ) !== null;
     }
 }

@@ -3,19 +3,34 @@
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Services\PdfRenderer;
+use App\Support\ActorName;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Modules\Inventory\Models\InventoryTransfer;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Http\Resources\InventoryTransferResource;
 use Modules\Inventory\Http\Resources\BinTransferResource;
 use Modules\Inventory\Http\Resources\BinTransferReceiptResource;
+use Modules\Inventory\Http\Requests\AddTransferDraftItemRequest;
 use Modules\Inventory\Http\Requests\AdjustStockRequest;
-use Modules\Inventory\Http\Requests\TransferStockRequest;
+use Modules\Inventory\Http\Requests\ApproveTransferRequest;
+use Modules\Inventory\Http\Requests\BulkDeleteTransferRequest;
+use Modules\Inventory\Http\Requests\BulkPdfTransferRequest;
+use Modules\Inventory\Http\Requests\CancelTransferRequest;
+use Modules\Inventory\Http\Requests\CreateTransferDraftRequest;
+use Modules\Inventory\Http\Requests\MarkTransferPrintedRequest;
 use Modules\Inventory\Http\Requests\PutawayStockRequest;
+use Modules\Inventory\Http\Requests\ReceiveBinTransferRequest;
+use Modules\Inventory\Http\Requests\ReverseBinTransferItemRequest;
+use Modules\Inventory\Http\Requests\ReverseBinTransferItemsRequest;
+use Modules\Inventory\Http\Requests\ShipTransferRequest;
+use Modules\Inventory\Http\Requests\TransfersInRequest;
+use Modules\Inventory\Http\Requests\TransfersOutRequest;
+use Modules\Inventory\Http\Requests\TransferStockRequest;
+use Modules\Inventory\Http\Requests\UpdateBinTransferRequest;
+use Modules\Inventory\Http\Requests\UpdateTransferDraftItemRequest;
+use Modules\Inventory\Http\Requests\UpdateTransferDraftRequest;
 use OpenApi\Attributes as OA;
-use Throwable;
 
 #[OA\Tag(name: 'Inventory Transactions', description: 'API Endpoints for Inventory Transactions')]
 #[OA\Schema(
@@ -69,7 +84,8 @@ use Throwable;
 class InventoryTransactionController extends Controller
 {
     public function __construct(
-        protected InventoryService $inventoryService
+        protected InventoryService $inventoryService,
+        protected PdfRenderer $pdfRenderer,
     ) {}
 
     #[OA\Post(
@@ -151,15 +167,10 @@ class InventoryTransactionController extends Controller
         }
     }
 
-    public function approveTransfer(\Illuminate\Http\Request $request, string $id): JsonResponse
+    public function approveTransfer(ApproveTransferRequest $request, string $id): JsonResponse
     {
         try {
-            $validated = $request->validate([
-                'approved_by' => 'required|string',
-                'assigned_to' => 'nullable|string',
-            ]);
-
-            $result = $this->inventoryService->approveTransfer($id, $validated);
+            $result = $this->inventoryService->approveTransfer($id, $request->validated());
             return $this->successResponse(new InventoryTransferResource($result), 'Transfer berhasil di-approve.');
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -171,15 +182,10 @@ class InventoryTransactionController extends Controller
         }
     }
 
-    public function cancelTransfer(\Illuminate\Http\Request $request, string $id): JsonResponse
+    public function cancelTransfer(CancelTransferRequest $request, string $id): JsonResponse
     {
         try {
-            $validated = $request->validate([
-                'cancelled_by' => 'required|string',
-                'cancel_reason' => 'nullable|string',
-            ]);
-
-            $result = $this->inventoryService->cancelTransfer($id, $validated);
+            $result = $this->inventoryService->cancelTransfer($id, $request->validated());
             return $this->successResponse(new InventoryTransferResource($result), 'Transfer berhasil dibatalkan.');
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -191,14 +197,10 @@ class InventoryTransactionController extends Controller
         }
     }
 
-    public function shipTransfer(\Illuminate\Http\Request $request, string $id): JsonResponse
+    public function shipTransfer(ShipTransferRequest $request, string $id): JsonResponse
     {
         try {
-            $validated = $request->validate([
-                'shipped_by' => 'nullable|string',
-            ]);
-
-            $result = $this->inventoryService->shipTransfer($id, $validated);
+            $result = $this->inventoryService->shipTransfer($id, $request->validated());
             return $this->successResponse(new InventoryTransferResource($result), 'Transfer berhasil dikirim, barang dalam perjalanan.');
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -332,14 +334,12 @@ class InventoryTransactionController extends Controller
         }
 
         try {
-            $filename = "{$transfer->transfer_number}.pdf";
-
-            $pdf = Pdf::loadView('inventory::pdf.transfer-out', [
-                'transfer' => $transfer,
-            ])->setPaper('a4', 'portrait');
-
-            return $pdf->stream($filename);
-        } catch (Throwable $e) {
+            return $this->pdfRenderer->stream(
+                'inventory::pdf.transfer-out',
+                ['transfer' => $transfer],
+                "{$transfer->transfer_number}.pdf",
+            );
+        } catch (\Throwable $e) {
             report($e);
             return $this->errorResponse(
                 'Gagal membuat PDF transfer.',
@@ -417,26 +417,14 @@ class InventoryTransactionController extends Controller
             new OA\Response(response: 422, description: 'Validation Error'),
         ]
     )]
-    public function bulkDeleteTransfer(Request $request): JsonResponse
+    public function bulkDeleteTransfer(BulkDeleteTransferRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'ids' => 'required|array|min:1|max:100',
-            'ids.*' => 'required|string',
-        ]);
-
-        $actor = $request->user()?->name ?? $request->user()?->email ?? 'system';
-
-        $result = $this->inventoryService->bulkDeleteOrRevertTransfers($validated['ids'], $actor);
-
-        $messageParts = [];
-        if ($result['deleted'] > 0) $messageParts[] = "{$result['deleted']} dihapus";
-        if ($result['reverted'] > 0) $messageParts[] = "{$result['reverted']} dikembalikan ke Baru Dibuat";
-        if (count($result['failed']) > 0) $messageParts[] = count($result['failed']) . " gagal";
-
-        return $this->successResponse(
-            $result,
-            $messageParts ? implode(', ', $messageParts) : 'Tidak ada transfer diproses'
+        $result = $this->inventoryService->bulkDeleteOrRevertTransfers(
+            $request->validated()['ids'],
+            ActorName::fromUser($request->user()),
         );
+
+        return $this->successResponse($result, $this->inventoryService->summarizeBulkTransferResult($result));
     }
 
     #[OA\Post(
@@ -455,37 +443,17 @@ class InventoryTransactionController extends Controller
             new OA\Response(response: 404, description: 'Sebagian dokumen tidak ditemukan'),
         ]
     )]
-    public function bulkPdfTransfer(Request $request)
+    public function bulkPdfTransfer(BulkPdfTransferRequest $request)
     {
-        $validated = $request->validate([
-            'ids' => 'required|array|min:1|max:50',
-            'ids.*' => 'required|string',
-        ]);
+        $transfers = $this->inventoryService->getTransfersForBulkPdf($request->validated()['ids']);
 
         try {
-            $ids = $validated['ids'];
-            $transfers = array_values(array_filter(array_map(
-                fn (string $id) => $this->inventoryService->getTransferById($id),
-                $ids
-            )));
-
-            if (count($transfers) !== count($ids)) {
-                $foundIds = array_map(fn ($t) => $t->id, $transfers);
-                $missing = array_values(array_diff($ids, $foundIds));
-                return $this->errorResponse(
-                    'Sebagian dokumen tidak ditemukan: ' . implode(', ', $missing),
-                    404
-                );
-            }
-
-            $filename = 'Surat-Jalan-Bulk-' . now()->format('Ymd-His') . '.pdf';
-
-            $pdf = Pdf::loadView('inventory::pdf.transfer-out-bulk', [
-                'transfers' => $transfers,
-            ])->setPaper('a4', 'portrait');
-
-            return $pdf->stream($filename);
-        } catch (Throwable $e) {
+            return $this->pdfRenderer->stream(
+                'inventory::pdf.transfer-out-bulk',
+                ['transfers' => $transfers],
+                'Surat-Jalan-Bulk-' . now()->format('Ymd-His') . '.pdf',
+            );
+        } catch (\Throwable $e) {
             report($e);
             return $this->errorResponse(
                 'Gagal membuat PDF transfer bulk.',
@@ -533,63 +501,31 @@ class InventoryTransactionController extends Controller
         return $this->successPaginatedResponse($transfers, 'Daftar transfer approved (siap dikirim).');
     }
 
-    public function transfersIn(\Illuminate\Http\Request $request): JsonResponse
+    public function transfersIn(TransfersInRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'location_id' => 'bail|nullable|uuid|exists:locations,id',
-            'per_page' => 'nullable|integer|min:1|max:500',
-            'limit' => 'nullable|integer|min:1|max:500',
-            'page' => 'nullable|integer|min:1',
-        ]);
-
-        $statusFilter = $request->input('filter.status');
-        $filters = $statusFilter
-            ? ['status' => $statusFilter]
-            : ['statuses' => [InventoryTransfer::STATUS_IN_TRANSIT, InventoryTransfer::STATUS_RECEIVED]];
-
-        if (!empty($validated['location_id'])) {
-            $filters['destination_location_id'] = $validated['location_id'];
-        }
-
-        $transfers = $this->inventoryService->getTransfersPaginated($filters, (int) $request->query('limit', 10));
+        $transfers = $this->inventoryService->getIncomingTransfersPaginated(
+            $request->input('filter.status'),
+            $request->query('location_id'),
+            (int) $request->query('limit', 10),
+        );
 
         return $this->successPaginatedResponse($transfers, 'Daftar transfer masuk.');
     }
 
-    public function transfersOut(\Illuminate\Http\Request $request): JsonResponse
+    public function transfersOut(TransfersOutRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'location_id' => 'bail|nullable|uuid|exists:locations,id',
-            'per_page' => 'nullable|integer|min:1|max:500',
-            'limit' => 'nullable|integer|min:1|max:500',
-            'page' => 'nullable|integer|min:1',
-        ]);
-
-        $filters = ['status' => 'IN_TRANSIT'];
-        if (!empty($validated['location_id'])) {
-            $filters['source_location_id'] = $validated['location_id'];
-        }
-
-        $transfers = $this->inventoryService->getTransfersPaginated($filters, (int) $request->query('limit', 10));
+        $transfers = $this->inventoryService->getOutgoingTransfersPaginated(
+            $request->query('location_id'),
+            (int) $request->query('limit', 10),
+        );
 
         return $this->successPaginatedResponse($transfers, 'Daftar transfer keluar (dalam perjalanan).');
     }
 
-    public function createDraft(\Illuminate\Http\Request $request): JsonResponse
+    public function createDraft(CreateTransferDraftRequest $request): JsonResponse
     {
-        \App\Support\WarehouseAccess::assert($request->input('source_location_id'));
-        \App\Support\WarehouseAccess::assert($request->input('destination_location_id'));
-
         try {
-            $validated = $request->validate([
-                'created_by' => 'required|string|max:100',
-                'source_location_id' => 'nullable|uuid|exists:locations,id',
-                'destination_location_id' => 'nullable|uuid|exists:locations,id',
-                'notes' => 'nullable|string',
-                'transfer_number' => 'nullable|string|max:100|unique:inventory_transfers,transfer_number',
-            ]);
-
-            $result = $this->inventoryService->createDraft($validated);
+            $result = $this->inventoryService->createDraft($request->validated());
             return $this->successResponse(new InventoryTransferResource($result), 'Draft transfer berhasil dibuat.', 201);
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -616,16 +552,10 @@ class InventoryTransactionController extends Controller
         }
     }
 
-    public function updateDraft(\Illuminate\Http\Request $request, string $id): JsonResponse
+    public function updateDraft(UpdateTransferDraftRequest $request, string $id): JsonResponse
     {
         try {
-            $validated = $request->validate([
-                'source_location_id' => 'nullable|uuid|exists:locations,id',
-                'destination_location_id' => 'nullable|uuid|exists:locations,id',
-                'notes' => 'nullable|string',
-            ]);
-
-            $result = $this->inventoryService->updateDraft($id, $validated);
+            $result = $this->inventoryService->updateDraft($id, $request->validated());
             return $this->successResponse(new InventoryTransferResource($result), 'Draft transfer berhasil diperbarui.');
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -637,19 +567,10 @@ class InventoryTransactionController extends Controller
         }
     }
 
-    public function addDraftItem(\Illuminate\Http\Request $request, string $id): JsonResponse
+    public function addDraftItem(AddTransferDraftItemRequest $request, string $id): JsonResponse
     {
         try {
-            $validated = $request->validate([
-                'item_id' => 'required|uuid|exists:product_variants,id',
-                'qty' => 'required|integer|min:1',
-                'source_bin_id' => 'nullable|uuid|exists:location_bins,id',
-                'destination_bin_id' => 'nullable|uuid|exists:location_bins,id',
-                'batch_no' => 'nullable|string|max:100',
-                'serial_no' => 'nullable|string|max:100',
-            ]);
-
-            $result = $this->inventoryService->addDraftItem($id, $validated);
+            $result = $this->inventoryService->addDraftItem($id, $request->validated());
             return $this->successResponse(new InventoryTransferResource($result), 'Item berhasil ditambahkan ke draft.', 201);
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -661,13 +582,10 @@ class InventoryTransactionController extends Controller
         }
     }
 
-    public function updateDraftItem(\Illuminate\Http\Request $request, string $transferId, string $itemId): JsonResponse
+    public function updateDraftItem(UpdateTransferDraftItemRequest $request, string $transferId, string $itemId): JsonResponse
     {
         try {
-            $validated = $request->validate([
-                'qty' => 'required|integer|min:1',
-                'source_bin_id' => 'nullable|uuid|exists:location_bins,id',
-            ]);
+            $validated = $request->validated();
 
             $result = $this->inventoryService->updateDraftItemQty(
                 $transferId,
@@ -702,11 +620,10 @@ class InventoryTransactionController extends Controller
         }
     }
 
-    public function revertToDraft(\Illuminate\Http\Request $request, string $id): JsonResponse
+    public function revertToDraft(Request $request, string $id): JsonResponse
     {
         try {
-            $actor = $request->user()?->name ?? $request->user()?->email ?? 'system';
-            $result = $this->inventoryService->revertToDraft($id, ['actor' => $actor]);
+            $result = $this->inventoryService->revertToDraft($id, ['actor' => ActorName::fromUser($request->user())]);
             return $this->successResponse(new InventoryTransferResource($result), 'Transfer dikembalikan ke Baru Dibuat.');
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -763,7 +680,7 @@ class InventoryTransactionController extends Controller
         try {
             $data = $request->validated();
             if (empty($data['created_by']) && $request->user()) {
-                $data['created_by'] = $request->user()->name ?? $request->user()->email;
+                $data['created_by'] = ActorName::fromUser($request->user());
             }
 
             $transfer = $this->inventoryService->createBinTransferDraft($data);
@@ -782,8 +699,7 @@ class InventoryTransactionController extends Controller
     public function binTransferPrint(\Illuminate\Http\Request $request, string $id): JsonResponse
     {
         try {
-            $printedBy = $request->user()->name ?? $request->user()->email ?? 'system';
-            $transfer = $this->inventoryService->printBinTransfer($id, $printedBy);
+            $transfer = $this->inventoryService->printBinTransfer($id, ActorName::fromUser($request->user()));
 
             return $this->successResponse(new BinTransferResource($transfer), 'Surat jalan dicetak, transfer sedang dijalan.');
         } catch (\Exception $e) {
@@ -805,12 +721,12 @@ class InventoryTransactionController extends Controller
         }
 
         try {
-            $pdf = Pdf::loadView('inventory::pdf.bin-transfer-out', [
-                'transfer' => $transfer,
-            ])->setPaper('a4', 'portrait');
-
-            return $pdf->stream("{$transfer->transfer_number}.pdf");
-        } catch (Throwable $e) {
+            return $this->pdfRenderer->stream(
+                'inventory::pdf.bin-transfer-out',
+                ['transfer' => $transfer],
+                "{$transfer->transfer_number}.pdf",
+            );
+        } catch (\Throwable $e) {
             report($e);
             return $this->errorResponse(
                 'Gagal membuat PDF transfer internal.',
@@ -824,8 +740,7 @@ class InventoryTransactionController extends Controller
     public function binTransferRevertPrint(\Illuminate\Http\Request $request, string $id): JsonResponse
     {
         try {
-            $actor = $request->user()->name ?? $request->user()->email ?? 'system';
-            $transfer = $this->inventoryService->revertBinTransferPrint($id, $actor);
+            $transfer = $this->inventoryService->revertBinTransferPrint($id, ActorName::fromUser($request->user()));
 
             return $this->successResponse(new BinTransferResource($transfer), 'Transfer dikembalikan ke Baru Dibuat.');
         } catch (\Exception $e) {
@@ -838,20 +753,12 @@ class InventoryTransactionController extends Controller
         }
     }
 
-    public function binTransferReceive(\Illuminate\Http\Request $request, string $id): JsonResponse
+    public function binTransferReceive(ReceiveBinTransferRequest $request, string $id): JsonResponse
     {
-        $validated = $request->validate([
-            'notes' => 'nullable|string',
-            'received_by' => 'nullable|string|max:100',
-            'items' => 'required|array|min:1',
-            'items.*.bin_transfer_item_id' => 'required|uuid|exists:bin_transfer_items,id',
-            'items.*.destination_bin_id' => 'required|uuid|exists:location_bins,id',
-            'items.*.qty' => 'required|integer|min:1',
-        ]);
-
         try {
+            $validated = $request->validated();
             if (empty($validated['received_by'])) {
-                $validated['received_by'] = $request->user()->name ?? $request->user()->email ?? 'system';
+                $validated['received_by'] = ActorName::fromUser($request->user());
             }
 
             $receipt = $this->inventoryService->receiveBinTransfer($id, $validated);
@@ -906,11 +813,9 @@ class InventoryTransactionController extends Controller
         return $this->successResponse(new BinTransferReceiptResource($receipt), 'Detail penerimaan transfer internal berhasil diambil.');
     }
 
-    public function binTransferItemDestroy(\Illuminate\Http\Request $request, string $id, string $itemId): JsonResponse
+    public function binTransferItemDestroy(ReverseBinTransferItemRequest $request, string $id, string $itemId): JsonResponse
     {
-        $validated = $request->validate([
-            'qty' => 'nullable|integer|min:1',
-        ]);
+        $validated = $request->validated();
 
         try {
             $userId = (string) ($request->user()->id ?? 'system');
@@ -932,13 +837,9 @@ class InventoryTransactionController extends Controller
         }
     }
 
-    public function binTransferItemsDestroy(\Illuminate\Http\Request $request, string $id): JsonResponse
+    public function binTransferItemsDestroy(ReverseBinTransferItemsRequest $request, string $id): JsonResponse
     {
-        $validated = $request->validate([
-            'items' => 'required|array|min:1',
-            'items.*.item_id' => 'required|string',
-            'items.*.qty' => 'nullable|integer|min:1',
-        ]);
+        $validated = $request->validated();
 
         try {
             $userId = (string) ($request->user()->id ?? 'system');
@@ -980,16 +881,10 @@ class InventoryTransactionController extends Controller
         return $this->successResponse(new BinTransferResource($transfer), 'Detail pindah bin berhasil diambil.');
     }
 
-    public function binTransferUpdate(\Illuminate\Http\Request $request, string $id): JsonResponse
+    public function binTransferUpdate(UpdateBinTransferRequest $request, string $id): JsonResponse
     {
-        $data = $request->validate([
-            'transfer_date' => 'nullable|date',
-            'created_by' => 'nullable|string|max:100',
-            'notes' => 'nullable|string',
-        ]);
-
         try {
-            $transfer = $this->inventoryService->updateBinTransferMetadata($id, $data);
+            $transfer = $this->inventoryService->updateBinTransferMetadata($id, $request->validated());
 
             return $this->successResponse(new BinTransferResource($transfer), 'Pindah bin berhasil diperbarui.');
         } catch (\Exception $e) {
@@ -1018,12 +913,13 @@ class InventoryTransactionController extends Controller
             new OA\Response(response: 422, description: 'Validation Error'),
         ]
     )]
-    public function markTransferPrinted(\Illuminate\Http\Request $request): JsonResponse
+    public function markTransferPrinted(MarkTransferPrintedRequest $request): JsonResponse
     {
         try {
-            $request->validate(['transfer_id' => 'required|string']);
-            $printedBy = $request->user()->name ?? $request->user()->email;
-            $transfer = $this->inventoryService->markTransferPrinted($request->input('transfer_id'), $printedBy);
+            $transfer = $this->inventoryService->markTransferPrinted(
+                $request->validated()['transfer_id'],
+                ActorName::fromUser($request->user()),
+            );
 
             return $this->successResponse(new BinTransferResource($transfer), 'Transfer ditandai sudah dicetak.');
         } catch (\Exception $e) {

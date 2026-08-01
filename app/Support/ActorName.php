@@ -3,10 +3,20 @@
 namespace App\Support;
 
 use App\Models\User;
+use Illuminate\Contracts\Auth\Authenticatable;
 
 class ActorName
 {
     private static array $cache = [];
+
+    public static function fromUser(?Authenticatable $user, string $fallback = 'system'): string
+    {
+        if ($user === null) {
+            return $fallback;
+        }
+
+        return $user->name ?? $user->email ?? $fallback;
+    }
 
     public static function resolve(?string $actor): ?string
     {

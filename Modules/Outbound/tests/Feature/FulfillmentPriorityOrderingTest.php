@@ -34,7 +34,6 @@ class FulfillmentPriorityOrderingTest extends TestCase
         $soon = now()->addMinutes(30)->toDateTimeString();
         $far  = now()->addDays(2)->toDateTimeString();
 
-        // Sengaja diseed acak; prioritas harus: instan dulu, lalu deadline terdekat.
         $this->seedReadyOrder('REG-FAR', 'JNE Reguler', $far);
         $this->seedReadyOrder('INS-FAR', 'Grab Instant', $far);
         $this->seedReadyOrder('REG-SOON', 'JNE Reguler', $soon);

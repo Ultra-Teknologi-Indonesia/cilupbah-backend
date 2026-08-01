@@ -5,15 +5,19 @@ namespace Modules\Channel\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Jobs\ProcessLazadaWebhook;
+use Modules\Channel\Repositories\ChannelWebhookInboxRepository;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Lazada', description: 'Integrasi OAuth Lazada')]
 class LazadaWebhookController extends Controller
 {
     use ApiResponse;
+
+    public function __construct(
+        protected ChannelWebhookInboxRepository $inbox,
+    ) {}
 
     #[OA\Post(
         path: '/api/v1/lazada/webhook',
@@ -75,9 +79,12 @@ class LazadaWebhookController extends Controller
 
     protected function isFirstDelivery(array $payload): bool
     {
-
-        $key = \Modules\Channel\Jobs\ProcessLazadaWebhook::idempotencyKey($payload);
-
-        return Cache::add($key, 1, now()->addMinutes(10));
+        return $this->inbox->recordFirstDelivery(
+            'lazada',
+            isset($payload['seller_id']) ? (string) $payload['seller_id'] : null,
+            ProcessLazadaWebhook::idempotencyKey($payload),
+            isset($payload['message_type']) ? (string) $payload['message_type'] : null,
+            $payload,
+        ) !== null;
     }
 }

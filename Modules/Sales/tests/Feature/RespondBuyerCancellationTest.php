@@ -84,7 +84,7 @@ class RespondBuyerCancellationTest extends TestCase
 
         (new RespondBuyerCancellationJob($id, RespondBuyerCancellationJob::ACCEPT))->handle();
 
-        $this->assertTrue(true); // selesai tanpa memanggil API channel
+        $this->assertTrue(true); 
     }
 
     public function test_reject_cancel_request_now_notifies_channel(): void

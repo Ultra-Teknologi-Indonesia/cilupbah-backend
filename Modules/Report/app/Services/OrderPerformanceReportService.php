@@ -28,6 +28,16 @@ class OrderPerformanceReportService
 
     public function build(string $type, bool $detail, array $filters)
     {
+        $payload = $this->pdfPayload($type, $detail, $filters);
+
+        $pdf = Pdf::loadView($payload['view'], $payload['data']);
+        $pdf->setPaper('a4', $payload['orientation']);
+
+        return $pdf;
+    }
+
+    public function pdfPayload(string $type, bool $detail, array $filters): array
+    {
         ini_set('memory_limit', '1024M');
         set_time_limit(300);
 
@@ -46,10 +56,11 @@ class OrderPerformanceReportService
             'grandTotal' => $detail ? null : $this->aggregate($rows),
         ];
 
-        $pdf = Pdf::loadView('report::pdf.order-performance', $data);
-        $pdf->setPaper('a4', $type === OrderPerformanceSpec::PESANAN ? 'landscape' : 'portrait');
-
-        return $pdf;
+        return [
+            'view' => 'report::pdf.order-performance',
+            'data' => $data,
+            'orientation' => $type === OrderPerformanceSpec::PESANAN ? 'landscape' : 'portrait',
+        ];
     }
 
     private function periodeLabel(array $filters): string

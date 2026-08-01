@@ -3,10 +3,10 @@
 namespace Modules\Report\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Services\PdfRenderer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Report\Exports\NegativeStockReportExport;
 use Modules\Report\Exports\PickListReportExport;
@@ -21,27 +21,51 @@ use Modules\Report\Exports\SectionedReportExport;
 use Modules\Report\Exports\ShipmentListReportExport;
 use Modules\Report\Exports\TransferReportExport;
 use Modules\Report\Http\Requests\BarcodeReportRequest;
+use Modules\Report\Http\Requests\CustomerListExportRequest;
 use Modules\Report\Http\Requests\HppReportRequest;
+use Modules\Report\Http\Requests\LazadaGetDocumentRequest;
+use Modules\Report\Http\Requests\NegativeStockExportRequest;
+use Modules\Report\Http\Requests\NegativeStockRequest;
+use Modules\Report\Http\Requests\OrderPerformanceExportRequest;
+use Modules\Report\Http\Requests\OrderPerformancePdfRequest;
 use Modules\Report\Http\Requests\PenyesuaianStokPdfRequest;
-use Modules\Report\Http\Resources\LazadaDocumentResource;
+use Modules\Report\Http\Requests\PickListDetailExcelRequest;
+use Modules\Report\Http\Requests\PickListDetailPdfRequest;
+use Modules\Report\Http\Requests\PickListExportRequest;
+use Modules\Report\Http\Requests\PickListLookupRequest;
+use Modules\Report\Http\Requests\PutawayListExportRequest;
+use Modules\Report\Http\Requests\PutawayListLookupRequest;
+use Modules\Report\Http\Requests\PutawayListPdfRequest;
+use Modules\Report\Http\Requests\PutawayPerformanceExportRequest;
+use Modules\Report\Http\Requests\PutawayPerformancePdfRequest;
+use Modules\Report\Http\Requests\RincianPendapatanExportRequest;
+use Modules\Report\Http\Requests\SalesListExportRequest;
+use Modules\Report\Http\Requests\SalesProductExportRequest;
+use Modules\Report\Http\Requests\SalesProductSkuOptionsRequest;
+use Modules\Report\Http\Requests\SalesReturnExportRequest;
+use Modules\Report\Http\Requests\ShipmentByCourierExportRequest;
+use Modules\Report\Http\Requests\ShipmentByCourierPdfRequest;
+use Modules\Report\Http\Requests\ShipmentListExportRequest;
+use Modules\Report\Http\Requests\TransferExportRequest;
+use Modules\Report\Services\CustomerListReportService;
+use Modules\Report\Services\LazadaDocumentService;
 use Modules\Report\Services\OrderPerformanceReportService;
 use Modules\Report\Services\PutawayListReportService;
-use Modules\Report\Services\SalesListReportService;
-use Modules\Report\Services\SalesProductReportService;
-use Modules\Report\Services\CustomerListReportService;
-use Modules\Report\Services\RincianPendapatanReportService;
-use Modules\Report\Services\SalesReturnReportService;
-use Modules\Report\Services\ShipmentByCourierReportService;
 use Modules\Report\Services\PutawayPerformanceReportService;
 use Modules\Report\Services\ReportService;
-use Modules\Report\Support\OrderPerformanceSpec;
+use Modules\Report\Services\RincianPendapatanReportService;
+use Modules\Report\Services\SalesListReportService;
+use Modules\Report\Services\SalesProductReportService;
+use Modules\Report\Services\SalesReturnReportService;
+use Modules\Report\Services\ShipmentByCourierReportService;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Reports', description: 'API Endpoints for printable Reports')]
 class ReportController extends Controller
 {
     public function __construct(
-        protected ReportService $reportService
+        protected ReportService $reportService,
+        protected PdfRenderer $pdfRenderer,
     ) {}
 
     #[OA\Get(
@@ -350,7 +374,7 @@ class ReportController extends Controller
     public function penyesuaianStokPdf(PenyesuaianStokPdfRequest $request): Response
     {
         $validated = $request->validated();
-        $pdf = $this->reportService->penyesuaianStokBuild($validated);
+        $payload = $this->reportService->penyesuaianStokPayload($validated);
 
         $filename = sprintf(
             'Daftar-Penyesuaian-Stok_%s_%s.pdf',
@@ -358,12 +382,12 @@ class ReportController extends Controller
             $validated['end_date'],
         );
 
-        $disposition = ($validated['download'] ?? false) ? 'attachment' : 'inline';
-
-        return response($pdf->output(), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => "{$disposition}; filename=\"{$filename}\"",
-        ]);
+        return $this->pdfRenderer->response(
+            'report::pdf.penyesuaian-stok',
+            $payload,
+            $filename,
+            $validated['download'] ?? false,
+        );
     }
 
     #[OA\Get(
@@ -381,18 +405,9 @@ class ReportController extends Controller
         ],
         responses: [new OA\Response(response: 200, description: 'Daftar riwayat stok minus')]
     )]
-    public function negativeStock(Request $request): JsonResponse
+    public function negativeStock(NegativeStockRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'from' => 'nullable|date',
-            'to' => 'nullable|date|after_or_equal:from',
-            'location_id' => 'nullable|uuid',
-            'search' => 'nullable|string|max:200',
-            'still_negative' => 'nullable|boolean',
-            'per_page' => 'nullable|integer|min:1|max:200',
-        ]);
-
-        $result = $this->reportService->negativeStockReport($validated);
+        $result = $this->reportService->negativeStockReport($request->validated());
 
         return $this->successResponse(
             $result['items'],
@@ -409,15 +424,9 @@ class ReportController extends Controller
         tags: ['Reports'],
         responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
     )]
-    public function negativeStockExport(Request $request)
+    public function negativeStockExport(NegativeStockExportRequest $request)
     {
-        $validated = $request->validate([
-            'from' => 'nullable|date',
-            'to' => 'nullable|date|after_or_equal:from',
-            'location_id' => 'nullable|uuid',
-            'search' => 'nullable|string|max:200',
-            'still_negative' => 'nullable|boolean',
-        ]);
+        $validated = $request->validated();
 
         $export = new NegativeStockReportExport($this->reportService, $validated);
 
@@ -437,15 +446,9 @@ class ReportController extends Controller
         tags: ['Reports'],
         responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
     )]
-    public function transferExport(Request $request)
+    public function transferExport(TransferExportRequest $request)
     {
-        $validated = $request->validate([
-            'jenis' => 'required|in:masuk,keluar',
-            'from' => 'required|date',
-            'to' => 'required|date|after_or_equal:from',
-            'item_ids' => 'nullable|array',
-            'item_ids.*' => 'uuid',
-        ]);
+        $validated = $request->validated();
 
         $export = new TransferReportExport($this->reportService, $validated);
 
@@ -466,12 +469,9 @@ class ReportController extends Controller
         tags: ['Reports'],
         responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
     )]
-    public function pickListExport(Request $request)
+    public function pickListExport(PickListExportRequest $request)
     {
-        $validated = $request->validate([
-            'from' => 'required|date',
-            'to' => 'required|date|after_or_equal:from',
-        ]);
+        $validated = $request->validated();
 
         $export = new PickListReportExport($this->reportService, $validated);
 
@@ -491,27 +491,22 @@ class ReportController extends Controller
         tags: ['Reports'],
         responses: [new OA\Response(response: 200, description: 'PDF stream')]
     )]
-    public function pickListDetailPdf(Request $request): Response
+    public function pickListDetailPdf(PickListDetailPdfRequest $request): Response
     {
-        $validated = $request->validate([
-            'picklist_id' => 'required|uuid',
-            'order_ids' => 'nullable|array',
-            'order_ids.*' => 'uuid',
-            'download' => 'nullable|boolean',
-        ]);
-
-        $pdf = $this->reportService->pickListDetailBuild(
+        $validated = $request->validated();
+        $data = $this->reportService->pickListDetailPayload(
             $validated['picklist_id'],
             $validated['order_ids'] ?? null,
         );
 
         $filename = sprintf('Detail-Picklist_%s.pdf', substr($validated['picklist_id'], 0, 8));
-        $disposition = ($validated['download'] ?? false) ? 'attachment' : 'inline';
 
-        return response($pdf->output(), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => "{$disposition}; filename=\"{$filename}\"",
-        ]);
+        return $this->pdfRenderer->response(
+            'report::pdf.detail-picklist',
+            $data,
+            $filename,
+            $validated['download'] ?? false,
+        );
     }
 
     #[OA\Get(
@@ -521,12 +516,9 @@ class ReportController extends Controller
         tags: ['Reports'],
         responses: [new OA\Response(response: 200, description: 'Daftar picklist')]
     )]
-    public function pickListLookup(Request $request): JsonResponse
+    public function pickListLookup(PickListLookupRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'search' => 'nullable|string|max:100',
-            'per_page' => 'nullable|integer|min:1|max:50',
-        ]);
+        $validated = $request->validated();
 
         return response()->json([
             'data' => $this->reportService->pickListLookup(
@@ -543,15 +535,9 @@ class ReportController extends Controller
         tags: ['Reports'],
         responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
     )]
-    public function shipmentListExport(Request $request)
+    public function shipmentListExport(ShipmentListExportRequest $request)
     {
-        $validated = $request->validate([
-            'from' => 'required|date',
-            'to' => 'required|date|after_or_equal:from',
-            'courier_ids' => 'nullable|array',
-            'courier_ids.*' => 'uuid',
-            'status_mp' => 'nullable|string|max:255',
-        ]);
+        $validated = $request->validated();
 
         $export = new ShipmentListReportExport($this->reportService, $validated);
 
@@ -583,29 +569,10 @@ class ReportController extends Controller
         tags: ['Reports'],
         responses: [new OA\Response(response: 200, description: 'PDF stream')]
     )]
-    public function orderPerformancePdf(Request $request): Response|JsonResponse
+    public function orderPerformancePdf(OrderPerformancePdfRequest $request, OrderPerformanceReportService $service): Response
     {
-        $validated = $request->validate([
-            'jenis' => ['required', Rule::in(OrderPerformanceSpec::TYPES)],
-            'mode' => ['required', Rule::in(['detail', 'summary'])],
-            'from' => 'required|date',
-            'to' => 'required|date|after_or_equal:from',
-            'location_ids' => 'nullable|array',
-            'location_ids.*' => 'uuid',
-            'download' => 'nullable|boolean',
-        ]);
-
-        if ($validated['mode'] === 'summary' && ! OrderPerformanceSpec::supportsSummary($validated['jenis'])) {
-            return response()->json([
-                'message' => 'Laporan Pesanan hanya tersedia dalam mode Detail.',
-            ], 422);
-        }
-
-        $pdf = app(OrderPerformanceReportService::class)->build(
-            $validated['jenis'],
-            $validated['mode'] === 'detail',
-            $validated,
-        );
+        $validated = $request->validated();
+        $payload = $service->pdfPayload($validated['jenis'], $validated['mode'] === 'detail', $validated);
 
         $filename = sprintf(
             'Laporan-Performa-%s-%s_%s_%s.pdf',
@@ -615,12 +582,14 @@ class ReportController extends Controller
             $validated['to'],
         );
 
-        $disposition = ($validated['download'] ?? false) ? 'attachment' : 'inline';
-
-        return response($pdf->output(), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => "{$disposition}; filename=\"{$filename}\"",
-        ]);
+        return $this->pdfRenderer->response(
+            $payload['view'],
+            $payload['data'],
+            $filename,
+            $validated['download'] ?? false,
+            'a4',
+            $payload['orientation'],
+        );
     }
 
     #[OA\Post(
@@ -630,19 +599,10 @@ class ReportController extends Controller
         tags: ['Reports'],
         responses: [new OA\Response(response: 200, description: 'PDF stream')]
     )]
-    public function putawayPerformancePdf(Request $request): Response
+    public function putawayPerformancePdf(PutawayPerformancePdfRequest $request, PutawayPerformanceReportService $service): Response
     {
-        $validated = $request->validate([
-            'mode' => ['required', Rule::in(['detail', 'summary'])],
-            'from' => 'required|date',
-            'to' => 'required|date|after_or_equal:from',
-            'location_ids' => 'nullable|array',
-            'location_ids.*' => 'uuid',
-            'download' => 'nullable|boolean',
-        ]);
-
-        $pdf = app(PutawayPerformanceReportService::class)
-            ->build($validated['mode'] === 'detail', $validated);
+        $validated = $request->validated();
+        $payload = $service->pdfPayload($validated['mode'] === 'detail', $validated);
 
         $filename = sprintf(
             'Laporan-Performa-Penempatan-%s_%s_%s.pdf',
@@ -651,12 +611,12 @@ class ReportController extends Controller
             $validated['to'],
         );
 
-        $disposition = ($validated['download'] ?? false) ? 'attachment' : 'inline';
-
-        return response($pdf->output(), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => "{$disposition}; filename=\"{$filename}\"",
-        ]);
+        return $this->pdfRenderer->response(
+            $payload['view'],
+            $payload['data'],
+            $filename,
+            $validated['download'] ?? false,
+        );
     }
 
     #[OA\Get(
@@ -666,15 +626,12 @@ class ReportController extends Controller
         tags: ['Reports'],
         responses: [new OA\Response(response: 200, description: 'Daftar nomor penempatan')]
     )]
-    public function putawayListLookup(Request $request): JsonResponse
+    public function putawayListLookup(PutawayListLookupRequest $request, PutawayListReportService $service): JsonResponse
     {
-        $validated = $request->validate([
-            'date' => 'required|date',
-            'location_id' => 'required|uuid',
-        ]);
+        $validated = $request->validated();
 
         return response()->json([
-            'data' => app(PutawayListReportService::class)->lookup(
+            'data' => $service->lookup(
                 $validated['date'],
                 $validated['location_id'],
             ),
@@ -688,29 +645,23 @@ class ReportController extends Controller
         tags: ['Reports'],
         responses: [new OA\Response(response: 200, description: 'PDF stream')]
     )]
-    public function putawayListPdf(Request $request): Response
+    public function putawayListPdf(PutawayListPdfRequest $request, PutawayListReportService $service): Response
     {
-        $validated = $request->validate([
-            'date' => 'required|date',
-            'location_id' => 'required|uuid',
-            'putaway_ids' => 'nullable|array',
-            'putaway_ids.*' => 'uuid',
-            'download' => 'nullable|boolean',
-        ]);
-
-        $pdf = app(PutawayListReportService::class)->build(
+        $validated = $request->validated();
+        $payload = $service->pdfPayload(
             $validated['date'],
             $validated['location_id'],
             $validated['putaway_ids'] ?? [],
         );
 
         $filename = sprintf('Daftar-Penempatan-Barang_%s.pdf', $validated['date']);
-        $disposition = ($validated['download'] ?? false) ? 'attachment' : 'inline';
 
-        return response($pdf->output(), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => "{$disposition}; filename=\"{$filename}\"",
-        ]);
+        return $this->pdfRenderer->response(
+            $payload['view'],
+            $payload['data'],
+            $filename,
+            $validated['download'] ?? false,
+        );
     }
 
     #[OA\Post(
@@ -720,19 +671,10 @@ class ReportController extends Controller
         tags: ['Reports'],
         responses: [new OA\Response(response: 200, description: 'PDF stream')]
     )]
-    public function shipmentByCourierPdf(Request $request): Response
+    public function shipmentByCourierPdf(ShipmentByCourierPdfRequest $request, ShipmentByCourierReportService $service): Response
     {
-        $validated = $request->validate([
-            'mode' => ['required', Rule::in(['detail', 'summary'])],
-            'from' => 'required|date',
-            'to' => 'required|date|after_or_equal:from',
-            'location_ids' => 'nullable|array',
-            'location_ids.*' => 'uuid',
-            'download' => 'nullable|boolean',
-        ]);
-
-        $pdf = app(ShipmentByCourierReportService::class)
-            ->build($validated['mode'] === 'detail', $validated);
+        $validated = $request->validated();
+        $payload = $service->pdfPayload($validated['mode'] === 'detail', $validated);
 
         $filename = sprintf(
             'Laporan-Pengiriman-Ekspedisi-%s_%s_%s.pdf',
@@ -741,12 +683,12 @@ class ReportController extends Controller
             $validated['to'],
         );
 
-        $disposition = ($validated['download'] ?? false) ? 'attachment' : 'inline';
-
-        return response($pdf->output(), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => "{$disposition}; filename=\"{$filename}\"",
-        ]);
+        return $this->pdfRenderer->response(
+            $payload['view'],
+            $payload['data'],
+            $filename,
+            $validated['download'] ?? false,
+        );
     }
 
     #[OA\Get(
@@ -756,22 +698,9 @@ class ReportController extends Controller
         tags: ['Reports'],
         responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
     )]
-    public function orderPerformanceExport(Request $request)
+    public function orderPerformanceExport(OrderPerformanceExportRequest $request)
     {
-        $validated = $request->validate([
-            'jenis' => ['required', Rule::in(OrderPerformanceSpec::TYPES)],
-            'mode' => ['required', Rule::in(['detail', 'summary'])],
-            'from' => 'required|date',
-            'to' => 'required|date|after_or_equal:from',
-            'location_ids' => 'nullable|array',
-            'location_ids.*' => 'uuid',
-        ]);
-
-        if ($validated['mode'] === 'summary' && ! OrderPerformanceSpec::supportsSummary($validated['jenis'])) {
-            return response()->json([
-                'message' => 'Laporan Pesanan hanya tersedia dalam mode Detail.',
-            ], 422);
-        }
+        $validated = $request->validated();
 
         $report = app(OrderPerformanceReportService::class)->sectioned(
             $validated['jenis'],
@@ -797,15 +726,9 @@ class ReportController extends Controller
         tags: ['Reports'],
         responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
     )]
-    public function putawayPerformanceExport(Request $request)
+    public function putawayPerformanceExport(PutawayPerformanceExportRequest $request)
     {
-        $validated = $request->validate([
-            'mode' => ['required', Rule::in(['detail', 'summary'])],
-            'from' => 'required|date',
-            'to' => 'required|date|after_or_equal:from',
-            'location_ids' => 'nullable|array',
-            'location_ids.*' => 'uuid',
-        ]);
+        $validated = $request->validated();
 
         $report = app(PutawayPerformanceReportService::class)
             ->sectioned($validated['mode'] === 'detail', $validated);
@@ -827,14 +750,9 @@ class ReportController extends Controller
         tags: ['Reports'],
         responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
     )]
-    public function putawayListExport(Request $request)
+    public function putawayListExport(PutawayListExportRequest $request)
     {
-        $validated = $request->validate([
-            'date' => 'required|date',
-            'location_id' => 'required|uuid',
-            'putaway_ids' => 'nullable|array',
-            'putaway_ids.*' => 'uuid',
-        ]);
+        $validated = $request->validated();
 
         $report = app(PutawayListReportService::class)->sectioned(
             $validated['date'],
@@ -854,15 +772,9 @@ class ReportController extends Controller
         tags: ['Reports'],
         responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
     )]
-    public function shipmentByCourierExport(Request $request)
+    public function shipmentByCourierExport(ShipmentByCourierExportRequest $request)
     {
-        $validated = $request->validate([
-            'mode' => ['required', Rule::in(['detail', 'summary'])],
-            'from' => 'required|date',
-            'to' => 'required|date|after_or_equal:from',
-            'location_ids' => 'nullable|array',
-            'location_ids.*' => 'uuid',
-        ]);
+        $validated = $request->validated();
 
         $report = app(ShipmentByCourierReportService::class)
             ->sectioned($validated['mode'] === 'detail', $validated);
@@ -884,13 +796,9 @@ class ReportController extends Controller
         tags: ['Reports'],
         responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
     )]
-    public function pickListDetailExcel(Request $request)
+    public function pickListDetailExcel(PickListDetailExcelRequest $request)
     {
-        $validated = $request->validate([
-            'picklist_id' => 'required|uuid',
-            'order_ids' => 'nullable|array',
-            'order_ids.*' => 'uuid',
-        ]);
+        $validated = $request->validated();
 
         $data = $this->reportService->pickListDetailData(
             $validated['picklist_id'],
@@ -917,14 +825,9 @@ class ReportController extends Controller
         ],
         responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
     )]
-    public function salesListExport(Request $request)
+    public function salesListExport(SalesListExportRequest $request)
     {
-        $validated = $request->validate([
-            'from' => 'nullable|date',
-            'to' => 'nullable|date|after_or_equal:from',
-            'location_ids' => 'nullable|array',
-            'location_ids.*' => 'uuid',
-        ]);
+        $validated = $request->validated();
 
         $query = app(SalesListReportService::class)->query($validated);
 
@@ -949,12 +852,9 @@ class ReportController extends Controller
         ],
         responses: [new OA\Response(response: 200, description: 'Daftar opsi SKU paginated')]
     )]
-    public function salesProductSkuOptions(Request $request): JsonResponse
+    public function salesProductSkuOptions(SalesProductSkuOptionsRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'search' => 'nullable|string|max:200',
-            'per_page' => 'nullable|integer|min:1|max:50',
-        ]);
+        $validated = $request->validated();
 
         $result = app(SalesProductReportService::class)
             ->skuOptions($validated['search'] ?? null, $validated['per_page'] ?? 20);
@@ -975,16 +875,9 @@ class ReportController extends Controller
         ],
         responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
     )]
-    public function salesProductExport(Request $request)
+    public function salesProductExport(SalesProductExportRequest $request)
     {
-        $validated = $request->validate([
-            'from' => 'nullable|date',
-            'to' => 'nullable|date|after_or_equal:from',
-            'location_ids' => 'nullable|array',
-            'location_ids.*' => 'uuid',
-            'item_ids' => 'nullable|array',
-            'item_ids.*' => 'uuid',
-        ]);
+        $validated = $request->validated();
 
         $query = app(SalesProductReportService::class)->query($validated);
 
@@ -1009,14 +902,9 @@ class ReportController extends Controller
         ],
         responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
     )]
-    public function salesReturnExport(Request $request)
+    public function salesReturnExport(SalesReturnExportRequest $request)
     {
-        $validated = $request->validate([
-            'from' => 'nullable|date',
-            'to' => 'nullable|date|after_or_equal:from',
-            'location_ids' => 'nullable|array',
-            'location_ids.*' => 'uuid',
-        ]);
+        $validated = $request->validated();
 
         $query = app(SalesReturnReportService::class)->query($validated);
 
@@ -1042,15 +930,9 @@ class ReportController extends Controller
         ],
         responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
     )]
-    public function rincianPendapatanExport(Request $request)
+    public function rincianPendapatanExport(RincianPendapatanExportRequest $request)
     {
-        $validated = $request->validate([
-            'jenis' => ['nullable', Rule::in(['rincian', 'per_barang'])],
-            'from' => 'nullable|date',
-            'to' => 'nullable|date|after_or_equal:from',
-            'item_ids' => 'nullable|array',
-            'item_ids.*' => 'uuid',
-        ]);
+        $validated = $request->validated();
 
         $mode = $validated['jenis'] ?? RincianPendapatanReportService::MODE_RINCIAN;
         $query = app(RincianPendapatanReportService::class)->query($mode, $validated);
@@ -1080,12 +962,9 @@ class ReportController extends Controller
         ],
         responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
     )]
-    public function customerListExport(Request $request)
+    public function customerListExport(CustomerListExportRequest $request)
     {
-        $validated = $request->validate([
-            'from' => 'nullable|date',
-            'to' => 'nullable|date|after_or_equal:from',
-        ]);
+        $validated = $request->validated();
 
         $query = app(CustomerListReportService::class)->query($validated);
 
@@ -1098,48 +977,16 @@ class ReportController extends Controller
         return Excel::download(new CustomerListExport($query), $filename);
     }
 
-    public function lazadaGetDocument(Request $request): JsonResponse
+    public function lazadaGetDocument(LazadaGetDocumentRequest $request, LazadaDocumentService $service): JsonResponse
     {
-        $orderId = $request->query('order_id');
+        $validated = $request->validated();
 
-        if ($request->filled('shop_id') && $orderId) {
-            try {
-                $document = app(\Modules\Channel\Services\LazadaOrderService::class)->getDocument(
-                    (string) $request->query('shop_id'),
-                    (string) $orderId,
-                    (string) $request->query('doc_type', 'shippingLabel')
-                );
+        $result = $service->resolve(
+            $validated['order_id'] ?? null,
+            $validated['shop_id'] ?? null,
+            $validated['doc_type'] ?? 'shippingLabel',
+        );
 
-                return $this->successResponse([
-                    'report_type' => 'lazada_document',
-                    'generated_at' => now()->toIso8601String(),
-                    'data' => $document,
-                ], 'Dokumen Lazada berhasil diambil.');
-            } catch (\Exception $e) {
-                return $this->errorResponse(
-                    'Gagal mengambil dokumen Lazada.',
-                    422,
-                    ['detail' => $e->getMessage()],
-                    'Terjadi kesalahan',
-                );
-            }
-        }
-
-        if ($orderId) {
-            $order = $this->reportService->lazadaOrder((string) $orderId);
-
-            return $this->successResponse([
-                'report_type' => 'lazada_document',
-                'generated_at' => now()->toIso8601String(),
-                'data' => new LazadaDocumentResource($order),
-            ], 'Lazada document berhasil diambil.');
-        }
-
-        return $this->successResponse([
-            'report_type' => 'lazada_document',
-            'generated_at' => now()->toIso8601String(),
-            'data' => null,
-            'message' => 'Integrasi Lazada belum tersedia. Gunakan parameter order_id untuk mengambil data order.',
-        ], 'Lazada document placeholder.');
+        return $this->successResponse($result['payload'], $result['message']);
     }
 }

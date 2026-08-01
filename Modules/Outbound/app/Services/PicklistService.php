@@ -1025,4 +1025,35 @@ class PicklistService
 
         return $reversed;
     }
+
+    public function attachRecommendedBins($picklist): void
+    {
+        $items = $picklist->items ?? collect();
+        if ($items->isEmpty()) {
+            return;
+        }
+
+        $locationId = $picklist->location_id;
+        $itemIds = $items->pluck('item_id')->filter()->unique()->values()->all();
+
+        $stocks = $this->picklistRepository->recommendedBinStocks($itemIds, $locationId);
+
+        $byItem = $stocks->groupBy('item_id');
+
+        foreach ($items as $item) {
+            $top = $byItem->get($item->item_id)?->first();
+            $item->recommended_bin_code = optional($top?->bin)->bin_final_code;
+        }
+    }
+
+    public function getForBulkPdf(array $orderIds): \Illuminate\Support\Collection
+    {
+        $picklists = $this->picklistRepository->getForBulkPdf($orderIds);
+
+        foreach ($picklists as $picklist) {
+            $this->attachRecommendedBins($picklist);
+        }
+
+        return $picklists;
+    }
 }

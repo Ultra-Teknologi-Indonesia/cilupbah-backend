@@ -6,10 +6,12 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Services\ChannelDownloadService;
 use Modules\Channel\Services\LazadaAuthService;
 use Modules\Channel\Services\LazadaOrderService;
@@ -21,6 +23,7 @@ class ProcessLazadaWebhook implements ShouldQueue
 
     public int $tries = 3;
     public array $backoff = [10, 60, 300];
+    public int $timeout = 120;
 
     private const MSG_ORDER = 0;
     private const MSG_PRODUCT = 1;
@@ -30,7 +33,12 @@ class ProcessLazadaWebhook implements ShouldQueue
     public function __construct(
         public array $payload,
     ) {
-        $this->onQueue('default');
+        $this->onQueue(config('queue.names.webhook_downloads'));
+    }
+
+    public function middleware(): array
+    {
+        return [new RateLimited('webhook_download')];
     }
 
     public static function idempotencyKey(array $payload): string
@@ -70,6 +78,8 @@ class ProcessLazadaWebhook implements ShouldQueue
             self::MSG_PRODUCT, self::MSG_PRODUCT_ALT => $this->handleProductEvent($downloadService, $sellerId, $data),
             default => $this->handleUnknown($orderService, $sellerId, $data, $messageType),
         };
+
+        ChannelWebhookInbox::markProcessedByKey(self::idempotencyKey($this->payload));
     }
 
     protected function handleUnknown(LazadaOrderService $orderService, string $sellerId, array $data, int $messageType): void
@@ -134,7 +144,6 @@ class ProcessLazadaWebhook implements ShouldQueue
             ->first();
         if (! $order) return;
 
-        // Siap kirim = dokumen label tersedia → siapkan & cache proaktif ("selalu dapat").
         if ($status === 'READY_TO_SHIP') {
             \Modules\Sales\Jobs\PrepareLazadaShippingLabelJob::dispatch((string) $order->id);
         }

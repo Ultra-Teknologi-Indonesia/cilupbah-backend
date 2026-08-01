@@ -11,11 +11,7 @@ use Illuminate\Support\Facades\Log;
 
 class FulfillmentCleanupService
 {
-    // Lepas pesanan DIBATALKAN dari tahap picking/packing. HANYA hapus baris.
-    // Stok sudah dikembalikan sisi Sales (applyStockTransition/reconcileStockTransition
-    // -> restoreStockToOriginBins), jadi JANGAN panggil reversePick di sini (double-return).
-    // Aman dipanggil di dalam transaksi cancel yang sedang berjalan; tanpa dependency ke
-    // SalesOrderService agar tidak circular saat dipanggil dari modul Sales.
+
     public function detachCancelledOrder(string $orderId, ?string $removedBy = 'system'): void
     {
 

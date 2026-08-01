@@ -6,9 +6,11 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Services\ChannelDownloadService;
 use Modules\Channel\Services\WooCommerceOrderService;
 
@@ -18,6 +20,7 @@ class ProcessWooCommerceWebhook implements ShouldQueue
 
     public int $tries = 3;
     public array $backoff = [10, 60, 300];
+    public int $timeout = 120;
 
     public function __construct(
         public string $shopId,
@@ -25,7 +28,12 @@ class ProcessWooCommerceWebhook implements ShouldQueue
         public string $resourceId,
         public array $payload = [],
     ) {
-        $this->onQueue('default');
+        $this->onQueue(config('queue.names.webhook_downloads'));
+    }
+
+    public function middleware(): array
+    {
+        return [new RateLimited('webhook_download')];
     }
 
     public static function idempotencyKey(string $shopId, string $topic, array $payload): string
@@ -53,6 +61,10 @@ class ProcessWooCommerceWebhook implements ShouldQueue
                 'shop_id' => $this->shopId,
             ]),
         };
+
+        ChannelWebhookInbox::markProcessedByKey(
+            self::idempotencyKey($this->shopId, $this->topic, $this->payload),
+        );
     }
 
     protected function handleOrderEvent(WooCommerceOrderService $orderService): void

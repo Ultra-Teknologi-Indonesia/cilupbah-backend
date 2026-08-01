@@ -37,6 +37,15 @@ class BinQrPrintService
         return $query;
     }
 
+    public function binsForPrint(string $locationId, ?array $binIds): array
+    {
+        $query = $this->binsQueryForPrint($locationId, $binIds);
+        $total = (clone $query)->count();
+        $bins = $query->orderBy('bin_final_code')->get();
+
+        return ['total' => $total, 'bins' => $bins];
+    }
+
     public function createJob(string $locationId, array $opts = []): QrPrintJob
     {
         $location = Location::find($locationId);

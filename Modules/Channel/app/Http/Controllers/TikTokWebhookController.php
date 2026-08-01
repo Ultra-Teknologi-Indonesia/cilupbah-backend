@@ -6,10 +6,16 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use App\Traits\ApiResponse;
+use Modules\Channel\Repositories\ChannelWebhookInboxRepository;
 
 class TikTokWebhookController extends Controller
 {
     use ApiResponse;
+
+    public function __construct(
+        protected ChannelWebhookInboxRepository $inbox,
+    ) {}
+
     public function handle(Request $request)
     {
         $rawBody = $request->getContent();
@@ -55,6 +61,14 @@ class TikTokWebhookController extends Controller
         }
 
         $payload = $request->all();
+
+        $this->inbox->recordFirstDelivery(
+            'tiktok',
+            isset($payload['shop_id']) ? (string) $payload['shop_id'] : null,
+            \Modules\Channel\Jobs\ProcessTikTokWebhook::idempotencyKey($payload),
+            isset($payload['type']) ? (string) $payload['type'] : null,
+            $payload,
+        );
 
         \Modules\Channel\Jobs\ProcessTikTokWebhook::dispatch($payload)
             ->onQueue(config('queue.names.tiktok_webhooks'));

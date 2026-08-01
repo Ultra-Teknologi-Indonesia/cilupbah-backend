@@ -77,8 +77,6 @@ class OutboundFulfillmentRepository
             ]);
         }
 
-        // Prioritas antrian gudang: pesanan INSTAN naik ke atas, lalu deadline (ship_by_date)
-        // paling dekat/terlambat dulu. Sort Spatie di bawah (-created_at / pilihan user) jadi tiebreak.
         $rx = InstantOrderClassifier::REGEX;
         $query->orderByRaw('CASE WHEN (shipping_provider ~* ? OR shipping_type ~* ?) THEN 0 ELSE 1 END ASC', [$rx, $rx])
             ->orderByRaw('ship_by_date ASC NULLS LAST');

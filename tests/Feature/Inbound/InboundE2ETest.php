@@ -511,7 +511,7 @@ class InboundE2ETest extends TestCase
                     'qty'              => 999,
                 ],
             ],
-        ])->assertStatus(500);
+        ])->assertStatus(422);
     }
 
     public function test_ij_pending_putaway_endpoint(): void

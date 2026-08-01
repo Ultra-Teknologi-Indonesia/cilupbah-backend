@@ -3,7 +3,6 @@
 namespace Modules\Inbound\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Traits\AutoScopeMobileToAuth;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -11,11 +10,16 @@ use Modules\Inbound\Services\InboundService;
 use Modules\Inbound\Http\Requests\StoreInboundRequest;
 use Modules\Inbound\Http\Requests\ReceiveInboundRequest;
 use Modules\Inbound\Http\Requests\PutawayRequest;
-use Modules\Inbound\Http\Requests\AutoPutawayRequest;
 use Modules\Inbound\Http\Requests\AssignInboundRequest;
 use Modules\Inbound\Http\Requests\ScanPutawayRequest;
 use Modules\Inbound\Http\Requests\UnassignInboundRequest;
 use Modules\Inbound\Http\Requests\ResetInboundAssignmentRequest;
+use Modules\Inbound\Http\Requests\CorrectReceivedLineRequest;
+use Modules\Inbound\Http\Requests\CorrectReceivedLinesRequest;
+use Modules\Inbound\Http\Requests\SetReceivedQtyRequest;
+use Modules\Inbound\Http\Requests\SetDiscrepancyNoteRequest;
+use Modules\Inbound\Http\Requests\BulkCancelInboundRequest;
+use Modules\Inbound\Http\Requests\ExecuteAutoPutawayRequest;
 use App\Enums\UnassignReasonEnum;
 use OpenApi\Attributes as OA;
 
@@ -197,8 +201,6 @@ use OpenApi\Attributes as OA;
 )]
 class InboundController extends Controller
 {
-    use AutoScopeMobileToAuth;
-
     public function __construct(
         protected InboundService $inboundService
     ) {}
@@ -354,17 +356,9 @@ class InboundController extends Controller
     public function items(string $id, Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 20);
-        $items = $this->inboundService->getPaginatedItems($id, $perPage);
+        $payload = $this->inboundService->getItemsPayload($id, $perPage);
 
-        $meta = [
-            'current_page' => $items->currentPage(),
-            'last_page'    => $items->lastPage(),
-            'per_page'     => $items->perPage(),
-            'total'        => $items->total(),
-            'totals'       => $this->inboundService->getItemTotals($id),
-        ];
-
-        return $this->successResponse($items->items(), 'Daftar item Inbound berhasil diambil', 200, $meta);
+        return $this->successResponse($payload['items'], 'Daftar item Inbound berhasil diambil', 200, $payload['meta']);
     }
 
     #[OA\Get(
@@ -431,25 +425,16 @@ class InboundController extends Controller
     )]
     public function receive(string $id, ReceiveInboundRequest $request): JsonResponse
     {
-        try {
-            $data = $request->validated();
+        $data = $request->validated();
+        $data['received_by'] = $this->inboundService->resolveReceivedByActor($request, $data['received_by'] ?? null);
 
-            $data['received_by'] = $this->overrideForMobile($request, $data['received_by'] ?? null)
-                ?? $data['received_by']
-                ?? (string) (auth()->id() ?? 'system');
-
-            $inbound = $this->inboundService->receive($id, $data);
-            return $this->successResponse($inbound, 'Penerimaan Inbound berhasil diproses');
-        } catch (\Exception $e) {
-            throw $e;
-        }
+        $inbound = $this->inboundService->receive($id, $data);
+        return $this->successResponse($inbound, 'Penerimaan Inbound berhasil diproses');
     }
 
-    public function correctReceivedLine(string $id, string $itemId, Request $request): JsonResponse
+    public function correctReceivedLine(string $id, string $itemId, CorrectReceivedLineRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'qty' => 'nullable|integer|min:1',
-        ]);
+        $validated = $request->validated();
 
         try {
             $userId = (string) ($request->user()->id ?? 'system');
@@ -466,13 +451,9 @@ class InboundController extends Controller
         }
     }
 
-    public function correctReceivedLines(string $id, Request $request): JsonResponse
+    public function correctReceivedLines(string $id, CorrectReceivedLinesRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'items' => 'required|array|min:1',
-            'items.*.item_id' => 'required|string',
-            'items.*.qty' => 'nullable|integer|min:1',
-        ]);
+        $validated = $request->validated();
 
         try {
             $userId = (string) ($request->user()->id ?? 'system');
@@ -514,14 +495,9 @@ class InboundController extends Controller
             new OA\Response(response: 422, description: 'Validasi gagal'),
         ]
     )]
-    public function setReceivedQty(string $id, string $itemId, Request $request): JsonResponse
+    public function setReceivedQty(string $id, string $itemId, SetReceivedQtyRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'qty' => 'required|integer|min:0',
-
-            'reason_note' => 'nullable|string',
-            '_expected_updated_at' => 'nullable|string',
-        ]);
+        $validated = $request->validated();
 
         try {
             $userId = (string) ($request->user()->id ?? 'system');
@@ -566,11 +542,9 @@ class InboundController extends Controller
             new OA\Response(response: 422, description: 'Validasi gagal'),
         ]
     )]
-    public function setDiscrepancyNote(string $id, string $itemId, Request $request): JsonResponse
+    public function setDiscrepancyNote(string $id, string $itemId, SetDiscrepancyNoteRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'note' => 'nullable|string|max:1000',
-        ]);
+        $validated = $request->validated();
 
         try {
             $userId = (string) ($request->user()->id ?? 'system');
@@ -611,12 +585,9 @@ class InboundController extends Controller
             new OA\Response(response: 422, description: 'Validasi gagal'),
         ]
     )]
-    public function bulkCancel(Request $request): JsonResponse
+    public function bulkCancel(BulkCancelInboundRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'ids'   => 'required|array|min:1',
-            'ids.*' => 'required|string|distinct|exists:inbounds,id',
-        ]);
+        $validated = $request->validated();
 
         try {
             $userId = (string) ($request->user()->id ?? 'system');
@@ -700,12 +671,10 @@ class InboundController extends Controller
             new OA\Response(response: 500, description: 'Server Error')
         ]
     )]
-    public function autoPutaway(string $id, Request $request): JsonResponse
+    public function autoPutaway(string $id, ExecuteAutoPutawayRequest $request): JsonResponse
     {
-        $request->validate(['created_by' => 'required|string|max:100']);
-
         try {
-            $inbound = $this->inboundService->autoPutaway($id, $request->created_by);
+            $inbound = $this->inboundService->autoPutaway($id, $request->validated()['created_by']);
             return $this->successResponse($inbound, 'Auto-putaway berhasil dieksekusi');
         } catch (\Exception $e) {
             throw $e;
@@ -783,11 +752,7 @@ class InboundController extends Controller
                 $request->user()->id,
                 $request->notes
             );
-            return $this->successResponse(
-                $assignment->load('worker:id,name,email', 'assigner:id,name,email'),
-                'Inbound berhasil di-assign',
-                201
-            );
+            return $this->successResponse($assignment, 'Inbound berhasil di-assign', 201);
         } catch (\Exception $e) {
             throw $e;
         }
@@ -850,16 +815,14 @@ class InboundController extends Controller
 
     public function receiveAdditional(string $poId): JsonResponse
     {
-        $po = \Modules\Purchase\Models\PurchaseOrder::find($poId);
-        if (! $po) {
+        $inbound = $this->inboundService->createAdditionalDraftFromPurchaseOrderId(
+            $poId,
+            (string) request()->user()->id,
+        );
+
+        if (! $inbound) {
             return $this->errorResponse('PO tidak ditemukan', 404);
         }
-
-        $inbound = $this->inboundService->createDraftFromPO(
-            po: $po,
-            createdBy: (string) request()->user()->id,
-            isAdditional: true,
-        );
 
         return $this->successResponse($inbound, 'Penerimaan susulan berhasil dibuat.');
     }
@@ -1026,11 +989,12 @@ class InboundController extends Controller
                 $request->user()->id
             );
             return $this->successResponse($item, 'Putaway berhasil, stock diperbarui');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
         } catch (\Exception $e) {
-            $code = str_contains($e->getMessage(), 'tidak ditemukan') ? 404 : 500;
             return $this->errorResponse(
                 'Gagal memindai.',
-                $code,
+                500,
                 ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );

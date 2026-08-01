@@ -10,8 +10,10 @@ use App\Exceptions\MobileSessionActiveException;
 use App\Exceptions\PutawayActiveException;
 use App\Exceptions\UserFacingException;
 use App\Models\AssignmentHistory;
+use App\Traits\AutoScopeMobileToAuth;
 use App\Traits\EnforcesAssignmentChannel;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Request;
 use Modules\Inbound\Repositories\InboundRepository;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundAssignment;
@@ -35,6 +37,7 @@ use Modules\Notification\Events\TaskAssigned;
 use Modules\Notification\Services\NotificationDispatcher;
 use Modules\Purchase\Models\PurchaseOrder;
 use Modules\Purchase\Models\PurchaseOrderItem;
+use Modules\Purchase\Repositories\PurchaseOrderRepository;
 use Modules\Warehouse\Services\LocationBinService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -44,6 +47,7 @@ use Illuminate\Validation\ValidationException;
 class InboundService
 {
     use EnforcesAssignmentChannel;
+    use AutoScopeMobileToAuth;
 
     public const NOTIF_PENEMPATAN = 'view-penempatan';
 
@@ -55,6 +59,7 @@ class InboundService
         protected NotificationDispatcher $notifications,
         protected StockAdjustmentService $stockAdjustmentService,
         protected InventoryRepository $inventoryRepository,
+        protected PurchaseOrderRepository $purchaseOrderRepository,
     ) {}
 
     protected function unlockedOnceColumn(Model $doc): string
@@ -214,6 +219,40 @@ class InboundService
     public function getItemTotals(string $inboundId): array
     {
         return $this->inboundRepository->getItemTotals($inboundId);
+    }
+
+    public function getItemsPayload(string $inboundId, int $perPage = 10): array
+    {
+        $items = $this->getPaginatedItems($inboundId, $perPage);
+
+        return [
+            'items' => $items->items(),
+            'meta' => [
+                'current_page' => $items->currentPage(),
+                'last_page'    => $items->lastPage(),
+                'per_page'     => $items->perPage(),
+                'total'        => $items->total(),
+                'totals'       => $this->getItemTotals($inboundId),
+            ],
+        ];
+    }
+
+    public function resolveReceivedByActor(Request $request, ?string $webValue): string
+    {
+        return $this->overrideForMobile($request, $webValue)
+            ?? $webValue
+            ?? (string) (auth()->id() ?? 'system');
+    }
+
+    public function createAdditionalDraftFromPurchaseOrderId(string $poId, string $createdBy): ?Inbound
+    {
+        $po = $this->purchaseOrderRepository->findById($poId);
+
+        if (! $po) {
+            return null;
+        }
+
+        return $this->createDraftFromPO($po, $createdBy, true);
     }
 
     public function getReceiptsPaginated(string $inboundId, int $perPage = 50)
@@ -822,7 +861,7 @@ class InboundService
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
 
             if (! $inbound) {
-                throw new \Exception("Dokumen Inbound tidak ditemukan.");
+                throw new UserFacingException(title: 'Tidak ditemukan', message: "Dokumen Inbound tidak ditemukan.", status: 404);
             }
 
             if ($this->currentChannel() === \App\Enums\ClientChannelEnum::MOBILE) {
@@ -832,12 +871,12 @@ class InboundService
             }
 
             if (! $inbound->isReceivable()) {
-                throw new \Exception("Inbound sudah berstatus {$inbound->status}, tidak bisa menerima barang.");
+                throw new UserFacingException(title: 'Status tidak sesuai', message: "Inbound sudah berstatus {$inbound->status}, tidak bisa menerima barang.", status: 409);
             }
 
             $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
             if (! $defaultBin) {
-                throw new \Exception("Gudang ini belum memiliki Bin Inbound default.");
+                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Gudang ini belum memiliki Bin Inbound default.", status: 422);
             }
 
             $itemsDict = $inbound->items->keyBy('id');
@@ -855,7 +894,7 @@ class InboundService
             foreach ($data['items'] as $receiptData) {
                 $inboundItem = $itemsDict->get($receiptData['inbound_item_id']);
                 if (! $inboundItem) {
-                    throw new \Exception("Item ID {$receiptData['inbound_item_id']} tidak terkait dengan Inbound ini.");
+                    throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Item ID {$receiptData['inbound_item_id']} tidak terkait dengan Inbound ini.", status: 422);
                 }
 
                 $condition = $receiptData['condition'] ?? 'GOOD';
@@ -944,7 +983,7 @@ class InboundService
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
 
             if (! $inbound) {
-                throw new \Exception("Dokumen Inbound tidak ditemukan.");
+                throw new UserFacingException(title: 'Tidak ditemukan', message: "Dokumen Inbound tidak ditemukan.", status: 404);
             }
 
             $closeable = in_array($inbound->status, [
@@ -955,7 +994,7 @@ class InboundService
             ]);
 
             if (! $closeable) {
-                throw new \Exception("Inbound sudah berstatus {$inbound->status}.");
+                throw new UserFacingException(title: 'Status tidak sesuai', message: "Inbound sudah berstatus {$inbound->status}.", status: 409);
             }
 
             foreach ($inbound->items as $item) {
@@ -1010,16 +1049,16 @@ class InboundService
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
 
             if (! $inbound) {
-                throw new \Exception("Dokumen Inbound tidak ditemukan.");
+                throw new UserFacingException(title: 'Tidak ditemukan', message: "Dokumen Inbound tidak ditemukan.", status: 404);
             }
 
             if (! $inbound->isPutawayable()) {
-                throw new \Exception("Inbound berstatus {$inbound->status}, tidak bisa di-putaway. Harus berstatus RECEIVED terlebih dahulu.");
+                throw new UserFacingException(title: 'Status tidak sesuai', message: "Inbound berstatus {$inbound->status}, tidak bisa di-putaway. Harus berstatus RECEIVED terlebih dahulu.", status: 409);
             }
 
             $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
             if (! $defaultBin) {
-                throw new \Exception("Gudang ini belum memiliki Bin Inbound default.");
+                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Gudang ini belum memiliki Bin Inbound default.", status: 422);
             }
 
             $itemsDict = $inbound->items->keyBy('id');
@@ -1027,12 +1066,12 @@ class InboundService
             foreach ($data['putaway_items'] as $putawayItem) {
                 $inboundItem = $itemsDict->get($putawayItem['inbound_item_id']);
                 if (! $inboundItem) {
-                    throw new \Exception("Item ID {$putawayItem['inbound_item_id']} tidak terkait dengan Inbound ini.");
+                    throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Item ID {$putawayItem['inbound_item_id']} tidak terkait dengan Inbound ini.", status: 422);
                 }
 
                 $pendingQty = $inboundItem->pendingPutawayQty();
                 if ($putawayItem['qty'] > $pendingQty) {
-                    throw new \Exception("Qty putaway ({$putawayItem['qty']}) melebihi pending putaway ({$pendingQty}) untuk item {$inboundItem->item_id}.");
+                    throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Qty putaway ({$putawayItem['qty']}) melebihi pending putaway ({$pendingQty}) untuk item {$inboundItem->item_id}.", status: 422);
                 }
 
                 $this->inventoryService->putaway([
@@ -1062,28 +1101,28 @@ class InboundService
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
 
             if (! $inbound) {
-                throw new \Exception("Dokumen Inbound tidak ditemukan.");
+                throw new UserFacingException(title: 'Tidak ditemukan', message: "Dokumen Inbound tidak ditemukan.", status: 404);
             }
 
             if (! $inbound->isPutawayable()) {
-                throw new \Exception("Inbound berstatus {$inbound->status}, tidak bisa di-putaway.");
+                throw new UserFacingException(title: 'Status tidak sesuai', message: "Inbound berstatus {$inbound->status}, tidak bisa di-putaway.", status: 409);
             }
 
             $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
             if (! $defaultBin) {
-                throw new \Exception("Gudang ini belum memiliki Bin Inbound default.");
+                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Gudang ini belum memiliki Bin Inbound default.", status: 422);
             }
 
             $pendingItems = $this->inboundRepository->getItemsPendingPutaway($inboundId);
             if ($pendingItems->isEmpty()) {
-                throw new \Exception("Tidak ada item yang perlu di-putaway.");
+                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Tidak ada item yang perlu di-putaway.", status: 422);
             }
 
             $availableBins = $this->binService->getByLocation($inbound->location_id)
                 ->where('is_inbound', false);
 
             if ($availableBins->isEmpty()) {
-                throw new \Exception("Tidak ada bin tujuan yang tersedia di gudang ini.");
+                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Tidak ada bin tujuan yang tersedia di gudang ini.", status: 422);
             }
 
             $firstBin = $availableBins->first();
@@ -1131,11 +1170,11 @@ class InboundService
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
 
             if (! $inbound) {
-                throw new \Exception("Dokumen Inbound tidak ditemukan.");
+                throw new UserFacingException(title: 'Tidak ditemukan', message: "Dokumen Inbound tidak ditemukan.", status: 404);
             }
 
             if ($inbound->status === Inbound::STATUS_CANCELLED) {
-                throw new \Exception("Inbound berstatus {$inbound->status}, tidak bisa di-assign.");
+                throw new UserFacingException(title: 'Status tidak sesuai', message: "Inbound berstatus {$inbound->status}, tidak bisa di-assign.", status: 409);
             }
 
             $previousAssignee = $inbound->assigned_to;
@@ -1168,7 +1207,7 @@ class InboundService
                 ['inbound_id' => $inboundId, 'assignment_id' => $assignment->id],
             );
 
-            return $assignment;
+            return $assignment->load('worker:id,name,email', 'assigner:id,name,email');
         });
     }
 
@@ -1182,7 +1221,7 @@ class InboundService
         return DB::transaction(function () use ($inboundId, $actorId, $reason, $reasonNote, $newAssigneeId) {
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
             if (! $inbound) {
-                throw new \Exception('Dokumen Inbound tidak ditemukan.');
+                throw new UserFacingException(title: 'Tidak ditemukan', message: 'Dokumen Inbound tidak ditemukan.', status: 404);
             }
 
             $previousAssignee = $inbound->assigned_to;
@@ -1236,7 +1275,7 @@ class InboundService
         return DB::transaction(function () use ($inboundId, $actorId, $reasonNote, $newAssigneeId) {
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
             if (! $inbound) {
-                throw new \Exception('Dokumen Inbound tidak ditemukan.');
+                throw new UserFacingException(title: 'Tidak ditemukan', message: 'Dokumen Inbound tidak ditemukan.', status: 404);
             }
 
             if ($inbound->assigned_to !== null
@@ -1259,7 +1298,7 @@ class InboundService
 
             $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
             if (! $defaultBin) {
-                throw new \Exception('Gudang ini belum memiliki Bin Inbound default.');
+                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: 'Gudang ini belum memiliki Bin Inbound default.', status: 422);
             }
 
             $previousAssignee = $inbound->assigned_to;
@@ -1311,7 +1350,7 @@ class InboundService
         return DB::transaction(function () use ($inboundId, $userId) {
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
             if (! $inbound) {
-                throw new \Exception('Dokumen Inbound tidak ditemukan.');
+                throw new UserFacingException(title: 'Tidak ditemukan', message: 'Dokumen Inbound tidak ditemukan.', status: 404);
             }
 
             $this->assertMobileCanMutate($inbound, $userId);
@@ -1329,7 +1368,7 @@ class InboundService
         return DB::transaction(function () use ($inboundId, $targetUserId, $actorId, $reasonNote) {
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
             if (! $inbound) {
-                throw new \Exception('Dokumen Inbound tidak ditemukan.');
+                throw new UserFacingException(title: 'Tidak ditemukan', message: 'Dokumen Inbound tidak ditemukan.', status: 404);
             }
 
             $participant = InboundParticipant::where('inbound_id', $inboundId)
@@ -1405,11 +1444,11 @@ class InboundService
         $assignment = InboundAssignment::findOrFail($assignmentId);
 
         if ($assignment->assigned_to !== $userId) {
-            throw new \Exception("Assignment ini bukan milik Anda.");
+            throw new UserFacingException(title: 'Akses ditolak', message: "Assignment ini bukan milik Anda.", status: 403);
         }
 
         if ($assignment->status !== InboundAssignment::STATUS_PENDING) {
-            throw new \Exception("Assignment sudah berstatus {$assignment->status}.");
+            throw new UserFacingException(title: 'Status tidak sesuai', message: "Assignment sudah berstatus {$assignment->status}.", status: 409);
         }
 
         $assignment->update([
@@ -1451,7 +1490,7 @@ class InboundService
         }
 
         if (! $item) {
-            throw new \Exception("QR Code tidak ditemukan.");
+            throw new UserFacingException(title: 'Tidak ditemukan', message: "QR Code tidak ditemukan.", status: 404);
         }
 
         return $item->load('inbound.location', 'variant:id,sku,product_id');
@@ -1484,29 +1523,39 @@ class InboundService
             $inboundItem = $this->inboundRepository->findItemByUuidForUpdate($inboundItemId);
 
             if (! $inboundItem) {
-                throw new \Exception("QR Code barang tidak ditemukan.");
+                throw new UserFacingException(
+                    title: 'Aksi tidak dapat diproses',
+                    message: 'Gagal memindai.',
+                    status: 404,
+                    errors: ['detail' => 'QR Code barang tidak ditemukan.'],
+                );
             }
 
             $destinationBin = \Modules\Warehouse\Models\LocationBin::find($binId);
 
             if (! $destinationBin) {
-                throw new \Exception("QR Code rak tidak ditemukan.");
+                throw new UserFacingException(
+                    title: 'Aksi tidak dapat diproses',
+                    message: 'Gagal memindai.',
+                    status: 404,
+                    errors: ['detail' => 'QR Code rak tidak ditemukan.'],
+                );
             }
 
             $inbound = $inboundItem->inbound;
 
             if (! $inbound->isPutawayable() && $inbound->status !== Inbound::STATUS_RECEIVED) {
-                throw new \Exception("Inbound berstatus {$inbound->status}, tidak bisa di-putaway.");
+                throw new UserFacingException(title: 'Status tidak sesuai', message: "Inbound berstatus {$inbound->status}, tidak bisa di-putaway.", status: 409);
             }
 
             $pendingQty = $inboundItem->pendingPutawayQty();
             if ($qty > $pendingQty) {
-                throw new \Exception("Qty putaway ({$qty}) melebihi pending putaway ({$pendingQty}).");
+                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Qty putaway ({$qty}) melebihi pending putaway ({$pendingQty}).", status: 422);
             }
 
             $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
             if (! $defaultBin) {
-                throw new \Exception("Gudang ini belum memiliki Bin Inbound default.");
+                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Gudang ini belum memiliki Bin Inbound default.", status: 422);
             }
 
             $this->inventoryService->putaway([
@@ -1561,25 +1610,25 @@ class InboundService
     public function correctReceivedLines(string $inboundId, array $items, string $userId): Inbound
     {
         if (empty($items)) {
-            throw new \Exception('Tidak ada baris yang dipilih untuk dikoreksi.');
+            throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: 'Tidak ada baris yang dipilih untuk dikoreksi.', status: 422);
         }
 
         return DB::transaction(function () use ($inboundId, $items, $userId) {
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
 
             if (! $inbound) {
-                throw new \Exception("Dokumen Inbound tidak ditemukan.");
+                throw new UserFacingException(title: 'Tidak ditemukan', message: "Dokumen Inbound tidak ditemukan.", status: 404);
             }
 
             if ($inbound->status === Inbound::STATUS_CANCELLED) {
-                throw new \Exception("Inbound sudah dibatalkan.");
+                throw new UserFacingException(title: 'Status tidak sesuai', message: "Inbound sudah dibatalkan.", status: 409);
             }
 
             $this->assertWebCanMutate($inbound);
 
             $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
             if (! $defaultBin) {
-                throw new \Exception("Gudang ini belum memiliki Bin Inbound default.");
+                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Gudang ini belum memiliki Bin Inbound default.", status: 422);
             }
 
             foreach ($items as $entry) {
@@ -1587,24 +1636,24 @@ class InboundService
                 $qty = $entry['qty'] ?? null;
 
                 if (! $inboundItemId) {
-                    throw new \Exception('item_id wajib diisi.');
+                    throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: 'item_id wajib diisi.', status: 422);
                 }
 
                 $item = $this->inboundRepository->findItemByUuidForUpdate($inboundItemId);
 
                 if (! $item || $item->inbound_id !== $inbound->id) {
-                    throw new \Exception("Item inbound tidak ditemukan.");
+                    throw new UserFacingException(title: 'Tidak ditemukan', message: "Item inbound tidak ditemukan.", status: 404);
                 }
 
                 $qtyRev = $qty ?? (int) $item->received_qty;
 
                 if ($qtyRev <= 0 || $qtyRev > (int) $item->received_qty) {
-                    throw new \Exception("Qty koreksi tidak valid (maksimal {$item->received_qty}).");
+                    throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Qty koreksi tidak valid (maksimal {$item->received_qty}).", status: 422);
                 }
 
                 $available = $item->pendingPutawayQty();
                 if ($qtyRev > $available) {
-                    throw new \Exception("Sebagian barang sudah di-putaway atau sedang dalam penempatan aktif; hanya {$available} unit yang masih di bin inbound dan bisa dikoreksi.");
+                    throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Sebagian barang sudah di-putaway atau sedang dalam penempatan aktif; hanya {$available} unit yang masih di bin inbound dan bisa dikoreksi.", status: 422);
                 }
 
                 $this->inventoryService->adjust([
@@ -1631,17 +1680,17 @@ class InboundService
         return DB::transaction(function () use ($inboundId, $inboundItemId, $note) {
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
             if (! $inbound) {
-                throw new \Exception('Dokumen Inbound tidak ditemukan.');
+                throw new UserFacingException(title: 'Tidak ditemukan', message: 'Dokumen Inbound tidak ditemukan.', status: 404);
             }
             if ($inbound->status === Inbound::STATUS_CANCELLED) {
-                throw new \Exception('Inbound sudah dibatalkan.');
+                throw new UserFacingException(title: 'Status tidak sesuai', message: 'Inbound sudah dibatalkan.', status: 409);
             }
 
             $this->assertWebCanMutate($inbound);
 
             $item = $this->inboundRepository->findItemByUuidForUpdate($inboundItemId);
             if (! $item || $item->inbound_id !== $inbound->id) {
-                throw new \Exception('Item inbound tidak ditemukan.');
+                throw new UserFacingException(title: 'Tidak ditemukan', message: 'Item inbound tidak ditemukan.', status: 404);
             }
 
             $this->inboundRepository->updateItemDiscrepancyNote($item->id, $note === '' ? null : $note);
@@ -1672,7 +1721,7 @@ class InboundService
     public function setReceivedQty(string $inboundId, string $inboundItemId, int $targetQty, string $userId, ?string $expectedUpdatedAt = null, ?string $reasonNote = null): Inbound
     {
         if ($targetQty < 0) {
-            throw new \Exception('Jumlah tidak boleh negatif.');
+            throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: 'Jumlah tidak boleh negatif.', status: 422);
         }
 
         $reasonNote = trim((string) $reasonNote);
@@ -1680,17 +1729,17 @@ class InboundService
         return DB::transaction(function () use ($inboundId, $inboundItemId, $targetQty, $userId, $expectedUpdatedAt, $reasonNote) {
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
             if (! $inbound) {
-                throw new \Exception('Dokumen Inbound tidak ditemukan.');
+                throw new UserFacingException(title: 'Tidak ditemukan', message: 'Dokumen Inbound tidak ditemukan.', status: 404);
             }
             if ($inbound->status === Inbound::STATUS_CANCELLED) {
-                throw new \Exception('Inbound sudah dibatalkan.');
+                throw new UserFacingException(title: 'Status tidak sesuai', message: 'Inbound sudah dibatalkan.', status: 409);
             }
 
             $this->assertVersionMatches($inbound, $expectedUpdatedAt);
 
             $item = $this->inboundRepository->findItemByUuidForUpdate($inboundItemId);
             if (! $item || $item->inbound_id !== $inbound->id) {
-                throw new \Exception('Item inbound tidak ditemukan.');
+                throw new UserFacingException(title: 'Tidak ditemukan', message: 'Item inbound tidak ditemukan.', status: 404);
             }
 
             $current = (int) $item->received_qty;
@@ -1700,12 +1749,12 @@ class InboundService
             }
 
             if ($targetQty < (int) $item->putaway_qty) {
-                throw new \Exception("Jumlah diterima tidak bisa di bawah yang sudah ditempatkan ke rak ({$item->putaway_qty}). Batalkan/kurangi penempatan dulu.");
+                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Jumlah diterima tidak bisa di bawah yang sudah ditempatkan ke rak ({$item->putaway_qty}). Batalkan/kurangi penempatan dulu.", status: 422);
             }
 
             $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
             if (! $defaultBin) {
-                throw new \Exception('Gudang ini belum memiliki Bin Inbound default.');
+                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: 'Gudang ini belum memiliki Bin Inbound default.', status: 422);
             }
 
             $onHandAtInboundBin = (int) ($this->inventoryRepository->findExact(
@@ -1774,15 +1823,15 @@ class InboundService
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
 
             if (! $inbound) {
-                throw new \Exception("Dokumen Inbound tidak ditemukan.");
+                throw new UserFacingException(title: 'Tidak ditemukan', message: "Dokumen Inbound tidak ditemukan.", status: 404);
             }
 
             if ($inbound->status === Inbound::STATUS_CANCELLED) {
-                throw new \Exception("Inbound sudah dibatalkan.");
+                throw new UserFacingException(title: 'Status tidak sesuai', message: "Inbound sudah dibatalkan.", status: 409);
             }
 
             if ($inbound->status === Inbound::STATUS_DRAFT) {
-                throw new \Exception("Inbound DRAFT tidak perlu dibatalkan.");
+                throw new UserFacingException(title: 'Status tidak sesuai', message: "Inbound DRAFT tidak perlu dibatalkan.", status: 409);
             }
 
             if ($inbound->hasActiveParticipant()) {
@@ -1887,7 +1936,7 @@ class InboundService
             . implode("\n", $lines)
             . "\n\nSebagian barang sudah dipicking/dipindah. Batalkan pesanan/transfer terkait dulu.";
 
-        throw new \Exception($message);
+        throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: $message, status: 422);
     }
 
     private function rollbackPurchaseOrderReceipt(Inbound $inbound): void

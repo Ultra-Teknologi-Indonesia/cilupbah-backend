@@ -3,17 +3,25 @@
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Services\PdfRenderer;
 use App\Traits\ApiResponse;
 use App\Traits\AutoScopeMobileToAuth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Inventory\Services\PutawayPdfPresenter;
 use Modules\Inventory\Services\PutawayService;
 use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Http\Requests\AssignPutawayStaffRequest;
+use Modules\Inventory\Http\Requests\BulkDestroyPutawayRequest;
+use Modules\Inventory\Http\Requests\BulkPdfPutawayRequest;
+use Modules\Inventory\Http\Requests\DeletePlacementRequest;
+use Modules\Inventory\Http\Requests\DeletePlacementsRequest;
+use Modules\Inventory\Http\Requests\ListPutawayBinsRequest;
+use Modules\Inventory\Http\Requests\LookupPutawayBinRequest;
 use Modules\Inventory\Http\Requests\ProcessPutawayItemRequest;
-use Barryvdh\DomPDF\Facade\Pdf;
-use SimpleSoftwareIO\QrCode\Facades\QrCode;
-use Throwable;
+use Modules\Inventory\Http\Requests\ResetPutawayAssignmentRequest;
+use Modules\Inventory\Http\Requests\StorePutawayRequest;
+use Modules\Inventory\Http\Requests\UnassignPutawayRequest;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Putaway', description: 'API Endpoints for Standalone Putaway')]
@@ -23,7 +31,9 @@ class PutawayController extends Controller
     use AutoScopeMobileToAuth;
 
     public function __construct(
-        protected PutawayService $putawayService
+        protected PutawayService $putawayService,
+        protected PutawayPdfPresenter $pdfPresenter,
+        protected PdfRenderer $pdfRenderer,
     ) {}
 
     #[OA\Get(
@@ -64,19 +74,8 @@ class PutawayController extends Controller
             new OA\Response(response: 422, description: 'Validation error'),
         ]
     )]
-    public function store(Request $request): JsonResponse
+    public function store(StorePutawayRequest $request): JsonResponse
     {
-
-        if ($request->filled('inbound_id') && ! $request->filled('inbound_ids')) {
-            $request->merge(['inbound_ids' => [$request->input('inbound_id')]]);
-        }
-
-        $request->validate([
-            'inbound_ids' => 'required|array|min:1',
-            'inbound_ids.*' => 'required|string|distinct|exists:inbounds,id',
-            'assigned_to' => 'nullable|string|exists:users,id',
-        ]);
-
         $userId = $request->user()->id ?? 'system';
 
         try {
@@ -159,11 +158,7 @@ class PutawayController extends Controller
     )]
     public function notStarted(Request $request): JsonResponse
     {
-        $this->forceMobileScopeToAuth($request, 'assigned_to');
-        $limit = $request->query('limit', 10);
-        $putaways = $this->putawayService->getByStatus(Putaway::STATUS_NOT_STARTED, $limit);
-
-        return $this->successPaginatedResponse($putaways, 'Daftar putaway NOT_STARTED berhasil diambil.');
+        return $this->listByStatus($request, Putaway::STATUS_NOT_STARTED, 'Daftar putaway NOT_STARTED berhasil diambil.');
     }
 
     #[OA\Get(
@@ -180,11 +175,7 @@ class PutawayController extends Controller
     )]
     public function inProgress(Request $request): JsonResponse
     {
-        $this->forceMobileScopeToAuth($request, 'assigned_to');
-        $limit = $request->query('limit', 10);
-        $putaways = $this->putawayService->getByStatus(Putaway::STATUS_IN_PROGRESS, $limit);
-
-        return $this->successPaginatedResponse($putaways, 'Daftar putaway IN_PROGRESS berhasil diambil.');
+        return $this->listByStatus($request, Putaway::STATUS_IN_PROGRESS, 'Daftar putaway IN_PROGRESS berhasil diambil.');
     }
 
     #[OA\Get(
@@ -201,11 +192,16 @@ class PutawayController extends Controller
     )]
     public function completed(Request $request): JsonResponse
     {
+        return $this->listByStatus($request, Putaway::STATUS_COMPLETED, 'Daftar putaway COMPLETED berhasil diambil.');
+    }
+
+    private function listByStatus(Request $request, string $status, string $message): JsonResponse
+    {
         $this->forceMobileScopeToAuth($request, 'assigned_to');
         $limit = $request->query('limit', 10);
-        $putaways = $this->putawayService->getByStatus(Putaway::STATUS_COMPLETED, $limit);
+        $putaways = $this->putawayService->getByStatus($status, $limit);
 
-        return $this->successPaginatedResponse($putaways, 'Daftar putaway COMPLETED berhasil diambil.');
+        return $this->successPaginatedResponse($putaways, $message);
     }
 
     #[OA\Get(
@@ -407,11 +403,9 @@ class PutawayController extends Controller
             new OA\Response(response: 422, description: 'Validation Error'),
         ]
     )]
-    public function deletePlacement(Request $request, string $id, string $itemId, string $placementId): JsonResponse
+    public function deletePlacement(DeletePlacementRequest $request, string $id, string $itemId, string $placementId): JsonResponse
     {
-        $validated = $request->validate([
-            'qty' => 'nullable|integer|min:1',
-        ]);
+        $validated = $request->validated();
 
         try {
             $userId = (string) ($request->user()->id ?? 'system');
@@ -462,18 +456,11 @@ class PutawayController extends Controller
             new OA\Response(response: 422, description: 'Validation Error'),
         ]
     )]
-    public function deletePlacements(Request $request, string $id): JsonResponse
+    public function deletePlacements(DeletePlacementsRequest $request, string $id): JsonResponse
     {
-        $validated = $request->validate([
-            'items' => 'required|array|min:1',
-            'items.*.item_id' => 'required|string',
-            'items.*.placement_id' => 'required|string',
-            'items.*.qty' => 'nullable|integer|min:1',
-        ]);
-
         try {
             $userId = (string) ($request->user()->id ?? 'system');
-            $putaway = $this->putawayService->deletePlacements($id, $validated['items'], $userId);
+            $putaway = $this->putawayService->deletePlacements($id, $request->validated()['items'], $userId);
 
             return $this->successResponse($putaway, 'Penempatan berhasil dikoreksi.');
         } catch (\App\Exceptions\UserFacingException $e) {
@@ -532,12 +519,8 @@ class PutawayController extends Controller
             new OA\Response(response: 200, description: 'Daftar rak berhasil diambil.'),
         ]
     )]
-    public function listBins(Request $request): JsonResponse
+    public function listBins(ListPutawayBinsRequest $request): JsonResponse
     {
-        $request->validate([
-            'location_id' => 'required|string',
-        ]);
-
         $locationId = $request->query('location_id');
         $search = $request->query('search', '');
 
@@ -560,13 +543,8 @@ class PutawayController extends Controller
             new OA\Response(response: 404, description: 'Bin tidak ditemukan.'),
         ]
     )]
-    public function lookupBin(Request $request): JsonResponse
+    public function lookupBin(LookupPutawayBinRequest $request): JsonResponse
     {
-        $request->validate([
-            'code' => 'required|string',
-            'location_id' => 'required|string',
-        ]);
-
         $code = $request->query('code');
         $locationId = $request->query('location_id');
 
@@ -604,19 +582,15 @@ class PutawayController extends Controller
             $putawayNo = $putaway->putaway_no ?? 'PUT';
             $filename = "PUTAWAY-{$putawayNo}.pdf";
 
-            $prepared = $this->preparePutawayForPdf($putaway);
+            $prepared = $this->pdfPresenter->present($putaway);
 
-            $printedBy = $request->user()->name ?? $request->user()->email ?? '-';
-
-            $pdf = Pdf::loadView('inventory::pdf.putaway', [
+            return $this->pdfRenderer->stream('inventory::pdf.putaway', [
                 'putaway' => $prepared['putaway'],
                 'qrDataUri' => $prepared['qrDataUri'],
-                'printedBy' => $printedBy,
+                'printedBy' => \App\Support\ActorName::fromUser($request->user(), '-'),
                 'sourceLabel' => $prepared['sourceLabel'],
-            ])->setPaper('a4', 'portrait');
-
-            return $pdf->stream($filename);
-        } catch (Throwable $e) {
+            ], $filename);
+        } catch (\Throwable $e) {
             report($e);
             return $this->errorResponse(
                 'Gagal membuat PDF putaway.',
@@ -643,35 +617,18 @@ class PutawayController extends Controller
             new OA\Response(response: 404, description: 'Sebagian putaway tidak ditemukan'),
         ]
     )]
-    public function bulkPdf(Request $request)
+    public function bulkPdf(BulkPdfPutawayRequest $request)
     {
-        $validated = $request->validate([
-            'ids' => 'required|array|min:1|max:50',
-            'ids.*' => 'required|string',
-        ]);
+        $ids = array_values(array_unique($request->validated()['ids']));
+
+        $putaways = $this->putawayService->getManyForPdfOrFail($ids);
 
         try {
-            $ids = array_values(array_unique($validated['ids']));
-
-            $putaways = $this->putawayService->getManyForPdf($ids);
-
-            if ($putaways->count() !== count($ids)) {
-                $missing = array_values(array_diff($ids, $putaways->pluck('id')->all()));
-                return $this->errorResponse('Sebagian penempatan tidak ditemukan: ' . implode(', ', $missing), 404);
-            }
-
-            $docs = $putaways->map(fn ($p) => $this->preparePutawayForPdf($p))->all();
-
-            $printedBy = $request->user()->name ?? $request->user()->email ?? '-';
-            $filename = 'Putaway-Bulk-' . now()->format('Ymd-His') . '.pdf';
-
-            $pdf = Pdf::loadView('inventory::pdf.putaway-bulk', [
-                'docs' => $docs,
-                'printedBy' => $printedBy,
-            ])->setPaper('a4', 'portrait');
-
-            return $pdf->stream($filename);
-        } catch (Throwable $e) {
+            return $this->pdfRenderer->stream('inventory::pdf.putaway-bulk', [
+                'docs' => $this->pdfPresenter->presentMany($putaways),
+                'printedBy' => \App\Support\ActorName::fromUser($request->user(), '-'),
+            ], 'Putaway-Bulk-' . now()->format('Ymd-His') . '.pdf');
+        } catch (\Throwable $e) {
             report($e);
             return $this->errorResponse(
                 'Gagal membuat PDF putaway bulk.',
@@ -701,14 +658,7 @@ class PutawayController extends Controller
             $userId = (string) ($request->user()->id ?? 'system');
             $result = $this->putawayService->deletePutaway($id, $userId);
 
-            $message = match ($result['action']) {
-                'unassigned' => 'Penempatan dihapus, penerimaan dikembalikan.',
-                'reset_not_started' => 'Penempatan direset ke Belum Mulai.',
-                'reset_in_progress' => 'Penempatan dikembalikan ke Sedang Diproses.',
-                default => 'Penempatan diperbarui.',
-            };
-
-            return $this->successResponse($result, $message);
+            return $this->successResponse($result, $this->putawayService->messageForDeleteAction($result['action'] ?? null));
         } catch (\App\Exceptions\UserFacingException $e) {
             throw $e;
         } catch (\Exception $e) {
@@ -737,16 +687,11 @@ class PutawayController extends Controller
             new OA\Response(response: 422, description: 'Validation Error / gagal.'),
         ]
     )]
-    public function bulkDestroy(Request $request): JsonResponse
+    public function bulkDestroy(BulkDestroyPutawayRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'ids' => 'required|array|min:1|max:100',
-            'ids.*' => 'required|string|distinct|exists:putaways,id',
-        ]);
-
         try {
             $userId = (string) ($request->user()->id ?? 'system');
-            $results = $this->putawayService->bulkDeletePutaway($validated['ids'], $userId);
+            $results = $this->putawayService->bulkDeletePutaway($request->validated()['ids'], $userId);
 
             return $this->successResponse($results, 'Penempatan terpilih berhasil diproses.');
         } catch (\App\Exceptions\UserFacingException $e) {
@@ -761,64 +706,9 @@ class PutawayController extends Controller
         }
     }
 
-    protected function preparePutawayForPdf($putaway): array
+    public function unassign(string $id, UnassignPutawayRequest $request): JsonResponse
     {
-        $putaway->load(['inbound', 'sources:id,reference_number,transaction_number', 'location']);
-
-        $this->putawayService->attachRecommendedBins($putaway);
-
-        return [
-            'putaway' => $putaway,
-            'qrDataUri' => $this->generateQrDataUri((string) ($putaway->putaway_no ?? 'PUT')),
-            'sourceLabel' => $this->resolveSourceLabel($putaway),
-        ];
-    }
-
-    protected function resolveSourceLabel($putaway): string
-    {
-        if ($putaway->source_type === 'INBOUND') {
-
-            if ($putaway->inbound) {
-                return $putaway->inbound->reference_number
-                    ?? $putaway->inbound->transaction_number
-                    ?? '-';
-            }
-
-            $sources = $putaway->relationLoaded('sources') ? $putaway->sources : collect();
-            if ($sources->isNotEmpty()) {
-                return $sources
-                    ->map(fn ($i) => $i->reference_number ?? $i->transaction_number)
-                    ->filter()
-                    ->implode(', ') ?: '-';
-            }
-        }
-
-        return '-';
-    }
-
-    protected function generateQrDataUri(string $content): ?string
-    {
-        try {
-            $svg = QrCode::format('svg')
-                ->size(160)
-                ->margin(0)
-                ->errorCorrection('M')
-                ->generate($content);
-
-            return 'data:image/svg+xml;base64,' . base64_encode((string) $svg);
-        } catch (Throwable $e) {
-            report($e);
-            return null;
-        }
-    }
-
-    public function unassign(string $id, Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'reason_code' => ['required', 'string', 'in:SALAH_TAP,SHIFT_HABIS,SAKIT,KENDALA_TEKNIS,LAINNYA'],
-            'reason_note' => ['nullable', 'string', 'max:500'],
-            'new_assignee_id' => ['nullable', 'string', 'exists:users,id'],
-        ]);
+        $validated = $request->validated();
 
         $putaway = $this->putawayService->unassign(
             $id,
@@ -836,12 +726,9 @@ class PutawayController extends Controller
         );
     }
 
-    public function resetAssignment(string $id, Request $request): JsonResponse
+    public function resetAssignment(string $id, ResetPutawayAssignmentRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'reason_note' => ['required', 'string', 'min:10', 'max:500'],
-            'new_assignee_id' => ['nullable', 'string', 'exists:users,id'],
-        ]);
+        $validated = $request->validated();
 
         $putaway = $this->putawayService->resetAssignmentDestructive(
             $id,

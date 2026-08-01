@@ -6,8 +6,13 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Inventory\Services\InventoryService;
+use Modules\Inventory\Services\MonitorStockService;
 use Modules\Inventory\Repositories\InventoryRepository;
+use Modules\Inventory\Http\Requests\AllStocksByIdsRequest;
+use Modules\Inventory\Http\Requests\MovementsRequest;
 use Modules\Inventory\Http\Requests\SplitItemRequest;
+use Modules\Inventory\Http\Requests\StockedItemsRequest;
+use Modules\Inventory\Http\Requests\ToAdjustRequest;
 use Modules\Inventory\Http\Resources\StockItemResource;
 use OpenApi\Attributes as OA;
 
@@ -34,6 +39,7 @@ class InventoryController extends Controller
     public function __construct(
         protected InventoryService $inventoryService,
         protected InventoryRepository $inventoryRepository,
+        protected MonitorStockService $monitorStockService,
     ) {}
 
     #[OA\Get(
@@ -190,14 +196,8 @@ class InventoryController extends Controller
             new OA\Response(response: 401, description: 'Unauthenticated')
         ]
     )]
-    public function movements(Request $request): JsonResponse
+    public function movements(MovementsRequest $request): JsonResponse
     {
-        $request->validate([
-            'per_page' => 'nullable|integer|min:1|max:500',
-            'limit' => 'nullable|integer|min:1|max:500',
-            'page' => 'nullable|integer|min:1',
-        ]);
-
         $limit = (int) $request->query('limit', 10);
         $movements = $this->inventoryService->getHistoryPaginated($limit);
 
@@ -355,11 +355,9 @@ class InventoryController extends Controller
             new OA\Response(response: 200, description: 'Data stok untuk penyesuaian berhasil diambil.'),
         ]
     )]
-    public function toAdjust(Request $request): JsonResponse
+    public function toAdjust(ToAdjustRequest $request): JsonResponse
     {
-        $request->validate(['item_ids' => 'required|array', 'item_ids.*' => 'string']);
-
-        $stocks = $this->inventoryRepository->getStockByItemIds($request->input('item_ids'));
+        $stocks = $this->inventoryRepository->getStockByItemIds($request->validated()['item_ids']);
 
         return $this->successResponse($stocks, 'Data stok untuk penyesuaian berhasil diambil.');
     }
@@ -460,9 +458,11 @@ class InventoryController extends Controller
     public function needRestock(Request $request): JsonResponse
     {
 
-        $service = app(\Modules\Inventory\Services\MonitorStockService::class);
         $perPage = (int) ($request->query('per_page') ?? $request->query('limit') ?? 10);
-        $data = $service->lowStock($service->filtersFrom($request->query()), $perPage);
+        $data = $this->monitorStockService->lowStock(
+            $this->monitorStockService->filtersFrom($request->query()),
+            $perPage,
+        );
 
         return $this->successPaginatedResponse(
             \Modules\Inventory\Http\Resources\MonitorStockResource::collection($data),
@@ -560,11 +560,9 @@ class InventoryController extends Controller
         )),
         responses: [new OA\Response(response: 200, description: 'Stok produk berhasil diambil.')]
     )]
-    public function allStocksByIds(Request $request): JsonResponse
+    public function allStocksByIds(AllStocksByIdsRequest $request): JsonResponse
     {
-        $request->validate(['ids' => 'required|array|min:1', 'ids.*' => 'string']);
-
-        $stocks = $this->inventoryRepository->getAggregatedStocksByIds($request->input('ids'));
+        $stocks = $this->inventoryRepository->getAggregatedStocksByIds($request->validated()['ids']);
 
         return $this->successResponse($stocks, 'Stok produk berhasil diambil.');
     }
@@ -593,9 +591,7 @@ class InventoryController extends Controller
 
         $summary = $this->inventoryService->buildSkuStockSummary($variant, $locationId, $strategy);
 
-        if ($locationId && $request->boolean('require_stock') && empty($summary['available_bins'])) {
-            return $this->errorResponse('SKU tidak punya stok di gudang ini.', 404);
-        }
+        $this->inventoryService->assertSkuHasStock($summary, $locationId, $request->boolean('require_stock'));
 
         return $this->successResponse($summary, 'Produk ditemukan.');
     }
@@ -643,22 +639,14 @@ class InventoryController extends Controller
         return $this->successResponse(['deleted' => $deleted], 'Varian berhasil dihapus.');
     }
 
-    public function stockedItems(Request $request): JsonResponse
+    public function stockedItems(StockedItemsRequest $request): JsonResponse
     {
-        $locationId = $request->query('location_id');
-        if (! $locationId) {
-            return $this->errorResponse('Parameter location_id wajib.', 422);
-        }
-
-        $search = trim((string) $request->query('search', ''));
-        $perPage = (int) $request->query('per_page', 20);
-        if ($perPage <= 0 || $perPage > 200) {
-            $perPage = 20;
-        }
-
-        $includeZero = $request->boolean('include_zero');
-
-        $paginated = $this->inventoryService->getStockedItems($locationId, $search, $perPage, $includeZero);
+        $paginated = $this->inventoryService->getStockedItems(
+            $request->locationId(),
+            $request->searchTerm(),
+            $request->perPage(),
+            $request->includeZero(),
+        );
 
         return $this->successPaginatedResponse($paginated, 'Daftar produk berstok diambil.');
     }

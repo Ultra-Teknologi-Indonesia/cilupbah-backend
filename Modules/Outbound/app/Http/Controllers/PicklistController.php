@@ -3,7 +3,8 @@
 namespace Modules\Outbound\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Services\PdfRenderer;
+use App\Services\QrCodeGenerator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -13,11 +14,16 @@ use Modules\Outbound\Services\PicklistService;
 use Modules\Outbound\Http\Requests\CreatePicklistRequest;
 use Modules\Outbound\Http\Requests\PickItemRequest;
 use Modules\Outbound\Http\Requests\FailPickItemRequest;
+use Modules\Outbound\Http\Requests\BulkPicklistPdfRequest;
+use Modules\Outbound\Http\Requests\PicklistPdfRequest;
+use Modules\Outbound\Http\Requests\ResetPicklistAssignmentRequest;
+use Modules\Outbound\Http\Requests\ScanForPickRequest;
+use Modules\Outbound\Http\Requests\UnassignPicklistRequest;
+use Modules\Outbound\Http\Requests\UnpickItemsRequest;
 
 use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Report\Services\ReportService;
 use OpenApi\Attributes as OA;
-use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Throwable;
 
 #[OA\Tag(name: 'Outbound - Picklist', description: 'API Endpoints for Picklist management')]
@@ -45,6 +51,8 @@ class PicklistController extends Controller
         protected PicklistService $picklistService,
         protected ReportService $reportService,
         protected PicklistRepository $picklistRepository,
+        protected QrCodeGenerator $qrCodeGenerator,
+        protected PdfRenderer $pdfRenderer,
     ) {}
 
     #[OA\Get(
@@ -202,10 +210,8 @@ class PicklistController extends Controller
             new OA\Response(response: 404, description: 'Picklist tidak ditemukan'),
         ]
     )]
-    public function pdf(string $id)
+    public function pdf(string $id, PicklistPdfRequest $request)
     {
-        validator(['id' => $id], ['id' => 'required|string|exists:picklists,id'])->validate();
-
         try {
             $report = $this->reportService->pickListReport(['picklist_id' => $id]);
             $picklist = $report['data'] ?? null;
@@ -214,23 +220,19 @@ class PicklistController extends Controller
                 return $this->errorResponse('Picklist tidak ditemukan.', 404);
             }
 
-            $picklistNo = $picklist->picklist_no ?? 'PICK';
-            $filename = "PICK-{$picklistNo}.pdf";
+            $this->picklistService->attachRecommendedBins($picklist);
 
+            $picklistNo = $picklist->picklist_no ?? 'PICK';
             $filename = str_starts_with((string) $picklistNo, 'PK-')
                 ? "{$picklistNo}.pdf"
                 : "PICK-{$picklistNo}.pdf";
 
-            $this->attachRecommendedBins($picklist);
+            $qrDataUri = $this->qrCodeGenerator->svgDataUri((string) $picklistNo);
 
-            $qrDataUri = $this->generateQrDataUri((string) $picklistNo);
-
-            $pdf = Pdf::loadView('outbound::pdf.picklist', [
+            return $this->pdfRenderer->stream('outbound::pdf.picklist', [
                 'picklist' => $picklist,
                 'qrDataUri' => $qrDataUri,
-            ])->setPaper('a4', 'portrait');
-
-            return $pdf->stream($filename);
+            ], $filename, 'a4', 'portrait');
         } catch (Throwable $e) {
             report($e);
             return $this->errorResponse(
@@ -259,38 +261,29 @@ class PicklistController extends Controller
             new OA\Response(response: 422, description: 'Validation Error'),
         ]
     )]
-    public function bulkPdf(Request $request)
+    public function bulkPdf(BulkPicklistPdfRequest $request)
     {
-        $validated = $request->validate([
-            'order_ids' => 'required|array|min:1|max:200',
-            'order_ids.*' => 'required|string',
-        ]);
-
         try {
-            $orderIds = $validated['order_ids'];
+            $orderIds = $request->validated()['order_ids'];
 
-            $picklists = $this->picklistRepository->getForBulkPdf($orderIds);
+            $picklists = $this->picklistService->getForBulkPdf($orderIds);
 
             if ($picklists->isEmpty()) {
                 return $this->errorResponse('Tidak ada picklist ditemukan untuk pesanan yang dipilih.', 404);
             }
 
-            foreach ($picklists as $picklist) {
-                $this->attachRecommendedBins($picklist);
-            }
-
-            $qrMap = $picklists->mapWithKeys(
-                fn ($picklist) => [$picklist->id => $this->generateQrDataUri((string) ($picklist->picklist_no ?? ''))]
+            $qrMap = $this->qrCodeGenerator->mapDataUris(
+                $picklists,
+                fn ($picklist) => $picklist->id,
+                fn ($picklist) => (string) ($picklist->picklist_no ?? ''),
             );
 
             $filename = 'Picklist-Bulk-' . now()->format('Ymd-His') . '.pdf';
 
-            $pdf = Pdf::loadView('outbound::pdf.picklist-bulk', [
+            return $this->pdfRenderer->stream('outbound::pdf.picklist-bulk', [
                 'picklists' => $picklists,
                 'qrMap' => $qrMap,
-            ])->setPaper('a4', 'portrait');
-
-            return $pdf->stream($filename);
+            ], $filename, 'a4', 'portrait');
         } catch (Throwable $e) {
             report($e);
             return $this->errorResponse(
@@ -435,13 +428,9 @@ class PicklistController extends Controller
         }
     }
 
-    public function unpickItems(string $id, Request $request): JsonResponse
+    public function unpickItems(string $id, UnpickItemsRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'items' => 'required|array|min:1',
-            'items.*.item_id' => 'required|string',
-            'items.*.qty' => 'nullable|integer|min:1',
-        ]);
+        $validated = $request->validated();
 
         try {
             $userId = (string) ($request->user()->id ?? 'system');
@@ -577,13 +566,9 @@ class PicklistController extends Controller
             new OA\Response(response: 422, description: 'Validation error'),
         ]
     )]
-    public function scan(string $id, Request $request): JsonResponse
+    public function scan(string $id, ScanForPickRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'sku' => 'required|string',
-            'bin_code' => 'nullable|string',
-            'hint_active_bin_code' => 'nullable|string',
-        ]);
+        $validated = $request->validated();
 
         $result = $this->picklistService->scanForPick(
             $id,
@@ -718,49 +703,9 @@ class PicklistController extends Controller
         return $this->successResponse(null, 'Picklist dikembalikan, order kembali ke belum dipick.');
     }
 
-    protected function attachRecommendedBins($picklist): void
+    public function unassign(string $id, UnassignPicklistRequest $request): JsonResponse
     {
-        $items = $picklist->items ?? collect();
-        if ($items->isEmpty()) {
-            return;
-        }
-
-        $locationId = $picklist->location_id;
-        $itemIds = $items->pluck('item_id')->filter()->unique()->values()->all();
-
-        $stocks = $this->picklistRepository->recommendedBinStocks($itemIds, $locationId);
-
-        $byItem = $stocks->groupBy('item_id');
-
-        foreach ($items as $item) {
-            $top = $byItem->get($item->item_id)?->first();
-            $item->recommended_bin_code = optional($top?->bin)->bin_final_code;
-        }
-    }
-
-    protected function generateQrDataUri(string $content): ?string
-    {
-        try {
-            $svg = QrCode::format('svg')
-                ->size(160)
-                ->margin(0)
-                ->errorCorrection('M')
-                ->generate($content);
-
-            return 'data:image/svg+xml;base64,' . base64_encode((string) $svg);
-        } catch (Throwable $e) {
-            report($e);
-            return null;
-        }
-    }
-
-    public function unassign(string $id, \Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
-    {
-        $validated = $request->validate([
-            'reason_code' => ['required', 'string', 'in:SALAH_TAP,SHIFT_HABIS,SAKIT,KENDALA_TEKNIS,LAINNYA'],
-            'reason_note' => ['nullable', 'string', 'max:500'],
-            'new_assignee_id' => ['nullable', 'string', 'exists:users,id'],
-        ]);
+        $validated = $request->validated();
 
         $picklist = $this->picklistService->unassign(
             $id,
@@ -778,12 +723,9 @@ class PicklistController extends Controller
         );
     }
 
-    public function resetAssignment(string $id, \Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
+    public function resetAssignment(string $id, ResetPicklistAssignmentRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'reason_note' => ['required', 'string', 'min:10', 'max:500'],
-            'new_assignee_id' => ['nullable', 'string', 'exists:users,id'],
-        ]);
+        $validated = $request->validated();
 
         $picklist = $this->picklistService->resetAssignmentDestructive(
             $id,

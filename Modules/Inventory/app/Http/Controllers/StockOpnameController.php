@@ -3,11 +3,15 @@
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Support\ActorName;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Inventory\Services\StockOpnameService;
 use Modules\Inventory\Http\Requests\StoreStockOpnameRequest;
 use Modules\Inventory\Http\Requests\CountStockOpnameItemRequest;
+use Modules\Inventory\Http\Requests\OpnameScopeColumnRequest;
+use Modules\Inventory\Http\Requests\OpnameScopeLocationRequest;
+use Modules\Inventory\Http\Requests\OpnameScopeRowRequest;
 use Modules\Inventory\Http\Resources\StockOpnameResource;
 use OpenApi\Attributes as OA;
 
@@ -149,7 +153,7 @@ class StockOpnameController extends Controller
     {
         try {
             $data = $request->validated();
-            $data['created_by'] = $request->user()->name ?? $request->user()->email;
+            $data['created_by'] = ActorName::fromUser($request->user());
 
             $opname = $this->opnameService->create($data);
 
@@ -181,8 +185,7 @@ class StockOpnameController extends Controller
     public function start(Request $request, string $id): JsonResponse
     {
         try {
-            $processBy = $request->user()->name ?? $request->user()->email;
-            $opname = $this->opnameService->startProcess($id, $processBy);
+            $opname = $this->opnameService->startProcess($id, ActorName::fromUser($request->user()));
 
             return $this->successResponse(new StockOpnameResource($opname), 'Stock opname mulai diproses.');
         } catch (\Exception $e) {
@@ -254,7 +257,7 @@ class StockOpnameController extends Controller
     {
         try {
             $data = $request->validated();
-            $data['counted_by'] = $request->user()->name ?? $request->user()->email;
+            $data['counted_by'] = ActorName::fromUser($request->user());
 
             $opname = $this->opnameService->countItem($id, $itemId, $data);
 
@@ -286,8 +289,7 @@ class StockOpnameController extends Controller
     public function finalize(Request $request, string $id): JsonResponse
     {
         try {
-            $finalizedBy = $request->user()->name ?? $request->user()->email;
-            $opname = $this->opnameService->finalize($id, $finalizedBy);
+            $opname = $this->opnameService->finalize($id, ActorName::fromUser($request->user()));
 
             return $this->successResponse(new StockOpnameResource($opname), 'Stock opname di-finalize, penyesuaian stok sedang diproses.', 202);
         } catch (\Exception $e) {
@@ -377,8 +379,7 @@ class StockOpnameController extends Controller
     public function markPrinted(Request $request, string $id): JsonResponse
     {
         try {
-            $printedBy = $request->user()->name ?? $request->user()->email;
-            $opname = $this->opnameService->markPrinted($id, $printedBy);
+            $opname = $this->opnameService->markPrinted($id, ActorName::fromUser($request->user()));
 
             return $this->successResponse(new StockOpnameResource($opname), 'Stock opname ditandai sudah dicetak.');
         } catch (\Exception $e) {
@@ -439,16 +440,12 @@ class StockOpnameController extends Controller
             new OA\Response(response: 200, description: 'Daftar bin berhasil diambil.'),
         ]
     )]
-    public function bins(Request $request): JsonResponse
+    public function bins(OpnameScopeLocationRequest $request): JsonResponse
     {
-        $locationId = $request->query('location_id');
-        $zoneId = $request->query('zone_id');
-
-        if (!$locationId) {
-            return $this->errorResponse('Parameter location_id wajib diisi.', 422);
-        }
-
-        $bins = $this->opnameService->getBins($locationId, $zoneId);
+        $bins = $this->opnameService->getBins(
+            $request->query('location_id'),
+            $request->query('zone_id'),
+        );
 
         return $this->successResponse($bins, 'Daftar bin berhasil diambil.');
     }
@@ -467,16 +464,12 @@ class StockOpnameController extends Controller
             new OA\Response(response: 200, description: 'Daftar floor berhasil diambil.'),
         ]
     )]
-    public function floors(Request $request): JsonResponse
+    public function floors(OpnameScopeLocationRequest $request): JsonResponse
     {
-        $locationId = $request->query('location_id');
-        $zoneId = $request->query('zone_id');
-
-        if (!$locationId) {
-            return $this->errorResponse('Parameter location_id wajib diisi.', 422);
-        }
-
-        $floors = $this->opnameService->getFloors($locationId, $zoneId);
+        $floors = $this->opnameService->getFloors(
+            $request->query('location_id'),
+            $request->query('zone_id'),
+        );
 
         return $this->successResponse($floors, 'Daftar floor berhasil diambil.');
     }
@@ -496,17 +489,13 @@ class StockOpnameController extends Controller
             new OA\Response(response: 200, description: 'Daftar row berhasil diambil.'),
         ]
     )]
-    public function rows(Request $request): JsonResponse
+    public function rows(OpnameScopeRowRequest $request): JsonResponse
     {
-        $locationId = $request->query('location_id');
-        $floorCode = $request->query('floor_code');
-        $zoneId = $request->query('zone_id');
-
-        if (!$locationId || !$floorCode) {
-            return $this->errorResponse('Parameter location_id dan floor_code wajib diisi.', 422);
-        }
-
-        $rows = $this->opnameService->getRows($locationId, $floorCode, $zoneId);
+        $rows = $this->opnameService->getRows(
+            $request->query('location_id'),
+            $request->query('floor_code'),
+            $request->query('zone_id'),
+        );
 
         return $this->successResponse($rows, 'Daftar row berhasil diambil.');
     }
@@ -527,18 +516,14 @@ class StockOpnameController extends Controller
             new OA\Response(response: 200, description: 'Daftar column berhasil diambil.'),
         ]
     )]
-    public function columns(Request $request): JsonResponse
+    public function columns(OpnameScopeColumnRequest $request): JsonResponse
     {
-        $locationId = $request->query('location_id');
-        $floorCode = $request->query('floor_code');
-        $rowCode = $request->query('row_code');
-        $zoneId = $request->query('zone_id');
-
-        if (!$locationId || !$floorCode || !$rowCode) {
-            return $this->errorResponse('Parameter location_id, floor_code, dan row_code wajib diisi.', 422);
-        }
-
-        $columns = $this->opnameService->getColumns($locationId, $floorCode, $rowCode, $zoneId);
+        $columns = $this->opnameService->getColumns(
+            $request->query('location_id'),
+            $request->query('floor_code'),
+            $request->query('row_code'),
+            $request->query('zone_id'),
+        );
 
         return $this->successResponse($columns, 'Daftar column berhasil diambil.');
     }

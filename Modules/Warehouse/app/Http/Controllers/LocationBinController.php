@@ -9,22 +9,23 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Warehouse\Http\Requests\AssignSkuLocationBinRequest;
+use Modules\Warehouse\Http\Requests\BulkUpdateLocationBinRequest;
 use Modules\Warehouse\Http\Requests\MoveSkuLocationBinRequest;
+use Modules\Warehouse\Http\Requests\PrintQrLocationBinRequest;
 use Modules\Warehouse\Http\Requests\RemoveSkuLocationBinRequest;
 use Modules\Warehouse\Http\Requests\GenerateLocationBinRequest;
 use Modules\Warehouse\Http\Requests\StoreLocationBinRequest;
 use Modules\Warehouse\Http\Requests\UniformApplyLocationBinRequest;
+use Modules\Warehouse\Http\Resources\BinQrItemResource;
 use Modules\Warehouse\Http\Resources\LocationBinResource;
-use Modules\Warehouse\Models\Location;
-use Modules\Warehouse\Models\LocationBin;
+use Modules\Warehouse\Repositories\LocationBinRepository;
+use Modules\Warehouse\Repositories\LocationRepository;
+use Modules\Warehouse\Services\BinImportTemplateService;
 use Modules\Warehouse\Services\BinLayoutImporter;
 use Modules\Warehouse\Services\BinQrPrintService;
 use Modules\Warehouse\Services\LocationBinService;
-use PhpOffice\PhpSpreadsheet\IOFactory;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
 use OpenApi\Attributes as OA;
-use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
@@ -49,7 +50,12 @@ use Throwable;
 class LocationBinController extends Controller
 {
     public function __construct(
-        protected LocationBinService $binService
+        protected LocationBinService $binService,
+        protected LocationRepository $locationRepository,
+        protected LocationBinRepository $locationBinRepository,
+        protected BinLayoutImporter $binLayoutImporter,
+        protected BinQrPrintService $qrPrintService,
+        protected BinImportTemplateService $templateService,
     ) {}
 
     #[OA\Get(
@@ -244,22 +250,14 @@ class LocationBinController extends Controller
         return $this->successResponse($result, 'Bin berhasil di-generate', 201);
     }
 
-    private const RACK_CODE_ALIASES = ['kode_rak', 'rak', 'bin_final_code', 'no rak', 'no_rak', 'kode rak', 'kode final rak'];
-
-    private const IMPORT_SHEET_NAME = 'Pengisian Data';
-
     public function importTemplate(string $locationId): StreamedResponse
     {
-        $location = Location::find($locationId);
+        $location = $this->locationRepository->find($locationId);
         abort_if(! $location, 404, 'Lokasi tidak ditemukan.');
 
-        $examples = LocationBin::where('location_id', $locationId)
-            ->orderBy('bin_final_code')
-            ->limit(3)
-            ->pluck('bin_final_code')
-            ->all();
+        $examples = $this->locationBinRepository->sampleFinalCodes($locationId, 3);
 
-        $spreadsheet = $this->buildImportTemplate($location->location_name ?? '', $examples);
+        $spreadsheet = $this->templateService->build($location->location_name ?? '', $examples);
 
         return response()->streamDownload(function () use ($spreadsheet) {
             (new XlsxWriter($spreadsheet))->save('php://output');
@@ -268,86 +266,26 @@ class LocationBinController extends Controller
         ]);
     }
 
-    private function buildImportTemplate(string $locationName, array $examples): Spreadsheet
-    {
-        $spreadsheet = new Spreadsheet();
-
-        $data = $spreadsheet->getActiveSheet();
-        $data->setTitle(self::IMPORT_SHEET_NAME);
-        $data->setCellValue('A1', 'kode_rak');
-        $data->getStyle('A1')->getFont()->setBold(true);
-        $data->getColumnDimension('A')->setWidth(30);
-        $data->freezePane('A2');
-
-        foreach ($examples as $i => $code) {
-            $data->setCellValueExplicit(
-                'A' . ($i + 2),
-                $code,
-                \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING
-            );
-        }
-
-        $instr = $spreadsheet->createSheet();
-        $instr->setTitle('Instruksi');
-
-        $instr->setCellValue('A1', 'Import Kode Rak' . ($locationName !== '' ? " — {$locationName}" : ''));
-        $instr->getStyle('A1')->getFont()->setBold(true)->setSize(14);
-
-        $lines = [
-            '',
-            '1. Isi kode rak di sheet "Pengisian Data", satu kode per baris, mulai baris 2.',
-            '2. Jangan mengubah nama sheet maupun judul kolom "kode_rak".',
-            '3. Kode rak berformat bebas. Yang dipakai sistem adalah teksnya persis.',
-            '4. Kode yang sudah ada akan dilewati, bukan ditimpa. Aman dijalankan ulang.',
-            '5. Baris kosong dan teks "Tidak ada rak" diabaikan.',
-            '',
-            'Contoh kode rak:',
-            '  IN-A1-K1-P1',
-            '  GK-14-K1-B1',
-            '  O-LX-KX-KANTOR',
-            '',
-            $examples === []
-                ? 'Lokasi ini belum punya rak, jadi sheet "Pengisian Data" masih kosong.'
-                : 'Sheet "Pengisian Data" sudah berisi beberapa kode rak yang ADA di lokasi ini sebagai',
-        ];
-
-        if ($examples !== []) {
-            $lines[] = 'contoh format. Boleh dihapus atau dibiarkan — kode yang sudah ada tidak akan diproses ulang.';
-        }
-
-        $lines[] = '';
-        $lines[] = 'Zona dibuat otomatis dari segmen pertama kode rak (mis. "GK-14-K1-B1" → zona "GK").';
-
-        foreach ($lines as $i => $line) {
-            $instr->setCellValue('A' . ($i + 2), $line);
-        }
-        $instr->getColumnDimension('A')->setWidth(100);
-
-        $spreadsheet->setActiveSheetIndex(0);
-
-        return $spreadsheet;
-    }
-
     public function importPreview(Request $request, string $locationId): JsonResponse
     {
         $request->validate(['file' => 'required|file|max:20480']);
 
-        $location = Location::find($locationId);
-        if (! $location) {
+        $resolved = $this->binLayoutImporter->resolveUpload($locationId, $request->file('file')->getRealPath());
+
+        if (! $resolved['location']) {
             return $this->errorResponse('Lokasi tidak ditemukan.', 404);
         }
 
-        try {
-            $codes = $this->parseRackCodes($request->file('file')->getRealPath());
-        } catch (Throwable $e) {
-            return $this->errorResponse('Gagal membaca file.', 422, ['detail' => $e->getMessage()], 'Aksi tidak dapat diproses');
+        if ($resolved['error'] !== null) {
+            return $this->errorResponse('Gagal membaca file.', 422, ['detail' => $resolved['error']], 'Aksi tidak dapat diproses');
         }
 
+        $codes = $resolved['codes'];
         if (empty($codes)) {
             return $this->errorResponse('Tidak ada kode rak terbaca. Pastikan ada kolom "kode_rak"/"rak"/"No Rak".', 422);
         }
 
-        $result = app(BinLayoutImporter::class)->import($location, $codes, false);
+        $result = $this->binLayoutImporter->import($resolved['location'], $codes, false);
 
         return $this->successResponse([
             'total' => $result['total'],
@@ -361,22 +299,22 @@ class LocationBinController extends Controller
     {
         $request->validate(['file' => 'required|file|max:20480']);
 
-        $location = Location::find($locationId);
-        if (! $location) {
+        $resolved = $this->binLayoutImporter->resolveUpload($locationId, $request->file('file')->getRealPath());
+
+        if (! $resolved['location']) {
             return $this->errorResponse('Lokasi tidak ditemukan.', 404);
         }
 
-        try {
-            $codes = $this->parseRackCodes($request->file('file')->getRealPath());
-        } catch (Throwable $e) {
-            return $this->errorResponse('Gagal membaca file.', 422, ['detail' => $e->getMessage()], 'Aksi tidak dapat diproses');
+        if ($resolved['error'] !== null) {
+            return $this->errorResponse('Gagal membaca file.', 422, ['detail' => $resolved['error']], 'Aksi tidak dapat diproses');
         }
 
+        $codes = $resolved['codes'];
         if (empty($codes)) {
             return $this->errorResponse('Tidak ada kode rak terbaca.', 422);
         }
 
-        $result = app(BinLayoutImporter::class)->import($location, $codes, true);
+        $result = $this->binLayoutImporter->import($resolved['location'], $codes, true);
 
         return $this->successResponse([
             'created' => $result['created'],
@@ -385,49 +323,9 @@ class LocationBinController extends Controller
         ], "Import rak selesai. {$result['created']} rak baru dibuat, {$result['existing']} sudah ada.");
     }
 
-    private function parseRackCodes(string $path): array
+    public function bulkUpdate(BulkUpdateLocationBinRequest $request, string $locationId): JsonResponse
     {
-        $spreadsheet = IOFactory::load($path);
-
-        $sheet = $spreadsheet->getSheetByName(self::IMPORT_SHEET_NAME) ?? $spreadsheet->getActiveSheet();
-        $rows = $sheet->toArray(null, true, false, false);
-        if (empty($rows)) {
-            return [];
-        }
-
-        $header = array_map(fn ($h) => mb_strtolower(trim((string) $h)), $rows[0]);
-        $idx = null;
-        foreach ($header as $i => $name) {
-            if (in_array($name, self::RACK_CODE_ALIASES, true)) {
-                $idx = $i;
-                break;
-            }
-        }
-        if ($idx === null) {
-            $idx = count($header) === 1 ? 0 : count($header) - 1;
-        }
-
-        $codes = [];
-        foreach (array_slice($rows, 1) as $row) {
-            $v = trim((string) ($row[$idx] ?? ''));
-            if ($v !== '' && mb_strtolower($v) !== 'tidak ada rak') {
-                $codes[] = $v;
-            }
-        }
-
-        return array_values(array_unique($codes));
-    }
-
-    public function bulkUpdate(Request $request, string $locationId): JsonResponse
-    {
-        $validated = $request->validate([
-            'bins' => 'required|array|min:1',
-            'bins.*.id' => 'required|uuid',
-            'bins.*.bin_final_code' => 'required|string|max:255',
-            'bins.*.is_stock_acknowledged' => 'required|boolean',
-            'bins.*.is_large_bin' => 'required|boolean',
-            'bins.*.category' => 'nullable|string|max:255',
-        ]);
+        $validated = $request->validated();
 
         try {
             $updated = $this->binService->bulkUpdate($locationId, $validated['bins']);
@@ -553,41 +451,18 @@ class LocationBinController extends Controller
             new OA\Response(response: 422, description: 'Validation Error / batas bin terlampaui'),
         ]
     )]
-    public function printQr(Request $request, string $locationId)
+    public function printQr(PrintQrLocationBinRequest $request, string $locationId)
     {
-        $validated = $request->validate([
-            'bin_ids' => 'nullable|string',
-            'paper' => 'nullable|string|in:thermal_50x40,thermal_80x40,a4_single,a4_multi',
-        ]);
-
-        $location = Location::find($locationId);
+        $location = $this->locationRepository->find($locationId);
         if (! $location) {
             return $this->errorResponse('Lokasi tidak ditemukan.', 404);
         }
 
-        $paper = $validated['paper'] ?? self::PAPER_THERMAL_50X40;
+        $paper = $request->paper(self::PAPER_THERMAL_50X40);
+        $binIds = $request->binIds();
 
-        $binIds = [];
-        if (! empty($validated['bin_ids'])) {
-            $binIds = collect(explode(',', (string) $validated['bin_ids']))
-                ->map(fn ($id) => trim($id))
-                ->filter()
-                ->unique()
-                ->values()
-                ->all();
-
-            foreach ($binIds as $id) {
-                if (! preg_match('/^[0-9a-f\-]{32,36}$/i', $id)) {
-                    return $this->errorResponse("ID bin tidak valid: {$id}", 422);
-                }
-            }
-        }
-
-        $query = app(\Modules\Warehouse\Services\BinQrPrintService::class)
-            ->binsQueryForPrint($locationId, $binIds ?: null);
-
-        $totalBins = (clone $query)->count();
-        if ($totalBins > self::MAX_BINS_PER_REQUEST) {
+        $print = $this->qrPrintService->binsForPrint($locationId, $binIds);
+        if ($print['total'] > self::MAX_BINS_PER_REQUEST) {
             return $this->errorResponse(
                 'Jumlah bin melebihi batas ('.self::MAX_BINS_PER_REQUEST.') untuk endpoint sinkron. '
                 .'Gunakan POST /locations/{id}/bins/print-qr-job (async + progress polling) untuk bulk besar.',
@@ -595,16 +470,9 @@ class LocationBinController extends Controller
             );
         }
 
-        $bins = $query->orderBy('bin_final_code')->get();
-
         try {
             $qrSize = $this->qrSizeFor($paper);
-            $items = $bins->map(function (LocationBin $bin) use ($qrSize) {
-                return [
-                    'bin_final_code' => (string) $bin->bin_final_code,
-                    'qr_data_uri' => $this->generateQrDataUri((string) $bin->bin_final_code, $qrSize),
-                ];
-            })->all();
+            $items = BinQrItemResource::mapCollection($print['bins'], $qrSize);
 
             $view = Pdf::loadView('warehouse::pdf.bin-qr', [
                 'location' => $location,
@@ -633,26 +501,16 @@ class LocationBinController extends Controller
         }
     }
 
-    public function printQrJob(Request $request, string $locationId)
+    public function printQrJob(PrintQrLocationBinRequest $request, string $locationId)
     {
-        $validated = $request->validate([
-            'bin_ids' => 'nullable|string',
-            'paper' => 'nullable|string|in:thermal_50x40,thermal_80x40,a4_single,a4_multi',
-        ]);
-
         $opts = [
-            'paper' => $validated['paper'] ?? self::PAPER_THERMAL_50X40,
+            'paper' => $request->paper(self::PAPER_THERMAL_50X40),
             'user_id' => auth()->id(),
+            'bin_ids' => $request->binIdsRaw(),
         ];
 
-        if (! empty($validated['bin_ids'])) {
-            $opts['bin_ids'] = array_map('trim', explode(',', (string) $validated['bin_ids']));
-        }
-
         try {
-
-            $service = app(\Modules\Warehouse\Services\BinQrPrintService::class);
-            $job = $service->createJob($locationId, $opts);
+            $job = $this->qrPrintService->createJob($locationId, $opts);
         } catch (\Throwable $e) {
             report($e);
             return $this->errorResponse(
@@ -695,22 +553,5 @@ class LocationBinController extends Controller
             self::PAPER_A4_MULTI => 220,
             default => 200,
         };
-    }
-
-    protected function generateQrDataUri(string $content, int $size): ?string
-    {
-        try {
-            $svg = QrCode::format('svg')
-                ->size($size)
-                ->margin(0)
-                ->errorCorrection('M')
-                ->generate($content);
-
-            return 'data:image/svg+xml;base64,'.base64_encode((string) $svg);
-        } catch (Throwable $e) {
-            report($e);
-
-            return null;
-        }
     }
 }

@@ -46,6 +46,11 @@ class LocationRepository
             ->appends(request()->query());
     }
 
+    public function find(string $id): ?Location
+    {
+        return Location::find($id);
+    }
+
     public function findById(string $id, bool $withBins = true): ?Location
     {
         $relations = $withBins

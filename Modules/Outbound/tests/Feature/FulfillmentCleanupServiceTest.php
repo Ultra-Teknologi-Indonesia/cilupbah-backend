@@ -148,7 +148,7 @@ class FulfillmentCleanupServiceTest extends TestCase
         app(FulfillmentCleanupService::class)->detachCancelledOrder($orderId);
 
         $this->assertSame(0, DB::table('picklist_items')->where('order_id', $orderId)->count());
-        // Picklist tak dipakai order lain → ikut terhapus.
+
         $this->assertSame(0, DB::table('picklists')->where('id', $picklistId)->count());
         $this->assertDatabaseHas('fulfillment_removals', [
             'order_id' => $orderId,
@@ -168,7 +168,7 @@ class FulfillmentCleanupServiceTest extends TestCase
         app(FulfillmentCleanupService::class)->detachCancelledOrder($cancelled);
 
         $this->assertSame(0, DB::table('picklist_items')->where('order_id', $cancelled)->count());
-        // Baris order lain tetap; picklist induk tetap hidup.
+
         $this->assertSame(1, DB::table('picklist_items')->where('order_id', $other)->count());
         $this->assertSame(1, DB::table('picklists')->where('id', $picklistId)->count());
     }
@@ -197,7 +197,6 @@ class FulfillmentCleanupServiceTest extends TestCase
 
         app(FulfillmentCleanupService::class)->detachCancelledOrder($orderId);
 
-        // Packlist COMPLETED (sudah packed) di luar cakupan cleanup ini.
         $this->assertSame(
             Packlist::STATUS_COMPLETED,
             DB::table('packlists')->where('id', $packlistId)->value('status')
@@ -212,7 +211,6 @@ class FulfillmentCleanupServiceTest extends TestCase
 
         app(FulfillmentCleanupService::class)->detachCancelledOrder($orderId);
 
-        // Order belum dibatalkan → tak ada yang dihapus.
         $this->assertSame(1, DB::table('picklist_items')->where('order_id', $orderId)->count());
         $this->assertSame(0, DB::table('fulfillment_removals')->where('order_id', $orderId)->count());
     }

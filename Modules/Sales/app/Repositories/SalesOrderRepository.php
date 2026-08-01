@@ -230,9 +230,9 @@ class SalesOrderRepository
     protected function applyCancellationSubScope($query, ?string $sub)
     {
         return match ($sub) {
-            // Belum di-action: pembeli minta batal, seller belum terima/tolak.
+
             'pending'   => $query->whereNotNull('cancel_requested_at')->where('status', '!=', 'cancelled'),
-            // Sudah di-action oleh seller atas permintaan pembatalan pembeli.
+
             'accepted'  => $query->whereNotNull('cancel_accepted_at'),
             'rejected'  => $query->whereNotNull('cancel_rejected_at'),
             'cancelled' => $query->where('status', 'cancelled'),
@@ -471,6 +471,16 @@ class SalesOrderRepository
     public function findWithItemsOrFail(string $id): SalesOrder
     {
         return SalesOrder::with('items')->findOrFail($id);
+    }
+
+    public function findForInvoice(string $id): ?SalesOrder
+    {
+        return SalesOrder::with('items')->find($id);
+    }
+
+    public function findForBreakdown(string $id): ?SalesOrder
+    {
+        return SalesOrder::with(['items', 'returns.settlement', 'invoices'])->find($id);
     }
 
     public function upsertOrderBySalesOrderNo(string $salesOrderNo, array $orderData): ?SalesOrder

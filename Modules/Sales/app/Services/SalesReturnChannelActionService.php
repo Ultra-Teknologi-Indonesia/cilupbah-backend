@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Services;
 
+use App\Exceptions\UserFacingException;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\ShopeeOrderService;
@@ -10,6 +11,31 @@ use Modules\Sales\Models\SalesReturn;
 
 class SalesReturnChannelActionService
 {
+    public function acceptForChannel(SalesReturn $return): void
+    {
+        $this->assertMarketplace($return);
+
+        if (! $this->accept($return)) {
+            throw new UserFacingException('Aksi tidak dapat diproses', 'Gagal meneruskan persetujuan ke marketplace.', 422);
+        }
+    }
+
+    public function rejectForChannel(SalesReturn $return, string $reasonId, ?string $note = null): void
+    {
+        $this->assertMarketplace($return);
+
+        if (! $this->reject($return, $reasonId, $note)) {
+            throw new UserFacingException('Aksi tidak dapat diproses', 'Gagal meneruskan penolakan ke marketplace.', 422);
+        }
+    }
+
+    protected function assertMarketplace(SalesReturn $return): void
+    {
+        if ($return->source !== SalesReturn::SOURCE_MARKETPLACE) {
+            throw new UserFacingException('Aksi tidak dapat diproses', 'Retur ini bukan dari marketplace.', 422);
+        }
+    }
+
     public function accept(SalesReturn $return): bool
     {
         [$channel, $shopId, $rawReturnId] = $this->resolve($return);

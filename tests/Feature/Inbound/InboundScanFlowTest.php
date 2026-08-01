@@ -283,7 +283,7 @@ class InboundScanFlowTest extends TestCase
             'qty'             => 999,
         ]);
 
-        $response->assertStatus(500);
+        $response->assertStatus(422);
     }
 
     public function test_scan_putaway_partial_then_complete(): void

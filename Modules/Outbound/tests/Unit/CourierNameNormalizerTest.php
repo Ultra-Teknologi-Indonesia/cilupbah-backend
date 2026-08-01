@@ -9,7 +9,7 @@ class CourierNameNormalizerTest extends TestCase
 {
     public function test_cleans_real_marketplace_strings(): void
     {
-        // Tanpa @dataProvider: proyek memakai strip-comments yang membuang docblock.
+
         $cases = [
             ['Drop-off: LEX ID, Delivery: J&T', 'J&T'],
             ['Drop-off: JNE Cashless, Delivery: JNE Cashless', 'JNE Cashless'],

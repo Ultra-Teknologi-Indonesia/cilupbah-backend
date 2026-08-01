@@ -38,6 +38,19 @@ class AppServiceProvider extends ServiceProvider
             return \Illuminate\Cache\RateLimiting\Limit::perSecond(8)->by($shopId);
         });
 
+        \Illuminate\Support\Facades\RateLimiter::for('webhook_download', function (object $job) {
+
+            $shopId = 'default';
+
+            if (property_exists($job, 'shopId') && (string) $job->shopId !== '') {
+                $shopId = (string) $job->shopId;
+            } elseif (property_exists($job, 'payload') && is_array($job->payload)) {
+                $shopId = (string) ($job->payload['shop_id'] ?? $job->payload['seller_id'] ?? 'default');
+            }
+
+            return \Illuminate\Cache\RateLimiting\Limit::perSecond(10)->by($shopId);
+        });
+
         \Illuminate\Database\Eloquent\Builder::macro('allowedSearch', function (...$columns) {
 
             $search = request()->query('search');

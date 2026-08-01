@@ -301,6 +301,16 @@ class ReportService
 
     public function penyesuaianStokBuild(array $data)
     {
+        $payload = $this->penyesuaianStokPayload($data);
+
+        $pdf = Pdf::loadView('report::pdf.penyesuaian-stok', $payload);
+        $pdf->setPaper('a4', 'portrait');
+
+        return $pdf;
+    }
+
+    public function penyesuaianStokPayload(array $data): array
+    {
         ini_set('memory_limit', '1024M');
         set_time_limit(120);
 
@@ -346,14 +356,11 @@ class ReportService
             ->sortKeys()
             ->values();
 
-        $pdf = Pdf::loadView('report::pdf.penyesuaian-stok', [
+        return [
             'groups' => $groups,
             'start' => $startDate,
             'end' => $endDate,
-        ]);
-        $pdf->setPaper('a4', 'portrait');
-
-        return $pdf;
+        ];
     }
 
     public function lazadaOrder(string $orderId): SalesOrder
@@ -500,15 +507,20 @@ class ReportService
 
     public function pickListDetailBuild(string $picklistId, ?array $orderIds = null)
     {
-        ini_set('memory_limit', '1024M');
-        set_time_limit(180);
-
-        $data = $this->pickListDetailData($picklistId, $orderIds);
+        $data = $this->pickListDetailPayload($picklistId, $orderIds);
 
         $pdf = Pdf::loadView('report::pdf.detail-picklist', $data);
         $pdf->setPaper('a4', 'portrait');
 
         return $pdf;
+    }
+
+    public function pickListDetailPayload(string $picklistId, ?array $orderIds = null): array
+    {
+        ini_set('memory_limit', '1024M');
+        set_time_limit(180);
+
+        return $this->pickListDetailData($picklistId, $orderIds);
     }
 
     public function pickListDetailData(string $picklistId, ?array $orderIds = null): array

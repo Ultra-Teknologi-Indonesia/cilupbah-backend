@@ -5,18 +5,20 @@ namespace Modules\Sales\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Facades\Excel;
-use Modules\Inventory\Models\ImpexActivity;
-use Modules\Inventory\Services\ImpexActivityService;
-use Modules\Sales\Exports\ReturnChannelOnlineExport;
-use Modules\Sales\Exports\SalesReturnReportExport;
+use Modules\Sales\Http\Requests\AcceptSalesReturnRequest;
+use Modules\Sales\Http\Requests\ChannelRejectSalesReturnRequest;
+use Modules\Sales\Http\Requests\CompleteSalesReturnRequest;
+use Modules\Sales\Http\Requests\ExportReturnChannelOnlineRequest;
+use Modules\Sales\Http\Requests\RejectSalesReturnRequest;
+use Modules\Sales\Http\Requests\SalesReturnReportRequest;
 use Modules\Sales\Http\Requests\StoreSalesReturnRequest;
 use Modules\Sales\Http\Resources\SalesReturnAppealResource;
 use Modules\Sales\Http\Resources\SalesReturnReportResource;
-use Modules\Sales\Models\SalesReturn;
 use Modules\Sales\Services\SalesReturnChannelActionService;
+use Modules\Sales\Services\SalesReturnDetailSyncService;
 use Modules\Sales\Services\SalesReturnService;
+use Modules\Sales\Services\SalesReturnTrackingSyncService;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Sales Returns', description: 'API Endpoints for Sales Returns')]
@@ -24,8 +26,9 @@ class SalesReturnController extends Controller
 {
     public function __construct(
         protected SalesReturnService $returnService,
-        protected ImpexActivityService $activityService,
         protected SalesReturnChannelActionService $channelActionService,
+        protected SalesReturnTrackingSyncService $trackingSyncService,
+        protected SalesReturnDetailSyncService $detailSyncService,
     ) {}
 
     #[OA\Get(
@@ -149,15 +152,8 @@ class SalesReturnController extends Controller
             new OA\Response(response: 500, description: 'Server Error'),
         ]
     )]
-    public function accept(string $id, Request $request): JsonResponse
+    public function accept(string $id, AcceptSalesReturnRequest $request): JsonResponse
     {
-        $request->validate([
-            'processed_by'         => 'required|string|max:100',
-            'items'                => 'sometimes|array',
-            'items.*.item_id'      => 'required_with:items|string',
-            'items.*.approved_qty' => 'nullable|integer|min:0',
-        ]);
-
         $return = $this->returnService->accept($id, $request->only('processed_by', 'items'));
 
         return $this->successResponse($return, 'Return diterima, Inbound GRN dibuat');
@@ -183,13 +179,8 @@ class SalesReturnController extends Controller
             new OA\Response(response: 500, description: 'Server Error'),
         ]
     )]
-    public function reject(string $id, Request $request): JsonResponse
+    public function reject(string $id, RejectSalesReturnRequest $request): JsonResponse
     {
-        $request->validate([
-            'processed_by' => 'required|string|max:100',
-            'reason'       => 'nullable|string',
-        ]);
-
         $return = $this->returnService->reject($id, $request->only('processed_by', 'reason'));
 
         return $this->successResponse($return, 'Return ditolak');
@@ -214,10 +205,8 @@ class SalesReturnController extends Controller
             new OA\Response(response: 500, description: 'Server Error'),
         ]
     )]
-    public function complete(string $id, Request $request): JsonResponse
+    public function complete(string $id, CompleteSalesReturnRequest $request): JsonResponse
     {
-        $request->validate(['processed_by' => 'required|string|max:100']);
-
         $return = $this->returnService->complete($id, $request->only('processed_by'));
 
         return $this->successResponse($return, 'Return selesai');
@@ -244,7 +233,7 @@ class SalesReturnController extends Controller
             return $this->errorResponse('Sales return tidak ditemukan', 404);
         }
 
-        app(\Modules\Sales\Services\SalesReturnTrackingSyncService::class)->syncOne($return);
+        $this->trackingSyncService->syncOne($return);
 
         return $this->successResponse($this->returnService->getById($id), 'Sinkronisasi resi retur selesai');
     }
@@ -270,7 +259,7 @@ class SalesReturnController extends Controller
             return $this->errorResponse('Sales return tidak ditemukan', 404);
         }
 
-        app(\Modules\Sales\Services\SalesReturnDetailSyncService::class)->syncOne($return);
+        $this->detailSyncService->syncOne($return);
 
         return $this->successResponse($this->returnService->getById($id), 'Sinkronisasi detail retur selesai');
     }
@@ -324,13 +313,7 @@ class SalesReturnController extends Controller
             return $this->errorResponse('Sales return tidak ditemukan', 404);
         }
 
-        if ($return->source !== SalesReturn::SOURCE_MARKETPLACE) {
-            return $this->errorResponse('Retur ini bukan dari marketplace.', 422);
-        }
-
-        if (! $this->channelActionService->accept($return)) {
-            return $this->errorResponse('Gagal meneruskan persetujuan ke marketplace.', 422);
-        }
+        $this->channelActionService->acceptForChannel($return);
 
         return $this->successResponse($this->returnService->getById($id), 'Retur berhasil disetujui di marketplace');
     }
@@ -356,7 +339,7 @@ class SalesReturnController extends Controller
             new OA\Response(response: 422, description: 'Retur bukan dari marketplace atau gagal diteruskan ke channel'),
         ]
     )]
-    public function channelReject(string $id, Request $request): JsonResponse
+    public function channelReject(string $id, ChannelRejectSalesReturnRequest $request): JsonResponse
     {
         $return = $this->returnService->getById($id);
 
@@ -364,18 +347,9 @@ class SalesReturnController extends Controller
             return $this->errorResponse('Sales return tidak ditemukan', 404);
         }
 
-        if ($return->source !== SalesReturn::SOURCE_MARKETPLACE) {
-            return $this->errorResponse('Retur ini bukan dari marketplace.', 422);
-        }
+        $validated = $request->validated();
 
-        $validated = $request->validate([
-            'reason_id' => 'required|string',
-            'note' => 'nullable|string',
-        ]);
-
-        if (! $this->channelActionService->reject($return, $validated['reason_id'], $validated['note'] ?? null)) {
-            return $this->errorResponse('Gagal meneruskan penolakan ke marketplace.', 422);
-        }
+        $this->channelActionService->rejectForChannel($return, $validated['reason_id'], $validated['note'] ?? null);
 
         return $this->successResponse($this->returnService->getById($id), 'Retur berhasil ditolak di marketplace');
     }
@@ -498,19 +472,9 @@ class SalesReturnController extends Controller
         ],
         responses: [new OA\Response(response: 200, description: 'Successful operation')]
     )]
-    public function report(Request $request): JsonResponse
+    public function report(SalesReturnReportRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'date_from'             => 'nullable|date',
-            'date_to'               => 'nullable|date|after_or_equal:date_from',
-            'location_id'           => 'nullable|string',
-            'channel_shop_id'       => 'nullable|string',
-            'status'                => 'nullable|string|max:20',
-            'source'                => 'nullable|in:manual,marketplace',
-            'reason_category'       => ['nullable', 'string', Rule::in(SalesReturn::REASON_CATEGORIES)],
-            'marketplace_decision'  => ['nullable', 'string', Rule::in(SalesReturn::MP_DECISIONS)],
-            'per_page'              => 'nullable|integer|min:1|max:200',
-        ]);
+        $validated = $request->validated();
 
         $limit = (int) ($validated['per_page'] ?? 10);
         $rows = $this->returnService->getReportPaginated($validated, $limit);
@@ -538,71 +502,22 @@ class SalesReturnController extends Controller
         ],
         responses: [new OA\Response(response: 200, description: 'XLSX file stream')]
     )]
-    public function reportExport(Request $request)
+    public function reportExport(SalesReturnReportRequest $request)
     {
-        $validated = $request->validate([
-            'date_from'            => 'nullable|date',
-            'date_to'              => 'nullable|date|after_or_equal:date_from',
-            'location_id'          => 'nullable|string',
-            'channel_shop_id'      => 'nullable|string',
-            'status'               => 'nullable|string|max:20',
-            'source'               => 'nullable|in:manual,marketplace',
-            'reason_category'      => ['nullable', 'string', Rule::in(SalesReturn::REASON_CATEGORIES)],
-            'marketplace_decision' => ['nullable', 'string', Rule::in(SalesReturn::MP_DECISIONS)],
-        ]);
-
-        $today = now()->toDateString();
-        $dateFrom = $validated['date_from'] ?? null;
-        $dateTo   = $validated['date_to']   ?? null;
-
-        $export = new SalesReturnReportExport(
-            dateFrom:            $dateFrom,
-            dateTo:              $dateTo,
-            locationId:          $validated['location_id']          ?? null,
-            channelShopId:       $validated['channel_shop_id']      ?? null,
-            status:              $validated['status']               ?? null,
-            source:              $validated['source']                ?? null,
-            reasonCategory:      $validated['reason_category']      ?? null,
-            marketplaceDecision: $validated['marketplace_decision'] ?? null,
-        );
-
-        $filename = sprintf(
-            'laporan-retur-%s-%s.xlsx',
-            $dateFrom ?? 'semua',
-            $dateTo ?? $today
-        );
-
-        $this->activityService->recordCompleted(
-            ImpexActivity::DIRECTION_EXPORT,
-            'Export Laporan Retur',
+        ['export' => $export, 'filename' => $filename] = $this->returnService->prepareExport(
+            'report',
+            $request->validated(),
             $request->user()?->id,
         );
 
         return Excel::download($export, $filename);
     }
 
-    public function exportChannelOnline(Request $request)
+    public function exportChannelOnline(ExportReturnChannelOnlineRequest $request)
     {
-        $validated = $request->validate([
-            'date_from'   => 'nullable|date',
-            'date_to'     => 'nullable|date|after_or_equal:date_from',
-            'location_id' => 'nullable|string',
-        ]);
-
-        $dateFrom = $validated['date_from'] ?? now()->toDateString();
-        $dateTo   = $validated['date_to']   ?? $dateFrom;
-
-        $export = new ReturnChannelOnlineExport(
-            dateFrom:   $dateFrom,
-            dateTo:     $dateTo,
-            locationId: $validated['location_id'] ?? null,
-        );
-
-        $filename = sprintf('retur-channel-online-%s-%s.xlsx', $dateFrom, $dateTo);
-
-        $this->activityService->recordCompleted(
-            ImpexActivity::DIRECTION_EXPORT,
-            'Export Retur Channel Online',
+        ['export' => $export, 'filename' => $filename] = $this->returnService->prepareExport(
+            'channel_online',
+            $request->validated(),
             $request->user()?->id,
         );
 

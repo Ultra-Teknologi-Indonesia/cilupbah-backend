@@ -11,11 +11,6 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Sales\Models\SalesOrder;
 
-/**
- * Siapkan dokumen label kirim TikTok secara proaktif ("selalu dapat"): saat paket siap,
- * tarik doc_url tiap package lalu cache ke shipping_label_raw_data supaya operator tak
- * tergantung panggilan live saat cetak. Mirror konvensi status PrepareShopeeShippingLabelJob.
- */
 class PrepareTikTokShippingLabelJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -90,7 +85,7 @@ class PrepareTikTokShippingLabelJob implements ShouldQueue
                     $documents[] = ['package_id' => (string) $packageId, 'doc_url' => $docUrl];
                 }
             } catch (\Throwable $e) {
-                // Dokumen belum siap untuk package ini — biarkan retry menangani.
+
                 Log::info('PrepareTikTokShippingLabelJob: dokumen package belum siap', [
                     'order_id'   => $order->id,
                     'package_id' => $packageId,

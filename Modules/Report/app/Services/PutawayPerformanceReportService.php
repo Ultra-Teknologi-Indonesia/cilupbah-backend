@@ -29,28 +29,37 @@ class PutawayPerformanceReportService
 
     public function build(bool $detail, array $filters)
     {
+        $payload = $this->pdfPayload($detail, $filters);
+
+        $pdf = Pdf::loadView($payload['view'], $payload['data']);
+        $pdf->setPaper('a4', 'portrait');
+
+        return $pdf;
+    }
+
+    public function pdfPayload(bool $detail, array $filters): array
+    {
         ini_set('memory_limit', '1024M');
         set_time_limit(300);
 
         $rows = collect($this->repository->putawayPerformanceRows($filters));
 
-        $pdf = Pdf::loadView('report::pdf.order-performance', [
-            'title' => 'Laporan Performa Penempatan' . ($detail ? ' - Detail' : ''),
-            'periode' => $this->periodeLabel($filters),
-            'detail' => $detail,
-            'columns' => self::DETAIL_COLUMNS,
-            'summaryColumns' => self::SUMMARY_COLUMNS,
-            'secondaryLabel' => 'Nama Pengguna',
-            'summaryFirstLabel' => 'Nama Pengguna',
-            'summaryGroupLabel' => 'Lokasi Gudang',
-            'detailTotals' => true,
-            'groups' => $detail ? $this->detailGroups($rows) : $this->summaryGroups($rows),
-
-            'grandTotal' => null,
-        ]);
-        $pdf->setPaper('a4', 'portrait');
-
-        return $pdf;
+        return [
+            'view' => 'report::pdf.order-performance',
+            'data' => [
+                'title' => 'Laporan Performa Penempatan' . ($detail ? ' - Detail' : ''),
+                'periode' => $this->periodeLabel($filters),
+                'detail' => $detail,
+                'columns' => self::DETAIL_COLUMNS,
+                'summaryColumns' => self::SUMMARY_COLUMNS,
+                'secondaryLabel' => 'Nama Pengguna',
+                'summaryFirstLabel' => 'Nama Pengguna',
+                'summaryGroupLabel' => 'Lokasi Gudang',
+                'detailTotals' => true,
+                'groups' => $detail ? $this->detailGroups($rows) : $this->summaryGroups($rows),
+                'grandTotal' => null,
+            ],
+        ];
     }
 
     private function periodeLabel(array $filters): string

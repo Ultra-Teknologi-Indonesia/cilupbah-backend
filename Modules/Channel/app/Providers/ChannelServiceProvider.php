@@ -2,6 +2,7 @@
 
 namespace Modules\Channel\Providers;
 
+use Modules\Channel\Console\Commands\ReapStaleDownloadTransactions;
 use Modules\Channel\Console\Commands\SyncTikTokAttributes;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Observers\ChannelShopObserver;
@@ -21,6 +22,7 @@ class ChannelServiceProvider extends ModuleServiceProvider
     ];
 
     protected array $commands = [
+        ReapStaleDownloadTransactions::class,
         SyncTikTokAttributes::class,
     ];
 

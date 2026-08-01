@@ -2,16 +2,6 @@
 
 namespace Modules\Sales\Support;
 
-/**
- * Ubah "reason name" pembatalan dari channel menjadi teks Bahasa Indonesia.
- * Peta mengikuti dokumentasi resmi TikTok Shop "Cancel reasons" — pasar ID.
- *
- *  - buyer()        : alasan PEMBELI minta batal (Buyer Initiates Cancel Reason)
- *  - sellerReject() : alasan PENJUAL menolak pembatalan (Seller Reject Cancel Request Reason)
- *
- * TikTok mengirim key (mis. `ecom_order_to_ship_canceled_reason_better_price`);
- * Shopee mengirim teks manusia -> dibiarkan apa adanya. Key tak dikenal dirapikan.
- */
 class CancelReasonHumanizer
 {
     private const BUYER_MAP = [
@@ -67,12 +57,10 @@ class CancelReasonHumanizer
             return $table[$reason];
         }
 
-        // Sudah teks manusia (ada spasi) -> biarkan.
         if (str_contains($reason, ' ')) {
             return $reason;
         }
 
-        // Masih tampak seperti key -> rapikan agar tak menampilkan key mentah.
         $pretty = preg_replace(
             '/^(ecom_order_(unpaid|to_ship)_canceled_reason_|buyer_cancel_|seller_reject_apply_|seller_cancel_[a-z]+_reason_|order_manage_list_action_respond_popup_reject_reason_)/',
             '',

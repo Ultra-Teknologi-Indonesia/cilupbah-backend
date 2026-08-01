@@ -40,7 +40,7 @@ class FulfillmentCancelGuardTest extends TestCase
 
     public function test_packing_scan_returns_null_for_unknown_order(): void
     {
-        // Kontrol: order tak dikenal tetap null (guard tak salah picu).
+
         $this->assertNull(app(PacklistService::class)->scanOrder('SO-DOES-NOT-EXIST'));
     }
 }

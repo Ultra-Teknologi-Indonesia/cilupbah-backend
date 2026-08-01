@@ -6,10 +6,12 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Services\ChannelDownloadService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Product\Models\ProductChannelMapping;
@@ -20,6 +22,7 @@ class ProcessShopeeWebhook implements ShouldQueue
 
     public int $tries = 3;
     public array $backoff = [10, 60, 300];
+    public int $timeout = 120;
 
     private const PUSH_SHOP_AUTHORIZED = 1;
     private const PUSH_SHOP_DEAUTHORIZED = 2;
@@ -37,7 +40,12 @@ class ProcessShopeeWebhook implements ShouldQueue
     public function __construct(
         public array $payload,
     ) {
-        $this->onQueue('default');
+        $this->onQueue(config('queue.names.webhook_downloads'));
+    }
+
+    public function middleware(): array
+    {
+        return [new RateLimited('webhook_download')];
     }
 
     public static function idempotencyKey(array $payload): string
@@ -88,6 +96,8 @@ class ProcessShopeeWebhook implements ShouldQueue
         ], true)) {
             $this->recordShopeeTrackingEvent($shopId, $code, $data);
         }
+
+        ChannelWebhookInbox::markProcessedByKey(self::idempotencyKey($this->payload));
     }
 
     protected function recordShopeeTrackingEvent(string $shopId, int $code, array $data): void

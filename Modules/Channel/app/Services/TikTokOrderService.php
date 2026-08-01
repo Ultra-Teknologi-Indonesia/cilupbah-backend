@@ -325,10 +325,6 @@ class TikTokOrderService
         }
     }
 
-    /**
-     * Package id(s) untuk sebuah order — read-only (tidak membuat package baru).
-     * Dipakai penyiapan label proaktif; kosong = paket belum ada / label belum siap.
-     */
     public function packageIdsForOrder(string $shopId, string $orderId): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);
@@ -384,7 +380,6 @@ class TikTokOrderService
             throw new \Exception("No access token found for shop: {$shopId}");
         }
 
-        // API pakai cancel_id (bukan order_id) & path harus /{cancel_id}/approve.
         $cancelId = $this->resolveCancellationId($shopId, $orderId);
         if (! $cancelId) {
             throw new \RuntimeException("Tidak ditemukan permintaan pembatalan aktif untuk order {$orderId} di TikTok.", 404);
@@ -405,12 +400,6 @@ class TikTokOrderService
         return $res;
     }
 
-    /**
-     * Cari cancel_id (ID permintaan pembatalan) + alasan pembeli untuk sebuah
-     * order TikTok. Endpoint: POST /return_refund/202309/cancellations/search.
-     *
-     * @return array{cancel_id: ?string, reason_key: ?string, reason_text: ?string, status: ?string, raw: array}
-     */
     public function searchBuyerCancellation(string $shopId, string $orderId): array
     {
         $empty = ['cancel_id' => null, 'reason_key' => null, 'reason_text' => null, 'status' => null, 'raw' => []];
@@ -421,8 +410,7 @@ class TikTokOrderService
         }
 
         $queries = ['shop_cipher' => $shop->shop_cipher ?? '', 'page_size' => 50];
-        // Field filter yang benar = main_order_id_list (dikonfirmasi live; `order_ids`
-        // diabaikan TikTok dan mengembalikan 0).
+
         $body = ['main_order_id_list' => [$orderId]];
 
         $res = $this->client->request(
@@ -437,7 +425,6 @@ class TikTokOrderService
             ?? $res['data']['cancellation_orders']
             ?? [];
 
-        // Cocokkan tepat berdasarkan order_id (filter server bisa mengembalikan lebih).
         $c = null;
         foreach ($list as $row) {
             if ((string) ($row['order_id'] ?? '') === (string) $orderId) {
@@ -463,10 +450,6 @@ class TikTokOrderService
         return $this->searchBuyerCancellation($shopId, $orderId)['cancel_id'] ?? null;
     }
 
-    /**
-     * Ambil nama alasan penolakan pembatalan yang valid dari Get Decision
-     * Eligibility (reject_reason WAJIB saat menolak pembatalan pembeli).
-     */
     public function firstRejectCancelReason(string $shopId, string $cancelId): ?string
     {
         $shop = $this->shopRepository->findByShopId($shopId);
@@ -767,7 +750,6 @@ class TikTokOrderService
             throw new \RuntimeException("Tidak ditemukan permintaan pembatalan aktif untuk order {$orderId} di TikTok.", 404);
         }
 
-        // reject_reason WAJIB (nama alasan dari Get Decision Eligibility).
         $reason = $rejectReason ?: $this->firstRejectCancelReason($shopId, $cancelId);
         if (! $reason) {
             throw new \RuntimeException("Tidak ada alasan penolakan pembatalan yang tersedia untuk order {$orderId} di TikTok.", 422);
