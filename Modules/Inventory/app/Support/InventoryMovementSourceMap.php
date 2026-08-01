@@ -68,6 +68,20 @@ class InventoryMovementSourceMap
 
     public const INVOICE_SOURCES = ['INVOICE', 'ORDER_PICK'];
 
+    public const REVERSAL_SOURCES = [
+        'PUTAWAY_REVERSAL',
+        'BIN_TRANSFER_REVERSAL',
+        'TRANSFER_REVERT',
+        'PURCHASE_REVERSAL',
+        'PICKING_REVERSAL',
+    ];
+
+    public const UNRECORDED_REVERSAL_SOURCES = [
+        'PUTAWAY_REVERSAL',
+        'BIN_TRANSFER_REVERSAL',
+        'TRANSFER_REVERT',
+    ];
+
     public const ALLOCATION_PARTITION_SOURCES = [
         'ORDER_RESERVE',
         'ORDER_RELEASE',

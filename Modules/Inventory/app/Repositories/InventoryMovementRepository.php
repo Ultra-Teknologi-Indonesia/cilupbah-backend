@@ -36,6 +36,14 @@ class InventoryMovementRepository
 
     public function create(array $data): InventoryMovement
     {
+
+        if (in_array($data['source'] ?? null, InventoryMovementSourceMap::UNRECORDED_REVERSAL_SOURCES, true)) {
+            $cancelled = $this->cancelMatchedOriginal($data);
+            if ($cancelled !== null) {
+                return $cancelled;
+            }
+        }
+
         $movement = InventoryMovement::create($data);
 
         $newBalance = $data['balance'] ?? null;
@@ -66,6 +74,38 @@ class InventoryMovementRepository
         }
 
         return $movement;
+    }
+
+    private function cancelMatchedOriginal(array $data): ?InventoryMovement
+    {
+        $qty = (int) ($data['qty'] ?? 0);
+        if ($qty === 0) {
+            return null;
+        }
+
+        $query = InventoryMovement::query()
+            ->where('item_id', $data['item_id'] ?? null)
+            ->where('location_id', $data['location_id'] ?? null)
+            ->where('qty', -$qty)
+            ->whereNotIn('source', InventoryMovementSourceMap::REVERSAL_SOURCES);
+
+        if (! empty($data['bin_id'])) {
+            $query->where('bin_id', $data['bin_id']);
+        } else {
+            $query->whereNull('bin_id');
+        }
+
+        $original = $query->orderByDesc('transaction_date')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($original === null) {
+            return null;
+        }
+
+        $original->delete();
+
+        return $original;
     }
 
     public function getHistoryPaginated(int $limit = 10)

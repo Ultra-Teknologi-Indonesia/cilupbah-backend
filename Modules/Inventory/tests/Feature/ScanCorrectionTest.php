@@ -82,8 +82,9 @@ class ScanCorrectionTest extends TestCase
         $this->assertDatabaseMissing('putaway_placements', ['id' => $placement->id]);
         $this->assertSame(0, (int) $item->fresh()->putaway_qty);
         $this->assertSame(Putaway::STATUS_IN_PROGRESS, Putaway::find($putaway->id)->status);
-        $this->assertDatabaseHas('inventory_movements', [
-            'bin_id' => $sourceBin->id, 'source' => 'PUTAWAY_REVERSAL', 'qty' => 5,
+        // Koreksi penempatan tidak dicatat; jejak putaway asalnya ikut terhapus.
+        $this->assertDatabaseMissing('inventory_movements', [
+            'item_id' => $variant->id, 'source' => 'PUTAWAY_REVERSAL',
         ]);
     }
 
@@ -161,9 +162,12 @@ class ScanCorrectionTest extends TestCase
         $this->assertSame(10, (int) Inventory::where('bin_id', $binA->id)->where('item_id', $variant->id)->value('on_hand'));
         $this->assertSame(0, (int) Inventory::where('bin_id', $binB->id)->where('item_id', $variant->id)->value('on_hand'));
         $this->assertDatabaseMissing('bin_transfer_items', ['id' => $row->id]);
-        $this->assertDatabaseHas('inventory_movements', [
-            'bin_id' => $binA->id, 'source' => 'BIN_TRANSFER_REVERSAL', 'qty' => 4,
-        ]);
+
+        foreach (['BIN_TRANSFER_REVERSAL', 'BIN_TRANSFER_OUT', 'BIN_TRANSFER_IN'] as $src) {
+            $this->assertDatabaseMissing('inventory_movements', [
+                'item_id' => $variant->id, 'source' => $src,
+            ]);
+        }
     }
 
     public function test_reverse_pick_restores_on_hand_and_reserved(): void

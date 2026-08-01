@@ -11,6 +11,7 @@ use Modules\Inventory\Console\Commands\BackfillOrderAllocations;
 use Modules\Inventory\Console\Commands\BackfillTransitInbounds;
 use Modules\Inventory\Console\Commands\RebuildAverageCost;
 use Modules\Inventory\Console\Commands\ReconcileOnOrder;
+use Modules\Inventory\Console\Commands\PurgeReversalMovements;
 
 class InventoryServiceProvider extends ModuleServiceProvider
 {
@@ -27,6 +28,7 @@ class InventoryServiceProvider extends ModuleServiceProvider
         ReconcileOnOrder::class,
         BackfillInboundMovementSource::class,
         CleanupDraftTransitStock::class,
+        PurgeReversalMovements::class,
     ];
 
     protected array $providers = [
