@@ -1476,24 +1476,22 @@ class InventoryService
                 return $this->transferRepository->findById($transferId);
             }
 
-            if (! in_array($transfer->status, [InventoryTransfer::STATUS_APPROVED, InventoryTransfer::STATUS_IN_TRANSIT])) {
+            if (! in_array($transfer->status, [
+                InventoryTransfer::STATUS_APPROVED,
+                InventoryTransfer::STATUS_IN_TRANSIT,
+                InventoryTransfer::STATUS_RECEIVED,
+            ])) {
                 throw new \Exception("Transfer berstatus {$transfer->status} tidak bisa dikembalikan ke Baru Dibuat.");
             }
 
-            $blockingInbound = \Modules\Inbound\Models\Inbound::where('source_type', 'transfer')
-                ->where('source_id', $transfer->id)
-                ->whereIn('status', [
-                    \Modules\Inbound\Models\Inbound::STATUS_PARTIAL,
-                    \Modules\Inbound\Models\Inbound::STATUS_RECEIVED,
-                    \Modules\Inbound\Models\Inbound::STATUS_PUTAWAY_IN_PROGRESS,
-                    \Modules\Inbound\Models\Inbound::STATUS_COMPLETED,
-                ])
-                ->exists();
-            if ($blockingInbound) {
-                throw new \Exception("Transfer {$transfer->transfer_number} sudah/masih diterima di gudang tujuan. Hapus dulu penerimaan di menu Penerimaan Barang sebelum mengembalikan ke Baru Dibuat.");
-            }
-
             $actor = $data['actor'] ?? $transfer->created_by ?? 'system';
+
+            $this->cancelActiveTransferReceipts($transfer, $actor);
+            $transfer = $this->transferRepository->findByIdForUpdate($transferId);
+
+            if (! in_array($transfer->status, [InventoryTransfer::STATUS_APPROVED, InventoryTransfer::STATUS_IN_TRANSIT])) {
+                throw new \Exception("Penerimaan transfer {$transfer->transfer_number} belum sepenuhnya dibatalkan (status {$transfer->status}). Coba ulangi atau cek menu Penerimaan Barang.");
+            }
 
             if ($transfer->status === InventoryTransfer::STATUS_IN_TRANSIT) {
                 foreach ($transfer->items as $item) {
@@ -1578,6 +1576,29 @@ class InventoryService
         $this->notifyChannelStock($transfer->items->pluck('item_id')->unique()->all());
 
         return $transfer;
+    }
+
+    private function cancelActiveTransferReceipts(InventoryTransfer $transfer, string $actor): void
+    {
+        $inboundIds = \Modules\Inbound\Models\Inbound::where('source_type', 'transfer')
+            ->where('source_id', $transfer->id)
+            ->whereIn('status', [
+                \Modules\Inbound\Models\Inbound::STATUS_PARTIAL,
+                \Modules\Inbound\Models\Inbound::STATUS_RECEIVED,
+                \Modules\Inbound\Models\Inbound::STATUS_PUTAWAY_IN_PROGRESS,
+                \Modules\Inbound\Models\Inbound::STATUS_COMPLETED,
+            ])
+            ->pluck('id')
+            ->all();
+
+        if (empty($inboundIds)) {
+            return;
+        }
+
+        $inboundService = app(InboundService::class);
+        foreach ($inboundIds as $inboundId) {
+            $inboundService->cancel($inboundId, $actor);
+        }
     }
 
     public function shipTransfer(string $transferId, array $data): InventoryTransfer
@@ -1884,7 +1905,7 @@ class InventoryService
                     $this->revertToDraft($id, ['actor' => $actor]);
                     $reverted++;
                 } else {
-                    $this->deleteTransfer($id);
+                    $this->deleteTransfer($id, $actor);
                     $deleted++;
                 }
             } catch (\Throwable $e) {
@@ -1971,8 +1992,20 @@ class InventoryService
         }
     }
 
-    public function deleteTransfer(string $id): void
+    public function deleteTransfer(string $id, ?string $actor = null): void
     {
+        $transfer = $this->transferRepository->findById($id);
+
+        if (! $transfer) {
+            throw new \Exception('Transfer tidak ditemukan.');
+        }
+
+        $actor = $actor ?? $transfer->created_by ?? 'system';
+
+        if (! in_array($transfer->status, [InventoryTransfer::STATUS_DRAFT, InventoryTransfer::STATUS_APPROVED])) {
+            $this->revertToDraft($id, ['actor' => $actor]);
+        }
+
         $itemIds = DB::transaction(function () use ($id) {
             $transfer = $this->transferRepository->findByIdForUpdate($id);
 

@@ -385,10 +385,10 @@ class InventoryTransactionController extends Controller
             new OA\Response(response: 422, description: 'Validation Error'),
         ]
     )]
-    public function transferDestroy(string $id): JsonResponse
+    public function transferDestroy(Request $request, string $id): JsonResponse
     {
         try {
-            $this->inventoryService->deleteTransfer($id);
+            $this->inventoryService->deleteTransfer($id, ActorName::fromUser($request->user()));
             return $this->successResponse(null, 'Transfer berhasil dihapus.');
         } catch (\Exception $e) {
             return $this->errorResponse(

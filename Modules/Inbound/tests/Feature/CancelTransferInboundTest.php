@@ -174,18 +174,56 @@ class CancelTransferInboundTest extends TestCase
         $this->assertSame(Inbound::STATUS_DRAFT, $result->status);
     }
 
-    public function test_revert_to_draft_forbidden_when_inbound_received(): void
+    public function test_revert_to_draft_auto_cancels_received_inbound_and_returns_stock_to_source(): void
     {
-        [$transfer, ] = $this->buildReceivedState(qty: 3);
-        $transfer->update([
-            'status' => InventoryTransfer::STATUS_IN_TRANSIT,
-            'received_at' => null, 'received_by' => null, 'receive_number' => null,
+        [$transfer, $inbound] = $this->buildReceivedState(qty: 3);
+        $transfer->items()->first()->update(['sync_status' => InventoryTransferItem::SYNC_SYNCED]);
+        Inventory::create([
+            'item_id' => $this->variant->id, 'location_id' => $this->source->id,
+            'bin_id' => $this->sourceBin->id, 'on_hand' => 0, 'on_order' => 0,
+            'available' => 0, 'avg_cost' => 100,
         ]);
 
-        $this->expectException(\Throwable::class);
-        $this->expectExceptionMessage('sudah/masih diterima di gudang tujuan');
-
         app(InventoryService::class)->revertToDraft($transfer->id);
+
+        $this->assertSame(InventoryTransfer::STATUS_DRAFT, $transfer->fresh()->status, 'transfer kembali ke Draft');
+        $this->assertNull(Inbound::find($inbound->id), 'penerimaan dibatalkan lalu dibersihkan saat transfer kembali ke Draft');
+
+        [$transitLocationId, $transitBinId] = app(InventoryService::class)->resolveTransitLocation();
+        $destAfter = (int) Inventory::where('bin_id', $this->destBin->id)->where('item_id', $this->variant->id)->value('on_hand');
+        $transitAfter = (int) Inventory::where('bin_id', $transitBinId)->where('item_id', $this->variant->id)->value('on_hand');
+        $sourceAfter = (int) Inventory::where('bin_id', $this->sourceBin->id)->where('item_id', $this->variant->id)->value('on_hand');
+
+        $this->assertSame(0, $destAfter, 'stok gudang tujuan ditarik keluar');
+        $this->assertSame(0, $transitAfter, 'transit bersih (tidak nyangkut)');
+        $this->assertSame(3, $sourceAfter, 'stok kembali ke gudang asal');
+    }
+
+    public function test_delete_received_transfer_returns_stock_to_source_and_removes_document(): void
+    {
+        [$transfer, $inbound] = $this->buildReceivedState(qty: 3);
+        $transfer->items()->first()->update(['sync_status' => InventoryTransferItem::SYNC_SYNCED]);
+        // Di status RECEIVED, reservasi on_order gudang asal sudah dilepas saat pengiriman.
+        Inventory::create([
+            'item_id' => $this->variant->id, 'location_id' => $this->source->id,
+            'bin_id' => $this->sourceBin->id, 'on_hand' => 0, 'on_order' => 0,
+            'available' => 0, 'avg_cost' => 100,
+        ]);
+
+        app(InventoryService::class)->deleteTransfer($transfer->id, 'tester');
+
+        $this->assertNull(InventoryTransfer::find($transfer->id), 'dokumen transfer terhapus total');
+        $this->assertNull(Inbound::find($inbound->id), 'penerimaan (DRAFT) ikut terhapus');
+
+        [, $transitBinId] = app(InventoryService::class)->resolveTransitLocation();
+        $destAfter = (int) Inventory::where('bin_id', $this->destBin->id)->where('item_id', $this->variant->id)->value('on_hand');
+        $transitAfter = (int) Inventory::where('bin_id', $transitBinId)->where('item_id', $this->variant->id)->value('on_hand');
+        $source = Inventory::where('bin_id', $this->sourceBin->id)->where('item_id', $this->variant->id)->first();
+
+        $this->assertSame(0, $destAfter, 'stok gudang tujuan ditarik keluar');
+        $this->assertSame(0, $transitAfter, 'transit bersih');
+        $this->assertSame(3, (int) $source->on_hand, 'stok fisik kembali ke gudang asal');
+        $this->assertSame(0, (int) $source->on_order, 'reservasi on_order dilepas setelah transfer dihapus');
     }
 
     public function test_revert_to_draft_deletes_draft_inbound(): void
