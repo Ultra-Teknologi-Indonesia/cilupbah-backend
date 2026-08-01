@@ -82,7 +82,7 @@ class ScanCorrectionTest extends TestCase
         $this->assertDatabaseMissing('putaway_placements', ['id' => $placement->id]);
         $this->assertSame(0, (int) $item->fresh()->putaway_qty);
         $this->assertSame(Putaway::STATUS_IN_PROGRESS, Putaway::find($putaway->id)->status);
-        // Koreksi penempatan tidak dicatat; jejak putaway asalnya ikut terhapus.
+
         $this->assertDatabaseMissing('inventory_movements', [
             'item_id' => $variant->id, 'source' => 'PUTAWAY_REVERSAL',
         ]);

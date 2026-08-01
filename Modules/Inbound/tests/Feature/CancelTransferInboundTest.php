@@ -203,7 +203,7 @@ class CancelTransferInboundTest extends TestCase
     {
         [$transfer, $inbound] = $this->buildReceivedState(qty: 3);
         $transfer->items()->first()->update(['sync_status' => InventoryTransferItem::SYNC_SYNCED]);
-        // Di status RECEIVED, reservasi on_order gudang asal sudah dilepas saat pengiriman.
+
         Inventory::create([
             'item_id' => $this->variant->id, 'location_id' => $this->source->id,
             'bin_id' => $this->sourceBin->id, 'on_hand' => 0, 'on_order' => 0,

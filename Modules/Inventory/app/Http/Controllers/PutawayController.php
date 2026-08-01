@@ -362,7 +362,7 @@ class PutawayController extends Controller
         try {
             $this->putawayService->processItem($id, $itemId, $request->validated());
 
-            return $this->successResponse(null, 'Proses putaway item sedang dijalankan.', 202);
+            return $this->successResponse(null, 'Item berhasil ditempatkan.', 200);
         } catch (\App\Exceptions\UserFacingException $e) {
             throw $e;
         } catch (\DomainException $e) {

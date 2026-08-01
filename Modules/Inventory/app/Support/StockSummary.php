@@ -83,7 +83,8 @@ class StockSummary
             ->where('ib.type', 'TRANSIT_IN')
             ->whereNotIn('ib.status', ['COMPLETED', 'CANCELLED'])
             ->groupBy('ii.item_id')
-            ->selectRaw('ii.item_id, COALESCE(SUM(GREATEST(ii.received_qty - ii.putaway_qty - COALESCE(ii.reserved_qty, 0), 0)),0) AS qty')
+
+            ->selectRaw('ii.item_id, COALESCE(SUM(GREATEST(ii.received_qty - ii.putaway_qty, 0)),0) AS qty')
             ->get()
             ->keyBy('item_id');
 

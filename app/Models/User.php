@@ -58,12 +58,6 @@ class User extends Authenticatable
         return app(UploadService::class)->findByUuid($this->avatar_media_id)?->getUrl();
     }
 
-    /**
-     * Data profil transien (location_tree, all_permission_names) yang di-attach
-     * UserService untuk ProfileResource. Disimpan DI LUAR attribute bag & relations
-     * agar tidak ikut di-persist saat save()/update() (kolomnya tidak ada di tabel
-     * users → error 500) dan tidak dianggap relasi saat refresh().
-     */
     protected array $transientProfileContext = [];
 
     public function setProfileContext(string $key, mixed $value): void

@@ -35,11 +35,7 @@ class UserService
 
     public function attachProfileContext(User $user): User
     {
-        // location_tree & all_permission_names adalah data transien untuk ProfileResource,
-        // BUKAN kolom tabel users. Dipasang lewat setProfileContext (disimpan di luar
-        // attribute bag & relations) supaya tidak ikut di-persist saat instance yang sama
-        // di-save()/update() (mis. setAvatar) — yang sebelumnya memicu error 500
-        // "column location_tree does not exist".
+
         $user->setProfileContext('location_tree', $this->userLocationRepository->getLocationTree($user->id));
 
         if ($user->hasRole('owner')) {
