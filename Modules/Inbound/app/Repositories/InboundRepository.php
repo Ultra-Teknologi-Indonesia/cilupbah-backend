@@ -21,6 +21,8 @@ class InboundRepository
             $query->where('status', '!=', Inbound::STATUS_CANCELLED);
         }
 
+        \App\Support\WarehouseAccess::apply($query, 'location_id');
+
         $paginator = $query
             ->allowedFilters(
                 AllowedFilter::exact('location_id'),

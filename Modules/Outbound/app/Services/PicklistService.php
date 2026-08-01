@@ -141,6 +141,8 @@ class PicklistService
             $query->where('location_id', $locationId);
         }
 
+        \App\Support\WarehouseAccess::apply($query, 'location_id');
+
         $rows = $query
             ->selectRaw('status, COUNT(*) as total')
             ->groupBy('status')

@@ -52,12 +52,15 @@ class NotificationRepository
 
     public function taskCounts(): array
     {
+
+        $scoped = fn ($query, string $column) => \App\Support\WarehouseAccess::apply($query, $column);
+
         return [
-            'putaway' => Putaway::whereIn('status', ['NOT_STARTED', 'IN_PROGRESS'])->count(),
-            'stock_opname' => StockOpname::whereIn('status', ['DRAFT', 'IN_PROGRESS'])->count(),
-            'picklist' => Picklist::whereIn('status', ['DRAFT', 'IN_PROGRESS'])->count(),
-            'transfer_masuk' => InventoryTransfer::where('status', 'IN_TRANSIT')->count(),
-            'transfer_keluar' => InventoryTransfer::whereIn('status', ['DRAFT', 'IN_TRANSIT'])->count(),
+            'putaway' => $scoped(Putaway::whereIn('status', ['NOT_STARTED', 'IN_PROGRESS']), 'location_id')->count(),
+            'stock_opname' => $scoped(StockOpname::whereIn('status', ['DRAFT', 'IN_PROGRESS']), 'location_id')->count(),
+            'picklist' => $scoped(Picklist::whereIn('status', ['DRAFT', 'IN_PROGRESS']), 'location_id')->count(),
+            'transfer_masuk' => $scoped(InventoryTransfer::where('status', 'IN_TRANSIT'), 'destination_location_id')->count(),
+            'transfer_keluar' => $scoped(InventoryTransfer::whereIn('status', ['DRAFT', 'IN_TRANSIT']), 'source_location_id')->count(),
         ];
     }
 

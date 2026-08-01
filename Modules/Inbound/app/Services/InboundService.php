@@ -182,6 +182,8 @@ class InboundService
             $query->where('location_id', $locationId);
         }
 
+        \App\Support\WarehouseAccess::apply($query, 'location_id');
+
         $rows = $query
             ->selectRaw('status, COUNT(*) as total')
             ->groupBy('status')
@@ -744,7 +746,7 @@ class InboundService
 
             $data['transaction_number'] = $data['transaction_number'] ?? app(InventoryService::class)->generateTrfiNumber();
 
-            $data['status'] = Inbound::STATUS_COMPLETED;
+            $data['status'] = Inbound::STATUS_RECEIVED;
             $data['once_received_at'] = now();
 
             $inbound = $this->inboundRepository->create($data);
@@ -817,7 +819,7 @@ class InboundService
 
             $inbound->update([
 
-                'status'             => $anyShortfall ? Inbound::STATUS_PARTIAL : Inbound::STATUS_COMPLETED,
+                'status'             => $anyShortfall ? Inbound::STATUS_PARTIAL : Inbound::STATUS_RECEIVED,
                 'once_received_at'   => $inbound->once_received_at ?? now(),
                 'transaction_number' => $data['transaction_number'] ?? $inbound->transaction_number,
             ]);
@@ -836,7 +838,7 @@ class InboundService
                 'transfer_id' => $transferId,
                 'link' => $this->inboundLink($inbound->id),
             ],
-        ]);
+        ], locationId: $inbound->location_id);
 
         return $inbound;
     }
@@ -1037,7 +1039,7 @@ class InboundService
                     'transaction_number' => $result->transaction_number,
                     'link' => $this->inboundLink($result->id),
                 ],
-            ], excludeUserIds: array_filter([$closedBy]));
+            ], excludeUserIds: array_filter([$closedBy]), locationId: $result->location_id);
         }
 
         return $result;

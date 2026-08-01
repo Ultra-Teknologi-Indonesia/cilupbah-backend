@@ -53,6 +53,8 @@ class PicklistRepository
             $query->whereNotIn('status', [Picklist::STATUS_COMPLETED, Picklist::STATUS_CANCELLED]);
         }
 
+        \App\Support\WarehouseAccess::apply($query, 'location_id');
+
         $rx = InstantOrderClassifier::REGEX;
         $query->selectRaw('picklists.*, EXISTS(
             SELECT 1 FROM picklist_items

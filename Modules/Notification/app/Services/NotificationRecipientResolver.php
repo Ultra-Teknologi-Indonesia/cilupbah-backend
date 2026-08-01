@@ -9,7 +9,7 @@ class NotificationRecipientResolver
 {
     private const OWNER_ROLE = 'owner';
 
-    public function byPermission(string $permission): array
+    public function byPermission(string $permission, ?string $locationId = null): array
     {
         $ids = [];
         try {
@@ -21,10 +21,10 @@ class NotificationRecipientResolver
             ]);
         }
 
-        return $this->mergeWithOwners($ids);
+        return $this->mergeWithOwners($this->filterByLocation($ids, $locationId));
     }
 
-    public function byRole(string $role): array
+    public function byRole(string $role, ?string $locationId = null): array
     {
         $ids = [];
         try {
@@ -36,7 +36,29 @@ class NotificationRecipientResolver
             ]);
         }
 
-        return $this->mergeWithOwners($ids);
+        return $this->mergeWithOwners($this->filterByLocation($ids, $locationId));
+    }
+
+    /**
+     * Saring penerima ke gudang kejadian (per-gudang). User yang PUNYA penetapan
+     * gudang (user_locations) tapi gudang kejadian tak termasuk aksesnya dibuang.
+     * User tanpa penetapan = akses semua = tetap. Owner tetap (di-restore
+     * mergeWithOwners). locationId null = tak menyaring (perilaku lama).
+     */
+    private function filterByLocation(array $ids, ?string $locationId): array
+    {
+        if ($locationId === null || $ids === []) {
+            return $ids;
+        }
+
+        $excluded = User::query()
+            ->whereIn('id', $ids)
+            ->whereHas('locations')
+            ->whereDoesntHave('locations', fn ($q) => $q->where('locations.id', $locationId))
+            ->pluck('id')
+            ->all();
+
+        return array_values(array_diff($ids, $excluded));
     }
 
     private function mergeWithOwners(array $ids): array

@@ -63,7 +63,7 @@ class PutawayService
                 'putaway_number' => $putaway->putaway_number ?? null,
                 'link' => "/dashboard/barang-masuk/putaway/{$putaway->id}",
             ],
-        ], excludeUserIds: array_filter([$putaway->assigned_to ?? null]));
+        ], excludeUserIds: array_filter([$putaway->assigned_to ?? null]), locationId: $putaway->location_id);
     }
 
     public function getAllPaginated(int $limit = 10)

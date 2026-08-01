@@ -64,15 +64,15 @@ class NotificationDispatcher
         });
     }
 
-    public function toPermission(string $permission, array $payload, array $excludeUserIds = []): void
+    public function toPermission(string $permission, array $payload, array $excludeUserIds = [], ?string $locationId = null): void
     {
-        $userIds = array_diff($this->resolver->byPermission($permission), $excludeUserIds);
+        $userIds = array_diff($this->resolver->byPermission($permission, $locationId), $excludeUserIds);
         $this->toUsers($userIds, $payload);
     }
 
-    public function toRole(string $role, array $payload, array $excludeUserIds = []): void
+    public function toRole(string $role, array $payload, array $excludeUserIds = [], ?string $locationId = null): void
     {
-        $userIds = array_diff($this->resolver->byRole($role), $excludeUserIds);
+        $userIds = array_diff($this->resolver->byRole($role, $locationId), $excludeUserIds);
         $this->toUsers($userIds, $payload);
     }
 }

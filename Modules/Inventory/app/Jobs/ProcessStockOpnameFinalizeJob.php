@@ -110,7 +110,7 @@ class ProcessStockOpnameFinalizeJob implements ShouldQueue
                     'total_signed_value' => round($totalSignedValue, 2),
                     'link' => "/dashboard/transaksi-stok/opname/{$opname->id}",
                 ],
-            ], excludeUserIds: array_filter([$this->finalizedBy]));
+            ], excludeUserIds: array_filter([$this->finalizedBy]), locationId: $opname->location_id);
         }
     }
 }
