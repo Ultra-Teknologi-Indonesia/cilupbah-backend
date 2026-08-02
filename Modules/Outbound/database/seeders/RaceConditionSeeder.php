@@ -61,9 +61,13 @@ class RaceConditionSeeder extends Seeder
             $this->seedPicklistItem($picklistId, $locationId, $variantId, $sku, $userId, $i);
         }
 
-        $this->command->info("Dibuat 1 picklist berisi {$itemCount} item, masing-masing minta 1.");
-        $this->command->info("Stok tersedia: {$stock}.");
-        $this->command->info("Harapan: tepat {$stock} pick berhasil, sisanya ditolak, on_hand berhenti di 0.");
+        $putawayStock = $this->intFromEnv('RACE_PUTAWAY_STOCK', 1000);
+        $this->seedPutawayFixture($locationId, $putawayStock);
+
+        $this->command->info("[picking] 1 picklist berisi {$itemCount} item, stok {$stock}.");
+        $this->command->info("          Harapan: tepat {$stock} pick berhasil, sisanya ditolak.");
+        $this->command->info("[putaway] SKU ".self::PREFIX."SKU-02, bin sumber {$putawayStock}, bin tujuan 0.");
+        $this->command->info('          Harapan: semua request berhasil, total stok tetap utuh.');
         $this->command->info('Cari lewat API: GET /api/v1/outbound/picklists?search='.self::PREFIX);
     }
 
@@ -183,9 +187,26 @@ class RaceConditionSeeder extends Seeder
     }
 
     /**
+     * Fixture untuk uji putaway: satu SKU dengan stok berlimpah di bin sumber
+     * dan bin tujuan kosong. Stok dibuat banyak supaya tidak ada request yang
+     * ditolak karena kehabisan — dengan begitu setiap penolakan atau selisih
+     * angka murni menandakan lost update, bukan stok habis.
+     */
+    private function seedPutawayFixture(string $locationId, int $stock): void
+    {
+        $sourceBin = $this->seedBin($locationId, 'R2-R1-K1-B1');
+        $destBin = $this->seedBin($locationId, 'R2-R1-K1-B2');
+
+        [$variantId] = $this->seedProductVariant('SKU-02');
+
+        $this->seedInventory($variantId, $locationId, $sourceBin, $stock);
+        $this->seedInventory($variantId, $locationId, $destBin, 0);
+    }
+
+    /**
      * @return array{0: string, 1: string} [variantId, sku]
      */
-    private function seedProductVariant(): array
+    private function seedProductVariant(string $suffix = 'SKU-01'): array
     {
         $categoryId = DB::table('categories')->value('id');
 
@@ -206,7 +227,7 @@ class RaceConditionSeeder extends Seeder
             'updated_at' => now(),
         ]);
 
-        $sku = self::PREFIX.'SKU-01';
+        $sku = self::PREFIX.$suffix;
         $variantId = Str::uuid()->toString();
         DB::table('product_variants')->insert([
             'id' => $variantId,
