@@ -283,13 +283,42 @@ class RaceConditionSeeder extends Seeder
         return [$variantId, $sku];
     }
 
+    /**
+     * Idempoten terhadap kunci unik `unique_inventory_identifier`
+     * (item_id, location_id, bin_id, batch_no, serial_no).
+     *
+     * Insert mentah bikin seeder gagal begitu ada baris sisa yang lolos dari
+     * purge — mis. bin uji yang masih dipakai SKU lain, atau seed yang berhenti
+     * di tengah jalan. Dengan updateOrInsert, seed berapa kali pun aman dan
+     * stoknya selalu dikembalikan ke nilai awal yang kita mau.
+     */
     private function seedInventory(string $itemId, string $locationId, string $binId, int $onHand): void
     {
-        DB::table('inventories')->insert([
-            'id' => Str::uuid()->toString(),
+        $key = [
             'item_id' => $itemId,
             'location_id' => $locationId,
             'bin_id' => $binId,
+            'batch_no' => '',
+            'serial_no' => '',
+        ];
+
+        $existingId = DB::table('inventories')->where($key)->value('id');
+
+        // Jangan pakai updateOrInsert: dia ikut menimpa kolom id dengan UUID
+        // baru saat barisnya sudah ada.
+        if ($existingId) {
+            DB::table('inventories')->where('id', $existingId)->update([
+                'on_hand' => $onHand,
+                'on_order' => 0,
+                'available' => $onHand,
+                'updated_at' => now(),
+            ]);
+
+            return;
+        }
+
+        DB::table('inventories')->insert($key + [
+            'id' => Str::uuid()->toString(),
             'on_hand' => $onHand,
             'on_order' => 0,
             'available' => $onHand,
