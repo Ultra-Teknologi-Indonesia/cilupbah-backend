@@ -84,6 +84,35 @@ function findVariantId(token) {
   return row.item_id;
 }
 
+// Daftar bin milik satu lokasi. Dipakai untuk menemukan bin tujuan, karena
+// bin yang stoknya masih 0 belum tentu muncul di daftar stok.
+function binsOfLocation(token, locationId) {
+  const res = http.get(
+    `${BASE_URL}/api/v1/locations/${locationId}/bins?per_page=200`,
+    authHeaders(token),
+  );
+
+  if (res.status !== 200) {
+    throw new Error(`Gagal baca daftar bin (HTTP ${res.status}): ${res.body}`);
+  }
+
+  return res.json("data") || [];
+}
+
+// Stok satu SKU pada satu bin. Baris yang belum pernah ada dianggap 0.
+function onHandAt(token, variantId, binId) {
+  const res = http.get(
+    `${BASE_URL}/api/v1/inventory/stocks?filter[item_id]=${variantId}&filter[bin_id]=${binId}&per_page=10`,
+    authHeaders(token),
+  );
+
+  if (res.status !== 200) {
+    throw new Error(`Gagal baca stok bin (HTTP ${res.status}): ${res.body}`);
+  }
+
+  return (res.json("data") || []).reduce((sum, r) => sum + Number(r.on_hand), 0);
+}
+
 // Mengembalikan baris inventory per-bin: [{ binId, locationId, onHand }]
 function binRows(token, variantId) {
   const res = http.get(
@@ -122,22 +151,42 @@ export function setup() {
   const variantId = findVariantId(token);
   const rows = binRows(token, variantId);
 
-  if (rows.length < 2) {
+  if (rows.length === 0) {
+    throw new Error(`SKU ${SKU} tidak punya baris stok sama sekali. Jalankan seeder dulu.`);
+  }
+
+  // Bin dengan stok terbanyak jadi sumber.
+  const source = [...rows].sort((a, b) => b.onHand - a.onHand)[0];
+
+  // Bin tujuan TIDAK dicari lewat daftar stok, karena bin yang masih 0 belum
+  // tentu punya baris di sana. Ambil dari daftar bin milik lokasi ini.
+  const bins = binsOfLocation(token, source.locationId);
+  const preferred = __ENV.DEST_BIN_CODE;
+
+  const destinationBin =
+    (preferred && bins.find((b) => b.bin_final_code === preferred)) ||
+    bins.find((b) => b.id !== source.binId && !b.is_inbound) ||
+    bins.find((b) => b.id !== source.binId);
+
+  if (!destinationBin) {
     throw new Error(
-      `SKU ${SKU} hanya ada di ${rows.length} bin, butuh 2 (sumber + tujuan). Seed ulang.`,
+      `Tidak ada bin lain di lokasi ini selain bin sumber. ` +
+        "Putaway butuh dua bin berbeda — jalankan seeder dulu.",
     );
   }
 
-  // Bin dengan stok terbanyak jadi sumber, yang paling sedikit jadi tujuan.
-  const sorted = [...rows].sort((a, b) => b.onHand - a.onHand);
-  const source = sorted[0];
-  const destination = sorted[sorted.length - 1];
+  const destinationBefore = onHandAt(token, variantId, destinationBin.id);
+
+  const destination = {
+    binId: destinationBin.id,
+    onHand: destinationBefore,
+  };
 
   const needed = VUS * QTY;
 
   console.log(`SKU ${SKU} (${variantId}).`);
   console.log(`Sumber bin ${source.binId}: ${source.onHand}`);
-  console.log(`Tujuan bin ${destination.binId}: ${destination.onHand}`);
+  console.log(`Tujuan bin ${destinationBin.bin_final_code} (${destination.binId}): ${destination.onHand}`);
   console.log(`${VUS} request x qty ${QTY} = ${needed} unit akan dipindahkan.`);
 
   if (source.onHand < needed) {
@@ -184,24 +233,17 @@ export default function (data) {
 }
 
 export function teardown(data) {
-  const rows = binRows(data.token, data.variantId);
-  const source = rows.find((r) => r.binId === data.sourceBinId);
-  const destination = rows.find((r) => r.binId === data.destinationBinId);
+  const sourceAfter = onHandAt(data.token, data.variantId, data.sourceBinId);
+  const destinationAfter = onHandAt(data.token, data.variantId, data.destinationBinId);
 
-  if (!source || !destination) {
-    console.error("GAGAL — baris inventory sumber/tujuan hilang setelah tes.");
-
-    return;
-  }
-
-  const takenFromSource = data.sourceBefore - source.onHand;
-  const addedToDestination = destination.onHand - data.destinationBefore;
+  const takenFromSource = data.sourceBefore - sourceAfter;
+  const addedToDestination = destinationAfter - data.destinationBefore;
 
   const totalBefore = data.sourceBefore + data.destinationBefore;
-  const totalAfter = source.onHand + destination.onHand;
+  const totalAfter = sourceAfter + destinationAfter;
 
-  console.log(`Sumber : ${data.sourceBefore} → ${source.onHand} (turun ${takenFromSource})`);
-  console.log(`Tujuan : ${data.destinationBefore} → ${destination.onHand} (naik ${addedToDestination})`);
+  console.log(`Sumber : ${data.sourceBefore} → ${sourceAfter} (turun ${takenFromSource})`);
+  console.log(`Tujuan : ${data.destinationBefore} → ${destinationAfter} (naik ${addedToDestination})`);
   console.log(`Total  : ${totalBefore} → ${totalAfter}`);
 
   // 1. Stok tidak boleh tercipta atau lenyap. Ini invarian paling keras:
