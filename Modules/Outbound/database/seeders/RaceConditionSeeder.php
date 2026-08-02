@@ -118,8 +118,29 @@ class RaceConditionSeeder extends Seeder
             ->pluck('id');
 
         if ($variantIds->isNotEmpty()) {
+            // Tes sebelumnya meninggalkan jejak mutasi yang menunjuk ke SKU ini.
+            // Harus dibuang lebih dulu, kalau tidak penghapusan varian kena
+            // foreign key violation dan seeder gagal di tengah jalan.
+            DB::table('inventory_movements')->whereIn('item_id', $variantIds)->delete();
             DB::table('inventories')->whereIn('item_id', $variantIds)->delete();
+
+            $productIds = DB::table('product_variants')
+                ->whereIn('id', $variantIds)
+                ->pluck('product_id')
+                ->filter()
+                ->unique();
+
             DB::table('product_variants')->whereIn('id', $variantIds)->delete();
+
+            // Produk induk ikut dibuang supaya tidak menumpuk tiap kali seed.
+            // Sisakan yang masih punya varian lain di luar data uji.
+            foreach ($productIds as $productId) {
+                $stillUsed = DB::table('product_variants')->where('product_id', $productId)->exists();
+
+                if (! $stillUsed) {
+                    DB::table('products')->where('id', $productId)->delete();
+                }
+            }
         }
     }
 
