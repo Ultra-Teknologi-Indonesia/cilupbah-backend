@@ -64,10 +64,15 @@ class RaceConditionSeeder extends Seeder
         $putawayStock = $this->intFromEnv('RACE_PUTAWAY_STOCK', 1000);
         $this->seedPutawayFixture($locationId, $putawayStock);
 
+        $splitStock = $this->intFromEnv('RACE_SPLIT_STOCK', 1000);
+        $this->seedSplitFixture($locationId, $splitStock);
+
         $this->command->info("[picking] 1 picklist berisi {$itemCount} item, stok {$stock}.");
         $this->command->info("          Harapan: tepat {$stock} pick berhasil, sisanya ditolak.");
-        $this->command->info("[putaway] SKU ".self::PREFIX."SKU-02, bin sumber {$putawayStock}, bin tujuan 0.");
+        $this->command->info('[putaway] SKU '.self::PREFIX."SKU-02, bin sumber {$putawayStock}, bin tujuan 0.");
         $this->command->info('          Harapan: semua request berhasil, total stok tetap utuh.');
+        $this->command->info('[split]   SKU '.self::PREFIX."SKU-03 (stok {$splitStock}) → ".self::PREFIX.'SKU-04 (0).');
+        $this->command->info('          Harapan: kedua sisi bergerak utuh sesuai jumlah request.');
         $this->command->info('Cari lewat API: GET /api/v1/outbound/picklists?search='.self::PREFIX);
     }
 
@@ -201,6 +206,23 @@ class RaceConditionSeeder extends Seeder
 
         $this->seedInventory($variantId, $locationId, $sourceBin, $stock);
         $this->seedInventory($variantId, $locationId, $destBin, 0);
+    }
+
+    /**
+     * Fixture untuk uji split: SKU sumber berstok banyak dan SKU tujuan kosong,
+     * keduanya di bin yang sama. Split memecah 1 satuan sumber menjadi beberapa
+     * satuan tujuan (mis. 1 dus jadi 12 pcs), jadi jumlah kedua sisi memang
+     * berbeda — yang harus utuh adalah masing-masing sisinya.
+     */
+    private function seedSplitFixture(string $locationId, int $stock): void
+    {
+        $bin = $this->seedBin($locationId, 'R3-R1-K1-B1');
+
+        [$sourceId] = $this->seedProductVariant('SKU-03');
+        [$targetId] = $this->seedProductVariant('SKU-04');
+
+        $this->seedInventory($sourceId, $locationId, $bin, $stock);
+        $this->seedInventory($targetId, $locationId, $bin, 0);
     }
 
     /**
