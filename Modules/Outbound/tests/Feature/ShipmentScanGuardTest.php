@@ -46,8 +46,13 @@ class ShipmentScanGuardTest extends TestCase
         return $id;
     }
 
-    private function seedPackedOrder(string $locationId, string $provider, ?string $shippingType = null): array
-    {
+    private function seedPackedOrder(
+        string $locationId,
+        string $provider,
+        ?string $shippingType = null,
+        bool $isCanceled = false,
+        ?string $cancelRequestedAt = null,
+    ): array {
         $orderId = Str::uuid()->toString();
         $no = 'SO-SG-' . substr($orderId, 0, 6);
         DB::table('sales_orders')->insert([
@@ -57,7 +62,8 @@ class ShipmentScanGuardTest extends TestCase
             'source' => null,
             'location_id' => $locationId,
             'status' => 'packed',
-            'is_canceled' => false,
+            'is_canceled' => $isCanceled,
+            'cancel_requested_at' => $cancelRequestedAt,
             'shipping_provider' => $provider,
             'shipping_type' => $shippingType,
             'created_at' => now(), 'updated_at' => now(),
@@ -105,5 +111,33 @@ class ShipmentScanGuardTest extends TestCase
         $this->expectExceptionMessageMatches('/INSTAN/i');
 
         app(ShipmentService::class)->scanAndAddOrder($shipmentId, $no);
+    }
+
+    public function test_rejects_scan_when_order_is_canceled(): void
+    {
+        $loc = $this->seedLocation();
+        $shipmentId = $this->seedShipment($loc, 'JNE', 'REGULAR');
+        [, $no] = $this->seedPackedOrder($loc, 'JNE', isCanceled: true);
+
+        try {
+            app(ShipmentService::class)->scanAndAddOrder($shipmentId, $no);
+            $this->fail('Expected ScanRejectedException for canceled order.');
+        } catch (ScanRejectedException $e) {
+            $this->assertSame('order_canceled', $e->reason);
+        }
+    }
+
+    public function test_rejects_scan_when_order_cancel_requested(): void
+    {
+        $loc = $this->seedLocation();
+        $shipmentId = $this->seedShipment($loc, 'JNE', 'REGULAR');
+        [, $no] = $this->seedPackedOrder($loc, 'JNE', cancelRequestedAt: now()->toDateTimeString());
+
+        try {
+            app(ShipmentService::class)->scanAndAddOrder($shipmentId, $no);
+            $this->fail('Expected ScanRejectedException for cancel-requested order.');
+        } catch (ScanRejectedException $e) {
+            $this->assertSame('order_cancel_requested', $e->reason);
+        }
     }
 }
