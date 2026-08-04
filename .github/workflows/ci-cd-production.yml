@@ -88,4 +88,10 @@ jobs:
             kubectl rollout status deployment/cilupbah-horizon -n $NAMESPACE --timeout=180s
             kubectl rollout status deployment/cilupbah-scheduler -n $NAMESPACE --timeout=180s
 
+            # Migrasi DB: explicit gated deploy step (sesuai catatan di start.production.sh).
+            # Dijalankan dari pod app yang sudah ter-rollout (punya file migrasi versi baru).
+            # Migrasi fitur ini additive (kolom nullable + tabel baru) → aman.
+            echo "==> Menjalankan migrasi database..."
+            kubectl exec deploy/cilupbah-app -n $NAMESPACE -- php artisan migrate --force
+
             echo "Production deployment success: $VERSION"
