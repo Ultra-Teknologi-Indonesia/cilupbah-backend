@@ -18,6 +18,9 @@ class OrderSettlementRepository
     {
         return QueryBuilder::for(SalesOrder::class)
             ->whereIn('source', self::MARKETPLACE_SOURCES)
+            // Pesanan batal bukan pencairan — dikecualikan dari laporan settlement & KPI
+            // (dananya kembali ke pembeli). Riwayatnya tetap terlihat di daftar Pesanan.
+            ->where('is_canceled', false)
             ->allowedFilters(
                 AllowedFilter::exact('channel', 'source'),
                 AllowedFilter::exact('source'),
