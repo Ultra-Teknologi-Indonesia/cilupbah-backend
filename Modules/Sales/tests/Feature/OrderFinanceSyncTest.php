@@ -45,6 +45,8 @@ class OrderFinanceSyncTest extends TestCase
             'settlement_amount' => 98900,
             'fee_currency'      => 'IDR',
             'is_settled'        => $settled,
+
+            'settled_at'        => $settled ? now()->toDateTimeString() : null,
             'fee_lines'         => [
                 ['fee_type' => 'commission_fee', 'channel_fee_code' => 'commission_fee', 'amount' => 2200],
                 ['fee_type' => 'platform_voucher', 'channel_fee_code' => 'voucher_from_shopee', 'amount' => 3000],
@@ -66,6 +68,32 @@ class OrderFinanceSyncTest extends TestCase
         $this->assertTrue((bool) $fresh->is_settled);
         $this->assertNotNull($fresh->finance_synced_at);
         $this->assertSame(2, DB::table('sales_order_fee_lines')->where('order_id', $order->id)->count());
+    }
+
+    public function test_settlement_estimate_without_settled_at_is_not_cair(): void
+    {
+        $service = app(SalesOrderService::class);
+        $order = $this->makeOrder();
+
+        // Escrow/estimasi masuk tapi belum ada tanggal rilis → BELUM CAIR.
+        $service->updateOrderFinance($order->id, $this->finance(settled: false));
+
+        $fresh = $order->fresh();
+        $this->assertEquals(98900, $fresh->settlement_amount, 'estimasi tetap tersimpan');
+        $this->assertNull($fresh->settled_at);
+        $this->assertFalse((bool) $fresh->is_settled, 'tanpa settled_at tidak boleh cair');
+    }
+
+    public function test_canceled_order_is_never_cair(): void
+    {
+        $service = app(SalesOrderService::class);
+        $order = $this->makeOrder();
+        $order->forceFill(['is_canceled' => true])->save();
+
+        // Walau finance memberi settled_at, order batal tetap TIDAK cair.
+        $service->updateOrderFinance($order->id, $this->finance(settled: true));
+
+        $this->assertFalse((bool) $order->fresh()->is_settled, 'pesanan batal tak pernah cair');
     }
 
     public function test_update_finance_is_idempotent_fee_lines_replaced_not_appended(): void

@@ -1771,26 +1771,16 @@ class SalesOrderService
 
         $update = array_intersect_key($finance, array_flip($allowed));
 
-        // settled_at hanya ditulis bila mapper/sync memberi nilai (jangan menimpa dg null).
         if (array_key_exists('settled_at', $update) && $update['settled_at'] === null) {
             unset($update['settled_at']);
         }
 
-        // Arsip payload finance mentah (jaminan lengkap walau belum dipetakan ke kolom).
         if (array_key_exists('raw', $finance)) {
             $update['finance_raw'] = $finance['raw'];
         }
 
-        // is_settled final: settlement ada DAN (tanggal cair ada ATAU mapper menandai settled)
-        // DAN order TIDAK dibatalkan. Pesanan batal tak pernah "cair" (dananya kembali ke pembeli),
-        // walau API channel sempat mengembalikan escrow saat order masih aktif.
-        $settlementPresent = array_key_exists('settlement_amount', $finance)
-            && $finance['settlement_amount'] !== null;
         $settledAt = $finance['settled_at'] ?? $order->settled_at;
-        $mapperSettled = (bool) ($finance['is_settled'] ?? false);
-        $update['is_settled'] = $settlementPresent
-            && ($settledAt !== null || $mapperSettled)
-            && ! $order->is_canceled;
+        $update['is_settled'] = $settledAt !== null && ! $order->is_canceled;
 
         $update['finance_synced_at'] = now();
 
@@ -1801,7 +1791,7 @@ class SalesOrderService
                 $order->id,
                 $finance['fee_lines'],
                 (string) $order->source,
-                (bool) ($finance['is_settled'] ?? false),
+                (bool) $update['is_settled'],
             );
         }
 
