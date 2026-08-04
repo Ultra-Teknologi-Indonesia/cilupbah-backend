@@ -7,6 +7,7 @@ use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Observers\SalesOrderAuditObserver;
 use Modules\Sales\Observers\SalesOrderCancelObserver;
 use Modules\Sales\Observers\SalesOrderChannelStatusObserver;
+use Modules\Sales\Observers\SalesOrderFinanceResyncObserver;
 
 class EventServiceProvider extends ServiceProvider
 {
@@ -19,5 +20,6 @@ class EventServiceProvider extends ServiceProvider
         SalesOrder::observe(SalesOrderCancelObserver::class);
         SalesOrder::observe(SalesOrderAuditObserver::class);
         SalesOrder::observe(SalesOrderChannelStatusObserver::class);
+        SalesOrder::observe(SalesOrderFinanceResyncObserver::class);
     }
 }
