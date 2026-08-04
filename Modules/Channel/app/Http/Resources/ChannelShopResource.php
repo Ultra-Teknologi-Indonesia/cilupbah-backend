@@ -4,6 +4,7 @@ namespace Modules\Channel\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Modules\Channel\Services\OrderSyncStatusService;
 
 class ChannelShopResource extends JsonResource
 {
@@ -20,6 +21,8 @@ class ChannelShopResource extends JsonResource
             'location_name' => $this->stock_source_mode === 'total' ? null : optional($this->stockSourceLocation)->location_name,
             'location_code' => $this->stock_source_mode === 'total' ? null : optional($this->stockSourceLocation)->location_code,
             'integration' => $this->integrationStatus(),
+            'order_sync' => (new OrderSyncStatusService)->derive($this->resource),
+            'last_order_synced_at' => $this->last_order_synced_at,
             'token_status' => $this->tokenStatus(),
             'token_expires_at' => $this->token_expires_at,
             'last_synced_at' => $this->last_synced_at,

@@ -39,12 +39,6 @@ class NotificationRecipientResolver
         return $this->mergeWithOwners($this->filterByLocation($ids, $locationId));
     }
 
-    /**
-     * Saring penerima ke gudang kejadian (per-gudang). User yang PUNYA penetapan
-     * gudang (user_locations) tapi gudang kejadian tak termasuk aksesnya dibuang.
-     * User tanpa penetapan = akses semua = tetap. Owner tetap (di-restore
-     * mergeWithOwners). locationId null = tak menyaring (perilaku lama).
-     */
     private function filterByLocation(array $ids, ?string $locationId): array
     {
         if ($locationId === null || $ids === []) {

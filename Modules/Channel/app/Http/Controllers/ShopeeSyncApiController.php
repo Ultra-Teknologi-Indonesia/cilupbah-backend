@@ -58,9 +58,11 @@ class ShopeeSyncApiController extends Controller
 
             try {
                 $count = $this->orderService->pullOrders($shop->shop_id, $updatedAfter);
+                $this->shopRepository->markOrderSyncOk($shop->id);
                 $results[] = ['shop_id' => $shop->shop_id, 'synced' => $count];
                 $total += $count;
             } catch (\Throwable $e) {
+                $this->shopRepository->markOrderSyncProblem($shop->id, $e->getMessage());
                 $results[] = ['shop_id' => $shop->shop_id, 'error' => $e->getMessage()];
             }
         }

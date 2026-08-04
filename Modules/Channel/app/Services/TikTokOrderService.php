@@ -32,6 +32,10 @@ class TikTokOrderService
 
     public function pullOrders(string $shopId): int
     {
+        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+            return 0;
+        }
+
         $shop = $this->shopRepository->findByShopId($shopId);
         if (! $shop || ! $shop->access_token) {
             throw new \Exception("No access token found for shop: {$shopId}");
@@ -210,10 +214,6 @@ class TikTokOrderService
         return $res['data'] ?? [];
     }
 
-    /**
-     * Get Statements (202309): daftar header statement harian dalam rentang statement_time (Unix detik).
-     * Sumber settled_at (statement_time) + payment_status + payment_id.
-     */
     public function getStatements(string $shopId, int $stmtTimeGe, int $stmtTimeLt): array
     {
         $shop = $this->requireFinanceShop($shopId);
@@ -231,9 +231,6 @@ class TikTokOrderService
         return $res['data']['statements'] ?? ($res['data'] ?? []);
     }
 
-    /**
-     * Get Transactions by Statement (202501): daftar transaksi (order/adjustment/reserve) per statement.
-     */
     public function getTransactionsByStatement(string $shopId, string $statementId): array
     {
         $shop = $this->requireFinanceShop($shopId);
@@ -249,9 +246,6 @@ class TikTokOrderService
         return $res['data']['statement_transactions'] ?? ($res['data']['transactions'] ?? ($res['data'] ?? []));
     }
 
-    /**
-     * Get Payments (202605): payout aktual ke bank dalam rentang create_time (rekonsiliasi).
-     */
     public function getPayments(string $shopId, int $ge, int $lt): array
     {
         $shop = $this->requireFinanceShop($shopId);

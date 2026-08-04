@@ -2,19 +2,6 @@
 
 namespace Modules\Channel\Services;
 
-/**
- * TikTok Finance schema 202501 (NESTED).
- *
- * Menerima:
- *  - "Get Transactions by Order": order-level {settlement_amount, revenue_amount,
- *    fee_and_tax_amount, shipping_cost_amount, currency} + sku_transactions[].
- *  - "Get Transactions by Statement" transaction: struktur serupa (punya order_id),
- *    breakdown bisa langsung di transaksi (tanpa sku_transactions).
- *
- * Semua angka STRING; potongan BER-TANDA NEGATIF → (float) lalu abs() untuk kolom fee.
- *
- * TODO verifikasi vs 1 order settled PRODUKSI (sandbox TikTok nol data finance).
- */
 class TikTokStatementMapper
 {
     private const SERVICE_FEE_KEYS = [
@@ -48,7 +35,6 @@ class TikTokStatementMapper
     {
         $skuTransactions = $data['sku_transactions'] ?? null;
 
-        // Bentuk by-statement: transaksi tunggal membawa breakdown langsung.
         if ($skuTransactions === null) {
             $hasInlineBreakdown = isset($data['revenue_breakdown']) || isset($data['fee_tax_breakdown']);
             $skuTransactions = $hasInlineBreakdown ? [$data] : [];
@@ -57,7 +43,6 @@ class TikTokStatementMapper
         $orderSettlement = $this->num($data, 'settlement_amount');
         $revenueAmount = $data['revenue_amount'] ?? null;
 
-        // Defensif: tak ada baris & settlement "0"/null → belum settle.
         if (empty($skuTransactions) && ($orderSettlement === null || $orderSettlement == 0.0)) {
             return ['is_settled' => false, 'raw' => $data];
         }
@@ -84,7 +69,7 @@ class TikTokStatementMapper
             $tax = $feeTax['tax'] ?? [];
 
             $commission += $this->abs($this->num($fee, 'platform_commission_amount'))
-                + $this->abs($this->num($fee, 'dynamic_commission_amount')) // khusus ID
+                + $this->abs($this->num($fee, 'dynamic_commission_amount')) 
                 + $this->abs($this->num($fee, 'referral_fee_amount'));
 
             $service += $this->sumAbs($fee, self::SERVICE_FEE_KEYS);
@@ -100,7 +85,6 @@ class TikTokStatementMapper
             $totalTax += $this->sumAbs($tax, self::TAX_KEYS);
         }
 
-        // Ongkir ditanggung seller = shipping_cost_amount order-level bila negatif.
         $shippingCost = $this->num($data, 'shipping_cost_amount');
         $sellerShippingBorne = ($shippingCost !== null && $shippingCost < 0) ? abs($shippingCost) : null;
 
@@ -126,7 +110,7 @@ class TikTokStatementMapper
             'gross_amount'             => $gross ?: null,
             'total_tax'                => $totalTax ?: null,
             'fee_currency'             => $data['currency'] ?? 'IDR',
-            'settled_at'               => null, // statement_time diisi oleh sync statement-driven.
+            'settled_at'               => null, 
             'is_settled'               => $isSettled,
             'raw'                      => $data,
         ];
@@ -155,7 +139,6 @@ class TikTokStatementMapper
                 continue;
             }
 
-            // Potongan/voucher = deduksi → BER-TANDA negatif; rebate/kredit tetap positif.
             $signed = in_array($feeType, ['platform_shipping_rebate'], true)
                 ? (float) $value
                 : -abs((float) $value);

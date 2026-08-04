@@ -62,6 +62,10 @@ class SyncProductToChannelJob implements ShouldQueue
 
     public function handle(AdapterFactory $factory): void
     {
+        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+            return;
+        }
+
         $product = Product::with(['variants.channelMappings.channelMapping'])->find($this->productId);
         $shop = ChannelShop::with('channel')->find($this->channelShopId);
 

@@ -8,23 +8,6 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Modules\Outbound\Models\Picklist;
 
-/**
- * Data uji race condition: N picklist terpisah yang SEMUANYA mengambil SKU
- * yang sama dari bin yang sama, dengan stok sengaja dibuat lebih sedikit
- * daripada total permintaan.
- *
- * Tujuannya memaksa perebutan pada satu baris `inventories`, bukan pada baris
- * `picklist_items` — ini skenario gudang yang nyata (beberapa picker berebut
- * SKU laris) dan menguji lock di InventoryRepository, bukan di PicklistService.
- *
- * Jalankan:
- *   php artisan db:seed --class="Modules\Outbound\Database\Seeders\RaceConditionSeeder" --force
- *
- * Atur jumlah lewat env:
- *   RACE_PICKLISTS=10 RACE_STOCK=5 php artisan db:seed --class=... --force
- *
- * Semua data yang dibuat diberi prefix RACE- supaya gampang dicari dan dibuang.
- */
 class RaceConditionSeeder extends Seeder
 {
     private const PREFIX = 'RACE-';
@@ -52,9 +35,6 @@ class RaceConditionSeeder extends Seeder
 
         $this->seedInventory($variantId, $locationId, $binId, $stock);
 
-        // Satu picklist berisi banyak item. pickItem() hanya mengunci baris
-        // picklist_items, bukan picklist-nya, jadi item-item ini tetap jalan
-        // paralel dan berebut di baris inventories — persis yang mau diuji.
         $picklistId = $this->seedPicklist($locationId, $userId);
 
         for ($i = 1; $i <= $itemCount; $i++) {
@@ -76,11 +56,6 @@ class RaceConditionSeeder extends Seeder
         $this->command->info('Cari lewat API: GET /api/v1/outbound/picklists?search='.self::PREFIX);
     }
 
-    /**
-     * Baca lewat getenv(), bukan env(). Staging menjalankan `config:cache`
-     * saat deploy, dan env() di luar file config mengembalikan null begitu
-     * config ter-cache — override dari command line jadi tidak terbaca.
-     */
     private function intFromEnv(string $key, int $default): int
     {
         $value = getenv($key);
@@ -88,9 +63,6 @@ class RaceConditionSeeder extends Seeder
         return ($value === false || $value === '') ? $default : (int) $value;
     }
 
-    /**
-     * Buang sisa data uji sebelumnya supaya tiap run mulai dari nol.
-     */
     private function purge(): void
     {
         $picklistIds = DB::table('picklists')
@@ -118,9 +90,7 @@ class RaceConditionSeeder extends Seeder
             ->pluck('id');
 
         if ($variantIds->isNotEmpty()) {
-            // Tes sebelumnya meninggalkan jejak mutasi yang menunjuk ke SKU ini.
-            // Harus dibuang lebih dulu, kalau tidak penghapusan varian kena
-            // foreign key violation dan seeder gagal di tengah jalan.
+
             DB::table('inventory_movements')->whereIn('item_id', $variantIds)->delete();
             DB::table('inventories')->whereIn('item_id', $variantIds)->delete();
 
@@ -132,8 +102,6 @@ class RaceConditionSeeder extends Seeder
 
             DB::table('product_variants')->whereIn('id', $variantIds)->delete();
 
-            // Produk induk ikut dibuang supaya tidak menumpuk tiap kali seed.
-            // Sisakan yang masih punya varian lain di luar data uji.
             foreach ($productIds as $productId) {
                 $stillUsed = DB::table('product_variants')->where('product_id', $productId)->exists();
 
@@ -212,12 +180,6 @@ class RaceConditionSeeder extends Seeder
         return $id;
     }
 
-    /**
-     * Fixture untuk uji putaway: satu SKU dengan stok berlimpah di bin sumber
-     * dan bin tujuan kosong. Stok dibuat banyak supaya tidak ada request yang
-     * ditolak karena kehabisan — dengan begitu setiap penolakan atau selisih
-     * angka murni menandakan lost update, bukan stok habis.
-     */
     private function seedPutawayFixture(string $locationId, int $stock): void
     {
         $sourceBin = $this->seedBin($locationId, 'R2-R1-K1-B1');
@@ -229,12 +191,6 @@ class RaceConditionSeeder extends Seeder
         $this->seedInventory($variantId, $locationId, $destBin, 0);
     }
 
-    /**
-     * Fixture untuk uji split: SKU sumber berstok banyak dan SKU tujuan kosong,
-     * keduanya di bin yang sama. Split memecah 1 satuan sumber menjadi beberapa
-     * satuan tujuan (mis. 1 dus jadi 12 pcs), jadi jumlah kedua sisi memang
-     * berbeda — yang harus utuh adalah masing-masing sisinya.
-     */
     private function seedSplitFixture(string $locationId, int $stock): void
     {
         $bin = $this->seedBin($locationId, 'R3-R1-K1-B1');
@@ -246,9 +202,6 @@ class RaceConditionSeeder extends Seeder
         $this->seedInventory($targetId, $locationId, $bin, 0);
     }
 
-    /**
-     * @return array{0: string, 1: string} [variantId, sku]
-     */
     private function seedProductVariant(string $suffix = 'SKU-01'): array
     {
         $categoryId = DB::table('categories')->value('id');
@@ -283,15 +236,6 @@ class RaceConditionSeeder extends Seeder
         return [$variantId, $sku];
     }
 
-    /**
-     * Idempoten terhadap kunci unik `unique_inventory_identifier`
-     * (item_id, location_id, bin_id, batch_no, serial_no).
-     *
-     * Insert mentah bikin seeder gagal begitu ada baris sisa yang lolos dari
-     * purge — mis. bin uji yang masih dipakai SKU lain, atau seed yang berhenti
-     * di tengah jalan. Dengan updateOrInsert, seed berapa kali pun aman dan
-     * stoknya selalu dikembalikan ke nilai awal yang kita mau.
-     */
     private function seedInventory(string $itemId, string $locationId, string $binId, int $onHand): void
     {
         $key = [
@@ -304,8 +248,6 @@ class RaceConditionSeeder extends Seeder
 
         $existingId = DB::table('inventories')->where($key)->value('id');
 
-        // Jangan pakai updateOrInsert: dia ikut menimpa kolom id dengan UUID
-        // baru saat barisnya sudah ada.
         if ($existingId) {
             DB::table('inventories')->where('id', $existingId)->update([
                 'on_hand' => $onHand,

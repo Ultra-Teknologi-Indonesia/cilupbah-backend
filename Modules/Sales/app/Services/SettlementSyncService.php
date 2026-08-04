@@ -123,8 +123,6 @@ class SettlementSyncService
                 ->where('channel_order_no', $tx['order_id'])
                 ->first();
 
-            // Order-type: hanya proses bila order ada di sistem & item-nya sudah di-download.
-            // Jika tidak, LEWATI (jangan dicatat sebagai adjustment — bukan transaksi yang kita lacak).
             if (! $order || ! $order->itemsFullyDownloaded()) {
                 return;
             }
@@ -216,7 +214,6 @@ class SettlementSyncService
             ->where('channel_order_no', $orderSn)
             ->first();
 
-        // Hanya proses order yang ada di sistem & item-nya sudah di-download ke internal.
         if (! $order || ! $order->itemsFullyDownloaded()) {
             return;
         }

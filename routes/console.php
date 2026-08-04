@@ -19,6 +19,9 @@ Schedule::command('channel-downloads:reap-stale')->everyFiveMinutes()->withoutOv
 
 Schedule::command('channel:webhooks-replay')->everyFifteenMinutes()->withoutOverlapping();
 
+// Heartbeat + evaluasi status download pesanan per toko (Normal/Bermasalah/Tertunda).
+Schedule::command('channel:evaluate-order-sync')->everyFifteenMinutes()->withoutOverlapping();
+
 Schedule::command('orders:sync-finance')->dailyAt('03:00')->withoutOverlapping();
 Schedule::command('settlements:sync')->dailyAt('03:30')->withoutOverlapping();
 

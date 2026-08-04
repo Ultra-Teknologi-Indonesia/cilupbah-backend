@@ -57,6 +57,10 @@ class ProcessLazadaWebhook implements ShouldQueue
         ChannelDownloadService $downloadService,
         LazadaAuthService $authService,
     ): void {
+        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+            return;
+        }
+
         $sellerId = (string) ($this->payload['seller_id'] ?? '');
         $messageType = (int) ($this->payload['message_type'] ?? -1);
         $data = $this->payload['data'] ?? [];

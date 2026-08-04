@@ -16,9 +16,7 @@ class OrderSettlementRepository
             ->whereIn('source', self::MARKETPLACE_SOURCES)
 
             ->where('is_canceled', false)
-            // Hanya order yang item-nya sudah di-download ke sistem internal (SEMUA item punya
-            // item_id). Order dengan produk yang BUKAN milik kita / belum di-download tak masuk
-            // laporan settlement — konsisten dengan guard penarikan finance.
+
             ->whereHas('items')
             ->whereDoesntHave('items', fn ($q) => $q->whereNull('item_id'))
             ->allowedFilters(

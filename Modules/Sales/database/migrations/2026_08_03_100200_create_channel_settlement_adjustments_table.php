@@ -6,12 +6,7 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Transaksi settlement yang TIDAK menempel ke satu pesanan:
-     * TikTok CHARGE_BACK / PLATFORM_PENALTY / RESERVE / SHIPPING_FEE_COMPENSATION / OTHER_ADJUSTMENT,
-     * koreksi Lazada, dsb. Tanpa tabel ini: Σ per-order ≠ payout.
-     * Anti-double: UNIQUE (channel, external_transaction_id) → upsert.
-     */
+
     public function up(): void
     {
         Schema::create('channel_settlement_adjustments', function (Blueprint $table) {
@@ -20,13 +15,13 @@ return new class extends Migration
             $table->uuid('channel_settlement_id')->nullable();
             $table->string('channel', 30);
             $table->string('shop_id');
-            $table->string('external_transaction_id');     // transaction id / adjustment id
+            $table->string('external_transaction_id');     
 
-            $table->string('type', 60)->nullable();         // CHARGE_BACK, PLATFORM_PENALTY, RESERVE, ...
-            $table->uuid('order_id')->nullable();           // link ke sales_orders bila ada
+            $table->string('type', 60)->nullable();         
+            $table->uuid('order_id')->nullable();           
             $table->string('channel_order_no')->nullable();
 
-            $table->decimal('amount', 18, 4)->default(0);   // BER-TANDA (potongan negatif, kompensasi positif)
+            $table->decimal('amount', 18, 4)->default(0);   
             $table->string('reason')->nullable();
             $table->timestamp('occurred_at')->nullable();
             $table->string('currency', 8)->default('IDR');

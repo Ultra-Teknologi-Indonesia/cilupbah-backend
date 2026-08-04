@@ -18,6 +18,12 @@ class ReplayWebhookInbox extends Command
 
     public function handle(): int
     {
+        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+            $this->info('Sinkronisasi channel dijeda — replay webhook masuk dilewati.');
+
+            return self::SUCCESS;
+        }
+
         $minutes = (int) $this->option('minutes');
         $limit = (int) $this->option('limit');
         $maxAttempts = (int) $this->option('max-attempts');

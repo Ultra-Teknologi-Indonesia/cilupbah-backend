@@ -92,6 +92,10 @@ class ProcessTikTokWebhook implements ShouldQueue
         ChannelShopRepository $shops,
         TikTokAuthService $authService,
     ): void {
+        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+            return;
+        }
+
         $type = (int) ($this->payload['type'] ?? -1);
         $shopId = (string) ($this->payload['shop_id'] ?? '');
         $data = $this->payload['data'] ?? [];

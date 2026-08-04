@@ -17,6 +17,10 @@ class WooCommerceOrderService
 
     public function pullOrders(string $shopId, ?int $updatedAfter = null): int
     {
+        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+            return 0;
+        }
+
         $shop = $this->requireShop($shopId);
 
         $after = Carbon::createFromTimestamp($updatedAfter ?: now()->subDays(7)->timestamp);

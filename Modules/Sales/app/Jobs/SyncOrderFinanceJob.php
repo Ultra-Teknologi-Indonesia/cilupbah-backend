@@ -37,7 +37,6 @@ class SyncOrderFinanceJob implements ShouldQueue
             return;
         }
 
-        // Hanya tarik settlement untuk order yang item-nya sudah di-download ke sistem internal.
         if (! $order->itemsFullyDownloaded()) {
             return;
         }

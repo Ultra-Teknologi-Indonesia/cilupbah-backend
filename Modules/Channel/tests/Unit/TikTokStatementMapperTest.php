@@ -42,16 +42,15 @@ class TikTokStatementMapperTest extends TestCase
     {
         $result = (new TikTokStatementMapper())->map($this->byOrderPayload());
 
-        // commission termasuk dynamic_commission (khusus ID), positif (abs).
         $this->assertSame(3000.0, $result['commission_fee']);
         $this->assertSame(300.0, $result['service_fee']);
         $this->assertSame(500.0, $result['transaction_fee']);
-        // gross dari subtotal_before_discount.
+
         $this->assertSame(100000.0, $result['gross_amount']);
         $this->assertSame(5000.0, $result['seller_voucher']);
         $this->assertSame(1000.0, $result['total_tax']);
         $this->assertSame(90000.0, $result['settlement_amount']);
-        // shipping_cost_amount order-level negatif → ditanggung seller.
+
         $this->assertSame(5000.0, $result['seller_shipping_borne']);
         $this->assertTrue($result['is_settled']);
         $this->assertSame('IDR', $result['fee_currency']);

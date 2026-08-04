@@ -2,6 +2,7 @@
 
 namespace Modules\Channel\Providers;
 
+use Modules\Channel\Console\Commands\EvaluateOrderSyncHealth;
 use Modules\Channel\Console\Commands\ReapStaleDownloadTransactions;
 use Modules\Channel\Console\Commands\SyncTikTokAttributes;
 use Modules\Channel\Models\ChannelShop;
@@ -22,6 +23,7 @@ class ChannelServiceProvider extends ModuleServiceProvider
     ];
 
     protected array $commands = [
+        EvaluateOrderSyncHealth::class,
         ReapStaleDownloadTransactions::class,
         SyncTikTokAttributes::class,
     ];

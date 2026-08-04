@@ -127,7 +127,7 @@ class ShopeeEscrowMapperTest extends TestCase
 
         $this->assertSame(0.0, $result['seller_shipping_borne']);
         $this->assertSame(198000.0, $result['settlement_amount']);
-        // Gross = order_original_price (nilai barang sebelum diskon), BUKAN buyer_total_amount (214900).
+
         $this->assertSame(198000.0, $result['gross_amount']);
         $this->assertSame(0.0, $result['order_processing_fee']);
         $this->assertNull($result['settled_at']);

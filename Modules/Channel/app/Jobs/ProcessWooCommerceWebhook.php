@@ -48,6 +48,10 @@ class ProcessWooCommerceWebhook implements ShouldQueue
 
     public function handle(WooCommerceOrderService $orderService, ChannelDownloadService $downloadService): void
     {
+        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+            return;
+        }
+
         if ($this->shopId === '' || $this->resourceId === '') {
             return;
         }

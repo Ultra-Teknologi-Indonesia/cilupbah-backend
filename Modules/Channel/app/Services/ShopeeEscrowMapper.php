@@ -22,9 +22,6 @@ class ShopeeEscrowMapper
 
         $settlement = $this->num($income, 'escrow_amount');
 
-        // Gross = nilai barang sebelum diskon. Docs Shopee: order_original_price =
-        // "original price of the item before ANY promotion/discount". BUKAN buyer_total_amount
-        // (itu total yang dibayar pembeli, sudah termasuk ongkir & biaya pembeli).
         $grossAmount = $this->num($income, 'order_original_price')
             ?? $this->num($income, 'order_selling_price')
             ?? $this->num($income, 'original_price');

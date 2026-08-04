@@ -6,21 +6,16 @@ use Carbon\Carbon;
 
 class LazadaTransactionMapper
 {
-    /**
-     * Peta fee_name EKSAK (lowercase + trim) → kolom kanonik.
-     * Terkonfirmasi dari data produksi region ID + docs QueryTransactionDetails.
-     * Nilai 'gross' & 'refund' bukan fee potongan biasa (lihat map()).
-     */
+
     private const FEE_MAP = [
         'commission'                                    => 'commission_fee',
         'payment fee'                                   => 'transaction_fee',
         'order processing fee'                          => 'order_processing_fee',
         'sod - cod charge'                              => 'service_fee',
         'lazcoins discount promotion fee'               => 'seller_voucher',
-        // Refund/koreksi payment fee → offset transaction_fee (JAGA TANDA, jangan abs).
+
         'payment fee refund - correction for sod-cod'   => 'transaction_fee',
 
-        // dari docs QueryTransactionDetails:
         'shipping fee'                                  => 'seller_shipping_borne',
         'shipping fee paid by seller'                   => 'seller_shipping_borne',
         'reverse shipping fee'                          => 'seller_shipping_borne',
@@ -31,10 +26,8 @@ class LazadaTransactionMapper
         'shipping subsidy'                              => 'platform_shipping_rebate',
     ];
 
-    // fee_name yang berkontribusi ke gross (kredit harga item), BUKAN fee potongan.
     private const GROSS_NAMES = ['item price credit'];
 
-    // fee_name yang merupakan refund yang mengurangi settlement.
     private const REFUND_NAMES = ['refund', 'item price credit refund'];
 
     public function map(array $transactions): array
@@ -48,7 +41,6 @@ class LazadaTransactionMapper
         $grossAmount = 0.0;
         $refundTotal = 0.0;
 
-        // Kolom kanonik: TANDA disimpan sesuai peran (refund/koreksi bisa positif offset).
         $buckets = [
             'seller_voucher'           => 0.0,
             'platform_voucher'         => 0.0,
@@ -72,7 +64,6 @@ class LazadaTransactionMapper
                 continue;
             }
 
-            // Σ amount = net settlement (SEMUA baris berkontribusi — sudah benar).
             $settlement += $amount;
 
             $totalTax += ($this->amount($tx['VAT_in_amount'] ?? null) ?? 0.0);
@@ -87,13 +78,11 @@ class LazadaTransactionMapper
                 continue;
             }
 
-            // Kredit harga item → gross, bukan fee_line potongan.
             if (in_array($feeName, self::GROSS_NAMES, true)) {
                 $grossAmount += $amount;
                 continue;
             }
 
-            // Refund eksplisit yang mengurangi settlement.
             if (in_array($feeName, self::REFUND_NAMES, true)) {
                 $refundTotal += abs($amount);
                 $feeLines[] = $this->line('refund_total', $feeNameRaw, $amount);
@@ -103,13 +92,11 @@ class LazadaTransactionMapper
             $feeType = self::FEE_MAP[$feeName] ?? null;
 
             if ($feeType === null) {
-                // fee tak dikenal → tetap dicatat sebagai `other` (tak dibuang, tetap masuk net).
+
                 $feeLines[] = $this->line('other', $feeNameRaw, $amount);
                 continue;
             }
 
-            // Akumulasi BER-TANDA agar refund/koreksi meng-OFFSET (bukan menambah magnitudo).
-            // Kolom kanonik = abs(net) di akhir; fee_line simpan amount ber-tanda.
             $buckets[$feeType] += $amount;
             $touched[$feeType] = true;
             $feeLines[] = $this->line($feeType, $feeNameRaw, $amount);
@@ -142,7 +129,7 @@ class LazadaTransactionMapper
 
     private function nullable(array $buckets, array $touched, string $key): ?float
     {
-        // Magnitudo kolom kanonik = abs(net ber-tanda).
+
         return isset($touched[$key]) ? abs($buckets[$key]) : null;
     }
 
@@ -151,14 +138,10 @@ class LazadaTransactionMapper
         return [
             'fee_type'         => $feeType,
             'channel_fee_code' => $channelCode,
-            'amount'           => $amount, // BER-TANDA
+            'amount'           => $amount, 
         ];
     }
 
-    /**
-     * settled_at dari transaction_date ("13 Jul 2026") atau ujung `statement`
-     * ("13 Jul 2026 - 13 Jul 2026").
-     */
     private function parseSettledAt(array $tx): ?Carbon
     {
         $date = trim((string) ($tx['transaction_date'] ?? ''));

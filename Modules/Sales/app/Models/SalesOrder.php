@@ -310,11 +310,6 @@ class SalesOrder extends Model implements HasMedia
         return (bool) $this->is_manual;
     }
 
-    /**
-     * Semua item order sudah di-download/di-map ke produk internal (item_id terisi).
-     * Guard settlement: finance HANYA ditarik untuk order yang benar-benar kita lacak,
-     * bukan pesanan yang produknya tak pernah masuk sistem.
-     */
     public function itemsFullyDownloaded(): bool
     {
         $items = $this->relationLoaded('items') ? $this->items : $this->items()->get();

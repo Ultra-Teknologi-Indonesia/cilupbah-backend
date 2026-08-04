@@ -99,6 +99,21 @@ class ChannelShopRepository
         return ChannelShop::where('shop_id', $shopId)->value('id');
     }
 
+    /**
+     * Resolve UUID toko dari shop_id marketplace + kode channel (source pesanan),
+     * menghindari tabrakan shop_id lintas channel.
+     */
+    public function getIdByShopIdAndChannelCode(string $shopId, ?string $channelCode): ?string
+    {
+        $query = ChannelShop::where('shop_id', $shopId);
+
+        if ($channelCode !== null && $channelCode !== '') {
+            $query->whereHas('channel', fn ($q) => $q->where('code', $channelCode));
+        }
+
+        return $query->value('id');
+    }
+
     public function getActiveShops()
     {
         return DB::table('channel_shops')
@@ -142,6 +157,69 @@ class ChannelShopRepository
             'last_error' => null,
             'last_synced_at' => now(),
         ]);
+    }
+
+    /**
+     * Tandai pesanan berhasil masuk/tersinkron untuk toko ini (webhook, pull manual, atau heartbeat).
+     */
+    public function markOrderSyncOk(string $id): void
+    {
+        ChannelShop::where('id', $id)->update([
+            'order_sync_status' => ChannelShop::ORDER_SYNC_NORMAL,
+            'last_order_synced_at' => now(),
+            'last_order_error' => null,
+            'last_order_error_at' => null,
+        ]);
+    }
+
+    /**
+     * Tandai sinkron pesanan gagal untuk toko ini; kirim notifikasi hanya saat transisi masuk ke problem.
+     */
+    public function markOrderSyncProblem(string $id, ?string $message): void
+    {
+        $previousStatus = ChannelShop::where('id', $id)->value('order_sync_status');
+
+        ChannelShop::where('id', $id)->update([
+            'order_sync_status' => ChannelShop::ORDER_SYNC_PROBLEM,
+            'last_order_error' => $message ? mb_substr($message, 0, 500) : null,
+            'last_order_error_at' => now(),
+        ]);
+
+        if ($previousStatus !== ChannelShop::ORDER_SYNC_PROBLEM) {
+            $this->notifyChannelDisconnected(
+                $id,
+                'order_sync_problem',
+                'Pesanan tidak masuk',
+                'Sinkronisasi pesanan dari marketplace bermasalah — pesanan mungkin tidak masuk.',
+                $message,
+            );
+        }
+    }
+
+    /**
+     * Materialkan status pesanan hasil derivasi (dipakai scheduler). Kirim notifikasi saat transisi ke problem.
+     */
+    public function setOrderSyncStatus(string $id, string $status, ?string $note = null): void
+    {
+        $previousStatus = ChannelShop::where('id', $id)->value('order_sync_status');
+
+        if ($previousStatus === $status) {
+            return;
+        }
+
+        ChannelShop::where('id', $id)->update([
+            'order_sync_status' => $status,
+        ]);
+
+        if ($status === ChannelShop::ORDER_SYNC_PROBLEM) {
+            $this->notifyChannelDisconnected(
+                $id,
+                'order_sync_problem',
+                'Pesanan tidak masuk',
+                'Sinkronisasi pesanan dari marketplace bermasalah — pesanan mungkin tidak masuk.',
+                $note,
+            );
+        }
     }
 
     public function markIntegrationError(string $id, ?string $message): void

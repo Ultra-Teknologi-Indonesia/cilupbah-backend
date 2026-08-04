@@ -28,12 +28,14 @@ class ProcessShopeeWebhook implements ShouldQueue
     private const PUSH_SHOP_DEAUTHORIZED = 2;
     private const PUSH_ORDER_STATUS = 3;
     private const PUSH_TRACKING_NO = 4;
-    private const PUSH_ITEM_UPDATE = 5;
-    private const PUSH_ORDER_REFUND = 10;
+    private const PUSH_SHOPEE_UPDATES = 5;
+    private const PUSH_RESERVED_STOCK_CHANGE = 8;
     private const PUSH_SHIPPING_DOC = 15;
+    private const PUSH_ITEM_PRICE_UPDATE = 22;
     private const PUSH_BOOKING_STATUS = 23;
     private const PUSH_BOOKING_TRACKING_NO = 24;
     private const PUSH_BOOKING_SHIPPING_DOC = 25;
+    private const PUSH_RETURN_UPDATE = 29;
     private const PUSH_PACKAGE_FULFILLMENT = 30;
     private const PUSH_COURIER_DELIVERY_BINDING = 37;
 
@@ -63,6 +65,10 @@ class ProcessShopeeWebhook implements ShouldQueue
 
     public function handle(ShopeeOrderService $orderService, ChannelDownloadService $downloadService): void
     {
+        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+            return;
+        }
+
         $shopId = (string) ($this->payload['shop_id'] ?? '');
         $code = (int) ($this->payload['code'] ?? -1);
         $data = $this->payload['data'] ?? [];
@@ -83,8 +89,9 @@ class ProcessShopeeWebhook implements ShouldQueue
             self::PUSH_BOOKING_SHIPPING_DOC,
             self::PUSH_PACKAGE_FULFILLMENT,
             self::PUSH_COURIER_DELIVERY_BINDING => $this->handleOrderEvent($orderService, $shopId, $data),
-            self::PUSH_ORDER_REFUND => $this->handleReturnEvent($orderService, $shopId, $data),
-            self::PUSH_ITEM_UPDATE => $this->logItemEvent($downloadService, $shopId, $data),
+            self::PUSH_RETURN_UPDATE => $this->handleReturnEvent($orderService, $shopId, $data),
+            self::PUSH_RESERVED_STOCK_CHANGE,
+            self::PUSH_ITEM_PRICE_UPDATE => $this->logItemEvent($downloadService, $shopId, $data),
             default => Log::info("Shopee webhook code {$code} belum ditangani — diabaikan.", ['shop_id' => $shopId]),
         };
 

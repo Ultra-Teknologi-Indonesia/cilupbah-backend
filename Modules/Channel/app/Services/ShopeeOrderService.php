@@ -22,6 +22,10 @@ class ShopeeOrderService
 
     public function pullOrders(string $shopId, ?int $updatedAfter = null): int
     {
+        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+            return 0;
+        }
+
         $shop = $this->requireShop($shopId);
 
         $timeFrom = $updatedAfter ?: now()->subDays(7)->timestamp;
@@ -416,12 +420,6 @@ class ShopeeOrderService
         return $res['response'] ?? [];
     }
 
-    /**
-     * Daftar escrow yang sudah dirilis dalam rentang release_time (Unix detik).
-     * Sumber `escrow_release_time` (settled_at Shopee) + `payout_amount` per order.
-     *
-     * @return array{escrow_list: array<int, array>, more: bool}
-     */
     public function getEscrowList(string $shopId, int $releaseTimeFrom, int $releaseTimeTo, int $pageNo = 1, int $pageSize = 100): array
     {
         $shop = $this->requireShop($shopId);

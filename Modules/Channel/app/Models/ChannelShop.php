@@ -33,9 +33,18 @@ class ChannelShop extends Model
         'integration_status',
         'last_error',
         'last_synced_at',
+        'order_sync_status',
+        'last_order_synced_at',
+        'last_order_error',
+        'last_order_error_at',
         'stock_source_mode',
         'stock_source_location_id',
     ];
+
+    public const ORDER_SYNC_NORMAL = 'normal';
+    public const ORDER_SYNC_PROBLEM = 'problem';
+    public const ORDER_SYNC_PENDING = 'pending';
+    public const ORDER_SYNC_INACTIVE = 'nonaktif';
 
     protected $casts = [
         'token_expires_at' => 'datetime',
@@ -44,6 +53,8 @@ class ChannelShop extends Model
         'order_sync_enabled' => 'boolean',
         'disconnected_at' => 'datetime',
         'last_synced_at' => 'datetime',
+        'last_order_synced_at' => 'datetime',
+        'last_order_error_at' => 'datetime',
         'consumer_key' => 'encrypted',
         'consumer_secret' => 'encrypted',
         'webhook_secret' => 'encrypted',

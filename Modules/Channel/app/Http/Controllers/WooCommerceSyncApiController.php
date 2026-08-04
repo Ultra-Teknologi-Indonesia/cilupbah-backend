@@ -54,7 +54,9 @@ class WooCommerceSyncApiController extends Controller
         foreach ($shops as $shop) {
             try {
                 $total += $this->orderService->pullOrders($shop->shop_id, $updatedAfter);
+                $this->shopRepository->markOrderSyncOk($shop->id);
             } catch (\Throwable $e) {
+                $this->shopRepository->markOrderSyncProblem($shop->id, $e->getMessage());
                 $errors[] = ['shop_id' => $shop->shop_id, 'error' => $e->getMessage()];
             }
         }

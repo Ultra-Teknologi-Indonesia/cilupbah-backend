@@ -125,11 +125,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     });
 
     Route::middleware('role_or_permission:owner|view-pembayaran-penjualan')->group(function () {
-        // Settlement marketplace per-pesanan (dibaca dari sales_orders + kolom finance).
+
         Route::get('sales/settlements/summary', [OrderSettlementController::class, 'summary'])->name('sales.settlements.summary');
         Route::get('sales/settlements/export', [OrderSettlementController::class, 'export'])->name('sales.settlements.export');
         Route::get('sales/settlements', [OrderSettlementController::class, 'index'])->name('sales.settlements.index');
-        // Batch settlement lama (manual DRAFT) tetap dapat diakses per-id.
+
         Route::get('sales/settlements/{id}', [SalesSettlementController::class, 'show'])->whereUuid('id')->name('sales.settlements.show');
     });
 

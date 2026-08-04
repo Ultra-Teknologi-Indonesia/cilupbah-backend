@@ -152,7 +152,7 @@ class ShopeeWebhookTest extends TestCase
         $download->shouldReceive('downloadProductDebounced')->once()->with('shopee', '778899', 'SP-1');
 
         (new ProcessShopeeWebhook($this->orderPayload([
-            'code' => 5,
+            'code' => 22,
             'data' => ['item_id' => 'SP-1', 'status' => 'normal'],
         ])))->handle(app(ShopeeOrderService::class), $download);
 
@@ -160,6 +160,25 @@ class ShopeeWebhookTest extends TestCase
             'external_product_id' => 'SP-1',
             'sync_status' => 'synced',
         ]);
+    }
+
+    public function test_return_update_push_creates_sales_return(): void
+    {
+        $orderService = Mockery::mock(ShopeeOrderService::class);
+        $orderService->shouldReceive('pullOrderById')->once()->with('778899', '2606SHOPEE01');
+
+        $returnService = Mockery::mock(\Modules\Sales\Services\SalesReturnService::class);
+        $returnService->shouldReceive('createFromChannel')->once()
+            ->with(Mockery::on(fn ($p) => ($p['source'] ?? null) === 'shopee'
+                && ($p['channel_order_id'] ?? null) === '2606SHOPEE01'
+                && ($p['channel_return_id'] ?? null) === 'RET-1'))
+            ->andReturn(null);
+        $this->app->instance(\Modules\Sales\Services\SalesReturnService::class, $returnService);
+
+        (new ProcessShopeeWebhook($this->orderPayload([
+            'code' => 29,
+            'data' => ['ordersn' => '2606SHOPEE01', 'return_sn' => 'RET-1', 'reason' => 'Barang rusak'],
+        ])))->handle($orderService, app(ChannelDownloadService::class));
     }
 
     public function test_configured_push_url_used_for_signature(): void

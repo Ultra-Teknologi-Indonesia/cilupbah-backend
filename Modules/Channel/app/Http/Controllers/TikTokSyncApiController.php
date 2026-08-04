@@ -34,6 +34,7 @@ class TikTokSyncApiController extends Controller
                 try {
                     $count = $orderService->pullOrders($shop->shop_id);
                     $totalCount += $count;
+                    $this->shopRepository->markOrderSyncOk($shop->id);
                     $results[] = [
                         'shop_id' => $shop->shop_id,
                         'shop_name' => $shop->shop_name,
@@ -41,6 +42,7 @@ class TikTokSyncApiController extends Controller
                         'pulled_count' => $count
                     ];
                 } catch (\Exception $e) {
+                    $this->shopRepository->markOrderSyncProblem($shop->id, $e->getMessage());
                     $results[] = [
                         'shop_id' => $shop->shop_id,
                         'shop_name' => $shop->shop_name,

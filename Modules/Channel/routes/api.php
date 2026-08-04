@@ -15,6 +15,13 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::get('marketplace/stock-allocation', [ChannelController::class, 'stockAllocation'])->middleware('role_or_permission:owner|view-posisi-stok');
 
+    Route::get('channel-sync-setting', [\Modules\Channel\Http\Controllers\ChannelSyncSettingController::class, 'show'])
+        ->name('channel-sync-setting.show')
+        ->middleware('role_or_permission:owner|view-integrasi-channel');
+    Route::put('channel-sync-setting', [\Modules\Channel\Http\Controllers\ChannelSyncSettingController::class, 'update'])
+        ->name('channel-sync-setting.update')
+        ->middleware('role_or_permission:owner|edit-integrasi-channel');
+
     Route::middleware('role_or_permission:owner|view-integrasi-channel')->group(function () {
         Route::get('marketplace/store', [ChannelController::class, 'stores']);
 

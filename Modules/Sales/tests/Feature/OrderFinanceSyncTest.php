@@ -75,7 +75,6 @@ class OrderFinanceSyncTest extends TestCase
         $service = app(SalesOrderService::class);
         $order = $this->makeOrder();
 
-        // Escrow/estimasi masuk tapi belum ada tanggal rilis → BELUM CAIR.
         $service->updateOrderFinance($order->id, $this->finance(settled: false));
 
         $fresh = $order->fresh();
@@ -90,7 +89,6 @@ class OrderFinanceSyncTest extends TestCase
         $order = $this->makeOrder();
         $order->forceFill(['is_canceled' => true])->save();
 
-        // Walau finance memberi settled_at, order batal tetap TIDAK cair.
         $service->updateOrderFinance($order->id, $this->finance(settled: true));
 
         $this->assertFalse((bool) $order->fresh()->is_settled, 'pesanan batal tak pernah cair');

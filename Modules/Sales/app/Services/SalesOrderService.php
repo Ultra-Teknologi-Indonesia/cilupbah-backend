@@ -1732,11 +1732,38 @@ class SalesOrderService
                 }
             }
 
+            $this->stampOrderSyncHealthy($order);
+
             return $order->id;
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error("Failed to upsert order: " . $e->getMessage());
             throw $e;
+        }
+    }
+
+    /**
+     * Tandai kesehatan sinkron-pesanan toko sebagai sehat setelah pesanan channel berhasil masuk.
+     * Post-commit & best-effort: kegagalan di sini tidak boleh menggagalkan intake pesanan.
+     */
+    private function stampOrderSyncHealthy(SalesOrder $order): void
+    {
+        if (! $order->source || ! $order->channel_shop_id) {
+            return;
+        }
+
+        try {
+            $repo = app(\Modules\Channel\Repositories\ChannelShopRepository::class);
+            $shopUuid = $repo->getIdByShopIdAndChannelCode((string) $order->channel_shop_id, (string) $order->source);
+
+            if ($shopUuid) {
+                $repo->markOrderSyncOk($shopUuid);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Gagal stamp order-sync health setelah upsert order', [
+                'order_id' => $order->id,
+                'error'    => $e->getMessage(),
+            ]);
         }
     }
 

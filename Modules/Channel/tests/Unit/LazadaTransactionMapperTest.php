@@ -36,13 +36,13 @@ class LazadaTransactionMapperTest extends TestCase
         $this->assertSame(100.0, $result['commission_fee']);
         $this->assertSame(55.0, $result['transaction_fee']);
         $this->assertSame(30.0, $result['order_processing_fee']);
-        // SOD - COD charge → service_fee (TIDAK hilang).
+
         $this->assertSame(20.0, $result['service_fee']);
-        // LazCoins → seller_voucher (TIDAK hilang).
+
         $this->assertSame(10.0, $result['seller_voucher']);
-        // Item Price Credit → gross, bukan fee.
+
         $this->assertSame(250.0, $result['gross_amount']);
-        // settled_at diparse dari "13 Jul 2026".
+
         $this->assertSame('2026-07-13', $result['settled_at']->toDateString());
         $this->assertSame(5.0, $result['total_tax']);
         $this->assertTrue($result['is_settled']);
@@ -55,7 +55,6 @@ class LazadaTransactionMapperTest extends TestCase
             $this->row('Payment fee refund - correction for SOD-COD', '55.00'),
         ]);
 
-        // Offset penuh → 0, BUKAN 110 (tidak menambah keliru).
         $this->assertSame(0.0, $result['transaction_fee']);
     }
 
@@ -77,7 +76,7 @@ class LazadaTransactionMapperTest extends TestCase
         $byType = collect($result['fee_lines'])->keyBy('fee_type');
         $this->assertTrue($byType->has('other'));
         $this->assertSame('Some Brand New Fee', $byType['other']['channel_fee_code']);
-        // Tetap masuk net settlement.
+
         $this->assertSame(-12.0, $result['settlement_amount']);
     }
 
