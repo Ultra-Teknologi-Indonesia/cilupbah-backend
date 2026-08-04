@@ -18,7 +18,7 @@ class OrderSettlementRepository
     {
         return QueryBuilder::for(SalesOrder::class)
             ->whereIn('source', self::MARKETPLACE_SOURCES)
-            ->allowedFilters([
+            ->allowedFilters(
                 AllowedFilter::exact('channel', 'source'),
                 AllowedFilter::exact('source'),
                 AllowedFilter::exact('channel_shop_id'),
@@ -28,7 +28,7 @@ class OrderSettlementRepository
                 AllowedFilter::scope('date_to', 'whereDateTo'),
                 AllowedFilter::scope('settled_from', 'whereSettledFrom'),
                 AllowedFilter::scope('settled_to', 'whereSettledTo'),
-            ])
+            )
             ->allowedSearch('salesorder_no');
     }
 
