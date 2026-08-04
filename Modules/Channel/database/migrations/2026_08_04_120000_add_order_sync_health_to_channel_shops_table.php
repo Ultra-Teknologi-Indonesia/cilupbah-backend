@@ -9,7 +9,6 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('channel_shops', function (Blueprint $table) {
-            // Kesehatan sinkron PESANAN, terpisah dari integration_status (token/koneksi).
             $table->string('order_sync_status')->default('pending')->after('last_synced_at');
             $table->timestamp('last_order_synced_at')->nullable()->after('order_sync_status');
             $table->text('last_order_error')->nullable()->after('last_order_synced_at');

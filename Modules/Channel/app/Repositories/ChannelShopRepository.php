@@ -99,10 +99,6 @@ class ChannelShopRepository
         return ChannelShop::where('shop_id', $shopId)->value('id');
     }
 
-    /**
-     * Resolve UUID toko dari shop_id marketplace + kode channel (source pesanan),
-     * menghindari tabrakan shop_id lintas channel.
-     */
     public function getIdByShopIdAndChannelCode(string $shopId, ?string $channelCode): ?string
     {
         $query = ChannelShop::where('shop_id', $shopId);
@@ -159,9 +155,6 @@ class ChannelShopRepository
         ]);
     }
 
-    /**
-     * Tandai pesanan berhasil masuk/tersinkron untuk toko ini (webhook, pull manual, atau heartbeat).
-     */
     public function markOrderSyncOk(string $id): void
     {
         ChannelShop::where('id', $id)->update([
@@ -172,9 +165,6 @@ class ChannelShopRepository
         ]);
     }
 
-    /**
-     * Tandai sinkron pesanan gagal untuk toko ini; kirim notifikasi hanya saat transisi masuk ke problem.
-     */
     public function markOrderSyncProblem(string $id, ?string $message): void
     {
         $previousStatus = ChannelShop::where('id', $id)->value('order_sync_status');
@@ -196,9 +186,6 @@ class ChannelShopRepository
         }
     }
 
-    /**
-     * Materialkan status pesanan hasil derivasi (dipakai scheduler). Kirim notifikasi saat transisi ke problem.
-     */
     public function setOrderSyncStatus(string $id, string $status, ?string $note = null): void
     {
         $previousStatus = ChannelShop::where('id', $id)->value('order_sync_status');

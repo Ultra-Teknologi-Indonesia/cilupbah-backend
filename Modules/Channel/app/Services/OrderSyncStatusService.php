@@ -4,27 +4,14 @@ namespace Modules\Channel\Services;
 
 use Modules\Channel\Models\ChannelShop;
 
-/**
- * SSOT penurunan status "Download Pesanan" per toko.
- *
- * Status pesanan sengaja DIPISAH dari integration_status (kesehatan token/koneksi),
- * tetapi ikut memperhitungkannya: koneksi yang putus otomatis berarti pesanan
- * tidak bisa masuk. Dipakai oleh ChannelShopResource (tampilan) dan
- * EvaluateOrderSyncHealth (scheduler + notifikasi) agar tidak ada drift.
- */
 class OrderSyncStatusService
 {
-    /**
-     * @return array{status: string, note: string|null}
-     */
     public function derive(ChannelShop $shop): array
     {
-        // 1. Sinkron pesanan dimatikan manual → jangan dialarm.
         if (! $shop->order_sync_enabled) {
             return ['status' => ChannelShop::ORDER_SYNC_INACTIVE, 'note' => 'Sinkron pesanan dinonaktifkan'];
         }
 
-        // 2. Tidak bisa sinkron sama sekali (koneksi/token) → Bermasalah.
         if ($shop->disconnected_at !== null) {
             return ['status' => ChannelShop::ORDER_SYNC_PROBLEM, 'note' => 'Toko terputus dari marketplace'];
         }
@@ -37,17 +24,14 @@ class OrderSyncStatusService
             return ['status' => ChannelShop::ORDER_SYNC_PROBLEM, 'note' => 'Perlu otorisasi ulang'];
         }
 
-        // 3. Kegagalan tarik pesanan yang belum tertimpa keberhasilan → Bermasalah.
         if ($this->hasUnresolvedPullError($shop)) {
             return ['status' => ChannelShop::ORDER_SYNC_PROBLEM, 'note' => $shop->last_order_error ?: 'Sinkron pesanan gagal'];
         }
 
-        // 4. Belum pernah ada konfirmasi pesanan/heartbeat sukses → Tertunda.
         if ($shop->last_order_synced_at === null) {
             return ['status' => ChannelShop::ORDER_SYNC_PENDING, 'note' => 'Menunggu sinkronisasi pertama'];
         }
 
-        // 5. Sehat.
         return ['status' => ChannelShop::ORDER_SYNC_NORMAL, 'note' => null];
     }
 
@@ -66,7 +50,6 @@ class OrderSyncStatusService
             return false;
         }
 
-        // Error dianggap sembuh bila ada keberhasilan setelahnya.
         return $shop->last_order_synced_at === null
             || $shop->last_order_error_at->greaterThan($shop->last_order_synced_at);
     }

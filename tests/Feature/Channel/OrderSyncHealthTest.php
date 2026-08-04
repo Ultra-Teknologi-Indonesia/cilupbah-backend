@@ -9,10 +9,6 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Tests\TestCase;
 
-/**
- * Uji jalur berbasis DB: helper repo + eksposur Resource.
- * Matriks logika derive murni ada di OrderSyncStatusServiceTest (tanpa DB).
- */
 class OrderSyncHealthTest extends TestCase
 {
     use RefreshDatabase;

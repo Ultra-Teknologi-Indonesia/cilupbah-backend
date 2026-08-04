@@ -1742,10 +1742,6 @@ class SalesOrderService
         }
     }
 
-    /**
-     * Tandai kesehatan sinkron-pesanan toko sebagai sehat setelah pesanan channel berhasil masuk.
-     * Post-commit & best-effort: kegagalan di sini tidak boleh menggagalkan intake pesanan.
-     */
     private function stampOrderSyncHealthy(SalesOrder $order): void
     {
         if (! $order->source || ! $order->channel_shop_id) {

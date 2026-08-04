@@ -6,10 +6,6 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\OrderSyncStatusService;
 use Tests\TestCase;
 
-/**
- * Uji murni logika penurunan status (tanpa DB) — model tidak disimpan, cast tetap berlaku.
- * Sengaja tanpa RefreshDatabase agar tak terblok migrasi baseline.
- */
 class OrderSyncStatusServiceTest extends TestCase
 {
     private function derive(array $attrs): string

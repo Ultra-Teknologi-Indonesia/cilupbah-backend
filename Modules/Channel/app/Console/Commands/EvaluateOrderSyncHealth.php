@@ -12,15 +12,6 @@ use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Services\WooCommerceOrderService;
 
-/**
- * Heartbeat + evaluator kesehatan sinkron pesanan per toko.
- *
- * 1. Denyut aktif: untuk tiap toko sehat (aktif, punya token, integrasi tidak error),
- *    tarik pesanan terbaru → sukses stamp last_order_synced_at (walau 0 pesanan),
- *    gagal → tandai bermasalah. Ini yang membuat "Normal" berarti "MP benar-benar
- *    terjangkau baru-baru ini", bukan sekadar ada pesanan. Sekaligus jaring pengaman webhook.
- * 2. Materialisasi status turunan (derive) untuk SEMUA toko, kirim notifikasi saat transisi.
- */
 class EvaluateOrderSyncHealth extends Command
 {
     protected $signature = 'channel:evaluate-order-sync {--no-pull : Lewati heartbeat pull, hanya evaluasi status turunan}';
