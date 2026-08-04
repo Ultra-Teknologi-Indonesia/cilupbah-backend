@@ -121,10 +121,20 @@ class SalesOrderResource extends JsonResource
                 'seller_shipping_borne'    => $this->floatOrNull($this->seller_shipping_borne),
                 'platform_shipping_rebate' => $this->floatOrNull($this->platform_shipping_rebate),
                 'settlement_amount'        => $this->floatOrNull($this->settlement_amount),
-                'refund_total'             => $this->refundTotal(),
+                'refund_total'             => $this->floatOrNull($this->refund_total) ?? $this->refundTotal(),
+                'gross_amount'             => $this->floatOrNull($this->gross_amount),
+                'total_tax'                => $this->floatOrNull($this->total_tax),
+                'insurance_cost'           => $this->floatOrNull($this->insurance_cost),
                 'currency'                 => $this->fee_currency ?? 'IDR',
                 'is_settled'               => (bool) $this->is_settled,
+                'settled_at'               => $this->settled_at,
                 'synced_at'                => $this->finance_synced_at,
+                'fee_lines'                => $this->whenLoaded('feeLines', fn () =>
+                    $this->feeLines->map(fn ($line) => [
+                        'fee_type'         => $line->fee_type,
+                        'channel_fee_code' => $line->channel_fee_code,
+                        'amount'           => (float) $line->amount,
+                    ])->values(), []),
             ],
 
             'shipping' => [

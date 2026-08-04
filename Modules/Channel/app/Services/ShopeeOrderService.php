@@ -416,6 +416,31 @@ class ShopeeOrderService
         return $res['response'] ?? [];
     }
 
+    /**
+     * Daftar escrow yang sudah dirilis dalam rentang release_time (Unix detik).
+     * Sumber `escrow_release_time` (settled_at Shopee) + `payout_amount` per order.
+     *
+     * @return array{escrow_list: array<int, array>, more: bool}
+     */
+    public function getEscrowList(string $shopId, int $releaseTimeFrom, int $releaseTimeTo, int $pageNo = 1, int $pageSize = 100): array
+    {
+        $shop = $this->requireShop($shopId);
+
+        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/payment/get_escrow_list', [
+            'release_time_from' => $releaseTimeFrom,
+            'release_time_to'   => $releaseTimeTo,
+            'page_no'           => $pageNo,
+            'page_size'         => $pageSize,
+        ], $token, $shop->shop_id));
+
+        $response = $res['response'] ?? [];
+
+        return [
+            'escrow_list' => $response['escrow_list'] ?? [],
+            'more'        => (bool) ($response['more'] ?? false),
+        ];
+    }
+
     public function getCancelReasons(): array
     {
 

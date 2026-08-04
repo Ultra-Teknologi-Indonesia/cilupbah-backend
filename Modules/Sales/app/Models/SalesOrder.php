@@ -52,9 +52,14 @@ class SalesOrder extends Model implements HasMedia
         'seller_shipping_borne',
         'platform_shipping_rebate',
         'settlement_amount',
+        'refund_total',
+        'gross_amount',
         'fee_currency',
         'is_settled',
         'finance_synced_at',
+        'settled_at',
+        'channel_settlement_id',
+        'finance_raw',
         'total_tax',
         'shipping_cost',
         'actual_shipping_fee',
@@ -180,6 +185,8 @@ class SalesOrder extends Model implements HasMedia
         'driver_call_attempted_at'   => 'datetime',
         'driver_call_response'       => 'array',
         'finance_synced_at'   => 'datetime',
+        'settled_at'          => 'datetime',
+        'finance_raw'         => 'array',
         'is_settled'                    => 'boolean',
         'is_paid'                       => 'boolean',
         'is_canceled'                   => 'boolean',
@@ -286,6 +293,16 @@ class SalesOrder extends Model implements HasMedia
     public function scopeWhereDateTo($query, $date)
     {
         return $query->whereDate('transaction_date', '<=', $date);
+    }
+
+    public function scopeWhereSettledFrom($query, $date)
+    {
+        return $query->whereDate('settled_at', '>=', $date);
+    }
+
+    public function scopeWhereSettledTo($query, $date)
+    {
+        return $query->whereDate('settled_at', '<=', $date);
     }
 
     public function isManual(): bool

@@ -20,6 +20,7 @@ Schedule::command('channel-downloads:reap-stale')->everyFiveMinutes()->withoutOv
 Schedule::command('channel:webhooks-replay')->everyFifteenMinutes()->withoutOverlapping();
 
 Schedule::command('orders:sync-finance')->dailyAt('03:00')->withoutOverlapping();
+Schedule::command('settlements:sync')->dailyAt('03:30')->withoutOverlapping();
 
 Schedule::command('returns:sync-tracking')->everyThirtyMinutes()->withoutOverlapping();
 Schedule::command('returns:sync-detail')->everyThirtyMinutes()->withoutOverlapping();

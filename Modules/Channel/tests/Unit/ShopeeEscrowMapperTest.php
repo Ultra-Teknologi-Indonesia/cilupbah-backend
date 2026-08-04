@@ -106,4 +106,59 @@ class ShopeeEscrowMapperTest extends TestCase
 
         $this->assertArrayNotHasKey('service_fee', $byType->all());
     }
+
+    public function test_real_staging_escrow_gross_and_settlement(): void
+    {
+        $result = (new ShopeeEscrowMapper())->map($this->escrow([
+            'escrow_amount'               => 198000,
+            'buyer_total_amount'          => 214900,
+            'commission_fee'              => 0,
+            'service_fee'                 => 0,
+            'seller_transaction_fee'      => 0,
+            'actual_shipping_fee'         => 15000,
+            'buyer_paid_shipping_fee'     => 15000,
+            'shopee_shipping_rebate'      => 0,
+            'seller_order_processing_fee' => 0,
+            'voucher_from_seller'         => 0,
+            'voucher_from_shopee'         => 0,
+            'original_price'              => 198000,
+            'order_original_price'        => 198000,
+        ]));
+
+        $this->assertSame(0.0, $result['seller_shipping_borne']);
+        $this->assertSame(198000.0, $result['settlement_amount']);
+        $this->assertSame(214900.0, $result['gross_amount']);
+        $this->assertSame(0.0, $result['order_processing_fee']);
+        $this->assertNull($result['settled_at']);
+        $this->assertTrue($result['is_settled']);
+    }
+
+    public function test_reads_seller_order_processing_fee_field(): void
+    {
+        $result = (new ShopeeEscrowMapper())->map($this->escrow([
+            'escrow_amount'               => 50000,
+            'seller_order_processing_fee' => 1250,
+        ]));
+
+        $this->assertSame(1250.0, $result['order_processing_fee']);
+    }
+
+    public function test_refund_total_from_seller_return_refund_and_negative_adjustment(): void
+    {
+        $result = (new ShopeeEscrowMapper())->map($this->escrow([
+            'escrow_amount'          => 50000,
+            'seller_return_refund'   => 12000,
+            'total_adjustment_amount' => -3000,
+        ]));
+
+        $this->assertSame(15000.0, $result['refund_total']);
+    }
+
+    public function test_raw_payload_is_preserved(): void
+    {
+        $escrow = $this->escrow(['escrow_amount' => 1]);
+        $result = (new ShopeeEscrowMapper())->map($escrow);
+
+        $this->assertSame($escrow, $result['raw']);
+    }
 }

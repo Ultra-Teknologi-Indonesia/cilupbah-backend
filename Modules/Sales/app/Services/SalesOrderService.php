@@ -1760,16 +1760,33 @@ class SalesOrderService
             'seller_shipping_borne',
             'platform_shipping_rebate',
             'settlement_amount',
+            'refund_total',
+            'gross_amount',
             'fee_currency',
             'total_tax',
             'insurance_cost',
+            'settled_at',
+            'channel_settlement_id',
         ];
 
         $update = array_intersect_key($finance, array_flip($allowed));
 
-        if (array_key_exists('is_settled', $finance)) {
-            $update['is_settled'] = (bool) $finance['is_settled'];
+        // settled_at hanya ditulis bila mapper/sync memberi nilai (jangan menimpa dg null).
+        if (array_key_exists('settled_at', $update) && $update['settled_at'] === null) {
+            unset($update['settled_at']);
         }
+
+        // Arsip payload finance mentah (jaminan lengkap walau belum dipetakan ke kolom).
+        if (array_key_exists('raw', $finance)) {
+            $update['finance_raw'] = $finance['raw'];
+        }
+
+        // is_settled final: settlement ada DAN (tanggal cair ada ATAU mapper menandai settled).
+        $settlementPresent = array_key_exists('settlement_amount', $finance)
+            && $finance['settlement_amount'] !== null;
+        $settledAt = $finance['settled_at'] ?? $order->settled_at;
+        $mapperSettled = (bool) ($finance['is_settled'] ?? false);
+        $update['is_settled'] = $settlementPresent && ($settledAt !== null || $mapperSettled);
 
         $update['finance_synced_at'] = now();
 

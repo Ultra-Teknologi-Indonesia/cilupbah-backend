@@ -11,6 +11,7 @@ use Modules\Sales\Http\Controllers\SalesOrderImportController;
 use Modules\Sales\Http\Controllers\SalesInvoiceController;
 use Modules\Sales\Http\Controllers\SalesPaymentController;
 use Modules\Sales\Http\Controllers\SalesSettlementController;
+use Modules\Sales\Http\Controllers\OrderSettlementController;
 use Modules\Sales\Http\Controllers\SalesReturnSettlementController;
 use Modules\Outbound\Http\Controllers\PacklistController;
 use Modules\Outbound\Http\Controllers\PicklistController;
@@ -124,7 +125,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     });
 
     Route::middleware('role_or_permission:owner|view-pembayaran-penjualan')->group(function () {
-        Route::get('sales/settlements', [SalesSettlementController::class, 'index'])->name('sales.settlements.index');
+        // Settlement marketplace per-pesanan (dibaca dari sales_orders + kolom finance).
+        Route::get('sales/settlements/summary', [OrderSettlementController::class, 'summary'])->name('sales.settlements.summary');
+        Route::get('sales/settlements/export', [OrderSettlementController::class, 'export'])->name('sales.settlements.export');
+        Route::get('sales/settlements', [OrderSettlementController::class, 'index'])->name('sales.settlements.index');
+        // Batch settlement lama (manual DRAFT) tetap dapat diakses per-id.
         Route::get('sales/settlements/{id}', [SalesSettlementController::class, 'show'])->whereUuid('id')->name('sales.settlements.show');
     });
 

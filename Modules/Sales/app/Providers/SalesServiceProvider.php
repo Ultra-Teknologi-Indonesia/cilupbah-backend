@@ -12,6 +12,7 @@ use Modules\Sales\Console\Commands\RestoreTrackingNumbers;
 use Modules\Sales\Console\Commands\SyncOrderFinance;
 use Modules\Sales\Console\Commands\SyncReturnDetail;
 use Modules\Sales\Console\Commands\SyncReturnTracking;
+use Modules\Sales\Console\Commands\SyncSettlements;
 use Modules\Sales\Console\Commands\SyncShippingStatus;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
@@ -28,6 +29,7 @@ class SalesServiceProvider extends ModuleServiceProvider
 
     protected array $commands = [
         SyncOrderFinance::class,
+        SyncSettlements::class,
         BackfillStatusHistory::class,
         PrepareShopeeLabelsBackfill::class,
         RestoreTrackingNumbers::class,

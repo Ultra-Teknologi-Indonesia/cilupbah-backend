@@ -22,6 +22,22 @@ class ShopeeEscrowMapper
 
         $settlement = $this->num($income, 'escrow_amount');
 
+        // Gross/omzet kotor: buyer_total_amount (total dibayar pembeli) fallback ke harga asli order.
+        $grossAmount = $this->num($income, 'buyer_total_amount')
+            ?? $this->num($income, 'order_original_price')
+            ?? $this->num($income, 'original_price');
+
+        // Refund yang mengurangi settlement: seller_return_refund + adjustment negatif.
+        $sellerReturnRefund = $this->num($income, 'seller_return_refund');
+        $totalAdjustment = $this->num($income, 'total_adjustment_amount');
+        $refundTotal = null;
+        if ($sellerReturnRefund !== null) {
+            $refundTotal = abs($sellerReturnRefund);
+        }
+        if ($totalAdjustment !== null && $totalAdjustment < 0) {
+            $refundTotal = ($refundTotal ?? 0) + abs($totalAdjustment);
+        }
+
         $paymentPromo = $this->num($income, 'payment_promotion');
         $coins = $this->num($income, 'coins');
         $ccPromo = $this->num($income, 'credit_card_promotion');
@@ -37,14 +53,21 @@ class ShopeeEscrowMapper
             'service_fee'              => $this->num($income, 'service_fee'),
             'transaction_fee'          => $this->num($income, 'seller_transaction_fee'),
             'affiliate_commission'     => $this->num($income, 'order_ams_commission_fee'),
-            'order_processing_fee'     => $this->num($income, 'order_processing_fee')
+            // Data staging membuktikan field bernama seller_order_processing_fee.
+            'order_processing_fee'     => $this->num($income, 'seller_order_processing_fee')
+                ?? $this->num($income, 'order_processing_fee')
                 ?? $this->num($income, 'order_handling_fee'),
             'seller_shipping_borne'    => $sellerShippingBorne,
             'platform_shipping_rebate' => $shopeeRebate,
             'settlement_amount'        => $settlement,
+            'refund_total'             => $refundTotal,
+            'gross_amount'             => $grossAmount,
             'fee_currency'             => $escrow['currency'] ?? ($income['currency'] ?? 'IDR'),
 
+            // escrow_detail TIDAK punya release time — diisi belakangan oleh sync get_escrow_list.
+            'settled_at'               => null,
             'is_settled'               => $settlement !== null,
+            'raw'                      => $escrow,
         ];
 
         $tax = $this->num($income, 'escrow_tax')
@@ -63,7 +86,7 @@ class ShopeeEscrowMapper
             'seller_voucher'           => 'voucher_from_seller',
             'platform_voucher'         => 'voucher_from_shopee',
             'payment_voucher'          => 'payment_promotion',
-            'order_processing_fee'     => 'order_processing_fee',
+            'order_processing_fee'     => 'seller_order_processing_fee',
             'commission_fee'           => 'commission_fee',
             'service_fee'              => 'service_fee',
             'transaction_fee'          => 'seller_transaction_fee',
