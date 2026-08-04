@@ -70,7 +70,14 @@ class TikTokStoreController extends Controller
             $result = $this->authService->refreshStoreToken($id);
             return $this->successResponse($result, 'Token berhasil diperbarui');
         } catch (\Exception $e) {
-            throw $e;
+            $code = str_contains($e->getMessage(), 'tidak ditemukan') ? 404 : 422;
+
+            return $this->errorResponse(
+                $e->getMessage(),
+                $code,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 }

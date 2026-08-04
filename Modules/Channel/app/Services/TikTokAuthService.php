@@ -4,9 +4,11 @@ namespace Modules\Channel\Services;
 
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Exceptions\ChannelTokenException;
 use Modules\Channel\Repositories\ChannelRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Repositories\ChannelWarehouseRepository;
+use Modules\Channel\Support\ChannelReauthCopy;
 
 class TikTokAuthService
 {
@@ -136,13 +138,28 @@ class TikTokAuthService
         }
 
         if (!$shop->refresh_token) {
-            throw new \Exception('Refresh token tidak tersedia. Silakan hubungkan ulang toko ini.');
+            throw new ChannelTokenException(
+                ChannelReauthCopy::missingRefreshToken('tiktok'),
+                permanent: true,
+                channelCode: 'tiktok',
+                rawMessage: 'Refresh token tidak tersedia',
+            );
         }
 
         $response = $this->client->refreshAccessToken($shop->refresh_token);
 
         if (isset($response['code']) && $response['code'] !== 0) {
-            throw new \Exception('Gagal refresh token: ' . ($response['message'] ?? json_encode($response)));
+            $raw = (string) ($response['message'] ?? json_encode($response));
+            $permanent = ChannelReauthCopy::isPermanentFailure($raw);
+
+            Log::warning('TikTok refresh token gagal', ['shop_id' => $shop->shop_id, 'raw' => $raw, 'permanent' => $permanent]);
+
+            throw new ChannelTokenException(
+                ChannelReauthCopy::refreshFailure('tiktok', $permanent),
+                permanent: $permanent,
+                channelCode: 'tiktok',
+                rawMessage: $raw,
+            );
         }
 
         $data = $response['data'] ?? [];

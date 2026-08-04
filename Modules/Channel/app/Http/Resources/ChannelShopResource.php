@@ -5,6 +5,7 @@ namespace Modules\Channel\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Modules\Channel\Services\OrderSyncStatusService;
+use Modules\Channel\Support\ChannelReauthCopy;
 
 class ChannelShopResource extends JsonResource
 {
@@ -59,31 +60,32 @@ class ChannelShopResource extends JsonResource
 
     protected function integrationStatus(): array
     {
-
-        if ($this->integration_status === 'error') {
-            return ['status' => 'error', 'note' => $this->last_error ?: 'Integrasi bermasalah'];
-        }
-
+        // Butuh otorisasi ulang paling actionable → dievaluasi lebih dulu dan
+        // membawa kode mesin `action: reauth` agar FE bisa render tombol Hubungkan Ulang.
         $needReauth = empty($this->access_token)
             || ($this->refresh_token_expires_at && $this->refresh_token_expires_at->isPast());
         if ($needReauth) {
-            return ['status' => 'error', 'note' => 'Perlu otorisasi ulang'];
+            return ['status' => 'error', 'note' => ChannelReauthCopy::note($this->channel?->code), 'action' => 'reauth'];
+        }
+
+        if ($this->integration_status === 'error') {
+            return ['status' => 'error', 'note' => $this->last_error ?: 'Integrasi bermasalah', 'action' => null];
         }
 
         if ($this->token_expires_at && $this->token_expires_at->isPast()) {
-            return ['status' => 'warning', 'note' => 'Token akses kedaluwarsa, akan diperbarui otomatis'];
+            return ['status' => 'warning', 'note' => 'Token akses kedaluwarsa, akan diperbarui otomatis', 'action' => null];
         }
 
         if ($this->token_expires_at
             && $this->token_expires_at->isFuture()
             && now()->diffInHours($this->token_expires_at) < 24) {
-            return ['status' => 'warning', 'note' => 'Token akan kedaluwarsa < 24 jam'];
+            return ['status' => 'warning', 'note' => 'Token akan kedaluwarsa < 24 jam', 'action' => null];
         }
 
         if ($this->integration_status === 'warning') {
-            return ['status' => 'warning', 'note' => $this->last_error ?: 'Perlu perhatian'];
+            return ['status' => 'warning', 'note' => $this->last_error ?: 'Perlu perhatian', 'action' => null];
         }
 
-        return ['status' => 'normal'];
+        return ['status' => 'normal', 'action' => null];
     }
 }

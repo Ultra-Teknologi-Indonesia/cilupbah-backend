@@ -3,10 +3,12 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Exceptions\ChannelTokenException;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Repositories\ChannelWarehouseRepository;
+use Modules\Channel\Support\ChannelReauthCopy;
 
 class ShopeeAuthService
 {
@@ -108,14 +110,29 @@ class ShopeeAuthService
         $shop = $this->requireShopeeShop($id);
 
         if (! $shop->refresh_token) {
-            throw new \Exception('Refresh token tidak tersedia. Silakan hubungkan ulang toko ini.');
+            throw new ChannelTokenException(
+                ChannelReauthCopy::missingRefreshToken('shopee'),
+                permanent: true,
+                channelCode: 'shopee',
+                rawMessage: 'Refresh token tidak tersedia',
+            );
         }
 
         $response = $this->client->refreshAccessToken($shop->refresh_token, $shop->shop_id);
 
         $accessToken = $response['access_token'] ?? null;
         if (! $accessToken) {
-            throw new \Exception('Gagal refresh token Shopee: ' . ($response['message'] ?? ($response['error'] ?? 'Unknown error')));
+            $raw = (string) ($response['message'] ?? ($response['error'] ?? 'Unknown error'));
+            $permanent = ChannelReauthCopy::isPermanentFailure($raw);
+
+            Log::warning('Shopee refresh token gagal', ['shop_id' => $shop->shop_id, 'raw' => $raw, 'permanent' => $permanent]);
+
+            throw new ChannelTokenException(
+                ChannelReauthCopy::refreshFailure('shopee', $permanent),
+                permanent: $permanent,
+                channelCode: 'shopee',
+                rawMessage: $raw,
+            );
         }
 
         $expireIn = (int) ($response['expire_in'] ?? $response['expires_in'] ?? 0);

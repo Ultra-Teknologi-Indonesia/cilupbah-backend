@@ -4,9 +4,11 @@ namespace Modules\Channel\Services;
 
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Exceptions\ChannelTokenException;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Support\ChannelReauthCopy;
 
 class LazadaAuthService
 {
@@ -125,18 +127,57 @@ class LazadaAuthService
         $shop = $this->requireLazadaShop($id);
 
         if (! $shop->refresh_token) {
-            throw new \Exception('Refresh token tidak tersedia. Silakan hubungkan ulang toko ini.');
+            throw new ChannelTokenException(
+                ChannelReauthCopy::missingRefreshToken('lazada'),
+                permanent: true,
+                channelCode: 'lazada',
+                rawMessage: 'Refresh token tidak tersedia',
+            );
         }
 
-        $response = $this->client->refreshAccessToken($shop->refresh_token);
+        try {
+            $response = $this->client->refreshAccessToken($shop->refresh_token);
+        } catch (ConnectionException $e) {
+            throw new ChannelTokenException(
+                ChannelReauthCopy::refreshFailure('lazada', false),
+                permanent: false,
+                channelCode: 'lazada',
+                rawMessage: $e->getMessage(),
+            );
+        }
 
         $accessToken = $response['access_token'] ?? null;
         if (! $accessToken) {
-            throw new \Exception('Gagal refresh token Lazada: ' . ($response['message'] ?? ($response['code'] ?? 'Unknown error')));
+            $raw = (string) ($response['message'] ?? ($response['code'] ?? 'Unknown error'));
+            $permanent = ChannelReauthCopy::isPermanentFailure($raw);
+
+            Log::warning('Lazada refresh token gagal', [
+                'shop_id' => $shop->shop_id,
+                'raw' => $raw,
+                'permanent' => $permanent,
+            ]);
+
+            throw new ChannelTokenException(
+                ChannelReauthCopy::refreshFailure('lazada', $permanent),
+                permanent: $permanent,
+                channelCode: 'lazada',
+                rawMessage: $raw,
+            );
         }
 
         $tokenExpiresAt = isset($response['expires_in']) ? now()->addSeconds((int) $response['expires_in']) : $shop->token_expires_at;
         $refreshExpiresAt = isset($response['refresh_expires_in']) ? now()->addSeconds((int) $response['refresh_expires_in']) : $shop->refresh_token_expires_at;
+
+        // Diagnostik: apakah Lazada memperpanjang masa refresh token saat refresh?
+        // Jika refresh_expires_in konsisten ~30 hari, koneksi bisa jadi self-healing;
+        // jika terus mengecil, konfirmasi bahwa re-auth ~30 hari memang wajib.
+        Log::info('Lazada token refreshed', [
+            'shop_id' => $shop->shop_id,
+            'refresh_expires_in' => $response['refresh_expires_in'] ?? null,
+            'refresh_token_expires_at' => $refreshExpiresAt?->toIso8601String(),
+            'refresh_token_rotated' => isset($response['refresh_token'])
+                && $response['refresh_token'] !== $shop->refresh_token,
+        ]);
 
         $this->shopRepository->updateShop($shop, [
             'access_token' => $accessToken,
@@ -172,44 +213,23 @@ class LazadaAuthService
             try {
                 $this->refreshStoreToken($shop->id);
                 $summary['refreshed']++;
-            } catch (\Throwable $e) {
-                if ($this->isPermanentTokenFailure($e)) {
+            } catch (ChannelTokenException $e) {
+                if ($e->permanent) {
                     $summary['failed']++;
                     $this->shopRepository->markIntegrationError($shop->id, $e->getMessage());
-                    Log::warning('Lazada refresh token gagal permanen', ['shop_id' => $shop->shop_id, 'error' => $e->getMessage()]);
+                    Log::warning('Lazada refresh token gagal permanen', ['shop_id' => $shop->shop_id, 'error' => $e->getMessage(), 'raw' => $e->rawMessage]);
                 } else {
-
                     $summary['transient']++;
-                    Log::warning('Lazada refresh token gagal sementara, akan dicoba ulang', ['shop_id' => $shop->shop_id, 'error' => $e->getMessage()]);
+                    Log::warning('Lazada refresh token gagal sementara, akan dicoba ulang', ['shop_id' => $shop->shop_id, 'raw' => $e->rawMessage]);
                 }
+            } catch (\Throwable $e) {
+                // Error tak terduga → perlakukan sebagai sementara agar dicoba ulang.
+                $summary['transient']++;
+                Log::warning('Lazada refresh token error tak terduga', ['shop_id' => $shop->shop_id, 'error' => $e->getMessage()]);
             }
         }
 
         return $summary;
-    }
-
-    protected function isPermanentTokenFailure(\Throwable $e): bool
-    {
-
-        if ($e instanceof ConnectionException) {
-            return false;
-        }
-
-        $message = strtolower($e->getMessage());
-
-        foreach (['timeout', 'timed out', 'curl', 'could not resolve', 'connection', 'temporar', 'server error', 'service unavailable', 'unknown error', 'try again'] as $needle) {
-            if (str_contains($message, $needle)) {
-                return false;
-            }
-        }
-
-        foreach (['invalid_grant', 'illegalrefreshtoken', 'invalidrefreshtoken', 'illegalaccesstoken', 'invalidaccesstoken', 'expired', 'revoke', 'tidak tersedia', 'unauthor'] as $needle) {
-            if (str_contains($message, $needle)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     protected function requireLazadaShop(string $id): ChannelShop

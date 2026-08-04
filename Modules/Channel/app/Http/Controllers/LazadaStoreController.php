@@ -113,7 +113,7 @@ class LazadaStoreController extends Controller
             $code = str_contains($e->getMessage(), 'tidak ditemukan') ? 404 : 422;
 
             return $this->errorResponse(
-                'Gagal memproses aksi.',
+                $e->getMessage(),
                 $code,
                 ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
