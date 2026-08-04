@@ -28,7 +28,15 @@ class ProcessLazadaWebhook implements ShouldQueue
     private const MSG_ORDER = 0;
     private const MSG_PRODUCT = 1;
     private const MSG_PRODUCT_ALT = 2;
-    private const MSG_SYSTEM = 4;
+    private const MSG_PRODUCT_CREATE = 3;
+    // Terkonfirmasi dari payload staging: type 4 = PRODUK-EDIT (punya item_id), BUKAN token.
+    // Token-expiry asli = type 8 (MSG_TOKEN_EXPIRY).
+    private const MSG_PRODUCT_EDIT = 4;
+    private const MSG_PRODUCT_DELETE = 5;
+    private const MSG_TOKEN_EXPIRY = 8;
+    private const MSG_REVERSE = 10;
+    private const MSG_SELLER_STATUS = 13;
+    private const MSG_FULFILLMENT = 14;
 
     public function __construct(
         public array $payload,
@@ -79,7 +87,10 @@ class ProcessLazadaWebhook implements ShouldQueue
 
         match ($messageType) {
             self::MSG_ORDER => $this->handleOrderEvent($orderService, $sellerId, $data),
-            self::MSG_PRODUCT, self::MSG_PRODUCT_ALT => $this->handleProductEvent($downloadService, $sellerId, $data),
+            self::MSG_PRODUCT, self::MSG_PRODUCT_ALT, self::MSG_PRODUCT_CREATE, self::MSG_PRODUCT_EDIT, self::MSG_PRODUCT_DELETE => $this->handleProductEvent($downloadService, $sellerId, $data),
+            self::MSG_REVERSE => $this->handleReverseEvent($orderService, $sellerId, $data),
+            self::MSG_FULFILLMENT => $this->handleFulfillmentEvent($orderService, $sellerId, $data),
+            self::MSG_SELLER_STATUS => $this->handleSellerStatus($sellerId, $data),
             default => $this->handleUnknown($orderService, $sellerId, $data, $messageType),
         };
 
@@ -88,34 +99,68 @@ class ProcessLazadaWebhook implements ShouldQueue
 
     protected function handleUnknown(LazadaOrderService $orderService, string $sellerId, array $data, int $messageType): void
     {
+        // Fallback: sebagian push reverse bisa tiba dengan message_type non-standar tetapi
+        // berpenanda reverse — tetap tangani lewat jalur retur yang sama.
         if ($this->isReverseMessage($data)) {
-            $this->handleOrderEvent($orderService, $sellerId, $data);
-
-            $channelOrderId = (string) ($data['trade_order_id'] ?? $data['order_id'] ?? $data['reverse_order_id'] ?? '');
-            if ($channelOrderId !== '') {
-                try {
-                    $salesReturn = app(\Modules\Sales\Services\SalesReturnService::class)->createFromChannel([
-                        'source'            => 'lazada',
-                        'channel_order_id'  => $channelOrderId,
-                        'channel_return_id' => $data['reverse_order_id'] ?? null,
-                        'channel_shop_id'   => $sellerId,
-                        'reason'            => $data['reverse_status'] ?? $data['order_status'] ?? 'Retur Lazada',
-                        'created_by'        => 'system:lazada-webhook',
-                    ]);
-
-                    if ($salesReturn) {
-                        \Modules\Sales\Jobs\SyncReturnTrackingJob::dispatch((string) $salesReturn->id);
-                        \Modules\Sales\Jobs\SyncReturnDetailJob::dispatch((string) $salesReturn->id);
-                    }
-                } catch (\Throwable $e) {
-                    Log::warning('Lazada auto SalesReturn gagal: ' . $e->getMessage(), ['channel_order_id' => $channelOrderId]);
-                }
-            }
+            $this->handleReverseEvent($orderService, $sellerId, $data);
 
             return;
         }
 
         Log::info("Lazada webhook message_type {$messageType} belum ditangani — diabaikan.");
+    }
+
+    /**
+     * Reverse order (retur/refund) — message_type 10, atau fallback heuristik dari handleUnknown.
+     * Refresh order lokal + seed SalesReturn + dispatch sync tracking/detail.
+     */
+    protected function handleReverseEvent(LazadaOrderService $orderService, string $sellerId, array $data): void
+    {
+        $this->handleOrderEvent($orderService, $sellerId, $data);
+
+        $channelOrderId = (string) ($data['trade_order_id'] ?? $data['order_id'] ?? $data['reverse_order_id'] ?? '');
+        if ($channelOrderId === '') {
+            return;
+        }
+
+        try {
+            $salesReturn = app(\Modules\Sales\Services\SalesReturnService::class)->createFromChannel([
+                'source'            => 'lazada',
+                'channel_order_id'  => $channelOrderId,
+                'channel_return_id' => $data['reverse_order_id'] ?? null,
+                'channel_shop_id'   => $sellerId,
+                'reason'            => $data['reverse_status'] ?? $data['order_status'] ?? 'Retur Lazada',
+                'created_by'        => 'system:lazada-webhook',
+            ]);
+
+            if ($salesReturn) {
+                \Modules\Sales\Jobs\SyncReturnTrackingJob::dispatch((string) $salesReturn->id);
+                \Modules\Sales\Jobs\SyncReturnDetailJob::dispatch((string) $salesReturn->id);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Lazada auto SalesReturn gagal: ' . $e->getMessage(), ['channel_order_id' => $channelOrderId]);
+        }
+    }
+
+    /**
+     * Fulfillment Order Update (message_type 14) — status logistik incl. DELIVERED.
+     * Untuk status kunci: refresh order lokal + rekam ShipmentTrackingEvent (via recordLazadaTrackingEvent,
+     * yang membaca $data['status']). Status micro (INFO_ST_*) diabaikan agar tidak membanjiri pullOrderById.
+     */
+    protected function handleFulfillmentEvent(LazadaOrderService $orderService, string $sellerId, array $data): void
+    {
+        $orderId = (string) ($data['trade_order_id'] ?? $data['order_id'] ?? '');
+        if ($orderId === '') {
+            return;
+        }
+
+        $status = strtoupper((string) ($data['status'] ?? ''));
+
+        if (in_array($status, ['READY_TO_SHIP', 'SHIPPED', 'DELIVERED', 'CANCELLED'], true)) {
+            $orderService->pullOrderById($sellerId, $orderId);
+        }
+
+        $this->recordLazadaTrackingEvent($orderId, $data);
     }
 
     protected function handleOrderEvent(LazadaOrderService $orderService, string $sellerId, array $data): void
@@ -244,9 +289,46 @@ class ProcessLazadaWebhook implements ShouldQueue
         }
     }
 
+    protected function handleSellerStatus(string $sellerId, array $data): void
+    {
+        $status = strtolower((string) ($data['status'] ?? ''));
+
+        $shopUuid = DB::table('channel_shops')
+            ->where('shop_id', $sellerId)
+            ->value('id');
+
+        if (! $shopUuid) {
+            return;
+        }
+
+        // Seller "close": seller menutup toko / cabut otorisasi — nonaktifkan agar sync berhenti.
+        if ($status === 'close') {
+            DB::table('channel_shops')->where('id', $shopUuid)->update([
+                'is_active'          => false,
+                'integration_status' => 'error',
+                'last_error'         => 'Lazada seller closed via webhook',
+                'updated_at'         => now(),
+            ]);
+            Log::warning('Lazada seller status CLOSE — toko dinonaktifkan.', ['seller_id' => $sellerId]);
+
+            return;
+        }
+
+        // Seller "normal": toko kembali aktif — pulihkan.
+        if ($status === 'normal') {
+            DB::table('channel_shops')->where('id', $shopUuid)->update([
+                'is_active'          => true,
+                'integration_status' => 'normal',
+                'last_error'         => null,
+                'updated_at'         => now(),
+            ]);
+            Log::info('Lazada seller status NORMAL — toko diaktifkan kembali.', ['seller_id' => $sellerId]);
+        }
+    }
+
     protected function isTokenExpiryMessage(int $messageType, array $data): bool
     {
-        if ($messageType === self::MSG_SYSTEM) {
+        if ($messageType === self::MSG_TOKEN_EXPIRY) {
             return true;
         }
 

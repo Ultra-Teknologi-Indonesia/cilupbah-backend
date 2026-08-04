@@ -3,6 +3,7 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Exceptions\ChannelLabelUnsupportedException;
 use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Sales\Services\SalesOrderService;
@@ -96,12 +97,21 @@ class LazadaOrderService
 
         $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/order/fulfill/pack', $params, $token));
 
+        // Diagnostik pack contract: log payload dikirim + response mentah agar uji staging
+        // menunjukkan apakah kontrak flat (kini) diterima atau perlu wrapper packReq.
+        Log::info('Lazada fulfillPack response', [
+            'shop_id'  => $shopId,
+            'order_id' => $orderId,
+            'params'   => $params,
+            'response' => $res,
+        ]);
+
         $this->resyncLocalOrder($shopId, $orderId);
 
         return [
             'order_id' => $orderId,
             'order_item_ids' => $packableIds,
-            'pack' => $res['data'] ?? [],
+            'pack' => $res['data'] ?? $res['result']['data'] ?? [],
         ];
     }
 
@@ -125,12 +135,20 @@ class LazadaOrderService
 
         $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/order/package/rts', $params, $token));
 
+        // Diagnostik RTS contract untuk uji staging.
+        Log::info('Lazada readyToShip response', [
+            'shop_id'  => $shopId,
+            'order_id' => $orderId,
+            'params'   => $params,
+            'response' => $res,
+        ]);
+
         $this->resyncLocalOrder($shopId, $orderId);
 
         return [
             'order_id' => $orderId,
             'order_item_ids' => $readyIds,
-            'rts' => $res['data'] ?? [],
+            'rts' => $res['data'] ?? $res['result']['data'] ?? [],
         ];
     }
 
@@ -227,6 +245,23 @@ class LazadaOrderService
         return $res['data'] ?? [];
     }
 
+    /**
+     * Daftar statement payout level-toko via /finance/payout/status/get.
+     * Menjadi sumber baris ledger ChannelSettlement (mirror Shopee getEscrowList / TikTok getStatements).
+     *
+     * Return list statement: [{payout, paid, statement_number, created_at, fees_total, refunds, ...}]
+     */
+    public function getPayoutStatus(string $shopId, \Carbon\Carbon $createdAfter): array
+    {
+        $shop = $this->requireShop($shopId);
+
+        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/finance/payout/status/get', [
+            'created_after' => $createdAfter->format('Y-m-d'),
+        ], $token));
+
+        return $res['data'] ?? [];
+    }
+
     public function getCancelReasons(string $shopId): array
     {
         $shop = $this->requireShop($shopId);
@@ -271,6 +306,90 @@ class LazadaOrderService
         ], $token));
 
         return $res['data']['document'] ?? ($res['data'] ?? []);
+    }
+
+    /**
+     * Cetak label pengiriman level-paket via /order/package/document/get.
+     *
+     * Endpoint ini lebih baik dari /order/document/get untuk label karena:
+     * - bisa MEMINTA doc_type PDF (menghindari label text/html), dan
+     * - mengembalikan pdf_url langsung + batch hingga 20 paket.
+     *
+     * Return: ['file' => base64|null, 'pdf_url' => string|null, 'doc_type' => 'PDF'|'HTML']
+     * Return [] bila dokumen belum siap (order belum packed/RTS) — caller boleh retry.
+     * Melempar ChannelLabelUnsupportedException untuk order SOF/DBS (tak akan pernah siap via API).
+     */
+    public function getPackageDocument(string $shopId, array $packageIds, string $docType = 'PDF'): array
+    {
+        $packageIds = array_values(array_unique(array_filter(array_map('strval', $packageIds), fn ($v) => $v !== '')));
+        if (empty($packageIds)) {
+            throw new \RuntimeException("Order pada toko {$shopId} belum punya package_id untuk cetak dokumen Lazada.");
+        }
+
+        $shop = $this->requireShop($shopId);
+
+        $packages = array_map(fn ($id) => ['package_id' => $id], array_slice($packageIds, 0, 20));
+
+        $params = [
+            'getDocumentReq' => json_encode([
+                'doc_type' => $docType,
+                'print_item_list' => false,
+                'packages' => $packages,
+            ]),
+        ];
+
+        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/order/package/document/get', $params, $token));
+
+        // Envelope: { result: { data: {file, pdf_url, doc_type}, success, error_code, error_msg }, code }
+        $result = $res['result'] ?? $res;
+        $data = $result['data'] ?? [];
+
+        $file = $data['file'] ?? null;
+        $url = $data['pdf_url'] ?? $data['url'] ?? null;
+
+        // Contoh resmi mengembalikan success:true + error_msg bersamaan; keberadaan dokumen yang menentukan.
+        if (! empty($file) || ! empty($url)) {
+            return [
+                'file' => $file ?: null,
+                'pdf_url' => $url ?: null,
+                'doc_type' => strtoupper((string) ($data['doc_type'] ?? $docType)),
+            ];
+        }
+
+        $errorCode = (string) ($result['error_code'] ?? '');
+        $errorMsg = (string) ($result['error_msg'] ?? $res['message'] ?? '');
+
+        // SOF (Seller Own Fleet) / DBS: Lazada TIDAK menyediakan label via API (error 50008). Terminal.
+        if ($errorCode === '50008'
+            || preg_match('/\bSOF\b|\bDBS\b|not support operation for sof/i', $errorMsg)) {
+            throw new ChannelLabelUnsupportedException(
+                'Order Lazada bertipe SOF/DBS — label tidak disediakan via API. Ambil resi dari Seller Center.'
+            );
+        }
+
+        // Selain itu (belum packed/RTS: 34/30012/700040) dianggap belum siap; caller boleh retry.
+        return [];
+    }
+
+    /**
+     * Ambil daftar package_id untuk sebuah order dari /orders/items/get.
+     * Dipakai sebagai input getPackageDocument (dan sebagai fallback bila package_id
+     * tidak ditangkap saat pack).
+     */
+    public function resolvePackageIds(string $shopId, string $orderId): array
+    {
+        $shop = $this->requireShop($shopId);
+        $items = $this->fetchItemsForOrders($shop, [$orderId])[$orderId] ?? [];
+
+        $ids = [];
+        foreach ($items as $row) {
+            $pid = $row['package_id'] ?? null;
+            if ($pid !== null && $pid !== '') {
+                $ids[(string) $pid] = true;
+            }
+        }
+
+        return array_keys($ids);
     }
 
     protected function orderItemIds(object $shop, string $orderId): array

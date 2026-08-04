@@ -4,6 +4,7 @@ namespace Modules\Sales\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Modules\Channel\Exceptions\ChannelLabelUnsupportedException;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
 use Modules\Sales\Models\SalesOrder;
@@ -28,8 +29,10 @@ class PrepareLazadaShippingLabelJobTest extends TestCase
         $order = $this->makeOrder();
 
         $this->mock(LazadaOrderService::class, function ($m) {
-            $m->shouldReceive('getDocument')->once()->with('SELLER-1', 'LZD-ORDER-1', 'shippingLabel')
-                ->andReturn(['file' => 'JVBERi0xLjQ=', 'mime_type' => 'application/pdf']);
+            $m->shouldReceive('resolvePackageIds')->once()->with('SELLER-1', 'LZD-ORDER-1')
+                ->andReturn(['FP-1']);
+            $m->shouldReceive('getPackageDocument')->once()->with('SELLER-1', ['FP-1'], 'PDF')
+                ->andReturn(['file' => 'JVBERi0xLjQ=', 'pdf_url' => null, 'doc_type' => 'PDF']);
         });
 
         (new PrepareLazadaShippingLabelJob($order->id))->handle(app(LazadaOrderService::class));
@@ -47,12 +50,28 @@ class PrepareLazadaShippingLabelJobTest extends TestCase
         $order = $this->makeOrder();
 
         $this->mock(LazadaOrderService::class, function ($m) {
-            $m->shouldReceive('getDocument')->once()->andReturn([]);
+            $m->shouldReceive('resolvePackageIds')->once()->andReturn(['FP-1']);
+            $m->shouldReceive('getPackageDocument')->once()->andReturn([]);
         });
 
         (new PrepareLazadaShippingLabelJob($order->id, 0))->handle(app(LazadaOrderService::class));
 
         $this->assertSame('not_ready', $order->refresh()->shipping_label_status);
         Queue::assertPushed(PrepareLazadaShippingLabelJob::class);
+    }
+
+    public function test_marks_self_design_required_for_sof_dbs_order(): void
+    {
+        $order = $this->makeOrder();
+
+        $this->mock(LazadaOrderService::class, function ($m) {
+            $m->shouldReceive('resolvePackageIds')->once()->andReturn(['FP-1']);
+            $m->shouldReceive('getPackageDocument')->once()
+                ->andThrow(new ChannelLabelUnsupportedException('SOF/DBS'));
+        });
+
+        (new PrepareLazadaShippingLabelJob($order->id))->handle(app(LazadaOrderService::class));
+
+        $this->assertSame('self_design_required', $order->refresh()->shipping_label_status);
     }
 }

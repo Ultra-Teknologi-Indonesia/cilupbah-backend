@@ -42,12 +42,16 @@ class LazadaProductMapper
                 'Product' => array_filter([
                     'PrimaryCategory' => $this->resolveChannelCategoryId($product['category_id'] ?? null, $config),
                     'Images' => $imageUrls ? ['Image' => array_values($imageUrls)] : null,
-                    'Attributes' => array_filter([
-                        'name' => $product['name'] ?? 'Produk',
-                        'description' => DescriptionFormatter::toHtml($product['description'] ?? '', 25000) ?: ($product['name'] ?? ''),
-                        'brand' => $config['brand'] ?? 'No Brand',
-                        'video' => $config['video_id'] ?? null,
-                    ], fn ($v) => $v !== null),
+                    'Attributes' => array_filter(array_merge(
+                        // Atribut kategori (non-sale-prop) dari adapter; field inti di bawah menang.
+                        is_array($config['attributes'] ?? null) ? $config['attributes'] : [],
+                        [
+                            'name' => $product['name'] ?? 'Produk',
+                            'description' => DescriptionFormatter::toHtml($product['description'] ?? '', 25000) ?: ($product['name'] ?? ''),
+                            'brand' => $config['brand'] ?? 'No Brand',
+                            'video' => $config['video_id'] ?? null,
+                        ],
+                    ), fn ($v) => $v !== null),
                     'Skus' => ['Sku' => $skus],
                 ], fn ($v) => $v !== null),
             ],

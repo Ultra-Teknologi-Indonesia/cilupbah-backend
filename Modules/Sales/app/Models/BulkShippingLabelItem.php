@@ -13,6 +13,7 @@ class BulkShippingLabelItem extends Model
     public const STATUS_PENDING = 'pending';
     public const STATUS_DOWNLOADING = 'downloading';
     public const STATUS_WAITING_SHOPEE_PREP = 'waiting_shopee_prep';
+    public const STATUS_WAITING_LAZADA_PREP = 'waiting_lazada_prep';
     public const STATUS_DONE = 'done';
     public const STATUS_FAILED = 'failed';
     public const STATUS_SKIPPED_INSTANT = 'skipped_instant';
@@ -27,6 +28,7 @@ class BulkShippingLabelItem extends Model
         self::STATUS_PENDING,
         self::STATUS_DOWNLOADING,
         self::STATUS_WAITING_SHOPEE_PREP,
+        self::STATUS_WAITING_LAZADA_PREP,
     ];
 
     public const REASON_NO_AWB = 'no_awb';
@@ -38,11 +40,17 @@ class BulkShippingLabelItem extends Model
     public const REASON_BATCH_CRASHED = 'batch_crashed';
     public const REASON_STALE_BATCH_REAPED = 'stale_batch_reaped';
     public const REASON_INSTANT_COURIER = 'instant_courier_manual_dispatch';
+    public const REASON_LAZADA_PREP_TIMEOUT = 'lazada_prep_timeout';
+    public const REASON_LAZADA_PREP_FAILED = 'lazada_prep_failed';
+    public const REASON_LAZADA_DECODE_FAILED = 'lazada_decode_failed';
 
     public const RECOVERABLE_REASONS = [
         self::REASON_SHOPEE_PREP_TIMEOUT,
         self::REASON_SHOPEE_PREP_FAILED,
         self::REASON_SHOPEE_DECODE_FAILED,
+        self::REASON_LAZADA_PREP_TIMEOUT,
+        self::REASON_LAZADA_PREP_FAILED,
+        self::REASON_LAZADA_DECODE_FAILED,
         self::REASON_BATCH_CRASHED,
         self::REASON_STALE_BATCH_REAPED,
     ];

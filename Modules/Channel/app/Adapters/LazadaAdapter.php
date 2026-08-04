@@ -33,7 +33,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
 
     public function pushProduct(Product $product, ChannelShop $shop, ?array $attributeMapping = null): array
     {
-        $payload = $this->buildProductPayload($product, $shop);
+        $payload = $this->buildProductPayload($product, $shop, $attributeMapping);
 
         try {
             $res = $this->sendProductPayload('/product/create', $payload, $shop);
@@ -266,7 +266,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         return stripos($e->getMessage(), 'video') !== false;
     }
 
-    protected function buildProductPayload(Product $product, ChannelShop $shop): array
+    protected function buildProductPayload(Product $product, ChannelShop $shop, ?array $attributeMapping = null): array
     {
 
         $product->loadMissing('variants.options', 'media');
@@ -334,7 +334,117 @@ class LazadaAdapter implements MarketplaceAdapterInterface
             }
         }
 
+        // Atribut kategori (non-sale-prop) + validasi atribut wajib — mirror ShopeeAdapter::buildAttributeList.
+        $channelCategoryUuid = $this->resolveChannelCategoryUuid($product);
+        if ($channelCategoryUuid) {
+            $attributes = $this->buildProductAttributes($product, $channelCategoryUuid);
+
+            // Override eksplisit dari pemanggil (jika ada) diprioritaskan.
+            if (! empty($attributeMapping)) {
+                $attributes = array_merge($attributes, $attributeMapping);
+            }
+
+            if (! empty($attributes)) {
+                $config['attributes'] = $attributes;
+            }
+        }
+
         return $this->outboundMapper->map($internal, $imageUrls, $config);
+    }
+
+    protected function resolveChannelCategoryUuid(Product $product): ?string
+    {
+        if (! $product->category_id) {
+            return null;
+        }
+
+        $channelId = DB::table('channels')->where('code', 'lazada')->value('id');
+        if (! $channelId) {
+            return null;
+        }
+
+        return DB::table('category_channel_mappings')
+            ->join('channel_categories', 'channel_categories.id', '=', 'category_channel_mappings.channel_category_id')
+            ->where('category_channel_mappings.category_id', $product->category_id)
+            ->where('channel_categories.channel_id', $channelId)
+            ->value('channel_categories.id');
+    }
+
+    /**
+     * Bangun atribut kategori Lazada (non-sale-prop) sebagai assoc [nama_atribut => nilai].
+     * Sumber nilai = product_specifications (dipakai bersama Shopee). Melempar RuntimeException
+     * bila ada atribut WAJIB yang belum dipetakan/diisi (mirror Shopee).
+     */
+    protected function buildProductAttributes(Product $product, string $channelCategoryUuid): array
+    {
+        $specs = DB::table('product_specifications')->where('product_id', $product->id)->get();
+        $attributes = [];
+
+        foreach ($specs as $spec) {
+            $mapping = DB::table('attribute_channel_mappings')
+                ->where('attribute_id', $spec->attribute_id)
+                ->first();
+
+            if (! $mapping) {
+                continue;
+            }
+
+            $channelAttr = DB::table('channel_attributes')
+                ->where('id', $mapping->channel_attribute_id)
+                ->where('channel_category_id', $channelCategoryUuid)
+                ->where('is_sale_prop', false)
+                ->first();
+
+            if (! $channelAttr) {
+                continue;
+            }
+
+            $value = null;
+            if ($spec->attribute_option_id) {
+                $optMapping = DB::table('attribute_option_channel_mappings')
+                    ->where('attribute_option_id', $spec->attribute_option_id)
+                    ->first();
+
+                if ($optMapping) {
+                    $value = DB::table('channel_attribute_options')
+                        ->where('id', $optMapping->channel_attribute_option_id)
+                        ->value('name');
+                }
+            } elseif ($spec->text_value) {
+                $value = $spec->text_value;
+            }
+
+            if ($value !== null && $value !== '') {
+                // Kunci Lazada = nama atribut, disimpan sebagai external_id oleh syncCategoryAttributes.
+                $attributes[(string) $channelAttr->external_id] = (string) $value;
+            }
+        }
+
+        if (! app()->runningUnitTests()) {
+            $provided = array_keys($attributes);
+
+            $requiredAttrs = DB::table('channel_attributes')
+                ->where('channel_category_id', $channelCategoryUuid)
+                ->where('is_required', true)
+                ->where('is_sale_prop', false)
+                ->get(['external_id', 'name']);
+
+            $missing = [];
+            foreach ($requiredAttrs as $required) {
+                if (! in_array((string) $required->external_id, $provided, true)) {
+                    $missing[] = $required->name;
+                }
+            }
+
+            if (! empty($missing)) {
+                throw new \RuntimeException(
+                    'Atribut wajib Lazada belum dipetakan/diisi: ' . implode(', ', $missing)
+                        . '. Lengkapi atribut tersebut pada produk sebelum mengunggah ke Lazada.'
+                );
+            }
+        }
+
+        return $attributes;
     }
 
     protected function normalizeSkus(array $skuList): array

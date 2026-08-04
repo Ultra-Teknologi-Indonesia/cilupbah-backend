@@ -17,7 +17,9 @@ use Modules\Sales\Exceptions\InvalidStatusTransitionException;
 use Modules\Sales\Exceptions\LocationNotConfiguredException;
 use Modules\Sales\Exceptions\ProductNotMappableException;
 use Modules\Sales\Exceptions\ShippingLabelPreparingException;
+use Modules\Channel\Exceptions\ChannelLabelUnsupportedException;
 use Modules\Sales\Jobs\CancelChannelOrderJob;
+use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Jobs\SyncStockJob;
@@ -910,29 +912,76 @@ class SalesOrderService
 
         if ($source === 'lazada') {
             $lazadaService = app(\Modules\Channel\Services\LazadaOrderService::class);
-            $docType = $options['document_type'] ?? 'shippingLabel';
-            $document = $lazadaService->getDocument($shopId, $channelOrderNo, $docType);
 
-            $fileUrl = $document['url'] ?? ($document['file_url'] ?? null);
-            if ($fileUrl) {
+            // 1) Sajikan dari cache prep-job bila sudah ready (hindari re-fetch API tiap cetak).
+            if ($order->shipping_label_status === 'ready' && is_array($order->shipping_label_raw_data)) {
+                $cached = $order->shipping_label_raw_data['document'] ?? [];
+                if (! empty($cached['pdf_url'])) {
+                    return ['type' => 'url', 'url' => $cached['pdf_url'], 'source' => 'lazada'];
+                }
+                if (! empty($cached['file'])) {
+                    return [
+                        'type'            => 'base64',
+                        'content_type'    => ($cached['doc_type'] ?? 'PDF') === 'HTML' ? 'text/html' : 'application/pdf',
+                        'document_base64' => $cached['file'],
+                        'source'          => 'lazada',
+                    ];
+                }
+            }
+
+            // 2) Order SOF/DBS: Lazada tak menyediakan label via API.
+            if ($order->shipping_label_status === 'self_design_required') {
+                throw new \RuntimeException(
+                    'Order Lazada ini bertipe SOF/DBS — label tidak tersedia via API. '
+                    . 'Ambil resi langsung dari Lazada Seller Center.'
+                );
+            }
+
+            // 3) Prep job sedang berjalan; minta klien menunggu (HTTP 202) alih-alih re-fetch.
+            if ($order->shipping_label_status === 'preparing') {
+                throw new ShippingLabelPreparingException(
+                    'Label Lazada sedang disiapkan. Coba lagi dalam 1-2 menit.'
+                );
+            }
+
+            // 4) Ambil dokumen level-paket (minta PDF agar tidak menerima label text/html).
+            try {
+                $packageIds = $lazadaService->resolvePackageIds($shopId, $channelOrderNo);
+                $document = $lazadaService->getPackageDocument($shopId, $packageIds, 'PDF');
+            } catch (ChannelLabelUnsupportedException $e) {
+                $order->update(['shipping_label_status' => 'self_design_required']);
+                throw new \RuntimeException($e->getMessage());
+            }
+
+            $isHtml = ($document['doc_type'] ?? 'PDF') === 'HTML';
+
+            if (! empty($document['pdf_url']) || ! empty($document['file'])) {
+                $order->update([
+                    'shipping_label_status'      => 'ready',
+                    'shipping_label_doc_type'    => $document['doc_type'] ?? 'PDF',
+                    'shipping_label_prepared_at' => now(),
+                    'shipping_label_raw_data'    => ['channel' => 'lazada', 'document' => $document],
+                ]);
+
+                if (! empty($document['pdf_url'])) {
+                    return ['type' => 'url', 'url' => $document['pdf_url'], 'source' => 'lazada'];
+                }
+
                 return [
-                    'type' => 'url',
-                    'url' => $fileUrl,
-                    'source' => 'lazada',
+                    'type'            => 'base64',
+                    'content_type'    => $isHtml ? 'text/html' : 'application/pdf',
+                    'document_base64' => $document['file'],
+                    'source'          => 'lazada',
                 ];
             }
 
-            $file = $document['file'] ?? null;
-            if (! empty($file)) {
-                return [
-                    'type' => 'base64',
-                    'content_type' => 'application/pdf',
-                    'document_base64' => $file,
-                    'source' => 'lazada',
-                ];
-            }
+            // 5) Belum siap (order belum packed/RTS) → siapkan async, minta klien menunggu.
+            PrepareLazadaShippingLabelJob::dispatch($order->id)
+                ->onQueue(config('queue.names.channel_sync'));
 
-            throw new \RuntimeException('Lazada tidak mengembalikan dokumen label.');
+            throw new ShippingLabelPreparingException(
+                'Label Lazada belum siap (pesanan mungkin belum di-RTS). Sistem menyiapkan, tunggu 1-2 menit.'
+            );
         }
 
         throw new \InvalidArgumentException("Channel '{$source}' belum mendukung cetak resi otomatis.");
@@ -940,8 +989,10 @@ class SalesOrderService
 
     public function retryShippingLabel(SalesOrder $order): void
     {
-        if (strtolower((string) $order->source) !== 'shopee') {
-            throw new \InvalidArgumentException('Retry label hanya tersedia untuk pesanan Shopee.');
+        $source = strtolower((string) $order->source);
+
+        if (! in_array($source, ['shopee', 'lazada'], true)) {
+            throw new \InvalidArgumentException('Retry label hanya tersedia untuk pesanan Shopee dan Lazada.');
         }
 
         if (empty($order->tracking_number)) {
@@ -955,8 +1006,11 @@ class SalesOrderService
             'shipping_label_raw_data'    => null,
         ]);
 
-        PrepareShopeeShippingLabelJob::dispatch($order->id)
-            ->onQueue(config('queue.names.channel_sync'));
+        $job = $source === 'lazada'
+            ? PrepareLazadaShippingLabelJob::dispatch($order->id)
+            : PrepareShopeeShippingLabelJob::dispatch($order->id);
+
+        $job->onQueue(config('queue.names.channel_sync'));
     }
 
     public function findOrderOrFail(string $id): SalesOrder

@@ -5,6 +5,7 @@ namespace Modules\Sales\Services;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\LazadaTransactionMapper;
 use Modules\Channel\Services\ShopeeEscrowMapper;
 use Modules\Channel\Services\ShopeeOrderService;
@@ -27,6 +28,7 @@ class SettlementSyncService
         protected TikTokOrderService $tiktokService,
         protected TikTokStatementMapper $tiktokMapper,
         protected LazadaTransactionMapper $lazadaMapper,
+        protected LazadaOrderService $lazadaService,
         protected SalesOrderService $orderService,
     ) {}
 
@@ -234,8 +236,45 @@ class SettlementSyncService
 
     private function syncLazadaShop(object $shop, Carbon $from): int
     {
+        $shopId = (string) $shop->shop_id;
         $count = 0;
 
+        // 1) Ledger payout level-statement (mirror Shopee getEscrowList / TikTok getStatements).
+        try {
+            $statements = $this->lazadaService->getPayoutStatus($shopId, $from);
+
+            foreach ($statements as $stmt) {
+                $statementNo = $stmt['statement_number'] ?? null;
+                if (! $statementNo) {
+                    continue;
+                }
+
+                [$payoutAmount, $currency] = $this->parseLazadaPayout($stmt['payout'] ?? null);
+                $createdAt = $this->parseLazadaDate($stmt['created_at'] ?? null);
+                $isPaid = (string) ($stmt['paid'] ?? '0') === '1';
+
+                ChannelSettlement::updateOrCreate(
+                    ['channel' => 'lazada', 'shop_id' => $shopId, 'external_id' => (string) $statementNo],
+                    [
+                        'type'             => 'STATEMENT',
+                        'settled_at'       => $createdAt,
+                        'paid_at'          => $isPaid ? ($this->parseLazadaDate($stmt['updated_at'] ?? null) ?? $createdAt) : null,
+                        'payment_status'   => $isPaid ? 'PAID' : 'UNPAID',
+                        'total_settlement' => $payoutAmount,
+                        'total_fee'        => $this->toFloat($stmt['fees_total'] ?? null),
+                        'total_adjustment' => $this->toFloat($stmt['refunds'] ?? null),
+                        'currency'         => $currency ?? 'IDR',
+                        'raw'              => $stmt,
+                        'synced_at'        => now(),
+                    ],
+                );
+                $count++;
+            }
+        } catch (\Throwable $e) {
+            Log::warning("SettlementSync lazada payout {$shopId} gagal: " . $e->getMessage());
+        }
+
+        // 2) Per-order finance (tetap berjalan) — mengisi settled_at & fee level order.
         SalesOrder::query()
             ->where('source', 'lazada')
             ->where('channel_shop_id', $shop->shop_id)
@@ -244,14 +283,45 @@ class SettlementSyncService
             ->where('updated_at', '>=', $from)
             ->where(fn ($q) => $q->where('is_settled', false)->orWhereNull('settled_at'))
             ->select('id')
-            ->chunkById(200, function ($orders) use (&$count) {
+            ->chunkById(200, function ($orders) {
                 foreach ($orders as $order) {
                     SyncOrderFinanceJob::dispatch($order->id, true);
-                    $count++;
                 }
             });
 
         return $count;
+    }
+
+    /**
+     * Parse string payout Lazada mis. "3962.41 EUR" → [3962.41, "EUR"]; "3962.41" → [3962.41, null].
+     */
+    private function parseLazadaPayout(mixed $payout): array
+    {
+        if ($payout === null || $payout === '') {
+            return [null, null];
+        }
+
+        if (preg_match('/([0-9.,]+)\s*([A-Za-z]{3})?/', trim((string) $payout), $m)) {
+            $amount = $this->toFloat($m[1] ?? null);
+            $currency = ! empty($m[2]) ? strtoupper($m[2]) : null;
+
+            return [$amount, $currency];
+        }
+
+        return [$this->toFloat($payout), null];
+    }
+
+    private function parseLazadaDate(mixed $value): ?Carbon
+    {
+        if (empty($value)) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse((string) $value);
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     private function fromTimestamp(mixed $ts): ?Carbon

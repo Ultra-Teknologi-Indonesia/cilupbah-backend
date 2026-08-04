@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Modules\Sales\Exceptions\ShippingLabelPreparingException;
+use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
@@ -195,7 +197,7 @@ class BulkShippingLabelService
                 'document_size' => 'A6',
             ],
             self::CHANNEL_LAZADA => [
-                'document_type' => 'shippingLabel',
+                'document_type' => 'PDF',
                 'document_size' => null,
             ],
             default => [],
@@ -570,13 +572,26 @@ class BulkShippingLabelService
 
     private function processLazada(BulkShippingLabelItem $item, SalesOrder $order, array $options): void
     {
-        $result = $this->salesOrderService->getShippingLabel($order, $options);
+        try {
+            $result = $this->salesOrderService->getShippingLabel($order, $options);
+        } catch (ShippingLabelPreparingException $e) {
+            // Label belum siap → siapkan async & parkir item (mirror Shopee), jangan langsung gagal.
+            PrepareLazadaShippingLabelJob::dispatch($order->id)
+                ->onQueue(config('queue.names.channel_sync'));
+            $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP]);
+            return;
+        } catch (\RuntimeException $e) {
+            // getShippingLabel melempar RuntimeException untuk order SOF/DBS (self-design).
+            $this->fail($item, BulkShippingLabelItem::REASON_SELF_DESIGN);
+            return;
+        }
+
         $type = $result['type'] ?? null;
 
         if ($type === 'url' && ! empty($result['url'])) {
             $bytes = $this->downloadUrl($result['url']);
             if ($bytes === null) {
-                $this->fail($item, 'lazada_download_failed');
+                $this->fail($item, BulkShippingLabelItem::REASON_LAZADA_DECODE_FAILED);
                 return;
             }
             $this->succeed($item, $bytes);
@@ -586,7 +601,7 @@ class BulkShippingLabelService
         if ($type === 'base64' && ! empty($result['document_base64'])) {
             $bytes = base64_decode($result['document_base64'], true);
             if ($bytes === false) {
-                $this->fail($item, 'lazada_decode_failed');
+                $this->fail($item, BulkShippingLabelItem::REASON_LAZADA_DECODE_FAILED);
                 return;
             }
             $this->succeed($item, $bytes);
@@ -596,14 +611,17 @@ class BulkShippingLabelService
         if (! empty($result['data'])) {
             $bytes = $this->decodeLabelPayload($result);
             if ($bytes === null) {
-                $this->fail($item, 'lazada_decode_failed');
+                $this->fail($item, BulkShippingLabelItem::REASON_LAZADA_DECODE_FAILED);
                 return;
             }
             $this->succeed($item, $bytes);
             return;
         }
 
-        $this->fail($item, 'lazada_no_label');
+        // Belum siap tanpa exception → parkir dan tunggu prep job.
+        PrepareLazadaShippingLabelJob::dispatch($order->id)
+            ->onQueue(config('queue.names.channel_sync'));
+        $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP]);
     }
 
     private function decodeLabelPayload(array $result): ?string
@@ -658,7 +676,10 @@ class BulkShippingLabelService
     public function onOrderLabelReady(string $orderId): void
     {
         $items = BulkShippingLabelItem::where('order_id', $orderId)
-            ->where('status', BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP)
+            ->whereIn('status', [
+                BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP,
+                BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP,
+            ])
             ->get();
 
         if ($items->isEmpty()) {
@@ -678,13 +699,19 @@ class BulkShippingLabelService
 
         foreach ($items as $item) {
             try {
+                $isLazada = $item->channel === self::CHANNEL_LAZADA;
+
                 if ($labelStatus === 'ready') {
-                    $options = $this->resolveChannelOptions(self::CHANNEL_SHOPEE);
-                    $this->processShopee($item, $order, $options);
+                    $options = $this->resolveChannelOptions($item->channel);
+                    $isLazada
+                        ? $this->processLazada($item, $order, $options)
+                        : $this->processShopee($item, $order, $options);
                 } elseif ($labelStatus === 'self_design_required') {
                     $this->fail($item, BulkShippingLabelItem::REASON_SELF_DESIGN);
                 } elseif ($labelStatus === 'failed') {
-                    $this->fail($item, BulkShippingLabelItem::REASON_SHOPEE_PREP_FAILED);
+                    $this->fail($item, $isLazada
+                        ? BulkShippingLabelItem::REASON_LAZADA_PREP_FAILED
+                        : BulkShippingLabelItem::REASON_SHOPEE_PREP_FAILED);
                 }
 
             } catch (Throwable $e) {

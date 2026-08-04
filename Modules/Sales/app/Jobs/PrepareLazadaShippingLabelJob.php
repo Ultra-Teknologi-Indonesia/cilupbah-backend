@@ -8,8 +8,10 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Exceptions\ChannelLabelUnsupportedException;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Services\BulkShippingLabelService;
 
 class PrepareLazadaShippingLabelJob implements ShouldQueue
 {
@@ -57,9 +59,19 @@ class PrepareLazadaShippingLabelJob implements ShouldQueue
 
         $document = [];
         try {
-            $document = $lazada->getDocument($shopId, $orderSn, 'shippingLabel');
-        } catch (\Throwable $e) {
+            $packageIds = $lazada->resolvePackageIds($shopId, $orderSn);
+            $document = $lazada->getPackageDocument($shopId, $packageIds, 'PDF');
+        } catch (ChannelLabelUnsupportedException $e) {
+            // Order SOF/DBS: label tak akan pernah tersedia via API. Terminal, jangan retry.
+            $order->update(['shipping_label_status' => 'self_design_required']);
+            Log::info('PrepareLazadaShippingLabelJob: order SOF/DBS, label via Seller Center', [
+                'order_id' => $order->id,
+                'order_sn' => $orderSn,
+            ]);
+            $this->notifyBulkListeners();
 
+            return;
+        } catch (\Throwable $e) {
             Log::info('PrepareLazadaShippingLabelJob: dokumen belum siap', [
                 'order_id'  => $order->id,
                 'order_sn'  => $orderSn,
@@ -67,12 +79,10 @@ class PrepareLazadaShippingLabelJob implements ShouldQueue
             ]);
         }
 
-        $file = $document['file'] ?? $document['pdf'] ?? null;
-
-        if (! empty($file)) {
+        if (! empty($document['file']) || ! empty($document['pdf_url'])) {
             $order->update([
                 'shipping_label_status'      => 'ready',
-                'shipping_label_doc_type'    => 'PDF',
+                'shipping_label_doc_type'    => $document['doc_type'] ?? 'PDF',
                 'shipping_label_prepared_at' => now(),
                 'shipping_label_raw_data'    => ['channel' => 'lazada', 'document' => $document],
             ]);
@@ -81,6 +91,8 @@ class PrepareLazadaShippingLabelJob implements ShouldQueue
                 'order_id' => $order->id,
                 'order_sn' => $orderSn,
             ]);
+
+            $this->notifyBulkListeners();
 
             return;
         }
@@ -111,6 +123,24 @@ class PrepareLazadaShippingLabelJob implements ShouldQueue
             'order_id' => $order->id,
             'order_sn' => $orderSn,
         ]);
+
+        $this->notifyBulkListeners();
+    }
+
+    /**
+     * Beri tahu batch bulk-cetak-resi yang mungkin memarkir order ini agar
+     * melanjutkan item begitu label mencapai status terminal (ready/failed/self_design).
+     */
+    private function notifyBulkListeners(): void
+    {
+        try {
+            app(BulkShippingLabelService::class)->onOrderLabelReady($this->orderId);
+        } catch (\Throwable $e) {
+            Log::warning('PrepareLazadaShippingLabelJob: notifyBulkListeners gagal', [
+                'order_id' => $this->orderId,
+                'error'    => $e->getMessage(),
+            ]);
+        }
     }
 
     public function failed(\Throwable $exception): void
@@ -125,5 +155,7 @@ class PrepareLazadaShippingLabelJob implements ShouldQueue
         if ($order && $order->shipping_label_status !== 'ready') {
             $order->update(['shipping_label_status' => 'failed']);
         }
+
+        $this->notifyBulkListeners();
     }
 }

@@ -13,6 +13,7 @@ use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Outbound\Services\OutboundFulfillmentService;
+use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Models\SalesOrder;
 
@@ -199,6 +200,10 @@ class RequestChannelAwbJob implements ShouldQueue
                     'salesorder_no'   => $order->salesorder_no,
                     'tracking_number' => $tn,
                 ]);
+
+                // Panaskan label sejak dini (mirror Shopee) agar cetak resi & bulk siap tanpa re-fetch.
+                PrepareLazadaShippingLabelJob::dispatch($order->id)
+                    ->onQueue(config('queue.names.channel_sync'));
 
                 return true;
             }
