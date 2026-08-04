@@ -15,13 +15,9 @@ use Modules\Sales\Models\ChannelSettlement;
 use Modules\Sales\Models\ChannelSettlementAdjustment;
 use Modules\Sales\Models\SalesOrder;
 
-/**
- * Sinkronisasi settlement statement-driven (arsip lengkap + anti-double).
- * SEMUA tulis pakai updateOrCreate pada kunci natural unik.
- */
 class SettlementSyncService
 {
-    // Transaksi TikTok yang menempel ke order (selain ini = adjustment lepas-order).
+
     private const TIKTOK_ORDER_TYPES = ['ORDER', 'SETTLE', 'SETTLEMENT'];
 
     public function __construct(
@@ -72,8 +68,6 @@ class SettlementSyncService
 
         return $count;
     }
-
-    // ---------------------------------------------------------------- TikTok
 
     private function syncTikTokShop(object $shop, Carbon $from): int
     {
@@ -129,17 +123,20 @@ class SettlementSyncService
                 ->where('channel_order_no', $tx['order_id'])
                 ->first();
 
-            if ($order) {
-                $finance = $this->tiktokMapper->map($tx);
-                $finance['settled_at'] = $settledAt;
-                $finance['channel_settlement_id'] = $settlement->id;
-                $this->orderService->updateOrderFinance($order->id, $finance);
-
+            // Order-type: hanya proses bila order ada di sistem & item-nya sudah di-download.
+            // Jika tidak, LEWATI (jangan dicatat sebagai adjustment — bukan transaksi yang kita lacak).
+            if (! $order || ! $order->itemsFullyDownloaded()) {
                 return;
             }
+
+            $finance = $this->tiktokMapper->map($tx);
+            $finance['settled_at'] = $settledAt;
+            $finance['channel_settlement_id'] = $settlement->id;
+            $this->orderService->updateOrderFinance($order->id, $finance);
+
+            return;
         }
 
-        // Adjustment lepas-order (RESERVE / CHARGE_BACK / PLATFORM_PENALTY / OTHER_ADJUSTMENT / dll).
         $matchedOrder = $orderId
             ? SalesOrder::where('source', 'tiktok')->where('channel_order_no', $orderId)->first()
             : null;
@@ -161,8 +158,6 @@ class SettlementSyncService
         );
     }
 
-    // ---------------------------------------------------------------- Shopee
-
     private function syncShopeeShop(object $shop, Carbon $from): int
     {
         $shopId = (string) $shop->shop_id;
@@ -170,7 +165,6 @@ class SettlementSyncService
         $processed = 0;
         $pageNo = 1;
 
-        // Akumulasi payout per tanggal cair → 1 ChannelSettlement per release_date.
         $byDate = [];
 
         do {
@@ -222,7 +216,8 @@ class SettlementSyncService
             ->where('channel_order_no', $orderSn)
             ->first();
 
-        if (! $order) {
+        // Hanya proses order yang ada di sistem & item-nya sudah di-download ke internal.
+        if (! $order || ! $order->itemsFullyDownloaded()) {
             return;
         }
 
@@ -240,12 +235,6 @@ class SettlementSyncService
         }
     }
 
-    // ---------------------------------------------------------------- Lazada
-
-    /**
-     * Minimal: pastikan settled_at terisi via mapper (dispatch finance sync per order
-     * dalam window yang belum settle). Pipeline QueryTransactionDetails sudah ada.
-     */
     private function syncLazadaShop(object $shop, Carbon $from): int
     {
         $count = 0;
@@ -267,8 +256,6 @@ class SettlementSyncService
 
         return $count;
     }
-
-    // ---------------------------------------------------------------- Helpers
 
     private function fromTimestamp(mixed $ts): ?Carbon
     {
