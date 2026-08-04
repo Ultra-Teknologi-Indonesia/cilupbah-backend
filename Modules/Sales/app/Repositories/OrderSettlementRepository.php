@@ -6,10 +6,6 @@ use Modules\Sales\Models\SalesOrder;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
-/**
- * Query settlement per-pesanan dari sales_orders (source ∈ marketplace).
- * Membaca kolom finance + settled_at yang sudah diisi pipeline finance.
- */
 class OrderSettlementRepository
 {
     private const MARKETPLACE_SOURCES = ['shopee', 'tiktok', 'lazada'];
@@ -18,9 +14,13 @@ class OrderSettlementRepository
     {
         return QueryBuilder::for(SalesOrder::class)
             ->whereIn('source', self::MARKETPLACE_SOURCES)
-            // Pesanan batal bukan pencairan — dikecualikan dari laporan settlement & KPI
-            // (dananya kembali ke pembeli). Riwayatnya tetap terlihat di daftar Pesanan.
+
             ->where('is_canceled', false)
+            // Hanya order yang item-nya sudah di-download ke sistem internal (SEMUA item punya
+            // item_id). Order dengan produk yang BUKAN milik kita / belum di-download tak masuk
+            // laporan settlement — konsisten dengan guard penarikan finance.
+            ->whereHas('items')
+            ->whereDoesntHave('items', fn ($q) => $q->whereNull('item_id'))
             ->allowedFilters(
                 AllowedFilter::exact('channel', 'source'),
                 AllowedFilter::exact('source'),
@@ -35,10 +35,6 @@ class OrderSettlementRepository
             ->allowedSearch('salesorder_no');
     }
 
-    /**
-     * Query terfilter (tanpa paginate) yang dipakai bersama list & export
-     * agar hasil export = hasil tabel.
-     */
     public function query(): QueryBuilder
     {
         return $this->base()
@@ -58,11 +54,6 @@ class OrderSettlementRepository
             ->appends(request()->query());
     }
 
-    /**
-     * Ringkasan agregat (KPI) untuk filter aktif. PostgreSQL: FILTER (WHERE ...).
-     *
-     * @return array{total_gross: float, total_fee: float, total_settlement: float, unsettled_count: int}
-     */
     public function summary(): array
     {
         $row = $this->base()
