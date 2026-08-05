@@ -6,16 +6,6 @@ use Illuminate\Support\Facades\Cache;
 use Modules\Channel\Jobs\ManualStockResyncAllJob;
 use Modules\Channel\Models\ChannelSyncSetting;
 
-/**
- * Master switch global untuk SELURUH sinkronisasi channel (semua toko, semua channel).
- *
- * Saat OFF, semua jalur sync menjadi jeda non-destruktif:
- * - Outbound (stok/harga/produk) di-gate di SyncProductToChannelJob::handle().
- * - Inbound bulk (pull pesanan manual + heartbeat) di-gate di OrderService::pullOrders().
- * - Inbound webhook per-order di-gate di Process*Webhook::handle() (baris inbox tetap
- *   RECEIVED, di-drain otomatis oleh channel:webhooks-replay saat dinyalakan lagi).
- * Pengaturan sync per-listing (variant sync_enabled) TIDAK diubah — nyala lagi = kembali normal.
- */
 class ChannelSyncSettingService
 {
     public const CACHE_KEY = 'channel_sync_enabled';
@@ -47,8 +37,6 @@ class ChannelSyncSettingService
         $setting->update(['sync_enabled' => $enabled]);
         Cache::forget(self::CACHE_KEY);
 
-        // Saat dinyalakan kembali dari kondisi jeda, dorong resync stok massal agar
-        // channel menyusul perubahan stok/harga lokal yang terjadi selama jeda.
         if ($enabled && ! $wasEnabled) {
             ManualStockResyncAllJob::dispatch([]);
         }

@@ -725,20 +725,6 @@ class SalesOrderRepository
             ->all();
     }
 
-    /**
-     * SKU yang benar-benar sudah DI-DOWNLOAD dari sebuah channel (toko mana pun,
-     * channel mana pun) — ditandai keberadaan baris product_variant_channel_mappings
-     * untuk varian ber-SKU tersebut. SKU yang hanya ada di master (mis. hasil import
-     * CSV/Jubelio) TANPA pernah di-download dari channel TIDAK termasuk.
-     *
-     * Dipakai gate ingestion pesanan channel: order untuk SKU yang belum di-download
-     * dari channel harus masuk tab "Gagal Download", bukan diterima sebagai pesanan
-     * normal — sesuai aturan "kalau SKU sudah kedownload dari toko/channel mana pun,
-     * baru boleh masuk".
-     *
-     * @param  array<int,array<string,mixed>>  $items
-     * @return array<int,string>  daftar SKU (unik) yang punya channel mapping
-     */
     public function channelDownloadedSkus(array $items): array
     {
         $skus = collect($items)->pluck('sku')->filter()->unique()->values();

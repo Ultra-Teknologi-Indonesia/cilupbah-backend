@@ -40,7 +40,6 @@ class GagalDownloadFlowTest extends TestCase
 
     protected ?string $channelShopId = null;
 
-    /** Buat (sekali) sebuah channel_shops untuk menautkan mapping produk. */
     protected function channelShopId(): string
     {
         if ($this->channelShopId !== null) {
@@ -61,10 +60,6 @@ class GagalDownloadFlowTest extends TestCase
         return $this->channelShopId;
     }
 
-    /**
-     * Varian yang HANYA ada di master (mis. hasil import CSV/Jubelio) — TANPA
-     * pernah di-download dari channel (tanpa product_variant_channel_mappings).
-     */
     protected function seedMasterOnlyVariant(string $sku, int $onHand = 10): string
     {
         $categoryId = DB::table('categories')->insertGetId([
@@ -106,11 +101,6 @@ class GagalDownloadFlowTest extends TestCase
         return $variantId;
     }
 
-    /**
-     * Varian yang sudah DI-DOWNLOAD dari channel: master + product_channel_mapping +
-     * product_variant_channel_mapping. Inilah kondisi "SKU sudah kedownload" yang
-     * membuat pesanan channel diterima sebagai pesanan normal (bukan Gagal Download).
-     */
     protected function seedVariant(string $sku, int $onHand = 10): string
     {
         $variantId = $this->seedMasterOnlyVariant($sku, $onHand);
@@ -280,8 +270,7 @@ class GagalDownloadFlowTest extends TestCase
 
     public function test_channel_order_with_master_only_sku_is_quarantined_to_failed_tab(): void
     {
-        // SKU ada di master (mis. hasil import CSV/Jubelio) TAPI belum pernah
-        // di-download dari channel mana pun → order tidak boleh masuk daftar normal.
+
         $this->seedMasterOnlyVariant('SKU-IMPORT-ONLY');
 
         $orderId = $this->service->upsertFromChannel(
@@ -310,12 +299,11 @@ class GagalDownloadFlowTest extends TestCase
 
     public function test_channel_order_downloaded_from_other_shop_is_accepted(): void
     {
-        // Aturan: cukup sudah di-download dari toko/channel MANA PUN (tidak wajib
-        // toko yang sama dengan pesanan) → order diterima normal.
-        $this->seedVariant('SKU-CROSSSHOP'); // ter-download di channelShop default
+
+        $this->seedVariant('SKU-CROSSSHOP'); 
 
         $payload = $this->channelOrderData('GD-CROSSSHOP', 'SKU-CROSSSHOP');
-        $payload['channel_shop_id'] = 'SHOP-LAIN-999'; // toko berbeda dari mapping
+        $payload['channel_shop_id'] = 'SHOP-LAIN-999'; 
 
         $orderId = $this->service->upsertFromChannel($payload);
 

@@ -168,9 +168,6 @@ class LazadaAuthService
         $tokenExpiresAt = isset($response['expires_in']) ? now()->addSeconds((int) $response['expires_in']) : $shop->token_expires_at;
         $refreshExpiresAt = isset($response['refresh_expires_in']) ? now()->addSeconds((int) $response['refresh_expires_in']) : $shop->refresh_token_expires_at;
 
-        // Diagnostik: apakah Lazada memperpanjang masa refresh token saat refresh?
-        // Jika refresh_expires_in konsisten ~30 hari, koneksi bisa jadi self-healing;
-        // jika terus mengecil, konfirmasi bahwa re-auth ~30 hari memang wajib.
         Log::info('Lazada token refreshed', [
             'shop_id' => $shop->shop_id,
             'refresh_expires_in' => $response['refresh_expires_in'] ?? null,
@@ -223,7 +220,7 @@ class LazadaAuthService
                     Log::warning('Lazada refresh token gagal sementara, akan dicoba ulang', ['shop_id' => $shop->shop_id, 'raw' => $e->rawMessage]);
                 }
             } catch (\Throwable $e) {
-                // Error tak terduga → perlakukan sebagai sementara agar dicoba ulang.
+
                 $summary['transient']++;
                 Log::warning('Lazada refresh token error tak terduga', ['shop_id' => $shop->shop_id, 'error' => $e->getMessage()]);
             }

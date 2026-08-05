@@ -62,7 +62,7 @@ class PrepareLazadaShippingLabelJob implements ShouldQueue
             $packageIds = $lazada->resolvePackageIds($shopId, $orderSn);
             $document = $lazada->getPackageDocument($shopId, $packageIds, 'PDF');
         } catch (ChannelLabelUnsupportedException $e) {
-            // Order SOF/DBS: label tak akan pernah tersedia via API. Terminal, jangan retry.
+
             $order->update(['shipping_label_status' => 'self_design_required']);
             Log::info('PrepareLazadaShippingLabelJob: order SOF/DBS, label via Seller Center', [
                 'order_id' => $order->id,
@@ -127,10 +127,6 @@ class PrepareLazadaShippingLabelJob implements ShouldQueue
         $this->notifyBulkListeners();
     }
 
-    /**
-     * Beri tahu batch bulk-cetak-resi yang mungkin memarkir order ini agar
-     * melanjutkan item begitu label mencapai status terminal (ready/failed/self_design).
-     */
     private function notifyBulkListeners(): void
     {
         try {

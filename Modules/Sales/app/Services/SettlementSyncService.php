@@ -239,7 +239,6 @@ class SettlementSyncService
         $shopId = (string) $shop->shop_id;
         $count = 0;
 
-        // 1) Ledger payout level-statement (mirror Shopee getEscrowList / TikTok getStatements).
         try {
             $statements = $this->lazadaService->getPayoutStatus($shopId, $from);
 
@@ -274,7 +273,6 @@ class SettlementSyncService
             Log::warning("SettlementSync lazada payout {$shopId} gagal: " . $e->getMessage());
         }
 
-        // 2) Per-order finance (tetap berjalan) — mengisi settled_at & fee level order.
         SalesOrder::query()
             ->where('source', 'lazada')
             ->where('channel_shop_id', $shop->shop_id)
@@ -292,9 +290,6 @@ class SettlementSyncService
         return $count;
     }
 
-    /**
-     * Parse string payout Lazada mis. "3962.41 EUR" → [3962.41, "EUR"]; "3962.41" → [3962.41, null].
-     */
     private function parseLazadaPayout(mixed $payout): array
     {
         if ($payout === null || $payout === '') {

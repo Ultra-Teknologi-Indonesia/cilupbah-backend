@@ -31,11 +31,14 @@ RUN apt-get update && apt-get install -y \
     zip \
     ghostscript \
     libpng-dev \
+    libjpeg62-turbo-dev \
+    libwebp-dev \
+    libfreetype6-dev \
     libonig-dev \
     libxml2-dev \
     libpq-dev \
     libzip-dev \
-    && docker-php-ext-configure gd \
+    && docker-php-ext-configure gd --with-jpeg --with-webp --with-freetype \
     && docker-php-ext-install -j"$(nproc)" \
         pdo_mysql \
         pdo_pgsql \

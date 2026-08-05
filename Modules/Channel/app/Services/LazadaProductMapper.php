@@ -43,7 +43,7 @@ class LazadaProductMapper
                     'PrimaryCategory' => $this->resolveChannelCategoryId($product['category_id'] ?? null, $config),
                     'Images' => $imageUrls ? ['Image' => array_values($imageUrls)] : null,
                     'Attributes' => array_filter(array_merge(
-                        // Atribut kategori (non-sale-prop) dari adapter; field inti di bawah menang.
+
                         is_array($config['attributes'] ?? null) ? $config['attributes'] : [],
                         [
                             'name' => $product['name'] ?? 'Produk',

@@ -9,15 +9,6 @@ use Modules\Channel\Support\ChannelReauthCopy;
 use Modules\Notification\Models\Notification;
 use Modules\Notification\Services\NotificationDispatcher;
 
-/**
- * Peringatan dini "perlu otorisasi ulang".
- *
- * Terutama untuk Lazada: refresh token-nya terpaku ke otorisasi awal (~30 hari)
- * dan tidak bisa diperpanjang lewat refresh, jadi koneksi PASTI putus berkala.
- * Command ini memberi tahu owner beberapa hari sebelum putus, agar sempat
- * re-auth dan sinkronisasi tidak terhenti. Shopee/TikTok memakai refresh token
- * rolling sehingga normalnya tidak pernah masuk kondisi ini.
- */
 class AlertChannelReauth extends Command
 {
     protected $signature = 'channel:alert-reauth
@@ -62,12 +53,11 @@ class AlertChannelReauth extends Command
 
     private function needsAlert(ChannelShop $shop, \Illuminate\Support\Carbon $threshold): bool
     {
-        // Tanpa access token → jelas butuh otorisasi ulang.
+
         if (empty($shop->access_token)) {
             return true;
         }
 
-        // Refresh token mendekati atau sudah lewat masa berlaku.
         return $shop->refresh_token_expires_at !== null
             && $shop->refresh_token_expires_at->lte($threshold);
     }

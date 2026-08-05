@@ -22,7 +22,9 @@ class UploadHistoryResource extends JsonResource
             'thumbnail' => $this->thumbnail(),
             'upload_date' => $this->created_at,
             'success' => $success,
+            'status' => $this->status,
             'status_message' => $this->statusMessage(),
+            'error' => $this->errorDetail(),
             'can_reupload' => $this->status === ProductSyncLog::STATUS_FAILED,
             'shop_name' => $shop->shop_name ?? null,
             'channel_code' => $channel->code ?? null,
@@ -42,6 +44,37 @@ class UploadHistoryResource extends JsonResource
             ProductSyncLog::STATUS_FAILED => $this->error_message ?: 'Gagal',
             default => 'Sedang diproses',
         };
+    }
+
+    protected function errorDetail(): ?array
+    {
+        if ($this->status !== ProductSyncLog::STATUS_FAILED) {
+            return null;
+        }
+
+        $error = is_array($this->response) ? ($this->response['error'] ?? null) : null;
+
+        if (is_array($error) && ! empty($error)) {
+            return [
+                'category' => $error['category'] ?? 'fatal',
+                'title' => $error['title'] ?? 'Produk gagal di-upload',
+                'reason' => $error['reason'] ?? ($this->error_message ?: 'Gagal'),
+                'action' => $error['action'] ?? null,
+                'detail' => $error['detail'] ?? null,
+                'retryable' => (bool) ($error['retryable'] ?? false),
+            ];
+        }
+
+        $message = $this->error_message ?: 'Gagal';
+
+        return [
+            'category' => 'fatal',
+            'title' => 'Produk gagal di-upload',
+            'reason' => $message,
+            'action' => null,
+            'detail' => null,
+            'retryable' => false,
+        ];
     }
 
     protected function products(): array

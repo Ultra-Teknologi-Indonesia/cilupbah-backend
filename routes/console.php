@@ -10,7 +10,6 @@ Artisan::command('inspire', function () {
 
 Schedule::command('lazada:refresh-tokens')->dailyAt('02:00')->withoutOverlapping();
 
-// Peringatan dini "perlu otorisasi ulang" (khususnya Lazada yang putus berkala ~30 hari).
 Schedule::command('channel:alert-reauth')->dailyAt('08:00')->withoutOverlapping();
 
 Schedule::command('shopee:refresh-tokens')->hourly()->withoutOverlapping();

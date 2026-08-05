@@ -32,7 +32,6 @@ class LazadaWebhookRoutingTest extends TestCase
         $auth = Mockery::mock(LazadaAuthService::class);
         $auth->shouldReceive('refreshStoreToken')->once()->with((string) $shop->id);
 
-        // Token-expiry asli = message_type 8 (terkonfirmasi dari payload staging).
         $this->process(
             ['seller_id' => 'LZ1', 'message_type' => 8, 'data' => []],
             Mockery::mock(LazadaOrderService::class),
@@ -43,8 +42,7 @@ class LazadaWebhookRoutingTest extends TestCase
 
     public function test_product_edit_type_4_repulls_product_not_token(): void
     {
-        // Regression: sebelumnya type 4 salah dianggap token-expiry; payload staging
-        // membuktikan type 4 = produk-edit (punya item_id) → harus re-download produk.
+
         $download = Mockery::mock(ChannelDownloadService::class);
         $download->shouldReceive('downloadProductDebounced')->once()->with('lazada', 'LZ1', 'IT-4');
 

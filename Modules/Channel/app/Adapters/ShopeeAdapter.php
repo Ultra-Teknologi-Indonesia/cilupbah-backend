@@ -81,7 +81,11 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         } catch (\Exception $e) {
             Log::error('Shopee pushProduct error: ' . $e->getMessage());
 
-            return ['success' => false, 'message' => $e->getMessage()];
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'error' => \Modules\Channel\Support\UploadErrorPresenter::fromThrowable('shopee', $e),
+            ];
         }
     }
 
@@ -102,7 +106,11 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         } catch (\Exception $e) {
             Log::error('Shopee updateProduct error: ' . $e->getMessage());
 
-            return ['success' => false, 'message' => $e->getMessage()];
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'error' => \Modules\Channel\Support\UploadErrorPresenter::fromThrowable('shopee', $e),
+            ];
         }
     }
 
@@ -334,7 +342,7 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
             $config['logistic_info'] = $this->resolveLogistics($shop, $product);
         }
 
-        Log::debug('Shopee add_item logistic_info', [
+        Log::info('Shopee add_item logistic_info', [
             'shop_id' => $shop->shop_id,
             'product_id' => $product->id,
             'logistic_info' => $config['logistic_info'],

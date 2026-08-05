@@ -17,8 +17,6 @@ class OrderSyncStatusService
             return ['status' => ChannelShop::ORDER_SYNC_PROBLEM, 'note' => 'Toko terputus dari marketplace', 'action' => 'reauth'];
         }
 
-        // Butuh otorisasi ulang lebih actionable daripada integration_status generik,
-        // jadi dievaluasi lebih dulu dan membawa kode mesin `action: reauth`.
         if ($this->needsReauth($shop)) {
             return ['status' => ChannelShop::ORDER_SYNC_PROBLEM, 'note' => ChannelReauthCopy::note($shop->channel?->code), 'action' => 'reauth'];
         }

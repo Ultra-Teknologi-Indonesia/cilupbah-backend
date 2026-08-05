@@ -913,7 +913,6 @@ class SalesOrderService
         if ($source === 'lazada') {
             $lazadaService = app(\Modules\Channel\Services\LazadaOrderService::class);
 
-            // 1) Sajikan dari cache prep-job bila sudah ready (hindari re-fetch API tiap cetak).
             if ($order->shipping_label_status === 'ready' && is_array($order->shipping_label_raw_data)) {
                 $cached = $order->shipping_label_raw_data['document'] ?? [];
                 if (! empty($cached['pdf_url'])) {
@@ -929,7 +928,6 @@ class SalesOrderService
                 }
             }
 
-            // 2) Order SOF/DBS: Lazada tak menyediakan label via API.
             if ($order->shipping_label_status === 'self_design_required') {
                 throw new \RuntimeException(
                     'Order Lazada ini bertipe SOF/DBS — label tidak tersedia via API. '
@@ -937,14 +935,12 @@ class SalesOrderService
                 );
             }
 
-            // 3) Prep job sedang berjalan; minta klien menunggu (HTTP 202) alih-alih re-fetch.
             if ($order->shipping_label_status === 'preparing') {
                 throw new ShippingLabelPreparingException(
                     'Label Lazada sedang disiapkan. Coba lagi dalam 1-2 menit.'
                 );
             }
 
-            // 4) Ambil dokumen level-paket (minta PDF agar tidak menerima label text/html).
             try {
                 $packageIds = $lazadaService->resolvePackageIds($shopId, $channelOrderNo);
                 $document = $lazadaService->getPackageDocument($shopId, $packageIds, 'PDF');
@@ -975,7 +971,6 @@ class SalesOrderService
                 ];
             }
 
-            // 5) Belum siap (order belum packed/RTS) → siapkan async, minta klien menunggu.
             PrepareLazadaShippingLabelJob::dispatch($order->id)
                 ->onQueue(config('queue.names.channel_sync'));
 
@@ -1724,12 +1719,6 @@ class SalesOrderService
 
             $order->load('items');
 
-            // Gate "sudah di-download dari channel": untuk pesanan channel BARU, SKU yang
-            // hanya ada di master (mis. hasil import CSV/Jubelio) tetapi belum pernah
-            // di-download dari channel mana pun harus diperlakukan sebagai belum terpetakan
-            // → item_id dikosongkan agar order jatuh ke tab "Gagal Download", bukan masuk
-            // daftar normal. Dibatasi ke $wasNewOrder agar tidak mengganggu order yang sudah
-            // berjalan (picked/packed/shipped) saat re-sync.
             if ($wasNewOrder && $order->source && ! empty($orderData['items']) && is_array($orderData['items'])) {
                 $downloaded = $this->orderRepository->channelDownloadedSkus($orderData['items']);
                 $undownloadedItemIds = $order->items

@@ -101,6 +101,18 @@ class ChannelMediaResolver
         return ltrim(substr($url, strlen($base)), '/');
     }
 
+    public function detectImageMime(string $reference): ?string
+    {
+        $bytes = $this->bytes($reference);
+        if ($bytes === null || $bytes === '') {
+            return null;
+        }
+
+        $info = @getimagesizefromstring($bytes);
+
+        return $info === false ? null : ($info['mime'] ?? null);
+    }
+
     protected function httpFallback(string $url): ?string
     {
         if (! preg_match('#^https?://#i', $url)) {

@@ -8,6 +8,7 @@ class LazadaImageUploader
 {
     public function __construct(
         protected LazadaClient $client,
+        protected ChannelMediaResolver $media,
     ) {}
 
     public function uploadFromUrls(array $urls, string $accessToken): array
@@ -110,6 +111,12 @@ class LazadaImageUploader
 
     protected function isSupportedFormat(string $url): bool
     {
+        $mime = $this->media->detectImageMime($url);
+
+        if ($mime !== null) {
+            return in_array($mime, ['image/jpeg', 'image/png'], true);
+        }
+
         $ext = strtolower(pathinfo(parse_url($url, PHP_URL_PATH) ?? '', PATHINFO_EXTENSION));
 
         return in_array($ext, ['jpg', 'jpeg', 'png'], true);

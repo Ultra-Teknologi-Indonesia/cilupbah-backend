@@ -575,13 +575,13 @@ class BulkShippingLabelService
         try {
             $result = $this->salesOrderService->getShippingLabel($order, $options);
         } catch (ShippingLabelPreparingException $e) {
-            // Label belum siap → siapkan async & parkir item (mirror Shopee), jangan langsung gagal.
+
             PrepareLazadaShippingLabelJob::dispatch($order->id)
                 ->onQueue(config('queue.names.channel_sync'));
             $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP]);
             return;
         } catch (\RuntimeException $e) {
-            // getShippingLabel melempar RuntimeException untuk order SOF/DBS (self-design).
+
             $this->fail($item, BulkShippingLabelItem::REASON_SELF_DESIGN);
             return;
         }
@@ -618,7 +618,6 @@ class BulkShippingLabelService
             return;
         }
 
-        // Belum siap tanpa exception → parkir dan tunggu prep job.
         PrepareLazadaShippingLabelJob::dispatch($order->id)
             ->onQueue(config('queue.names.channel_sync'));
         $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP]);

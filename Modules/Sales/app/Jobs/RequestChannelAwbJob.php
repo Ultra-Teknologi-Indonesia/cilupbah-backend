@@ -201,7 +201,6 @@ class RequestChannelAwbJob implements ShouldQueue
                     'tracking_number' => $tn,
                 ]);
 
-                // Panaskan label sejak dini (mirror Shopee) agar cetak resi & bulk siap tanpa re-fetch.
                 PrepareLazadaShippingLabelJob::dispatch($order->id)
                     ->onQueue(config('queue.names.channel_sync'));
 

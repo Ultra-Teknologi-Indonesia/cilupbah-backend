@@ -36,6 +36,9 @@ class SyncProductToChannelJob implements ShouldQueue
     public ?array $attributeMapping;
     public ?string $draftId;
 
+    protected string $channelCodeResolved = '';
+    protected bool $uploadResultRecorded = false;
+
     public function __construct(string $productId, string $channelShopId, string $action, ?array $attributeMapping = null, ?string $draftId = null)
     {
         $this->productId = $productId;
@@ -78,6 +81,7 @@ class SyncProductToChannelJob implements ShouldQueue
         }
 
         $channelCode = $shop->channel->code ?? 'tiktok';
+        $this->channelCodeResolved = $channelCode;
 
         $shop = $this->ensureFreshToken($shop, $channelCode);
 
@@ -219,7 +223,9 @@ class SyncProductToChannelJob implements ShouldQueue
 
         } catch (\Exception $e) {
             $mapping->markAsFailed($e->getMessage());
-            $this->recordUploadResult(false, $e->getMessage());
+            if (! $this->uploadResultRecorded) {
+                $this->recordUploadResult(false, $e->getMessage());
+            }
             $this->refreshChannelValidation();
             $this->handleFailure($channelCode);
 
@@ -283,10 +289,33 @@ class SyncProductToChannelJob implements ShouldQueue
             return;
         }
 
+        $this->uploadResultRecorded = true;
+
+        if ($success) {
+            $log->update([
+                'status' => ProductSyncLog::STATUS_SUCCESS,
+                'error_message' => null,
+                'response' => $response,
+            ]);
+
+            return;
+        }
+
+        $structured = $response['error']
+            ?? \Modules\Channel\Support\UploadErrorPresenter::fromMessage($this->channelCodeResolved, (string) $message);
+
+        $raw = $response;
+        if (is_array($raw)) {
+            unset($raw['error']);
+        }
+
         $log->update([
-            'status' => $success ? ProductSyncLog::STATUS_SUCCESS : ProductSyncLog::STATUS_FAILED,
-            'error_message' => $success ? null : $message,
-            'response' => $response,
+            'status' => ProductSyncLog::STATUS_FAILED,
+            'error_message' => $structured['reason'] ?? $message,
+            'response' => [
+                'error' => $structured,
+                'raw' => ! empty($raw) ? $raw : null,
+            ],
         ]);
     }
 

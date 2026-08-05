@@ -8,6 +8,8 @@ return [
 
     'lazada_video_enabled' => (bool) env('LAZADA_VIDEO_ENABLED', true),
 
+    'shopee_max_models' => (int) env('SHOPEE_MAX_MODELS', 50),
+
     'lazada_defaults' => [
         'primary_category' => env('LAZADA_DEFAULT_CATEGORY_ID'),
         'brand' => env('LAZADA_DEFAULT_BRAND', 'No Brand'),

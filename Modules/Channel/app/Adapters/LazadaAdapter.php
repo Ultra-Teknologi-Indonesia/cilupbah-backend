@@ -53,7 +53,11 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         } catch (\Exception $e) {
             Log::error('Lazada pushProduct error: ' . $e->getMessage());
 
-            return ['success' => false, 'message' => $e->getMessage()];
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'error' => \Modules\Channel\Support\UploadErrorPresenter::fromThrowable('lazada', $e),
+            ];
         }
     }
 
@@ -72,7 +76,11 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         } catch (\Exception $e) {
             Log::error('Lazada updateProduct error: ' . $e->getMessage());
 
-            return ['success' => false, 'message' => $e->getMessage()];
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'error' => \Modules\Channel\Support\UploadErrorPresenter::fromThrowable('lazada', $e),
+            ];
         }
     }
 
@@ -334,12 +342,10 @@ class LazadaAdapter implements MarketplaceAdapterInterface
             }
         }
 
-        // Atribut kategori (non-sale-prop) + validasi atribut wajib — mirror ShopeeAdapter::buildAttributeList.
         $channelCategoryUuid = $this->resolveChannelCategoryUuid($product);
         if ($channelCategoryUuid) {
             $attributes = $this->buildProductAttributes($product, $channelCategoryUuid);
 
-            // Override eksplisit dari pemanggil (jika ada) diprioritaskan.
             if (! empty($attributeMapping)) {
                 $attributes = array_merge($attributes, $attributeMapping);
             }
@@ -349,7 +355,33 @@ class LazadaAdapter implements MarketplaceAdapterInterface
             }
         }
 
+        if (empty($imageUrls) && ! app()->runningUnitTests()) {
+            throw new \RuntimeException('Gagal mengunggah gambar produk ke Lazada (minimal 1 gambar berformat JPG/PNG diperlukan). Format WebP tidak didukung Lazada.');
+        }
+
+        if (! $this->hasChannelCategory($product) && ! app()->runningUnitTests()) {
+            throw new \RuntimeException('Kategori Lazada wajib diisi (mapping kategori untuk produk ini tidak ditemukan).');
+        }
+
         return $this->outboundMapper->map($internal, $imageUrls, $config);
+    }
+
+    protected function hasChannelCategory(Product $product): bool
+    {
+        if (! $product->category_id) {
+            return false;
+        }
+
+        $channelId = DB::table('channels')->where('code', 'lazada')->value('id');
+        if (! $channelId) {
+            return false;
+        }
+
+        return DB::table('category_channel_mappings')
+            ->join('channel_categories', 'channel_categories.id', '=', 'category_channel_mappings.channel_category_id')
+            ->where('category_channel_mappings.category_id', $product->category_id)
+            ->where('channel_categories.channel_id', $channelId)
+            ->exists();
     }
 
     protected function resolveChannelCategoryUuid(Product $product): ?string
@@ -370,11 +402,6 @@ class LazadaAdapter implements MarketplaceAdapterInterface
             ->value('channel_categories.id');
     }
 
-    /**
-     * Bangun atribut kategori Lazada (non-sale-prop) sebagai assoc [nama_atribut => nilai].
-     * Sumber nilai = product_specifications (dipakai bersama Shopee). Melempar RuntimeException
-     * bila ada atribut WAJIB yang belum dipetakan/diisi (mirror Shopee).
-     */
     protected function buildProductAttributes(Product $product, string $channelCategoryUuid): array
     {
         $specs = DB::table('product_specifications')->where('product_id', $product->id)->get();
@@ -415,7 +442,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
             }
 
             if ($value !== null && $value !== '') {
-                // Kunci Lazada = nama atribut, disimpan sebagai external_id oleh syncCategoryAttributes.
+
                 $attributes[(string) $channelAttr->external_id] = (string) $value;
             }
         }

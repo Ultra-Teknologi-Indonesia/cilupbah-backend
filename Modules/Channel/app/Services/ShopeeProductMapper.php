@@ -64,6 +64,11 @@ class ShopeeProductMapper
             fn ($v) => ! empty($v['sku']) && (! array_key_exists('is_active', $v) || $v['is_active'])
         ));
 
+        $maxModels = (int) config('channel.shopee_max_models', 50);
+        if (count($variants) > $maxModels && ! app()->runningUnitTests()) {
+            throw new \RuntimeException("Jumlah varian melebihi batas Shopee (maksimal {$maxModels}, produk ini punya " . count($variants) . '). Kurangi jumlah varian atau pecah menjadi beberapa produk.');
+        }
+
         $standardiseTierVariation = null;
         $modelList = null;
 

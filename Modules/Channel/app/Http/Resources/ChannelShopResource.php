@@ -60,8 +60,7 @@ class ChannelShopResource extends JsonResource
 
     protected function integrationStatus(): array
     {
-        // Butuh otorisasi ulang paling actionable → dievaluasi lebih dulu dan
-        // membawa kode mesin `action: reauth` agar FE bisa render tombol Hubungkan Ulang.
+
         $needReauth = empty($this->access_token)
             || ($this->refresh_token_expires_at && $this->refresh_token_expires_at->isPast());
         if ($needReauth) {
