@@ -10,7 +10,7 @@ use Modules\Sales\Services\SalesOrderService;
 class ShopeeOrderService
 {
 
-    private const DETAIL_FIELDS = 'recipient_address,item_list,total_amount,buyer_user_id,buyer_username,payment_method,estimated_shipping_fee,actual_shipping_fee,actual_shipping_fee_confirmed,shipping_carrier,note,pay_time,cancel_reason,buyer_cancel_reason,cancel_by,package_list,fulfillment_flag,pickup_done_time,invoice_data,order_chargeable_weight_gram,dropshipper,dropshipper_phone,split_up,return_request_due_date';
+    private const DETAIL_FIELDS = 'recipient_address,item_list,total_amount,buyer_user_id,buyer_username,payment_method,estimated_shipping_fee,actual_shipping_fee,actual_shipping_fee_confirmed,shipping_carrier,note,pay_time,cancel_reason,buyer_cancel_reason,cancel_by,package_list,fulfillment_flag,pickup_done_time,invoice_data,order_chargeable_weight_gram,dropshipper,dropshipper_phone,split_up,return_request_due_date,ship_by_date,logistics_channel_id';
 
     public function __construct(
         protected ShopeeClient $client,
@@ -36,12 +36,13 @@ class ShopeeOrderService
         }
 
         $count = 0;
+        $instantChannelIds = $this->instantChannelIds($shopId);
         foreach (array_chunk($orderSns, 50) as $chunk) {
             foreach ($this->fetchOrderDetails($shop, $chunk) as $order) {
                 $orderSn = (string) ($order['order_sn'] ?? '');
 
                 try {
-                    $internal = $this->mapper->map($order, $shopId);
+                    $internal = $this->mapper->map($order, $shopId, $instantChannelIds);
                     $this->orderService->upsertFromChannel($internal);
                     $count++;
                 } catch (\Throwable $e) {
@@ -64,7 +65,7 @@ class ShopeeOrderService
             return 0;
         }
 
-        $internal = $this->mapper->map($order, $shopId);
+        $internal = $this->mapper->map($order, $shopId, $this->instantChannelIds($shopId));
         $this->orderService->upsertFromChannel($internal);
 
         return 1;
@@ -455,6 +456,42 @@ class ShopeeOrderService
         $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/logistics/get_channel_list', [], $token, $shop->shop_id));
 
         return $res['response']['logistics_channel_list'] ?? [];
+    }
+
+    /**
+     * logistics_channel_id milik channel Instant Delivery (service_type_identifier=instant),
+     * sinyal resmi Shopee untuk mengidentifikasi order instan. Di-cache 6 jam per toko;
+     * kegagalan API mengembalikan [] tanpa dicache (deteksi jatuh ke fallback nama kurir).
+     */
+    public function instantChannelIds(string $shopId): array
+    {
+        $key = "shopee:instant_channel_ids:{$shopId}";
+        $cached = \Illuminate\Support\Facades\Cache::get($key);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        try {
+            $channels = $this->getLogistics($shopId);
+        } catch (\Throwable $e) {
+            Log::warning("Shopee instantChannelIds: gagal ambil channel list untuk {$shopId}: " . $e->getMessage());
+
+            return [];
+        }
+
+        $ids = [];
+        foreach ($channels as $channel) {
+            if (($channel['service_type_identifier'] ?? null) === 'instant') {
+                $cid = $channel['logistics_channel_id'] ?? null;
+                if ($cid !== null) {
+                    $ids[] = (string) $cid;
+                }
+            }
+        }
+
+        \Illuminate\Support\Facades\Cache::put($key, $ids, now()->addHours(6));
+
+        return $ids;
     }
 
     public function shipOrder(string $shopId, string $orderSn, array $opts = []): array

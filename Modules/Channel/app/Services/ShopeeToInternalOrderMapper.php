@@ -20,9 +20,15 @@ class ShopeeToInternalOrderMapper
         'cancelled' => 'CANCELLED',
     ];
 
-    public function map(array $shopeeOrder, string $shopId): array
+    public function map(array $shopeeOrder, string $shopId, array $instantChannelIds = []): array
     {
         $items = $this->mapItems($shopeeOrder['item_list'] ?? []);
+
+        $logisticsChannelId = $shopeeOrder['logistics_channel_id']
+            ?? ($shopeeOrder['package_list'][0]['logistics_channel_id'] ?? null);
+        $shippingType = ($logisticsChannelId !== null && in_array((string) $logisticsChannelId, $instantChannelIds, true))
+            ? 'INSTANT'
+            : null;
 
         $shopeeStatus = strtolower((string) ($shopeeOrder['order_status'] ?? 'unpaid'));
         $channelStatus = self::STATUS_MAP[$shopeeStatus] ?? null;
@@ -101,6 +107,7 @@ class ShopeeToInternalOrderMapper
             'payment_method_name' => $shopeeOrder['payment_method'] ?? null,
             'tracking_number' => $shopeeOrder['tracking_number'] ?? null,
             'shipping_provider' => $shopeeOrder['shipping_carrier'] ?? null,
+            'shipping_type' => $shippingType,
             'buyer_message' => $shopeeOrder['note'] ?? $shopeeOrder['message_to_seller'] ?? null,
             'seller_note' => $shopeeOrder['note'] ?? null,
             'paid_time' => $isPaid ? $this->parseTimestamp($shopeeOrder['pay_time'] ?? $shopeeOrder['create_time'] ?? null) : null,
