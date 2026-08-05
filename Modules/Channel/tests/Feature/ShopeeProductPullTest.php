@@ -103,7 +103,7 @@ class ShopeeProductPullTest extends TestCase
         $this->assertNotNull($variant);
 
         $product = DB::table('products')->where('id', $variant->product_id)->first();
-        $this->assertEquals('download', $product->status);
+        $this->assertEquals('master', $product->status);
         $this->assertEquals('Kaos Shopee', $product->name);
         $this->assertNotNull($product->category_id, 'kategori harus ter-resolve (fallback bila perlu)');
 

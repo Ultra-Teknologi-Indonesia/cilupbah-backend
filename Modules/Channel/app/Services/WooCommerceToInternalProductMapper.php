@@ -18,7 +18,7 @@ class WooCommerceToInternalProductMapper
             'condition' => 'NEW',
             'is_draft' => $status !== '' && $status !== 'publish',
             'is_active' => true,
-            'status' => Product::STATUS_DOWNLOAD,
+            'status' => Product::STATUS_MASTER,
             'is_from_channel' => true,
             'verified_at' => now(),
             'weight' => (float) ($wcProduct['weight'] ?? 0),

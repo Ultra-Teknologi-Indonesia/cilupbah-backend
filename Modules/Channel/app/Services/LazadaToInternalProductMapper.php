@@ -18,7 +18,7 @@ class LazadaToInternalProductMapper
             'condition' => 'NEW',
             'is_draft' => strtolower((string) ($lazadaProduct['status'] ?? '')) !== 'active',
             'is_active' => true,
-            'status' => Product::STATUS_DOWNLOAD,
+            'status' => Product::STATUS_MASTER,
             'is_from_channel' => true,
             'verified_at' => now(),
         ];

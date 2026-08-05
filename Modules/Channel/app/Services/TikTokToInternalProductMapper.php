@@ -22,7 +22,7 @@ class TikTokToInternalProductMapper
             'is_draft' => ($tiktokProduct['status'] ?? null) !== 'ACTIVATE',
             'is_active' => true,
 
-            'status' => Product::STATUS_DOWNLOAD,
+            'status' => Product::STATUS_MASTER,
             'is_from_channel' => true,
             'verified_at' => now(),
         ];
