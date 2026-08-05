@@ -144,18 +144,19 @@ class ChannelShopManagementTest extends TestCase
         $this->assertSame('normal', $this->integrationOf($shop->id)['status']);
     }
 
-    public function test_integration_warning_when_expiring_soon(): void
+    public function test_integration_warning_when_reauth_deadline_near(): void
     {
-        $shop = $this->shop(['token_expires_at' => now()->addHours(5)]);
+        $shop = $this->shop(['refresh_token_expires_at' => now()->addDays(2)]);
 
         $this->assertSame('warning', $this->integrationOf($shop->id)['status']);
     }
 
-    public function test_integration_warning_when_access_token_expired_but_refresh_valid(): void
+    public function test_integration_normal_when_access_token_expired_but_refresh_valid(): void
     {
+        // Access token berumur pendek & di-refresh otomatis — bukan penanda masalah.
         $shop = $this->shop(['token_expires_at' => now()->subHour()]);
 
-        $this->assertSame('warning', $this->integrationOf($shop->id)['status']);
+        $this->assertSame('normal', $this->integrationOf($shop->id)['status']);
     }
 
     public function test_integration_error_from_persisted_status(): void

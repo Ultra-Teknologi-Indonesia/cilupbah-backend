@@ -5,7 +5,7 @@ namespace Modules\Channel\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Modules\Channel\Services\OrderSyncStatusService;
-use Modules\Channel\Support\ChannelReauthCopy;
+use Modules\Channel\Support\ChannelTokenStatus;
 
 class ChannelShopResource extends JsonResource
 {
@@ -39,52 +39,11 @@ class ChannelShopResource extends JsonResource
 
     protected function tokenStatus(): string
     {
-        if (! $this->is_active || ! $this->access_token) {
-            return 'disconnected';
-        }
-
-        if (! $this->token_expires_at) {
-            return 'active';
-        }
-
-        if ($this->token_expires_at->isPast()) {
-            return 'expired';
-        }
-
-        if ($this->token_expires_at->lt(now()->addHours(24))) {
-            return 'expiring_soon';
-        }
-
-        return 'active';
+        return ChannelTokenStatus::status($this->resource);
     }
 
     protected function integrationStatus(): array
     {
-
-        $needReauth = empty($this->access_token)
-            || ($this->refresh_token_expires_at && $this->refresh_token_expires_at->isPast());
-        if ($needReauth) {
-            return ['status' => 'error', 'note' => ChannelReauthCopy::note($this->channel?->code), 'action' => 'reauth'];
-        }
-
-        if ($this->integration_status === 'error') {
-            return ['status' => 'error', 'note' => $this->last_error ?: 'Integrasi bermasalah', 'action' => null];
-        }
-
-        if ($this->token_expires_at && $this->token_expires_at->isPast()) {
-            return ['status' => 'warning', 'note' => 'Token akses kedaluwarsa, akan diperbarui otomatis', 'action' => null];
-        }
-
-        if ($this->token_expires_at
-            && $this->token_expires_at->isFuture()
-            && now()->diffInHours($this->token_expires_at) < 24) {
-            return ['status' => 'warning', 'note' => 'Token akan kedaluwarsa < 24 jam', 'action' => null];
-        }
-
-        if ($this->integration_status === 'warning') {
-            return ['status' => 'warning', 'note' => $this->last_error ?: 'Perlu perhatian', 'action' => null];
-        }
-
-        return ['status' => 'normal', 'action' => null];
+        return ChannelTokenStatus::integration($this->resource);
     }
 }

@@ -243,22 +243,6 @@ class LazadaAuthService
 
     protected function getTokenStatus(ChannelShop $shop): string
     {
-        if (! $shop->is_active || ! $shop->access_token) {
-            return 'disconnected';
-        }
-
-        if (! $shop->token_expires_at) {
-            return 'active';
-        }
-
-        if ($shop->token_expires_at->isPast()) {
-            return 'expired';
-        }
-
-        if ($shop->token_expires_at->lt(now()->addHours(24))) {
-            return 'expiring_soon';
-        }
-
-        return 'active';
+        return \Modules\Channel\Support\ChannelTokenStatus::status($shop);
     }
 }

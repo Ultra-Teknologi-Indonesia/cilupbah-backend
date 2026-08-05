@@ -76,7 +76,7 @@ class TikTokStoreApiTest extends TestCase
 
     public function test_show_with_valid_uuid_returns_detail_not_500(): void
     {
-        $shop = $this->makeShop(['token_expires_at' => now()->subHour()]);
+        $shop = $this->makeShop(['refresh_token_expires_at' => now()->subHour()]);
 
         $response = $this->actingAs($this->user, 'sanctum')->getJson("/api/v1/tiktok/stores/{$shop->id}");
 

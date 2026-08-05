@@ -85,7 +85,7 @@ class LazadaStoreApiTest extends TestCase
 
     public function test_show_returns_detail_with_token_status(): void
     {
-        $shop = $this->makeShop(['token_expires_at' => now()->subHour()]);
+        $shop = $this->makeShop(['refresh_token_expires_at' => now()->subHour()]);
 
         $this->actingAs($this->user, 'sanctum')->getJson("/api/v1/lazada/stores/{$shop->id}")
             ->assertStatus(200)
