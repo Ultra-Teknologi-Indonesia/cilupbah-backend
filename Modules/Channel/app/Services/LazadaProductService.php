@@ -455,20 +455,26 @@ class LazadaProductService
         $productService = app(\Modules\Product\Services\ProductService::class);
 
         $count = 0;
+        $failed = 0;
         $total = 0;
         $offset = 0;
         $limit = 50;
+        $pages = 0;
+        $maxPages = (int) config('channel.download_max_pages', 10000);
 
         do {
             $params = ['filter' => 'all', 'offset' => $offset, 'limit' => $limit];
 
-            try {
-                $res = $this->client->request('GET', '/products/get', $params, $shop->access_token);
-            } catch (TokenExpiredException $e) {
-                $this->authService->refreshStoreToken((string) $shop->id);
-                $shop = $this->shopRepository->findByShopId($shopId);
-                $res = $this->client->request('GET', '/products/get', $params, $shop->access_token);
-            }
+            $res = \Modules\Channel\Support\ChannelRetry::run('lazada', function () use (&$shop, $shopId, $params) {
+                try {
+                    return $this->client->request('GET', '/products/get', $params, $shop->access_token);
+                } catch (TokenExpiredException $e) {
+                    $this->authService->refreshStoreToken((string) $shop->id);
+                    $shop = $this->shopRepository->findByShopId($shopId);
+
+                    return $this->client->request('GET', '/products/get', $params, $shop->access_token);
+                }
+            });
 
             if ($total === 0) {
                 $total = (int) ($res['data']['total_products'] ?? 0);
@@ -517,10 +523,11 @@ class LazadaProductService
 
                         $count++;
                         if ($onProgress) {
-                            $onProgress($count, max($total, $count));
+                            $onProgress($count, max($total, $count + $failed), $failed);
                         }
                     }
                 } catch (\Throwable $e) {
+                    $failed++;
                     Log::error('Lazada: gagal pull produk ' . ($item['item_id'] ?? '?') . ': ' . $e->getMessage());
 
                     ProductSyncLog::record([
@@ -537,7 +544,21 @@ class LazadaProductService
             }
 
             $offset += $limit;
+            $pages++;
+
+            if ($pages >= $maxPages) {
+                Log::warning("Lazada pullProducts: batas {$maxPages} halaman tercapai untuk shop {$shopId}, paginasi dihentikan.", [
+                    'shop_id' => $shopId,
+                    'downloaded' => $count,
+                    'failed' => $failed,
+                ]);
+                break;
+            }
         } while (count($products) === $limit);
+
+        if ($onProgress) {
+            $onProgress($count, max($total, $count + $failed), $failed);
+        }
 
         return $count;
     }

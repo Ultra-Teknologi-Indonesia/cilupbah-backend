@@ -41,12 +41,10 @@ class StoreSalesOrderManualRequest extends FormRequest
 
             'is_paid'             => ['nullable', 'boolean'],
             'is_cod'              => ['nullable', 'boolean'],
-            'is_jubelio_shipment' => ['nullable', 'boolean'],
 
             'delivery_method'     => ['required', Rule::in([
                 SalesOrder::DELIVERY_COURIER,
                 SalesOrder::DELIVERY_SELF_PICKUP,
-                SalesOrder::DELIVERY_JUBELIO_SHIPMENT,
             ])],
             'shipping_provider'   => ['nullable', 'string', 'max:64'],
             'tracking_number'     => ['nullable', 'string', 'max:64'],
@@ -80,9 +78,6 @@ class StoreSalesOrderManualRequest extends FormRequest
             $method = $this->input('delivery_method');
             if ($method === SalesOrder::DELIVERY_COURIER && empty($this->input('shipping_provider'))) {
                 $v->errors()->add('shipping_provider', 'Kurir wajib dipilih ketika metode pengiriman adalah COURIER.');
-            }
-            if ($this->boolean('is_jubelio_shipment') && $method === SalesOrder::DELIVERY_SELF_PICKUP) {
-                $v->errors()->add('delivery_method', 'Jubelio Shipment tidak dapat digunakan dengan metode Ambil Sendiri.');
             }
         });
     }

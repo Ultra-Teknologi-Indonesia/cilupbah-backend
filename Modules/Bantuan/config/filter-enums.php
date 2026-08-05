@@ -66,7 +66,7 @@ return [
 
     'auth.user_status' => ['active', 'inactive', 'suspended'],
 
-    'delivery_method' => ['COURIER', 'SELF_PICKUP', 'JUBELIO_SHIPMENT', 'INSTANT'],
+    'delivery_method' => ['COURIER', 'SELF_PICKUP', 'INSTANT'],
 
     'notification.channel' => ['in_app', 'wa', 'email'],
     'notification.read_status' => ['read', 'unread'],

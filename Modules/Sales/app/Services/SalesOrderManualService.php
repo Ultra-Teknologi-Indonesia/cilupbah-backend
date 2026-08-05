@@ -87,7 +87,6 @@ class SalesOrderManualService
 
                 'is_paid'             => (bool) ($payload['is_paid'] ?? false),
                 'is_cod'              => (bool) ($payload['is_cod'] ?? false),
-                'is_jubelio_shipment' => (bool) ($payload['is_jubelio_shipment'] ?? false),
 
                 'delivery_method'     => $payload['delivery_method'],
                 'shipping_provider'   => $payload['shipping_provider'] ?? null,

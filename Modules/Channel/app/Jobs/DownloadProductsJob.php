@@ -42,16 +42,18 @@ class DownloadProductsJob implements ShouldQueue
         $transaction->markDownloading();
 
         $lastUpdate = 0;
-        $onProgress = function (int $downloaded, int $total) use ($transaction, &$lastUpdate) {
+        $lastFailed = 0;
+        $onProgress = function (int $downloaded, int $total, int $failed = 0) use ($transaction, &$lastUpdate, &$lastFailed) {
+            $lastFailed = $failed;
             if ($downloaded - $lastUpdate >= 5 || $downloaded >= $total) {
-                $transaction->updateProgress($downloaded, $total);
+                $transaction->updateProgress($downloaded, $total, $failed);
                 $lastUpdate = $downloaded;
             }
         };
 
         $count = $service->pull($this->channel, $this->shopId, $onProgress);
 
-        $transaction->markDone($count);
+        $transaction->markDone($count, $lastFailed);
     }
 
     public function failed(?\Throwable $e): void

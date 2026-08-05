@@ -29,6 +29,8 @@ class DownloadTransactionResource extends JsonResource
             'is_downloaded' => $this->state === DownloadTransaction::STATE_DONE,
             'on_download_process' => $this->state === DownloadTransaction::STATE_DOWNLOADING,
             'total_downloaded' => $this->total_downloaded,
+            'total_failed' => (int) $this->total_failed,
+            'is_partial' => $this->state === DownloadTransaction::STATE_DONE && (int) $this->total_failed > 0,
             'all_product' => $this->all_product,
             'progress_percent' => $this->progress_percent,
             'error_message' => $this->humanReadableError($channel->code ?? ''),

@@ -79,11 +79,10 @@ class FieldDescriptionResolver
         'status'            => 'Status resource. Nilai valid tergantung modul — lihat enum di kolom rules.',
         'is_paid'           => 'True bila sudah dibayar.',
         'is_cod'            => 'True bila metode COD (bayar di tempat).',
-        'is_jubelio_shipment'=> 'True bila pengiriman via Jubelio Shipment.',
         'is_active'         => 'True bila aktif; false = archived/deactivated.',
         'is_canceled'       => 'True bila sudah dibatalkan.',
 
-        'delivery_method'   => 'Metode pengiriman: COURIER (kurir), SELF_PICKUP (ambil sendiri), atau JUBELIO_SHIPMENT.',
+        'delivery_method'   => 'Metode pengiriman: COURIER (kurir), SELF_PICKUP (ambil sendiri), atau INSTANT (kurir instan).',
         'shipping_provider' => 'Nama kurir (mis. JNE, JNT, SiCepat). Wajib bila delivery_method = COURIER.',
         'tracking_number'   => 'Nomor resi/tracking dari kurir.',
         'order_weight_gram' => 'Berat total pesanan (gram).',

@@ -15,7 +15,6 @@ return new class extends Migration
             $table->string('no_ref', 64)->nullable()->after('salesorder_no');
             $table->text('note')->nullable()->after('cancel_reason');
             $table->string('delivery_method', 32)->nullable()->after('shipping_country');
-            $table->boolean('is_jubelio_shipment')->default(false)->after('delivery_method');
             $table->decimal('shipping_discount', 12, 2)->default(0)->after('shipping_cost');
             $table->decimal('other_discount', 12, 2)->default(0)->after('total_disc');
             $table->boolean('price_includes_tax')->default(false)->after('other_discount');
@@ -53,7 +52,6 @@ return new class extends Migration
                 'no_ref',
                 'note',
                 'delivery_method',
-                'is_jubelio_shipment',
                 'shipping_discount',
                 'other_discount',
                 'price_includes_tax',

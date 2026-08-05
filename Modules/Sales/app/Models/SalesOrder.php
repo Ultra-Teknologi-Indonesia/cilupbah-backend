@@ -156,7 +156,6 @@ class SalesOrder extends Model implements HasMedia
         'no_ref',
         'note',
         'delivery_method',
-        'is_jubelio_shipment',
         'shipping_discount',
         'other_discount',
         'price_includes_tax',
@@ -195,7 +194,6 @@ class SalesOrder extends Model implements HasMedia
         'is_split_order'                => 'boolean',
         'actual_shipping_fee_confirmed' => 'boolean',
         'is_manual'                     => 'boolean',
-        'is_jubelio_shipment'           => 'boolean',
         'price_includes_tax'            => 'boolean',
         'contact_channel'   => \Modules\Sales\Enums\ContactChannel::class,
         'customer_decision' => \Modules\Sales\Enums\CustomerDecision::class,
@@ -203,7 +201,6 @@ class SalesOrder extends Model implements HasMedia
 
     public const DELIVERY_COURIER          = 'COURIER';
     public const DELIVERY_SELF_PICKUP      = 'SELF_PICKUP';
-    public const DELIVERY_JUBELIO_SHIPMENT = 'JUBELIO_SHIPMENT';
 
     protected function channelStatus(): Attribute
     {

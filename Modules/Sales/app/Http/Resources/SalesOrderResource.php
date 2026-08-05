@@ -201,7 +201,6 @@ class SalesOrderResource extends JsonResource
             'no_ref'              => $this->no_ref,
             'note'                => $this->note,
             'delivery_method'     => $this->delivery_method,
-            'is_jubelio_shipment' => (bool) $this->is_jubelio_shipment,
             'is_cod'              => (bool) $this->is_cod,
             'other_discount'      => (float) ($this->other_discount ?? 0),
             'shipping_discount'   => (float) ($this->shipping_discount ?? 0),

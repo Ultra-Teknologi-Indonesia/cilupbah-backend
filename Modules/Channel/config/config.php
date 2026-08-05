@@ -10,6 +10,9 @@ return [
 
     'shopee_max_models' => (int) env('SHOPEE_MAX_MODELS', 50),
 
+    'download_retry_attempts' => (int) env('CHANNEL_DOWNLOAD_RETRY_ATTEMPTS', 4),
+    'download_max_pages' => (int) env('CHANNEL_DOWNLOAD_MAX_PAGES', 10000),
+
     'lazada_defaults' => [
         'primary_category' => env('LAZADA_DEFAULT_CATEGORY_ID'),
         'brand' => env('LAZADA_DEFAULT_BRAND', 'No Brand'),

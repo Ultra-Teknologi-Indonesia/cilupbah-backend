@@ -225,12 +225,15 @@ class ShopeeProductService
         $mapper = app(ShopeeToInternalProductMapper::class);
 
         $count = 0;
+        $failed = 0;
         $total = 0;
         $offset = 0;
         $pageSize = 50;
+        $pages = 0;
+        $maxPages = (int) config('channel.download_max_pages', 10000);
 
         do {
-            $list = $this->fetchItemList($shop, $offset, $pageSize);
+            $list = \Modules\Channel\Support\ChannelRetry::run('shopee', fn () => $this->fetchItemList($shop, $offset, $pageSize));
 
             if ($total === 0) {
                 $total = (int) ($list['total_count'] ?? 0);
@@ -239,16 +242,19 @@ class ShopeeProductService
             $itemIds = $this->extractItemIds($list);
 
             foreach (array_chunk($itemIds, 50) as $chunk) {
-                foreach ($this->fetchBaseInfo($shop, $chunk) as $item) {
+                $baseInfo = \Modules\Channel\Support\ChannelRetry::run('shopee', fn () => $this->fetchBaseInfo($shop, $chunk));
+
+                foreach ($baseInfo as $item) {
                     try {
                         $item = $this->hydrateModels($shop, $item);
                         if ($this->persistItem($shop, $shopId, $item, $mapper, $productService)) {
                             $count++;
                             if ($onProgress) {
-                                $onProgress($count, max($total, $count));
+                                $onProgress($count, max($total, $count + $failed), $failed);
                             }
                         }
                     } catch (\Throwable $e) {
+                        $failed++;
                         Log::error('Shopee pull gagal item ' . ($item['item_id'] ?? '?') . ': ' . $e->getMessage());
 
                         ProductSyncLog::record([
@@ -267,7 +273,21 @@ class ShopeeProductService
 
             $hasNext = (bool) ($list['has_next_page'] ?? false);
             $offset = (int) ($list['next_offset'] ?? ($offset + $pageSize));
+            $pages++;
+
+            if ($pages >= $maxPages) {
+                Log::warning("Shopee pullProducts: batas {$maxPages} halaman tercapai untuk shop {$shopId}, paginasi dihentikan.", [
+                    'shop_id' => $shopId,
+                    'downloaded' => $count,
+                    'failed' => $failed,
+                ]);
+                break;
+            }
         } while ($hasNext);
+
+        if ($onProgress) {
+            $onProgress($count, max($total, $count + $failed), $failed);
+        }
 
         return $count;
     }

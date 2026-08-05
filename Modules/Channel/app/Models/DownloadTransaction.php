@@ -23,6 +23,7 @@ class DownloadTransaction extends Model
         'state',
         'all_product',
         'total_downloaded',
+        'total_failed',
         'progress_percent',
         'error_message',
     ];
@@ -30,6 +31,7 @@ class DownloadTransaction extends Model
     protected $casts = [
         'all_product' => 'integer',
         'total_downloaded' => 'integer',
+        'total_failed' => 'integer',
         'progress_percent' => 'integer',
     ];
 
@@ -61,22 +63,24 @@ class DownloadTransaction extends Model
         ]);
     }
 
-    public function markDone(int $totalDownloaded): void
+    public function markDone(int $totalDownloaded, int $totalFailed = 0): void
     {
         $this->update([
             'state' => self::STATE_DONE,
             'total_downloaded' => $totalDownloaded,
-            'all_product' => max($this->all_product, $totalDownloaded),
+            'total_failed' => $totalFailed,
+            'all_product' => max($this->all_product, $totalDownloaded + $totalFailed),
             'progress_percent' => 100,
         ]);
     }
 
-    public function updateProgress(int $downloaded, int $total): void
+    public function updateProgress(int $downloaded, int $total, int $failed = 0): void
     {
         $percent = $total > 0 ? (int) round(($downloaded / $total) * 100) : 0;
 
         $this->update([
             'total_downloaded' => $downloaded,
+            'total_failed' => $failed,
             'all_product' => $total,
             'progress_percent' => min($percent, 99),
         ]);

@@ -319,8 +319,11 @@ class TikTokProductService
         $mapper         = app(TikTokToInternalProductMapper::class);
 
         $count     = 0;
+        $failed    = 0;
         $total     = 0;
         $pageToken = null;
+        $pages     = 0;
+        $maxPages  = (int) config('channel.download_max_pages', 10000);
 
         do {
             $queries = ['shop_cipher' => $shopCipher, 'page_size' => 100];
@@ -328,13 +331,15 @@ class TikTokProductService
                 $queries['page_token'] = $pageToken;
             }
 
-            try {
-                $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
-            } catch (TokenExpiredException $e) {
+            $res = \Modules\Channel\Support\ChannelRetry::run('tiktok', function () use (&$accessToken, $shop, $queries) {
+                try {
+                    return $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
+                } catch (TokenExpiredException $e) {
+                    $accessToken = $this->refreshShopToken($shop);
 
-                $accessToken = $this->refreshShopToken($shop);
-                $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
-            }
+                    return $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
+                }
+            });
 
             if (!isset($res['data']['products'])) {
                 Log::warning("TikTok pullProducts: respons tanpa 'data.products' untuk shop {$shopId}, pagination dihentikan.", [
@@ -351,12 +356,15 @@ class TikTokProductService
             $products = $res['data']['products'];
             $ids      = array_values(array_filter(array_map(fn ($p) => (string) ($p['id'] ?? ''), $products)));
 
-            try {
-                $details = $this->client->getProductDetailsBatch($ids, $shopCipher, $accessToken);
-            } catch (TokenExpiredException $e) {
-                $accessToken = $this->refreshShopToken($shop);
-                $details = $this->client->getProductDetailsBatch($ids, $shopCipher, $accessToken);
-            }
+            $details = \Modules\Channel\Support\ChannelRetry::run('tiktok', function () use (&$accessToken, $shop, $ids, $shopCipher) {
+                try {
+                    return $this->client->getProductDetailsBatch($ids, $shopCipher, $accessToken);
+                } catch (TokenExpiredException $e) {
+                    $accessToken = $this->refreshShopToken($shop);
+
+                    return $this->client->getProductDetailsBatch($ids, $shopCipher, $accessToken);
+                }
+            });
 
             foreach ($products as $item) {
                 try {
@@ -389,10 +397,11 @@ class TikTokProductService
 
                         $count++;
                         if ($onProgress) {
-                            $onProgress($count, max($total, $count));
+                            $onProgress($count, max($total, $count + $failed), $failed);
                         }
                     }
                 } catch (\Throwable $e) {
+                    $failed++;
                     Log::error("Failed to pull product {$item['id']}: " . $e->getMessage());
 
                     ProductSyncLog::record([
@@ -409,8 +418,22 @@ class TikTokProductService
             }
 
             $pageToken = $res['data']['next_page_token'] ?? null;
+            $pages++;
+
+            if ($pages >= $maxPages) {
+                Log::warning("TikTok pullProducts: batas {$maxPages} halaman tercapai untuk shop {$shopId}, paginasi dihentikan.", [
+                    'shop_id'    => $shopId,
+                    'downloaded' => $count,
+                    'failed'     => $failed,
+                ]);
+                break;
+            }
 
         } while ($pageToken);
+
+        if ($onProgress) {
+            $onProgress($count, max($total, $count + $failed), $failed);
+        }
 
         return $count;
     }
