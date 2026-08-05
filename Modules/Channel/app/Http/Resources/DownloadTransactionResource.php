@@ -5,6 +5,7 @@ namespace Modules\Channel\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Modules\Channel\Models\DownloadTransaction;
+use Modules\Channel\Support\UploadErrorPresenter;
 
 class DownloadTransactionResource extends JsonResource
 {
@@ -30,7 +31,26 @@ class DownloadTransactionResource extends JsonResource
             'total_downloaded' => $this->total_downloaded,
             'all_product' => $this->all_product,
             'progress_percent' => $this->progress_percent,
-            'error_message' => $this->error_message,
+            'error_message' => $this->humanReadableError($channel->code ?? ''),
+            'error' => $this->errorDetail($channel->code ?? ''),
         ];
+    }
+
+    protected function humanReadableError(string $channelCode): ?string
+    {
+        if ($this->state !== DownloadTransaction::STATE_FAILED || empty($this->error_message)) {
+            return $this->error_message;
+        }
+
+        return UploadErrorPresenter::fromMessage($channelCode, (string) $this->error_message)['reason'];
+    }
+
+    protected function errorDetail(string $channelCode): ?array
+    {
+        if ($this->state !== DownloadTransaction::STATE_FAILED || empty($this->error_message)) {
+            return null;
+        }
+
+        return UploadErrorPresenter::fromMessage($channelCode, (string) $this->error_message);
     }
 }
