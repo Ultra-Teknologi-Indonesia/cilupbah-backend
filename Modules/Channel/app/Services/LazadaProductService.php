@@ -497,13 +497,10 @@ class LazadaProductService
                             if (! $matchedExisting) {
                                 $variantId = $variantIds[$idx] ?? null;
                             } else {
-                                $sku = $skuData['SellerSku'] ?? null;
-                                $variant = $sku
-                                    ? DB::table('product_variants')
-                                        ->where('product_id', $insertedId)
-                                        ->where('sku', $sku)
-                                        ->first()
-                                    : null;
+                                $variant = $this->productRepository->getVariantByProductIdAndSku(
+                                    (string) $insertedId,
+                                    $skuData['SellerSku'] ?? null
+                                );
                                 $variantId = $variant->id ?? null;
                             }
 

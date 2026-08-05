@@ -4,6 +4,7 @@ namespace Modules\Channel\Repositories;
 
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Models\Product;
@@ -58,12 +59,53 @@ class ChannelProductRepository
         return DB::table('product_variants')->where('sku', $sku)->first();
     }
 
-    public function getVariantByProductIdAndSku(string $productId, string $sku)
+    public function getVariantByProductIdAndSku(string $productId, ?string $sku)
     {
-        return DB::table('product_variants')
+        $sku = trim((string) $sku);
+
+        if ($sku === '') {
+            return null;
+        }
+
+        $exact = DB::table('product_variants')
             ->where('product_id', $productId)
             ->where('sku', $sku)
             ->first();
+
+        if ($exact) {
+            return $exact;
+        }
+
+        $loose = DB::table('product_variants')
+            ->where('product_id', $productId)
+            ->whereRaw('LOWER(TRIM(sku)) = ?', [mb_strtolower($sku)])
+            ->get();
+
+        if ($loose->count() === 1) {
+            $match = $loose->first();
+
+            Log::info('Channel SKU dicocokkan ke variant secara case-insensitive', [
+                'product_id'   => $productId,
+                'channel_sku'  => $sku,
+                'variant_sku'  => $match->sku,
+                'variant_id'   => $match->id,
+            ]);
+
+            return $match;
+        }
+
+        Log::warning(
+            $loose->count() > 1
+                ? 'Channel SKU cocok ke lebih dari satu variant (ambigu) - mapping dilewati, listing tidak akan tersinkron'
+                : 'Channel SKU tidak cocok ke variant mana pun - mapping dilewati, listing tidak akan tersinkron',
+            [
+                'product_id'  => $productId,
+                'channel_sku' => $sku,
+                'kandidat'    => $loose->pluck('sku')->all(),
+            ]
+        );
+
+        return null;
     }
 
     public function findById(string $id)

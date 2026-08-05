@@ -504,7 +504,11 @@ class ProductService
                 [
                     'id' => $variantId,
                     'product_id' => $productId,
-                    'sku' => $v['sku'] ?? $this->generateVariantSku($productId, $opts),
+                    // Sengaja TIDAK mengarang SKU sendiri. SKU bersifat opsional
+                    // (kolom nullable + unique index partial "WHERE sku IS NOT NULL"),
+                    // dan SKU karangan tidak nyambung ke marketplace sehingga justru
+                    // menyamarkan listing yang sebenarnya belum punya SKU.
+                    'sku' => $v['sku'] ?? null,
                     'sell_price' => $price ?? 0,
                     'is_active' => true,
                     'created_at' => now(),
@@ -592,24 +596,6 @@ class ProductService
         }
 
         return null;
-    }
-
-    private function generateVariantSku(string $productId, array $opts): string
-    {
-        $base = $this->writeRepository->productSku($productId) ?: ('PRD-' . substr($productId, 0, 8));
-        $parts = [$base];
-        foreach ($opts as $o) {
-            $parts[] = preg_replace('/[^A-Za-z0-9]+/', '-', (string) $o['value']);
-        }
-        $sku = strtoupper(trim(implode('-', $parts), '-'));
-
-        $candidate = $sku;
-        $i = 1;
-        while ($this->writeRepository->variantSkuExists($candidate)) {
-            $candidate = $sku . '-' . (++$i);
-        }
-
-        return $candidate;
     }
 
     private function syncSpecifications(string $productId, array $specs): void
