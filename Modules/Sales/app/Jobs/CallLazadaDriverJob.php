@@ -94,7 +94,7 @@ class CallLazadaDriverJob implements ShouldQueue
         } catch (\Throwable $e) {
             $order->update([
                 'driver_call_status'  => 'failed',
-                'driver_call_message' => $this->truncate($e->getMessage()),
+                'driver_call_message' => $this->truncate(\Modules\Channel\Support\UploadErrorPresenter::fromMessage('lazada', $e->getMessage())['reason']),
             ]);
 
             Log::error('CallLazadaDriverJob: gagal dispatch ProcessLazadaFulfillmentJob', [
@@ -114,7 +114,7 @@ class CallLazadaDriverJob implements ShouldQueue
         if ($order && $order->driver_call_status !== 'success') {
             $order->update([
                 'driver_call_status'  => 'failed',
-                'driver_call_message' => $this->truncate($exception->getMessage()),
+                'driver_call_message' => $this->truncate(\Modules\Channel\Support\UploadErrorPresenter::fromMessage('lazada', $exception->getMessage())['reason']),
             ]);
         }
 

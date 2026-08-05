@@ -256,17 +256,17 @@ class SalesOrderDriverCallService
                     'driver_call_response' => $result,
                 ]);
             } else {
-                $driverCallMessage = $error !== '' ? $error : 'ship_order gagal tanpa pesan';
+                $driverCallMessage = $error !== '' ? $error : 'Panggilan driver Shopee gagal tanpa keterangan.';
                 $order->update([
                     'driver_call_status'   => 'failed',
-                    'driver_call_message'  => mb_substr($driverCallMessage, 0, 500),
+                    'driver_call_message'  => $this->friendly('shopee', $driverCallMessage),
                     'driver_call_response' => $result,
                 ]);
             }
         } catch (\Throwable $e) {
             $order->update([
                 'driver_call_status'   => 'failed',
-                'driver_call_message'  => mb_substr($e->getMessage(), 0, 500),
+                'driver_call_message'  => $this->friendly('shopee', $e->getMessage()),
                 'driver_call_response' => ['exception' => $e->getMessage(), 'class' => get_class($e)],
             ]);
         }
@@ -274,6 +274,11 @@ class SalesOrderDriverCallService
         $order->refresh();
 
         return $driverCallSuccess;
+    }
+
+    private function friendly(string $source, string $raw): string
+    {
+        return mb_substr(\Modules\Channel\Support\UploadErrorPresenter::fromMessage($source, $raw)['reason'], 0, 500);
     }
 
     private function callTikTok(SalesOrder $order): bool
@@ -301,16 +306,16 @@ class SalesOrderDriverCallService
                 return true;
             }
 
-            $msg = (string) ($result['message'] ?? 'TikTok readyToShip gagal tanpa pesan');
+            $msg = (string) ($result['message'] ?? 'Panggilan driver TikTok gagal tanpa keterangan.');
             $order->update([
                 'driver_call_status'   => 'failed',
-                'driver_call_message'  => mb_substr($msg, 0, 500),
+                'driver_call_message'  => $this->friendly('tiktok', $msg),
                 'driver_call_response' => $result,
             ]);
         } catch (\Throwable $e) {
             $order->update([
                 'driver_call_status'   => 'failed',
-                'driver_call_message'  => mb_substr($e->getMessage(), 0, 500),
+                'driver_call_message'  => $this->friendly('tiktok', $e->getMessage()),
                 'driver_call_response' => ['exception' => $e->getMessage(), 'class' => get_class($e)],
             ]);
         }
@@ -377,7 +382,7 @@ class SalesOrderDriverCallService
         } catch (\Throwable $e) {
             $order->update([
                 'driver_call_status'   => 'failed',
-                'driver_call_message'  => mb_substr($e->getMessage(), 0, 500),
+                'driver_call_message'  => $this->friendly('lazada', $e->getMessage()),
                 'driver_call_response' => ['exception' => $e->getMessage(), 'class' => get_class($e)],
             ]);
             $order->refresh();

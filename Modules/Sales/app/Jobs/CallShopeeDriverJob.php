@@ -73,7 +73,7 @@ class CallShopeeDriverJob implements ShouldQueue
         } catch (\Throwable $e) {
             $order->update([
                 'driver_call_status'  => 'failed',
-                'driver_call_message' => $this->truncate($e->getMessage()),
+                'driver_call_message' => $this->truncate(\Modules\Channel\Support\UploadErrorPresenter::fromMessage('shopee', $e->getMessage())['reason']),
             ]);
             Log::error('CallShopeeDriverJob: shipOrder throw exception', [
                 'order_id' => $order->id,
@@ -114,7 +114,7 @@ class CallShopeeDriverJob implements ShouldQueue
 
         $order->update([
             'driver_call_status'   => 'failed',
-            'driver_call_message'  => $this->truncate($errStr !== '' ? $errStr : 'ship_order gagal tanpa pesan'),
+            'driver_call_message'  => $this->truncate(\Modules\Channel\Support\UploadErrorPresenter::fromMessage('shopee', $errStr !== '' ? $errStr : 'Panggilan driver Shopee gagal tanpa keterangan.')['reason']),
             'driver_call_response' => $result,
         ]);
 
@@ -135,7 +135,7 @@ class CallShopeeDriverJob implements ShouldQueue
         if ($order && $order->driver_call_status !== 'success') {
             $order->update([
                 'driver_call_status'  => 'failed',
-                'driver_call_message' => $this->truncate($exception->getMessage()),
+                'driver_call_message' => $this->truncate(\Modules\Channel\Support\UploadErrorPresenter::fromMessage('shopee', $exception->getMessage())['reason']),
             ]);
         }
 

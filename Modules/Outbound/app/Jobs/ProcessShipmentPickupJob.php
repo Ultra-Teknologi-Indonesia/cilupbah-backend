@@ -69,7 +69,7 @@ class ProcessShipmentPickupJob implements ShouldQueue
                 ->where('pickup_status', 'pending')
                 ->update([
                     'pickup_status' => 'failed',
-                    'pickup_message' => $e->getMessage(),
+                    'pickup_message' => \App\Support\FriendlyError::generic($e->getMessage(), 'Gagal memproses pickup ke marketplace. Coba lagi.'),
                 ]);
         }
     }

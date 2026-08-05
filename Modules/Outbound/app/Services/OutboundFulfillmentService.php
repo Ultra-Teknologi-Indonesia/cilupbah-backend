@@ -63,7 +63,7 @@ class OutboundFulfillmentService
                     'channel_order_no' => (string) ($order->channel_order_no ?? ''),
                     'error'            => $e->getMessage(),
                 ]);
-                $results[] = $this->result($order, 'failed', $e->getMessage());
+                $results[] = $this->result($order, 'failed', \Modules\Channel\Support\UploadErrorPresenter::fromMessage((string) $order->source, $e->getMessage())['reason']);
             }
         }
 
@@ -109,7 +109,7 @@ class OutboundFulfillmentService
                     'salesorder_no' => $order->salesorder_no,
                     'error' => $e->getMessage(),
                 ]);
-                $results[] = $this->result($order, 'failed', $e->getMessage());
+                $results[] = $this->result($order, 'failed', \Modules\Channel\Support\UploadErrorPresenter::fromMessage((string) $order->source, $e->getMessage())['reason']);
             }
         }
 

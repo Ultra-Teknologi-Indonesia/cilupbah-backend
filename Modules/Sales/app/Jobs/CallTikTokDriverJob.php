@@ -79,7 +79,7 @@ class CallTikTokDriverJob implements ShouldQueue
         } catch (\Throwable $e) {
             $order->update([
                 'driver_call_status'  => 'failed',
-                'driver_call_message' => $this->truncate($e->getMessage()),
+                'driver_call_message' => $this->truncate(\Modules\Channel\Support\UploadErrorPresenter::fromMessage('tiktok', $e->getMessage())['reason']),
             ]);
             Log::error('CallTikTokDriverJob: readyToShip throw', [
                 'order_id' => $order->id,
@@ -105,10 +105,10 @@ class CallTikTokDriverJob implements ShouldQueue
             return;
         }
 
-        $errMsg = (string) ($result['message'] ?? 'TikTok readyToShip gagal tanpa pesan');
+        $errMsg = (string) ($result['message'] ?? 'Panggilan driver TikTok gagal tanpa keterangan.');
         $order->update([
             'driver_call_status'   => 'failed',
-            'driver_call_message'  => $this->truncate($errMsg),
+            'driver_call_message'  => $this->truncate(\Modules\Channel\Support\UploadErrorPresenter::fromMessage('tiktok', $errMsg)['reason']),
             'driver_call_response' => $result,
         ]);
 
@@ -128,7 +128,7 @@ class CallTikTokDriverJob implements ShouldQueue
         if ($order && $order->driver_call_status !== 'success') {
             $order->update([
                 'driver_call_status'  => 'failed',
-                'driver_call_message' => $this->truncate($exception->getMessage()),
+                'driver_call_message' => $this->truncate(\Modules\Channel\Support\UploadErrorPresenter::fromMessage('tiktok', $exception->getMessage())['reason']),
             ]);
         }
 
