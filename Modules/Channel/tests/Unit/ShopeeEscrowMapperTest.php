@@ -162,4 +162,45 @@ class ShopeeEscrowMapperTest extends TestCase
 
         $this->assertSame($escrow, $result['raw']);
     }
+
+    public function test_gross_amount_prefers_selling_price_over_original_price(): void
+    {
+        // Data asli produksi: harga coret 50.000, harga jual 12.750, escrow 9.715.
+        $result = (new ShopeeEscrowMapper())->map($this->escrow([
+            'order_original_price' => 50000,
+            'order_selling_price'  => 12750,
+            'escrow_amount'        => 9715,
+        ]));
+
+        $this->assertSame(12750.0, $result['gross_amount']);
+    }
+
+    public function test_gross_amount_falls_back_to_original_when_selling_absent(): void
+    {
+        $result = (new ShopeeEscrowMapper())->map($this->escrow([
+            'order_original_price' => 50000,
+            'escrow_amount'        => 9715,
+        ]));
+
+        $this->assertSame(50000.0, $result['gross_amount']);
+    }
+
+    public function test_fee_lines_skip_zero_amount_components(): void
+    {
+        $result = (new ShopeeEscrowMapper())->map($this->escrow([
+            'commission_fee'         => 3500,
+            'service_fee'            => 0,
+            'seller_transaction_fee' => 0,
+            'voucher_from_seller'    => 0,
+            'escrow_amount'          => 28675,
+        ]));
+
+        $byType = collect($result['fee_lines'])->keyBy('fee_type');
+
+        $this->assertArrayHasKey('commission_fee', $byType->all());
+        $this->assertArrayHasKey('settlement_amount', $byType->all());
+        $this->assertArrayNotHasKey('service_fee', $byType->all());
+        $this->assertArrayNotHasKey('transaction_fee', $byType->all());
+        $this->assertArrayNotHasKey('seller_voucher', $byType->all());
+    }
 }

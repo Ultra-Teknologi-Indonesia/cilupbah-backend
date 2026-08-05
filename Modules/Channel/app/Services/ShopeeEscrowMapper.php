@@ -22,8 +22,8 @@ class ShopeeEscrowMapper
 
         $settlement = $this->num($income, 'escrow_amount');
 
-        $grossAmount = $this->num($income, 'order_original_price')
-            ?? $this->num($income, 'order_selling_price')
+        $grossAmount = $this->num($income, 'order_selling_price')
+            ?? $this->num($income, 'order_original_price')
             ?? $this->num($income, 'original_price');
 
         $sellerReturnRefund = $this->num($income, 'seller_return_refund');
@@ -101,14 +101,15 @@ class ShopeeEscrowMapper
         $lines = [];
 
         foreach ($map as $feeType => $channelCode) {
-            if (($canonical[$feeType] ?? null) === null) {
+            $value = $canonical[$feeType] ?? null;
+            if ($value === null || (float) $value == 0.0) {
                 continue;
             }
 
             $lines[] = [
                 'fee_type'         => $feeType,
                 'channel_fee_code' => $channelCode,
-                'amount'           => (float) $canonical[$feeType],
+                'amount'           => (float) $value,
             ];
         }
 
