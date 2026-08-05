@@ -360,6 +360,47 @@ class ShopeeProductService
         return $results;
     }
 
+    /**
+     * Pencarian produk Shopee ber-paginasi (untuk infinite scroll).
+     * Menarik SATU halaman dari Shopee mulai $offset, memakai offset Shopee sebagai cursor.
+     *
+     * @return array{items: array<int, array<string, mixed>>, next_offset: int|null, has_more: bool}
+     */
+    public function searchProductsPaged(string $shopId, string $query, int $offset, int $limit): array
+    {
+        $shop = $this->requireShop($shopId);
+        $needle = trim(mb_strtolower($query));
+        $pageSize = $needle === '' ? min(max($limit, 1), 100) : 50;
+
+        $list = $this->fetchItemList($shop, $offset, $pageSize);
+        $itemIds = $this->extractItemIds($list);
+
+        $items = [];
+        foreach ($this->fetchBaseInfo($shop, $itemIds) as $item) {
+            $name = (string) ($item['item_name'] ?? '');
+            $sellerSku = $item['item_sku'] ?? null;
+
+            if ($needle !== '' && ! str_contains(mb_strtolower($name . ' ' . (string) $sellerSku), $needle)) {
+                continue;
+            }
+
+            $items[] = [
+                'external_product_id' => (string) ($item['item_id'] ?? ''),
+                'name' => $name,
+                'seller_sku' => $sellerSku,
+                'image' => $item['image']['image_url_list'][0] ?? null,
+                'shop_id' => $shopId,
+                'shop_name' => $shop->shop_name ?? null,
+                'channel_code' => 'shopee',
+            ];
+        }
+
+        $hasMore = (bool) ($list['has_next_page'] ?? false);
+        $nextOffset = $hasMore ? (int) ($list['next_offset'] ?? ($offset + $pageSize)) : null;
+
+        return ['items' => $items, 'next_offset' => $nextOffset, 'has_more' => $hasMore];
+    }
+
     protected function fetchItemList(object $shop, int $offset, int $pageSize): array
     {
         return $this->fetchItemListByStatus($shop, $offset, $pageSize, 'NORMAL');

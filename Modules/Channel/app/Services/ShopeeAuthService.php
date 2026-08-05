@@ -39,7 +39,7 @@ class ShopeeAuthService
         $tokenExpiresAt = $expireIn > 0 ? now()->addSeconds($expireIn) : null;
         $refreshExpiresAt = now()->addSeconds(self::REFRESH_TOKEN_TTL_SECONDS);
 
-        $shopName = 'Shopee ' . $shopId;
+        $shopName = $this->fetchShopName($shopId, $accessToken) ?? ('Shopee ' . $shopId);
 
         $this->shopRepository->updateOrCreateShop($shopId, [
             'channel_id' => $channelId,
@@ -212,6 +212,43 @@ class ShopeeAuthService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Ambil nama toko asli dari Shopee (get_shop_info). Null bila gagal / kosong.
+     */
+    public function fetchShopName(string $shopId, string $accessToken): ?string
+    {
+        try {
+            $res = $this->client->request('GET', '/api/v2/shop/get_shop_info', [], $accessToken, $shopId);
+            $name = $res['shop_name'] ?? ($res['response']['shop_name'] ?? null);
+            $name = is_string($name) ? trim($name) : '';
+
+            return $name !== '' ? $name : null;
+        } catch (\Throwable $e) {
+            Log::warning("Shopee get_shop_info gagal shop {$shopId}: " . $e->getMessage());
+
+            return null;
+        }
+    }
+
+    /**
+     * Perbarui shop_name toko dari Shopee. True bila berhasil disimpan.
+     */
+    public function syncShopName(ChannelShop $shop): bool
+    {
+        if (! $shop->access_token) {
+            return false;
+        }
+
+        $name = $this->fetchShopName($shop->shop_id, $shop->access_token);
+        if ($name === null) {
+            return false;
+        }
+
+        $this->shopRepository->updateShop($shop, ['shop_name' => $name]);
+
+        return true;
     }
 
     protected function requireShopeeShop(string $id): ChannelShop

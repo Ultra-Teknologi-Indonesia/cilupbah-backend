@@ -117,10 +117,15 @@ class ChannelDownloadController extends Controller
         $data = $request->validate([
             'shop_id' => 'required|string',
             'q' => 'nullable|string',
+            'offset' => 'nullable|integer|min:0',
+            'limit' => 'nullable|integer|min:1|max:50',
         ]);
 
+        $offset = (int) ($data['offset'] ?? 0);
+        $limit = (int) ($data['limit'] ?? 20);
+
         try {
-            $items = $this->downloadService->searchProducts($channel, $data['shop_id'], $data['q'] ?? '');
+            $result = $this->downloadService->searchProducts($channel, $data['shop_id'], $data['q'] ?? '', $offset, $limit);
         } catch (\RuntimeException $e) {
             return $this->errorResponse(
                 'Gagal mencari produk.',
@@ -137,7 +142,10 @@ class ChannelDownloadController extends Controller
             );
         }
 
-        return $this->successResponse($items, 'Pencarian produk channel berhasil');
+        return $this->successResponse($result['items'], 'Pencarian produk channel berhasil', 200, [
+            'next_offset' => $result['next_offset'],
+            'has_more' => $result['has_more'],
+        ]);
     }
 
     #[OA\Post(

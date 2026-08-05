@@ -87,19 +87,42 @@ class ChannelDownloadService
         return $count;
     }
 
-    public function searchProducts(string $channel, string $shopId, string $query): array
+    /**
+     * @return array{items: array, next_offset: int|null, has_more: bool}
+     */
+    public function searchProducts(string $channel, string $shopId, string $query, int $offset = 0, int $limit = 20): array
     {
         $this->assertSupported($channel);
+        $ch = strtolower($channel);
 
-        $results = match (strtolower($channel)) {
+        // Shopee: paginasi asli (infinite scroll) memakai offset Shopee sebagai cursor.
+        if ($ch === 'shopee') {
+            $paged = app(ShopeeProductService::class)->searchProductsPaged($shopId, $query, $offset, $limit);
+
+            return [
+                'items' => $this->flagDownloaded($shopId, $paged['items']),
+                'next_offset' => $paged['next_offset'],
+                'has_more' => $paged['has_more'],
+            ];
+        }
+
+        // Channel lain belum paginasi: kembalikan seluruh hasil di halaman pertama saja.
+        if ($offset > 0) {
+            return ['items' => [], 'next_offset' => null, 'has_more' => false];
+        }
+
+        $results = match ($ch) {
             'tiktok' => app(TikTokProductService::class)->searchProducts($shopId, $query),
             'lazada' => app(LazadaProductService::class)->searchProducts($shopId, $query),
-            'shopee' => app(ShopeeProductService::class)->searchProducts($shopId, $query),
             'woocommerce' => app(WooCommerceProductService::class)->searchProducts($shopId, $query),
             default => [],
         };
 
-        return $this->flagDownloaded($shopId, $results);
+        return [
+            'items' => $this->flagDownloaded($shopId, $results),
+            'next_offset' => null,
+            'has_more' => false,
+        ];
     }
 
     protected function flagDownloaded(string $shopId, array $results): array
