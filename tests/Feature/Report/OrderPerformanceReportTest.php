@@ -118,12 +118,12 @@ class OrderPerformanceReportTest extends TestCase
         $this->assertSame('0 jam 0 menit 0 detik', OrderPerformanceReportService::formatDuration(null));
     }
 
-    public function test_durasi_negatif_dijepit_nol_tidak_ditiru_dari_jubelio(): void
+    public function test_durasi_negatif_dijepit_nol_tidak_ditiru_dari_sistem_lama(): void
     {
         $this->assertSame(
             '0 jam 0 menit 0 detik',
             OrderPerformanceReportService::formatDuration(-110385),
-            'Jubelio mencetak "-30 jam -39 menit"; kita tidak menirunya',
+            'Sistem lama mencetak "-30 jam -39 menit"; kita tidak menirunya',
         );
     }
 
@@ -140,7 +140,7 @@ class OrderPerformanceReportTest extends TestCase
         $this->assertSame(0.0, (float) $rows[0]->durasi_detik);
     }
 
-    public function test_picker_detail_punya_enam_kolom_sesuai_jubelio(): void
+    public function test_picker_detail_punya_enam_kolom_sesuai_baseline(): void
     {
         $cols = array_column(OrderPerformanceSpec::detailColumns(OrderPerformanceSpec::PICKER), 'label');
 

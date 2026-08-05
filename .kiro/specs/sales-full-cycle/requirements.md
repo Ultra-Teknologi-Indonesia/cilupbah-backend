@@ -6,7 +6,7 @@ Fitur **Sales Full Cycle** melengkapi siklus penjualan pada WMS Superapp (`cilup
 
 Fokus utama dokumen ini adalah **business rules keuangan**: konsistensi nilai invoice terhadap order, dukungan partial payment, penetapan status lunas otomatis, pencegahan overpayment, dan keterkaitan rantai data Invoice ↔ Payment ↔ Settlement ↔ `Order.is_paid`.
 
-Acuan alur bisnis mengikuti **flow & business rules Jubelio** (dist (2).yaml & dist (3).yaml), namun URL/endpoint menggunakan standar RESTful internal (`/api/v1/...`), bukan path Jubelio. Implementasi wajib mengikuti `AGENTS.md`: Controller tipis, Service untuk logika bisnis, Repository untuk semua query, trait `App\Traits\ApiResponse`, Eloquent Resources, `spatie/laravel-query-builder` untuk listing, dan pagination default 10 per halaman.
+Acuan alur bisnis mengikuti **flow & business rules sistem lama** (dist (2).yaml & dist (3).yaml), namun URL/endpoint menggunakan standar RESTful internal (`/api/v1/...`), bukan path sistem lama. Implementasi wajib mengikuti `AGENTS.md`: Controller tipis, Service untuk logika bisnis, Repository untuk semua query, trait `App\Traits\ApiResponse`, Eloquent Resources, `spatie/laravel-query-builder` untuk listing, dan pagination default 10 per halaman.
 
 Struktur `SalesReturn` / `SalesReturnItem` yang sudah ada **TIDAK BOLEH** diubah; fitur baru hanya menambah keterkaitan ke return melalui Settlement.
 

@@ -28,7 +28,7 @@ Daftar:
 
 ## ADR-203 — Default threshold tab analitik (Fase 3)
 **Keputusan**: konstanta config (belum UI setting): Dead-stock = **90 hari** tanpa `ORDER_SHIP`; Fast-moving window = **30 hari**; Forecast window = **30 hari**, tampil bila `days_to_out ≤ 30`. Bisa di-override via query param.
-**Alasan**: angka wajar Jubelio; UI setting menyusul.
+**Alasan**: angka wajar sistem lama; UI setting menyusul.
 
 ## ADR-204 — Sumber "Sedang Dibeli" (On Order)
 **Keputusan**: **Membership tab** = varian yang muncul di `purchase_order_items` dengan `purchase_orders.status ∈ {OPEN, PARTIAL_RECEIVED}` (PO berjalan, sumber kebenaran). **Angka kolom On Order** = `SUM(inventories.on_order)` (counter cepat). Keduanya ditampilkan; bila perlu, `qty_pending_po = SUM(qty − received_qty)` dari PO.

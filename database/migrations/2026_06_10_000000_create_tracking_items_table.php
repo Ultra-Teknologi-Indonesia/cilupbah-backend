@@ -20,7 +20,7 @@ return new class extends Migration
             $table->string('pic')->nullable()->index();      
             $table->text('notes')->nullable();               
             $table->string('priority', 8)->nullable();       
-            $table->string('source', 16)->default('jubelio');
+            $table->string('source', 16)->default('legacy');
             $table->string('updated_by')->nullable();
             $table->timestamps();
 

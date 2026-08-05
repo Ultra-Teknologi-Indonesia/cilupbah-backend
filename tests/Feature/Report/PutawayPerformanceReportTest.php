@@ -181,7 +181,7 @@ class PutawayPerformanceReportTest extends TestCase
         $this->assertStringNotContainsString(
             'Grand Total',
             $html,
-            'Jubelio tidak menampilkan Grand Total pada laporan ini',
+            'Sistem lama tidak menampilkan Grand Total pada laporan ini',
         );
     }
 

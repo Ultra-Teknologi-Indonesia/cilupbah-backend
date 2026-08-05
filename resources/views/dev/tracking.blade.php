@@ -14,8 +14,8 @@
 
     <header class="flex items-center justify-between mb-4">
         <div>
-            <h1 class="text-2xl font-bold">📊 Dev Tracker — Clone Jubelio</h1>
-            <p class="text-sm text-slate-500">Sumber: TASK-BREAKDOWN-JUBELIO.md · {{ app()->environment() }}</p>
+            <h1 class="text-2xl font-bold">📊 Dev Tracker — Parity Sistem Lama</h1>
+            <p class="text-sm text-slate-500">Sumber: TASK-BREAKDOWN.md · {{ app()->environment() }}</p>
         </div>
         <div class="flex gap-2">
             <a :href="exportUrl('csv')" class="px-3 py-2 text-sm bg-white border rounded shadow-sm hover:bg-slate-50">⬇ CSV</a>

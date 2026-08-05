@@ -72,7 +72,7 @@ class CashbankApiTest extends TestCase
         ], $override));
     }
 
-    public function test_receives_lists_sales_payments_with_jubelio_shape(): void
+    public function test_receives_lists_sales_payments_with_legacy_shape(): void
     {
         $receive = $this->makeReceive();
 

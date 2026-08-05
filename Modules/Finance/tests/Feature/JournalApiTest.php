@@ -41,7 +41,7 @@ class JournalApiTest extends TestCase
         ], $override);
     }
 
-    public function test_account_lookup_returns_seeded_accounts_in_jubelio_format(): void
+    public function test_account_lookup_returns_seeded_accounts_in_legacy_format(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/v1/accounts/lookup/all');
 

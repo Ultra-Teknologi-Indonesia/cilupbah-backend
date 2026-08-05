@@ -47,7 +47,7 @@
 - Background jobs on queue `stock-critical` untuk status transitions via OrderService
 - 30 endpoints
 
-### 3. Jubelio Parity Features — `1b593b9`
+### 3. Legacy Parity Features — `1b593b9`
 - **Courier CRUD** (model, repo, service, controller — 6 endpoints)
 - **Failed pick** status + endpoint
 - **Empty stock** order view
@@ -87,7 +87,7 @@ Purchase sudah ada PO. Yang kurang:
 | **Return Settlements** | Small | Penyelesaian return |
 
 ### Priority 3 — Contacts / CRM (Module Baru)
-Unified contact management — saat ini customer di Order, supplier di Supplier. Jubelio menggabungkan ke satu module.
+Unified contact management — saat ini customer di Order, supplier di Supplier. Sistem lama menggabungkan ke satu module.
 
 | Fitur | Estimasi | Detail |
 |-------|----------|--------|
@@ -199,4 +199,4 @@ Model (HasUuid7) → Repository (Spatie QueryBuilder) → Service → Controller
 ---
 
 *Branch: `feat/persediaan`*
-*Total commits session ini: 3 (stock opname + outbound fulfillment + jubelio parity)*
+*Total commits session ini: 3 (stock opname + outbound fulfillment + legacy parity)*

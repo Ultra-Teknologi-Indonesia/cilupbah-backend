@@ -357,7 +357,7 @@ GET /products/{id}
 ## 6. Tab Naikkan Produk
 
 ### 6.1 Definisi
-Tab untuk **menaikkan/upload produk** dari katalog Jubelio ke marketplace. Terbagi menjadi dua sub-tab:
+Tab untuk **menaikkan/upload produk** dari katalog Cilupbah ke marketplace. Terbagi menjadi dua sub-tab:
 - **Draft**: produk yang sudah dikonfigurasi untuk upload tapi belum dieksekusi
 - **Hasil**: log hasil upload (berhasil & gagal)
 
@@ -474,7 +474,7 @@ AND p.id NOT IN (
 ## 7. Tab Download
 
 ### 7.1 Definisi
-Tab untuk **menarik/mengunduh** data produk dari marketplace ke dalam sistem Jubelio. Terbagi menjadi:
+Tab untuk **menarik/mengunduh** data produk dari marketplace ke dalam sistem Cilupbah. Terbagi menjadi:
 - **Proses**: antrian download yang sedang berjalan
 - **Hasil**: daftar produk yang sudah berhasil di-download
 
@@ -586,11 +586,11 @@ Per item menampilkan:
 ## 8. Tab Arsip
 
 ### 8.1 Definisi
-Tab yang menampilkan produk yang **diarsipkan** — tidak aktif sementara tapi tidak dihapus dari sistem. Berbeda dengan deactivate di marketplace, arsip adalah konsep **lokal di Jubelio**.
+Tab yang menampilkan produk yang **diarsipkan** — tidak aktif sementara tapi tidak dihapus dari sistem. Berbeda dengan deactivate di marketplace, arsip adalah konsep **lokal di Cilupbah**.
 
 ### 8.2 Business Rules
 - Hanya produk dengan `status = 'archived'` yang tampil
-- Mengarsipkan produk di Jubelio **tidak otomatis** menonaktifkan produk di marketplace — seller harus deactivate manual di marketplace jika diperlukan
+- Mengarsipkan produk di Cilupbah **tidak otomatis** menonaktifkan produk di marketplace — seller harus deactivate manual di marketplace jika diperlukan
 - Produk arsip **tidak bisa** dinaikkan ke marketplace sampai di-restore
 - Restore produk arsip mengembalikan status ke `master`
 - Produk yang sudah terhubung ke channel saat diarsip, koneksinya tetap ada — tidak otomatis unlink

@@ -107,7 +107,7 @@ class ShipmentListReportTest extends TestCase
         return $this->service->shipmentListQuery($filters)->get()->all();
     }
 
-    public function test_export_menghasilkan_sembilan_kolom_sesuai_urutan_jubelio(): void
+    public function test_export_menghasilkan_sembilan_kolom_sesuai_urutan_baseline(): void
     {
         $export = new ShipmentListReportExport($this->service, [
             'from' => '2026-07-01', 'to' => '2026-07-31',

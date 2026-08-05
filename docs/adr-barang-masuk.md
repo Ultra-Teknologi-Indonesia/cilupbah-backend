@@ -44,7 +44,7 @@ Akibatnya, jika tab "Penempatan Barang" dibangun dari (B), progress bar akan boh
 - (−) Bila nanti butuh workflow putaway kaya (multi-assignee per dokumen, dsb.), perlu revisit ke Opsi B (tandai sebagai Superseded).
 
 ### Ditolak
-- **Opsi B — Putaway-centric**: lebih sesuai screenshot Jubelio (`PUT-`, assignee per putaway) tapi menuntut `InboundService` berhenti menaikkan stok dan mendelegasi ke `PutawayService` — refactor jalur stok yang mahal & berisiko untuk MVP.
+- **Opsi B — Putaway-centric**: lebih sesuai screenshot sistem lama (`PUT-`, assignee per putaway) tapi menuntut `InboundService` berhenti menaikkan stok dan mendelegasi ke `PutawayService` — refactor jalur stok yang mahal & berisiko untuk MVP.
 
 ---
 
@@ -69,7 +69,7 @@ Masalah: progress PO naik **sebelum** konfirmasi fisik di gudang. Gudang masih h
 - On-order (`adjustOnOrder`) ikut bergerak pada titik fisik, bukan pada titik buka Inbound.
 
 ### Alasan
-- Sesuai alur kanonik Jubelio: "Terima" di tab PO membuka form, qty fisik yang diisi itulah yang meng-update progress PO.
+- Sesuai alur kanonik sistem lama: "Terima" di tab PO membuka form, qty fisik yang diisi itulah yang meng-update progress PO.
 - Menghapus jendela inkonsistensi antara "PO bilang diterima" vs "stok belum ada".
 - Pola event source↔inbound bisa dipakai seragam untuk Transfer & Sales Return (progress source selalu cermin penerimaan fisik).
 
@@ -89,7 +89,7 @@ Masalah: progress PO naik **sebelum** konfirmasi fisik di gudang. Gudang masih h
 **Status**: Proposed
 
 ### Konteks
-Hard rule bisnis (planning §8 #5–#6, kode error Jubelio P9002/P9006):
+Hard rule bisnis (planning §8 #5–#6, kode error sistem lama P9002/P9006):
 - Batch Number **wajib** disertai `exp_date`.
 - Serial Number **unik per SKU**.
 

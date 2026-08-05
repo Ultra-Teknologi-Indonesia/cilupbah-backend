@@ -18,7 +18,7 @@ class TrackingController extends Controller
     public function data(Request $request)
     {
         $items = $this->filtered($request)
-            ->orderByRaw("CASE source WHEN 'jubelio' THEN 0 WHEN 'epic' THEN 1 ELSE 2 END")
+            ->orderByRaw("CASE source WHEN 'legacy' THEN 0 WHEN 'epic' THEN 1 ELSE 2 END")
             ->orderBy('domain')
             ->orderBy('id')
             ->get();
@@ -30,7 +30,7 @@ class TrackingController extends Controller
             'domains' => TrackingItem::query()->distinct()->orderBy('domain')->pluck('domain'),
             'pics' => TrackingItem::query()->whereNotNull('pic')->distinct()->orderBy('pic')->pluck('pic'),
             'statuses' => TrackingItem::STATUSES,
-            'sources' => ['jubelio', 'epic', 'omnichannel'],
+            'sources' => ['legacy', 'epic', 'omnichannel'],
         ]);
     }
 

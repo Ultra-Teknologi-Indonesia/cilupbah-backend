@@ -250,7 +250,7 @@ class StockSourceAllocationTest extends TestCase
         });
     }
 
-    public function test_stock_allocation_list_returns_jubelio_shaped_fields(): void
+    public function test_stock_allocation_list_returns_legacy_shaped_fields(): void
     {
         $location = Location::factory()->create(['location_name' => 'Gudang Pusat', 'is_warehouse' => true, 'is_active' => true]);
         $shop = $this->shop([

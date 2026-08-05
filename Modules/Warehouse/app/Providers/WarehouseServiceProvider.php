@@ -5,7 +5,6 @@ namespace Modules\Warehouse\Providers;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Warehouse\Console\Commands\AuditMultiSkuBins;
-use Modules\Warehouse\Console\Commands\ImportBinAllocation;
 use Modules\Warehouse\Console\Commands\ReconcileBinLayout;
 use Modules\Warehouse\Console\Commands\MigrateStockToNewRacks;
 
@@ -18,7 +17,6 @@ class WarehouseServiceProvider extends ModuleServiceProvider
 
     protected array $commands = [
         AuditMultiSkuBins::class,
-        ImportBinAllocation::class,
         ReconcileBinLayout::class,
         MigrateStockToNewRacks::class,
     ];

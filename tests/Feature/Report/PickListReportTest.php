@@ -152,7 +152,7 @@ class PickListReportTest extends TestCase
         return $this->service->pickListRowsQuery($filters)->get()->all();
     }
 
-    public function test_export_menghasilkan_sebelas_kolom_sesuai_urutan_jubelio(): void
+    public function test_export_menghasilkan_sebelas_kolom_sesuai_urutan_baseline(): void
     {
         $export = new PickListReportExport($this->service, [
             'from' => '2026-01-01', 'to' => '2026-01-31',
