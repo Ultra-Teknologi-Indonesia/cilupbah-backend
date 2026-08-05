@@ -45,11 +45,6 @@ class SalesServiceProvider extends ModuleServiceProvider
 
     protected function configureSchedules(Schedule $schedule): void
     {
-        $schedule->command('returns:sync-detail')
-            ->everyThirtyMinutes()
-            ->withoutOverlapping()
-            ->runInBackground();
-
         $schedule->command('sales:cleanup-bulk-label-batches')
             ->daily()
             ->withoutOverlapping()
