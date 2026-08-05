@@ -153,7 +153,7 @@ class ChannelShopManagementTest extends TestCase
 
     public function test_integration_normal_when_access_token_expired_but_refresh_valid(): void
     {
-        // Access token berumur pendek & di-refresh otomatis — bukan penanda masalah.
+
         $shop = $this->shop(['token_expires_at' => now()->subHour()]);
 
         $this->assertSame('normal', $this->integrationOf($shop->id)['status']);

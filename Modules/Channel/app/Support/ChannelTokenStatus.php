@@ -4,14 +4,6 @@ namespace Modules\Channel\Support;
 
 use Modules\Channel\Models\ChannelShop;
 
-/**
- * Sumber tunggal status koneksi channel (token_status + integration).
- *
- * Prinsip: access token berumur pendek dan di-refresh otomatis, jadi BUKAN penanda
- * kesehatan koneksi. Deadline yang bermakna adalah refresh_token_expires_at — kapan
- * otorisasi habis dan toko wajib dihubungkan ulang. WooCommerce memakai consumer key
- * (Basic Auth, tanpa token) sehingga tak pernah "kedaluwarsa".
- */
 class ChannelTokenStatus
 {
     public const REAUTH_WARNING_DAYS = 3;

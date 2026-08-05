@@ -116,7 +116,7 @@ class MediaController extends Controller
     )]
     public function destroy(string $uuid): JsonResponse
     {
-        // Lepas tautan product_media agar tak menggantung, lalu hapus file di R2.
+
         \Modules\Product\Models\ProductMedia::where('media_uuid', $uuid)->delete();
 
         $deleted = $this->uploadService->delete($uuid);

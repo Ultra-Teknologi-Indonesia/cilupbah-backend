@@ -189,7 +189,6 @@ class ProductService
             $product->delete();
         });
 
-        // Setelah commit: hapus file media di object storage (R2) yang jadi yatim.
         $this->mediaCleanup->pruneOrphans($mediaUuids);
     }
 
@@ -390,8 +389,6 @@ class ProductService
             $this->propagatePriceStockToChannels($productId);
         }
 
-        // Setelah commit: bersihkan media yatim di object storage (R2) akibat
-        // gambar/varian yang dihapus saat edit.
         $this->mediaCleanup->pruneOrphans($mediaUuidsBefore);
 
         return $result;
@@ -520,10 +517,7 @@ class ProductService
                 [
                     'id' => $variantId,
                     'product_id' => $productId,
-                    // Sengaja TIDAK mengarang SKU sendiri. SKU bersifat opsional
-                    // (kolom nullable + unique index partial "WHERE sku IS NOT NULL"),
-                    // dan SKU karangan tidak nyambung ke marketplace sehingga justru
-                    // menyamarkan listing yang sebenarnya belum punya SKU.
+
                     'sku' => $v['sku'] ?? null,
                     'sell_price' => $price ?? 0,
                     'is_active' => true,

@@ -214,9 +214,6 @@ class ShopeeAuthService
         }
     }
 
-    /**
-     * Ambil nama toko asli dari Shopee (get_shop_info). Null bila gagal / kosong.
-     */
     public function fetchShopName(string $shopId, string $accessToken): ?string
     {
         try {
@@ -232,9 +229,6 @@ class ShopeeAuthService
         }
     }
 
-    /**
-     * Perbarui shop_name toko dari Shopee. True bila berhasil disimpan.
-     */
     public function syncShopName(ChannelShop $shop): bool
     {
         if (! $shop->access_token) {

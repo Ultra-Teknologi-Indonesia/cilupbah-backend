@@ -6,15 +6,6 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Modules\Supplier\Models\Contact;
 
-/**
- * Impor/migrasi pemasok (format ekspor Jubelio) ke tabel `contacts` dengan type=SUPPLIER.
- *
- * Prinsip anti-bocor: KODE generik di git, DATA (CSV) hanya di server.
- * Kirim CSV ke pod via `kubectl cp`, jalankan command menunjuk path-nya, lalu hapus filenya.
- *
- * Idempoten: `code` deterministik = SUP-<sha1(nama lowercase)[:8]>, jadi upsert aman diulang
- * & nama sama otomatis menyatu. TIDAK menyentuh pelanggan (type=CUSTOMER) atau BOTH.
- */
 class ImportSupplierContacts extends Command
 {
     protected $signature = 'contacts:import-suppliers
@@ -135,13 +126,6 @@ class ImportSupplierContacts extends Command
         return self::SUCCESS;
     }
 
-    /**
-     * Hapus pemasok lama secara aman: hanya type=SUPPLIER, bukan is_system,
-     * dan TIDAK direferensikan purchase_orders/purchase_bills/purchase_returns.
-     * BOTH & CUSTOMER tidak pernah disentuh.
-     *
-     * @return array{0:int,1:int} [dihapus, dilewati]
-     */
     private function purgeSuppliers(bool $dryRun): array
     {
         $referenced = collect();
@@ -161,7 +145,6 @@ class ImportSupplierContacts extends Command
         $deletable   = (clone $base)->whereNotIn('id', $referenced->all());
         $notDeletable = (clone $base)->whereIn('id', $referenced->all())->count();
 
-        // Backup sebelum hapus (selalu, kecuali dry-run).
         if (! $dryRun) {
             $rows = (clone $deletable)->get();
             if ($rows->isNotEmpty()) {

@@ -2,12 +2,6 @@
 
 namespace App\Support;
 
-/**
- * Ubah pesan error teknis/mentah menjadi teks yang bisa dibaca pengguna.
- * Untuk error channel gunakan Modules\Channel\Support\UploadErrorPresenter;
- * helper ini untuk error non-channel (impor, PDF, webhook, umum).
- * Nilai mentah tetap disimpan di DB & log — helper ini hanya untuk yang DITAMPILKAN.
- */
 class FriendlyError
 {
     protected const TECH_MARKERS = [

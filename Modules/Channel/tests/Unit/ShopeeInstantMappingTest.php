@@ -13,7 +13,7 @@ class ShopeeInstantMappingTest extends TestCase
         return array_merge([
             'order_sn' => 'ORDER-1',
             'order_status' => 'ready_to_ship',
-            'shipping_carrier' => 'J&T Express', // nama kurir non-instan
+            'shipping_carrier' => 'J&T Express', 
         ], $overrides);
     }
 
@@ -41,12 +41,10 @@ class ShopeeInstantMappingTest extends TestCase
     {
         $mapper = app(ShopeeToInternalOrderMapper::class);
 
-        // Channel id bukan instan → shipping_type null
         $regular = $mapper->map($this->order(['logistics_channel_id' => 12345]), 'shop-1', ['90003']);
         $this->assertNull($regular['shipping_type']);
         $this->assertFalse(InstantOrderClassifier::isInstant($regular['shipping_provider'], $regular['shipping_type']));
 
-        // Tapi fallback nama kurir tetap jalan (Grab)
         $grab = $mapper->map($this->order(['shipping_carrier' => 'GrabExpress Instant']), 'shop-1', []);
         $this->assertNull($grab['shipping_type']);
         $this->assertTrue(InstantOrderClassifier::isInstant($grab['shipping_provider'], $grab['shipping_type']));

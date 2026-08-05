@@ -360,12 +360,6 @@ class ShopeeProductService
         return $results;
     }
 
-    /**
-     * Pencarian produk Shopee ber-paginasi (untuk infinite scroll).
-     * Menarik SATU halaman dari Shopee mulai $offset, memakai offset Shopee sebagai cursor.
-     *
-     * @return array{items: array<int, array<string, mixed>>, next_offset: int|null, has_more: bool}
-     */
     public function searchProductsPaged(string $shopId, string $query, int $offset, int $limit): array
     {
         $shop = $this->requireShop($shopId);

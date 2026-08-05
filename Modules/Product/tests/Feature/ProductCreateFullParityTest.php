@@ -197,7 +197,7 @@ class ProductCreateFullParityTest extends TestCase
 
     public function test_status_download_no_longer_accepted(): void
     {
-        // Approval dihapus: produk tak bisa lagi dibuat berstatus 'download'.
+
         $res = $this->postJson('/api/v1/products', $this->basePayload(['status' => 'download']));
         $res->assertStatus(422);
     }

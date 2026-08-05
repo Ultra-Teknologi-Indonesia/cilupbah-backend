@@ -6,10 +6,6 @@ use Illuminate\Console\Command;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\ShopeeAuthService;
 
-/**
- * Ambil nama toko asli dari Shopee (get_shop_info) untuk toko yang sudah terhubung
- * tapi masih memakai nama fallback "Shopee <shop_id>". Idempoten & aman diulang.
- */
 class BackfillShopeeShopNames extends Command
 {
     protected $signature = 'shopee:backfill-shop-names

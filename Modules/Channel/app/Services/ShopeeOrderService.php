@@ -458,11 +458,6 @@ class ShopeeOrderService
         return $res['response']['logistics_channel_list'] ?? [];
     }
 
-    /**
-     * logistics_channel_id milik channel Instant Delivery (service_type_identifier=instant),
-     * sinyal resmi Shopee untuk mengidentifikasi order instan. Di-cache 6 jam per toko;
-     * kegagalan API mengembalikan [] tanpa dicache (deteksi jatuh ke fallback nama kurir).
-     */
     public function instantChannelIds(string $shopId): array
     {
         $key = "shopee:instant_channel_ids:{$shopId}";

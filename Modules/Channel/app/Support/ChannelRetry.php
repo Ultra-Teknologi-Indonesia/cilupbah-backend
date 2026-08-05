@@ -6,10 +6,7 @@ use Illuminate\Support\Facades\Log;
 
 class ChannelRetry
 {
-    /**
-     * Jalankan $fn dengan retry untuk error yang bersifat sementara (rate-limit / 5xx / timeout).
-     * Error non-retryable (validasi, token gagal, dsb.) langsung dilempar tanpa menunda.
-     */
+
     public static function run(string $channelCode, callable $fn, ?int $maxAttempts = null, ?callable $sleeper = null)
     {
         $maxAttempts = $maxAttempts ?? (int) config('channel.download_retry_attempts', 4);
