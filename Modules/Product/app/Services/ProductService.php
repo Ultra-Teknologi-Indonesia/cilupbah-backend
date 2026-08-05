@@ -38,6 +38,7 @@ class ProductService
         private readonly ProductRepository $repository,
         private readonly ProductWriteRepository $writeRepository,
         private readonly \App\Services\UploadService $uploadService,
+        private readonly MediaCleanupService $mediaCleanup,
     ) {
     }
 
@@ -177,10 +178,19 @@ class ProductService
             );
         }
 
-        DB::transaction(function () use ($product) {
+        $mediaUuids = $this->mediaCleanup->collectByProduct($product->id);
+
+        DB::transaction(function () use ($product, $variantIds) {
+            DB::table('product_media')
+                ->where('product_id', $product->id)
+                ->orWhereIn('variant_id', $variantIds->all())
+                ->delete();
             $product->variants()->delete();
             $product->delete();
         });
+
+        // Setelah commit: hapus file media di object storage (R2) yang jadi yatim.
+        $this->mediaCleanup->pruneOrphans($mediaUuids);
     }
 
     public function bulkDelete(array $ids): array
@@ -274,6 +284,8 @@ class ProductService
             $categoryId = $data['category_id'] ?? $this->writeRepository->productCategoryId($productId);
             $this->assertCategoryAttributes($categoryId ? (int) $categoryId : null, $data, array_key_exists('specifications', $data));
         }
+
+        $mediaUuidsBefore = $this->mediaCleanup->collectByProduct($productId);
 
         $result = DB::transaction(function () use ($productId, $data) {
             $productData = Arr::only($data, [
@@ -377,6 +389,10 @@ class ProductService
         if (! empty($data['variants'])) {
             $this->propagatePriceStockToChannels($productId);
         }
+
+        // Setelah commit: bersihkan media yatim di object storage (R2) akibat
+        // gambar/varian yang dihapus saat edit.
+        $this->mediaCleanup->pruneOrphans($mediaUuidsBefore);
 
         return $result;
     }
