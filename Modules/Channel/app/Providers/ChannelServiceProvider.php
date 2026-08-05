@@ -3,6 +3,7 @@
 namespace Modules\Channel\Providers;
 
 use Modules\Channel\Console\Commands\AlertChannelReauth;
+use Modules\Channel\Console\Commands\BackfillDownloadHistory;
 use Modules\Channel\Console\Commands\BackfillShopeeShopNames;
 use Modules\Channel\Console\Commands\EvaluateOrderSyncHealth;
 use Modules\Channel\Console\Commands\ReapStaleDownloadTransactions;
@@ -26,6 +27,7 @@ class ChannelServiceProvider extends ModuleServiceProvider
 
     protected array $commands = [
         AlertChannelReauth::class,
+        BackfillDownloadHistory::class,
         BackfillShopeeShopNames::class,
         EvaluateOrderSyncHealth::class,
         ReapStaleDownloadTransactions::class,
