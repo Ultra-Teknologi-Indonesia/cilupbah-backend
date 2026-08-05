@@ -195,11 +195,11 @@ class ProductCreateFullParityTest extends TestCase
         $this->assertDatabaseHas('variant_unlimited_shops', ['variant_id' => $variant->id, 'channel_shop_id' => $this->shopA->id]);
     }
 
-    public function test_can_save_as_draft_download(): void
+    public function test_status_download_no_longer_accepted(): void
     {
+        // Approval dihapus: produk tak bisa lagi dibuat berstatus 'download'.
         $res = $this->postJson('/api/v1/products', $this->basePayload(['status' => 'download']));
-        $res->assertCreated();
-        $this->assertDatabaseHas('products', ['id' => $res->json('data.product_id'), 'status' => Product::STATUS_DOWNLOAD]);
+        $res->assertStatus(422);
     }
 
     public function test_create_can_set_master_directly(): void

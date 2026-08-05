@@ -26,7 +26,7 @@ class UpdateProductRequest extends FormRequest
             'order_type' => 'sometimes|in:REGULER,PREORDER,COD',
             'indent_days' => 'sometimes|nullable|integer|min:0|required_if:order_type,PREORDER',
             'condition' => 'sometimes|in:NEW,USED',
-            'status' => ['sometimes', Rule::in(['download', 'master'])],
+            'status' => ['sometimes', Rule::in(['master'])],
             'is_bundle' => 'sometimes|boolean',
             'is_consignment' => 'sometimes|boolean',
             'weight' => 'sometimes|nullable|numeric|min:0',

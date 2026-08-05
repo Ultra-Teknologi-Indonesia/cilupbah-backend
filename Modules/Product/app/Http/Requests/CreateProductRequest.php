@@ -27,7 +27,7 @@ class CreateProductRequest extends FormRequest
             'order_type' => ['nullable', Rule::in(['REGULER', 'PREORDER', 'COD'])],
             'indent_days' => 'nullable|integer|min:0|required_if:order_type,PREORDER',
 
-            'status' => ['nullable', Rule::in(['download', 'master'])],
+            'status' => ['nullable', Rule::in(['master'])],
             'is_active' => 'nullable|boolean',
 
             'is_stored' => 'nullable|boolean',
