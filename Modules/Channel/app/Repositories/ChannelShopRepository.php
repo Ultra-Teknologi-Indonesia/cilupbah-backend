@@ -168,10 +168,11 @@ class ChannelShopRepository
     public function markOrderSyncProblem(string $id, ?string $message): void
     {
         $previousStatus = ChannelShop::where('id', $id)->value('order_sync_status');
+        $friendly = $this->humanizeError($id, $message);
 
         ChannelShop::where('id', $id)->update([
             'order_sync_status' => ChannelShop::ORDER_SYNC_PROBLEM,
-            'last_order_error' => $message ? mb_substr($message, 0, 500) : null,
+            'last_order_error' => $friendly ? mb_substr($friendly, 0, 500) : null,
             'last_order_error_at' => now(),
         ]);
 
@@ -181,9 +182,23 @@ class ChannelShopRepository
                 'order_sync_problem',
                 'Pesanan tidak masuk',
                 'Sinkronisasi pesanan dari marketplace bermasalah — pesanan mungkin tidak masuk.',
-                $message,
+                $friendly,
             );
         }
+    }
+
+    protected function humanizeError(string $id, ?string $message): ?string
+    {
+        if (! $message || trim($message) === '') {
+            return $message;
+        }
+
+        $channelCode = (string) (\Illuminate\Support\Facades\DB::table('channel_shops')
+            ->join('channels', 'channels.id', '=', 'channel_shops.channel_id')
+            ->where('channel_shops.id', $id)
+            ->value('channels.code') ?? '');
+
+        return \Modules\Channel\Support\UploadErrorPresenter::fromMessage($channelCode, $message)['reason'];
     }
 
     public function setOrderSyncStatus(string $id, string $status, ?string $note = null): void
@@ -212,10 +227,11 @@ class ChannelShopRepository
     public function markIntegrationError(string $id, ?string $message): void
     {
         $previousStatus = ChannelShop::where('id', $id)->value('integration_status');
+        $friendly = $this->humanizeError($id, $message);
 
         ChannelShop::where('id', $id)->update([
             'integration_status' => 'error',
-            'last_error' => $message,
+            'last_error' => $friendly,
         ]);
 
         if ($previousStatus !== 'error') {
@@ -224,7 +240,7 @@ class ChannelShopRepository
                 'channel_disconnected',
                 'Integrasi marketplace bermasalah',
                 'Koneksi ke marketplace terputus, sinkronisasi berhenti.',
-                $message,
+                $friendly,
             );
         }
     }
@@ -232,6 +248,7 @@ class ChannelShopRepository
     public function markDeauthorized(string $id, ?string $reason = null): void
     {
         $previousStatus = ChannelShop::where('id', $id)->value('integration_status');
+        $reason = $this->humanizeError($id, $reason);
 
         ChannelShop::where('id', $id)->update([
             'is_active' => false,

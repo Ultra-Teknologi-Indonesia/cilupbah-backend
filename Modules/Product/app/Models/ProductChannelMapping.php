@@ -105,8 +105,22 @@ class ProductChannelMapping extends Model
     {
         $this->update([
             'sync_status' => 'failed',
-            'error_message' => $errorMessage,
+            'error_message' => $this->humanizeError($errorMessage),
         ]);
+    }
+
+    protected function humanizeError(string $message): string
+    {
+        if (trim($message) === '') {
+            return $message;
+        }
+
+        $channelCode = (string) (\Illuminate\Support\Facades\DB::table('channel_shops')
+            ->join('channels', 'channels.id', '=', 'channel_shops.channel_id')
+            ->where('channel_shops.id', $this->channel_shop_id)
+            ->value('channels.code') ?? '');
+
+        return \Modules\Channel\Support\UploadErrorPresenter::fromMessage($channelCode, $message)['reason'];
     }
 
     public function markInReview(?string $externalProductId = null): void
