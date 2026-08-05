@@ -50,13 +50,12 @@ class DownloadTransactionRepository
                 'variants:id,product_id,sku',
                 'media',
                 'channelMappings' => fn ($query) => $query->where('channel_shop_id', $channelShopId),
-                'merge',
             ])
             ->allowedFilters(
                 AllowedFilter::callback('is_master', function ($query, $value) {
                     filter_var($value, FILTER_VALIDATE_BOOLEAN)
-                        ? $query->whereHas('merge')
-                        : $query->whereDoesntHave('merge');
+                        ? $query->where('status', \Modules\Product\Models\Product::STATUS_MASTER)
+                        : $query->where('status', '!=', \Modules\Product\Models\Product::STATUS_MASTER);
                 }),
             )
             ->allowedSearch('name', 'sku')

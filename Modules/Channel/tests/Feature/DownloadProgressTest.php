@@ -122,6 +122,36 @@ class DownloadProgressTest extends TestCase
         $this->assertFalse($item['is_master']);
     }
 
+    public function test_detail_marks_master_by_status_and_filters_by_it()
+    {
+        $trx = DownloadTransaction::create([
+            'channel_shop_id' => $this->shop->id,
+            'state' => 'done',
+            'all_product' => 2,
+            'total_downloaded' => 2,
+            'progress_percent' => 100,
+        ]);
+
+        $master = Product::create(['name' => 'Master Case', 'category_id' => 1, 'status' => Product::STATUS_MASTER, 'is_active' => true]);
+        ProductChannelMapping::create(['product_id' => $master->id, 'channel_shop_id' => $this->shop->id, 'external_product_id' => 'EXT-M', 'sync_status' => 'synced']);
+
+        $belum = Product::create(['name' => 'Belum Case', 'category_id' => 1, 'status' => Product::STATUS_DOWNLOAD, 'is_active' => true]);
+        ProductChannelMapping::create(['product_id' => $belum->id, 'channel_shop_id' => $this->shop->id, 'external_product_id' => 'EXT-D', 'sync_status' => 'synced']);
+
+        $items = collect($this->getJson("/api/v1/download-transactions/{$trx->id}")->json('data.products'))
+            ->keyBy('item_name');
+        $this->assertTrue($items['Master Case']['is_master']);
+        $this->assertFalse($items['Belum Case']['is_master']);
+
+        $masterOnly = $this->getJson("/api/v1/download-transactions/{$trx->id}?filter[is_master]=1")->json('data.products');
+        $this->assertCount(1, $masterOnly);
+        $this->assertSame('Master Case', $masterOnly[0]['item_name']);
+
+        $belumOnly = $this->getJson("/api/v1/download-transactions/{$trx->id}?filter[is_master]=0")->json('data.products');
+        $this->assertCount(1, $belumOnly);
+        $this->assertSame('Belum Case', $belumOnly[0]['item_name']);
+    }
+
     public function test_detail_unknown_returns_404()
     {
         $this->getJson('/api/v1/download-transactions/00000000-0000-0000-0000-000000000000')

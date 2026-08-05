@@ -53,7 +53,7 @@ class DownloadTransactionController extends Controller
         $items = $products->getCollection()->map(function ($product) {
             $variant = $product->relationLoaded('variants') ? $product->variants->first() : null;
             $mapping = $product->relationLoaded('channelMappings') ? $product->channelMappings->first() : null;
-            $isMaster = $product->relationLoaded('merge') && $product->merge !== null;
+            $isMaster = $product->status === \Modules\Product\Models\Product::STATUS_MASTER;
             $thumbnail = $product->relationLoaded('media')
                 ? optional($product->media->firstWhere('is_primary', true) ?? $product->media->first())->url
                 : null;
@@ -66,7 +66,7 @@ class DownloadTransactionController extends Controller
                 'channel_group_id' => $mapping->external_product_id ?? null,
                 'status' => $product->status,
                 'is_master' => $isMaster,
-                'master_item_name' => $isMaster ? ($product->merge->master_name ?? null) : $product->name,
+                'master_item_name' => $product->name,
             ];
         })->values()->all();
 
