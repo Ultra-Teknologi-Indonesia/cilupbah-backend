@@ -5,6 +5,7 @@ namespace Modules\Supplier\Providers;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Supplier\Console\Commands\ImportSuppliers;
+use Modules\Supplier\Console\Commands\ImportSupplierContacts;
 
 class SupplierServiceProvider extends ModuleServiceProvider
 {
@@ -20,6 +21,7 @@ class SupplierServiceProvider extends ModuleServiceProvider
 
     protected array $commands = [
         ImportSuppliers::class,
+        ImportSupplierContacts::class,
     ];
 
 }
