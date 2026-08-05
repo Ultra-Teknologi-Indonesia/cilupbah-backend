@@ -756,14 +756,24 @@ class ShopeeOrderService
     {
         $shop = $this->requireShop($shopId);
 
-        $package = array_filter([
-            'order_sn'       => $orderSn,
-            'package_number' => $packageNumber,
-        ], static fn ($v) => $v !== null && $v !== '');
+        $packageNumber = $packageNumber ?: $this->resolvePackageNumber($shop, $orderSn);
+        if (! $packageNumber) {
+            return ['response' => ['package_list' => []]];
+        }
 
-        return $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/api/v2/order/get_package_detail', [
-            'package_list' => [$package],
+        return $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/order/get_package_detail', [
+            'package_number_list' => $packageNumber,
         ], $token, $shop->shop_id));
+    }
+
+    private function resolvePackageNumber(object $shop, string $orderSn): ?string
+    {
+        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/order/get_order_detail', [
+            'order_sn_list' => $orderSn,
+            'response_optional_fields' => 'package_list',
+        ], $token, $shop->shop_id));
+
+        return $res['response']['order_list'][0]['package_list'][0]['package_number'] ?? null;
     }
 
     public function getShippingDocumentDataInfo(string $shopId, string $orderSn, ?string $packageNumber = null, string $docType = 'NORMAL_AIR_WAYBILL'): array
