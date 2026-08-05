@@ -20,7 +20,7 @@ class ProductImportBatchResource extends JsonResource
             'success_rows' => $this->success_rows,
             'failed_rows' => $this->failed_rows,
             'progress_percent' => $this->progress_percent,
-            'error_message' => $this->error_message,
+            'error_message' => \App\Support\FriendlyError::import($this->error_message),
             'created_at' => $this->created_at,
         ];
     }

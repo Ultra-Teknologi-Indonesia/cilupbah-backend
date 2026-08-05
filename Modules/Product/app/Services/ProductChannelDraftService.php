@@ -181,7 +181,7 @@ class ProductChannelDraftService
                 $this->uploadDraft($id);
                 $uploaded++;
             } catch (\Throwable $e) {
-                $skipped[] = ['id' => $id, 'reason' => $e->getMessage()];
+                $skipped[] = ['id' => $id, 'reason' => \App\Support\FriendlyError::generic($e->getMessage(), 'Draft tidak dapat di-upload.')];
             }
         }
 

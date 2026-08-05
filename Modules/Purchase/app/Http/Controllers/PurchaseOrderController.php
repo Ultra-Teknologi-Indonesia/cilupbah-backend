@@ -84,7 +84,11 @@ class PurchaseOrderController extends Controller
             $this->poService->delete($id);
             return $this->successResponse(null, 'PO berhasil dihapus');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                \App\Support\FriendlyError::generic($e->getMessage(), 'Gagal menghapus PO.'),
+                422,
+                ['detail' => $e->getMessage()],
+            );
         }
     }
 

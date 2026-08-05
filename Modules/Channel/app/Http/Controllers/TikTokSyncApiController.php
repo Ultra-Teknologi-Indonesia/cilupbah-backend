@@ -47,7 +47,7 @@ class TikTokSyncApiController extends Controller
                         'shop_id' => $shop->shop_id,
                         'shop_name' => $shop->shop_name,
                         'status' => 'error',
-                        'message' => $e->getMessage()
+                        'message' => \Modules\Channel\Support\UploadErrorPresenter::fromMessage('tiktok', $e->getMessage())['reason']
                     ];
                 }
             }
@@ -267,7 +267,7 @@ class TikTokSyncApiController extends Controller
                         'shop_id' => $shop->shop_id,
                         'shop_name' => $shop->shop_name,
                         'status' => 'error',
-                        'message' => $e->getMessage()
+                        'message' => \Modules\Channel\Support\UploadErrorPresenter::fromMessage('tiktok', $e->getMessage())['reason']
                     ];
                 }
             }

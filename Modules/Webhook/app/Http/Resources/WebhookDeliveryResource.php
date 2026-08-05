@@ -17,7 +17,7 @@ class WebhookDeliveryResource extends JsonResource
             'status' => $this->status,
             'status_code' => $this->status_code,
             'attempts' => $this->attempts,
-            'last_error' => $this->last_error,
+            'last_error' => \App\Support\FriendlyError::generic($this->last_error, 'Endpoint tujuan menolak atau tidak merespons.'),
             'payload' => $this->payload,
             'delivered_at' => $this->delivered_at,
             'created_at' => $this->created_at,

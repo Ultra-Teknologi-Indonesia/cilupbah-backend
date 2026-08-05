@@ -39,7 +39,7 @@ class ImpexActivityController extends Controller
             'progress_percentage' => $activity->progress_percentage,
             'status' => $activity->status,
             'file_url' => $activity->file_url,
-            'error_message' => $activity->error_message,
+            'error_message' => \App\Support\FriendlyError::import($activity->error_message),
         ]);
 
         return $this->successPaginatedResponse($activities, 'Daftar aktivitas berhasil diambil.');

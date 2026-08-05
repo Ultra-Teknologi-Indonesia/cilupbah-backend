@@ -124,13 +124,14 @@ class ImpexActivityService
         ]);
 
         if ($activity->user_id) {
+            $friendly = \App\Support\FriendlyError::import($errorMessage);
             $this->notifications->toUser($activity->user_id, [
                 'type' => 'impex_import_failed',
                 'title' => 'Import gagal',
-                'message' => "Proses {$this->activityLabel($activity)} gagal: {$errorMessage}",
+                'message' => "Proses {$this->activityLabel($activity)} gagal: {$friendly}",
                 'data' => [
                     'impex_activity_id' => $activity->id,
-                    'error' => $errorMessage,
+                    'error' => $friendly,
                     'link' => $this->activityLink($activity),
                 ],
             ]);
