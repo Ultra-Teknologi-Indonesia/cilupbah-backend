@@ -38,7 +38,34 @@ class GagalDownloadFlowTest extends TestCase
         ]);
     }
 
-    protected function seedVariant(string $sku, int $onHand = 10): string
+    protected ?string $channelShopId = null;
+
+    /** Buat (sekali) sebuah channel_shops untuk menautkan mapping produk. */
+    protected function channelShopId(): string
+    {
+        if ($this->channelShopId !== null) {
+            return $this->channelShopId;
+        }
+
+        $this->channelShopId = Str::uuid()->toString();
+        DB::table('channel_shops')->insert([
+            'id' => $this->channelShopId,
+            'channel_id' => null,
+            'shop_id' => 'SHOP-DL-' . substr($this->channelShopId, 0, 8),
+            'shop_name' => 'Toko Downloaded',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $this->channelShopId;
+    }
+
+    /**
+     * Varian yang HANYA ada di master (mis. hasil import CSV/Jubelio) — TANPA
+     * pernah di-download dari channel (tanpa product_variant_channel_mappings).
+     */
+    protected function seedMasterOnlyVariant(string $sku, int $onHand = 10): string
     {
         $categoryId = DB::table('categories')->insertGetId([
             'name' => 'Kategori ' . $sku,
@@ -77,6 +104,52 @@ class GagalDownloadFlowTest extends TestCase
         ]);
 
         return $variantId;
+    }
+
+    /**
+     * Varian yang sudah DI-DOWNLOAD dari channel: master + product_channel_mapping +
+     * product_variant_channel_mapping. Inilah kondisi "SKU sudah kedownload" yang
+     * membuat pesanan channel diterima sebagai pesanan normal (bukan Gagal Download).
+     */
+    protected function seedVariant(string $sku, int $onHand = 10): string
+    {
+        $variantId = $this->seedMasterOnlyVariant($sku, $onHand);
+        $this->linkVariantToChannel($variantId, $sku);
+
+        return $variantId;
+    }
+
+    protected function linkVariantToChannel(string $variantId, string $sku): void
+    {
+        $productId = DB::table('product_variants')->where('id', $variantId)->value('product_id');
+        $shopId = $this->channelShopId();
+
+        $pcmId = DB::table('product_channel_mappings')
+            ->where('product_id', $productId)
+            ->where('channel_shop_id', $shopId)
+            ->value('id');
+
+        if ($pcmId === null) {
+            $pcmId = Str::uuid()->toString();
+            DB::table('product_channel_mappings')->insert([
+                'id' => $pcmId,
+                'product_id' => $productId,
+                'channel_shop_id' => $shopId,
+                'sync_status' => 'synced',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        DB::table('product_variant_channel_mappings')->insert([
+            'id' => Str::uuid()->toString(),
+            'product_channel_mapping_id' => $pcmId,
+            'variant_id' => $variantId,
+            'channel_seller_sku' => $sku,
+            'external_sku_id' => 'EXT-' . $sku,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     protected function channelOrderData(string $orderNo, string $sku): array
@@ -203,6 +276,52 @@ class GagalDownloadFlowTest extends TestCase
         $this->assertNotNull(
             DB::table('sales_order_items')->where('order_id', $orderId)->value('item_id'),
         );
+    }
+
+    public function test_channel_order_with_master_only_sku_is_quarantined_to_failed_tab(): void
+    {
+        // SKU ada di master (mis. hasil import CSV/Jubelio) TAPI belum pernah
+        // di-download dari channel mana pun → order tidak boleh masuk daftar normal.
+        $this->seedMasterOnlyVariant('SKU-IMPORT-ONLY');
+
+        $orderId = $this->service->upsertFromChannel(
+            $this->channelOrderData('GD-MASTER-ONLY', 'SKU-IMPORT-ONLY')
+        );
+
+        $this->assertNotNull($orderId, 'order tetap tersimpan agar terlihat di Gagal Download');
+
+        $item = DB::table('sales_order_items')->where('order_id', $orderId)->first();
+        $this->assertNull($item->item_id, 'SKU belum di-download dari channel → tidak boleh ter-bind ke master');
+
+        $order = DB::table('sales_orders')->where('id', $orderId)->first();
+        $this->assertSame('pending', $order->status, 'order dikarantina ke status pending (Gagal Download)');
+
+        $counts = $this->repository->getTabCounts();
+        $this->assertSame(1, $counts['failed'], 'harus masuk tab Gagal Download');
+        $this->assertSame(0, $counts['all'], 'tidak boleh muncul di tab Semua');
+        $this->assertSame(0, $counts['ready-to-process'], 'tidak boleh masuk antrean Siap Proses');
+
+        $this->assertSame(
+            0,
+            DB::table('inventory_movements')->where('source', 'ORDER_RESERVE')->count(),
+            'stok tidak boleh ter-reserve untuk order Gagal Download'
+        );
+    }
+
+    public function test_channel_order_downloaded_from_other_shop_is_accepted(): void
+    {
+        // Aturan: cukup sudah di-download dari toko/channel MANA PUN (tidak wajib
+        // toko yang sama dengan pesanan) → order diterima normal.
+        $this->seedVariant('SKU-CROSSSHOP'); // ter-download di channelShop default
+
+        $payload = $this->channelOrderData('GD-CROSSSHOP', 'SKU-CROSSSHOP');
+        $payload['channel_shop_id'] = 'SHOP-LAIN-999'; // toko berbeda dari mapping
+
+        $orderId = $this->service->upsertFromChannel($payload);
+
+        $this->assertNotNull($orderId);
+        $item = DB::table('sales_order_items')->where('order_id', $orderId)->first();
+        $this->assertNotNull($item->item_id, 'SKU sudah kedownload dari toko lain → tetap ter-bind');
     }
 
     public function test_unmapped_order_appears_in_failed_tab_not_ready_to_process(): void

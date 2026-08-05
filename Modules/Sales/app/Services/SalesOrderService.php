@@ -1724,6 +1724,40 @@ class SalesOrderService
 
             $order->load('items');
 
+            // Gate "sudah di-download dari channel": untuk pesanan channel BARU, SKU yang
+            // hanya ada di master (mis. hasil import CSV/Jubelio) tetapi belum pernah
+            // di-download dari channel mana pun harus diperlakukan sebagai belum terpetakan
+            // → item_id dikosongkan agar order jatuh ke tab "Gagal Download", bukan masuk
+            // daftar normal. Dibatasi ke $wasNewOrder agar tidak mengganggu order yang sudah
+            // berjalan (picked/packed/shipped) saat re-sync.
+            if ($wasNewOrder && $order->source && ! empty($orderData['items']) && is_array($orderData['items'])) {
+                $downloaded = $this->orderRepository->channelDownloadedSkus($orderData['items']);
+                $undownloadedItemIds = $order->items
+                    ->filter(fn ($it) => $it->item_id && $it->sku && ! in_array($it->sku, $downloaded, true))
+                    ->pluck('id')
+                    ->all();
+
+                if (! empty($undownloadedItemIds)) {
+                    DB::table('sales_order_items')
+                        ->whereIn('id', $undownloadedItemIds)
+                        ->update(['item_id' => null, 'updated_at' => now()]);
+
+                    $order->load('items');
+
+                    Log::info('Channel order dikarantina ke Gagal Download: SKU ada di master tapi belum di-download dari channel', [
+                        'order_id'        => $order->id,
+                        'salesorder_no'   => $order->salesorder_no,
+                        'source'          => $order->source,
+                        'channel_shop_id' => $order->channel_shop_id,
+                        'skus'            => $order->items
+                            ->whereIn('id', $undownloadedItemIds)
+                            ->pluck('sku')
+                            ->values()
+                            ->all(),
+                    ]);
+                }
+            }
+
             if ($order->source && $this->hasUnmappedItems($order) && $finalStatus !== 'cancelled') {
                 if ($finalStatus !== 'pending') {
                     Log::info('Channel order quarantined: produk belum di-download', [
